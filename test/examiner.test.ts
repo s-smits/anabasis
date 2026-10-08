@@ -22,6 +22,7 @@ import { asRecord, isFunction, type JsonObject, type JsonValue } from "../src/me
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import type { RefereeFinding } from "../src/review/referee.ts";
+import { carriable } from "../tools/d2/campaign.ts";
 
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";
@@ -165,6 +166,7 @@ function setup(responses: FauxResponseStep[], test: (base: number, nth: number) 
     contract: CONTRACT,
     checks: CHECKS,
     examples: [EXAMPLE],
+    waiting: [],
     pack,
     verify,
     strong: async (task) => {
@@ -472,6 +474,42 @@ describe("an Examiner session", () => {
     expect(test.of("exam.finished")[0]).toMatchObject({ ended: "crashed" });
     await expect(examine(test.request)).rejects.toThrow("session x-1 is in the log already");
     expect(test.of("exam.started")).toHaveLength(1);
+  });
+
+  it("is a crashed session when the provider fails its turn, and the next takes up the task it left", async () => {
+    // The first live session, 2026-10-08: the provider's session limit failed the Examiner's turn
+    // after one task's stronger solve had passed, and before its controls were written.
+    const limit = "You've hit your session limit";
+    const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: limit });
+    const s = setup([propose(7), failed, controls("x-1-001"), finish]);
+    expect(await examine(s.request)).toMatchObject({ feasible: [], ended: "crashed" });
+    expect(s.of("exam.finished")[0]).toMatchObject({ ended: "crashed", crash: limit, waiting: ["x-1-001"] });
+
+    const { waiting } = carriable(read(s.log));
+    expect(waiting.map(({ task }) => task.taskId)).toEqual(["x-1-001"]);
+    const examined = await examine({ ...s.request, id: "x-2", waiting });
+    // The second Examiner never wrote the task, so it is shown it whole beside its accepted answer.
+    const opening = s.sent[2] ?? "";
+    expect(opening).toContain("ended before their reject controls were written");
+    expect(opening).toContain(String.raw`x-1-001:\n{\n  \"family\": \"fixture\"`);
+    expect(opening).toContain(String.raw`\"answer\": \"42\"`);
+    const version = s.versionOf("x-1-001", 7);
+    expect(examined).toMatchObject({
+      feasible: [version],
+      words: { [version]: "too easy" },
+      ended: "finished",
+    });
+    // Its stronger solve was not paid for twice, and its gates read as one history under one version.
+    expect(s.solves).toEqual({ strong: 1, test: 3 });
+    const gates = s.of("task.gate").filter((gate) => gate.version === version);
+    expect(gates.map(({ gate, outcome }) => [gate, outcome])).toEqual([
+      [1, "passed"],
+      [2, "passed"],
+      [3, "passed"],
+      [4, "passed"],
+    ]);
+    expect(s.of("exam.finished")[1]).toMatchObject({ ended: "finished", proposed: 0, waiting: [] });
+    expect(carriable(read(s.log)).waiting).toEqual([]);
   });
 });
 

@@ -27,13 +27,18 @@
  * for; gate 2's one reason is a check that could not run on the stronger solver's answer, which is
  * the instance's fault or the check's and says nothing of the solver being measured.
  *
+ * A task an earlier session left past gate 3 with no controls written is handed to this one, whole
+ * and with its accepted answer, in the opening message: its stronger solve is paid, and the
+ * Examiner that wrote it is gone. It keeps the id it was given.
+ *
  * A task's limit is set the plain way here, the plan's option A of decision 15: the Examiner sets it
  * and learns from the words. Option B, the host setting it from the stronger solve, changes a task
  * after its version is taken and waits on the operator's word.
  *
  * The session ends at `finish`, at its wall or its turns, when the host has the feasible tasks it
  * was asked for, or when a solve or the verifier throws, which stops a run: the session writes its
- * record and throws it again. An instance is logged whole with its proposal, hidden values too, so a
+ * record and throws it again. A turn of its own the provider failed ends it crashed, with what the
+ * provider said. An instance is logged whole with its proposal, hidden values too, so a
  * later solve of it needs the log and nothing beside it; no tool here returns a line of the log.
  */
 import {
@@ -81,7 +86,7 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import { type Change, changedAnswer } from "../review/probe.ts";
 import type { RefereeFinding } from "../review/referee.ts";
 import { text, tool } from "../solve/answer.ts";
-import { loopCompaction, traceSink } from "../solve/run.ts";
+import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 
 /** The log kinds a candidate task's gates and states are recorded under. */
@@ -113,6 +118,8 @@ export interface ExamRequest {
   readonly checks: readonly CheckRow[];
   /** Existing tasks of the domain, shown whole on request, for their shape. */
   readonly examples: readonly Task[];
+  /** Tasks earlier sessions left past gate 3, each with the answer the checks accepted. */
+  readonly waiting: readonly { readonly task: Task; readonly accepted: JsonValue }[];
   /** An instance as a package: the caller's rule ids and check program for it. */
   readonly pack: (task: Task) => TaskPackage;
   readonly verify: Verifier;
@@ -186,6 +193,13 @@ const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] a
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
 
 const shown = (value: JsonValue) => capturedJsonStringify(value, null, 2).slice(0, SHOWN_CHARS);
+
+/** A task an earlier session left waiting, as the opening message shows it: whole, since this
+ *  session's Examiner did not write it, and with the answer its controls are edits of. */
+function handed({ task, accepted }: ExamRequest["waiting"][number]): string {
+  const { taskId, family, publicInput, hidden } = task;
+  return `${taskId}:\n${shown({ family, publicInput, hidden })}\nThe answer the checks accepted:\n${shown(accepted)}`;
+}
 
 /** Whether the host has the tasks it asked for. */
 function supplied(desk: Desk): boolean {
@@ -534,7 +548,12 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     request,
     proposed: 0,
     seen: new Set(),
-    waiting: new Map(),
+    waiting: new Map(
+      request.waiting.map(({ task, accepted }) => {
+        const packed = request.pack(task);
+        return [task.taskId, { task: packed, version: taskVersion(packed), accepted, tries: 0 }];
+      }),
+    ),
     feasible: [],
     screened: 0,
     words: new Map(),
@@ -575,7 +594,17 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     const models = request.models(home);
     const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
     await runAgentLoop(
-      [user(firstMessage(request.contract, request.checks, request.examples, limits))],
+      [
+        user(
+          firstMessage(
+            request.contract,
+            request.checks,
+            request.examples,
+            limits,
+            request.waiting.map(handed),
+          ),
+        ),
+      ],
       { messages: system === undefined ? [] : [system], tools },
       {
         model,
@@ -604,7 +633,8 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     done.abort();
     rmSync(home, { recursive: true, force: true });
   }
-  crash ??= desk.fatal?.message ?? null;
+  const cut = wall.signal.aborted || desk.halt.signal.aborted || request.kill?.aborted === true;
+  crash ??= desk.fatal?.message ?? (cut ? null : failedTurn(turns));
   const by = {
     finished: desk.note !== null,
     supplied: supplied(desk),

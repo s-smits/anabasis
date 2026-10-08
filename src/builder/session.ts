@@ -74,7 +74,7 @@ import { type CommandWall, type SolveDirs, solveDirs } from "../solve/command.ts
 import type { PublicResource } from "../solve/answer.ts";
 import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
-import { loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
+import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
 import { mountDiskCap } from "../verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import { firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
@@ -310,12 +310,8 @@ export async function session(
     clearTimeout(timer);
     done.abort();
   }
-  crash ??= bench.fatal?.message ?? null;
-  // A turn the provider failed ends pi's loop without a throw, and what was built before it is half
-  // a session, as a crash's is. A turn the session's own wall, kill or halt cut is not that.
-  const last = turns.at(-1);
   const cut = wall.signal.aborted || bench.halt.signal.aborted || request.kill?.aborted === true;
-  if (last?.stopReason === "error" && !cut) crash ??= last.errorMessage ?? "the provider failed the turn";
+  crash ??= bench.fatal?.message ?? (cut ? null : failedTurn(turns));
   // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still
   // made its edits, and the comparison is what says whether they count.
   //

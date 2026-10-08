@@ -177,8 +177,16 @@ describe("a campaign", () => {
       ...written("x-1-004", "v4", { outcome: "too-hard", kind: "wall-ended" }),
       // A pack's task is no session's: its proposal holds no instance.
       event("task.proposed", { version: "v5" }),
+      // Past gate 3 when its session ended, with no controls written: the next session's to take.
+      ...written("x-1-006", "v6", { outcome: "passed" }),
+      event("task.gate", { version: "v6", gate: 3, outcome: "passed" }),
+      // Past gate 2 only: gate 3 has not said the checks repeat on its answer.
+      ...written("x-1-007", "v7", { outcome: "passed" }),
     ];
-    const { feasible, recovered, bare } = carriable(events);
+    const { feasible, recovered, waiting, bare } = carriable(events);
+    expect(waiting.map(({ task, accepted }) => [task.taskId, accepted])).toEqual([
+      ["x-1-006", { answer: "x-1-006" }],
+    ]);
     expect(feasible).toEqual([
       {
         task: { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null },

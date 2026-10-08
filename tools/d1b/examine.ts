@@ -17,6 +17,10 @@
  * put to the stronger solver, or at its minutes and turns. The supply reading is printed from the
  * log, over every Examiner session the campaign holds.
  *
+ * A task an earlier session of the campaign left past gate 3, with no controls written, is handed
+ * to this one with the answer it was accepted on: its stronger solve is paid, and a new id for the
+ * session is all a second try at its controls costs.
+ *
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
@@ -27,7 +31,7 @@ import { readBrief } from "#src/kernel/verify.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { openHarness } from "#src/solve/harness.ts";
-import { LIMITS, openCampaign, stayAwake } from "../d2/campaign.ts";
+import { carriable, LIMITS, openCampaign, stayAwake } from "../d2/campaign.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
@@ -94,6 +98,7 @@ async function main(): Promise<void> {
       families: check.execution.families,
     })),
     examples: campaign.tasks,
+    waiting: carriable(read(campaign.log)).waiting,
     pack: campaign.pack,
     verify: campaign.verify,
     strong: (task, _version, kill) => campaign.solveOnce(task, harness, stronger, kill),

@@ -305,6 +305,14 @@ export async function solverTools(
   }));
 }
 
+/** What the provider said when it failed a session's last turn, or null. pi's loop ends there
+ *  without a throw, and what the session made before it is half a session, as a crash's is. A turn
+ *  the session's own wall, kill or halt cut ends the same way and is not that: the caller says. */
+export function failedTurn(turns: readonly AssistantMessage[]): string | null {
+  const last = turns.at(-1);
+  return last?.stopReason === "error" ? (last.errorMessage ?? "the provider failed the turn") : null;
+}
+
 /** Every model turn and every tool call into the log, as they end: a solve's as `solve.turn` and
  *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.` or `exam.turn` and
  *  `.call` under `session`. */

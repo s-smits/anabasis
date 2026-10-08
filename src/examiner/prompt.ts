@@ -58,12 +58,14 @@ export const NUDGE =
   "You have not called finish. Propose further tasks, write the controls a feasible task is waiting for, or call finish.";
 
 /** The opening message: the domain's public contract, its checks by id and assertion, the examples
- *  by family, and the session's limits. */
+ *  by family, the session's limits, and each task an earlier session left `waiting` for its
+ *  controls, as the caller renders one. */
 export function firstMessage(
   contract: Contract,
   checks: readonly CheckRow[],
   examples: readonly ListedExample[],
   told: Told,
+  waiting: readonly string[],
 ): string {
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
@@ -74,5 +76,10 @@ export function firstMessage(
     `The checks, by the id a reject control names:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     `Existing tasks, for read_example:\n${examples.map(({ taskId, family }) => `- ${taskId} (family ${family})`).join("\n") || "(none)"}`,
     `This session has ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
+    ...(waiting.length === 0
+      ? []
+      : [
+          `An earlier session wrote these tasks and ended before their reject controls were written. Each is feasible so far: write its controls with write_controls, under the id it has here.\n\n${waiting.join("\n\n")}`,
+        ]),
   ].join("\n\n");
 }

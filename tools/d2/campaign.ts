@@ -157,6 +157,11 @@ export interface Carriable {
  * closed as too hard on an answer a check refused: a repair may accept that answer, and the task
  * then lacks only its controls. A task whose controls were written before a log held them whole
  * (`examiner/session.ts`) is counted in `bare`, and takes a session to write them again.
+ *
+ * `waiting` are the tasks past gate 3 that gate 4 never saw: their session ended before its
+ * Examiner wrote controls. The next session of the same campaign takes them up (`examine.ts`), since
+ * each has cost a stronger solve. On 2026-10-08 the provider's session limit ended a session one
+ * turn after such a solve passed, 15 minutes and $3.15 in.
  */
 export function carriable(events: readonly LogEvent[]) {
   const written = new Map(writtenTasks(events).map((task) => [task.taskId, task]));
@@ -168,6 +173,7 @@ export function carriable(events: readonly LogEvent[]) {
     )?.data;
   const feasible: Carriable[] = [];
   const recovered: Omit<Carriable, "controls">[] = [];
+  const waiting: Omit<Carriable, "controls">[] = [];
   let bare = 0;
   for (const { kind, data } of events) {
     const task = kind === "task.proposed" && isString(data.taskId) ? written.get(data.taskId) : undefined;
@@ -181,8 +187,9 @@ export function carriable(events: readonly LogEvent[]) {
     else if (fourth?.outcome === "passed" && Array.isArray(fourth.set)) {
       feasible.push({ ...witness, controls: fourth.set.flatMap(controlOf) });
     } else if (fourth?.outcome === "passed") bare += 1;
+    else if (fourth === undefined && gate(data.version, 3)?.outcome === "passed") waiting.push(witness);
   }
-  return { feasible, recovered, bare };
+  return { feasible, recovered, waiting, bare };
 }
 
 /** A control as gate 4 logged it, or none where the row is not one. */

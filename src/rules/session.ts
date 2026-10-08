@@ -416,7 +416,8 @@ function proposeTool(desk: Desk): AgentTool {
         id: Type.String({
           minLength: 1,
           maxLength: 64,
-          description: "A new id, in the style of the rules' ids.",
+          description:
+            "A new id, in the style of the rules' ids: one word of letters, digits, dots, dashes and underscores.",
         }),
         statement: Type.String({
           minLength: 1,
@@ -428,7 +429,8 @@ function proposeTool(desk: Desk): AgentTool {
         id: Type.String({
           minLength: 1,
           maxLength: 64,
-          description: "A new id, in the style of the checks' ids. It names the check's module.",
+          description:
+            "A new id, in the style of the checks' ids: one word of letters, digits, dots, dashes and underscores. It names the check's module.",
         }),
         assertion: Type.String({
           minLength: 1,

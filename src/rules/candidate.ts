@@ -28,7 +28,17 @@
  * same way, so additions stay apart on disk and one can be read, and withdrawn by a person, alone.
  * An added module may import the pack's own program files and nothing else: not a package, not a
  * builtin, not another addition. The scan that holds it to that reads import statements and is no
- * wall; the verifier's cell is the wall.
+ * wall: an import whose specifier is computed passes it. What keeps an added module from an
+ * existing check is the entry and the verifier together. It may import the pack's evaluator, call
+ * its checks and write over the `checks` object it imported, and all of that ends with the one
+ * process that loaded it, which decides the added check and no other; each check also runs over
+ * a copy of the program in a cell of its own (`runCheck` in `src/kernel/verify.ts`). What a module
+ * can reach outside its cell is the verifier's wall to refuse and not this file's.
+ *
+ * Both new ids are one word of letters, digits, dots, dashes and underscores, and differ from
+ * every id of their kind by more than case. A check's id names its module's file, and the Mac's
+ * file system folds case; a rule's id is what a citation and a ruling name, and one that reads as
+ * an existing rule's would let a citation be read two ways.
  *
  * `additive` is the proof, and it reads two directories and trusts no one's account of how the
  * second was made: every file of the pack is in the candidate with the same sha256, the brief's
@@ -383,13 +393,20 @@ export function additive(
   const [rule, check] = [now.rules.at(-1) ?? {}, now.checks.at(-1) ?? {}];
   const { id, statement } = rule;
   const checkId = check.id;
-  if (!isString(id) || was.rules.some((row) => row.id === id)) {
-    faults.push(`the new rule's id is not a new one: ${isString(id) ? id : "none"}`);
+  /** Whether a row of `rows` holds `named` as its id, case apart. */
+  const taken = (rows: readonly JsonObject[], named: string) =>
+    rows.some((row) => isString(row.id) && row.id.toLowerCase() === named.toLowerCase());
+  if (!isString(id) || !isSafePathSegment(id)) {
+    faults.push(
+      `the new rule's id is not one word of letters, digits, dots, dashes and underscores: ${capturedJsonStringify(id ?? null)}`,
+    );
+  } else if (taken(was.rules, id)) {
+    faults.push(`the new rule's id is not a new one: ${id}`);
   }
   if (rule.visibility !== "public" || !isString(statement) || statement.trim() === "") {
     faults.push("the new rule is not a public rule with a statement");
   }
-  if (!isString(checkId) || !isSafePathSegment(checkId) || was.checks.some((row) => row.id === checkId)) {
+  if (!isString(checkId) || !isSafePathSegment(checkId) || taken(was.checks, checkId)) {
     faults.push(
       `the new check's id is not a new one that can name its module: ${isString(checkId) ? checkId : "none"}`,
     );

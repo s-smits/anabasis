@@ -368,12 +368,18 @@ describe("the task states", () => {
     expect(() => taskStates([...refusedAt3, state("admitted")])).toThrow("cannot go from held to admitted");
   });
 
-  it("never releases a task the anchor drew, and draws only proposed, feasible tasks", () => {
+  it("never releases or admits a task the anchor drew, and draws only proposed, feasible tasks", () => {
     expect(() => taskStates([...feasible, draw("v1"), state("released")])).toThrow(
       "task v1 is an anchor task, so it is never released",
     );
     expect(() => taskStates([...drawn, ...feasible, state("released"), draw("v1")])).toThrow(
       "task v1 is drawn after its release",
+    );
+    expect(() => taskStates([...feasible, draw("v1"), state("admitted")])).toThrow(
+      "task v1 is an anchor task, so it is never admitted",
+    );
+    expect(() => taskStates([...feasible, state("admitted"), draw("v1")])).toThrow(
+      "task v1 is drawn after its admission",
     );
     expect(() => taskStates([{ at, kind: "anchor.drawn", data: {} }])).toThrow(
       "anchor.drawn names no task versions",

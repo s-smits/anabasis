@@ -115,8 +115,10 @@ export type TaskState = (typeof TASK_STATES)[number];
 /**
  * Where each state may go. Round 0 releases feasible tasks unscreened, so a held task may be released,
  * though only once the anchor is drawn and never one the draw named: `anchor.drawn` lists the task
- * versions it drew, and the fold refuses a release of any of them. A released task is never scored:
- * the comparison, when it is built, refuses one.
+ * versions it drew, and the fold refuses a release of any of them, and an admission too: the anchor
+ * is the one set no screening chose, and an anchor task in the scored set would be chosen by its
+ * fails after all (the plan's decision 27, as recommended). A released task is never scored: the
+ * comparison, when it is built, refuses one.
  *
  * A check defect shows wherever a task is solved, so a feasible task may be disputed from any state
  * it is solved in: held, when a screening fail is ruled one, admitted, and released, where practice
@@ -337,6 +339,8 @@ function draw(fold: Fold, at: string, data: JsonObject): void {
   if (unfit !== undefined) throw new Error(`${at}: task ${unfit} is drawn before it is feasible`);
   const released = versions.find((version) => fold.tasks.get(version)?.state === "released");
   if (released !== undefined) throw new Error(`${at}: task ${released} is drawn after its release`);
+  const admitted = versions.find((version) => fold.tasks.get(version)?.state === "admitted");
+  if (admitted !== undefined) throw new Error(`${at}: task ${admitted} is drawn after its admission`);
   fold.drawn = new Set([...(fold.drawn ?? []), ...versions]);
 }
 
@@ -364,8 +368,8 @@ function move(fold: Fold, version: string, task: Folded, data: JsonObject): stri
     return `cannot go from ${task.state} to ${to ?? "no known state"}`;
   }
   if (to === "released" && fold.drawn === null) return "is released before the anchor is drawn";
-  if (to === "released" && fold.drawn?.has(version) === true) {
-    return "is an anchor task, so it is never released";
+  if ((to === "released" || to === "admitted") && fold.drawn?.has(version) === true) {
+    return `is an anchor task, so it is never ${to}`;
   }
   task.state = to;
   return null;

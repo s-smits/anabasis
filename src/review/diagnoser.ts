@@ -14,12 +14,11 @@
  * confidence scale and the excerpt's shape. Departures:
  * - One fail per session, where v1 offered up to six issues aggregated over a battery: v2 tasks stay
  *   put, so a fail is the unit the Builder follows.
- * - An owner in place of v1's authoring owner. v1 routed a diagnosis to one of its bundle files; here
- *   the Builder owns the whole harness and nothing is routed. The owner stays because two of v1's
- *   were never routes: `solver` says the harness has nothing to change, and the public rules are not
- *   the Builder's to change (`diagnosis-tool.ts`, `OWNER_MEANING`). Without them every fail read as
- *   the harness's. A `public-rules` diagnosis is also logged as a `referee.dispute`, which is where
- *   `contract.ts` sends the question whether a rule's statement says enough.
+ * - An owner of three values in place of v1's authoring owner. v1 routed a diagnosis to one of its
+ *   bundle files; here the Builder owns the whole harness and nothing is routed, so the cause names
+ *   the part. Two of v1's owners were never routes, though: `solver` says the harness has nothing to
+ *   change, and the public rules are not the Builder's to change (`diagnosis-tool.ts`,
+ *   `OWNER_MEANING`). Without them every fail read as the harness's.
  * - A diagnosis may name its task, which v1 forbade: a released task is one the Builder can read.
  * - The excerpt reads the log's `solve.turn` and `solve.call` events, where v1 read a trace file, and
  *   `read_trace` returns any call the excerpt left out. v1's reader had one turn and a compiled
@@ -52,20 +51,17 @@ export interface DiagnosisCase {
   readonly log: string;
 }
 
-/** Where a cause lies: four parts of the harness the solver reads, and two that are not the
- *  harness's. issue-register.ts:68-75, with v1's bundle files as v2's harness parts. */
-const OWNERS = ["guide", "tool-description", "tool", "starting-files", "public-rules", "solver"] as const;
+/** Where a cause lies: the harness, or one of two places that are not the harness's.
+ *  diagnosis-tool.ts:52-62, with v1's bundle files folded into `harness`. */
+const OWNERS = ["harness", "public-rules", "solver"] as const;
 
 type Owner = (typeof OWNERS)[number];
 
-/** diagnosis-tool.ts:52-62, reworded for those parts. */
 const OWNER_MEANING: Record<Owner, string> = {
-  guide: "the guide omitted or misstated a public fact the solver needed.",
-  "tool-description": "a tool's parameters or description invited the wrong call.",
-  tool: "a tool returned a wrong, incomplete or unusable result for a valid call, or the solve needed a computation no tool offers.",
-  "starting-files": "a file seeded into the solver's home was missing, wrong or misleading.",
+  harness:
+    "a part of the harness omitted, misstated or mishandled what the solver needed; name the part in cause: a tool, its description, the guide or the starting files.",
   "public-rules":
-    "the public task or rules omitted or misstated what the solver needed; not the harness's to repair, and logged as a dispute.",
+    "the public task or rules omitted or misstated what the solver needed; not the harness's to repair.",
   solver:
     "the harness offered what was needed and the solver's own reasoning failed; nothing in the harness to change.",
 };
@@ -349,21 +345,14 @@ export async function diagnose(reader: Reader, fail: DiagnosisCase): Promise<Dia
     diagnosisTool(shown, found),
   ]);
   const diagnosis = found.diagnosis ?? { abstain: "the Diagnoser recorded nothing" };
-  const named = { solve: fail.solve, task: fail.task.taskId, version: fail.version };
   // SAFETY: a diagnosis is strings alone.
   append(fail.log, "diagnosis.recorded", {
-    ...named,
+    solve: fail.solve,
+    task: fail.task.taskId,
+    version: fail.version,
     ...(diagnosis as unknown as JsonObject),
     record,
     ...meter,
   });
-  if ("owner" in diagnosis && diagnosis.owner === "public-rules") {
-    append(fail.log, "referee.dispute", {
-      ...named,
-      by: "diagnoser",
-      claim: diagnosis.cause,
-      boundary: diagnosis.firstDivergence,
-    });
-  }
   return diagnosis;
 }

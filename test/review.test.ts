@@ -299,7 +299,7 @@ describe("the Diagnoser", () => {
 
   it("records a cause whose divergence quotes the trace, beside the passing solve", async () => {
     const recorded = {
-      owner: "guide" as const,
+      owner: "harness" as const,
       cause: "The guide never says numpy is missing, so the script fails and the solver guesses.",
       falsifier: "A later solve that imports numpy without error and still answers 12.",
       firstDivergence: "ModuleNotFoundError:   numpy",
@@ -326,11 +326,10 @@ describe("the Diagnoser", () => {
     expect(read(s.log).findLast((event) => event.kind === "diagnosis.recorded")?.data).toMatchObject({
       solve: "s-1",
       version: "v1",
-      owner: "guide",
+      owner: "harness",
       confidence: "medium",
       record: { solves: 2, passed: 1 },
     });
-    expect(read(s.log).some((event) => event.kind === "referee.dispute")).toBe(false);
   });
 
   it("contrasts only with a pass under the failed solve's own condition", async () => {
@@ -389,26 +388,6 @@ describe("the Diagnoser", () => {
     );
     expect(s.sent[2]).toContain(String.raw`20 bash\n21 bash`);
     expect(s.sent[3]).toContain("result: margin -0.2 at call 20");
-  });
-
-  it("logs a diagnosis that lays the fail on the public rules as a dispute", async () => {
-    const s = setup([
-      diagnosis({
-        owner: "public-rules",
-        cause: "R1 gives a span and no unit for the load, and the solver read 5 as kN.",
-        falsifier: "A later solve of a task whose load states its unit and still answers 12.",
-        firstDivergence: "Done: span 12.",
-        confidence: "low",
-      }),
-    ]);
-    released(s.record);
-    solved(s.record);
-    s.record("referee.finding", { solve: "s-1", ruling: "earned" });
-    await diagnose(s.reader, fail(s));
-    expect(read(s.log).at(-1)).toMatchObject({
-      kind: "referee.dispute",
-      data: { solve: "s-1", task: "t-1", version: "v1", by: "diagnoser", boundary: "Done: span 12." },
-    });
   });
 
   it("abstains when the reader says what evidence is missing", async () => {

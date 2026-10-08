@@ -15,6 +15,12 @@
  *
  * - `harness`: enough of the pool stops the harness or is not yet placed against it, so a round
  *   has an exam to build against.
+ * - `measurement`: the pool can be scored and the comparison is what is short (`size.ts`). Either
+ *   the round as it is sized cannot read a step, its target being under the least sweep, or the
+ *   last two rounds from this harness each told the two harnesses apart on fewer tasks than a step
+ *   takes. A third round of that size would most likely read the same, whatever its child is, and
+ *   what a repeat would need is `size.ts`'s to say. It is read before `harness` and after
+ *   everything a short pool names: a pool that cannot be scored is not mended by a larger round.
  * - otherwise, what the Examiner sessions that stood on this harness were told of their tasks,
  *   by the largest count. `witness`: the stronger solver did not pass them, so the tasks have
  *   outrun the proof that they can be done, and they wait for a harness that lifts it. `checks`:
@@ -36,9 +42,17 @@ import { countBy } from "../meta/tally.ts";
 import type { Limits } from "./condition.ts";
 import { frontierOf, ladder, type Rule, type Stand } from "./ladder.ts";
 import type { LogEvent } from "./log.ts";
+import { informativeOf } from "./size.ts";
 import { outgrown } from "./wall.ts";
 
-export type Compartment = "harness" | "tasks" | "witness" | "checks" | "limits" | "correctness-model";
+export type Compartment =
+  | "harness"
+  | "measurement"
+  | "tasks"
+  | "witness"
+  | "checks"
+  | "limits"
+  | "correctness-model";
 
 export interface Binding {
   readonly binds: Compartment;
@@ -67,6 +81,9 @@ export interface Told {
 /** Sessions against one harness after which tasks the solver passes are read as the checks' span
  *  and no longer as their author's first try. */
 const TOLD_ONCE = 2;
+/** Rounds from one harness, each short of the informative pairs a step takes, after which the
+ *  measurement is read as what binds: one such round can be its child's doing, or chance. */
+const SHORT_ROUNDS = 2;
 const WALL_BOUND = "wall-bound";
 
 /** The last `exam.word` of each task version: a task is told a word at each step it reaches, a
@@ -90,14 +107,19 @@ export function toldOf(events: readonly LogEvent[]): Map<string, Told> {
 /**
  * What binds the climb from where the solver stands. `least` is the smallest scored set a round can read a step
  * on, which is the comparison's arithmetic and the caller's to give. A session logged before
- * sessions named their harness stood on the campaign's first one. `limits` is what the solver's
- * next solves would run under, where the caller knows it: without them no word is read against a
- * wall.
+ * sessions named their harness stood on the campaign's first one. `target` is the scored set the
+ * next round would fill, where the caller knows it, and `limits` what the solver's next solves
+ * would run under, where it does: without them neither is read against.
  */
 export function binding(
   events: readonly LogEvent[],
   stand: Stand,
-  given: { readonly rule: Rule; readonly least: number; readonly limits?: Limits },
+  given: {
+    readonly rule: Rule;
+    readonly least: number;
+    readonly target?: number;
+    readonly limits?: Limits;
+  },
 ): Binding {
   const placed = ladder(events, stand, given.rule);
   const first = frontierOf(events) === null;
@@ -134,7 +156,24 @@ export function binding(
     sessions: stood.size,
     words,
   };
-  if (counts.stops + counts.unplaced >= given.least) {
+  const scorable = counts.stops + counts.unplaced;
+  if (scorable >= given.least) {
+    const least = String(given.least);
+    const last = informativeOf(events, stand.harness).slice(-SHORT_ROUNDS);
+    if (given.target !== undefined && given.target < given.least) {
+      return {
+        ...counts,
+        binds: "measurement",
+        why: `${String(scorable)} of the pool can be scored and a step takes ${least}, and the round's target is ${String(given.target)}: at this size no result reads a step`,
+      };
+    }
+    if (last.length === SHORT_ROUNDS && last.every((pairs) => pairs < given.least)) {
+      return {
+        ...counts,
+        binds: "measurement",
+        why: `${String(scorable)} of the pool can be scored, and the last ${String(SHORT_ROUNDS)} rounds from this harness told the two harnesses apart on ${last.join(" and ")} tasks where a step takes ${least}: a round of this size has not been able to read one`,
+      };
+    }
     return {
       ...counts,
       binds: "harness",

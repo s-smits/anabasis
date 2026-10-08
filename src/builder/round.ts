@@ -928,6 +928,22 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
 }
 
 /**
+ * The scored pairs a report tallied, read as the report found them: from the log up to that report,
+ * so a task released or gone stale since is still the scored task it was, and within its round's own
+ * window of solves. None for a report that compared nothing. `report` is one of `lastReports`.
+ */
+export function pairsReported(
+  events: readonly LogEvent[],
+  report: { readonly session: string; readonly index: number; readonly data: JsonObject },
+): Paired[] {
+  const { session, index, data } = report;
+  const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
+  if (!isString(data.old) || !isString(data.fresh) || !isNumber(data.solves)) return [];
+  const then = since(events.slice(0, index + 1), session);
+  return whole(pairsOf(then, versions, data.old, data.fresh).pairs, data.solves).pairs;
+}
+
+/**
  * The plan's three-session rule over the rounds a log holds: the pooled gain of every scored task
  * of every compared session, and whether the experiment stops on it. It stops when at least three
  * sessions were compared, none read a step, and the gain stays under ten points at 90% confidence
@@ -936,17 +952,11 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
  * outage left with no scored task, counts among the three with no task to pool, and so is never
  * flat by itself: no tasks is no evidence of a flat gain.
  *
- * Each round is read as its report found it: from the log up to that report, so a task released or
- * gone stale since is still the scored task it was, and within the round's own window of solves.
+ * Each round is read as its report found it (`pairsReported`).
  */
 export function stopRule(events: readonly LogEvent[]) {
   const reports = lastReports(events).filter(({ data }) => data.reading !== "check-defects");
-  const pairs = reports.flatMap(({ session, index, data }) => {
-    const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
-    if (!isString(data.old) || !isString(data.fresh) || !isNumber(data.solves)) return [];
-    const then = since(events.slice(0, index + 1), session);
-    return whole(pairsOf(then, versions, data.old, data.fresh).pairs, data.solves).pairs;
-  });
+  const pairs = reports.flatMap((report) => pairsReported(events, report));
   const pooled = gain(pairs);
   const stepped = reports.some(({ data }) => data.reading === "step");
   const flat = pairs.length >= STOP_TASKS && pooled.upper < STOP_POINTS;

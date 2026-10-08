@@ -41,7 +41,8 @@
  * plan's rules did not call a step, and a cross round's (`model-condition-comparison`).
  *
  * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
- * three-session reading are printed from the log.
+ * three-session reading are printed from the log, and after them what the rounds that fell short
+ * of a step show together and what a repeat would need (`src/kernel/size.ts`).
  *
  * A simulation runs this same command with a script in each of its two model seats
  * (`tools/runs/rehearse.ts`), so that what it walks is what a paid round walks.
@@ -51,8 +52,10 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { type RoundReport, round, screeningOrder, stopRule } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
+import { shortOfAStep } from "#src/builder/short.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
+import { shortLines } from "#src/kernel/size.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -224,6 +227,9 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
   });
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
+  // The rule's companion: what the rounds that fell short show together (`src/kernel/size.ts`).
+  const fell = shortOfAStep(read(campaign.log), Number(values.level));
+  for (const line of shortLines(fell.together, fell.bought)) console.log(line);
   return report;
 }
 

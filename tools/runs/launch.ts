@@ -20,8 +20,12 @@
  *   - an `--env-file` that is not there. The path is Bun's to read and is never opened here;
  *   - a `--session` whose Builder started and did not end whole, as the round itself would.
  *
- * Its notes say when the `--solve-minutes` and `--solve-turns` it was given are not the limits the
- * log's last solves ran under, since every standing then restarts (`tools/d2/limits.ts`).
+ * Its notes then say what a round of this size can show before it is paid for (`roundSize`,
+ * `src/kernel/size.ts`): the most tasks it can score, the smallest results that clear its level,
+ * and the chance of one for a few stated effects. A launch reads the log alone and knows no
+ * standing, so every task to screen counts as one the round may admit. They also say when the
+ * `--solve-minutes` and `--solve-turns` it was given are not the limits the log's last solves ran
+ * under, since every standing then restarts (`tools/d2/limits.ts`).
  *
  * An Examiner session meets the last four of these, its id being one the log holds already, and
  * needs the campaign's log and no set in it. Its notes say what it is handed and where its tasks
@@ -48,6 +52,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/files
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { roundSize, sizeLines } from "#src/kernel/size.ts";
 import { limitsLast } from "#src/kernel/wall.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
@@ -57,7 +62,6 @@ import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/su
 import { spent } from "#src/builder/round.ts";
 import { sessionDirs } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
-import { sweepOf } from "#src/kernel/compare.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { carriable, setsOf } from "../d2/campaign.ts";
@@ -91,9 +95,10 @@ export interface Host {
 export interface Asked extends Host {
   /** `--target`, as given: only "0" asks for no scored task. */
   readonly target: string | undefined;
-  /** `--level` and `--anchor-floor`, as given or as the round defaults them. */
+  /** `--level`, `--anchor-floor` and `--solves`, as given or as the round defaults them. */
   readonly level: number;
   readonly anchorFloor: number;
+  readonly solves: number;
 }
 
 /** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
@@ -172,9 +177,15 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
   ];
   // What the round's two tests can say at this size is arithmetic, and rehearsals found it before a
   // round paid to (2026-10-08): exam-1 held one task to screen, and four anchor tasks under a floor
-  // of eight.
-  const most = Math.min(toScreen, Number(asked.target ?? ROUND_OPTIONS.target.default));
-  const sweep = sweepOf(asked.level);
+  // of eight. A launch knows no standing, so every task to screen is one the round may admit.
+  const size = roundSize(
+    { stops: 0, unplaced: toScreen },
+    {
+      target: Number(asked.target ?? ROUND_OPTIONS.target.default),
+      solves: asked.solves,
+      level: asked.level,
+    },
+  );
   const notes = [
     ...said([
       [
@@ -182,10 +193,9 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
         `${String(sets.anchor.length)} anchor · ${String(sets.released.length)} released for practice · ${String(sets.candidates.length)} held to screen · ${String(sets.admitted.length)} admitted`,
       ],
       [!scoring, "--target 0: the round scores no task and cannot read step. Its anchor is all it compares"],
-      [
-        scoring && most > 0 && most < sweep,
-        `at most ${String(most)} task(s) can be scored, and at --level ${String(asked.level)} a step takes ${String(sweep)}, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy`,
-      ],
+    ]),
+    ...sizeLines(size),
+    ...said([
       [
         sets.anchor.length > 0 && sets.anchor.length < asked.anchorFloor,
         `the anchor holds ${String(sets.anchor.length)} task(s) and --anchor-floor is ${String(asked.anchorFloor)}: the anchor cannot be tested, so the round reads neither step nor anchor-lost`,
@@ -281,6 +291,7 @@ export async function launch(args: readonly string[]): Promise<void> {
       target: { type: "string" },
       level: ROUND_OPTIONS.level,
       "anchor-floor": ROUND_OPTIONS["anchor-floor"],
+      solves: ROUND_OPTIONS.solves,
       ...LIMITS_OPTIONS,
       examiner: { type: "string" },
       reviewer: { type: "string" },
@@ -322,6 +333,7 @@ export async function launch(args: readonly string[]): Promise<void> {
         target: isString(target) ? target : undefined,
         level: Number(values.level),
         anchorFloor: Number(values["anchor-floor"]),
+        solves: Number(values.solves),
       });
   for (const note of notes) console.log(`· ${note}`);
   if (run === undefined || refusals.length > 0) {

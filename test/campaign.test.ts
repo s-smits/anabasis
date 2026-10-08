@@ -149,11 +149,12 @@ describe("a campaign", () => {
     const unsolved = "no solve under these limits is on record against this harness";
     const binds =
       "what binds: tasks. 2 of the pool can be scored and a step takes 4: no Examiner session has written against this harness";
-    // After the ladder, whether the wall binds.
+    // After the ladder, whether the wall binds and what a round of this size can show.
     const summary = [
       "7 feasible: 3 anchor, 2 released for practice (2 the frontier is not known to clear), 2 in the pool",
       `${against}: 0 stop it, 0 it clears, 0 ended at the wall, 2 no solve has placed; 0 wait for a witness`,
       `against a wall of 120 minutes: 0 of 2 pool tasks walled, 0 tasks set aside as wall-bound outside the pool (Examiner sessions wrote 0 of the pool, 0 of the walled and 0 of the wall-bound); ${unsolved}`,
+      "at most 2 task(s) can be scored, and at --level 0.1 a step takes 4, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy",
       binds,
     ].join("\n");
     expect(prepare()).toBe(summary);

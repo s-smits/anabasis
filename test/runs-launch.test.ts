@@ -42,16 +42,24 @@ const ASKED: Asked = {
   running: [],
   missing: null,
   spent: null,
+  solves: 3,
   limits: LIMITS,
   ran: null,
 };
 
 describe("a launch's preflight", () => {
-  it("lets a round start that has an anchor and a task to screen, and says its sets", () => {
-    expect(preflight(SETS, ASKED)).toEqual({
-      refusals: [],
-      notes: ["2 anchor · 1 released for practice · 1 held to screen · 0 admitted"],
-    });
+  it("lets a round start that has an anchor and a task to screen, and says its sets and its size", () => {
+    const { refusals, notes } = preflight(SETS, ASKED);
+    expect(refusals).toEqual([]);
+    expect(notes).toHaveLength(3);
+    expect(notes.slice(0, 2)).toEqual([
+      "2 anchor · 1 released for practice · 1 held to screen · 0 admitted",
+      "at most 1 task can be scored; at --level 0.5 the smallest results that clear are 1-0",
+    ]);
+    // One task, won outright 12 times in 100: the chance is the effect's own share.
+    expect(notes[2]).toStartWith(
+      "the chance that the scored test clears on 1 task at 3 solves a side, were the true effect: 12 points as 12 tasks in 100 turned from failed to passed, 0.12; ",
+    );
   });
 
   it("refuses a scoring round with nothing to screen, and lets an anchor-only one say it cannot step", () => {
@@ -74,8 +82,20 @@ describe("a launch's preflight", () => {
       "at most 1 task(s) can be scored, and at --level 0.1 a step takes 4, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy",
       "the anchor holds 2 task(s) and --anchor-floor is 8: the anchor cannot be tested, so the round reads neither step nor anchor-lost",
     ]);
+    // Four tasks to screen can read a step, and the launch says what it takes and how likely it is:
+    // all four won, which a quarter of the tasks turned gives 1 time in 256.
     const four = { ...SETS, candidates: ["c1", "c2", "c3", "c4"] };
-    expect(preflight(four, { ...small, anchorFloor: 2 }).notes).toHaveLength(1);
+    const able = preflight(four, { ...small, anchorFloor: 2 }).notes;
+    expect(able).toHaveLength(3);
+    expect(able[1]).toBe(
+      "at most 4 tasks can be scored; at --level 0.1 the smallest results that clear are 4-0",
+    );
+    expect(able[2]).toContain("25 points as 25 tasks in 100 turned, 0.00;");
+    // The solves a side move the chance of an effect spread over every task, and of no other.
+    const once = preflight(four, { ...small, anchorFloor: 2, solves: 1 }).notes[2] ?? "";
+    expect(once).toContain("at 1 solve a side");
+    expect(once.split("; ")[0]).toBe((able[2] ?? "").split("; ")[0]?.replace("3 solves", "1 solve"));
+    expect(once.split("; ")[3]).not.toBe((able[2] ?? "").split("; ")[3]);
     // A target under the sweep caps the scored set as few candidates do.
     expect(preflight(four, { ...small, anchorFloor: 2, target: "3" }).notes[1]).toContain("at most 3");
     expect(preflight(four, { ...small, anchorFloor: 2, level: 0.05 }).notes[1]).toContain("a step takes 5");
@@ -94,7 +114,7 @@ describe("a launch's preflight", () => {
       "this campaign's log is already being written here, by pid 41",
     ]);
     expect(preflight(SETS, { ...ASKED, missing: "gone.env" }).refusals).toEqual(["gone.env is not there"]);
-    expect(preflight({ ...SETS, released: [] }, ASKED).notes[1]).toContain("nothing to practise on");
+    expect(preflight({ ...SETS, released: [] }, ASKED).notes.at(-1)).toContain("nothing to practise on");
   });
 
   it("refuses a session whose Builder started and did not end whole, in the round's own words", () => {

@@ -13,6 +13,7 @@
  * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
  */
+import { signP } from "#src/kernel/compare.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { taskStates } from "#src/kernel/task.ts";
@@ -97,6 +98,8 @@ interface Index {
   readonly states: ReadonlyMap<string, string>;
   readonly builds: readonly Build[];
   readonly anchor: ReadonlySet<string>;
+  /** Feasible task versions still held outside the anchor: what a round can screen. */
+  readonly candidates: readonly string[];
   readonly of: (kind: LogEvent["kind"]) => JsonObject[];
 }
 
@@ -107,8 +110,6 @@ const SMALL_WALL_SHARE = 0.05;
 const FEW_CALLS = 3;
 /** Minutes of silence in the log worth a line. */
 const SILENCE_MINUTES = 20;
-/** Informative pairs below which a sign test at the plan's level can hardly clear it. */
-const FEW_INFORMATIVE = 5;
 /** The condition's fields a pair may not differ in: every one but the harness and the task. */
 const PAIRED = ["contract", "model", "effort", "compaction", "verifierTools", "sandbox", "host"] as const;
 const DEFECT = "check-defect";
@@ -164,13 +165,17 @@ export const TRIGGERS = {
   "PAIR DIFFERS BEYOND HARNESS": 20,
   "SCORED SET CARRIED": 21,
   "ADMITTED BY": 21,
+  "SCREENING RULE NOT ON RECORD": 21,
+  "NOTHING SCORED": 22,
   "FEW INFORMATIVE PAIRS": 22,
   "SET SHORT": 22,
   "ANCHOR NOT HELD": 23,
+  "ANCHOR RATE BY ROUND": 23,
   "FLIPS": 24,
   "HOST CODE MOVED": 20,
   "CHAIN": 25,
   "STEP NOT BUILT ON": 25,
+  "NO CANDIDATES HELD": 25,
   "WALL SHARE": 26,
   "WALL-BOUND MISSES": 26,
   "LONG SOLVE, LITTLE CPU": 26,
@@ -183,6 +188,7 @@ export const TRIGGERS = {
   "DIAGNOSES": 29,
   "REPLAY MOVED THE VERDICT": 29,
   "FLAGGED AND STILL COUNTED": 30,
+  "READING MOVES WITHOUT FLAGGED": 30,
   "REVIEW FAULTS": 30,
   "EARNED WITHOUT A PROBE": 30,
 } as const;
@@ -286,6 +292,11 @@ function indexOf(events: readonly LogEvent[]): Index {
   const last = (kind: LogEvent["kind"]) =>
     new Map(events.flatMap((event) => (event.kind === kind ? [[text(event.data.solve), event.data]] : [])));
   const of = (kind: LogEvent["kind"]) => events.flatMap((event) => (event.kind === kind ? [event.data] : []));
+  const states = taskStates(events);
+  const anchor = new Set(of("anchor.drawn").flatMap((data) => strings(data.tasks)));
+  const feasible = of("task.gate").flatMap((data) =>
+    data.gate === 4 && data.outcome === "passed" ? [text(data.version)] : [],
+  );
   return {
     events,
     conditions,
@@ -293,11 +304,24 @@ function indexOf(events: readonly LogEvent[]): Index {
     verdicts: last("verdict"),
     rulings: last("referee.finding"),
     diagnoses: last("diagnosis.recorded"),
-    states: taskStates(events),
+    states,
     builds: buildsOf(events),
-    anchor: new Set(of("anchor.drawn").flatMap((data) => strings(data.tasks))),
+    anchor,
+    candidates: feasible.filter((version) => states.get(version) === "held" && !anchor.has(version)),
     of,
   };
+}
+
+/** Metered dollars by role, the largest first. */
+function spendOf(log: Index): [string, number][] {
+  const spent = (kind: LogEvent["kind"]) => log.of(kind).reduce((sum, data) => sum + count(data.metered), 0);
+  return Object.entries({
+    solver: spent("solve.finished"),
+    builder: spent(BUILD_END),
+    examiner: spent(EXAM_END),
+    referee: spent("referee.finding"),
+    diagnoser: spent("diagnosis.recorded"),
+  }).sort(([, a], [, b]) => b - a);
 }
 
 /** The answers some check refused: a format fault reached no check and is none. */
@@ -626,6 +650,13 @@ function comparisonTriggers(log: Index): Trigger[] {
     const both = [...byOld].filter((version) => byNew.has(version)).length;
     const scored = asRecord(build.report?.scored);
     const informative = count(scored?.wins) + count(scored?.losses);
+    const tasks = informative + count(scored?.ties);
+    const level = count(build.report?.level);
+    // The least clean sweep that clears the report's level, by the report's own test.
+    const sweep = Array.from({ length: 64 }, (_, index) => index + 1).find((wins) => signP(wins, 0) <= level);
+    // No result with a loss clears on this many informative pairs: the reading rests on a sweep.
+    const fragile = signP(Math.max(0, informative - 1), 1) > level;
+    const target = build.report?.target;
     const [lacking, unscreened] = [items(build.report?.short).length, items(build.report?.unscreened).length];
     const anchor = asRecord(build.report?.anchor);
     const seen = new Map<string, Set<string>>();
@@ -652,11 +683,27 @@ function comparisonTriggers(log: Index): Trigger[] {
             ),
           ]
         : []),
-      ...(scored !== null && informative < FEW_INFORMATIVE
+      ...(round.screening.length > 0 && asRecord(build.report?.screening) === null
+        ? [
+            fired(
+              "SCREENING RULE NOT ON RECORD",
+              `${session}: ${plural(round.screening.length, "screening solve")}, and the report names neither how many a harness nor how many fails admit`,
+            ),
+          ]
+        : []),
+      ...(scored !== null && tasks === 0
+        ? [
+            fired(
+              "NOTHING SCORED",
+              `${session}: no task was scored${isNumber(target) ? `, at a target of ${String(target)}` : ""}; the report reads ${text(build.report?.reading)}`,
+            ),
+          ]
+        : []),
+      ...(scored !== null && tasks > 0 && level > 0 && fragile
         ? [
             fired(
               "FEW INFORMATIVE PAIRS",
-              `${session}: ${share(informative, informative + count(scored.ties))} tasks tell the harnesses apart`,
+              `${session}: ${share(informative, tasks)} tasks tell the harnesses apart; at level ${String(level)} the least sweep that clears is ${String(sweep ?? 0)}-0, and no result with a loss clears on ${plural(informative, "pair")}`,
             ),
           ]
         : []),
@@ -686,6 +733,19 @@ function comparisonTriggers(log: Index): Trigger[] {
         : []),
     ];
   });
+  // One harness on the anchor in more than one round: the same bytes on the same tasks, measured again.
+  const anchorRates = new Map<string, string[]>();
+  for (const build of reported) {
+    const solved = roundOf(log, build).counted.filter((solve) => log.anchor.has(solve.version));
+    for (const [harness, some] of Map.groupBy(solved, (solve) => solve.harness)) {
+      const passed = some.filter((solve) => solve.outcome === "pass").length;
+      anchorRates.set(harness, [
+        ...(anchorRates.get(harness) ?? []),
+        `${share(passed, some.length)} in ${build.session}`,
+      ]);
+    }
+  }
+  const again = [...anchorRates].filter(([, rounds]) => rounds.length > 1);
   const chain = reported.map((build) => {
     const fresh = isString(build.report?.fresh) ? short(build.report.fresh) : "none";
     return `${build.session} ${short(build.parent)}>${fresh} ${text(build.report?.reading)}`;
@@ -701,6 +761,22 @@ function comparisonTriggers(log: Index): Trigger[] {
     ...(chain.length > 0 ? [fired("CHAIN", chain.join("; "))] : []),
     ...(unbuilt > 0
       ? [fired("STEP NOT BUILT ON", `${plural(unbuilt, "step")} no later session started from`)]
+      : []),
+    ...(again.length > 0
+      ? [
+          fired(
+            "ANCHOR RATE BY ROUND",
+            again.map(([harness, rounds]) => `${short(harness)}: ${rounds.join(", ")}`).join("; "),
+          ),
+        ]
+      : []),
+    ...(log.anchor.size > 0 && log.candidates.length === 0
+      ? [
+          fired(
+            "NO CANDIDATES HELD",
+            "no feasible task is held outside the anchor: a round has nothing to screen, and scores only what another route admitted",
+          ),
+        ]
       : []),
   ];
 }
@@ -744,14 +820,17 @@ function solveTriggers(log: Index): Trigger[] {
   const gaps = times.flatMap((at, index) =>
     at - (times[index - 1] ?? at) > SILENCE_MINUTES * 60_000 ? [index] : [],
   );
-  const spent = (kind: LogEvent["kind"]) => log.of(kind).reduce((sum, data) => sum + count(data.metered), 0);
-  const spend = Object.entries({
-    solver: spent("solve.finished"),
-    builder: spent(BUILD_END),
-    examiner: spent(EXAM_END),
-    referee: spent("referee.finding"),
-    diagnoser: spent("diagnosis.recorded"),
-  }).sort(([, a], [, b]) => b - a);
+  const spend = spendOf(log);
+  // Non-results by harness in each round: a side whose bad solves are run again is favoured.
+  const rerun = log.builds.flatMap((build) => {
+    const window = non.filter((solve) => solve.index > build.from && solve.index < build.until);
+    const under = window.filter((solve) => solve.harness === build.parent).length;
+    return window.length === 0
+      ? []
+      : [
+          `${build.session}: ${String(under)} under the parent, ${String(window.length - under)} under the session's states`,
+        ];
+  });
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;
   return [
@@ -762,7 +841,10 @@ function solveTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "NON-RESULTS",
-            `${share(non.length, done.length)}; ${tally(countBy(non, (solve) => solve.kind ?? "unkinded"))}`,
+            [
+              `${share(non.length, done.length)}; ${tally(countBy(non, (solve) => solve.kind ?? "unkinded"))}`,
+              ...rerun,
+            ].join("; "),
           ),
         ]
       : []),
@@ -827,6 +909,17 @@ function reviewTriggers(log: Index): Trigger[] {
           ),
         ]
       : []),
+    ...log.builds.flatMap((build) => {
+      const second = asRecord(build.report?.unflagged);
+      return second === null || second.reading === build.report?.reading
+        ? []
+        : [
+            fired(
+              "READING MOVES WITHOUT FLAGGED",
+              `${build.session}: ${text(build.report?.reading)} with ${plural(items(build.report?.flagged).length, "flagged task")} counted, ${text(second.reading)} without`,
+            ),
+          ];
+    }),
     ...(faults > 0 ? [fired("REVIEW FAULTS", plural(faults, "reviewer failure"))] : []),
     ...(unprobed > 0 ? [fired("EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size))] : []),
   ];
@@ -859,6 +952,9 @@ function rowsOf(log: Index): Row[] {
       lines: [
         `${plural(log.events.length, "event")}, ${log.events[0]?.at ?? ""} to ${log.events.at(-1)?.at ?? ""}`,
         `${plural(log.builds.length, "Builder session")}, ${plural(log.of("exam.started").length, "Examiner session")}, ${plural(log.of("comparison.reported").length, "report")}`,
+        `metered dollars: ${spendOf(log)
+          .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
+          .join(", ")}`,
       ],
     },
     {
@@ -886,6 +982,7 @@ function rowsOf(log: Index): Row[] {
       lines: [
         `${plural(proposals.length, "task")}: ${having("session")} written by a session, ${having("carried")} carried, the rest the pack's`,
         `states: ${tally(countBy([...log.states.values()], (state) => state))}; anchor ${String(log.anchor.size)}`,
+        `${plural(log.candidates.length, "feasible task")} held outside the anchor, for a round to screen`,
       ],
     },
     {

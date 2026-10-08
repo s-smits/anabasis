@@ -150,7 +150,12 @@ decisions and predictions. The primary then treats the note as research.
   repair the checker, run the Examiner again. Order the synthesis by that.
 - **Read the instrument before the tally.** A reading whose refusals were ruled a check defect and
   still counted is not a reading yet. In a simulated campaign a too-strict check gave 6 wins to 0
-  and a `step`; the same campaign under the repaired check gave 1 win and `no-step`.
+  and a `step`; the same campaign under the repaired check gave 1 win and `no-step`. A report with
+  flagged tasks holds both readings, `reading` and `unflagged.reading`: where they differ, the
+  flagged fails are read by hand before either is believed.
+- **Read `not-scored` and an empty `no-step` as no test.** A round that scored no task says
+  nothing of its harness. Row D's count of tasks held outside the anchor says whether the next
+  round can do better.
 - **Keep the observation apart from the cause.** "Forty of fifty-five refusals name one check" is an
   observation; "the check is too strict" and "the solver cannot do it" are two causes, and lane 5 is
   what separates them.
@@ -165,9 +170,10 @@ decisions and predictions. The primary then treats the note as research.
 This catalogue has read two simulated campaigns and no real one. v1's was tuned over many runs.
 Three things are therefore provisional, and the first real investigation should report on each:
 
-- **The thresholds.** A miss is wall-bound at 95% of its wall, a pass is quick under 5%, a round has
-  few informative pairs under five, a silence is twenty minutes. The first two are v1's; the others
-  are estimates.
+- **The thresholds.** A miss is wall-bound at 95% of its wall, a pass is quick under 5%, a silence
+  is twenty minutes. The first two are v1's; the third is an estimate. Whether a round has too few
+  informative pairs is no threshold: the trigger asks the report's own test whether any result with
+  a loss could have cleared its level.
 - **Which triggers over-fire.** Some fire whenever their events exist, by design, because they
   carry a lane's opening counts: `PASSES UNREAD`, `TOOLS CALLED`, `ADMITTED BY`, `CHAIN`,
   `WALL SHARE`. If the conditional ones fire on every campaign too, they start lanes with nothing

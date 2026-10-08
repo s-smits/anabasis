@@ -24,8 +24,10 @@ as a hypothesis, never above as a premise. -->
 {campaign}
 
 The log is the campaign's whole record: one event a line, append-only. Its folder also holds
-`checks/`, the check program as it was staged, and `states/`, every harness state by digest. Read
-all three; write to none.
+`checks/`, the check program as it was staged, and `states/`, every harness state by digest. A
+round started by `bun run runs launch` left `launch-<session>.json` there as well: the flags it was
+given, the commit and the load it started under, with its output beside it. Read all of them; write
+to none.
 
 ## Hard rules
 

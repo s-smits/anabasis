@@ -96,10 +96,13 @@ record("referee.finding", {
 });
 record("comparison.reported", {
   session: "b-1",
+  target: 1,
+  level: 0.1,
   versions: ["t2"],
   scored: { wins: 1, losses: 0, ties: 0 },
   anchor: { reading: "not-tested", informative: 0 },
   flagged: ["t2"],
+  unflagged: { scored: { wins: 0, losses: 0, ties: 0, p: 1 }, reading: "not-scored" },
   short: [],
   unscreened: [],
   fresh: "hc",
@@ -118,6 +121,10 @@ describe("the whole-run investigation's reader", () => {
     expect(lines).toContain("test side: fail rejected 4, pass 4");
     expect(lines).toContain("0 of 8 finished solves name no response model");
     expect(lines).toContain("states: admitted 1, held 1, released 1; anchor 1");
+    expect(lines).toContain("0 feasible tasks held outside the anchor, for a round to screen");
+    expect(lines).toContain(
+      "metered dollars: solver 8.00, builder 2.00, examiner 0.00, referee 0.00, diagnoser 0.00",
+    );
     expect(lines).toContain("b-1: hp > hc, ended finished, 0 practice solves, reading no-step");
   });
 
@@ -140,7 +147,18 @@ describe("the whole-run investigation's reader", () => {
   it("reads a round's solves by what each was for", () => {
     // Two screening fails under the parent chose the task; the fail after the admission scores it.
     expect(detail("ADMITTED BY")).toBe("b-1: the parent's fails 1, the child's 0, both 0");
-    expect(detail("FEW INFORMATIVE PAIRS")).toBe("b-1: 1 of 1 tasks tell the harnesses apart");
+    expect(detail("FEW INFORMATIVE PAIRS")).toBe(
+      "b-1: 1 of 1 tasks tell the harnesses apart; at level 0.1 the least sweep that clears is 4-0, and no result with a loss clears on 1 pair",
+    );
+    expect(detail("SCREENING RULE NOT ON RECORD")).toBe(
+      "b-1: 3 screening solves, and the report names neither how many a harness nor how many fails admit",
+    );
+    expect(detail("READING MOVES WITHOUT FLAGGED")).toBe(
+      "b-1: no-step with 1 flagged task counted, not-scored without",
+    );
+    expect(detail("NO CANDIDATES HELD")).toBe(
+      "no feasible task is held outside the anchor: a round has nothing to screen, and scores only what another route admitted",
+    );
     expect(detail("ANCHOR NOT HELD")).toBe("b-1: not-tested, 0 informative");
     expect(detail("WALL SHARE")).toBe("b-1: median 50.0% under the parent, 50.0% under the child");
     expect(detail("CHAIN")).toBe("b-1 hp>hc no-step");
@@ -158,10 +176,45 @@ describe("the whole-run investigation's reader", () => {
 
   it("fires nothing it has no event for, and prints each trigger with its lane", () => {
     const names = seen.triggers.map((trigger) => trigger.name);
-    for (const absent of ["NON-RESULTS", "HOST CODE MOVED", "TASKS CARRIED", "SUPPLY THIN", "FLIPS"]) {
+    for (const absent of [
+      "NON-RESULTS",
+      "HOST CODE MOVED",
+      "TASKS CARRIED",
+      "SUPPLY THIN",
+      "FLIPS",
+      "NOTHING SCORED",
+      "ANCHOR RATE BY ROUND",
+    ]) {
       expect(names).not.toContain(absent);
     }
     expect(rendered(seen)).toContain("CHECK DEFECT RULED (lane 4): 1 of 4; by check: check-a 1");
+  });
+
+  it("names a round that scored nothing, and one harness measured on the anchor in two rounds", () => {
+    // A second session from the same parent, in a round asked for no scored task.
+    record("build.started", { session: "b-2", parent: "hp", tasks: ["t1"] });
+    record("build.finished", { session: "b-2", ended: "finished", harness: "hd", changed: true });
+    solve("a1", "hp", "fail");
+    solve("a1", "hd", "pass");
+    record("comparison.reported", {
+      session: "b-2",
+      target: 0,
+      level: 0.1,
+      screening: { solves: 3, fails: 2 },
+      versions: [],
+      scored: { wins: 0, losses: 0, ties: 0 },
+      anchor: { reading: "not-tested", informative: 1 },
+      fresh: "hd",
+      reading: "not-scored",
+    });
+    const later = overview(events).triggers;
+    const said = (name: keyof typeof TRIGGERS) => later.findLast((trigger) => trigger.name === name)?.detail;
+    expect(said("NOTHING SCORED")).toBe(
+      "b-2: no task was scored, at a target of 0; the report reads not-scored",
+    );
+    expect(said("ANCHOR RATE BY ROUND")).toBe("hp: 1 of 1 in b-1, 0 of 1 in b-2");
+    expect(said("CHAIN")).toBe("b-1 hp>hc no-step; b-2 hp>hd not-scored");
+    expect(later.filter((trigger) => trigger.name === "FEW INFORMATIVE PAIRS")).toHaveLength(1);
   });
 
   it("says of an empty log only that it has no checker on record", () => {

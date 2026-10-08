@@ -90,7 +90,8 @@ staged `checks/` and `states/`. Read the log's first and last event, its session
 and confirm it folds: `read` throws on a history that moves a task where it cannot go. Compare the
 host hash of the last condition with this checkout's (`wri.ts read` prints both): when they differ,
 every statement about source is about another tree, and the report says so before it says anything
-else. A log that holds solves of two campaigns' names was written into by hand.
+else. A log that holds solves of two campaigns' names was written into by hand. The row's last
+line is the metered dollars by role, which lane 28 starts from.
 
 **B. checker identity.** Read `contract.frozen` and every `checker.read`. The checker is two
 hashes, the contract's and the check program's; a task version holds the second. A campaign with
@@ -107,7 +108,10 @@ served model is the provider's word and nothing attests it.
 **D. task sets.** Partition the task versions: the pack's, a session's, carried from another
 checker's campaign. Then by state, and name the anchor, the released practice tasks, the admitted
 set and what is still held. The sets a round uses must be disjoint: a version both practised and
-measured is lane 18's finding and is settled here first.
+measured is lane 18's finding and is settled here first. The row's last line counts the feasible
+tasks still held outside the anchor. That number is what a round can screen: at none, a round
+scores only tasks another route admitted, and with none of those it scores nothing whatever its
+Builder made.
 
 **E. case partition.** For each side, count passes, fails by kind and non-results by kind from
 `solve.finished`, and the solves that started and never finished. A fail of kind `rejected` has a
@@ -512,13 +516,15 @@ provider's served model, which `responseModels` names or leaves empty; how many 
 once. The two harnesses are interleaved task by task so neither has the quieter hours: check the
 order of `solve.started` within the round. Where the host's code moved inside the campaign, name
 the commits between the two hashes if this checkout has them, and say which changed source a
-solve could have reached. The decision it changes is whether a difference between the sides is
+solve could have reached. A round the launcher started names its commit, and whether the tree was
+dirty, in `launch-<session>.json` beside the log. The decision it changes is whether a difference between the sides is
 the harness's; it routes to `host` (`src/kernel/condition.ts`, `src/builder/round.ts`) for a
 field a condition should hold and does not, and `environment` for load.
 
 **21. Selection and the symmetry of screening.**
 
-Starts from `SCORED SET CARRIED (lane 21)` and `ADMITTED BY (lane 21)`.
+Starts from `SCORED SET CARRIED (lane 21)`, `ADMITTED BY (lane 21)` and
+`SCREENING RULE NOT ON RECORD (lane 21)`.
 
 The question is whether the way tasks entered the scored set favours a side. A task is admitted
 when either harness fails it often enough in screening, and its counted solves start after the
@@ -532,14 +538,19 @@ kind produces; it is evidence of neither until the fresh solves are read. A scor
 from an earlier admission, by a stored sweep's solves or an earlier round's, was chosen by other
 harnesses' fails: the round's own header calls that fit for a plumbing run and nothing else.
 Candidates are screened in an order drawn from the contract's hash and the session's id; confirm
-the order, since an order chosen after seeing solves is a second look. The decision it changes
+the order, since an order chosen after seeing solves is a second look. The rule itself, how many
+solves a harness and how many fails admit, is in the report's `screening` and its `target`; a
+report without them was written before the round recorded either, and the rule is then the
+driver's defaults or whatever its command line said, which the log does not hold; a round the
+launcher started left its flags in `launch-<session>.json` beside the log. The decision it changes
 is whether the scored set's tally is a test or a description; it routes to `host`
 (`src/builder/round.ts`, `tools/d2/round.ts`) and to `operator` for a round run with
 `--admitted`.
 
 **22. Sign test, ties and power.**
 
-Starts from `FEW INFORMATIVE PAIRS (lane 22)` and `SET SHORT (lane 22)`, and is standing.
+Starts from `NOTHING SCORED (lane 22)`, `FEW INFORMATIVE PAIRS (lane 22)` and
+`SET SHORT (lane 22)`, and is standing.
 
 The question is what the round's test could and could not have shown at its size. A sign test
 reads the tasks on which the sides differ; a tie carries nothing. v1 found the signal too rare to
@@ -548,7 +559,12 @@ showing a doubled rate would have taken about 650 batteries an arm. The plan's o
 that 24 tasks detect a 12-point gain about one time in three. So read the report's `scored`:
 wins, losses, ties, the p, the pooled gain in points and its upper bound. Say how many informative
 pairs there were, what the smallest result is that would have cleared the level with that many,
-and what gain the set could have detected half the time. A `no-step` at four informative pairs is
+and what gain the set could have detected half the time. The trigger does the first part by the
+report's own test: it fires when no result with a loss could have cleared the level on that many
+pairs, and names the least sweep that does. A round that scored no task tested nothing: since the
+report learned to say so it reads `not-scored`, and before that it read `no-step`, as the eight
+truss rounds of 8 October did at a target of none. Read every such `no-step` in an older log as
+no test. A `no-step` at four informative pairs is
 no evidence of no gain, and a `step` at five rests on five tasks: say both plainly. Read the
 tasks the report left out, `short` of counted solves, `unscreened`, `disputed`, and whether
 leaving them out could have moved the tally. Then read beside the test the measure that moves on
@@ -558,7 +574,7 @@ routes to `operator`, and to `host` (`src/kernel/compare.ts`) only for an arithm
 
 **23. Anchor and drift.**
 
-Starts from `ANCHOR NOT HELD (lane 23)`.
+Starts from `ANCHOR NOT HELD (lane 23)` and `ANCHOR RATE BY ROUND (lane 23)`.
 
 The question is whether the gain holds on tasks drawn before any round and never released, and
 whether the measure itself stayed still. The anchor is drawn by the contract's hash from every
@@ -570,7 +586,8 @@ finding. Then read drift across rounds: the parent's pass rate on the anchor in 
 solved it. The anchor's solves are made fresh each round because the host's code is part of a
 condition, so the same harness on the same tasks is measured more than once: a parent that
 passes 9 of 12 in one round and 5 of 12 in the next moved with something that is not the
-harness. An anchor task that was disputed leaves every comparison and is still an anchor task;
+harness. `ANCHOR RATE BY ROUND` gives those counts for every harness solved on the anchor in more
+than one round. An anchor task that was disputed leaves every comparison and is still an anchor task;
 count them. The decision it changes is whether a step is believed outside the tasks that showed
 it; it routes to `operator` for a thin anchor and `environment` or `host` for drift.
 
@@ -593,7 +610,7 @@ decision on scoring solves) and `environment` when flips cluster in hours of hig
 
 **25. The step chain across sessions.**
 
-Starts from `CHAIN (lane 25)` and `STEP NOT BUILT ON (lane 25)`.
+Starts from `CHAIN (lane 25)`, `STEP NOT BUILT ON (lane 25)` and `NO CANDIDATES HELD (lane 25)`.
 
 The question is whether the campaign is climbing: whether one step was built on by the next.
 v1's climb was a line that moves, the exam asking more and the harness answering; v2 measures
@@ -605,7 +622,9 @@ Then read whether the exam moved with the harness: after a step, tasks the child
 out of what screening admits, and the scored set of the next round needs tasks the child fails.
 Say how many held feasible tasks remain that the newest harness has not been screened on, and
 whether an Examiner session has run since. A campaign whose every round re-scores one admitted
-set measures that set and no climb. The decision it changes is the next session's parent and
+set measures that set and no climb, and a campaign with no candidate held measures nothing at
+all: eight rounds on the truss pack ran so on 8 October, for over $220, and each could only read
+that no task was scored. The decision it changes is the next session's parent and
 whether supply is the next thing to run; it routes to `operator`.
 
 ### The solve, its failure and its cost
@@ -643,7 +662,8 @@ v1 excused timeouts as the environment's and could leave out a quarter of its ca
 harness that timed out more could look better. Here the wall, the context and a missing answer
 are fails. Read each non-result's kind and reason: `provider` after its retries, `verifier`,
 `check`, `moved-files`, `killed`. Say whether reruns fell evenly on the two harnesses, since a
-side whose bad solves are rerun and whose good ones stand is favoured. A solve that started and
+side whose bad solves are rerun and whose good ones stand is favoured: `NON-RESULTS` gives each
+round's count under the parent and under the session's states. A solve that started and
 never finished was cut by a kill; its root may still be on disk. A fail of kind `broken-harness`
 fails every task alike and may not screen. For a session that crashed, name the turn and whether
 its round was refused as the rule says. The decision it changes is whether a count is trusted as
@@ -693,15 +713,21 @@ that does not repeat, and `harness/guide` or `harness/tools` for a repair on the
 
 **30. Rulings, routing and what each role was told.**
 
-Starts from `FLAGGED AND STILL COUNTED (lane 30)`, `REVIEW FAULTS (lane 30)` and
-`EARNED WITHOUT A PROBE (lane 30)`.
+Starts from `FLAGGED AND STILL COUNTED (lane 30)`, `READING MOVES WITHOUT FLAGGED (lane 30)`,
+`REVIEW FAULTS (lane 30)` and `EARNED WITHOUT A PROBE (lane 30)`.
 
 The question is what became of each ruling, and whether each role was told enough to act and no
 more than it may know. A check-defect ruling disputes its task only when the Referee decides,
 which waits on its rulings clearing the operator's bar against hand labels; advising, the fail
 stands and the task is flagged for a person. So read the flagged tasks: how many stayed in a
 comparison, on which side their flagged fails fell, and whether removing them would move the
-reading. A flag nobody read is a ruling that changed nothing. Count the rulings that recur: the
+reading. The report answers the last itself: `unflagged` holds the two tests and their reading
+with the flagged tasks left out, and the trigger fires when that reading differs from the first.
+Neither reading is the true one until the flagged fails have been read: the first counts fails a
+reviewer laid to a check, and the second drops tasks on one reviewer's word. A report with flags
+and no `unflagged` was written before the round kept one, and a round stopped and run again
+before then lists only the second run's flags. A flag nobody read is a ruling that changed
+nothing. Count the rulings that recur: the
 same check ruled a defect across sessions is a repair owed, and lane 6 reads whether one was
 made. Then read what each role was told. The Builder is told a task's record, a ruling's kind
 and a diagnosis, and never a check's id or a reviewer's failure text, which can name one:

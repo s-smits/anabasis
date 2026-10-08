@@ -21,6 +21,7 @@
     "format": "bun node_modules/@biomejs/biome/bin/biome format --write .",
     "format:check": "bun node_modules/@biomejs/biome/bin/biome format .",
     "secrets": "bun tools/secrets/scan.ts",
+    "runs": "bun tools/runs/pulse.ts",
     "commit:check": "sh tools/runtime/commit-check.sh"
   },
   "dependencies": {

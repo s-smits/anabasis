@@ -1,0 +1,81 @@
+// The runs pulse says what a run's log gained since the last look: milestones, solves that ended
+// without a result, failed turns gathered into one line, a quiet that starts and ends, and a
+// process gone before its run was done. A first look says the status alone.
+import { describe, expect, it } from "bun:test";
+import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
+import { pulse, type Run } from "../tools/runs/pulse.ts";
+
+const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
+const START = Date.parse("2026-10-08T12:00:00Z");
+const at = (minute: number) => new Date(START + minute * 60_000).toISOString();
+const event = (minute: number, kind: EventKind, data: JsonObject): LogEvent => ({
+  at: at(minute),
+  kind,
+  data,
+});
+const usage = (total: number) => ({ cost: { total } });
+
+const built: LogEvent[] = [
+  event(0, "build.started", { session: "r1-b", model: "claude/claude-opus-5" }),
+  event(1, "build.turn", { session: "r1-b", turn: 1, error: null, usage: usage(0.5) }),
+  event(2, "solve.started", { solve: "s1", task: "mass-03", model: "openai-codex/gpt-6.1-sol" }),
+  event(3, "solve.turn", { solve: "s1", turn: 1, error: "WebSocket closed 1000", usage: usage(0.25) }),
+  event(4, "solve.finished", {
+    solve: "s1",
+    ending: { outcome: "non-result", kind: "provider", reason: "WebSocket closed 1000" },
+    billed: 0.25,
+    seconds: 240,
+  }),
+];
+
+describe("the runs pulse", () => {
+  it("says the status alone at a first look", () => {
+    const look = pulse(round, built, true, undefined, START + 5 * 60_000);
+    expect(look.status).toBe("r1  build turn 1 · solves 1 non-result · $0.75 · 1m since the last event");
+    expect(look.said).toEqual([]);
+    expect(look.seen).toEqual({ lines: 5, open: true, quiet: false });
+  });
+
+  it("says what came since the last look, by the solve's task", () => {
+    const look = pulse(round, built, true, { lines: 1, open: true, quiet: false }, START + 5 * 60_000);
+    expect(look.said).toEqual([
+      "· mass-03 started on openai-codex/gpt-6.1-sol",
+      "⚠ mass-03 ended without a result, provider: WebSocket closed 1000 in 4m, $0.25",
+      "⚠ 1 failed turn: WebSocket closed 1000",
+    ]);
+  });
+
+  it("says a quiet once when it starts and once when it ends", () => {
+    const later = START + 30 * 60_000;
+    const quiet = pulse(round, built, true, { lines: 5, open: true, quiet: false }, later);
+    expect(quiet.said).toEqual(["⚠ quiet for 26m"]);
+    expect(pulse(round, built, true, quiet.seen, later).said).toEqual([]);
+    const woken = [
+      ...built,
+      event(30, "build.turn", { session: "r1-b", turn: 2, error: null, usage: usage(0.5) }),
+    ];
+    expect(pulse(round, woken, true, quiet.seen, later).said).toEqual(["· not quiet any more"]);
+  });
+
+  it("says a process gone before its report, and not one that reported", () => {
+    const gone = pulse(round, built, false, { lines: 5, open: true, quiet: false }, START + 5 * 60_000);
+    expect(gone.status).toStartWith("r1  closed");
+    expect(gone.said).toEqual(["⚠ the process is gone before comparison.reported"]);
+    const reported = [...built, event(5, "comparison.reported", { reading: "held" })];
+    const done = pulse(round, reported, false, { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
+    expect(done.status).toStartWith("r1  reported held");
+    expect(done.said).toEqual(["◆ reported held"]);
+  });
+
+  it("folds the same line twice into one, as an anchor's two harnesses start a task", () => {
+    const anchor = [
+      ...built,
+      event(5, "solve.started", { solve: "s2", task: "wind-01", model: "claude/claude-opus-5" }),
+      event(5, "solve.started", { solve: "s3", task: "wind-01", model: "claude/claude-opus-5" }),
+    ];
+    const look = pulse(round, anchor, true, { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
+    expect(look.said).toEqual(["· wind-01 started on claude/claude-opus-5 (×2)"]);
+    expect(look.status).toContain("2 running");
+  });
+});

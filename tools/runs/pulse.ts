@@ -95,7 +95,8 @@ const SAID: Partial<
     `◆ build ended at ${word(data.ended)} and ${data.changed === true ? "changed the harness" : "left the harness as it was"}` +
     `${data.broken === null ? "" : `, broken: ${short(data.broken)}`}${cost(data)}`,
   "exam.finished": (data) => `◆ exam ${word(data.session)} ended${cost(data)}`,
-  "harness.version": (data) => `· harness ${word(data.version).slice(0, 8)}: ${short(data.note)}`,
+  "harness.version": (data) =>
+    `· harness ${word(data.version).slice(0, 8)}${short(data.note) === "" ? "" : `: ${short(data.note)}`}`,
   "solve.started": (data) => `· ${word(data.task)} started on ${word(data.model)}`,
   "solve.finished": (data, task) => {
     const ending = asRecord(data.ending);

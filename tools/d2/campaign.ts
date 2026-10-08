@@ -20,7 +20,7 @@
  * It first ran against a model on 8 October, in a round with a Claude Builder (issue #1). It needs
  * the Mac's command wall, the pack and the sweep on disk, and a model login.
  */
-import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
 import { departure } from "#src/kernel/acceptance.ts";
@@ -68,7 +68,7 @@ export interface CampaignArgs {
 }
 
 /** A harness as a solve is handed it. */
-interface Kept {
+export interface Kept {
   readonly dir: string;
   readonly digest: string;
 }
@@ -78,6 +78,8 @@ interface Solver {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly side: Condition["side"];
+  /** The backends of a solver this host's do not serve: a simulation's script (`tools/runs/rehearse.ts`). */
+  readonly models?: (home: string) => Models;
 }
 
 /** The sweep's `config.yaml` and its solves' `maxTurns`, with a disk cap the sweep did not have, as
@@ -270,7 +272,7 @@ export async function openCampaign(args: CampaignArgs) {
       model: by.model,
       effort: by.effort,
       limits: LIMITS,
-      models: (home) => backends(sweepOptions(home)),
+      models: by.models ?? ((home) => backends(sweepOptions(home))),
       verify,
       log,
       repoRoot: REPO,

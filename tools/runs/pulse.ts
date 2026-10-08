@@ -43,6 +43,8 @@ export interface Run {
   readonly tree: string;
   readonly path: string;
   readonly end: "comparison.reported" | "solve.finished";
+  /** A copy of another campaign, made to rehearse on (`seed.ts`). */
+  readonly seed?: boolean;
 }
 
 /** One look at one run: its status line, what it says of the events since the last look, and what
@@ -66,6 +68,8 @@ export const ROUND = "tools/d2/round.ts";
  *  first time one did (exam-1, 2026-10-08). */
 export const EXAMINE = "tools/d1b/examine.ts";
 const CAMPAIGN = [ROUND, EXAMINE];
+/** The file beside a log that says its campaign is a seed, and of what. */
+export const SEED_FILE = "seed.json";
 const LIVE = "tools/m0/live-solve.ts";
 const QUIET_MS = 20 * 60_000;
 const GIB = 2 ** 30;
@@ -157,7 +161,8 @@ function status(run: Run, log: readonly LogEvent[], open: boolean, now: number):
   const last = log.at(-1);
   const age = last === undefined ? "no events" : `${minutes(now - Date.parse(last.at))} since the last event`;
   return [
-    `${run.name}  ${stage(log, open)}`,
+    // A seed's counts and dollars are its source's up to the cut, and a script's after it.
+    `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, open)}`,
     `solves ${solves.join(", ") || "none"}`,
     dollars(total),
     age,
@@ -226,6 +231,7 @@ export function runs(): Run[] {
         tree,
         path: join(tree, ".ana", "d2", name, "log.jsonl"),
         end: "comparison.reported" as const,
+        seed: existsSync(join(tree, ".ana", "d2", name, SEED_FILE)),
       }))
       .filter(({ path }) => existsSync(path)),
     ...listed(join(tree, ".ana", "live"))

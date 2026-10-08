@@ -33,10 +33,14 @@
  * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
  * three-session reading are printed from the log.
  *
+ * A simulation runs this same command with a script in each of its two model seats
+ * (`tools/runs/rehearse.ts`), so that what it walks is what a paid round walks.
+ *
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { round, stopRule } from "#src/builder/round.ts";
+import { type RoundReport, round, stopRule } from "#src/builder/round.ts";
+import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
@@ -44,51 +48,73 @@ import type { TaskPackage } from "#src/kernel/task.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
-import { LIMITS, openCampaign, setsOf, stayAwake } from "./campaign.ts";
+import { type Kept, LIMITS, openCampaign, setsOf, stayAwake } from "./campaign.ts";
 
-const { values } = parseArgs({
-  options: {
-    root: { type: "string" },
-    sweep: { type: "string" },
-    cycle: { type: "string" },
-    bundle: { type: "string" },
-    name: { type: "string" },
-    session: { type: "string" },
-    builder: { type: "string" },
-    "builder-effort": { type: "string", default: "high" },
-    solver: { type: "string" },
-    "solver-effort": { type: "string", default: "high" },
-    reviewer: { type: "string" },
-    "reviewer-effort": { type: "string", default: "high" },
-    admitted: { type: "boolean", default: false },
-    "referee-decides": { type: "boolean", default: false },
-    target: { type: "string", default: "24" },
-    solves: { type: "string", default: "3" },
-    screen: { type: "string", default: "3" },
-    fails: { type: "string", default: "2" },
-    level: { type: "string", default: "0.1" },
-    "anchor-level": { type: "string" },
-    "anchor-floor": { type: "string", default: "8" },
-    defects: { type: "string", default: "3" },
-    "practice-solves": { type: "string", default: "24" },
-    minutes: { type: "string", default: "240" },
-    turns: { type: "string", default: "300" },
-    parent: { type: "string" },
-  },
-});
+export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 
-async function main(): Promise<void> {
-  const { root, sweep, cycle, bundle, name, session, builder } = values;
+/** A round's two model seats: who builds, and who solves a task under a harness. */
+interface Seats {
+  readonly builder: Pick<BuildRequest, "model" | "models">;
+  readonly solve: (task: TaskPackage, harness: Kept, kill: AbortSignal | undefined) => Promise<Practised>;
+}
+
+/** Who sits in a round's seats, once its campaign is open and its parent harness is known. */
+export type Seated = (
+  campaign: Campaign,
+  given: { readonly builder: string | undefined; readonly parent: string },
+) => Seats;
+
+const OPTIONS = {
+  root: { type: "string" },
+  sweep: { type: "string" },
+  cycle: { type: "string" },
+  bundle: { type: "string" },
+  name: { type: "string" },
+  session: { type: "string" },
+  builder: { type: "string" },
+  "builder-effort": { type: "string", default: "high" },
+  solver: { type: "string" },
+  "solver-effort": { type: "string", default: "high" },
+  reviewer: { type: "string" },
+  "reviewer-effort": { type: "string", default: "high" },
+  admitted: { type: "boolean", default: false },
+  "referee-decides": { type: "boolean", default: false },
+  target: { type: "string", default: "24" },
+  solves: { type: "string", default: "3" },
+  screen: { type: "string", default: "3" },
+  fails: { type: "string", default: "2" },
+  level: { type: "string", default: "0.1" },
+  "anchor-level": { type: "string" },
+  "anchor-floor": { type: "string", default: "8" },
+  defects: { type: "string", default: "3" },
+  "practice-solves": { type: "string", default: "24" },
+  minutes: { type: "string", default: "240" },
+  turns: { type: "string", default: "300" },
+  parent: { type: "string" },
+} as const;
+
+/** This host's backends in both seats: the Builder `--builder` names, and the campaign's solver. */
+const hosted: Seated = (campaign, { builder }) => {
+  if (builder === undefined) throw new Error("name --builder");
+  return {
+    builder: { model: modelNamed(builder), models: campaign.builder },
+    solve: (task, harness, kill) => campaign.solveOnce(task, harness, campaign.test, kill),
+  };
+};
+
+/** `bun tools/d2/round.ts`, and under a simulation's `seated` the same round with its seats scripted. */
+export async function roundCommand(args: readonly string[], seated: Seated = hosted): Promise<RoundReport> {
+  const { values } = parseArgs({ args: [...args], options: OPTIONS });
+  const { root, sweep, cycle, bundle, name, session } = values;
   if (
     root === undefined ||
     sweep === undefined ||
     cycle === undefined ||
     bundle === undefined ||
     name === undefined ||
-    session === undefined ||
-    builder === undefined
+    session === undefined
   ) {
-    throw new Error("name --root, --sweep, --cycle, --bundle, --name, --session and --builder");
+    throw new Error("name --root, --sweep, --cycle, --bundle, --name and --session");
   }
   // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
   const effort = (flag: string) => flag as ThinkingLevel;
@@ -112,16 +138,18 @@ async function main(): Promise<void> {
       ? null
       : campaign.reviewers(campaign.reader(modelNamed(reviewer), effort(values["reviewer-effort"])));
   const seed = `${contractHash(campaign.contract)}:${session}`;
+  const parent = values.parent === undefined ? campaign.parent : join(campaign.states, values.parent);
+  const seats = seated(campaign, { builder: values.builder, parent });
   stayAwake();
   const report = await round({
     session: {
       id: session,
-      parent: values.parent === undefined ? campaign.parent : join(campaign.states, values.parent),
+      parent,
       states: campaign.states,
       tasks: sets.released.map((version) => ({ version, task: packageOf(version) })),
       contract: campaign.contract,
       resources: campaign.resources,
-      model: modelNamed(builder),
+      ...seats.builder,
       effort: effort(values["builder-effort"]),
       limits: {
         ...LIMITS,
@@ -129,11 +157,9 @@ async function main(): Promise<void> {
         turns: Number(values.turns),
         practiceSolves: Number(values["practice-solves"]),
       },
-      models: campaign.builder,
       log: campaign.log,
       repoRoot: campaign.repo,
-      practise: (task, dir, digest, kill) =>
-        campaign.solveOnce(packageOf(task.version), { dir, digest }, campaign.test, kill),
+      practise: (task, dir, digest, kill) => seats.solve(packageOf(task.version), { dir, digest }, kill),
       ...(reviewers === null
         ? {}
         : {
@@ -152,8 +178,7 @@ async function main(): Promise<void> {
     anchorFloor: Number(values["anchor-floor"]),
     defects: Number(values.defects),
     concurrency: LIMITS.concurrency,
-    solve: (version, dir, digest, kill) =>
-      campaign.solveOnce(packageOf(version), { dir, digest }, campaign.test, kill),
+    solve: (version, dir, digest, kill) => seats.solve(packageOf(version), { dir, digest }, kill),
     ...(reviewers === null
       ? {}
       : { referee: (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill) }),
@@ -161,6 +186,7 @@ async function main(): Promise<void> {
   });
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
+  return report;
 }
 
-await main();
+if (import.meta.main) await roundCommand(Bun.argv.slice(2));

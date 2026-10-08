@@ -186,6 +186,22 @@ export function start(cmd: readonly string[], base: string) {
   });
 }
 
+/** `args` without the options `own` names and their values, as `parseArgs` tokenised them: what a
+ *  command that takes another's flags hands on to it. */
+export function passedOn(
+  args: readonly string[],
+  tokens: readonly { kind: string; index: number; name?: string; inlineValue?: boolean | undefined }[],
+  own: ReadonlySet<string>,
+): string[] {
+  const dropped = new Set(
+    tokens.flatMap(({ kind, index, name, inlineValue }) => {
+      if (kind !== "option" || name === undefined || !own.has(name)) return [];
+      return inlineValue === false ? [index, index + 1] : [index];
+    }),
+  );
+  return args.filter((_, index) => !dropped.has(index));
+}
+
 /** `bun run runs launch`. */
 export async function launch(args: readonly string[]): Promise<void> {
   const { values, tokens } = parseArgs({
@@ -210,13 +226,7 @@ export async function launch(args: readonly string[]): Promise<void> {
     );
   }
   const examining = isString(values.examiner);
-  const own = new Set(
-    tokens.flatMap((token) => {
-      if (token.kind !== "option" || !OWN.has(token.name)) return [];
-      return token.inlineValue === false ? [token.index, token.index + 1] : [token.index];
-    }),
-  );
-  const flags = args.filter((_, index) => !own.has(index));
+  const flags = passedOn(args, tokens, OWN);
   const tree = runtimeProcess.cwd();
   const run = runs().find(
     (found) => found.tree === tree && found.name === name && found.end === "comparison.reported",

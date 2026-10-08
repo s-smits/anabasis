@@ -35,6 +35,9 @@ describe("the runs pulse", () => {
     expect(look.status).toBe("r1  build turn 1 · solves 1 non-result · $0.75 · 1m since the last event");
     expect(look.said).toEqual([]);
     expect(look.seen).toEqual({ lines: 5, open: true, quiet: false });
+    // A seed's counts are its source's and a script's, so its line says what it is.
+    const seeded = pulse({ ...round, seed: true }, built, false, undefined, START + 5 * 60_000);
+    expect(seeded.status.startsWith("r1 (a seed)  closed · ")).toBe(true);
   });
 
   it("says what came since the last look, by the solve's task", () => {

@@ -157,6 +157,10 @@ export const TRIGGERS = {
   "FROZEN DESPITE FAULTS": 6,
   "READ AT ANOTHER VERSION": 6,
   "TASKS CARRIED": 6,
+  "RULE ADDITION REFUSED": 3,
+  "CANDIDATE INTERFERENCE": 4,
+  "RULE CANDIDATE LEFT": 6,
+  "RULE SESSION ENDED": 6,
   "SUPPLY THIN": 7,
   "GATE REFUSED": 7,
   "TOO HARD": 8,
@@ -444,6 +448,26 @@ function instrumentTriggers(log: Index): Trigger[] {
   const [top] = Object.entries(countBy(blocking, (check) => check)).sort(([, a], [, b]) => b - a);
   const lopsided = top !== undefined && new Set(blocking).size > 1 && top[1] > refused.length / 2;
   const carried = log.of("task.proposed").filter((data) => isString(data.carried)).length;
+  // A Rule Author's sessions (`src/rules/session.ts`): the additions its gates refused, the
+  // candidate packs left for the operator, and the sessions that left none. A candidate's
+  // interference is the reading taken over the whole record, once its session was over.
+  const ruleGates = log.of("rule.gate");
+  const additions = new Set(ruleGates.map((data) => `${text(data.session)} ${String(count(data.try))}`));
+  const unheld = ruleGates.filter((data) => data.outcome === "refused");
+  const controlFaults = countBy(
+    unheld.flatMap((data) => strings(data.kinds)),
+    (kind) => kind,
+  );
+  const candidates = log.of("rule.candidate");
+  const ruleEnds = new Map(log.of("rule.finished").map((data) => [text(data.session), data]));
+  const without = log.of("rule.started").flatMap((data) => {
+    const session = text(data.session);
+    if (candidates.some((left) => left.session === session)) return [];
+    const end = ruleEnds.get(session);
+    if (end === undefined) return [`${session} never finished`];
+    const kept = isString(end.unfinished) ? ", and an addition that held was not finished on" : "";
+    return [`${session} ended ${text(end.ended)} after ${plural(count(end.tries), "addition")}${kept}`];
+  });
   return [
     ...(authored > 0
       ? [
@@ -503,6 +527,35 @@ function instrumentTriggers(log: Index): Trigger[] {
     ...(carried > 0
       ? [fired("TASKS CARRIED", `${plural(carried, "task")} came from another checker's campaign`)]
       : []),
+    ...(unheld.length > 0
+      ? [
+          fired(
+            "RULE ADDITION REFUSED",
+            `${share(unheld.length, additions.size)} additions put to the gates; by gate: ${tally(countBy(unheld, (data) => text(data.gate)))}${Object.keys(controlFaults).length > 0 ? `; control faults: ${tally(controlFaults)}` : ""}`,
+          ),
+        ]
+      : []),
+    ...candidates.flatMap((left) => {
+      const read = ruleGates.findLast(
+        (data) => data.session === left.session && data.gate === "interference" && data.over === "record",
+      );
+      const bare = records(read?.tasks).filter((task) => count(task.kept) === 0).length;
+      return read === undefined
+        ? []
+        : [
+            fired(
+              "CANDIDATE INTERFERENCE",
+              `${text(left.session)}: ${text(asRecord(left.check)?.id)} refuses ${share(count(read.refused), count(read.applied))} accepted answers on record and could not run on ${String(count(read.unrunnable))}, which leaves ${plural(bare, "task")} with none accepted; ${String(count(read.stale))} more the existing checks no longer accept; reading ${text(left.reading)}${left.suspect === true ? ", suspect" : ""}`,
+            ),
+          ];
+    }),
+    ...candidates.map((left) =>
+      fired(
+        "RULE CANDIDATE LEFT",
+        `${text(left.session)}: rule ${text(asRecord(left.rule)?.id)} with check ${text(asRecord(left.check)?.id)} over check program ${short(text(asRecord(left.base)?.checks))}, as check program ${short(text(left.checks))} in ${text(left.dir)}; no event of this log adopts it`,
+      ),
+    ),
+    ...(without.length > 0 ? [fired("RULE SESSION ENDED", without.join("; "))] : []),
   ];
 }
 

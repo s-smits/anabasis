@@ -136,14 +136,14 @@ A second Builder on the local branch `claude/builder-session` did the same job a
 | temp-root sweep, safeguards | meta/temp-scratch-clean.ts, safeguard.ts | stale temp roots; safeguard refusals | ported | both in `src/meta/`, no importer |
 | resume | author/campaign-memory.ts:180; tools/runs/resume.ts | resumes a campaign | deferred | M4; the only primitive is the log's repair |
 | detached run | tools/fullrun-launchd-publish.ts | runs unattended | replaced | `caffeinate -s` in the live drivers |
-| gate, secrets | tools/gate.sh; tools/secrets | CI gate; secret scan | replaced | `.github/workflows/ci.yml` (open #14): typecheck, lint, format and the suite, on a Mac and on Linux under Bubblewrap. A secrets lane is unsure. |
+| gate, secrets | tools/gate.sh; tools/secrets; .githooks/pre-commit | CI gate; secret scan; the commit's checks | replaced, kept | `.github/workflows/ci.yml` (open #14): typecheck, lint, format and the suite, on a Mac and on Linux under Bubblewrap. `tools/secrets` is kept, and its test scans the tracked tree in CI. The pre-commit is `bun run commit:check`, run by hand: no hook is installed yet. |
 
 ## Missing, ranked
 
 Ranked by how much each delays a live round once the open stack lands.
 
 1. **Toolchain install (`.oss`)** (plan:261, :154). The fixed checker and the solvers need the pack's engines.
-2. **The first live round.** `tools/d2/round.ts`, `tools/d1b/examine.ts` and `admit-sweep --log` have never run against a model, and #5's Builder has not run live either.
+2. **The first live round.** Ran on 8 October (issue #1): `admit-sweep --log`, `prepare.ts` and `round.ts` with a Claude Builder, a practice solve, an anchor pair and a comparison, $18.81 billed. The Builder changed the solver's side. Left over: `tools/d1b/examine.ts` has not run against a model, and a practice solve still running when the session hits its wall is killed with its spend.
 3. **Model preflight.**
 4. **Run reports:** fail kinds, flip and repeat rates, supply.
 5. **The checker's owner.** Nothing writes, repairs or accepts a check program; Phase C's two commands read one (open #24), and the plan's decision 38 names who acts on what they find.

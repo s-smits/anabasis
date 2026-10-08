@@ -16,9 +16,8 @@
  * test condition's model and effort are the stored cycle's, and its harness state is the cycle's
  * `hb-bundles` folder, which is the harness a round's session starts from.
  *
- * None of this file has run. It needs the Mac's command wall, the pack and the sweep on disk, and a
- * model login, and the container it was written in has none of the three. It is typechecked, and
- * everything it calls is tested on stand-ins.
+ * It first ran against a model on 8 October, in a round with a Claude Builder (issue #1). It needs
+ * the Mac's command wall, the pack and the sweep on disk, and a model login.
  */
 import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";

@@ -445,27 +445,83 @@ describe("a Builder session", () => {
   it("ends when a practice solve could not be run, and does not show the Builder why", async () => {
     const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish]);
     const stop = `the verifier could not decide t-1, so the run stops: ${CHECK}: threw`;
-    const kills: AbortSignal[] = [];
+    // Two solves side by side: one throws, and the other ends only when the halt reaches it. Were
+    // it not told, this test would wait on it for ever.
+    let reached = false;
     await expect(
       session(
         {
           ...s.request,
-          practise: async (_task, _dir, _digest, kill) => {
-            kills.push(kill);
-            throw new Error(stop);
+          practise: async (task, _dir, _digest, kill) => {
+            if (task.version === "v1") throw new Error(stop);
+            await new Promise((resolve) => kill.addEventListener("abort", resolve, { once: true }));
+            reached = true;
+            return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
           },
         },
         s,
         s.walled,
       ),
     ).rejects.toThrow(stop);
+    expect(reached).toBe(true);
     // The session's record is written before it throws, and names the cause for the host alone.
     expect(s.of("build.finished")[0]).toMatchObject({ ended: "crashed", crash: stop, changed: false });
     expect(JSON.stringify(s.of("build.call")[0])).toContain("A practice solve could not be run");
     expect(JSON.stringify(s.of("build.call"))).not.toContain(CHECK);
     expect(s.sent.join("\n")).not.toContain(CHECK);
     expect(s.of("build.call").map(({ tool: name }) => name)).toEqual(["practice"]);
-    expect(kills.every((kill) => kill.aborted)).toBe(true);
+  });
+
+  it("is a crashed session when the provider fails a turn, and one session to an id", async () => {
+    const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
+    const s = await setup([edit, failed, finish]);
+    const built = await session(s.request, s, s.walled);
+    // What it wrote before the failure is frozen and logged, and named for what it is: half a session.
+    expect(built).toMatchObject({ changed: true, ended: "crashed" });
+    expect(s.of("build.finished")[0]).toMatchObject({ ended: "crashed", crash: "overloaded" });
+    await expect(session(s.request, s, s.walled)).rejects.toThrow("session b-1 is in the log already");
+    expect(s.of("build.started")).toHaveLength(1);
+  });
+
+  it("ends at finish though another call shares its turn", async () => {
+    const both = fauxAssistantMessage(
+      [
+        fauxToolCall("finish", { note: "Done." }),
+        fauxToolCall("write_file", { path: "agent/BUILT_AGENTS.md", content: GUIDE }),
+      ],
+      toolUse,
+    );
+    const s = await setup([both, edit, edit]);
+    const built = await session(s.request, s, s.walled);
+    expect(built).toMatchObject({ ended: "finished", changed: true });
+    expect(s.of("build.turn")).toHaveLength(1);
+  });
+
+  it("freezes no harness whose tools do not list, and shows the Builder no path of the host's", async () => {
+    const s = await setup([
+      call("practice", { tasks: ["t-1"] }),
+      call("write_file", { path: "agent/tools.ts", content: 'import "./missing.ts";\n' }),
+      call("practice", { tasks: ["t-1"] }),
+      finish,
+    ]);
+    // A wall's listing, stood in for: this harness's tools never list.
+    const walled = (bench: Bench) => {
+      bench.lists = async () => {
+        throw new Error("domain tool mismatch: generated [a], recorded [b]");
+      };
+      return s.walled(bench);
+    };
+    const built = await session(s.request, s, walled);
+    expect(JSON.stringify(s.of("build.call")[0])).toContain(
+      "the harness does not open: domain tool mismatch",
+    );
+    expect(built).toMatchObject({ harness: null, changed: false });
+    expect(s.ran).toEqual([]);
+    // A bundle that fails names the file by where the harness keeps it, never by where the host froze it.
+    const unresolved = JSON.stringify(s.of("build.call")[2]);
+    expect(unresolved).toContain("the harness does not open");
+    expect(JSON.stringify(s.of("build.call"))).not.toContain(s.request.states);
+    expect(JSON.stringify(s.of("build.call"))).not.toContain(s.scratch);
   });
 
   it("takes its wall to a practice solve in flight", async () => {

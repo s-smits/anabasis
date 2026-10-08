@@ -48,7 +48,7 @@ import {
   toToolDeclaration,
 } from "@earendil-works/pi-ai";
 import { REPORTED_COST } from "../backends/claude.ts";
-import type { Limits } from "../kernel/condition.ts";
+import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { append, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
@@ -56,7 +56,7 @@ import type { Ending } from "../kernel/solve.ts";
 import { taskStates } from "../kernel/task.ts";
 import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
@@ -150,9 +150,20 @@ export interface Built {
  *  verdict carry in the log, which the reviewers and `read_trace` are asked for. */
 export async function practised(request: SolveRequest): Promise<Practised> {
   const ending = await solve(request);
-  const last = read(request.log).findLast(
+  const events = read(request.log);
+  const last = events.findLast(
     ({ kind, data }) => kind === "solve.finished" && stringOf(data.solve).startsWith(`${request.id}-`),
   );
+  // The condition says which harness the solve ran, and the solve says which it opened. A harness
+  // whose digest moved with where it sat once made the two differ, and a comparison counted by the
+  // first would have scored solves of the second.
+  const named = conditionsOf(events).get(request.condition)?.harness;
+  const opened = last?.data.harness;
+  if (named !== undefined && isString(opened) && opened !== named) {
+    throw new Error(
+      `solve ${stringOf(last?.data.solve)} opened harness ${opened} under a condition that names ${named}`,
+    );
+  }
   return { solve: stringOf(last?.data.solve) || request.id, ending };
 }
 
@@ -175,7 +186,11 @@ export async function session(
   const { log, limits, model } = request;
   const began = performance.now();
   const parent = await openHarness(request.parent);
-  const states = taskStates(read(log));
+  const before = read(log);
+  if (before.some(({ kind, data }) => kind === "build.started" && data.session === request.id)) {
+    throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
+  }
+  const states = taskStates(before);
   const exam = request.tasks.find(({ version }) => states.get(version) !== "released");
   if (exam !== undefined) {
     throw new Error(
@@ -217,6 +232,7 @@ export async function session(
     disputed: new Set(),
     faulty: new Set(),
     faults: [],
+    lists: null,
     halt: new AbortController(),
     fatal: null,
     note: null,
@@ -259,7 +275,8 @@ export async function session(
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
-          return turns.length >= limits.turns ? { action: "end" } : undefined;
+          // `finish` ends the session even beside another call in its turn, where pi would go on.
+          return bench.note !== null || turns.length >= limits.turns ? { action: "end" } : undefined;
         },
         getFollowUpMessages: async () => (bench.note === null ? [user(NUDGE)] : []),
       },
@@ -274,6 +291,11 @@ export async function session(
     done.abort();
   }
   crash ??= bench.fatal?.message ?? null;
+  // A turn the provider failed ends pi's loop without a throw, and what was built before it is half
+  // a session, as a crash's is. A turn the session's own wall, kill or halt cut is not that.
+  const last = turns.at(-1);
+  const cut = wall.signal.aborted || bench.halt.signal.aborted || request.kill?.aborted === true;
+  if (last?.stopReason === "error" && !cut) crash ??= last.errorMessage ?? "the provider failed the turn";
   // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still
   // made its edits, and the comparison is what says whether they count.
   let frozen: Snapshot | null = null;

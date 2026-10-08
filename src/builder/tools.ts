@@ -62,10 +62,12 @@ import { shellQuote } from "../verify/solve-command-isolation.ts";
 import { SHELL_WALLS } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
-/** `harness/` frozen: a copy kept under its digest, and what a solve would open it as. */
+/** `harness/` frozen: a copy kept under its digest, what a solve would open it as, and the tools
+ *  it listed for a practice task, null where no wall was there to list them under. */
 export interface Snapshot {
   readonly dir: string;
   readonly harness: Harness;
+  readonly listed: readonly string[] | null;
 }
 
 /** What a session's tools share. */
@@ -86,6 +88,9 @@ export interface Bench {
   readonly faulty: Set<string>;
   /** Reviewer failures, kept for the host: their text may name a check, so the Builder is not shown it. */
   readonly faults: string[];
+  /** Lists a harness's tools for a practice task as a solve would, under the command wall; null
+   *  until the walled tools are made, and for a session with no wall or no practice task. */
+  lists: ((harness: Harness) => Promise<string[]>) | null;
   /** Aborted when a practice solve could not be run, which ends the session. */
   readonly halt: AbortController;
   /** What that practice solve threw; the session throws it again once its record is written. */
@@ -141,10 +146,12 @@ export function parentToolTree(parent: string): string | null {
 }
 
 /**
- * `harness/` as it stands, copied beside the kept states and opened as a solve would open it. Throws,
- * with the harness's own error, when a solve could not. Links are copied as they are: a stored state
- * carries links that resolve to nothing, and following one would copy what it points at. The copy is
- * the caller's to keep or to remove.
+ * `harness/` as it stands, copied beside the kept states, opened as a solve would open it and, under
+ * a wall, asked for its tools as a solve would ask. Throws, with the harness's own error, when a
+ * solve could not: a harness whose tools do not list fails every task before its first turn, and
+ * one frozen so would be screened and scored at a full round's cost to say only that. Links are
+ * copied as they are: a stored state carries links that resolve to nothing, and following one would
+ * copy what it points at. The copy is the caller's to keep or to remove.
  *
  * Every question is asked of the copy, which no command of the Builder's can reach, and none of
  * `harness/` itself, which a process a command left behind could still be changing.
@@ -169,10 +176,12 @@ async function frozen(bench: Bench): Promise<Snapshot> {
     }
     const harness = await openHarness(dir);
     refuseOtherPresets(harness);
-    return { dir, harness };
+    return { dir, harness, listed: (await bench.lists?.(harness)) ?? null };
   } catch (error) {
     rmSync(dir, { recursive: true, force: true });
-    throw new Error(`the harness does not open: ${errorMessage(error)}`, { cause: error });
+    // The copy's own path is the host's, and says where the states and the log beside them are.
+    const why = errorMessage(error).replaceAll(dir, "harness");
+    throw new Error(`the harness does not open: ${why}`, { cause: error });
   }
 }
 
@@ -185,7 +194,7 @@ async function frozen(bench: Bench): Promise<Snapshot> {
  * solve could run a program from.
  */
 export async function snapshot(bench: Bench): Promise<Snapshot> {
-  const { dir, harness } = await frozen(bench);
+  const { dir, harness, listed } = await frozen(bench);
   const kept = join(dirname(dir), harness.digest);
   try {
     renameSync(dir, kept);
@@ -197,6 +206,7 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
   return {
     dir: kept,
     harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, ".toolchain") },
+    listed,
   };
 }
 
@@ -416,7 +426,7 @@ function writeTool(wall: CommandWall): AgentTool {
 
 /** Open the harness and list its tools as a solve would, with no model call: a harness that does
  *  not open fails every task, and this finds that before a practice solve is spent on it. */
-function checkTool(bench: Bench, wall: CommandWall): AgentTool {
+function checkTool(bench: Bench): AgentTool {
   return tool({
     name: "check_harness",
     label: "Check the harness",
@@ -425,29 +435,28 @@ function checkTool(bench: Bench, wall: CommandWall): AgentTool {
     parameters: Type.Object({}),
     executionMode: "sequential",
     execute: async () => {
-      const { dir, harness } = await frozen(bench);
-      try {
-        const sample = bench.request.tasks[0];
-        const tools =
-          sample === undefined
-            ? [...harness.kinds.keys()]
-            : (await harnessTools(harness, sample.task, wall)).map(({ tool: listed }) => listed.name);
-        return text(
-          `The harness opens. Tools: ${tools.join(", ") || "none"}. Guide: ${String(harness.guide?.length ?? 0)} characters.`,
-        );
-      } finally {
-        // A check keeps nothing: only a state a solve ran with, or the session's last, is kept.
-        rmSync(dir, { recursive: true, force: true });
-      }
+      const { dir, harness, listed } = await frozen(bench);
+      // A check keeps nothing: only a state a solve ran with, or the session's last, is kept.
+      rmSync(dir, { recursive: true, force: true });
+      const tools = listed ?? [...harness.kinds.keys()];
+      return text(
+        `The harness opens. Tools: ${tools.join(", ") || "none"}. Guide: ${String(harness.guide?.length ?? 0)} characters.`,
+      );
     },
   });
 }
 
-/** The three tools that run on the command wall. */
+/** The three tools that run on the command wall, which also gives a freeze its listing: every
+ *  harness frozen from here on is asked for its tools under this wall. */
 export function walledTools(bench: Bench, wall: CommandWall): AgentTool[] {
+  const sample = bench.request.tasks[0];
+  if (sample !== undefined) {
+    bench.lists = async (harness) =>
+      (await harnessTools(harness, sample.task, wall)).map(({ tool: listed }) => listed.name);
+  }
   return [
     { ...shellTool(wall, 0), description: `${createBashTool("/").description}${SHELL_WALLS}` },
     writeTool(wall),
-    checkTool(bench, wall),
+    checkTool(bench),
   ];
 }

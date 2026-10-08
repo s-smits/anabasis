@@ -28,7 +28,10 @@ export async function pooled<Item, Result>(
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(width, items.length)) }, worker));
+  // A width that is no number, a flag misread say, is one place and never none: with no worker
+  // nothing would run and the caller would be told it all had.
+  const places = Math.max(1, Math.min(Math.floor(width) || 1, items.length));
+  await Promise.all(Array.from({ length: places }, worker));
   const [first] = failed;
   if (first !== undefined) throw asError(first.thrown);
   return results;

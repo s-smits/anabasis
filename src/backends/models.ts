@@ -6,6 +6,7 @@
 import {
   type Api,
   type AssistantMessage,
+  appendAssistantMessageDiagnostic,
   type CredentialStore,
   createAssistantMessageEventStream,
   createModels,
@@ -38,6 +39,14 @@ const CODEX = "openai-codex";
 /** Pi coding-agent's retry of a transient provider failure, which v1 had through pi's session:
  *  three more attempts, at 2, 4 and 8 s. */
 const RETRY: RetryPolicy = { enabled: true, maxRetries: 3, baseDelayMs: 2_000 };
+
+/**
+ * The diagnostic a turn carries when its call was made again: `details.retried`, what each attempt
+ * before the last one said. A retry mends in silence otherwise, and how often a provider drops a
+ * call is then in no log: the two Sol rounds of 8 October, run before the retry, lost 18 of their 33
+ * finished solves to a closed WebSocket, 14.9 of 30.9 solve-hours.
+ */
+export const CALL_RETRIED = "call-retried";
 
 /** What the host decides about the backends a process serves. */
 export interface BackendOptions {
@@ -83,8 +92,13 @@ export function retried<T extends Api>(provider: Provider<T>): Provider<T> {
     ...provider,
     streamSimple: (model, context, options) => {
       const stream = createAssistantMessageEventStream();
+      const said: string[] = [];
       const call = () => provider.streamSimple(model, context, options).result();
       const settle = (message: AssistantMessage) => {
+        if (said.length > 0) {
+          const diagnostic = { type: CALL_RETRIED, timestamp: Date.now(), details: { retried: said } };
+          appendAssistantMessageDiagnostic(message, diagnostic);
+        }
         const { stopReason: reason } = message;
         if (reason === "error" || reason === "aborted") {
           stream.push({ type: "error", reason, error: message });
@@ -93,7 +107,10 @@ export function retried<T extends Api>(provider: Provider<T>): Provider<T> {
         }
         stream.end(message);
       };
-      retryAssistantCall(call, RETRY, options?.signal).then(settle, (error: unknown) =>
+      const heard = {
+        onRetryScheduled: (_n: number, _of: number, _ms: number, error: string) => void said.push(error),
+      };
+      retryAssistantCall(call, RETRY, options?.signal, heard).then(settle, (error: unknown) =>
         settle({ ...emptyTurn(model), stopReason: "error", errorMessage: errorMessage(error) }),
       );
       return stream;

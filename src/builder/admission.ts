@@ -19,8 +19,8 @@
  *   found the comparison asked for under another setting (`restarted`);
  * - a comparison with no dollar cap;
  * - a checker `tools/c/accept.ts` has never read;
- * - a campaign the plan's stop rule has stopped: three checkpoints without a step
- *   (`stopRule`, `docs/plan.md`, Phase 5). The operator may go on past it by saying why
+ * - a campaign the plan's stop rule has stopped: three moves in a row that could have shown a
+ *   gain and showed none (`stopRule`, `docs/plan.md`, row F48). The operator may go on past it by saying why
  *   (`--past-stop`), and the reason is logged. Until 2026-10-09 four commands printed the rule's
  *   reading and none acted on it;
  * - a first record of the campaign's setting that is another than the log's solves ran under,
@@ -179,12 +179,12 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted"): S
 /** What the plan's stop rule says of a start: the refusal where the campaign is stopped and no
  *  reason to go on is given, and the note where one is. */
 function stopped({ stop }: Supply, pastStop: string | undefined) {
-  const after = `${String(stop.sinceStep)} checkpoints`;
+  const after = `${String(stop.sinceStep)} moves that could have shown a gain`;
   return {
     refusals: said([
       [
         stop.stop && pastStop === undefined,
-        `the campaign has had ${after} since its last step, and the plan stops it at three without one (docs/plan.md, Phase 5). To go on all the same, pass --past-stop "<why>", which is logged`,
+        `the campaign has had ${after} since its last step, and none did: the plan stops it at three (docs/plan.md, row F48). To go on all the same, pass --past-stop "<why>", which is logged`,
       ],
     ]),
     notes: said([

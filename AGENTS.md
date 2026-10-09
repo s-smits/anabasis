@@ -448,9 +448,16 @@ are summed from the log, and the solve does not start when a reserve for it and 
 in flight would pass the cap.
 
 **After the test.** A comparison that wrote its report is finished: run again, it returns that
-report. Three checkpoints without a step is the stop rule (`stopRule`, `src/kernel/reports.ts`).
-The next comparison is then refused, unless the operator gives a reason to go on (`--past-stop`),
-which is logged as `stop.overridden`. A task with no valid answer in two comparisons goes to a person as
+report. The stop rule is three moves in a row that could have shown a gain and showed none
+(`stopRule`, `src/kernel/reports.ts`). A move that counts is a harness a session changed, once
+against one reference and read by the last comparison of the two under the campaign's setting,
+where that comparison tallied a task and left room; or a session that left its harness as it
+was. A repeat, a control, a comparison that scored nothing or left no room, and whatever was
+compared under an earlier setting do not count. A comparison leaves no room where the reference
+harness was valid on more than three solves in four, or neither harness on one in four (`roomOf`):
+its answer is another budget or other tasks. The next comparison or session is then refused,
+unless the operator gives a reason to go on (`--past-stop`), which is logged as
+`stop.overridden`. A task with no valid answer in two comparisons goes to a person as
 possibly infeasible, unless a valid answer for it stands anywhere on record or a limit cut its
 solves (`awaitingLabel`). Promotion is the operator's `promote.ts --yes`, which writes
 `harness.promoted`. A comparison that names no `--reference` is made against the harness last

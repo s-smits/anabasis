@@ -899,9 +899,11 @@ describe("a round", () => {
     expect(stopRule(read(s.log))).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
   });
 
-  it("stops the campaign after three comparisons without a step", async () => {
-    // Every answer is valid: nothing separates any two harnesses.
-    const s = await setup([edit, finish, again, finish, third, finish], () => PASS);
+  it("stops the campaign after three harnesses without a step, where their comparisons left room", async () => {
+    // Either harness answers two of the four tasks, the same two: nothing separates them, and the
+    // reference harness is valid on half its solves, which leaves a harness room to gain.
+    const half: Table = (version) => (version === "s1" || version === "s2" ? PASS : LATE);
+    const s = await setup([edit, finish, again, finish, third, finish], half);
     for (const [index, id] of ["b-1", "b-2", "b-3"].entries()) {
       const report = await round(s.next(id));
       expect(report).toMatchObject({ scored: { wins: 0, losses: 0, ties: 4 }, reading: NO_STEP });
@@ -913,6 +915,20 @@ describe("a round", () => {
     }
     // Sixteen solves a comparison, and no starter solve where none read a step.
     expect(s.asked).toHaveLength(48);
+  });
+
+  // Fix row F48: where the reference harness is valid on every solve, no harness could have shown
+  // a gain, and the answer is another budget or other tasks. Such a comparison stops nothing.
+  it("counts no comparison towards the stop where every answer was valid", async () => {
+    const s = await setup([edit, finish, again, finish, third, finish], () => PASS);
+    for (const id of ["b-1", "b-2", "b-3"]) {
+      expect(await round(s.next(id))).toMatchObject({
+        scored: { wins: 0, losses: 0, ties: 4 },
+        valid: { old: [0, 0, 4], fresh: [0, 0, 4] },
+        reading: NO_STEP,
+      });
+    }
+    expect(stopRule(read(s.log))).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
   });
 
   it("runs four solves side by side to the same reading", async () => {

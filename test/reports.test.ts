@@ -108,53 +108,121 @@ describe("the harness a Builder goes on from", () => {
 });
 
 describe("the stop rule", () => {
+  /** A Builder session that left `harness`, changed unless `more` says otherwise. */
+  const session = (id: string, harness: string, more: JsonObject = {}) =>
+    event("build.finished", { session: id, harness, changed: true, ended: "finished", ...more });
   /** The harnesses Builder sessions left, which is what makes a comparison of one a checkpoint. */
-  const sessions = ["h2", "h3", "h4"].map((harness) =>
-    event("build.finished", { session: `s-${harness}`, harness, changed: true, ended: "finished" }),
-  );
+  const sessions = ["h2", "h3", "h4", "h5", "h6", "h7"].map((harness) => session(`s-${harness}`, harness));
+  const flat = (id: string, fresh: string, more: JsonObject = {}) => reported(id, "no-step", fresh, more);
 
-  it("stops after three checkpoints without a step, counted from the last step", () => {
-    const flat = (session: string) => reported(session, "no-step", "h2");
+  it("stops after three harnesses in a row that showed no gain, counted from the last step", () => {
     expect(stopRule([])).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
-    expect(stopRule([...sessions, flat("b-1"), flat("b-2")])).toEqual({
-      checkpoints: 2,
-      sinceStep: 2,
-      stop: false,
-    });
-    expect(stopRule([...sessions, flat("b-1"), flat("b-2"), flat("b-3")])).toMatchObject({
+    const two = [...sessions, flat("b-1", "h2"), flat("b-2", "h3")];
+    expect(stopRule(two)).toEqual({ checkpoints: 2, sinceStep: 2, stop: false });
+    expect(stopRule([...two, flat("b-3", "h4")])).toEqual({ checkpoints: 3, sinceStep: 3, stop: true });
+    // A step starts the count again, and a result short of one for another reason counts.
+    const after = [...two, reported("b-3", "step", "h4"), flat("b-4", "h5")];
+    expect(stopRule(after)).toEqual({ checkpoints: 4, sinceStep: 1, stop: false });
+    const lower = (id: string, fresh: string) => reported(id, "below-starter", fresh);
+    expect(stopRule([...after, lower("b-5", "h6"), lower("b-6", "h7")])).toMatchObject({
       sinceStep: 3,
       stop: true,
     });
-    // A step starts the count again, and a result short of one for another reason counts.
-    const after = [...sessions, flat("b-1"), flat("b-2"), reported("b-3", "step", "h3"), flat("b-4")];
-    expect(stopRule(after)).toEqual({ checkpoints: 4, sinceStep: 1, stop: false });
-    const lower = (session: string) => reported(session, "below-starter", "h4");
-    expect(stopRule([...after, lower("b-5"), lower("b-6")])).toMatchObject({ sinceStep: 3, stop: true });
   });
 
-  it("counts a comparison and nothing else: a session that changed nothing, a stop or a cap compared nothing", () => {
-    const idle = (session: string) => reported(session, "no-change", null, { scored: null });
-    const stopped = (session: string) => reported(session, "check-defects", "h2", { scored: null });
-    const capped = (session: string) => reported(session, "not-scored", "h2", { scored: null, capped: true });
+  // Fix row F48. On 9 October one harness was compared with the starter three times, each time on
+  // more tasks, and the rule stopped the campaign: three repeats of one harness are one harness
+  // that showed no gain.
+  it("counts a harness once against one reference, however often the two are compared", () => {
+    const thrice = [...sessions, flat("g-1", "h2"), flat("g-2", "h2"), flat("g-3", "h2")];
+    expect(stopRule(thrice)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
+    // Against another reference it is another comparison.
+    expect(stopRule([...thrice, flat("g-4", "h2", { old: "h3" })])).toMatchObject({ checkpoints: 2 });
+    // The pair reads as its last comparison: a step its repeat does not read again was one draw,
+    // and one the repeat reads is the step the count starts again from.
+    const refuted = [...sessions, reported("b-1", "step", "h2"), flat("g-1", "h2")];
+    expect(stopRule(refuted)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
+    const read = [...sessions, flat("b-1", "h2"), flat("b-2", "h3"), reported("g-1", "step", "h3")];
+    expect(stopRule(read)).toEqual({ checkpoints: 2, sinceStep: 0, stop: false });
+  });
+
+  it("counts under one setting: what was compared under an earlier one is cut, with all before it", () => {
+    const earlier = [
+      session("b-0", "h2", { changed: false }),
+      ...sessions,
+      flat("b-1", "h2", { setting: "s1" }),
+      flat("b-2", "h3", { setting: "s1" }),
+    ];
+    expect(stopRule(earlier)).toMatchObject({ checkpoints: 3, sinceStep: 3, stop: true });
+    expect(stopRule([...earlier, flat("b-3", "h4", { setting: "s2" })])).toEqual({
+      checkpoints: 1,
+      sinceStep: 1,
+      stop: false,
+    });
+    // A harness compared again under the new setting counts there: no comparison is read across two.
+    expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toMatchObject({ checkpoints: 1 });
+  });
+
+  it("counts no comparison that left no room, by the reference's share of valid solves and the new harness's", () => {
+    // A report lists its tasks by how many of their two solves were valid: none, one, both.
+    const full = { valid: { old: [0, 0, 4], fresh: [0, 0, 4] } };
+    const hard = { valid: { old: [4, 0, 0], fresh: [3, 1, 0] } };
+    expect(stopRule([...sessions, flat("b-1", "h2", full), flat("b-2", "h3", hard)])).toEqual({
+      checkpoints: 0,
+      sinceStep: 0,
+      stop: false,
+    });
+    // Three solves in four is room still, and so is one harness valid on one solve in four.
+    const most = { valid: { old: [0, 2, 2], fresh: [0, 0, 4] } };
+    const some = { valid: { old: [4, 0, 0], fresh: [2, 2, 0] } };
+    expect(stopRule([...sessions, flat("b-1", "h2", most), flat("b-2", "h3", some)])).toMatchObject({
+      checkpoints: 2,
+      sinceStep: 2,
+    });
+    // A step is a step wherever it was read.
+    expect(stopRule([...sessions, reported("b-1", "step", "h2", hard)])).toEqual({
+      checkpoints: 1,
+      sinceStep: 0,
+      stop: false,
+    });
+  });
+
+  it("counts a session that left its harness as it was, in its place, and none that was killed or crashed", () => {
+    const idle = (id: string, more: JsonObject = {}) => session(id, "h2", { changed: false, ...more });
+    const log = [session("b-1", "h2"), flat("b-1", "h2"), idle("b-2"), idle("b-3")];
+    expect(stopRule(log)).toEqual({ checkpoints: 3, sinceStep: 3, stop: true });
+    expect(
+      stopRule([idle("b-1"), idle("b-2", { ended: "killed" }), idle("b-3", { ended: "crashed" })]),
+    ).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
+    // A step after them starts the count again.
+    expect(stopRule([...log, session("b-4", "h3"), reported("b-4", "step", "h3")])).toMatchObject({
+      sinceStep: 0,
+      stop: false,
+    });
+  });
+
+  it("counts no report that compared nothing: a round with nothing new, a stop on defects, a cap", () => {
+    const idle = (id: string) => reported(id, "no-change", null, { scored: null });
+    const stopped = (id: string) => reported(id, "check-defects", "h2", { scored: null });
+    const capped = (id: string) => reported(id, "not-scored", "h2", { scored: null, capped: true });
     // Every task set aside until a person has labelled its rejections: a tally of no task.
     const waiting = reported("b-5", "not-scored", "h2", { versions: [], aside: ["v1"] });
     const log = [...sessions, idle("b-1"), idle("b-2"), stopped("b-3"), capped("b-4"), waiting];
     expect(stopRule(log)).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
     // A report a person settled is its checkpoint's one report, read as the labels left it.
-    const settled = [...sessions, reported("b-1", "no-step", "h2"), reported("b-1", "step", "h2")];
+    const settled = [...sessions, flat("b-1", "h2"), reported("b-1", "step", "h2")];
     expect(stopRule(settled)).toEqual({ checkpoints: 1, sinceStep: 0, stop: false });
   });
 
   it("keeps a comparison where it first reported, whenever a person settled it", () => {
-    const flat = (session: string) => reported(session, "no-step", "h2");
     // b-1 read a step. Two comparisons later a person settles it, and it is a step still: it
     // stays the first of the three, and two checkpoints have passed since.
-    const log = [...sessions, reported("b-1", "step", "h2"), flat("b-2"), flat("b-3")];
+    const log = [...sessions, reported("b-1", "step", "h2"), flat("b-2", "h3"), flat("b-3", "h4")];
     const settled = [...log, reported("b-1", "step", "h2", { settled: { labelled: 1 } })];
-    expect(lastReports(settled).map(({ session, index }) => [session, index])).toEqual([
-      ["b-1", 3],
-      ["b-2", 4],
-      ["b-3", 5],
+    expect(lastReports(settled).map(({ session: id, index }) => [id, index])).toEqual([
+      ["b-1", 6],
+      ["b-2", 7],
+      ["b-3", 8],
     ]);
     expect(lastReports(settled)[0]?.data.settled).toEqual({ labelled: 1 });
     expect(stopRule(settled)).toEqual({ checkpoints: 3, sinceStep: 2, stop: false });
@@ -167,17 +235,13 @@ describe("the stop rule", () => {
     // Two comparisons of harnesses the campaign began with, and then one round that read no step.
     const gates = [reported("g0", "no-step", "start"), reported("g2", "no-step", "start")];
     expect(stopRule(gates)).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
-    const round = [...gates, ...sessions, reported("b-1", "no-step", "h2")];
+    const round = [...gates, ...sessions, flat("b-1", "h2")];
     expect(stopRule(round)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
-    // A session that left its harness as it was names the harness it started from, which no
-    // session made.
-    const idle = event("build.finished", { session: "b-0", harness: "start", changed: false });
-    expect(stopRule([idle, ...gates])).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
   });
 
   it("counts a harness set against the starter once: as the reference, and not as the guard after another", () => {
-    const versus = (session: string, old: string, reading: string) =>
-      reported(session, reading, "h2", { old, starter: "base" });
+    const versus = (id: string, old: string, reading: string) =>
+      reported(id, reading, "h2", { old, starter: "base" });
     // While the starter is the reference, a comparison with it is the checkpoint.
     expect(stopRule([...sessions, versus("b-1", "base", "no-step")])).toMatchObject({ checkpoints: 1 });
     // After a comparison with another reference left the starter unread, the comparison with the

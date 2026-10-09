@@ -16,9 +16,9 @@
  * against the starter again. A Builder goes on from the harness its last session left
  * (`latestBuilt`), step or none.
  *
- * The stop rule is the plan's: no step in three checkpoints. Until 2026-10-09 it pooled a gain in
- * pass-rate points over three sessions, which measured the thing the plan no longer scores by
- * (`docs/plan.md`, Tuning).
+ * The stop rule is the plan's: three moves in a row that could have shown a gain and showed none
+ * (`stopRule`). Until 2026-10-09 it pooled a gain in pass-rate points over three sessions, which
+ * measured the thing the plan no longer scores by (`docs/plan.md`, Tuning).
  *
  * Nothing here decides a comparison or makes a solve.
  */
@@ -46,14 +46,20 @@ export interface Cap {
   readonly reserve: number;
 }
 
-/** Checkpoints without a step at which the plan stops the campaign. */
+/** Moves without a gain at which the plan stops the campaign. */
 const STOP_AFTER = 3;
+/** The shares of valid solves by which the process reads room (`roomOf`): the reference harness
+ *  above `full` leaves none, and both harnesses below `empty` are held by tasks too hard for the
+ *  budget. The two fractions are the plan's proposal, and the operator's to set. */
+const ROOM = { full: 3 / 4, empty: 1 / 4 } as const;
 /** Comparisons without a valid answer after which a task with none on record goes to a person. */
 const UNSOLVED_RUN = 2;
 /** The ways a solve ends at a limit of its own: its time, its model turns or its context. Such an
  *  ending says the budget was short, and nothing of whether the task has a valid answer. */
 const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
 const STEP = "step";
+/** How a Builder session ends when it was cut and left half a session's work. */
+const CUT: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
 const REPORTED = "comparison.reported";
 const BUILD_FINISHED = "build.finished";
 /** The events that carry what their own model turns were billed, in a `billed` field: a solve
@@ -93,11 +99,7 @@ export function lastReports(events: readonly LogEvent[]): Reported[] {
 export function latestBuilt(events: readonly LogEvent[]): string | null {
   const left = events.findLast(
     ({ kind, data }) =>
-      kind === BUILD_FINISHED &&
-      data.changed === true &&
-      isString(data.harness) &&
-      data.ended !== "killed" &&
-      data.ended !== "crashed",
+      kind === BUILD_FINISHED && data.changed === true && isString(data.harness) && !CUT.has(data.ended),
   )?.data.harness;
   return isString(left) ? left : null;
 }
@@ -125,15 +127,49 @@ export function comparedAs(events: readonly LogEvent[], harness: string) {
   );
 }
 
+/** A harness's share of valid solves, from a report's count of its tasks by how many of their
+ *  solves were valid; null where the report holds no such count. */
+function validShare(counts: unknown): number | null {
+  if (!Array.isArray(counts) || counts.length < 2 || !counts.every(isNumber)) return null;
+  const tasks = counts.reduce((sum, each) => sum + each, 0);
+  const valid = counts.reduce((sum, each, solves) => sum + each * solves, 0);
+  return tasks === 0 ? null : valid / (tasks * (counts.length - 1));
+}
+
 /**
- * The plan's stop rule over the comparisons a log holds: how many checkpoints tallied a task, how
- * many of them have passed since the last step, and whether that is three. A checkpoint is a
- * comparison of a harness a Builder session changed, the plan's first round among them. A
- * comparison of two harnesses no session made is none. Nor is a session that left its harness
- * unchanged, a comparison stopped on its check defects, one its dollar cap cut, or one with every
- * task set aside or short, which tested nothing. And a harness set against the starter after it
- * was compared with another reference is that comparison's reading against the starter
- * (`starter-unread`), and no checkpoint of its own.
+ * What room a comparison's report shows a harness to gain in, as the process reads it
+ * (`docs/plan.md`, "How move 7 decides"): `none` where the reference harness was valid on more
+ * than three solves in four, so that its tasks could mostly only tie; `too-hard` where neither
+ * harness was valid on one solve in four; and `room` otherwise, and for a report that holds no
+ * count of valid solves.
+ */
+function roomOf(report: JsonObject): "none" | "too-hard" | "room" {
+  const valid = asRecord(report.valid);
+  const [old, fresh] = [validShare(valid?.old), validShare(valid?.fresh)];
+  if (old === null || fresh === null) return "room";
+  if (old > ROOM.full) return "none";
+  return old < ROOM.empty && fresh < ROOM.empty ? "too-hard" : "room";
+}
+
+/**
+ * The plan's stop rule over a log: how many moves could have shown a gain, how many of them have
+ * passed since the last step, and whether that is three (`docs/plan.md`, row F48).
+ *
+ * A move that counts is one of two. The first is a harness a Builder session changed, compared
+ * with one reference under the campaign's setting, where the comparison tallied a task and left
+ * room (`roomOf`). Such a pair counts once, where it first reported, and reads as its last
+ * comparison: a step its repeat does not read again was one draw, and three repeats of one
+ * harness are one harness that showed no gain. On 9 October one harness compared with the starter
+ * three times, each time on more tasks, stopped a campaign. The second is a whole session that
+ * left its harness as it was.
+ *
+ * What does not count: a comparison of two harnesses no session made, which a control and a
+ * reading of the reference against itself are; one stopped on its check defects, cut by its cap,
+ * or with every task set aside, which tested nothing; one that left no room, whose answer is
+ * another budget or other tasks and no other harness; and whatever stands before the last
+ * comparison under another setting, since no comparison is read across two. A harness set against
+ * the starter after it was compared with another reference is that comparison's reading against
+ * the starter (`starter-unread`), and no move of its own.
  */
 export function stopRule(events: readonly LogEvent[]) {
   const built = new Set(
@@ -141,20 +177,43 @@ export function stopRule(events: readonly LogEvent[]) {
       kind === BUILD_FINISHED && data.changed === true && isString(data.harness) ? [data.harness] : [],
     ),
   );
+  const tallied = lastReports(events).filter(
+    ({ data }) =>
+      asRecord(data.scored) !== null &&
+      Array.isArray(data.versions) &&
+      data.versions.length > 0 &&
+      isString(data.fresh) &&
+      built.has(data.fresh),
+  );
+  const setting = tallied.at(-1)?.data.setting;
+  const from = (tallied.findLast(({ data }) => data.setting !== setting)?.index ?? -1) + 1;
   /** The harnesses already compared with a reference that is not the starter. */
-  const referenced = new Set<string>();
-  const readings: unknown[] = [];
-  for (const { data } of lastReports(events)) {
+  const referenced = new Set<unknown>();
+  /** Each pair of a harness and a reference, where it first reported and as it last read. */
+  const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
+  for (const { index, data } of tallied) {
     const { old, fresh, starter } = data;
-    const tallied =
-      asRecord(data.scored) !== null && Array.isArray(data.versions) && data.versions.length > 0;
-    if (!tallied || !isString(fresh) || !built.has(fresh)) continue;
+    if (index < from) continue;
     if (old !== starter) referenced.add(fresh);
     else if (referenced.has(fresh)) continue;
-    readings.push(data.reading);
+    const pair = `${isString(fresh) ? fresh : ""} ${isString(old) ? old : ""}`;
+    const step = data.reading === STEP;
+    pairs.set(pair, {
+      index: pairs.get(pair)?.index ?? index,
+      step,
+      counts: step || roomOf(data) === "room",
+    });
   }
-  const sinceStep = readings.length - 1 - readings.lastIndexOf(STEP);
-  return { checkpoints: readings.length, sinceStep, stop: sinceStep >= STOP_AFTER };
+  const idle = events.flatMap(({ kind, data }, index) =>
+    kind === BUILD_FINISHED && data.changed === false && !CUT.has(data.ended) && index >= from
+      ? [{ index, step: false }]
+      : [],
+  );
+  const moves = [...pairs.values().filter(({ counts }) => counts), ...idle].toSorted(
+    (one, other) => one.index - other.index,
+  );
+  const sinceStep = moves.length - 1 - moves.findLastIndex(({ step }) => step);
+  return { checkpoints: moves.length, sinceStep, stop: sinceStep >= STOP_AFTER };
 }
 
 /**

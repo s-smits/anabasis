@@ -272,17 +272,17 @@ describe("whether a comparison may start", () => {
     expect(admission(unreleased, { ...WANTED, builds: false }).notes.join("\n")).not.toContain("practise");
   });
 
-  // The plan stops a campaign after three checkpoints without a step. Until 2026-10-09 four
-  // commands printed that reading and none acted on it.
-  it("refuses the launch after three checkpoints without a step, unless the operator says why it goes on", () => {
+  // The plan stops a campaign after three moves that could have shown a gain and showed none.
+  // Until 2026-10-09 four commands printed that reading and none acted on it.
+  it("refuses the launch after three moves without a gain, unless the operator says why it goes on", () => {
     const stopped = { ...SETS, stop: { checkpoints: 3, sinceStep: 3, stop: true } };
     expect(admission(stopped, WANTED).refusals).toEqual([
-      'the campaign has had 3 checkpoints since its last step, and the plan stops it at three without one (docs/plan.md, Phase 5). To go on all the same, pass --past-stop "<why>", which is logged',
+      'the campaign has had 3 moves that could have shown a gain since its last step, and none did: the plan stops it at three (docs/plan.md, row F48). To go on all the same, pass --past-stop "<why>", which is logged',
     ]);
     const past = admission(stopped, { ...WANTED, pastStop: "the budget was set anew" });
     expect(past.refusals).toEqual([]);
     expect(past.notes.at(-1)).toBe(
-      "going on past the plan's stop rule, 3 checkpoints after the last step: the budget was set anew",
+      "going on past the plan's stop rule, 3 moves that could have shown a gain after the last step: the budget was set anew",
     );
     // A reason given where the rule does not stop the campaign says nothing.
     expect(admission(SETS, { ...WANTED, pastStop: "just in case" }).notes.join("\n")).not.toContain("stop");
@@ -403,7 +403,7 @@ describe("a command about to start a comparison", () => {
     ];
     const log = logOf([read1, ...["b-1", "b-2", "b-3"].flatMap((id) => checkpoint(id, `h-${id}`))]);
     const fourth = { ...asked, id: "b-4", seats: "paid" } as const;
-    expect(() => admitComparison(log, fourth)).toThrow("the plan stops it at three without one");
+    expect(() => admitComparison(log, fourth)).toThrow("the plan stops it at three");
     expect(read(log).some(({ kind }) => kind === "stop.overridden")).toBe(false);
     const past = { ...fourth, wanted: { ...WANTED, pastStop: "new tasks since" } };
     expect(admitComparison(log, past).at(-1)).toContain("going on past the plan's stop rule");
@@ -464,12 +464,12 @@ describe("whether a session with no comparison may start", () => {
     });
     const stopped = { ...SETS, stop: { checkpoints: 3, sinceStep: 3, stop: true } };
     expect(sessionAdmission(stopped, { cap: CAP }).refusals).toEqual([
-      expect.stringContaining("the plan stops it at three without one"),
+      expect.stringContaining("the plan stops it at three"),
     ]);
     const past = sessionAdmission(stopped, { cap: CAP, pastStop: "a new budget" });
     expect(past.refusals).toEqual([]);
     expect(past.notes.at(-1)).toBe(
-      "going on past the plan's stop rule, 3 checkpoints after the last step: a new budget",
+      "going on past the plan's stop rule, 3 moves that could have shown a gain after the last step: a new budget",
     );
   });
 

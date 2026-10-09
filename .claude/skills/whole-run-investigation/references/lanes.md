@@ -648,8 +648,9 @@ from the last, all compared with the same reference, is the plan's design and no
 is repeated once on fresh solves before anything is promoted: `STEP NOT REPEATED` names a step
 no second comparison of the same two harnesses has followed. A second step of another child
 against the same reference is another harness, not a repeat. Read the stop rule from the
-command's output: three checkpoints that tallied a task since the last step, with none, stop
-the campaign. A campaign with no held-out task measures nothing at all: eight rounds on the
+command's output: three moves in a row that could have shown a gain, with none, stop the
+campaign. A changed harness counts once against one reference, by the last comparison of the two
+under the campaign's setting, where it left room; a repeat does not count again. A campaign with no held-out task measures nothing at all: eight rounds on the
 truss pack ran so on 8 October, for over $220, and each could only read that no task was
 scored. The decision it changes is what runs next: a repeat, a promotion, another checkpoint,
 an Examiner session, or a stop; it routes to `operator`.

@@ -230,8 +230,9 @@ First say what happened to the link:
 Then choose one move: repeat the comparison; ask the operator to promote and run the next
 session against the new reference; change one flag and run again; fix the one owner the evidence
 names; delete a mechanism nothing reads; investigate one consequential ambiguity; or stop,
-because the plan's stop rule fired (three checkpoints that tallied a task since the last step,
-with none) or the authorised spend ended.
+because the plan's stop rule fired (three moves in a row that could have shown a gain and showed
+none: a changed harness counts once against one reference, where its comparison left room, and
+so does a session that changed nothing) or the authorised spend ended.
 
 After a step, the plan defers the machinery (`docs/plan.md`, Phase 6): nothing there is built
 before a step has been repeated. So the first move after a repeated step is the cheap one that

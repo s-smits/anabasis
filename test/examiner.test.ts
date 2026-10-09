@@ -143,6 +143,8 @@ describe("an Examiner session", () => {
     // It is told how a task is scored: a valid answer within the budget, with no objective to rank
     // two of them, and neither the size of the budget nor any count.
     expect(s.sent[0]).toContain("the harness that gives more valid answers wins");
+    // It is told that a task needs a valid answer, and that it may derive the task from one.
+    expect(s.sent[0]).toContain("A task with no valid answer measures nothing");
     expect(s.sent[0]).not.toContain("objective");
     // How many tasks are wanted is not the Examiner's to know: no prompt and no tool text says 24.
     expect((s.sent[0] ?? "").replace(/"timestamp":\d+/g, "")).not.toContain("24");

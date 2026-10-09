@@ -26,7 +26,7 @@
 import type { Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, comparedAs, lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
-import { ended, passed, type Ran, ranUnder, solvesIn } from "../kernel/solves.ts";
+import { ended, passed, practiceRan, type Ran, solvesIn } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
@@ -180,15 +180,12 @@ function diagnosed(read: JsonObject | undefined): PracticeFail["diagnosis"] {
 }
 
 /** Every failed practice solve on a released task, each with where it stands, and the place in the
- *  log its solve started at. A practice solve is a test-side solve no comparison asked for. */
+ *  log its solve started at (`practiceRan`, `src/kernel/solves.ts`). */
 function practiceFails(events: readonly LogEvent[]): (PracticeFail & { readonly started: number })[] {
   const released = new Set(taskSets(events).released);
-  const practice = ended(
-    ranUnder(events).filter(
-      ({ under, start }) =>
-        under.side === "test" && released.has(under.task) && start.comparison === undefined,
-    ),
-  ).filter((solve) => passed(solve) !== null);
+  const practice = ended(practiceRan(events).filter(({ under }) => released.has(under.task))).filter(
+    (solve) => passed(solve) !== null,
+  );
   const last = (kind: string, solve: string) =>
     events.findLast((event) => event.kind === kind && event.data.solve === solve)?.data;
   return practice.flatMap((solve) => {

@@ -19,6 +19,8 @@
  * held-out tasks by the contract's draw, and no solve chooses which. One release takes at most
  * half of what is held, so that a comparison is left tasks to score: on 2026-10-08 an anchor drawn
  * over nearly the whole pack left eight rounds no task to score. Each release is said by its task.
+ * A task that a comparison scored before its release keeps that comparison's solves on the exam
+ * side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
  * A run that labels a task (below) releases none: a release cannot be taken back, and a person
  * labelling one task has not asked for another to leave the held-out set.
  *

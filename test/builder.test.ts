@@ -230,6 +230,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     digest,
     exam,
     ran,
+    condition,
   };
 }
 
@@ -484,6 +485,27 @@ describe("a Builder session", () => {
     expect(s.sent[2]).toContain("only 3 practice solves left, and this asks for 4");
     expect(s.sent[3]).toContain("t-9 is not one of this session's practice tasks: t-1, t-2");
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 0 });
+  });
+
+  it("is shown no solve that a comparison made of a task released afterwards", async () => {
+    const s = await setup([call("read_trace", { solve: "g-1-v0" }), finish]);
+    const { log } = s.request;
+    // v0 was held out, a comparison solved it under the harness this session starts from, and it
+    // was released for practice afterwards. That solve is the comparison's, and which task it
+    // failed is the exam's to keep, whatever became of the task.
+    append(log, "solve.started", {
+      solve: "g-1-v0",
+      comparison: "g-1",
+      condition: recordCondition(log, s.condition("v0", s.digest)),
+      task: "t",
+    });
+    append(log, "solve.finished", { solve: "g-1-v0", ending: { outcome: "fail", kind: "rejected" } });
+    append(log, "task.state", { version: "v0", state: "released" });
+    const late = { version: "v0", task: { taskId: "t-0", family: "fixture", publicInput: { base: 5 } } };
+    await session({ ...s.request, tasks: [...TASKS, late] }, s, s.walled);
+    expect(s.sent[0]).toContain("- t-0 (family fixture): not yet solved under the harness you start from.");
+    expect(s.sent[1]).toContain("g-1-v0 is not a solve of one of this session's practice tasks");
+    expect(s.sent.join("\n").split("g-1-v0")).toHaveLength(3);
   });
 
   it("spends no solve on a harness a solve could not open", async () => {

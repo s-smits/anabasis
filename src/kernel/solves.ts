@@ -100,6 +100,20 @@ export function ranUnder(events: readonly LogEvent[]): Ran[] {
   });
 }
 
+/**
+ * The practice solves of a log: the test-side solves that no comparison asked for. They are what a
+ * Builder may be shown of a solve, by its record, its fails and its traces. A solve a comparison
+ * made is the exam's, whatever becomes of its task: a held-out task that is scored and released
+ * afterwards would otherwise bring its comparison's solves with it, and a Builder would read which
+ * held-out task its harness had failed. Until 2026-10-09 the opening's record and `read_trace`
+ * read every test-side solve of a practice task, and only the list of fails held to this.
+ */
+export function practiceRan(events: readonly LogEvent[]): Ran[] {
+  return ranUnder(events).filter(
+    ({ under, start }) => under.side === "test" && start.comparison === undefined,
+  );
+}
+
 /** Who solved last on the test side of a log, and under what limits: the model, the effort and the
  *  limits of the condition its last test-side solve started under, or null before any. It is what a
  *  command about to solve as another solver, or under other limits, is set against

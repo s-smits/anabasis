@@ -45,7 +45,7 @@ import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import { billedFor } from "../kernel/reports.ts";
-import { ended, passed, ranUnder, solvesIn, verdictsOf } from "../kernel/solves.ts";
+import { ended, passed, practiceRan, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
   cpSync,
@@ -136,12 +136,10 @@ export function endingText(ending: Ending): string {
     : `fail (${ending.kind})`;
 }
 
-/** A task version's counted test-side solves under one harness, by the log's condition records,
- *  in the order they ended. */
+/** A task version's counted practice solves under one harness, by the log's condition records,
+ *  in the order they ended. A solve a comparison made of the task is none (`practiceRan`). */
 export function record(events: readonly LogEvent[], version: string, harness: string) {
-  const mine = ranUnder(events).filter(
-    ({ under }) => under.task === version && under.harness === harness && under.side === "test",
-  );
+  const mine = practiceRan(events).filter(({ under }) => under.task === version && under.harness === harness);
   const counted = ended(mine).flatMap((solve) => {
     const pass = passed(solve);
     return pass === null ? [] : [{ solve: solve.id, pass }];
@@ -451,8 +449,8 @@ export function traceTool(bench: Bench): AgentTool {
     executionMode: "parallel",
     execute: async (_id, args) => {
       const events = read(bench.request.log);
-      const ran = ranUnder(events).find(({ id }) => id === args.solve);
-      if (ran?.under.side !== "test" || !versions.has(ran.under.task)) {
+      const ran = practiceRan(events).find(({ id }) => id === args.solve);
+      if (ran === undefined || !versions.has(ran.under.task)) {
         throw new Error(`${args.solve} is not a solve of one of this session's practice tasks`);
       }
       const own = solveOf(events, args.solve);

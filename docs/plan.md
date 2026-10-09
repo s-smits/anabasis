@@ -130,7 +130,29 @@ The Starter Built Harness was rewritten the same day, after the first live round
 - **What sizes a solve.** In the solves on record the wall bound nothing at two hours, and at five minutes most solves had submitted by a third of it. What a solver met was the limit on one command. That limit is now held to a share of the wall, a quarter where a command names no timeout and a half at most, and the prompt states both.
 - **A CPU budget's reading.** A command cut at its limit leaves its CPU unmeasured. A task with a valid solve of that kind is left out of a CPU budget's test and counted as unread, where it was counted as within the budget. A cap on CPU seconds (Phase 2) needs the cut command measured, which is not built.
 
-Still not built, each behind its gate: the Judge and the Examiner as author of the correctness model (Phase 1), a budget the solver is told, a cap on CPU seconds and the closed network for harness tools (Phase 2), the objective (Phase 3), and one Builder conversation, the growing list of failed practice solves and the aggregate result (Phase 5). `docs/transfer.md` holds the component-by-component account.
+*Repository note, 9 October, after two live rounds on the old starter.* Two rounds ran from PR #67 at an eight-minute wall while the starter was being rewritten: buffer read a step, and truss spent its practice solves with one pass under its own harness. What they showed was built on the stack above the rewrite. Eight of this plan's "not built" items are built with it, whole or in part:
+
+- **A budget in the model's own turns, told to the solver and enforced** (Phase 2). `--solve-model-turns` names it; every tool result says which turn the solver is in, beside the time it has used; a solve that uses its turns without an answer ends `turns-ended`. `--solve-turns` stays v1's cap on prompts.
+- **How much of the budget a practice solve used** (Phase 2): its time of its limit and its model turns, in the practice result.
+- **The Builder's notes** (Phase 5). They are v1's, copied: `MEMORY.md`, `SCRATCHPAD.md` and the helpers under `scratch/`, bounded and carried from one session's home to the next.
+- **The list of failed practice solves** (Phase 5), across all sessions, each marked open, repaired or failing again.
+- **Each comparison's result told to the Builder in aggregate** (Phase 5): the tally and the reading, with no task named.
+- **The do-nothing answer as a control** (the correctness model). The acceptance reading puts the smallest answer the format allows to every task.
+- **An instrument an agent wrote, listed as a fault** (Phase 1) until the operator admits the check by name.
+- **A prediction written before launch** (Phase 4), with the comparison's terms.
+
+Three more things were built that the plan does not list:
+
+- **The time a solve has used, told on every tool result**, with a command that would run into the solve's last minute cut there and handed back. Five of the six failed practice solves had submitted an answer the solver's own check had refused, stopping early or out of time.
+- **The checker read before a comparison is paid for**: the launcher refuses one while the log holds no reading.
+- **A Builder's own tools**: pi's four, a preview of what a solver reads, and a reset, with each part of a harness given one purpose in `HARNESS.md`: a computation is a program, the guide is words about the programs, and a tool of the harness's own is for a harness without the shell.
+
+Two items of the plan read otherwise on this stack, and are the operator's to settle:
+
+- **CPU seconds as a budget.** They are read with the shell's `times`, which counts waited-for children only. A background job ended with its command, and a command cut at its limit, are in no sum, and under bubblewrap the reading is zero. A cap on that meter would bind one style of command and not another, so the model's turns were built as the binding unit and CPU stays a reported figure until a meter counts a solve's whole process tree.
+- **The closed network for harness tools.** A harness's computation is now a program the solver runs from its own shell, and that shell keeps the network by the decision of 9 October. Closed for harness tools, the network would be closed only for a harness without a shell. What would close both holes and keep installs is a proxy that every command of a solve goes through and that allows the package registries alone.
+
+Still not built, each behind its gate: the Judge and the Examiner as author of the correctness model (Phase 1), the objective (Phase 3), and one Builder conversation with the process that holds it (Phase 5). `docs/transfer.md` holds the component-by-component account.
 
 ## Principles
 

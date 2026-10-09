@@ -78,7 +78,7 @@ function comparisonRow(step: Compared): string {
 }
 
 /** The closing report of a campaign, from its log: Markdown, a view and no record. */
-export function closingReport(name: string, events: readonly LogEvent[], handed: string): string {
+function closingReport(name: string, events: readonly LogEvent[], handed: string): string {
   const { steps, supply } = campaignOf(events);
   const comparisons = steps.filter((step): step is Compared => step.step === "comparison");
   const ended = events.at(-1)?.kind === "campaign.ended" ? events.at(-1)?.data : undefined;

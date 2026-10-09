@@ -146,9 +146,13 @@ rehearsal is exempt from them: its seats are scripts, which are paid nothing.
   minutes of a Builder's 30. `--loaded` starts it anyway, for a run whose times will not be
   compared, and the receipt keeps the load.
 - **An env file that is not there.** `--env-file` is Bun's own flag. The launcher passes the path
-  on and never opens the file. Do not print it, copy it or search for another.
+  on and never opens the file. Do not print it, copy it or search for another. Which account
+  spends is named by the model's provider and is the operator's: `claude/<model>` runs Claude Code
+  on the login in `CLAUDE_CODE_OAUTH_TOKEN`, and `claude-api/<model>` runs the same CLI on the key
+  in `ANTHROPIC_API_KEY`. They are two providers, so a solver on one is another setting than a
+  solver on the other, and a key in the environment never moves a run asked of the login.
 - **A spent session id.** A `--session` whose Builder started and did not end whole: it never
-  finished, was killed or crashed. The round refuses it (`spent` in `src/builder/round.ts`), since
+  finished, was killed or crashed. The round refuses it (`spent` in `src/builder/session.ts`), since
   a second session under one id would be a second try, and the launcher says so in the round's
   words before anything starts. Pass another `--session`. A checkpoint runs no session and has
   no id to spend.

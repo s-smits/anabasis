@@ -41,6 +41,12 @@ describe("the three backends", () => {
     expect(models.getModel("openai-codex", "gpt-5.5")?.api).toBe("openai-codex-responses");
     expect(models.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
     expect(models.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
+    // The same backend on an API key is a provider of its own, with the same catalog and prices,
+    // and it compacts as the login does.
+    const [login_, key] = ["claude", "claude-api"].map((id) => models.getModel(id, "claude-sonnet-5-5"));
+    expect(key).toMatchObject({ provider: "claude-api", api: "claude-agent-sdk", cost: login_?.cost });
+    if (login_ === undefined || key === undefined) throw new Error("the catalog has no claude-sonnet-5-5");
+    expect(compactionMode(key, options)).toBe(compactionMode(login_, options));
   });
 
   it("read the Codex CLI's login as it stands", async () => {

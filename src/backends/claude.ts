@@ -68,8 +68,37 @@ import { dirname, join } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
-export const CLAUDE_PROVIDER = "claude";
+const CLAUDE_PROVIDER = "claude";
+/**
+ * The same backend on an Anthropic API key in place of a Claude Code login: the same CLI, the same
+ * models and the same prompt, billed to the key's account. It is a provider of its own, so that
+ * which account spends is named on the command line (`--solver claude-api/<model>`) and stands in
+ * every condition and every price key the log holds. A key in the host's environment never moves
+ * a solve asked of `claude`: the CLI is handed one credential, the one its provider names.
+ */
+export const CLAUDE_API_PROVIDER = "claude-api";
+/** What each of the two is called, and the one variable that holds its credential: in the host's
+ *  environment, where pi reads it, and in the CLI's, where Claude Code does. */
+const ACCOUNTS = new Map([
+  [
+    CLAUDE_PROVIDER,
+    {
+      name: "Claude Code (Agent SDK)",
+      holds: "Claude Code OAuth token",
+      variable: "CLAUDE_CODE_OAUTH_TOKEN",
+    },
+  ],
+  [
+    CLAUDE_API_PROVIDER,
+    {
+      name: "Claude Code (Agent SDK), on an API key",
+      holds: "Anthropic API key",
+      variable: "ANTHROPIC_API_KEY",
+    },
+  ],
+]);
 const API = "claude-agent-sdk";
+
 /** turn-translation.ts:19-20. */
 const SERVER = "custom-tools";
 const TOOL_PREFIX = `mcp__${SERVER}__`;
@@ -205,6 +234,11 @@ export function claudeCompactionMode(compaction: ClaudeCompaction, modelId: stri
   return `autoCompactWindow=${String(compaction.window)}`;
 }
 
+/** Whether a model is served through Claude Code, on either account. */
+export function servedByClaude(provider: string): boolean {
+  return ACCOUNTS.has(provider);
+}
+
 /**
  * The Claude Code binary the Agent SDK ships in its platform package, resolved on the host. The SDK
  * resolves it itself from its own module URL (`SV` in `sdk.mjs` 0.3.285), which fails inside a bundled
@@ -219,9 +253,12 @@ export function claudeExecutable(): string {
   return cli;
 }
 
-/** pi's Anthropic catalog, served through Claude Code: the same ids and the same list prices. */
-export function claudeProvider(options: ClaudeOptions): Provider {
+/** pi's Anthropic catalog, served through Claude Code: the same ids and the same list prices. `id`
+ *  names the account, a Claude Code login unless it is `CLAUDE_API_PROVIDER`. */
+export function claudeProvider(options: ClaudeOptions, id: string = CLAUDE_PROVIDER): Provider {
   const { compaction } = options;
+  const account = ACCOUNTS.get(id);
+  if (account === undefined) throw new Error(`${id} is no account of the Claude backend`);
   if (
     compaction !== "off" &&
     (compaction.window < WINDOW_BOUNDS[0] || compaction.window > WINDOW_BOUNDS[1])
@@ -231,13 +268,13 @@ export function claudeProvider(options: ClaudeOptions): Provider {
   const stream = (model: Model<Api>, context: TranscriptContext, request?: SimpleStreamOptions) =>
     streamClaude(options, model, context, request);
   return createProvider({
-    id: CLAUDE_PROVIDER,
-    name: "Claude Code (Agent SDK)",
-    auth: { apiKey: envApiKeyAuth("Claude Code OAuth token", ["CLAUDE_CODE_OAUTH_TOKEN"]) },
+    id,
+    name: account.name,
+    auth: { apiKey: envApiKeyAuth(account.holds, [account.variable]) },
     // `compat` tunes pi's own Anthropic request, which Claude Code never sends.
     models: getBuiltinModels("anthropic").map(({ compat: _unsent, ...model }) => ({
       ...model,
-      provider: CLAUDE_PROVIDER,
+      provider: id,
       api: API,
     })),
     api: { stream, streamSimple: stream },
@@ -346,7 +383,7 @@ function open(
       persistSession: false,
       includePartialMessages: true,
       abortController: abort,
-      env: claudeEnv(claude, options.apiKey),
+      env: claudeEnv(claude, { provider: model.provider, token: options.apiKey }),
     },
   });
   const session: Session = { query: live, prompt, abort, parked, early };
@@ -374,10 +411,20 @@ export function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined
 /**
  * The whole environment Claude Code runs in: HOME, the solve's own, PATH and TMPDIR; nothing else of
  * the host's reaches the CLI, so no host variable can move its compaction, its account or its MCP
- * servers.
+ * servers. Its one credential is its provider's: a Claude Code login for `claude`, an API key for
+ * `claude-api`, each under the variable Claude Code reads it from and never both.
  */
-function claudeEnv({ compaction, home }: ClaudeOptions, token: string | undefined): Record<string, string> {
-  if (token === undefined) throw new Error("the Claude backend needs a Claude Code OAuth token");
+function claudeEnv(
+  { compaction, home }: ClaudeOptions,
+  credential: { readonly provider: string; readonly token: string | undefined },
+): Record<string, string> {
+  const account = ACCOUNTS.get(credential.provider);
+  const { token } = credential;
+  if (account === undefined || token === undefined) {
+    throw new Error(
+      `the Claude backend needs ${account === undefined ? "an account" : `a ${account.holds}`}`,
+    );
+  }
   // One configuration directory per solve home, as v1 kept one per worker (`pi-built-child.ts:178-183`),
   // so no host Claude state is read. It is not `.claude`, so a run on the host's own HOME still reads none.
   const config = join(home, "claude-config");
@@ -387,7 +434,7 @@ function claudeEnv({ compaction, home }: ClaudeOptions, token: string | undefine
     ...keyIfDefined("PATH", Bun.env.PATH),
     ...keyIfDefined("TMPDIR", Bun.env.TMPDIR),
     CLAUDE_CONFIG_DIR: config,
-    CLAUDE_CODE_OAUTH_TOKEN: token,
+    [account.variable]: token,
     // claude.ai's cloud MCP servers load past strict MCP config and empty setting sources unless this
     // is off, as the sweep set it (`provider.ts:410-414,421`).
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",

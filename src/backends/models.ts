@@ -1,7 +1,8 @@
 /**
  * The three backends as one pi `Models` collection: Codex on the ChatGPT login the Codex CLI keeps,
- * OpenRouter on `OPENROUTER_API_KEY`, and Claude Code on `CLAUDE_CODE_OAUTH_TOKEN`. The Builder and
- * the Built Harness both resolve their models here.
+ * OpenRouter on `OPENROUTER_API_KEY`, and Claude Code on `CLAUDE_CODE_OAUTH_TOKEN`, or, as the
+ * provider `claude-api`, on `ANTHROPIC_API_KEY`. The Builder and the Built Harness both resolve
+ * their models here.
  */
 import {
   type Api,
@@ -26,11 +27,12 @@ import { homedir } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import {
-  CLAUDE_PROVIDER,
+  CLAUDE_API_PROVIDER,
   type ClaudeOptions,
   claudeCompactionMode,
   claudeProvider,
   emptyTurn,
+  servedByClaude,
 } from "./claude.ts";
 import { piCompactionMode } from "./pi-compaction.ts";
 
@@ -77,6 +79,7 @@ export function backends(options: BackendOptions): MutableModels {
   models.setProvider(retried(openaiCodexProvider()));
   models.setProvider(retried(openrouterProvider()));
   models.setProvider(claudeProvider(options.claude));
+  models.setProvider(claudeProvider(options.claude, CLAUDE_API_PROVIDER));
   return models;
 }
 
@@ -123,7 +126,7 @@ export function compactionMode(
   model: Pick<Model<Api>, "provider" | "id" | "contextWindow">,
   options: BackendOptions,
 ): string {
-  return model.provider === CLAUDE_PROVIDER
+  return servedByClaude(model.provider)
     ? claudeCompactionMode(options.claude.compaction, model.id)
     : piCompactionMode(model);
 }

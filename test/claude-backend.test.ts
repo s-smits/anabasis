@@ -40,6 +40,8 @@ interface Launch {
   cwd: string;
 }
 
+/** A recorded stream of one turn that answers in text. */
+const TEXT = "text.jsonl";
 const FIXTURES = join(import.meta.dir, "fixtures", "claude-sdk-streams");
 const read = { name: "read", description: "Read a file", parameters: Type.Object({ path: Type.String() }) };
 const opening: Message = { role: "user", content: "Read the three files.", timestamp: 0 };
@@ -149,7 +151,7 @@ describe("the Claude backend", () => {
   });
 
   it("launches Claude Code as the sweep did but for its prompt, with the pi tools alone and nothing of the host's", async () => {
-    replay("text.jsonl");
+    replay(TEXT);
     await turn([opening], "high");
     const launch = launched();
     expect(flag(launch, "--model")).toBe("claude-haiku-4-5");
@@ -192,7 +194,7 @@ describe("the Claude backend", () => {
       tools: [read],
     });
     const started = async (webSearch: boolean) => {
-      replay("text.jsonl");
+      replay(TEXT);
       const provider = claudeProvider({ executable, compaction: "off", home, webSearch });
       const options = { ...solveOptions(), sessionId: `own-${String(solves)}-${String(webSearch)}` };
       await provider.streamSimple(recorded, context, options).result();
@@ -226,7 +228,7 @@ describe("the Claude backend", () => {
       tools: [read],
     });
     for (const id of ["claude-opus-5", "claude-opus-5-5", "claude-sonnet-5-5"]) {
-      replay("text.jsonl");
+      replay(TEXT);
       const model = sweep.getModels().find((entry) => entry.id === id);
       if (model === undefined) throw new Error(`pi's Anthropic catalog has no ${id}`);
       await sweep.streamSimple(model, context, { ...solveOptions(), sessionId: `solve-${id}` }).result();
@@ -234,8 +236,35 @@ describe("the Claude backend", () => {
     }
   });
 
+  // Which account spends is the operator's to name. An API key is a provider of its own, so the
+  // name is on the command line and in every condition, and a key in the host's environment never
+  // reaches a solve asked of the login.
+  it("hands Claude Code the one credential of the account its provider names", async () => {
+    const onKey = claudeProvider({ executable, compaction: { window: 300_000 }, home }, "claude-api");
+    const model = onKey.getModels().find(({ id }) => id === recorded.id);
+    if (model === undefined) throw new Error(`the catalog has no ${recorded.id}`);
+    expect(model.provider).toBe("claude-api");
+    replay(TEXT);
+    const context = normalizeContext({
+      systemPrompt: "You are a solver.",
+      messages: [opening],
+      tools: [read],
+    });
+    const said = await onKey.streamSimple(model, context, { ...solveOptions(), apiKey: "key" }).result();
+    expect(said.errorMessage).toBeUndefined();
+    const { env } = launched();
+    expect(env.ANTHROPIC_API_KEY).toBe("key");
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+    // The rest of the CLI's environment is the login's: its own configuration, its compaction.
+    expect(env.CLAUDE_CONFIG_DIR).toBe(join(home, "claude-config"));
+    expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("300000");
+    expect(() => claudeProvider({ executable, compaction: "off", home }, "claude-max")).toThrow(
+      "claude-max is no account of the Claude backend",
+    );
+  });
+
   it("switches Claude Code's compaction off when the condition says off, and refuses a window it would drop", async () => {
-    replay("text.jsonl");
+    replay(TEXT);
     await turn([opening], undefined, "off");
     const { env } = launched();
     expect(env.DISABLE_AUTO_COMPACT).toBe("1");
@@ -248,7 +277,7 @@ describe("the Claude backend", () => {
   it("bills the turns' token classes at what Claude Code reported the query cost", async () => {
     const prices = freezePrices([haiku]);
     for (const [fixture, reported] of [
-      ["text.jsonl", 0.020421],
+      [TEXT, 0.020421],
       ["parallel-tools.jsonl", 0.0056776],
     ] as const) {
       replay(fixture);
@@ -271,7 +300,7 @@ describe("the Claude backend", () => {
       session_id: "00000000-0000-4000-8000-000000000001",
       uuid: "00000000-0000-4000-8000-0000000000ff",
     });
-    replay("text.jsonl", (text) => text.replace("\n", `\n${boundary}\n`));
+    replay(TEXT, (text) => text.replace("\n", `\n${boundary}\n`));
     const message = await turn([opening]);
     const types = message.diagnostics?.map((entry) => entry.type);
     expect(types).toEqual([CLAUDE_COMPACTED, REPORTED_COST]);
@@ -288,7 +317,7 @@ describe("the Claude backend", () => {
   });
 
   it("fails the turn on a refusal, so it reads as the provider's non-result and not the solver's stop", async () => {
-    replay("text.jsonl", (text) => text.replaceAll('"stop_reason":"end_turn"', '"stop_reason":"refusal"'));
+    replay(TEXT, (text) => text.replaceAll('"stop_reason":"end_turn"', '"stop_reason":"refusal"'));
     const refused = await turn([opening]);
     expect(refused.stopReason).toBe("error");
     expect(refused.errorMessage).toContain("refusal");
@@ -318,7 +347,7 @@ describe("the Claude backend", () => {
   });
 
   it("takes a nudge into the live query, as v1 did (provider.ts:525-560)", async () => {
-    replay("text.jsonl");
+    replay(TEXT);
     const answer = await turn([opening]);
     expect(answer.stopReason).toBe("stop");
     const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
@@ -331,7 +360,7 @@ describe("the Claude backend", () => {
   });
 
   it("refuses a later prompt with no live query to hold the conversation", async () => {
-    replay("text.jsonl");
+    replay(TEXT);
     const answer = await turn([opening]);
     solve.abort();
     solve = new AbortController();

@@ -19,7 +19,7 @@ import {
   shouldCompact,
 } from "../../vendor/pi-coding-agent/core/compaction/compaction.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { CLAUDE_PROVIDER, SWEEP_COMPACT_WINDOW } from "./claude.ts";
+import { SWEEP_COMPACT_WINDOW, servedByClaude } from "./claude.ts";
 
 /** One compaction, as the log records it: `error` is the summary's failure, when it failed. */
 export interface Compacted {
@@ -49,7 +49,7 @@ export function compactBeforeRequest(
   // Usage reported before the last compaction counts the context it replaced.
   let fresh = 0;
   return async ({ context, model, thinkingLevel }, signal) => {
-    if (model.provider === CLAUDE_PROVIDER) return undefined;
+    if (servedByClaude(model.provider)) return undefined;
     const { messages } = context;
     const estimate = estimateContextTokens(messages);
     const tokens =

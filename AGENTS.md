@@ -540,9 +540,9 @@ about it names the level:
 | Shown in an outcome | A reading that moved, repeated once on fresh solves |
 | Withdrawn | Analysis, a review or a run showed that it does not work. The entry stays, with the reason |
 
-None stands in for the next. The four middle levels are the skill's, and the plan's status column
-counts the same four in shorter words. The plan keeps the level of each part, and a pull request
-names what it moves. Keep no second status list: not in this file, not in a new file, not in a
+None stands in for the next. The four middle levels are the skill's, and the plan uses the same
+words since its revision 358. The plan keeps the level of each part, and a pull request names
+what it moves: in `docs/plan.md` that is the level column of the fix plan. Keep no second status list: not in this file, not in a new file, not in a
 code comment.
 
 Read at PR #80 (`d878c1b`), four designed parts are absent from the source. Check the plan and the

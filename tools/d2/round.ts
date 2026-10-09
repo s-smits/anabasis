@@ -44,12 +44,11 @@
  * comparison the Referee on every rejected answer. A rejection counts only once it is ruled a true
  * fail. One ruled a check defect or unclear, and with no reviewer every one, sets its task aside
  * until a person has labelled it (`tools/d2/settle.ts`). `--budget` reads the same solves at a
- * shorter budget as well, as `turns=40,cpu=600` with any of four units, and may be given more than
- * once; the budgets are fixed with the comparison's other terms before its first solve. The units
- * are the model's `turns`, the `prompts` the solver was given, which is what `--solve-turns`
- * limits, the `cpu` seconds of its commands and the `seconds` of the whole attempt
- * (`src/kernel/compare.ts`). A budget in `prompts` has read nothing so far: every solve of the
- * first three rounds was given one prompt (2026-10-09), so name one in `turns`, `cpu` or `seconds`.
+ * shorter budget as well, as `turns=40,seconds=1800` with either or both of its two units, and may
+ * be given more than once; the budgets are fixed with the comparison's other terms before its
+ * first solve. The units are the model's `turns` and the `seconds` of the whole attempt
+ * (`src/kernel/compare.ts`), which are the two a solver can be told and held to. The CPU seconds
+ * of a solve's commands are reported and are no unit: a cut command leaves them unknown.
  *
  * Who solves, what a solve is held to and which tasks are scored are the campaign's setting, which
  * its log records once (`setting.ts`). A round that names none of it runs under the record, and
@@ -85,7 +84,6 @@ import { solverLast } from "#src/kernel/solves.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { plural } from "#src/meta/text.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import {
   awaitingLines,
@@ -337,7 +335,7 @@ export function predictionLines(events: readonly LogEvent[], id: string, report:
   return said === null ? [] : [`predicted before the first solve: ${said}`, `read: ${report.reading}`];
 }
 
-/** The budgets `--budget` names, each as `turns=40,cpu=600` with any of the four units. */
+/** The budgets `--budget` names, each as `turns=40,seconds=1800` with either or both units. */
 export function budgetsNamed(flags: readonly string[] = []): Budget[] {
   return flags.map((flag): Budget => {
     const named = flag.split(",").map((part) => {
@@ -346,7 +344,7 @@ export function budgetsNamed(flags: readonly string[] = []): Budget[] {
     });
     if (named.some(({ unit, most }) => !UNITS.some((known) => known === unit) || !(most > 0))) {
       throw new Error(
-        `--budget ${flag}: a budget names turns, prompts, cpu or seconds, each with a number above nothing, as turns=40,cpu=600`,
+        `--budget ${flag}: a budget names turns or seconds, each with a number above nothing, as turns=40,seconds=1800. The prompts a solver was given and the CPU seconds of its commands are units no longer: the first read what the full limit read, and the second is unknown once a command is cut`,
       );
     }
     const budget: Record<string, number> = Object.fromEntries(named.map(({ unit, most }) => [unit, most]));
@@ -388,15 +386,9 @@ export function validLines({ valid, budgets }: Pick<Report, "valid" | "budgets">
   return [
     `each harness by itself, as the tasks with ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves:`,
     row("at its limits", valid),
-    ...budgets.flatMap((budget) => {
-      // A task with a valid solve whose CPU a cut command hid is left out of a CPU budget's reading.
-      const unread = budget.unread ?? 0;
-      const left =
-        unread === 0
-          ? ""
-          : `, ${plural(unread, "task")} unread: a cut command left a valid solve's CPU unknown`;
-      return budget.valid === undefined ? [] : [`${row(`at ${named(budget)}`, budget.valid)}${left}`];
-    }),
+    ...budgets.flatMap((budget) =>
+      budget.valid === undefined ? [] : [row(`at ${named(budget)}`, budget.valid)],
+    ),
   ];
 }
 

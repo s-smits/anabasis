@@ -54,6 +54,8 @@ import { openHarness } from "../src/solve/harness.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
 const COMPARISON_STARTED = "comparison.started";
+/** What a report holds of the comparison read at one budget, here one in turns. */
+const BUDGET_ROW = ["losses", "p", "ties", "turns", "valid", "wins"];
 const TASK_STATE = "task.state";
 /** What a stand-in solve throws to stop a run part-way. */
 const STOPS = "the run stops";
@@ -337,7 +339,6 @@ describe("a round", () => {
         budgets: [],
         spread: {
           turns: { tasks: 8, median: 1, most: 1 },
-          prompts: null,
           cpu: null,
           seconds: { tasks: 8, median: 1, most: 1 },
         },
@@ -1071,6 +1072,27 @@ describe("a checkpoint with no session", () => {
       reading: NO_STEP,
     });
     expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ budgets });
+    // Every scored task is read at every budget: a report holds no count of tasks left unread,
+    // which a budget in CPU seconds made until 2026-10-09.
+    for (const row of report.budgets) expect(Object.keys(row).sort()).toEqual(BUDGET_ROW);
+    expect(JSON.stringify(s.of(COMPARISON_REPORTED))).not.toContain("unread");
+  });
+
+  it("refuses a budget in a unit that is none: the prompts a solver was given, or CPU seconds", async () => {
+    const s = await setup([], () => PASS);
+    const dropped: Record<string, number>[] = [{ cpu: 600 }, { prompts: 8 }, {}];
+    for (const budget of dropped) {
+      await expect(checkpoint(s.compare("g0", { budgets: [{ turns: 12 }, budget] }))).rejects.toThrow(
+        "a budget names turns or seconds, or both, each as a number",
+      );
+    }
+    expect(s.of(COMPARISON_STARTED)).toEqual([]);
+    // The other unit is the seconds of the whole attempt, which the stand-in times at sixty.
+    const report = await checkpoint(s.compare("g0", { budgets: [{ seconds: 30 }, { seconds: 90 }] }));
+    expect(report.budgets).toMatchObject([
+      { seconds: 30, valid: { old: [4, 0, 0], fresh: [4, 0, 0] } },
+      { seconds: 90, valid: { old: [0, 0, 4], fresh: [0, 0, 4] } },
+    ]);
   });
 
   it("writes the operator's prediction with the terms, before the first solve, and keeps it", async () => {

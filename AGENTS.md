@@ -421,7 +421,8 @@ needs its owner before more is spent.
 and enforced (`--solve-model-turns`; a solve that uses them without an answer ends `turns-ended`).
 A time limit on each command bounds a turn. CPU seconds are reported and bind nothing: the meter
 counts only the children a command waited for and reads zero under Bubblewrap. `--budget turns=40`
-reads the same solves again at a shorter budget, fixed before the first solve.
+reads the same solves again at a shorter budget, fixed before the first solve. A budget names the
+model's turns or the attempt's seconds, or both, and nothing else (`UNITS`).
 
 **Beside the test.** The report holds how each harness did by itself (`valid`: on how many tasks
 every solve, some or none were valid, at the full limit and at each budget). `--noise` reads the

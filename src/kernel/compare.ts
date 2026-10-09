@@ -47,13 +47,17 @@
  * more than a tally takes, the first started are taken, and the order solves ended in would take
  * the quick ones, which under a budget are the valid ones.
  *
- * A budget's units. `turns` are the model's own turns, as a trace counts them. `prompts` are the
- * messages the solver was given, the opening one and each nudge, which is the unit a solve's turn
- * cap is held in (`Limits.turns`, `--solve-turns`): one prompt may take the model many turns, so
- * the two are not the same number. `cpu` is the CPU time of the solve's commands, known only from
- * below for a solve one of whose commands was cut (`unreadAt`). `seconds` is the
- * whole attempt as the host timed it, from before its sandbox was mounted until its verdict, which
- * is some seconds more than the solver's own wall.
+ * A budget's units are two (`UNITS`). `turns` are the model's own turns, as a trace counts them,
+ * and `seconds` is the whole attempt as the host timed it, from before its sandbox was mounted
+ * until its verdict, which is some seconds more than the solver's own wall. They are the two a
+ * solver can be told and held to (`--solve-model-turns`, `--solve-minutes`).
+ *
+ * Until 2026-10-09 a budget could also name `prompts` and `cpu`, and neither read anything a
+ * campaign used. Every finished solve of the first three rounds was given one prompt, so a budget
+ * in prompts read what the full limit read. The CPU time of a solve's commands is known only from
+ * below once one of them is cut, which is the limit solvers meet most, so a budget in CPU left
+ * such tasks out and reported how many (`unread`). The CPU a solve used is still measured and
+ * reported (`Used.cpu`, `spread`); it is no unit a budget is given in.
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber } from "../meta/json-shape.ts";
@@ -74,15 +78,18 @@ export interface Used {
   readonly cpu: number | null;
   /** How many of its commands ended with their CPU unmeasured: one cut at its limit or by the wall
    *  takes its record with it (`src/solve/command.ts`). With any, `cpu` is a lower bound of what the
-   *  solve used and not the amount. Left out where there was none. */
+   *  solve used and not the amount, which is why no budget is given in it. Left out where there
+   *  was none. */
   readonly unmeasured?: number;
   readonly seconds: number | null;
   /** Billed dollars. */
   readonly billed: number | null;
 }
 
-/** The four units a compute budget can be given in. */
-export const UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
+/** The two units a compute budget can be given in. */
+export const UNITS = ["turns", "seconds"] as const;
+/** What a solve's use is reported in: a budget's units, and the CPU seconds of its commands. */
+export const MEASURED = ["turns", "cpu", "seconds"] as const;
 
 /** How far repeated solves of one harness on one task differ in a unit: over the tasks and sides
  *  with two measured solves or more, the largest use divided by the smallest, as the median of
@@ -129,8 +136,6 @@ export interface Sides {
  *  unit than this counts as no answer. */
 export interface Budget {
   readonly turns?: number | undefined;
-  readonly prompts?: number | undefined;
-  readonly cpu?: number | undefined;
   readonly seconds?: number | undefined;
 }
 
@@ -194,50 +199,32 @@ function over(budget: Budget, used: Used | undefined): boolean {
 }
 
 /**
- * The tasks `budget` cannot be read on: those with a valid solve whose CPU is only known from below
- * and is not yet over a CPU budget. One command cut at its limit leaves the solve's CPU a sum
- * without that command (`Used.unmeasured`). Above the budget such a solve is past it for certain;
- * below it nothing is known, and until 2026-10-09 it was counted as within. The command limit is
- * the limit solvers meet most: in the first truss campaign half the starter's solves had a command
- * at or past its default.
- */
-export function unreadAt(pairs: readonly Paired[], budget: Budget): string[] {
-  const untold = (valid: readonly boolean[], used: readonly Used[] | undefined) =>
-    valid.some((each, index) => each && (used?.[index]?.unmeasured ?? 0) > 0 && !over(budget, used?.[index]));
-  return budget.cpu === undefined
-    ? []
-    : pairs.flatMap(({ task, old, fresh, used }) =>
-        untold(old, used?.old) || untold(fresh, used?.fresh) ? [task] : [],
-      );
-}
-
-/**
  * The same pairs read at a shorter budget: a solve that used more of a unit the budget names than
  * the budget allows counts as no answer, valid or not. One set of solves so gives the comparison
  * at every shorter budget. It is an approximation: the solver was told the long limit only, and
  * one told a short one may spend its turns otherwise (`docs/plan.md`, Phase 0). A solve whose use
- * of a named unit the log does not hold at all is counted as within it. A task the budget cannot
- * be read on is left out (`unreadAt`).
+ * of a named unit the log does not hold at all is counted as within it. Every task is read at
+ * every budget: both units are measured whole for every solve.
  */
 export function within(pairs: readonly Paired[], budget: Budget): Paired[] {
-  const unread = new Set(unreadAt(pairs, budget));
   const cut = (valid: readonly boolean[], used: readonly Used[] | undefined) =>
     valid.map((each, index) => each && !over(budget, used?.[index]));
-  return pairs.flatMap((pair) =>
-    unread.has(pair.task)
-      ? []
-      : [{ ...pair, old: cut(pair.old, pair.used?.old), fresh: cut(pair.fresh, pair.used?.fresh) }],
-  );
+  return pairs.map((pair) => ({
+    ...pair,
+    old: cut(pair.old, pair.used?.old),
+    fresh: cut(pair.fresh, pair.used?.fresh),
+  }));
 }
 
 /**
- * How far the use of each unit moved between repeated solves of one harness on one task. It is what
- * decides the unit a budget is given in: a unit whose use doubles between two solves of the same
- * harness splits them at random under any budget near it (`docs/plan.md`, Phase 0). A solve that
- * used none of a unit is left out of that unit's ratio.
+ * How far the use of each measured figure moved between repeated solves of one harness on one
+ * task. It is what decides the unit a budget is given in: a unit whose use doubles between two
+ * solves of the same harness splits them at random under any budget near it (`docs/plan.md`,
+ * Phase 0). CPU is reported beside the two units, and is none. A solve that used none of a figure
+ * is left out of that figure's ratio.
  */
-export function spread(pairs: readonly Paired[]): Record<(typeof UNITS)[number], Spread | null> {
-  const of = (unit: (typeof UNITS)[number]): Spread | null => {
+export function spread(pairs: readonly Paired[]): Record<(typeof MEASURED)[number], Spread | null> {
+  const of = (unit: (typeof MEASURED)[number]): Spread | null => {
     const ratios = pairs
       .flatMap(({ used }) => [used?.old ?? [], used?.fresh ?? []])
       .flatMap((side) => {
@@ -258,7 +245,7 @@ export function spread(pairs: readonly Paired[]): Record<(typeof UNITS)[number],
           most,
         };
   };
-  return { turns: of("turns"), prompts: of("prompts"), cpu: of("cpu"), seconds: of("seconds") };
+  return { turns: of("turns"), cpu: of("cpu"), seconds: of("seconds") };
 }
 
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of

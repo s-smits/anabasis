@@ -104,7 +104,6 @@ import {
   type Sides,
   spread,
   UNITS,
-  unreadAt,
   within,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
@@ -244,14 +243,7 @@ export interface Report {
   readonly valid: Valid | null;
   /** The same test at each budget the comparison fixed, in the order it named them, with each
    *  harness by itself at that budget. */
-  readonly budgets: readonly (Budget &
-    Tested & {
-      readonly valid?: Valid;
-      /** The scored tasks this budget could not be read on and so leaves out of its test: a valid
-       *  solve of theirs had a command cut, and its CPU is unknown (`unreadAt`). Absent in a report
-       *  written before 2026-10-09, which counted such a solve as within the budget. */
-      readonly unread?: number;
-    })[];
+  readonly budgets: readonly (Budget & Tested & { readonly valid?: Valid })[];
   /** How far the use of turns, CPU seconds and seconds moved between repeated solves of one harness
    *  on one task. Null when nothing was compared. */
   readonly spread: ReturnType<typeof spread> | null;
@@ -502,6 +494,11 @@ function refuseUnreadable(terms: Terms): void {
   if (!dollars.every((amount) => Number.isFinite(amount) && amount > 0)) {
     throw new Error("a cap and its reserve are dollars, and both are more than nothing");
   }
+  // A budget that names neither unit would read what the full limit reads under another name. One
+  // named in prompts or CPU seconds, which were units until 2026-10-09, is such a budget here.
+  if ((terms.budgets ?? []).some((budget) => Object.keys(asBudget(budget)).length === 0)) {
+    throw new Error("a budget names turns or seconds, or both, each as a number");
+  }
 }
 
 /**
@@ -604,8 +601,7 @@ function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, Ruling>
     valid: validOf(pairs, fixed.solves),
     budgets: fixed.budgets.map((budget) => {
       const cut = within(pairs, budget);
-      const unread = unreadAt(pairs, budget).length;
-      return { ...budget, ...scored(cut), valid: validOf(cut, fixed.solves), unread };
+      return { ...budget, ...scored(cut), valid: validOf(cut, fixed.solves) };
     }),
     spread: spread(pairs),
     billed: { old: mean("old"), fresh: mean("fresh") },

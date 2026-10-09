@@ -13,7 +13,7 @@
  * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
  */
-import { signP, UNITS } from "#src/kernel/compare.ts";
+import { signP } from "#src/kernel/compare.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { awaitingLabel, lastReports, outcomesOf } from "#src/kernel/reports.ts";
@@ -134,6 +134,9 @@ const FEW_CALLS = 3;
  *  one harness on one task, from which a budget in that unit splits two such solves about as often
  *  as not. */
 const SPREAD_WORTH_A_LINE = 1.5;
+/** The units a budget on record may name: the two a budget is given in today, and the two that
+ *  were units until 2026-10-09 (`src/kernel/compare.ts`), which the first campaigns' reports hold. */
+const RECORDED_UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
 /** The factor between the loads two comparisons ran under from which they are read as made on
  *  different hosts, and the load under which no factor is worth a line: a load of four moves no
  *  wall on a host of four cores or more. On 2026-10-09 one harness answered the same tasks in a
@@ -534,11 +537,14 @@ function taskTriggers(log: Index): Trigger[] {
   });
   /** A budget as a report names it: its units, each with its most. */
   const budgetOf = (row: JsonObject) =>
-    UNITS.flatMap((unit) => (isNumber(row[unit]) ? [`${unit} ${String(row[unit])}`] : [])).join(", ");
+    RECORDED_UNITS.flatMap((unit) => (isNumber(row[unit]) ? [`${unit} ${String(row[unit])}`] : [])).join(
+      ", ",
+    );
   const byBudget = decided.flatMap(({ session, last, wins, losses, ties }) => {
     const read = items(last.budgets).flatMap((budget) => {
       const row = asRecord(budget) ?? {};
-      // A report says how many scored tasks a CPU budget could not be read on, and so left out.
+      // A report written before 2026-10-09 says how many scored tasks a CPU budget could not be
+      // read on, and so left out. No budget is given in CPU since, and no report holds the count.
       const unread = count(row.unread);
       return [
         `${budgetOf(row)}: ${String(count(row.wins))}-${String(count(row.losses))}-${String(count(row.ties))}${unread === 0 ? "" : `, ${String(unread)} unread`}`,

@@ -679,11 +679,13 @@ harness answered the same tasks in a median of 105 s under a load of 31 and of 4
 of 6, so a step and its repeat, or two readings at one wall, were not made under one budget. A command cut at its timeout or by an abort ends with its CPU
 time unmeasured, and the solve's `cpu.seconds` is then the sum of the others: a floor and no
 reading. `CPU UNMEASURED` counts those solves, and for each comparison the share of its solves
-among them, since its report sums what was measured and so reads a budget or a spread in `cpu`
-low on exactly the solves that ran longest. A turn is one outer prompt over an unbounded tool
-loop, so the turn cap is a runaway guard and the calls are the work: every finished solve of
-the first three rounds on 9 October was given one prompt, and a budget in `prompts` read what
-the full limit read. The decision it changes is whether a
+among them, since its report sums what was measured and so reads a spread in `cpu` low on
+exactly the solves that ran longest. For that reason no budget is given in CPU seconds since
+9 October, and a report from before may hold a count of tasks a CPU budget left `unread`. A turn
+is one outer prompt over an unbounded tool loop, so the turn cap is a runaway guard and the calls
+are the work: every finished solve of the first three rounds on 9 October was given one prompt,
+and a budget in `prompts`, which was a unit until then, read what the full limit read. A budget
+names the model's `turns` or the attempt's `seconds`. The decision it changes is whether a
 wall-bound miss is the task's or the wall's, and whether a gain shows first in time; it routes
 to `environment` for load, `harness/guide` when the guide sends the solver into work the wall
 cannot hold, and `operator` for the wall itself.

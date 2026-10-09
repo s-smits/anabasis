@@ -339,10 +339,11 @@ describe("a campaign", () => {
     // A simulation's seats are scripts, which are paid nothing, and may name none.
     expect(capNamed({ reserve: "10" }, "scripted")).toBeUndefined();
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
-    // A budget names any of the four units, and each flag is one budget to read the comparison at.
-    expect(budgetsNamed(["turns=40", "prompts=8,cpu=600", "seconds=1800"])).toEqual([
+    // A budget names either or both of its two units, and each flag is one budget to read the
+    // comparison at.
+    expect(budgetsNamed(["turns=40", "turns=20,seconds=900", "seconds=1800"])).toEqual([
       { turns: 40 },
-      { prompts: 8, cpu: 600 },
+      { turns: 20, seconds: 900 },
       { seconds: 1800 },
     ]);
     expect(budgetsNamed()).toEqual([]);
@@ -354,19 +355,23 @@ describe("a campaign", () => {
       validLines({
         valid: { old: [2, 1, 5], fresh: [0, 1, 7] },
         budgets: [
-          { prompts: 12, ...tested, valid: { old: [4, 2, 2], fresh: [1, 3, 4] } },
-          { turns: 40, cpu: 600, ...tested, valid: { old: [6, 2, 0], fresh: [3, 3, 2] } },
+          { seconds: 1800, ...tested, valid: { old: [4, 2, 2], fresh: [1, 3, 4] } },
+          { turns: 40, seconds: 600, ...tested, valid: { old: [6, 2, 0], fresh: [3, 3, 2] } },
         ],
       }),
     ).toEqual([
       "each harness by itself, as the tasks with 0, 1, 2 valid answers in 2 solves:",
       "  at its limits: reference 2/1/5, new 0/1/7",
-      "  at prompts=12: reference 4/2/2, new 1/3/4",
-      "  at turns=40,cpu=600: reference 6/2/0, new 3/3/2",
+      "  at seconds=1800: reference 4/2/2, new 1/3/4",
+      "  at turns=40,seconds=600: reference 6/2/0, new 3/3/2",
     ]);
     expect(validLines({ valid: null, budgets: [] })).toEqual([]);
-    for (const flag of ["turns", "turns=0", "tokens=5", "turns=4=5", ""]) {
-      expect(() => budgetsNamed([flag])).toThrow("a budget names turns, prompts, cpu or seconds");
+    // The prompts a solver was given and the CPU seconds of its commands were units until
+    // 2026-10-09: the first read what the full limit read, and the second left tasks unread.
+    for (const flag of ["turns", "turns=0", "tokens=5", "turns=4=5", "", "prompts=8", "turns=40,cpu=600"]) {
+      expect(() => budgetsNamed([flag])).toThrow(
+        `--budget ${flag}: a budget names turns or seconds, each with a number above nothing`,
+      );
     }
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);

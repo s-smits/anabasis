@@ -50,15 +50,17 @@ bun run runs launch <pack flags> --name <name> --session b-1 --builder <model> \
   --tasks <eight task ids> --cap 625 --budget turns=40 --budget turns=20
 ```
 
-A budget names the model's `turns`, `cpu` seconds or `seconds`. Name none in `prompts`: every
-finished solve of the first three rounds on 9 October was given one prompt, so that unit read
-what the full limit read, and `--solve-turns`, which caps prompts, bound nothing. To hold a solve
+A budget names the model's `turns` or the attempt's `seconds`, or both: the two a solver can be
+told and held to. A budget in `prompts` or `cpu` is refused. Every finished solve of the first
+three rounds on 9 October was given one prompt, so that unit read what the full limit read, and
+`--solve-turns`, which caps prompts, bound nothing. The CPU seconds of a solve's commands are
+unknown once one of them is cut, so a budget in them left tasks unread. To hold a solve
 to a number of the model's own turns, and tell the solver so, name `--solve-model-turns` once: a
 solve that uses them all without an answer ends `turns-ended`, and every tool result says which
 turn the solver is in. Without the flag the turns are not limited,
-and a budget in `turns` is read after the fact of a solver that was told only its time. A budget in
-`cpu` is read low on a solve that cut a command, whose CPU time is then unmeasured; the
-investigation's reader counts those solves (`CPU UNMEASURED`). The report holds each harness by itself at the full limit
+and a budget in `turns` is read after the fact of a solver that was told only its time. CPU is
+still measured and reported for every solve, as a figure and no unit; the investigation's reader
+counts the solves whose CPU a cut command left unmeasured (`CPU UNMEASURED`). The report holds each harness by itself at the full limit
 and at each budget, as the tasks by how many of their solves were valid, and the command prints
 it. For the first round the reference harness is the starter, so that line is what gate G0 reads:
 the plan continues at the budget where the starter is valid on about half its solves.

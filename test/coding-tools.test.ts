@@ -12,6 +12,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -307,6 +308,14 @@ describe("the coding tools on the command wall", () => {
         const full = /Full output: (\S+)\]$/.exec(cut)?.[1] ?? "";
         expect(full.startsWith(join(dirs.home, ".shell-output", "pi-bash-"))).toBe(true);
         expect(text(await bash(`wc -l < ${full}`)).trim()).toBe("3000");
+        // The host writes that file itself, so it never writes where a solver's link points: with
+        // the folder made a link to the repository, the output is handed in by a walled command,
+        // and the repository holds nothing new.
+        await bash(`rm -rf ~/.shell-output && ln -s '${repoRoot}' ~/.shell-output`);
+        await bash("seq 1 3000");
+        expect(readdirSync(repoRoot)).toEqual(["hidden.txt"]);
+        expect(readdirSync(dirs.runs)).toEqual(["long-output"]);
+        expect(readdirSync(join(dirs.runs, "long-output"))).toEqual([]);
 
         // A solver that removes its own home still has one for the next command.
         await bash("cd / && rm -rf ~");

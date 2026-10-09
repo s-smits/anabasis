@@ -32,7 +32,7 @@ import { createEditToolDefinition } from "../../vendor/pi-coding-agent/core/tool
 import { createReadToolDefinition } from "../../vendor/pi-coding-agent/core/tools/read.ts";
 import { createWriteToolDefinition } from "../../vendor/pi-coding-agent/core/tools/write.ts";
 import { detectSupportedImageMimeType } from "../../vendor/pi-coding-agent/utils/mime.ts";
-import { writeFileSync } from "../meta/filesystem.ts";
+import { existsSync, readdirSync, renameSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
@@ -57,6 +57,8 @@ const READ_MAX_BYTES = 16 * 1024 * 1024;
 const SNIFF_BYTES = 4100;
 const MISSING = 44;
 const DENIED = 45;
+/** The folder in the home a long output is handed into. */
+const LONG_OUTPUT = ".shell-output";
 
 type ShellLimits = CommandWall["limits"];
 
@@ -202,6 +204,36 @@ function timeoutClause(
 }
 
 /**
+ * Hands the long outputs pi kept under `kept` into the home, each by one walled command, and
+ * returns every file's path as pi's notice names it beside the path the solver can read it at.
+ *
+ * pi writes a long output whole to a file, from the host's own process, and names the file in its
+ * notice. Until 2026-10-09 that file was written straight into the home, under `.shell-output`. A
+ * command can make that name a link, and the host's write then followed it to wherever the link
+ * led: a file of a solver's choosing, outside every wall. So pi writes under the solve's `runs`,
+ * which is on the capped volume and which no command can write, and the file reaches the home by a
+ * command of its own, where the wall decides what a link may reach.
+ */
+async function handIn(wall: CommandWall, kept: string, signal?: AbortSignal): Promise<[string, string][]> {
+  const handed: [string, string][] = [];
+  for (const name of existsSync(kept) ? readdirSync(kept) : []) {
+    const from = join(kept, name);
+    const shown = `$HOME/${LONG_OUTPUT}`;
+    const moved = await runWalled(wall, `mkdir -p "${shown}" && mv ${shellQuote(name)} "${shown}/"`, {
+      onData: () => undefined,
+      signal,
+      stage: ({ work }) => renameSync(from, join(work, name)),
+    }).then(
+      ({ exitCode }) => exitCode === 0,
+      () => false,
+    );
+    rmSync(from, { force: true });
+    handed.push([from, moved ? join(wall.dirs.home, LONG_OUTPUT, name) : "(not kept)"]);
+  }
+  return handed;
+}
+
+/**
  * pi's `bash` on a wall, started in the wall's home. The result is pi's own; only a cut by the
  * command's limit gains a clause, and "this limit cut it" is read from the backend's `timeout:`
  * error, not from output text a command could print. An abort reaches pi as `aborted` and gains
@@ -210,10 +242,9 @@ function timeoutClause(
 export function bashTool(wall: CommandWall): SolverTool {
   const { limits } = wall;
   const { home } = wall.dirs;
-  // Session variables are off because the wall's environment replaces pi's. A cut command's full
-  // output, which pi's notice names, stays inside this wall's home: the OS temp directory is every
-  // wall's, and another solve's could be read there.
-  const options = { exposeSessionEnvironment: false, tempDir: join(home, ".shell-output") };
+  const kept = join(wall.dirs.runs, "long-output");
+  // Session variables are off because the wall's environment replaces pi's.
+  const options = { exposeSessionEnvironment: false, tempDir: kept };
   const pi = createBashToolDefinition(home, options);
   return {
     ...pi,
@@ -247,11 +278,19 @@ export function bashTool(wall: CommandWall): SolverTool {
             ),
         },
       });
+      /** pi's text with each long output's file named where the solver can read it. */
+      const inHome = async (text: string) =>
+        (await handIn(wall, kept, signal)).reduce((said, [from, to]) => said.replaceAll(from, to), text);
       try {
-        return await shell.execute(callId, { command, timeout: seconds }, signal, onUpdate, ctx);
+        const result = await shell.execute(callId, { command, timeout: seconds }, signal, onUpdate, ctx);
+        // pi's result is one text, which names the file where its output was long.
+        const [first, ...rest] = result.content;
+        return first?.type === "text"
+          ? { ...result, content: [{ ...first, text: await inHome(first.text) }, ...rest] }
+          : result;
       } catch (error) {
-        if (!cut) throw error;
-        throw new Error(asError(error).message + timeoutClause(asked, seconds, limits), { cause: error });
+        const said = await inHome(asError(error).message);
+        throw new Error(cut ? said + timeoutClause(asked, seconds, limits) : said, { cause: error });
       }
     },
   };

@@ -55,7 +55,8 @@ import type { JsonValue } from "#src/meta/json-shape.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { awaitingLines, openCampaign } from "./campaign.ts";
-import { type Campaign, ROUND_OPTIONS, scoredNamed, targetNamed } from "./round.ts";
+import { type Campaign, ROUND_OPTIONS, scoredNamed } from "./round.ts";
+import { recordedSetting, targetNamed } from "./setting.ts";
 
 const { values } = parseArgs({
   options: {
@@ -145,7 +146,8 @@ async function main(): Promise<void> {
     ...(values.keep ?? []).map((taskId) => ({ taskId, state: "held" })),
     ...(values.infeasible ?? []).map((taskId) => ({ taskId, state: "refused" })),
   ];
-  const target = targetNamed(values.target);
+  // The size it speaks of is the campaign's recorded one, where the command names none.
+  const target = targetNamed(values.target ?? String(recordedSetting(read(campaign.log))?.target ?? 12));
   const practice = Number(values.practice);
   if (!Number.isInteger(practice) || practice < 0) {
     throw new Error(`--practice ${values.practice}: the practice tasks are a whole number`);

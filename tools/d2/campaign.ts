@@ -134,6 +134,10 @@ const REPO = resolve(import.meta.dir, "..", "..");
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
 
+/** Where campaign `name` keeps its log: what a command reads before it opens the campaign, for the
+ *  setting the campaign recorded (`setting.ts`). */
+export const campaignLog = (name: string): string => join(REPO, ".ana", "d2", name, "log.jsonl");
+
 export async function openCampaign(args: CampaignArgs) {
   const dir = join(REPO, ".ana", "d2", args.name);
   mkdirSync(dir, { recursive: true });

@@ -50,11 +50,13 @@
  * (`src/kernel/compare.ts`). A budget in `prompts` has read nothing so far: every solve of the
  * first three rounds was given one prompt (2026-10-09), so name one in `turns`, `cpu` or `seconds`.
  *
- * Every solve is the cycle's own model at its effort, unless `--solver` and `--solver-effort` name
- * another to solve in its place. Every solve is held to the sweep's wall and turns, unless
- * `--solve-minutes` and `--solve-turns` name others. The four are the campaign's, and every
- * command that solves takes them from one owner (`setting.ts`). `--minutes` and `--turns` are the
- * Builder session's own.
+ * Who solves, what a solve is held to and which tasks are scored are the campaign's setting, which
+ * its log records once (`setting.ts`). A round that names none of it runs under the record, and
+ * one whose `--solver`, `--solve-minutes`, `--solve-turns`, `--solve-model-turns`, `--tasks` or
+ * `--target` name another is refused, unless `--new-setting` says the campaign's setting changes
+ * here. The first comparison of a campaign records what it names, with the stored cycle's own
+ * solver and the sweep's limits for the rest. `--minutes` and `--turns` are the Builder session's
+ * own.
  *
  * Before its first event a round asks whether its comparison may start, as a launch of it does
  * (`src/builder/admission.ts`): on a checker nobody has read, with too few tasks left to untie, or
@@ -83,8 +85,24 @@ import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
-import { awaitingLines, starter, type Kept, keptAs, openCampaign, stayAwake } from "./campaign.ts";
-import { commandSeconds, type NamedSetting, restarts, SETTING_OPTIONS, settingNamed } from "./setting.ts";
+import {
+  awaitingLines,
+  campaignLog,
+  starter,
+  type Kept,
+  keptAs,
+  openCampaign,
+  stayAwake,
+} from "./campaign.ts";
+import {
+  type AskedSetting,
+  commandSeconds,
+  keepSetting,
+  recordedSetting,
+  restarts,
+  SETTING_OPTIONS,
+  settingAsked,
+} from "./setting.ts";
 
 export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 
@@ -120,7 +138,7 @@ export const COMPARISON_OPTIONS = {
   tasks: { type: "string" },
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
-  target: { type: "string", default: "12" },
+  target: { type: "string" },
   solves: { type: "string", default: "2" },
   level: { type: "string", default: "0.1" },
   defects: { type: "string", default: "3" },
@@ -150,16 +168,6 @@ export const ROUND_OPTIONS = {
   parent: { type: "string", default: "latest" },
 } as const;
 
-/** The scored tasks `--target` asks for: a whole number of at least one. Anything else would draw
- *  a set nobody asked for: no number draws none, and a negative one all but the last. */
-export function targetNamed(flag: string): number {
-  const target = Number(flag);
-  if (!Number.isInteger(target) || target < 1) {
-    throw new Error(`--target ${flag}: the tasks to score are a whole number of at least one`);
-  }
-  return target;
-}
-
 /**
  * The scored set a command's flags name, by task version: the tasks `--tasks` lists by id, each a
  * task of the pack or of a session, or `--target` of the held-out tasks by the contract's draw
@@ -183,22 +191,21 @@ export function scoredNamed(campaign: Campaign, tasks: string | undefined, targe
 export function wantedNamed(
   campaign: Campaign,
   values: {
-    readonly tasks?: string | undefined;
-    readonly target: string;
     readonly solves: string;
     readonly level: string;
     readonly "past-stop"?: string | undefined;
   },
-  given: { readonly setting: NamedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
+  given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
 ): Wanted {
+  const { named, tasks, target } = given.setting;
   return {
     // A comparison that names its tasks scores those, however many the log holds beside them.
-    target: values.tasks === undefined ? targetNamed(values.target) : values.tasks.split(",").length,
+    target: tasks === undefined ? target : tasks.split(",").length,
     solves: Number(values.solves),
     level: Number(values.level),
     builds: given.builds,
     cap: given.cap ?? null,
-    restarted: restarts(given.setting, solverLast(read(campaign.log))),
+    restarted: restarts(named, solverLast(read(campaign.log))),
     pastStop: predictionNamed(values["past-stop"]),
   };
 }
@@ -307,10 +314,11 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   // Read before the campaign is opened: a paid round with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
   const budgets = budgetsNamed(values.budget);
-  const target = targetNamed(values.target);
-  const setting = settingNamed(values);
-  const { limits } = setting;
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting });
+  // The campaign's setting is its log's: what the flags name is held to the record before the
+  // campaign is opened under it (`setting.ts`).
+  const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
+  const { limits } = setting.named;
+  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting.named });
   const sets = taskSets(read(campaign.log));
   const packages = campaign.packages();
   const packageOf = (version: string): TaskPackage => {
@@ -341,6 +349,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   for (const note of notes) console.log(`· ${note}`);
   const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
   if (seats.builder === null) throw new Error("name --builder");
+  keepSetting(campaign.log, setting);
   stayAwake();
   const report = await round({
     session: {
@@ -375,7 +384,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     },
     reference,
     starter: await starter(campaign),
-    tasks: scoredNamed(campaign, values.tasks, target),
+    tasks: scoredNamed(campaign, setting.tasks, setting.target),
     solves: Number(values.solves),
     level: Number(values.level),
     defects: Number(values.defects),

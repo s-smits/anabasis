@@ -343,11 +343,15 @@ its first event, so a command started by hand is refused where a launch of it wo
 a host or an id can refuse stays with the launcher. A rehearsal is exempt by name: its seats are
 scripts, which are paid nothing.
 
-The setting of a campaign's solves is five flags, named the same on every command that solves: a
-round, a checkpoint, a rehearsal and the launcher (`tools/d2/setting.ts`). They are `--solver`,
-`--solver-effort`, `--solve-minutes`, `--solve-turns` and `--solve-model-turns`. A solver that is
-another model, at another effort or under other limits is another solver, and no solve on record
-then counts.
+The setting of a campaign is recorded once in its log, as the event `campaign.setting`
+(`tools/d2/setting.ts`): who solves and under which limits, which five flags name (`--solver`,
+`--solver-effort`, `--solve-minutes`, `--solve-turns`, `--solve-model-turns`), and which tasks
+are scored (`--tasks` or `--target`). The first command that begins a comparison records what it
+names, with the defaults for the rest. From then on a command that names nothing runs under the
+record, and one whose flag names another is refused, by the command and by the launcher, unless
+`--new-setting` gives the operator's word that the campaign's setting changes there. A solver that
+is another model, at another effort or under other limits is another solver, and no solve on
+record then counts.
 
 Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.10
 (`--level`), a stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve
@@ -1154,7 +1158,7 @@ the operator.
 | Round | One Builder session followed by one comparison |
 | Checkpoint | One comparison of two kept harnesses, with no session |
 | Step | A comparison in which the new harness wins significantly more tasks than it loses |
-| Setting | Who solves and under which limits: the five flags of section 6 |
+| Setting | Who solves, under which limits, and which tasks are scored: recorded once in the log (section 6) |
 | Condition | Everything that could change a solve's result, as one record with an id |
 | Session | One bounded stretch of an agent's work: a Builder's ends with a frozen harness version |
 | Trace | The record of one solve: every model turn and every tool call with its result |

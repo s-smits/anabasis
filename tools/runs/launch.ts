@@ -29,11 +29,11 @@
  * Its notes then say what a comparison of this size can show before it is paid for (`sizeLines`,
  * `src/kernel/size.ts`): the smallest results that clear its level, and the plan's power at it.
  * They say when the cap holds a reserve for fewer solves than the comparison's test makes.
- * They also say when the `--solve-minutes` and `--solve-turns` it was given are not the limits the
- * log's last test-side solves ran under, or the `--solver` and `--solver-effort` it names are not
- * who made them, since no solve on record is then counted (`tools/d2/setting.ts`). A launch that
- * names no `--solver` solves as the stored cycle's own, which it does not open, and says nothing
- * of the solver.
+ * The setting it would run under is the campaign's recorded one (`tools/d2/setting.ts`): a flag
+ * that names another is refused here as the command would refuse it, unless `--new-setting` is
+ * passed. The notes say when that setting is not the one the log's last test-side solves ran
+ * under, since no tally on record then speaks for it. A launch that names no `--solver` solves as
+ * the stored cycle's own, which it does not open, and says nothing of the solver.
  *
  * An Examiner session solves nothing, so it meets the host's refusals and its id's, and needs the
  * campaign's log and no set in it.
@@ -71,8 +71,14 @@ import { sessionDirs } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
-import { ROUND_OPTIONS, targetNamed } from "../d2/round.ts";
-import { type NamedSetting, restarts, SETTING_OPTIONS, settingNamed } from "../d2/setting.ts";
+import { ROUND_OPTIONS } from "../d2/round.ts";
+import {
+  type NamedSetting,
+  recordedSetting,
+  restarts,
+  SETTING_OPTIONS,
+  settingAsked,
+} from "../d2/setting.ts";
 import {
   CHECKPOINT,
   EXAMINE,
@@ -85,6 +91,9 @@ import {
   writers,
 } from "./pulse.ts";
 import { seedCut } from "./seed.ts";
+
+/** A flag's value as `parseArgs` gives it for a command line it does not hold to its options. */
+type Loose = string | boolean | (string | boolean)[] | undefined;
 
 const START_MS = 8000;
 /** The launcher's own flags; every other one is the round's. */
@@ -237,6 +246,31 @@ export function passedOn(
   return args.filter((_, index) => !dropped.has(index));
 }
 
+/**
+ * The command's own reading of its setting against the campaign's record (`tools/d2/setting.ts`),
+ * from flags this launcher parsed loosely: a wall the command would refuse, or a flag that names
+ * another setting than the campaign's, is refused here, before anything starts. An Examiner
+ * session solves and scores nothing, and none of its flags is a setting's: its `--tasks` is how
+ * many tasks it may write.
+ */
+export function settingFlagged(values: Readonly<Record<string, Loose>>, events: readonly LogEvent[]) {
+  const text = (flag: Loose) => (isString(flag) ? flag : undefined);
+  if (isString(values.examiner)) return settingAsked({}, null);
+  return settingAsked(
+    {
+      solver: text(values.solver),
+      "solver-effort": text(values["solver-effort"]),
+      "solve-minutes": text(values["solve-minutes"]),
+      "solve-turns": text(values["solve-turns"]),
+      "solve-model-turns": text(values["solve-model-turns"]),
+      tasks: text(values.tasks),
+      target: text(values.target),
+      "new-setting": values["new-setting"] === true,
+    },
+    recordedSetting(events),
+  );
+}
+
 /** `bun run runs launch`. */
 export async function launch(args: readonly string[]): Promise<void> {
   const { values, tokens } = parseArgs({
@@ -280,6 +314,7 @@ export async function launch(args: readonly string[]): Promise<void> {
   const load = loadavg()[0] ?? 0;
   const cores = availableParallelism();
   const events = run === undefined ? null : logEvents(run.path);
+  const setting = settingFlagged(values, events ?? []);
   const host: Host = {
     loaded: values.loaded === true,
     load,
@@ -288,22 +323,15 @@ export async function launch(args: readonly string[]): Promise<void> {
     missing: isString(envFile) && !existsSync(envFile) ? envFile : null,
     // A checkpoint runs no session, so no id of one can be spent on it.
     spent: checking ? null : (examining ? claimed : spent)(events ?? [], session),
-    // The command's own reading of its four flags, so a wall it would refuse is refused here.
-    named: settingNamed({
-      solver: isString(values.solver) ? values.solver : undefined,
-      "solver-effort": String(values["solver-effort"]),
-      "solve-minutes": String(values["solve-minutes"]),
-      "solve-turns": String(values["solve-turns"]),
-      "solve-model-turns": isString(values["solve-model-turns"]) ? values["solve-model-turns"] : undefined,
-    }),
+    named: setting.named,
     ran: solverLast(events ?? []),
   };
   const { refusals, notes } = examining
     ? examPreflight(events, host)
     : preflight(supplyOf(events ?? [], String(values.reference)), {
         ...host,
-        // A checkpoint that names its tasks scores those, however many the log holds beside them.
-        target: isString(values.tasks) ? values.tasks.split(",").length : targetNamed(String(values.target)),
+        // A comparison that names its tasks scores those, however many the log holds beside them.
+        target: setting.tasks === undefined ? setting.target : setting.tasks.split(",").length,
         solves: Number(values.solves),
         level: Number(values.level),
         builds: !checking,

@@ -221,7 +221,7 @@ The building session's. Code only, and no model.
 
 | Row | What is wrong | Fix | Done when | Level |
 | --- | --- | --- | --- | --- |
-| F7 | The setting and the scored set are typed again on every command, and a mismatch is only a note | Record them once in the log. A command reads them, and a differing flag refuses (`tools/d2/setting.ts`) | A command without flags runs under the recorded setting, and a differing one refuses | Planned |
+| F7 | The setting and the scored set are typed again on every command, and a mismatch is only a note | Record them once in the log. A command reads them, and a differing flag refuses (`tools/d2/setting.ts`) | A command without flags runs under the recorded setting, and a differing one refuses | Tested |
 | F8 | A promotion writes no event, so a later command without `--reference` is read against the starter | A promotion is an event that the operator confirms, and a comparison reads its reference from it | After a promotion, a comparison without the flag is read against the promoted harness | Planned |
 | F9 | Whether a comparison may start is decided in two places, and a command started directly skips the launcher's refusals | One function decides it and both call it. A rehearsal's exemption is named (`tools/runs/launch.ts`, `src/builder/round.ts`) | `tools/d2/round.ts` started directly on an unread checker refuses | Tested |
 | F10 | The stop rule is printed, and nothing acts on it | A launch after three checkpoints without a step is refused unless the operator overrides it | The fourth launch refuses, and an override is logged | Tested |

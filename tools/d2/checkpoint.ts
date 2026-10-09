@@ -28,10 +28,11 @@
  * the starter and two under the latest harness. The A/A comparison should read no step, and its
  * tie share is the noise every later comparison has to exceed.
  *
- * `--tasks` names the scored tasks by id, where the operator chooses them. Without it the scored
- * set is `--target` of the held-out tasks by the contract's draw. The solves a side, the level,
- * the Referee, the budgets, the cap and the solver's four flags are a round's, with a round's
- * defaults (`round.ts`), and `--cap` is required as it is there. With no `--reviewer`, every
+ * The scored set and the solver's setting are the campaign's, read from its log as a round reads
+ * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
+ * campaign has recorded none or `--new-setting` changes it. The solves a side, the level, the
+ * Referee, the budgets and the cap are a round's, with a round's defaults (`round.ts`), and
+ * `--cap` is required as it is there. With no `--reviewer`, every
  * rejection waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
  * Before its first event it asks whether the comparison may start, as a round does and as a
@@ -51,7 +52,7 @@ import { stopRule } from "#src/kernel/reports.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
-import { awaitingLines, starter, keptAs, openCampaign, stayAwake } from "./campaign.ts";
+import { awaitingLines, campaignLog, starter, keptAs, openCampaign, stayAwake } from "./campaign.ts";
 import {
   budgetsNamed,
   predictionLines,
@@ -62,11 +63,10 @@ import {
   scoredNamed,
   type Seated,
   solved,
-  targetNamed,
   validLines,
   wantedNamed,
 } from "./round.ts";
-import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
+import { keepSetting, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
 
 const OPTIONS = {
   root: ROUND_OPTIONS.root,
@@ -99,9 +99,9 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   // Read before the campaign is opened: a paid comparison with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
   const budgets = budgetsNamed(values.budget);
-  const target = targetNamed(values.target);
-  const setting = settingNamed(values);
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting });
+  // The campaign's setting is its log's, as a round reads it (`setting.ts`).
+  const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
+  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting.named });
   const packages = campaign.packages();
   const packageOf = (version: string): TaskPackage => {
     const task = packages.get(version);
@@ -134,6 +134,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
           campaign.reader(modelNamed(reviewer), values["reviewer-effort"] as ThinkingLevel),
         );
   const seats = seated(campaign, { builder: undefined, reference: old.dir });
+  keepSetting(campaign.log, setting);
   stayAwake();
   const report = await checkpoint({
     log: campaign.log,
@@ -141,7 +142,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     old,
     fresh,
     starter: await starter(campaign),
-    tasks: scoredNamed(campaign, values.tasks, target),
+    tasks: scoredNamed(campaign, setting.tasks, setting.target),
     solves: Number(values.solves),
     level: Number(values.level),
     defects: Number(values.defects),
@@ -149,7 +150,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     budgets,
     cap,
     prediction: predictionNamed(values.predict),
-    concurrency: setting.limits.concurrency,
+    concurrency: setting.named.limits.concurrency,
     solve: (version, harness, comparison, kill) => seats.solve(packageOf(version), harness, kill, comparison),
     setting: seats.setting,
     referee:

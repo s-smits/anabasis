@@ -23,7 +23,7 @@ import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { openHarness } from "../src/solve/harness.ts";
 import { starter, keptAs, LIMITS, openCampaign } from "../tools/d2/campaign.ts";
-import { SETTING_OPTIONS, settingNamed } from "../tools/d2/setting.ts";
+import { settingNamed } from "../tools/d2/setting.ts";
 import { budgetsNamed, capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -321,100 +321,6 @@ describe("a campaign", () => {
     expect(read(campaign.log).filter(({ kind }) => kind === "build.started")).toEqual([]);
   });
 
-  it("holds every solve to the limits a command names, through one owner, and to the sweep's when it names none", async () => {
-    const plain = await openCampaign(ARGS);
-    expect(plain.limits).toEqual(LIMITS);
-    // The two flags' defaults are the sweep's limits, so a command that names neither runs under
-    // the setting every campaign ran under before the flags existed.
-    const defaults = {
-      "solver-effort": SETTING_OPTIONS["solver-effort"].default,
-      "solve-minutes": SETTING_OPTIONS["solve-minutes"].default,
-      "solve-turns": SETTING_OPTIONS["solve-turns"].default,
-    };
-    // With no --solver the effort flag names nothing: the stored cycle's model solves at its effort.
-    expect(settingNamed(defaults)).toEqual({ solver: undefined, limits: LIMITS });
-    const unnamed = await openCampaign({ ...ARGS, ...settingNamed(defaults) });
-    expect(unnamed.setting(unnamed.test)).toBe(plain.setting(plain.test));
-    // A longer wall or more turns is another setting.
-    const named = settingNamed({ ...defaults, "solve-minutes": "240", "solve-turns": "48" }).limits;
-    expect(named).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
-    // The model's own turns are limited only where a command names a number: without the flag the
-    // limits hold no such key, and the setting is the one it was before the flag existed.
-    expect(named).not.toHaveProperty("modelTurns");
-    const counted = settingNamed({ ...defaults, "solve-model-turns": "40" });
-    expect(counted.limits).toEqual({ ...LIMITS, modelTurns: 40 });
-    const turned = await openCampaign({ ...ARGS, ...counted });
-    expect(turned.setting(turned.test)).not.toBe(plain.setting(plain.test));
-    for (const turns of ["0", "2.5", "many"]) {
-      expect(() => settingNamed({ ...defaults, "solve-model-turns": turns })).toThrow(
-        "a solve's model turns are a whole number of at least one",
-      );
-    }
-    // A command's two limits are the sweep's where the wall leaves room, and a share of the wall
-    // where it does not: under five minutes a command the sweep allowed 300 s would never return.
-    const walled = (minutes: string) => {
-      const { shellDefaultSeconds, shellMaxSeconds } = settingNamed({
-        ...defaults,
-        "solve-minutes": minutes,
-      }).limits;
-      return [shellDefaultSeconds, shellMaxSeconds];
-    };
-    expect(walled("120")).toEqual([300, 900]);
-    expect(walled("30")).toEqual([300, 900]);
-    expect(walled("20")).toEqual([300, 600]);
-    expect(walled("5")).toEqual([75, 150]);
-    expect(walled("1")).toEqual([15, 30]);
-    const longer = await openCampaign({ ...ARGS, limits: named });
-    expect(longer.limits).toEqual(named);
-    // Another solver is another setting too, and every command that names it stands where a round
-    // that named it stood.
-    const other = settingNamed({
-      ...defaults,
-      solver: "anthropic/claude-sonnet-5-5",
-      "solver-effort": "low",
-    });
-    expect(other.solver).toEqual({ model: "anthropic/claude-sonnet-5-5", effort: "low" });
-    expect(longer.setting(longer.test)).not.toBe(plain.setting(plain.test));
-    for (const [minutes, turns] of [
-      ["0", "24"],
-      ["1.5", "24"],
-      ["120", "0"],
-      ["two hours", "24"],
-    ] as const) {
-      expect(() => settingNamed({ ...defaults, "solve-minutes": minutes, "solve-turns": turns })).toThrow(
-        "a solve's wall and its turns are whole numbers of at least one",
-      );
-    }
-
-    // A round takes the owner's four flags as they are, and a rehearsal is a round with other seats.
-    for (const flag of [
-      "solver",
-      "solver-effort",
-      "solve-minutes",
-      "solve-turns",
-      "solve-model-turns",
-    ] as const) {
-      expect(ROUND_OPTIONS[flag]).toBe(SETTING_OPTIONS[flag]);
-    }
-    // Every command reads them through the owner: a wall it refuses is refused by each of them
-    // before a campaign is opened or a model is asked for.
-    const refused = "--solve-minutes 0 --solve-turns 24: a solve's wall and its turns are whole numbers";
-    const flags = [
-      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
-      "--solve-minutes",
-      "0",
-    ];
-    const session = ["--session", "z-9"];
-    const capped = ["--cap", "100"];
-    await expect(roundCommand([...flags, ...session, ...capped])).rejects.toThrow(refused);
-    for (const command of [["tools/d2/checkpoint.ts", "--id", "z-9", ...capped]]) {
-      const ran = Bun.spawnSync({ cmd: [capturedExecPath, ...command, ...flags], cwd: REPO });
-      expect(ran.exitCode).not.toBe(0);
-      expect(ran.stderr.toString()).toContain(refused);
-    }
-    expect(read(plain.log).some(({ data }) => data.session === "z-9")).toBe(false);
-  });
-
   it("starts no paid comparison without a dollar cap, and reads its budgets before anything starts", async () => {
     const flags = Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]);
     await expect(roundCommand([...flags, "--session", "z-8", "--builder", "faux/none"])).rejects.toThrow(
@@ -523,5 +429,74 @@ describe("a campaign", () => {
       );
     }
     expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
+  });
+
+  it("opens under the limits and the solver a setting names, each another setting of its own", async () => {
+    const plain = await openCampaign(ARGS);
+    expect(plain.limits).toEqual(LIMITS);
+    // A command that names nothing runs under the setting every campaign ran under before the flags existed.
+    const unnamed = await openCampaign({ ...ARGS, ...settingNamed({}) });
+    expect(unnamed.setting(unnamed.test)).toBe(plain.setting(plain.test));
+    const longer = await openCampaign({
+      ...ARGS,
+      ...settingNamed({ "solve-minutes": "240", "solve-turns": "48" }),
+    });
+    expect(longer.limits).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
+    expect(longer.setting(longer.test)).not.toBe(plain.setting(plain.test));
+    const turned = await openCampaign({ ...ARGS, ...settingNamed({ "solve-model-turns": "40" }) });
+    expect(turned.setting(turned.test)).not.toBe(plain.setting(plain.test));
+  });
+
+  it("runs every command under the campaign's recorded setting, and refuses one that names another", async () => {
+    const campaign = await openCampaign(ARGS);
+    const flags = [
+      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
+      "--cap",
+      "100",
+      "--parent",
+      "starter",
+      "--session",
+      "z-4",
+    ];
+    // A wall the owner refuses is refused by each command before a campaign is opened.
+    const refused = "--solve-minutes 0 --solve-turns 24: a solve's wall and its turns are whole numbers";
+    await expect(roundCommand([...flags, "--solve-minutes", "0"])).rejects.toThrow(refused);
+    const checkpoint = (...more: string[]) =>
+      Bun.spawnSync({
+        cmd: [capturedExecPath, "tools/d2/checkpoint.ts", "--id", "z-4", ...flags.slice(0, -4), ...more],
+        cwd: REPO,
+      });
+    expect(checkpoint("--solve-minutes", "0").stderr.toString()).toContain(refused);
+    // The setting an earlier command recorded: an eight-minute wall and forty model turns.
+    append(campaign.log, "campaign.setting", {
+      solver: null,
+      minutes: 8,
+      turns: 24,
+      modelTurns: 40,
+      tasks: null,
+      target: 12,
+    });
+    // A rehearsal's seats see the campaign the command opened: with no flag, it is the recorded one.
+    const seen: number[] = [];
+    const seats = (opened: Awaited<ReturnType<typeof openCampaign>>) => {
+      seen.push(opened.limits.wallSeconds, opened.limits.modelTurns ?? 0);
+      return { builder: null, setting: "s", solve: () => Promise.reject(new Error("no solve is asked for")) };
+    };
+    await expect(roundCommand(flags, seats)).rejects.toThrow("name --builder");
+    expect(seen).toEqual([480, 40]);
+    // A flag that names another is refused by every command, before anything is opened or logged.
+    const other =
+      "--solve-minutes 5 names another setting than the campaign's, which was recorded as --solve-minutes 8";
+    await expect(roundCommand([...flags, "--solve-minutes", "5"], seats)).rejects.toThrow(other);
+    expect(checkpoint("--solve-minutes", "5").stderr.toString()).toContain(other);
+    // On the operator's word it is the campaign's from here on, once the command begins.
+    await expect(roundCommand([...flags, "--solve-minutes", "5", "--new-setting"], seats)).rejects.toThrow(
+      "name --builder",
+    );
+    expect(seen).toEqual([480, 40, 300, 0]);
+    // Nothing began, so nothing was recorded: the campaign's setting is still the eight minutes.
+    const kept = read(campaign.log).filter(({ kind }) => kind === "campaign.setting");
+    expect(kept.map(({ data }) => data.minutes)).toEqual([8]);
+    expect(read(campaign.log).some(({ data }) => data.session === "z-4")).toBe(false);
   });
 });

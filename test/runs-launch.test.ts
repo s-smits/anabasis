@@ -21,6 +21,7 @@ import {
   leftOpen,
   preflight,
   reportedAs,
+  settingFlagged,
   start,
 } from "../tools/runs/launch.ts";
 import { LIMITS } from "../tools/d2/campaign.ts";
@@ -113,40 +114,7 @@ describe("a launch's preflight", () => {
   });
 });
 
-describe("a launch under limits the log's last solves did not run under", () => {
-  const longer = { ...LIMITS, wallSeconds: 4 * 3600 };
-  const under = (limits: typeof LIMITS) => ({ solver: undefined, limits });
-  const ran = { model: "p/m", effort: "high", limits: LIMITS };
-
-  it("says that what the log measured so far was another setting's, for a round and a checkpoint", () => {
-    const told = "are another setting's";
-    // No solve on record, or the same limits: nothing moved, and nothing is said.
-    expect(preflight(SETS, ASKED).notes.join("\n")).not.toContain(told);
-    expect(preflight(SETS, { ...ASKED, ran }).notes.join("\n")).not.toContain(told);
-    expect(preflight(SETS, { ...ASKED, named: under(longer), ran }).notes.at(-1)).toBe(
-      "a solve here is held to 240 minutes and 24 turns, and the log's last test-side solves ran under 120 minutes and 24 turns: the tallies, the tie share and the cost of a solve on record are another setting's, and say little of this comparison (tools/d2/setting.ts)",
-    );
-    // An Examiner session solves nothing, so nothing of the kind is said of it.
-    expect(examPreflight([], { ...ASKED, named: under(longer), ran }).notes.join("\n")).not.toContain(told);
-    // More turns are other limits too.
-    expect(preflight(SETS, { ...ASKED, named: under({ ...LIMITS, turns: 48 }), ran }).notes.at(-1)).toContain(
-      "held to 120 minutes and 48 turns",
-    );
-    // Another solver than the log's last is said the same way, and the same one is not.
-    const other = { solver: { model: "p/other", effort: "high" as const }, limits: LIMITS };
-    expect(preflight(SETS, { ...ASKED, named: other, ran }).notes.at(-1)).toContain(
-      "solves here are p/other at high, and the log's last test-side solves were p/m at high: the tallies",
-    );
-    const same = { solver: { model: "p/m", effort: "high" as const }, limits: LIMITS };
-    expect(preflight(SETS, { ...ASKED, named: same, ran }).notes.join("\n")).not.toContain(told);
-  });
-
-  it("counts every task where the share on record is another setting's", () => {
-    const tied = { ...SETS, held: 12, untied: 0.25 };
-    expect(preflight(tied, { ...ASKED, ran }).refusals).toHaveLength(1);
-    expect(preflight(tied, { ...ASKED, named: under({ ...LIMITS, turns: 48 }), ran }).refusals).toEqual([]);
-  });
-
+describe("a launch's reading of the setting", () => {
   it("refuses a wall the command itself would refuse, before anything starts", async () => {
     const flags = ["--name", "no-such-campaign", "--session", "b-1"];
     await expect(launch([...flags, "--solve-minutes", "0"])).rejects.toThrow(
@@ -155,6 +123,35 @@ describe("a launch under limits the log's last solves did not run under", () => 
     await expect(
       launch(["--name", "no-such-campaign", "--id", "g2", "--solve-turns", "2.5"]),
     ).rejects.toThrow("--solve-minutes 120 --solve-turns 2.5");
+  });
+
+  it("holds a comparison's flags to the campaign's record, and none of an Examiner session's", () => {
+    const at = "2026-10-09T00:00:00.000Z";
+    const record = { solver: null, minutes: 8, turns: 24, modelTurns: null, tasks: null, target: 12 };
+    const log: LogEvent[] = [{ at, kind: "campaign.setting", data: record }];
+    expect(settingFlagged({}, log).named.limits.wallSeconds).toBe(480);
+    expect(() => settingFlagged({ "solve-minutes": "5" }, log)).toThrow(
+      "--solve-minutes 5 names another setting than the campaign's",
+    );
+    expect(settingFlagged({ "solve-minutes": "5", "new-setting": true }, log).record).toMatchObject({
+      minutes: 5,
+    });
+    // An Examiner's --tasks is how many tasks it may write, and no scored set: nothing is refused.
+    expect(settingFlagged({ examiner: "claude/claude-opus-5-5", tasks: "6" }, log).tasks).toBeUndefined();
+  });
+
+  it("says in a note when that setting is not the one the log's last solves ran under", () => {
+    const ran = { model: "p/m", effort: "high", limits: LIMITS };
+    const longer = { solver: undefined, limits: { ...LIMITS, wallSeconds: 4 * 3600 } };
+    const told = "are another setting's";
+    expect(preflight(SETS, { ...ASKED, ran }).notes.join("\n")).not.toContain(told);
+    expect(preflight(SETS, { ...ASKED, named: longer, ran }).notes.at(-1)).toContain(told);
+    // The share on record is then another setting's, and every task is counted whole.
+    const tied = { ...SETS, held: 12, untied: 0.25 };
+    expect(preflight(tied, { ...ASKED, ran }).refusals).toHaveLength(1);
+    expect(preflight(tied, { ...ASKED, named: longer, ran }).refusals).toEqual([]);
+    // An Examiner session solves nothing, so nothing of the kind is said of it.
+    expect(examPreflight([], { ...ASKED, named: longer, ran }).notes.join("\n")).not.toContain(told);
   });
 });
 

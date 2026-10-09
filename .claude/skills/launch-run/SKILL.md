@@ -33,9 +33,9 @@ bun run runs launch <pack flags> --name <name> --session b-1 --builder <model> \
 A budget names the model's `turns`, `cpu` seconds or `seconds`. Name none in `prompts`: every
 finished solve of the first three rounds on 9 October was given one prompt, so that unit read
 what the full limit read, and `--solve-turns`, which caps prompts, bound nothing. To hold a solve
-to a number of the model's own turns, and tell the solver so, name `--solve-model-turns` on every
-command of the campaign: a solve that uses them all without an answer ends `turns-ended`, and
-every tool result says which turn the solver is in. Without the flag the turns are not limited,
+to a number of the model's own turns, and tell the solver so, name `--solve-model-turns` once: a
+solve that uses them all without an answer ends `turns-ended`, and every tool result says which
+turn the solver is in. Without the flag the turns are not limited,
 and a budget in `turns` is read after the fact of a solver that was told only its time. A budget in
 `cpu` is read low on a solve that cut a command, whose CPU time is then unmeasured; the
 investigation's reader counts those solves (`CPU UNMEASURED`). The report holds each harness by itself at the full limit
@@ -125,6 +125,18 @@ plan's worked case with its ties counted, and the best case were no task to tie.
 when held-out tasks wait for a person's label and are not scored (`prepare.ts --keep`,
 `--infeasible`), and when the solver or the limits named are not the ones the log's last solves
 ran under, since what the earlier comparisons measured was then another setting's.
+
+## The campaign's setting
+
+Who solves, what a solve is held to and which tasks are scored are the campaign's, and its log
+records them once (`tools/d2/setting.ts`): `--solver`, `--solver-effort`, `--solve-minutes`,
+`--solve-turns`, `--solve-model-turns`, and `--tasks` or `--target`. The first comparison of a
+campaign records what it names, with the stored cycle's own solver, the sweep's limits and twelve
+tasks by the draw for the rest. After that, name none of them: a command runs under the record.
+One that names another is refused, by the launcher and by the command, and says both. To change
+the setting, as when the budget is set anew, pass `--new-setting` with what the campaign runs
+under from then on. Nothing is carried over from the old record, and no tally on record speaks
+for the new one.
 
 A comparison that can start may still be read only after a person has labelled its rejections.
 With no `--reviewer`, every rejected answer sets its task aside until `tools/d2/settle.ts` has

@@ -126,6 +126,9 @@ export interface BuildRequest {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: BuildLimits;
+  /** What a practice solve is held to, which `preview_harness` shows a solver being told. The
+   *  session's own wall, turns and command limits are `limits`. */
+  readonly solve: Limits;
   /** The backends, built on the home the Builder's model process keeps its state in. */
   readonly models: (home: string) => Models;
   readonly log: string;

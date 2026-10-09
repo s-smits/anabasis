@@ -92,9 +92,12 @@ const LIMITED: Ending = { outcome: "non-result", kind: "provider", reason: "You'
 const scratches: string[] = [];
 const toolUse = { stopReason: "toolUse" } as const;
 const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
-const edit = call("write_file", { path: "agent/BUILT_AGENTS.md", content: "Multiply first.\n" });
-const again = call("write_file", { path: "agent/BUILT_AGENTS.md", content: "Multiply first, then check.\n" });
-const third = call("write_file", { path: "agent/BUILT_AGENTS.md", content: "Third.\n" });
+const edit = call("write", { path: "harness/agent/BUILT_AGENTS.md", content: "Multiply first.\n" });
+const again = call("write", {
+  path: "harness/agent/BUILT_AGENTS.md",
+  content: "Multiply first, then check.\n",
+});
+const third = call("write", { path: "harness/agent/BUILT_AGENTS.md", content: "Third.\n" });
 const finish = call("finish", { note: "A shorter guide." });
 
 afterAll(() => {
@@ -195,20 +198,21 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     model: faux.getModel(),
     effort: "medium",
     limits: LIMITS,
+    solve: { ...LIMITS, wallSeconds: 480 },
     models: () => models,
     log,
     repoRoot: scratch,
     practise: async (task, _dir, digest) => solve(task.version, digest),
   };
-  /** The walled write, stood in for: the same tool name, writing as the host. */
+  /** pi's walled write, stood in for: the same tool name and paths, writing as the host. */
   const walled = (bench: Bench) => [
     tool({
-      name: "write_file",
+      name: "write",
       label: "write",
-      description: "Writes a file under harness/.",
+      description: "Writes a file in the home.",
       parameters: Type.Object({ path: Type.String(), content: Type.String() }),
       execute: async (_id, args) => {
-        const file = join(bench.home, "harness", args.path);
+        const file = join(bench.home, args.path);
         mkdirSync(dirname(file), { recursive: true });
         writeFileSync(file, args.content);
         return text("Wrote it.");
@@ -430,7 +434,7 @@ describe("a round", () => {
 
   it("compares with the reference harness, whatever harness the session started from", async () => {
     const original = readFileSync(join(FIXTURE, "agent", "BUILT_AGENTS.md"), "utf8");
-    const back = call("write_file", { path: "agent/BUILT_AGENTS.md", content: original });
+    const back = call("write", { path: "harness/agent/BUILT_AGENTS.md", content: original });
     const s = await setup([edit, finish, again, finish, back, finish], () => PASS);
     const one = await round(s.request);
     // The Builder goes on from its latest harness, and the comparison is against the first.
@@ -969,7 +973,7 @@ describe("a round", () => {
 
   it("reports a session that left a harness no solve could open, and compares nothing", async () => {
     const s = await setup(
-      [call("write_file", { path: "agent/tools-spec.json", content: "{}" }), finish],
+      [call("write", { path: "harness/agent/tools-spec.json", content: "{}" }), finish],
       step,
     );
     expect(await round(s.request)).toMatchObject({ fresh: null, reading: "no-change" });

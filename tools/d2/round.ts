@@ -77,7 +77,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { awaitingLines, starter, type Kept, keptAs, openCampaign, stayAwake } from "./campaign.ts";
-import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
+import { commandSeconds, SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 
@@ -295,12 +295,16 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
       resources: campaign.resources,
       ...seats.builder,
       effort: effort(values["builder-effort"]),
+      // The session's own wall and turns, and a command of its own held to that wall and not to a
+      // solve's: a Builder builds an engine in one command, whatever a solve's minutes are.
       limits: {
         ...limits,
         wallSeconds: Number(values.minutes) * 60,
         turns: Number(values.turns),
         practiceSolves: Number(values["practice-solves"]),
+        ...commandSeconds(Number(values.minutes) * 60),
       },
+      solve: limits,
       log: campaign.log,
       repoRoot: campaign.repo,
       practise: (task, dir, digest, kill) => seats.solve(packageOf(task.version), { dir, digest }, kill),

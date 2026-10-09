@@ -138,6 +138,8 @@ const BUILD_END = "build.finished";
 const EXAM_END = "exam.finished";
 const EXAM_START = "exam.started";
 const REPORTED = "comparison.reported";
+/** The Builder tools that write one named file: pi's two, and the one tool sessions had before them. */
+const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
@@ -636,8 +638,9 @@ function harnessTriggers(log: Index): Trigger[] {
     };
     const changed = finished?.changed === true;
     const child = text(finished?.harness);
+    // pi's `write` and `edit` since 2026-10-09, and `write_file` in the sessions before it.
     const written = [
-      ...new Set(calls.flatMap(({ tool, args }) => (tool === "write_file" ? [text(args?.path)] : []))),
+      ...new Set(calls.flatMap(({ tool, args }) => (FILE_WRITERS.has(tool) ? [text(args?.path)] : []))),
     ];
     const toolFiles = written.filter((path) => path.includes("tools"));
     // A practice solve's condition names the state it ran under, so the log says by digest whether
@@ -685,7 +688,7 @@ function harnessTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "HARNESS CHANGED",
-              `${session}: ${short(parent)} to ${short(child)}; written by write_file: ${written.join(", ") || "nothing"}`,
+              `${session}: ${short(parent)} to ${short(child)}; written by its file tools: ${written.join(", ") || "nothing"}`,
             ),
           ]
         : []),

@@ -41,7 +41,7 @@ import { openHarness } from "../src/solve/harness.ts";
 
 const BUILD_CALL = "build.call";
 const BUILD_FINISHED = "build.finished";
-const WRITE_FILE = "write_file";
+const WRITE_FILE = "write";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 /** A check's id and a Referee's reason: verifier-side text no Builder may be shown. */
@@ -70,7 +70,7 @@ const GUIDE = "Multiply before you record.\n";
 const scratches: string[] = [];
 const toolUse = { stopReason: "toolUse" } as const;
 const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
-const edit = call(WRITE_FILE, { path: "agent/BUILT_AGENTS.md", content: GUIDE });
+const edit = call(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: GUIDE });
 const finish = call("finish", { note: "A shorter guide." });
 
 afterAll(() => {
@@ -183,6 +183,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     model: faux.getModel(),
     effort: "medium",
     limits: LIMITS,
+    solve: { ...LIMITS, wallSeconds: 480 },
     models: () => models,
     log: log,
     repoRoot: scratch,
@@ -192,15 +193,15 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
       return { solve: solved(task.version, harness, ending), ending };
     },
   };
-  /** The walled write, stood in for: the same tool name, writing as the host. */
+  /** pi's walled write, stood in for: the same tool name and paths, writing as the host. */
   const walled = (bench: Bench) => [
     tool({
       name: WRITE_FILE,
       label: "write",
-      description: "Writes a file under harness/.",
+      description: "Writes a file in the home.",
       parameters: Type.Object({ path: Type.String(), content: Type.String() }),
       execute: async (_id, args) => {
-        const file = join(bench.home, "harness", args.path);
+        const file = join(bench.home, args.path);
         mkdirSync(dirname(file), { recursive: true });
         writeFileSync(file, args.content);
         return text("Wrote it.");
@@ -284,9 +285,12 @@ describe("a Builder session", () => {
     );
     expect(s.sent[0]).toContain("t-2 (family fixture): not yet solved under the harness you start from.");
     expect(s.sent[0]).toContain("3 practice solves, 10 minutes and 12 turns");
-    // The one limit on a harness, as the operator settled it on 9 October: a tool may test a
-    // candidate against a public rule, and none returns a finished answer.
-    expect(s.sent[0]).toContain("No tool, program or guide line returns a finished answer for a task");
+    // The one limit on a harness, as the operator settled it on 9 October: a program may test a
+    // candidate against a public rule, and nothing returns a finished answer.
+    expect(s.sent[0]).toContain("No program, tool or guide line returns a finished answer for a task");
+    // Each part of a harness has one purpose: a computation is a program, and no tool beside it.
+    expect(s.sent[0]).toContain("every computation you add is a program there");
+    expect(s.sent[0]).toContain("Leave its list empty while the solver has the shell");
     expect(s.sent[0]).toContain("test the candidate against a public rule and say what it does not meet");
     expect(s.sent[0]).not.toContain("says whether a candidate meets a rule");
     expect(readFileSync(join(s.home, "practice", "t-1.json"), "utf8")).toContain('"base": 7');
@@ -384,15 +388,15 @@ describe("a Builder session", () => {
   it("spends no solve on a harness a solve could not open", async () => {
     const spec = readFileSync(join(FIXTURE, "agent", "tools-spec.json"), "utf8");
     const s = await setup([
-      call(WRITE_FILE, { path: "agent/tools-spec.json", content: "{}" }),
+      call(WRITE_FILE, { path: "harness/agent/tools-spec.json", content: "{}" }),
       call("practice", { tasks: ["t-1"] }),
       // A preset no solve serves: every solve would end on it before its first turn.
       call(WRITE_FILE, {
-        path: "agent/tools-spec.json",
+        path: "harness/agent/tools-spec.json",
         content: spec.replace('"shell"', '"shell", "python"'),
       }),
       call("practice", { tasks: ["t-1"] }),
-      call(WRITE_FILE, { path: "agent/tools-spec.json", content: spec }),
+      call(WRITE_FILE, { path: "harness/agent/tools-spec.json", content: spec }),
       () => {
         // Between two turns the Builder puts a link to a host file where its guide was.
         const guide = join(s.home, "harness", "agent", "BUILT_AGENTS.md");
@@ -423,7 +427,7 @@ describe("a Builder session", () => {
     const s = await setup([
       edit,
       call("practice", { tasks: ["t-1"] }),
-      call(WRITE_FILE, { path: "agent/tools-spec.json", content: "{}" }),
+      call(WRITE_FILE, { path: "harness/agent/tools-spec.json", content: "{}" }),
       finish,
     ]);
     const built = await session(s.request, s, s.walled);
@@ -551,7 +555,7 @@ describe("a Builder session", () => {
     const both = fauxAssistantMessage(
       [
         fauxToolCall("finish", { note: "Done." }),
-        fauxToolCall(WRITE_FILE, { path: "agent/BUILT_AGENTS.md", content: GUIDE }),
+        fauxToolCall(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: GUIDE }),
       ],
       toolUse,
     );
@@ -564,7 +568,7 @@ describe("a Builder session", () => {
   it("freezes no harness whose tools do not list, and shows the Builder no path of the host's", async () => {
     const s = await setup([
       call("practice", { tasks: ["t-1"] }),
-      call(WRITE_FILE, { path: "agent/tools.ts", content: 'import "./missing.ts";\n' }),
+      call(WRITE_FILE, { path: "harness/agent/tools.ts", content: 'import "./missing.ts";\n' }),
       call("practice", { tasks: ["t-1"] }),
       finish,
     ]);
@@ -667,8 +671,9 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     const s = await setup(
       [
         () => call("bash", { command: `cat '${canary}' 2>&1; echo "read:$?"` }),
+        // pi's write, behind the wall: outside the home it is refused, and a folder is no file.
         call(WRITE_FILE, { path: "../escape.txt", content: "x" }),
-        call(WRITE_FILE, { path: "agent", content: "x" }),
+        call(WRITE_FILE, { path: "harness/agent", content: "x" }),
         edit,
         call("bash", { command: 'cat "$HOME/harness/agent/BUILT_AGENTS.md"; ls "$HOME/practice"' }),
         // The parent's installed program runs by name, and so does one the Builder installs beside it.
@@ -686,6 +691,17 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
         call("check_harness", {}),
         // A command starts in the home, where the account of a harness's files is.
         call("bash", { command: "pwd -P; head -1 HARNESS.md" }),
+        // pi's read and edit on the harness's files, by the path the shell would use.
+        call("edit", {
+          path: "harness/agent/BUILT_AGENTS.md",
+          edits: [{ oldText: "Multiply", newText: "Always multiply" }],
+        }),
+        call("read", { path: "harness/agent/BUILT_AGENTS.md" }),
+        call("preview_harness", {}),
+        // The session's own tools file and guide go back; what it installed stays.
+        call("reset_harness", {}),
+        call("bash", { command: "cat harness/agent/BUILT_AGENTS.md; ls harness/.toolchain/bin" }),
+        edit,
         finish,
       ],
       [],
@@ -693,21 +709,42 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     );
     canary = join(s.scratch, "canary.txt");
     writeFileSync(canary, CHECK);
-    const request = { ...s.request, id: `b-${String(runtimeProcess.pid)}-${s.scratch.slice(-6)}` };
+    const request = {
+      ...s.request,
+      limits: { ...LIMITS, turns: 20 },
+      id: `b-${String(runtimeProcess.pid)}-${s.scratch.slice(-6)}`,
+    };
     const responses = s.sent;
     const built = await build(request);
     const calls = s.of(BUILD_CALL).map(({ text: said }) => JSON.stringify(said));
     expect(calls[0]).toContain("Operation not permitted");
     expect(calls[0]).toContain("read:1");
-    expect(calls[1]).toContain("path names a file under harness/");
-    expect(calls[2]).toContain("harness/agent is a directory");
+    expect(calls[1]).not.toContain("Successfully wrote");
+    expect(calls[2]).toContain("irectory");
     expect(calls[4]).toContain("Multiply before you record.");
     expect(calls[4]).toContain("t-1.json");
     expect(calls[5]).toContain("hello-from-the-tool-tree");
     expect(calls[5]).toContain("installed-greeting");
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
-    expect(calls[8]).toContain("The harness opens. Tools: ");
+    // A line for each part of the harness, and a note where two parts do one part's work.
+    expect(calls[8]).toContain(
+      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 28 characters.\nTools of its own: scale_base, read_path.\nThe solver has the shell and tools of the harness's own.`,
+    );
     expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
+    expect(calls[10]).toContain("Successfully replaced 1 block(s)");
+    expect(calls[11]).toContain("Always multiply before you record.");
+    // The preview is the solver's prompt: pi's own, the guide as its project's instructions, the
+    // installed programs by name, and the solve's limits and not the session's.
+    expect(calls[12]).toContain("You are an expert coding assistant operating inside pi");
+    expect(calls[12]).toContain(
+      String.raw`<project_instructions path=\"BUILT_AGENTS.md\">\nAlways multiply before you record.`,
+    );
+    expect(calls[12]).toContain("The case has 8 minutes of solve time");
+    expect(calls[12]).toContain("Programs this harness installed run by name: ");
+    expect(calls[12]).toContain("- submit: Send answer.json from your working directory as your answer.");
+    expect(calls[13]).toContain("harness/agent is as this session found it.");
+    expect(calls[14]).toContain("greet");
+    expect(calls[14]).not.toContain("Always multiply");
     expect(responses.join("\n")).not.toContain(CHECK);
     expect(built).toMatchObject({ changed: true, ended: "finished" });
     expect(readFileSync(join(built.dir ?? "", "agent", "BUILT_AGENTS.md"), "utf8")).toBe(GUIDE);

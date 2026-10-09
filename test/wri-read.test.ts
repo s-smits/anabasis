@@ -116,7 +116,7 @@ record("build.call", { session: "b-1", tool: "write_file", args: { path: "agent/
 record("build.call", { session: "b-1", tool: "practice", args: { task: "t1" } });
 // The practice solve runs under the state as it then stood, hb; the edit after it makes hc.
 solve("t1", "hb", "rejected");
-record("build.call", { session: "b-1", tool: "write_file", args: { path: "agent/BUILT_AGENTS.md" } });
+record("build.call", { session: "b-1", tool: "edit", args: { path: "agent/BUILT_AGENTS.md" } });
 record("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true, metered: 2 });
 // The round's comparison. The reference harness's answers to v1 and v2 are rejected, one ruled a
 // check defect and one ruled by nobody, and it gives none to v3 and v4 within its limits. The new
@@ -220,7 +220,7 @@ describe("the whole-run investigation's reader", () => {
 
   it("reads what the Builder did before it stopped", () => {
     expect(detail("HARNESS CHANGED")).toBe(
-      "b-1: hp to hc; written by write_file: agent/tools.mjs, agent/BUILT_AGENTS.md",
+      "b-1: hp to hc; written by its file tools: agent/tools.mjs, agent/BUILT_AGENTS.md",
     );
     expect(detail("TOOLS EDITED")).toBe("b-1: agent/tools.mjs");
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(

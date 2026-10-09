@@ -1,12 +1,22 @@
 /**
- * The Builder's tools. Three run on the command wall a solve's commands run on (`bash`,
- * `write_file`, `check_harness`), and three are the host's (`practice`, `read_trace`, `finish`).
+ * The Builder's tools. It is a coding agent on a harness's files, so it has what a solver has: pi's
+ * own `read`, `bash`, `edit` and `write` on the command wall (`src/solve/coding-tools.ts`), in one
+ * working directory, its home. On top of them are the tools that are a Builder's alone. Three ask
+ * the host about `harness/` as it stands and run on the same wall: `check_harness`,
+ * `preview_harness` and `reset_harness`. Three are the host's: `practice`, `read_trace`, `finish`.
+ *
+ * v1's Builder had pi's file tools too, with `harness_inspect`, `harness_trial` and `harness_reset`
+ * (`src/builder/tools.ts:75` at 7af7315). Until 2026-10-09 a v2 Builder had the shell and one
+ * `write_file`, which wrote a file whole: it rewrote a 30 KB tools file through a heredoc to change
+ * a line, backed its tools file up by hand before it tried something, and could not see what a
+ * solver would be shown. The shell is the whole of its action space beyond these: it searches,
+ * lists and installs through it, and no tool is given for what a command already does.
  *
  * The wall is the solver's, so the repository, the operator's home and every other solve's scratch
  * are closed to the Builder by the operating system and not by a path check in this process. v1
  * said of its own Builder that a guard in the process it constrains is a convention and not a wall
- * (`src/builder/candidate-isolation.ts` at 7af7315), which is why `write_file` copies through a
- * walled command and no tool here reads a path for the Builder in the host's name.
+ * (`src/builder/candidate-isolation.ts` at 7af7315), which is why every file tool here works
+ * through a walled command and none reads or writes a path for the Builder in the host's name.
  *
  * One read is the host's own: a snapshot of `harness/` is opened and bundled by the host, as a solve
  * opens any harness. `openHarness` builds a harness's tools from its own files alone: it refuses a
@@ -30,7 +40,7 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { wrapToolDefinition } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
+import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { ended, passed, ranUnder, verdictsOf } from "../kernel/solves.ts";
@@ -47,7 +57,6 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
-  writeFileSync,
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
@@ -57,11 +66,12 @@ import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import { callList, callsOf, callText, closingOf, solveOf } from "../review/trace.ts";
-import { text, tool } from "../solve/answer.ts";
-import { bashTool, selectedCodingTools } from "../solve/coding-tools.ts";
+import { openDesk, text, tool } from "../solve/answer.ts";
+import { CODING_TOOLS, codingTools, selectedCodingTools } from "../solve/coding-tools.ts";
 import { type CommandWall, runWalled } from "../solve/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
-import { shellQuote } from "../verify/solve-command-isolation.ts";
+import { installedPrograms, systemPrompt } from "../solve/prompt.ts";
+import { solverTools } from "../solve/run.ts";
 import { SHELL_WALLS } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
@@ -106,8 +116,8 @@ export interface Bench {
 
 /** What a submitted answer or a closing text shows of itself in a trace's head. */
 const HEAD_CHARS = 4_000;
-/** What the walled write exits with when its target is a directory; `mkdir` and `cp` exit 1. */
-const IS_DIRECTORY = 3;
+/** What a preview names the solve's home, which only a solve has. */
+const SOLVE_HOME = "(the solve's own home directory)";
 /** The harness's tool tree, as a path in the Builder's home. */
 export const HOME_TOOL_TREE = "harness/.toolchain";
 
@@ -421,71 +431,151 @@ export function finishTool(bench: Bench): AgentTool {
   });
 }
 
-/** One file under `harness/`, whole. The host stages the bytes into the command's own folder and a
- *  walled `cp` puts them in place, so where they may land is the wall's to decide. */
-function writeTool(wall: CommandWall): AgentTool {
-  return tool({
-    name: "write_file",
-    label: "Write a file",
-    description:
-      "Write one file under harness/ in your home directory, whole, creating its folders. For a guide or a tools module this is surer than quoting the text through bash.",
-    parameters: Type.Object({
-      path: Type.String({ description: "A path under harness/, such as agent/BUILT_AGENTS.md." }),
-      content: Type.String(),
-    }),
-    executionMode: "sequential",
-    execute: async (_id, args, signal) => {
-      const steps = args.path.split("/");
-      if (steps.some((step) => step === "" || step === "." || step === "..")) {
-        throw new Error("path names a file under harness/, with no empty, . or .. step");
-      }
-      const target = `"$HOME/harness/"${shellQuote(args.path)}`;
-      const output: Buffer[] = [];
-      // `cp` into a directory would leave a file named `content` inside it and report success.
-      const command = `[ ! -d ${target} ] || exit ${String(IS_DIRECTORY)}; mkdir -p "$(dirname ${target})" && cp content ${target}`;
-      const { exitCode } = await runWalled(wall, command, {
-        onData: (data) => output.push(data),
-        signal,
-        stage: ({ work }) => writeFileSync(join(work, "content"), args.content),
-      });
-      if (exitCode === IS_DIRECTORY) throw new Error(`not written: harness/${args.path} is a directory`);
-      if (exitCode !== 0) {
-        throw new Error(`not written: ${Buffer.concat(output).toString("utf8").slice(0, 2_000)}`);
-      }
-      return text(`Wrote harness/${args.path}, ${String(Buffer.byteLength(args.content))} bytes.`);
-    },
-  });
+/** What a harness that opens gives a solver, a line for each of its four parts, and a note where
+ *  two parts are doing one part's work: tools of its own beside the shell. A harness kept before
+ *  the parts had one purpose each still opens, so this is said and not refused. */
+function opens(harness: Harness, tools: readonly string[]): string {
+  const presets = selectedCodingTools(harness.presets);
+  const programs = installedPrograms(harness.toolTree);
+  return [
+    "The harness opens.",
+    `pi's tools: ${presets.join(", ") || "none"}.`,
+    `Programs: ${programs.join(", ") || "none"}.`,
+    `Guide: ${String(harness.guide?.length ?? 0)} characters.`,
+    `Tools of its own: ${tools.join(", ") || "none"}.`,
+    ...(tools.length > 0 && presets.includes("bash")
+      ? [
+          "The solver has the shell and tools of the harness's own. A tool that runs what a program does is the same thing twice (HARNESS.md).",
+        ]
+      : []),
+    ...(programs.length > 0 && !presets.includes("bash")
+      ? ["The solver has no shell, so it can run none of the programs itself."]
+      : []),
+  ].join("\n");
 }
 
-/** Open the harness and list its tools as a solve would, with no model call: a harness that does
+/** Open the harness and list what a solver gets from it, with no model call: a harness that does
  *  not open fails every task, and this finds that before a practice solve is spent on it. */
 function checkTool(bench: Bench): AgentTool {
   return tool({
     name: "check_harness",
     label: "Check the harness",
     description:
-      "Open harness/ as a solve would and list its tools for one practice task. Reports the tools and the guide's length, or the error a solve would stop on. Spends no practice solve.",
+      "Open harness/ as a solve would, for one practice task. Reports pi's tools it selects, its programs by name, the guide's length and its own tools, or the error a solve would stop on. Spends no practice solve.",
     parameters: Type.Object({}),
     executionMode: "sequential",
     execute: async () => {
       const { dir, harness, listed } = await frozen(bench);
-      // A check keeps nothing: only a state a solve ran with, or the session's last, is kept.
-      rmSync(dir, { recursive: true, force: true });
-      const tools = listed ?? [...harness.kinds.keys()];
-      return text(
-        `The harness opens. Tools: ${tools.join(", ") || "none"}. Guide: ${String(harness.guide?.length ?? 0)} characters.`,
-      );
+      try {
+        return text(opens(harness, listed ?? [...harness.kinds.keys()]));
+      } finally {
+        // A check keeps nothing: only a state a solve ran with, or the session's last, is kept.
+        rmSync(dir, { recursive: true, force: true });
+      }
     },
   });
 }
 
-/** The three tools that run on the command wall, which also gives a freeze its listing: every
- *  harness frozen from here on is asked for its tools under this wall. */
+/**
+ * What a solver would read under `harness/` as it stands, for the session's first practice task:
+ * its system prompt whole and its tools as they are declared to it. A Builder wrote a guide and a
+ * tool list without seeing where either lands; the prompt is pi's, in sections, and the guide is
+ * one of them. The solve's own home is not known here, so the prompt names it by a placeholder.
+ */
+function previewTool(bench: Bench, wall: CommandWall): AgentTool {
+  const { request } = bench;
+  return tool({
+    name: "preview_harness",
+    label: "Preview the harness",
+    description:
+      "Show what a solver would read under harness/ as it stands, for one practice task: its system prompt whole, with your guide where the solver finds it, and each of its tools by name and description. Spends no practice solve.",
+    parameters: Type.Object({}),
+    executionMode: "sequential",
+    execute: async () => {
+      const [sample] = request.tasks;
+      if (sample === undefined) return text("This session has no practice task to preview a solve of.");
+      const { dir, harness } = await frozen(bench);
+      try {
+        const tools = await solverTools(
+          { task: sample.task, contract: request.contract },
+          harness,
+          { ...wall, toolTree: harness.toolTree },
+          openDesk(),
+        );
+        const prompt = systemPrompt({
+          tools,
+          home: SOLVE_HOME,
+          guide: harness.guide,
+          wallSeconds: request.solve.wallSeconds,
+          limits: request.solve,
+          resources: request.resources.length,
+          programs: installedPrograms(harness.toolTree),
+        });
+        const declared = tools.map(({ name, description }) => `- ${name}: ${description}`).join("\n");
+        return text(
+          `The system prompt a solver of ${sample.task.taskId} would read:\n\n${prompt}\n\nIts tools, as they are declared to it:\n${declared}`,
+        );
+      } finally {
+        // A preview keeps nothing, as a check keeps nothing.
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  });
+}
+
+/**
+ * `harness/agent` put back as the session found it. The host stages the parent's own `agent/` into
+ * the command's folder and a walled command puts it in place, so where it lands is the wall's to
+ * decide. The installed programs are left: an engine takes minutes to build, and a session that
+ * wants its tools file back does not want that again.
+ */
+function resetTool(bench: Bench, wall: CommandWall): AgentTool {
+  return tool({
+    name: "reset_harness",
+    label: "Reset the harness",
+    description:
+      "Put harness/agent back as it was when this session started: the guide, the tool list and the tools file of the harness you started from. What harness/agent holds now is lost. Installed programs under harness/.toolchain stay as they are.",
+    parameters: Type.Object({}),
+    executionMode: "sequential",
+    execute: async (_id, _args, signal) => {
+      const output: Buffer[] = [];
+      const { exitCode } = await runWalled(
+        wall,
+        'rm -rf "$HOME/harness/agent" && mkdir -p "$HOME/harness" && cp -R agent "$HOME/harness/agent"',
+        {
+          onData: (data) => output.push(data),
+          signal,
+          stage: ({ work }) =>
+            cpSync(join(bench.request.parent, "agent"), join(work, "agent"), {
+              recursive: true,
+              verbatimSymlinks: true,
+            }),
+        },
+      );
+      if (exitCode !== 0) {
+        throw new Error(`not reset: ${Buffer.concat(output).toString("utf8").slice(0, 2_000)}`);
+      }
+      return text("harness/agent is as this session found it.");
+    },
+  });
+}
+
+/** The tools that run on the command wall: pi's four, with what the Builder's shell is told of its
+ *  wall, and the three that ask the host about `harness/`. Making them also gives a freeze its
+ *  listing: every harness frozen from here on is asked for its tools under this wall. */
 export function walledTools(bench: Bench, wall: CommandWall): AgentTool[] {
   const sample = bench.request.tasks[0];
   if (sample !== undefined) {
     bench.lists = async (harness) => (await harnessTools(harness, sample.task, wall)).map(({ name }) => name);
   }
-  const shell = wrapToolDefinition(bashTool(wall));
-  return [{ ...shell, description: `${shell.description}${SHELL_WALLS}` }, writeTool(wall), checkTool(bench)];
+  // SAFETY: pi's wrapper types its tools' parameters `any`; each is one of pi's four definitions.
+  const coding = wrapToolDefinitions(codingTools(wall, CODING_TOOLS)) as AgentTool[];
+  return [
+    ...coding.map((each) =>
+      each.name === "bash" ? { ...each, description: `${each.description}${SHELL_WALLS}` } : each,
+    ),
+    checkTool(bench),
+    previewTool(bench, wall),
+    resetTool(bench, wall),
+  ];
 }

@@ -63,7 +63,7 @@ import { type Desk, openDesk, type PublicResource, submitTool } from "./answer.t
 import { codingTools, selectedCodingTools, type SolverTool, wallExec } from "./coding-tools.ts";
 import { type CommandWall, type SolveClock, solveDirs, usedSeconds } from "./command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
-import { firstTurn, installedPrograms, NUDGE, seedHome, systemPrompt } from "./prompt.ts";
+import { firstTurn, installedPrograms, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
 
 export interface SolveRequest {
   /** Names the solve in the log; each attempt is `<id>-<attempt>`. */
@@ -320,7 +320,7 @@ export function timed(tool: SolverTool, clock: SolveClock): SolverTool {
  * tool's kind; a solver is told what a tool does and by which name.
  */
 export async function solverTools(
-  request: Pick<SolveRequest, "task" | "contract">,
+  request: { readonly task: PublicTask; readonly contract: Contract },
   harness: Harness,
   wall: CommandWall,
   desk: Desk,

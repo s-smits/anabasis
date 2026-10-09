@@ -292,6 +292,20 @@ describe("a campaign", () => {
     // A longer wall or more turns is another setting.
     const named = settingNamed({ ...defaults, "solve-minutes": "240", "solve-turns": "48" }).limits;
     expect(named).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
+    // A command's two limits are the sweep's where the wall leaves room, and a share of the wall
+    // where it does not: under five minutes a command the sweep allowed 300 s would never return.
+    const walled = (minutes: string) => {
+      const { shellDefaultSeconds, shellMaxSeconds } = settingNamed({
+        ...defaults,
+        "solve-minutes": minutes,
+      }).limits;
+      return [shellDefaultSeconds, shellMaxSeconds];
+    };
+    expect(walled("120")).toEqual([300, 900]);
+    expect(walled("30")).toEqual([300, 900]);
+    expect(walled("20")).toEqual([300, 600]);
+    expect(walled("5")).toEqual([75, 150]);
+    expect(walled("1")).toEqual([15, 30]);
     const longer = await openCampaign({ ...ARGS, limits: named });
     expect(longer.limits).toEqual(named);
     // Another solver is another setting too, and every command that names it stands where a round

@@ -22,10 +22,14 @@
  * be read from them.
  *
  * What does not follow the solver is the campaign's own: a task's state and the harnesses it
- * keeps. The other limits, the shell's two timeouts, the concurrency and the disk cap, stay the
- * sweep's: none of them is what a harder task runs out of first, and each is one more thing two
- * comparisons could differ in. A rehearsal seats a script where the solver sits and refuses
- * `--solver`; its limits are these.
+ * keeps. The concurrency and the disk cap stay the sweep's: neither is what a harder task runs out
+ * of first, and each is one more thing two comparisons could differ in. A rehearsal seats a script
+ * where the solver sits and refuses `--solver`; its limits are these.
+ *
+ * The shell's two timeouts are the sweep's as far as the wall leaves room for them
+ * (`commandSeconds`). They ignored the wall until 2026-10-09: under the five-minute wall of the one
+ * comparison that read a step, a command was allowed 300 s by default and 900 s at most, so none a
+ * solver started could be cut and handed back to it before the solve itself ended.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { Limits } from "#src/kernel/condition.ts";
@@ -71,9 +75,25 @@ export function settingNamed(values: {
   }
   // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
   const effort = values["solver-effort"] as ThinkingLevel;
+  const wallSeconds = minutes * 60;
   return {
     solver: values.solver === undefined ? undefined : { model: values.solver, effort },
-    limits: { ...LIMITS, wallSeconds: minutes * 60, turns },
+    limits: { ...LIMITS, wallSeconds, turns, ...commandSeconds(wallSeconds) },
+  };
+}
+
+/**
+ * How long one command may run under a wall: the sweep's two limits, 300 s where a command names
+ * no timeout and 900 s at most, each held to a share of the wall, a quarter and a half. So a
+ * command that names nothing can be cut and returned four times in a solve, and the longest one a
+ * solver may ask for leaves it half its time. From a wall of half an hour up both are the sweep's
+ * own. Each is at least a second.
+ */
+export function commandSeconds(wallSeconds: number): Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds"> {
+  const held = (most: number, share: number) => Math.max(1, Math.min(most, Math.floor(wallSeconds / share)));
+  return {
+    shellDefaultSeconds: held(LIMITS.shellDefaultSeconds, 4),
+    shellMaxSeconds: held(LIMITS.shellMaxSeconds, 2),
   };
 }
 

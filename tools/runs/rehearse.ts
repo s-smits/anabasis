@@ -5,7 +5,9 @@
  * The plan's first round is walked this way before it is paid for (`docs/plan.md`, Phase 0): the
  * scripted Builder forks the Starter Built Harness, and the harness it leaves is compared with the
  * starter. Flags that hold `--id` are a checkpoint's, as a launch reads them, and rehearse one
- * comparison with no Builder session (`tools/d2/checkpoint.ts`).
+ * comparison with no Builder session (`tools/d2/checkpoint.ts`). With `--no-comparison` the flags
+ * are a session's, and rehearse one Builder session with no comparison after it
+ * (`tools/d2/session.ts`): the plan's checkpoint is walked as two of those and then a checkpoint.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's wall and disk cap, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
@@ -48,6 +50,7 @@ import { shellQuote } from "#src/verify/solve-command-isolation.ts";
 import { starter } from "../d2/campaign.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
+import { sessionCommand } from "../d2/session.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { passedOn } from "./launch.ts";
 import { SEED_FILE } from "./pulse.ts";
@@ -67,7 +70,7 @@ interface Script {
   readonly starter: End;
 }
 
-const OWN = new Set(["held", "starter"]);
+const OWN = new Set(["held", "starter", "no-comparison"]);
 const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A list price for the scripted model, which the meter refuses to run without: what a rehearsal
  *  meters is the script's own words at this price, and is no cost. */
@@ -204,6 +207,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     options: {
       held: { type: "string", default: "none:pass" },
       starter: { type: "string", default: "none" },
+      "no-comparison": { type: "boolean", default: false },
       id: { type: "string" },
       root: { type: "string" },
       sweep: { type: "string" },
@@ -222,7 +226,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   }
   if (!isString(held) || least === undefined || !isString(root) || !isString(sweep) || !isString(bundle)) {
     throw new Error(
-      "usage: bun run runs rehearse <the flags of tools/d2/round.ts or of tools/d2/checkpoint.ts that name no model> [--held old:new] [--starter pass|fail|none]",
+      "usage: bun run runs rehearse <the flags of tools/d2/round.ts, of tools/d2/checkpoint.ts, or of tools/d2/session.ts with --no-comparison, that name no model> [--held old:new] [--starter pass|fail|none]",
     );
   }
   const passes = sweepRows(root, sweep).flatMap((row) => {
@@ -238,7 +242,11 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   const flags = passedOn(args, tokens, OWN);
   // A checkpoint is named by its `--id` and runs no session, so no Builder's script can stray.
   if (isString(values.id)) await checkpointCommand(flags, seats);
-  else if ((await roundCommand(flags, seats)).fresh === null) {
+  else if (
+    values["no-comparison"] === true
+      ? (await sessionCommand(flags, seats)) === null
+      : (await roundCommand(flags, seats)).fresh === null
+  ) {
     strayed.push("the Builder's script left the harness as it was");
   }
   if (strayed.length === 0) {

@@ -55,7 +55,8 @@
  * the next solve still cannot start, the cap is reached. A comparison the cap cuts short of its
  * test reads `not-scored` and is finished: its tally would be of the tasks that happened to come
  * first. One the cap cuts in the starter's solves has its test whole, and reports it as
- * `starter-unread`. A session is stopped by its own limits and not by the cap.
+ * `starter-unread`. A session is stopped by its own limits and not by the cap, which holds its
+ * practice solves alone: none starts that the cap has no reserve for (`practiceLeft`, `tools.ts`).
  *
  * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
  * (`earned`), by the Referee where the caller seats one. One ruled a check defect or unclear, and
@@ -81,12 +82,11 @@
  *
  * A round's session starts from the harness the caller names, which need not be the reference
  * harness: a Builder goes on from its latest harness, and the comparison is against the reference
- * one. The session is read from the log whether it ran now or in an earlier run. One that started
- * and never finished is refused, since its harness is gone and a second session under one id would
- * be a second try. So is one that was killed or that crashed: what it froze is half a session's
- * work. A session cut at its wall or its turns is a whole session and is compared. One that left
- * the harness it started from, the reference harness itself, or one no solve can open, is
- * reported as no change.
+ * one. The session is run once and read from the log whether it ran now or in an earlier run
+ * (`sessionOnce`, `session.ts`), which is also how a session runs with no comparison after it. A
+ * session cut at its wall or its turns is a whole session and is compared. One that left the
+ * harness it started from, the reference harness itself, or one no solve can open, is reported as
+ * no change.
  *
  * A held-out task is never diagnosed and its trace never shown: the Diagnoser's reading goes to
  * the Builder, and a reading of a scored solve would carry the task to it.
@@ -109,29 +109,20 @@ import {
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { awaitingLabel, billedFor, unsolved, whole } from "../kernel/reports.ts";
+import { awaitingLabel, billedFor, type Cap, unsolved, whole } from "../kernel/reports.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { join } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
 import type { RefereeFinding, Ruling } from "../review/referee.ts";
-import { openHarness } from "../solve/harness.ts";
-import { type BuildRequest, type Built, build, type Practised } from "./session.ts";
+import { type BuildRequest, type Built, type Practised, sessionOnce } from "./session.ts";
 
 /** A harness as a solve is handed it. */
 export interface Kept {
   readonly dir: string;
   readonly digest: string;
-}
-
-/** A dollar cap: the billed dollars a comparison may hold, and what each solve is held at before
- *  it starts. */
-export interface Cap {
-  readonly dollars: number;
-  readonly reserve: number;
 }
 
 /** What a comparison is made on, whoever asks for it. */
@@ -197,7 +188,7 @@ export interface RoundRequest extends Terms {
   /** The harness the one the session leaves is compared with. */
   readonly reference: Kept;
   /** Runs the session: `build`, unless a caller without a command wall stands in for it. */
-  readonly builder?: (request: BuildRequest) => Promise<Built>;
+  readonly builder?: ((request: BuildRequest) => Promise<Built>) | undefined;
 }
 
 /**
@@ -347,7 +338,6 @@ const PASSES = 2;
 const SILENT = 3;
 const STARTED = "comparison.started";
 const REPORTED = "comparison.reported";
-const BUILD_STARTED = "build.started";
 /** A report's fields, as its event carries them beside the comparison's own terms. */
 const REPORT_KEYS = [
   "old",
@@ -404,45 +394,6 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
   const awaiting = new Set(awaitingLabel(events));
   const held = taskSets(events).held.filter((version) => !awaiting.has(version));
   return draw(held, Math.min(target, held.length), contract);
-}
-
-/**
- * Why a round will not go on with session `id` from this log, or null when it never started, or
- * ended whole. A launcher asks before it starts the round, and a stop to say what it cut.
- */
-export function spent(events: readonly LogEvent[], id: string): string | null {
-  const mine = events.filter(({ data }) => data.session === id);
-  if (!mine.some(({ kind }) => kind === BUILD_STARTED)) return null;
-  const ended = mine.findLast(({ kind }) => kind === "build.finished")?.data.ended;
-  if (ended === undefined) {
-    return `session ${id} started and never finished; a round does not run a second session under one id`;
-  }
-  return ended === "killed" || ended === "crashed"
-    ? `session ${id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`
-    : null;
-}
-
-/** What session `id` left, from the log: undefined when it never ran, and otherwise the harness to
- *  compare, null when it left none, with why when what it left does not open. A session whose last
- *  state does not open leaves the last state it practised with, when it has one (`session.ts`), so
- *  a harness and a `broken` may come back together. */
-async function left(events: readonly LogEvent[], request: BuildRequest, parent: string) {
-  const mine = events.filter(({ data }) => data.session === request.id);
-  const started = mine.find(({ kind }) => kind === BUILD_STARTED)?.data;
-  const finished = mine.findLast(({ kind }) => kind === "build.finished")?.data;
-  if (started === undefined) return undefined;
-  if (started.parent !== parent) {
-    throw new Error(`session ${request.id} started from another harness than ${request.parent}`);
-  }
-  const why = spent(events, request.id);
-  if (why !== null) throw new Error(why);
-  const broken = isString(finished?.broken) ? finished.broken : null;
-  if (finished?.changed !== true || !isString(finished.harness)) return { kept: null, broken };
-  const dir = join(request.states, finished.harness);
-  if ((await openHarness(dir)).digest !== finished.harness) {
-    throw new Error(`${dir} is not the harness session ${request.id} froze`);
-  }
-  return { kept: { dir, digest: finished.harness }, broken };
 }
 
 /** The log as comparison `id` is read once it has reported: up to its own first report. What comes
@@ -978,16 +929,12 @@ export async function round(request: RoundRequest): Promise<Report> {
   // finished comparison, topping up a set a dispute thinned, would be a second look at its data.
   const before = reported(read(log), id);
   if (before !== null) return before;
-  const parent = (await openHarness(session.parent)).digest;
   refuseUnreadable(terms);
   if (startOf(read(log), id) === undefined) {
     refuseUnscorable(terms, log, new Set(session.tasks.map(({ version }) => version)));
   }
-
   // The session is read from the log whether it ran now or in an earlier run of this round.
-  if ((await left(read(log), session, parent)) === undefined) await (builder ?? build)(session);
-  const built = await left(read(log), session, parent);
-  if (built === undefined) throw new Error(`session ${id} ran and left no record in the log`);
+  const built = await sessionOnce({ ...session, cap: request.cap }, builder);
   const asked = { ...terms, log, id, kill: session.kill };
   if (built.kept === null || built.kept.digest === reference.digest) {
     const unchanged: Report = {

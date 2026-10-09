@@ -29,6 +29,11 @@
  * makes of its own terms still hold it (`src/builder/round.ts`): a task that is no held-out task,
  * a practice task among the scored, a task that waits for a label.
  *
+ * A Builder session run with no comparison after it (`tools/d2/session.ts`) is asked the same way
+ * (`admitSession`), and is refused less: it scores nothing, so no held-out task is counted for it.
+ * It needs its cap, a checker that has been read, since its practice solves are judged by the same
+ * checks, and a campaign the stop rule has not stopped.
+ *
  * What only a host or an id can refuse stays with the launcher: a second writer of the log, a
  * loaded host, a missing env file, an id whose comparison has reported or whose session was cut.
  * A command answers the last two itself, by saying what it said or by refusing the session.
@@ -37,12 +42,11 @@ import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { settingId } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { awaitingLabel, lastReports, latestBuilt, promoted, stopRule } from "../kernel/reports.ts";
+import { awaitingLabel, type Cap, lastReports, latestBuilt, promoted, stopRule } from "../kernel/reports.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { ranUnder } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber } from "../meta/json-shape.ts";
-import type { Cap } from "./round.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
@@ -81,6 +85,9 @@ export interface Wanted {
   readonly pastStop?: string | undefined;
 }
 
+/** What a Builder session with no comparison after it asks for. */
+export type WantedSession = Pick<Wanted, "cap" | "pastStop">;
+
 /** A comparison a command is about to start. */
 export interface Starting {
   /** Its id: a round's session, or a checkpoint's own. */
@@ -92,8 +99,24 @@ export interface Starting {
   readonly seats: "paid" | "scripted";
 }
 
+/** What a session's start is asked beside it: the practice solves its limits allow. */
+export interface WantedPractice extends WantedSession {
+  readonly practiceSolves?: number | undefined;
+}
+
+/** A session a command is about to start with no comparison after it. */
+interface StartingSession {
+  readonly id: string;
+  readonly wanted: WantedPractice;
+  readonly seats: "paid" | "scripted";
+}
+
 /** Where a refusal sends its reader for more held-out tasks. */
 const EXAMINE = "tools/d1b/examine.ts";
+// The reading was a step done late and by hand in the first live rounds (2026-10-09), and on
+// truss 22 of 32 solves were then rejected, 14 on one check, with nothing to say whose fault.
+const UNREAD =
+  "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do";
 const said = (rows: readonly (readonly [boolean, string])[]) =>
   rows.flatMap(([holds, text]) => (holds ? [text] : []));
 
@@ -135,6 +158,26 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted"): S
   };
 }
 
+/** What the plan's stop rule says of a start: the refusal where the campaign is stopped and no
+ *  reason to go on is given, and the note where one is. */
+function stopped({ stop }: Supply, pastStop: string | undefined) {
+  const after = `${String(stop.sinceStep)} checkpoints`;
+  return {
+    refusals: said([
+      [
+        stop.stop && pastStop === undefined,
+        `the campaign has had ${after} since its last step, and the plan stops it at three without one (docs/plan.md, Phase 5). To go on all the same, pass --past-stop "<why>", which is logged`,
+      ],
+    ]),
+    notes: said([
+      [
+        stop.stop && pastStop !== undefined,
+        `going on past the plan's stop rule, ${after} after the last step: ${String(pastStop)}`,
+      ],
+    ]),
+  };
+}
+
 /** Why a comparison should not start on this supply, and what its reader should know when it does. */
 export function admission(supply: Supply, wanted: Wanted) {
   const scored = Math.min(wanted.target, supply.held);
@@ -151,8 +194,7 @@ export function admission(supply: Supply, wanted: Wanted) {
   const { cap, pastStop } = wanted;
   const afforded = cap === null ? test : Math.floor(cap.dollars / cap.reserve);
   const more = `Run an Examiner session (${EXAMINE}) for more held-out tasks`;
-  const after = `${String(supply.stop.sinceStep)} checkpoints`;
-  const refusals = said([
+  const asked = said([
     [
       supply.held === 0,
       "the log holds no held-out task to score: run tools/d2/prepare.ts, which takes the pack's tasks in",
@@ -169,17 +211,12 @@ export function admission(supply: Supply, wanted: Wanted) {
       cap === null,
       "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
     ],
-    // The reading was a step done late and by hand in the first live rounds (2026-10-09), and on
-    // truss 22 of 32 solves were then rejected, 14 on one check, with nothing to say whose fault.
     [
       supply.held > 0 && supply.faults === null,
-      "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do. A comparison on an unread checker pays for rejections nobody can attribute",
-    ],
-    [
-      supply.stop.stop && pastStop === undefined,
-      `the campaign has had ${after} since its last step, and the plan stops it at three without one (docs/plan.md, Phase 5). To go on all the same, pass --past-stop "<why>", which is logged`,
+      `${UNREAD}. A comparison on an unread checker pays for rejections nobody can attribute`,
     ],
   ]);
+  const refusals = [...asked, ...stopped(supply, pastStop).refusals];
   const notes = [
     `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(scored)} to score`,
     ...(scored < least ? [] : [size, ...power]),
@@ -199,14 +236,71 @@ export function admission(supply: Supply, wanted: Wanted) {
       ],
     ]),
     ...wanted.restarted,
-    ...said([
-      [
-        supply.stop.stop && pastStop !== undefined,
-        `going on past the plan's stop rule, ${after} after the last step: ${String(pastStop)}`,
-      ],
-    ]),
+    ...stopped(supply, pastStop).notes,
   ];
   return { refusals, notes };
+}
+
+/** Why a Builder session with no comparison after it should not start on this supply, and what its
+ *  reader should know when it does. */
+export function sessionAdmission(supply: Supply, { cap, pastStop, practiceSolves }: WantedPractice) {
+  const afforded = cap === null ? null : Math.floor(cap.dollars / cap.reserve);
+  const asked = said([
+    [
+      cap === null,
+      "no --cap is named: a session is launched under a dollar cap, and no practice solve starts that a reserve for it would take past the cap",
+    ],
+    [
+      supply.released > 0 && supply.faults === null,
+      `${UNREAD}. A practice solve is judged by the same checks, and a Builder builds on what they reject`,
+    ],
+  ]);
+  const refusals = [...asked, ...stopped(supply, pastStop).refusals];
+  const notes = [
+    `${String(supply.released)} released for practice · no comparison follows this session: tools/d2/checkpoint.ts compares what the campaign's sessions leave`,
+    ...said([
+      [supply.released === 0, "no task is released: the Builder has nothing to practise on"],
+      [
+        (supply.faults ?? 0) > 0 && !supply.frozen,
+        `the checker's last reading holds ${String(supply.faults)} fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/c/accept.ts)`,
+      ],
+      [
+        afforded !== null && practiceSolves !== undefined && afforded < practiceSolves,
+        `the cap of $${String(cap?.dollars)} holds a reserve of $${String(cap?.reserve)} for ${String(afforded)} practice solves, and the session's limit is ${String(practiceSolves)}: the Builder is told the fewer, which falls by less than one a solve while solves bill under their reserve`,
+      ],
+    ]),
+    ...stopped(supply, pastStop).notes,
+  ];
+  return { refusals, notes };
+}
+
+/**
+ * What both admissions do with a decision: one the log already holds a start of goes on, since it
+ * was admitted when it began; every refusal is thrown at once; and where the start goes on past
+ * the stop rule, the operator's reason is logged under its id, once.
+ */
+function entered(
+  log: string,
+  { id, pastStop }: { readonly id: string; readonly pastStop: string | undefined },
+  decide: (events: readonly LogEvent[]) => {
+    readonly supply: Supply;
+    readonly refusals: readonly string[];
+    readonly notes: string[];
+  },
+): string[] {
+  const events = read(log);
+  const begun = events.some(
+    ({ kind, data }) => (kind === "comparison.started" || kind === "build.started") && data.session === id,
+  );
+  if (begun) return [];
+  const { supply, refusals, notes } = decide(events);
+  if (refusals.length > 0) throw new Error(refusals.join("\n"));
+  const overridden = events.some(({ kind, data }) => kind === "stop.overridden" && data.session === id);
+  if (supply.stop.stop && pastStop !== undefined && !overridden) {
+    const { checkpoints, sinceStep } = supply.stop;
+    append(log, "stop.overridden", { session: id, reason: pastStop, checkpoints, sinceStep });
+  }
+  return notes;
 }
 
 /**
@@ -217,18 +311,18 @@ export function admission(supply: Supply, wanted: Wanted) {
  * reason is logged under its id, once.
  */
 export function admitComparison(log: string, { id, reference, wanted, seats }: Starting): string[] {
-  const events = read(log);
-  const begun = events.some(
-    ({ kind, data }) => (kind === "comparison.started" || kind === "build.started") && data.session === id,
-  );
-  if (seats === "scripted" || begun) return [];
-  const supply = supplyOf(events, reference);
-  const { refusals, notes } = admission(supply, wanted);
-  if (refusals.length > 0) throw new Error(refusals.join("\n"));
-  const overridden = events.some(({ kind, data }) => kind === "stop.overridden" && data.session === id);
-  if (supply.stop.stop && wanted.pastStop !== undefined && !overridden) {
-    const { checkpoints, sinceStep } = supply.stop;
-    append(log, "stop.overridden", { session: id, reason: wanted.pastStop, checkpoints, sinceStep });
-  }
-  return notes;
+  if (seats === "scripted") return [];
+  return entered(log, { id, pastStop: wanted.pastStop }, (events) => {
+    const supply = supplyOf(events, reference);
+    return { supply, ...admission(supply, wanted) };
+  });
+}
+
+/** The same for a Builder session with no comparison after it (`tools/d2/session.ts`). */
+export function admitSession(log: string, { id, wanted, seats }: StartingSession): string[] {
+  if (seats === "scripted") return [];
+  return entered(log, { id, pastStop: wanted.pastStop }, (events) => {
+    const supply = supplyOf(events);
+    return { supply, ...sessionAdmission(supply, wanted) };
+  });
 }

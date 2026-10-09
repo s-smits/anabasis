@@ -70,7 +70,9 @@ export const ROUND = "tools/d2/round.ts";
 export const EXAMINE = "tools/d1b/examine.ts";
 /** The command a comparison with no Builder session runs as. */
 export const CHECKPOINT = "tools/d2/checkpoint.ts";
-const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT];
+/** The command a Builder session with no comparison after it runs as. */
+export const SESSION = "tools/d2/session.ts";
+const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT, SESSION];
 /** The file beside a log that says its campaign is a seed, and of what. */
 export const SEED_FILE = "seed.json";
 const LIVE = "tools/m0/live-solve.ts";

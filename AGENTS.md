@@ -321,16 +321,18 @@ its manual and lists its flags.
 | 2 | `bun tools/d2/prepare.ts ... [--practice N] [--tasks <ids>]` | The pack's tasks held out and the practice tasks released. `--tasks` confirms each named task against today's verifier and writes nothing: a comparison names its scored tasks itself |
 | 3 | `bun tools/d1b/examine.ts ... --session x-1 --examiner <model>` | Further held-out tasks, written by an Examiner session |
 | 4 | `bun tools/d2/round.ts ... --session b-1 --builder <model>` | A Builder session, then the comparison of the harness it left with the reference |
+| 4 | `bun tools/d2/session.ts ... --session b-2 --builder <model>` | A Builder session with no comparison after it, under a dollar cap of its own. The plan's checkpoint is several of these and then one comparison |
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
 | 5 | `bun tools/d2/settle.ts ... --session b-1` | A person's labels for the rejections a comparison set aside, and its report once more |
 | 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing |
 
-Start a round, a checkpoint or an Examiner session through the launcher, which reads the log and
-the host first and refuses a run that cannot report anything (`tools/runs/launch.ts`):
+Start a round, a checkpoint, a Builder session by itself or an Examiner session through the
+launcher, which reads the log and the host first and refuses a run that cannot report anything
+(`tools/runs/launch.ts`). `--no-comparison` says that the flags are a session's by itself:
 
 ```text
-bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the command's own flags>
-bun run runs rehearse <the flags of tools/d2/round.ts that name no model>
+bun run runs launch [--env-file FILE] [--loaded] [--dry-run] [--no-comparison] <the command's own flags>
+bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs pulse | stop <name> | compare | replay | seed | zip
 ```
 
@@ -1161,7 +1163,7 @@ the operator.
 | Hand label | A person's verdict on one rejection: `earned`, `check-defect` or `unclear` |
 | Reference harness | The harness a new one is compared with: the starter until a step is promoted |
 | Comparison | Both harnesses solve the same held-out tasks; each task is a win, a loss or a tie |
-| Round | One Builder session followed by one comparison |
+| Round | One Builder session followed by one comparison. A session may also run by itself, with no comparison after it |
 | Checkpoint | One comparison of two kept harnesses, with no session |
 | Step | A comparison in which the new harness wins significantly more tasks than it loses |
 | Setting | Who solves, under which limits, and which tasks are scored: recorded once in the log (section 6) |
@@ -1183,7 +1185,7 @@ src/backends/   the three model backends as one pi collection, and compaction
 src/meta/       the owners of every runtime surface (section 12.8)
 tools/c/        the check program: accept, carry, rejections, repaired
 tools/d1b/      examine
-tools/d2/       campaign, setting, prepare, round, checkpoint, settle, promote
+tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote
 tools/runs/     launch, stop, rehearse, seed, pulse, compare, replay, zip
 tools/wri/      the whole-run investigation's reader of one log
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans

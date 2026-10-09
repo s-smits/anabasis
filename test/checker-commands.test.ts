@@ -43,6 +43,9 @@ const carried = join(REPO, ".ana", "d2", CARRIED);
 /** The campaign whose tasks are set up for a first round. */
 const PREPARED = `${NAME}-prepared`;
 const prepared = join(REPO, ".ana", "d2", PREPARED);
+/** The campaign a rehearsal is seeded from, and the seed it walks. */
+const SOURCE = `${NAME}-source`;
+const SEED = `sim-${NAME}`;
 /** Two campaigns over a pack with something wrong: a tool no path holds, and controls gone stale. */
 const LOST = `${NAME}-lost`;
 const STALE = `${NAME}-stale`;
@@ -68,6 +71,7 @@ afterAll(() => {
   rmSync(accepted, { recursive: true, force: true });
   rmSync(carried, { recursive: true, force: true });
   rmSync(prepared, { recursive: true, force: true });
+  for (const name of [SOURCE, SEED]) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   for (const name of [LOST, STALE]) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
 });
 
@@ -466,5 +470,52 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     const kinds = new Set(read(join(prepared, LOG)).map(({ kind }) => kind));
     expect([...kinds].sort()).toEqual(["task.gate", "task.proposed"]);
     expect(prepare("t-9").said).toContain("--tasks t-9: the campaign holds no task of that id");
+  });
+
+  // The plan's checkpoint as its commands walk it (`docs/plan.md`, Phase 5): two Builder sessions,
+  // each with no comparison after it, and then one comparison of what the second left. A script
+  // sits in every seat. Until 2026-10-09 a session ran only inside a round.
+  it("rehearses two sessions and then one checkpoint over a seed", () => {
+    const source = join(REPO, ".ana", "d2", SOURCE);
+    const seeded = join(REPO, ".ana", "d2", SEED);
+    // One of the pack's two tasks is released for practice, by the contract's draw, and one held out.
+    const taken = run("tools/d2/prepare.ts", { cycle: "c01", name: SOURCE, practice: "1" });
+    expect(taken.said).toContain("1 held out, 1 released for practice");
+    const cli = (...args: string[]) => {
+      const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/runs/cli.ts", ...args], cwd: REPO });
+      return { code: ran.exitCode, said: `${ran.stdout.toString()}${ran.stderr.toString()}` };
+    };
+    expect(cli("seed", "--from", source, "--name", SEED).code).toBe(0);
+    const flags = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", SEED];
+    const rehearse = (...more: string[]) => cli("rehearse", ...flags, ...more);
+    const of = (kind: string) =>
+      read(join(seeded, LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
+
+    const first = rehearse("--no-comparison", "--session", "b-1");
+    expect(first.said).toContain("the rehearsal went as scripted");
+    expect(first.said).toContain("tools/d2/checkpoint.ts --new latest compares it");
+    const second = rehearse("--no-comparison", "--session", "b-2");
+    expect(second.said).toContain("the rehearsal went as scripted");
+    // Two sessions are on record, the second from what the first left, and nothing is compared.
+    const [one, two] = of("build.finished");
+    expect(of("build.started")).toMatchObject([{ session: "b-1" }, { session: "b-2", parent: one?.harness }]);
+    expect([one?.changed, two?.changed]).toEqual([true, true]);
+    expect(two?.harness).not.toBe(one?.harness);
+    expect(of("comparison.started")).toEqual([]);
+    expect(of("solve.started")).toEqual([]);
+    // The first command of the campaign recorded its setting, and the second ran under the record.
+    expect(of("campaign.setting")).toHaveLength(1);
+
+    // Then the one comparison: the harness the last session left against the reference harness,
+    // which is the starter. One held-out task reads no step; what is proven is the join.
+    const compared = rehearse("--id", "g-1", "--new", "latest");
+    expect(compared.said).toContain("the rehearsal went as scripted");
+    expect(of("comparison.reported")).toMatchObject([
+      { session: "g-1", fresh: two?.harness, reading: "no-step", scored: { wins: 1, losses: 0, ties: 0 } },
+    ]);
+    // A session that ended says what it left when it is asked for again, and runs nothing.
+    const again = rehearse("--no-comparison", "--session", "b-2");
+    expect(again.said).toContain(`session b-2 left harness ${isString(two?.harness) ? two.harness : ""}:`);
+    expect(of("build.started")).toHaveLength(2);
   });
 });

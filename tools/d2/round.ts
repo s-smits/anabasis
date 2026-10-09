@@ -74,12 +74,13 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison, type Wanted } from "#src/builder/admission.ts";
-import { type Cap, predicted, type Report, round, scoredSet, type Valid } from "#src/builder/round.ts";
+import { predicted, type Report, round, scoredSet, type Valid } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type Budget, UNITS } from "#src/kernel/compare.ts";
+import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { stopRule } from "#src/kernel/reports.ts";
+import { type Cap, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -151,9 +152,10 @@ export const COMPARISON_OPTIONS = {
   "past-stop": { type: "string" },
 } as const;
 
-/** A round's flags and their defaults. A launch reads the same ones (`tools/runs/launch.ts`), so
- *  what it says a round can read is said of the round that would start. */
-export const ROUND_OPTIONS = {
+/** The flags of a Builder session, in a round or with no comparison after it (`session.ts`), and
+ *  their defaults. `--tasks` and `--target` are the campaign's scored set, which a session scores
+ *  nothing of: they are the setting's, and the campaign's first command records them. */
+export const SESSION_OPTIONS = {
   root: { type: "string" },
   sweep: { type: "string" },
   cycle: { type: "string" },
@@ -163,12 +165,122 @@ export const ROUND_OPTIONS = {
   builder: { type: "string" },
   "builder-effort": { type: "string", default: "high" },
   ...SETTING_OPTIONS,
-  ...COMPARISON_OPTIONS,
+  tasks: COMPARISON_OPTIONS.tasks,
+  target: COMPARISON_OPTIONS.target,
+  reviewer: COMPARISON_OPTIONS.reviewer,
+  "reviewer-effort": COMPARISON_OPTIONS["reviewer-effort"],
+  cap: COMPARISON_OPTIONS.cap,
+  reserve: COMPARISON_OPTIONS.reserve,
+  "past-stop": COMPARISON_OPTIONS["past-stop"],
   "practice-solves": { type: "string", default: "24" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "300" },
   parent: { type: "string", default: "latest" },
 } as const;
+
+/** A round's flags and their defaults. A launch reads the same ones (`tools/runs/launch.ts`), so
+ *  what it says a round can read is said of the round that would start. */
+export const ROUND_OPTIONS = { ...SESSION_OPTIONS, ...COMPARISON_OPTIONS } as const;
+
+/** What a Builder session reads of its command's flags, each with its default by then. */
+interface SessionFlags {
+  readonly session: string;
+  readonly parent: string;
+  readonly "builder-effort": string;
+  readonly minutes: string;
+  readonly turns: string;
+  readonly "practice-solves": string;
+}
+
+/** The campaign's two reviewers, as a command seats them. */
+type Reviewers = ReturnType<Campaign["reviewers"]>;
+
+// SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
+const effortNamed = (flag: string) => flag as ThinkingLevel;
+
+/** A campaign's task by its version, from the pack or a session's proposal. */
+export function packaged(campaign: Campaign): (version: string) => TaskPackage {
+  const packages = campaign.packages();
+  return (version) => {
+    const task = packages.get(version);
+    if (task === undefined) {
+      throw new Error(`task ${version} is in the log and in neither the pack nor a proposal`);
+    }
+    return task;
+  };
+}
+
+/** The reviewers `--reviewer` names, or none. */
+export function reviewersNamed(
+  campaign: Campaign,
+  values: { readonly reviewer?: string | undefined; readonly "reviewer-effort": string },
+): Reviewers | null {
+  const { reviewer } = values;
+  if (reviewer === undefined) return null;
+  return campaign.reviewers(campaign.reader(modelNamed(reviewer), effortNamed(values["reviewer-effort"])));
+}
+
+/** The folder of the harness a session starts from, as `--parent` names it. A session the log
+ *  already holds goes on from the harness it started from, whatever a later session has left since. */
+export async function parentNamed(
+  campaign: Campaign,
+  values: Pick<SessionFlags, "session" | "parent">,
+): Promise<string> {
+  const began = read(campaign.log).find(
+    ({ kind, data }) => kind === "build.started" && data.session === values.session,
+  )?.data.parent;
+  return (await keptAs(campaign, "--parent", isString(began) ? began : values.parent)).dir;
+}
+
+/**
+ * The Builder session a command's flags name, over the campaign's released tasks and from the
+ * harness in `parent`: a round's, or the whole of a command that compares nothing.
+ */
+export function sessionNamed(
+  campaign: Campaign,
+  values: SessionFlags,
+  given: {
+    readonly parent: string;
+    readonly limits: Limits;
+    readonly seats: Seats;
+    readonly reviewers: Reviewers | null;
+  },
+): BuildRequest {
+  const { limits, seats, reviewers } = given;
+  if (seats.builder === null) throw new Error("name --builder");
+  const packageOf = packaged(campaign);
+  const seconds = Number(values.minutes) * 60;
+  return {
+    id: values.session,
+    parent: given.parent,
+    states: campaign.states,
+    memory: campaign.memory,
+    tasks: taskSets(read(campaign.log)).released.map((version) => ({ version, task: packageOf(version) })),
+    contract: campaign.contract,
+    resources: campaign.resources,
+    ...seats.builder,
+    effort: effortNamed(values["builder-effort"]),
+    // The session's own wall and turns, and a command of its own held to that wall and not to a
+    // solve's: a Builder builds an engine in one command, whatever a solve's minutes are.
+    limits: {
+      ...limits,
+      wallSeconds: seconds,
+      turns: Number(values.turns),
+      practiceSolves: Number(values["practice-solves"]),
+      ...commandSeconds(seconds),
+    },
+    solve: limits,
+    log: campaign.log,
+    repoRoot: campaign.repo,
+    practise: (task, dir, digest, kill) => seats.solve(packageOf(task.version), { dir, digest }, kill),
+    ...(reviewers === null
+      ? {}
+      : {
+          referee: (solve, task, kill) => reviewers.referee(solve, packageOf(task.version), kill),
+          diagnose: (solve, task, kill) => reviewers.diagnose(solve, packageOf(task.version), kill),
+        }),
+  };
+}
 
 /**
  * The scored set a command's flags name, by task version: the tasks `--tasks` lists by id, each a
@@ -311,8 +423,6 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   ) {
     throw new Error("name --root, --sweep, --cycle, --bundle, --name and --session");
   }
-  // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
-  const effort = (flag: string) => flag as ThinkingLevel;
   // Read before the campaign is opened: a paid round with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
   const budgets = budgetsNamed(values.budget);
@@ -321,26 +431,9 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
   const { limits } = setting.named;
   const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting.named });
-  const sets = taskSets(read(campaign.log));
-  const packages = campaign.packages();
-  const packageOf = (version: string): TaskPackage => {
-    const task = packages.get(version);
-    if (task === undefined) {
-      throw new Error(`task ${version} is in the log and in neither the pack nor a proposal`);
-    }
-    return task;
-  };
-  const reviewer = values.reviewer;
-  const reviewers =
-    reviewer === undefined
-      ? null
-      : campaign.reviewers(campaign.reader(modelNamed(reviewer), effort(values["reviewer-effort"])));
-  // A session the log already holds goes on from the harness it started from, whatever a later
-  // session has left since.
-  const began = read(campaign.log).find(
-    ({ kind, data }) => kind === "build.started" && data.session === session,
-  )?.data.parent;
-  const parent = (await keptAs(campaign, "--parent", isString(began) ? began : values.parent)).dir;
+  const packageOf = packaged(campaign);
+  const reviewers = reviewersNamed(campaign, values);
+  const parent = await parentNamed(campaign, { ...values, session });
   const reference = await keptAs(campaign, "--reference", values.reference);
   const notes = admitComparison(campaign.log, {
     id: session,
@@ -350,40 +443,11 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   });
   for (const note of notes) console.log(`· ${note}`);
   const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
-  if (seats.builder === null) throw new Error("name --builder");
+  const built = sessionNamed(campaign, { ...values, session }, { parent, limits, seats, reviewers });
   keepSetting(campaign.log, setting);
   stayAwake();
   const report = await round({
-    session: {
-      id: session,
-      parent,
-      states: campaign.states,
-      memory: campaign.memory,
-      tasks: sets.released.map((version) => ({ version, task: packageOf(version) })),
-      contract: campaign.contract,
-      resources: campaign.resources,
-      ...seats.builder,
-      effort: effort(values["builder-effort"]),
-      // The session's own wall and turns, and a command of its own held to that wall and not to a
-      // solve's: a Builder builds an engine in one command, whatever a solve's minutes are.
-      limits: {
-        ...limits,
-        wallSeconds: Number(values.minutes) * 60,
-        turns: Number(values.turns),
-        practiceSolves: Number(values["practice-solves"]),
-        ...commandSeconds(Number(values.minutes) * 60),
-      },
-      solve: limits,
-      log: campaign.log,
-      repoRoot: campaign.repo,
-      practise: (task, dir, digest, kill) => seats.solve(packageOf(task.version), { dir, digest }, kill),
-      ...(reviewers === null
-        ? {}
-        : {
-            referee: (solve, task, kill) => reviewers.referee(solve, packageOf(task.version), kill),
-            diagnose: (solve, task, kill) => reviewers.diagnose(solve, packageOf(task.version), kill),
-          }),
-    },
+    session: built,
     reference,
     starter: await starter(campaign),
     tasks: scoredNamed(campaign, setting.tasks, setting.target),

@@ -7,6 +7,7 @@
  *   bun tools/d2/prepare.ts    ... --name <name>                     the pack's tasks, held out; the practice tasks, released; the scored tasks, confirmed
  *   bun tools/d2/round.ts      ... --name <name> --session b-1       a Builder session and its comparison
  *   bun tools/d2/settle.ts     ... --name <name> --session b-1       a comparison's rejections, labelled by a person
+ *   bun tools/d2/session.ts    ... --name <name> --session b-2       a Builder session with no comparison after it
  *   bun tools/d2/checkpoint.ts ... --name <name> --id g2             one comparison of two kept harnesses
  *   bun tools/d1b/examine.ts   ... --name <name> --session x-1       an Examiner session, which writes further tasks
  *

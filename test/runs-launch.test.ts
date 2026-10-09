@@ -9,8 +9,8 @@ import {
   runTextSyncOrThrow,
   terminateAndReapProcessGroupId,
 } from "../src/meta/subprocess.ts";
-import { admission, type Supply } from "../src/builder/admission.ts";
-import { spent } from "../src/builder/round.ts";
+import { admission, sessionAdmission, type Supply } from "../src/builder/admission.ts";
+import { spent } from "../src/builder/session.ts";
 import { claimed } from "../src/examiner/session.ts";
 import { append, type LogEvent } from "../src/kernel/log.ts";
 import {
@@ -21,6 +21,8 @@ import {
   leftOpen,
   preflight,
   reportedAs,
+  sessionPreflight,
+  sessionTaken,
   settingFlagged,
   start,
 } from "../tools/runs/launch.ts";
@@ -111,6 +113,46 @@ describe("a launch's preflight", () => {
     expect(preflight(SETS, { ...ASKED, spent: "session b-1 was cut" }).refusals).toEqual([
       "session b-1 was cut. Pass another --session",
     ]);
+  });
+});
+
+describe("a launch of a Builder session with no comparison after it", () => {
+  const at = "2026-10-09T00:00:00.000Z";
+
+  it("is the session's own admission, with what only the host and the id can refuse", () => {
+    expect(sessionPreflight(SETS, ASKED)).toEqual(sessionAdmission(SETS, { cap: ASKED.cap }));
+    // It scores nothing: a log with no held-out task, which refuses a comparison, does not refuse it.
+    const none = { ...SETS, held: 0 };
+    expect(preflight(none, ASKED).refusals).toHaveLength(1);
+    expect(sessionPreflight(none, ASKED).refusals).toEqual([]);
+    const unread = { ...SETS, faults: null };
+    expect(sessionPreflight(unread, { ...ASKED, cap: null, load: 14.2 }).refusals).toEqual([
+      ...sessionAdmission(unread, { cap: null }).refusals,
+      expect.stringContaining("load is 14.2 on 12 cores"),
+    ]);
+  });
+
+  it("refuses a session that ended, which launched again would only say what it left", () => {
+    const started = { at, kind: "build.started", data: { session: "b-2" } } as const;
+    const ended = { at, kind: "build.finished", data: { session: "b-2", ended: "wall" } } as const;
+    expect(sessionTaken([], "b-2")).toBeNull();
+    expect(sessionTaken([started], "b-2")).toContain("started and never finished");
+    expect(sessionTaken([started, ended], "b-2")).toBe(
+      "session b-2 has ended, and what it left is on record",
+    );
+    // Inside a round the same session goes on to its comparison, and is not refused.
+    expect(spent([started, ended], "b-2")).toBeNull();
+    expect(sessionTaken([started, ended], "b-3")).toBeNull();
+  });
+
+  it("is named by --no-comparison, which neither a checkpoint nor an Examiner session takes", async () => {
+    const flags = ["--name", "no-such-campaign", "--no-comparison"];
+    await expect(launch([...flags, "--id", "g2"])).rejects.toThrow(
+      "--no-comparison names a Builder session by itself",
+    );
+    await expect(
+      launch([...flags, "--session", "x-1", "--examiner", "claude/claude-opus-5-5"]),
+    ).rejects.toThrow("--no-comparison names a Builder session by itself");
   });
 });
 

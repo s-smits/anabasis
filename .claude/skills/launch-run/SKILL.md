@@ -1,6 +1,6 @@
 ---
 name: launch-run
-description: "Launch an authorised Anabasis v2 round, checkpoint or Examiner session through one command that first reads whether it can start and what it can report, or stop a named run. Use when the operator asks to launch, start, relaunch or stop a round, a checkpoint, an Examiner session or a run, to check whether a campaign is ready for one, or why a launch was refused. Owns the preflight, the start and the stop; whole-run-investigation reads what a run did."
+description: "Launch an authorised Anabasis v2 round, checkpoint, Builder session or Examiner session through one command that first reads whether it can start and what it can report, or stop a named run. Use when the operator asks to launch, start, relaunch or stop a round, a checkpoint, an Examiner session or a run, to check whether a campaign is ready for one, or why a launch was refused. Owns the preflight, the start and the stop; whole-run-investigation reads what a run did."
 ---
 
 # Launch a round
@@ -11,13 +11,31 @@ A launch request authorises the command; it does not authorise a second run besi
 ```sh
 bun run runs launch [--env-file <file>] [--loaded] [--dry-run] <the flags of tools/d2/round.ts>
 bun run runs launch [--env-file <file>] [--loaded] [--dry-run] <the flags of tools/d2/checkpoint.ts>
+bun run runs launch [--env-file <file>] [--loaded] [--dry-run] --no-comparison <the flags of tools/d2/session.ts>
 ```
 
-Run it in the worktree whose source should run. Every flag but its own three goes to the command
+Run it in the worktree whose source should run. Every flag but its own four goes to the command
 unchanged, so `tools/d2/round.ts` stays the one owner of a comparison's flags and defaults. Flags
 that hold `--id` are a checkpoint's: one comparison of two harnesses the campaign keeps, with no
 Builder session. Flags that hold `--examiner` are an Examiner session's and go to
 `tools/d1b/examine.ts`: see "An Examiner session" below.
+
+With `--no-comparison` the flags are a Builder session's by itself (`tools/d2/session.ts`): a
+round's session with no comparison after it. The plan's checkpoint is several sessions and then
+one comparison (`docs/plan.md`, Phase 5), which is launched as that many sessions and then a
+checkpoint with `--new latest`:
+
+```sh
+bun run runs launch --no-comparison <pack flags> --name <name> --session b-2 --builder <model> --cap 150
+bun run runs launch --no-comparison <pack flags> --name <name> --session b-3 --builder <model> --cap 150
+bun run runs launch <pack flags> --name <name> --id g2 --cap 375
+```
+
+A session takes a round's flags without those of a comparison, and needs its own `--cap`: no
+practice solve starts that a reserve for it would take past the cap, and the Builder is told how
+many solves are left, never a sum. It is refused on a checker nobody has read and after the stop
+rule, as a comparison is, and it needs no held-out task, since it scores nothing. A session that
+ended is finished: the next takes another `--session`.
 
 The plan's first experiment is its first round (`docs/plan.md`, Phase 0). The Builder forks the
 Starter Built Harness and builds on it, and the harness it leaves is compared with the starter on

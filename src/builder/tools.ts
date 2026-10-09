@@ -44,6 +44,7 @@ import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/too
 import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
+import { billedFor } from "../kernel/reports.ts";
 import { ended, passed, ranUnder, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
@@ -333,6 +334,21 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
   return { task, solve, ending, lines };
 }
 
+/**
+ * The practice solves a session may still start: what is left of its own count, and no more than
+ * its dollar cap holds a reserve for, where it runs under one (`BuildRequest.cap`). The dollars are
+ * the log's, as a comparison's are (`billedFor`): the practice solves this session ran and their
+ * reviewers. The Builder's own turns are billed when the session ends, and are held by its turns
+ * and its wall. The Builder is told a count and never a sum.
+ */
+export function practiceLeft({ request, spent }: Bench, events: readonly LogEvent[]): number {
+  const { cap, limits } = request;
+  const counted = limits.practiceSolves - spent;
+  if (cap === undefined) return counted;
+  const afforded = Math.floor((cap.dollars - billedFor(events, request.id)) / cap.reserve);
+  return Math.max(0, Math.min(counted, afforded));
+}
+
 export function practiceTool(bench: Bench): AgentTool {
   const { request } = bench;
   const offered = new Map(request.tasks.map((task) => [task.task.taskId, task]));
@@ -356,13 +372,14 @@ export function practiceTool(bench: Bench): AgentTool {
         );
       }
       const chosen = args.tasks.flatMap((id) => offered.get(id) ?? []);
-      const states = taskStates(read(request.log));
+      const asked = read(request.log);
+      const states = taskStates(asked);
       const closed = chosen.find(
         ({ version }) =>
           states.get(version) !== "released" || bench.disputed.has(version) || bench.faulty.has(version),
       );
       if (closed !== undefined) throw new Error(`${closed.task.taskId} is no longer a practice task`);
-      const left = request.limits.practiceSolves - bench.spent;
+      const left = practiceLeft(bench, asked);
       if (chosen.length > left) {
         throw new Error(
           `only ${plural(left, "practice solve")} left, and this asks for ${String(chosen.length)}`,
@@ -400,7 +417,7 @@ export function practiceTool(bench: Bench): AgentTool {
           ...lines,
         ].join("\n");
       });
-      const after = left - chosen.length;
+      const after = practiceLeft(bench, events);
       return text(
         `${said.join("\n\n")}\n\n${
           after > 0
@@ -487,7 +504,7 @@ async function standing(bench: Bench): Promise<string | null> {
         : "the harness your last practice solve ran is measured in its place";
     return `${errorMessage(error)}. Left so, ${measured}. Mend it and call finish again, ${again}.`;
   }
-  const left = request.limits.practiceSolves - bench.spent;
+  const left = practiceLeft(bench, read(request.log));
   const tried = bench.opened === null || digest === bench.opened.harness.digest || digest === bench.parent;
   if (tried || left <= 0 || told.has("untried")) return null;
   told.add("untried");

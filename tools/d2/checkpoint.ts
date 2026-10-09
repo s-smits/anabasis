@@ -44,14 +44,11 @@
  *
  * Not run here: see `campaign.ts`.
  */
-import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison } from "#src/builder/admission.ts";
 import { checkpoint, type Report } from "#src/builder/round.ts";
 import { read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
-import type { TaskPackage } from "#src/kernel/task.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { modelNamed } from "../m0/stored-sweep.ts";
 import { awaitingLines, campaignLog, starter, keptAs, openCampaign, stayAwake } from "./campaign.ts";
 import {
   budgetsNamed,
@@ -59,6 +56,8 @@ import {
   predictionNamed,
   capNamed,
   COMPARISON_OPTIONS,
+  packaged,
+  reviewersNamed,
   ROUND_OPTIONS,
   scoredNamed,
   type Seated,
@@ -102,14 +101,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   // The campaign's setting is its log's, as a round reads it (`setting.ts`).
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
   const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting.named });
-  const packages = campaign.packages();
-  const packageOf = (version: string): TaskPackage => {
-    const task = packages.get(version);
-    if (task === undefined) {
-      throw new Error(`task ${version} is in the log and in neither the pack nor a proposal`);
-    }
-    return task;
-  };
+  const packageOf = packaged(campaign);
   const old = await keptAs(campaign, "--reference", values.reference);
   const fresh = await keptAs(campaign, "--new", values.new);
   // Asked before anything of this comparison is written, as a launch of it asks.
@@ -125,14 +117,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
       `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness (tools/d2/round.ts)" : ""}. A harness is read against itself beside a comparison, with --noise`,
     );
   }
-  const reviewer = values.reviewer;
-  const reviewers =
-    reviewer === undefined
-      ? null
-      : campaign.reviewers(
-          // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
-          campaign.reader(modelNamed(reviewer), values["reviewer-effort"] as ThinkingLevel),
-        );
+  const reviewers = reviewersNamed(campaign, values);
   const seats = seated(campaign, { builder: undefined, reference: old.dir });
   keepSetting(campaign.log, setting);
   stayAwake();

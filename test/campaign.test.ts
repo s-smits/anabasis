@@ -25,6 +25,7 @@ import { openHarness } from "../src/solve/harness.ts";
 import { starter, keptAs, LIMITS, openCampaign } from "../tools/d2/campaign.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
 import { budgetsNamed, capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
+import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -408,6 +409,37 @@ describe("a campaign", () => {
       })),
     ).rejects.toThrow("name --builder");
     expect(read(campaign.log).some(({ data }) => data.session === "z-5")).toBe(false);
+  });
+
+  it("runs a Builder session by itself under a cap, and refuses one by hand as a launch would", async () => {
+    const campaign = await openCampaign(ARGS);
+    const flags = [
+      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
+      "--parent",
+      "starter",
+      "--session",
+      "z-6",
+    ];
+    await expect(sessionCommand([...flags, "--builder", "faux/none"])).rejects.toThrow(
+      "name --cap, the billed dollars",
+    );
+    // A comparison's flags are none of a session's: it scores nothing and is read against nothing.
+    await expect(sessionCommand([...flags, "--cap", "100", "--solves", "2"])).rejects.toThrow("--solves");
+    // On a checker nobody has read its practice solves would be judged by checks nobody has seen.
+    await expect(sessionCommand([...flags, "--cap", "100", "--builder", "faux/none"])).rejects.toThrow(
+      "the campaign's checker has never been read: run tools/c/accept.ts",
+    );
+    // A rehearsal's seats are scripts: it is exempt, and is seated against the campaign's
+    // reference harness, which is the starter until a promotion.
+    const against: string[] = [];
+    const seats = (opened: { readonly log: string }, given: { readonly reference: string }) => {
+      expect(opened.log).toBe(campaign.log);
+      against.push(given.reference);
+      return { builder: null, setting: "s", solve: () => Promise.reject(new Error("no solve is asked for")) };
+    };
+    await expect(sessionCommand(flags, seats)).rejects.toThrow("name --builder");
+    expect(against).toEqual([(await starter(campaign)).dir]);
+    expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
   });
 
   it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {

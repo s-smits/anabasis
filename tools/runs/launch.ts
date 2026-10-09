@@ -1,14 +1,16 @@
 /**
- * Launch a round or a checkpoint once its log says it can report something, or an Examiner
- * session, and stop a run: v1's launch-run, on v2's records.
+ * Launch a round or a checkpoint once its log says it can report something, a Builder session by
+ * itself, or an Examiner session, and stop a run: v1's launch-run, on v2's records.
  *
  *   bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of tools/d2/round.ts>
  *   bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of tools/d2/checkpoint.ts>
+ *   bun run runs launch [--env-file FILE] [--loaded] [--dry-run] --no-comparison <the flags of tools/d2/session.ts>
  *   bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of tools/d1b/examine.ts>
  *   bun run runs stop <name> ... [--yes]
  *
  * Flags that hold `--examiner` are an Examiner session's, flags that hold `--id` a checkpoint's,
- * and any others a round's.
+ * and any others a round's, unless `--no-comparison` says the session runs with no comparison
+ * after it: the plan's checkpoint is several sessions and then one comparison.
  *
  * `launch` runs in the worktree whose source should run. Before it starts anything it reads the
  * campaign's log and the host, and refuses:
@@ -24,7 +26,8 @@
  *   - a host whose load is over its cores, unless `--loaded` says its times will not be compared;
  *   - an `--env-file` that is not there. The path is Bun's to read and is never opened here;
  *   - a `--session` whose Builder started and did not end whole, as the round itself would
- *     (`spent`), or one an Examiner session already took (`claimed`).
+ *     (`spent`), one an Examiner session already took (`claimed`), or, for a session by itself,
+ *     one that has ended (`sessionTaken`).
  *
  * Its notes then say what a comparison of this size can show before it is paid for (`sizeLines`,
  * `src/kernel/size.ts`): the smallest results that clear its level, and the plan's power at it.
@@ -35,8 +38,10 @@
  * under, since no tally on record then speaks for it. A launch that names no `--solver` solves as
  * the stored cycle's own, which it does not open, and says nothing of the solver.
  *
- * An Examiner session solves nothing, so it meets the host's refusals and its id's, and needs the
- * campaign's log and no set in it.
+ * A session with no comparison scores nothing, so it meets the session's own admission
+ * (`sessionAdmission`): its cap, a checker that has been read, and the stop rule. An Examiner
+ * session solves nothing, so it meets the host's refusals and its id's, and needs the campaign's
+ * log and no set in it.
  *
  * It then starts the command with the same flags, niced, in a process group of its own, with its
  * output in `.ana/d2/<name>/launch-<session>.out` and `.err`, and writes `launch-<session>.json`
@@ -65,9 +70,16 @@ import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
-import { admission, type Supply, supplyOf, type Wanted } from "#src/builder/admission.ts";
-import { spent } from "#src/builder/round.ts";
-import { sessionDirs } from "#src/builder/session.ts";
+import {
+  admission,
+  sessionAdmission,
+  type Supply,
+  supplyOf,
+  type Wanted,
+  type WantedPractice,
+  type WantedSession,
+} from "#src/builder/admission.ts";
+import { sessionDirs, spent } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
@@ -87,6 +99,7 @@ import {
   ROUND,
   type Run,
   runs,
+  SESSION,
   standing,
   writers,
 } from "./pulse.ts";
@@ -96,8 +109,8 @@ import { seedCut } from "./seed.ts";
 type Loose = string | boolean | (string | boolean)[] | undefined;
 
 const START_MS = 8000;
-/** The launcher's own flags; every other one is the round's. */
-const OWN = new Set(["env-file", "loaded", "dry-run"]);
+/** The launcher's own flags; every other one is the command's. */
+const OWN = new Set(["env-file", "loaded", "dry-run", "no-comparison"]);
 
 /** What any launch finds on the host and in the log's sessions. */
 export interface Host {
@@ -174,6 +187,14 @@ export function reportedAs(events: readonly LogEvent[], id: string): string | nu
     : `comparison ${id} has reported ${isString(report.data.reading) ? report.data.reading : "something"}, and a comparison that reported is finished`;
 }
 
+/** Why no launch runs session `id` by itself, or null: it did not end whole (`spent`), or it ended.
+ *  Launched again, a session that ended would say what it left and end, which a launch reads as a
+ *  start that failed; inside a round it goes on to its comparison, and is not refused. */
+export function sessionTaken(events: readonly LogEvent[], id: string): string | null {
+  const ended = events.some(({ kind, data }) => kind === "build.finished" && data.session === id);
+  return spent(events, id) ?? (ended ? `session ${id} has ended, and what it left is on record` : null);
+}
+
 /** The value a command line gives flag `--name`, as `--name value` or `--name=value`. */
 function flagOf(args: readonly string[], name: string): string | undefined {
   const joined = args.find((arg) => arg.startsWith(`--${name}=`));
@@ -194,6 +215,13 @@ export function preflight(supply: Supply, asked: Asked) {
     ],
     notes,
   };
+}
+
+/** The same for a Builder session with no comparison after it: the session's own admission, then
+ *  the host and its id. */
+export function sessionPreflight(supply: Supply, asked: Host & WantedPractice) {
+  const { refusals, notes } = sessionAdmission(supply, asked);
+  return { refusals: [...refusals, ...refused(asked)], notes };
 }
 
 /** The same for an Examiner session on a campaign whose log is `events`, or null where the
@@ -271,30 +299,47 @@ export function settingFlagged(values: Readonly<Record<string, Loose>>, events: 
   );
 }
 
+/** The command a launch starts, by what its flags hold. */
+function commandOf(holds: {
+  readonly examining: boolean;
+  readonly checking: boolean;
+  readonly alone: boolean;
+}): string {
+  if (holds.examining) return EXAMINE;
+  if (holds.checking) return CHECKPOINT;
+  return holds.alone ? SESSION : ROUND;
+}
+
+/** The flags a launch reads for itself: its own, and those of the command that its preflight
+ *  needs, with the command's defaults. Every other flag is passed on unread. */
+const LAUNCH_OPTIONS = {
+  "env-file": { type: "string" },
+  loaded: { type: "boolean", default: false },
+  "dry-run": { type: "boolean", default: false },
+  "no-comparison": { type: "boolean", default: false },
+  name: { type: "string" },
+  session: { type: "string" },
+  id: { type: "string" },
+  target: ROUND_OPTIONS.target,
+  solves: ROUND_OPTIONS.solves,
+  level: ROUND_OPTIONS.level,
+  cap: ROUND_OPTIONS.cap,
+  reserve: ROUND_OPTIONS.reserve,
+  tasks: { type: "string" },
+  reference: ROUND_OPTIONS.reference,
+  "past-stop": ROUND_OPTIONS["past-stop"],
+  "practice-solves": ROUND_OPTIONS["practice-solves"],
+  ...SETTING_OPTIONS,
+  examiner: { type: "string" },
+} as const;
+
 /** `bun run runs launch`. */
 export async function launch(args: readonly string[]): Promise<void> {
   const { values, tokens } = parseArgs({
     args: [...args],
     strict: false,
     tokens: true,
-    options: {
-      "env-file": { type: "string" },
-      loaded: { type: "boolean", default: false },
-      "dry-run": { type: "boolean", default: false },
-      name: { type: "string" },
-      session: { type: "string" },
-      id: { type: "string" },
-      target: ROUND_OPTIONS.target,
-      solves: ROUND_OPTIONS.solves,
-      level: ROUND_OPTIONS.level,
-      cap: ROUND_OPTIONS.cap,
-      reserve: ROUND_OPTIONS.reserve,
-      tasks: { type: "string" },
-      reference: ROUND_OPTIONS.reference,
-      "past-stop": ROUND_OPTIONS["past-stop"],
-      ...SETTING_OPTIONS,
-      examiner: { type: "string" },
-    },
+    options: LAUNCH_OPTIONS,
   });
   const { name, "env-file": envFile } = values;
   // A checkpoint is named by its `--id`, which stands where a session's id does.
@@ -302,10 +347,16 @@ export async function launch(args: readonly string[]): Promise<void> {
   const session = checking ? values.id : values.session;
   if (!isString(name) || !isString(session)) {
     throw new Error(
-      `usage: bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of ${ROUND}, of ${CHECKPOINT} or of ${EXAMINE}>`,
+      `usage: bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of ${ROUND}, of ${CHECKPOINT}, of ${SESSION} with --no-comparison, or of ${EXAMINE}>`,
     );
   }
   const examining = isString(values.examiner);
+  const alone = values["no-comparison"] === true;
+  if (alone && (checking || examining)) {
+    throw new Error(
+      "--no-comparison names a Builder session by itself: a checkpoint (--id) runs no session, and an Examiner session (--examiner) compares nothing",
+    );
+  }
   const flags = passedOn(args, tokens, OWN);
   const tree = runtimeProcess.cwd();
   const run = runs().find(
@@ -322,23 +373,32 @@ export async function launch(args: readonly string[]): Promise<void> {
     running: run === undefined ? [] : writers(run, processes()).map(({ pid }) => pid),
     missing: isString(envFile) && !existsSync(envFile) ? envFile : null,
     // A checkpoint runs no session, so no id of one can be spent on it.
-    spent: checking ? null : (examining ? claimed : spent)(events ?? [], session),
+    spent: checking ? null : (examining ? claimed : alone ? sessionTaken : spent)(events ?? [], session),
     named: setting.named,
     ran: solverLast(events ?? []),
   };
+  const wanted: WantedSession = {
+    cap: isString(values.cap) ? { dollars: Number(values.cap), reserve: Number(values.reserve) } : null,
+    pastStop: isString(values["past-stop"]) ? values["past-stop"] : undefined,
+  };
   const { refusals, notes } = examining
     ? examPreflight(events, host)
-    : preflight(supplyOf(events ?? [], String(values.reference)), {
-        ...host,
-        // A comparison that names its tasks scores those, however many the log holds beside them.
-        target: setting.tasks === undefined ? setting.target : setting.tasks.split(",").length,
-        solves: Number(values.solves),
-        level: Number(values.level),
-        builds: !checking,
-        cap: isString(values.cap) ? { dollars: Number(values.cap), reserve: Number(values.reserve) } : null,
-        pastStop: isString(values["past-stop"]) ? values["past-stop"] : undefined,
-        reported: reportedAs(events ?? [], session),
-      });
+    : alone
+      ? sessionPreflight(supplyOf(events ?? []), {
+          ...host,
+          ...wanted,
+          practiceSolves: Number(values["practice-solves"]),
+        })
+      : preflight(supplyOf(events ?? [], String(values.reference)), {
+          ...host,
+          ...wanted,
+          // A comparison that names its tasks scores those, however many the log holds beside them.
+          target: setting.tasks === undefined ? setting.target : setting.tasks.split(",").length,
+          solves: Number(values.solves),
+          level: Number(values.level),
+          builds: !checking,
+          reported: reportedAs(events ?? [], session),
+        });
   for (const note of notes) console.log(`· ${note}`);
   if (run === undefined || refusals.length > 0) {
     // A refusal is an answer and not a fault of this command, so it is said without a stack.
@@ -353,7 +413,7 @@ export async function launch(args: readonly string[]): Promise<void> {
     "19",
     capturedExecPath,
     ...(isString(envFile) ? [`--env-file=${envFile}`] : []),
-    examining ? EXAMINE : checking ? CHECKPOINT : ROUND,
+    commandOf({ examining, checking, alone }),
     ...flags,
   ];
   if (values["dry-run"] === true) {

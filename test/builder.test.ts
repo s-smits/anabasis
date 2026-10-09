@@ -455,6 +455,18 @@ describe("a Builder session", () => {
     expect(s.of("harness.version")).toEqual([]);
   });
 
+  it("opens with the practice solves its dollar cap holds a reserve for, where those are fewer", async () => {
+    // A cap of $25 with a reserve of $10 holds two solves, and the session's own limit is three.
+    const s = await setup([call("practice", { tasks: ["t-1", "t-1", "t-2"] }), finish]);
+    await session({ ...s.request, cap: { dollars: 25, reserve: 10 } }, s, s.walled);
+    expect(s.sent[0]).toContain("This session has 2 practice solves, 10 minutes and 12 turns.");
+    expect(s.sent[1]).toContain("only 2 practice solves left, and this asks for 3");
+    // A cap that holds more than the limit changes nothing the Builder reads.
+    const roomy = await setup([finish]);
+    await session({ ...roomy.request, cap: { dollars: 600, reserve: 10 } }, roomy, roomy.walled);
+    expect(roomy.sent[0]).toContain("This session has 3 practice solves, 10 minutes and 12 turns.");
+  });
+
   it("refuses a trace of any solve but its practice tasks', and a practice past its budget", async () => {
     const s = await setup([
       call("read_trace", { solve: "s-2" }),

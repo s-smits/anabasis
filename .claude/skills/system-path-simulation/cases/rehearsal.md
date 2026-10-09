@@ -64,6 +64,20 @@ pass, the pack's own controls, and every answer a verdict in the seed's log acce
 which is where a task a session wrote gets one. A task with no answer for a `pass` or a `fail`
 stops the rehearsal with its name; `none` needs no answer.
 
+## Rehearse a session by itself
+
+With `--no-comparison` the flags are a Builder session's (`tools/d2/session.ts`): the scripted
+Builder forks the latest harness, adds its line and finishes, and nothing is compared. The plan's
+checkpoint, several sessions and then one comparison, is walked as that many of these and then a
+checkpoint with `--new latest`. `test/checker-commands.test.ts` walks two and a checkpoint over a
+fixture pack on every run of the suite, on a host that has a command wall.
+
+```sh
+bun run runs rehearse <pack flags> --name sim-<what> --session b-2 --no-comparison
+bun run runs rehearse <pack flags> --name sim-<what> --session b-3 --no-comparison
+bun run runs rehearse <pack flags> --name sim-<what> --id g2 --new latest
+```
+
 ## Rehearse a checkpoint
 
 Flags that hold `--id` are a checkpoint's (`tools/d2/checkpoint.ts`): one comparison of two kept

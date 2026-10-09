@@ -18,10 +18,16 @@ import {
   round,
   scoredSet,
   settleReading,
-  spent,
   toLabel,
 } from "../src/builder/round.ts";
-import { type BuildRequest, type Built, type Practised, session } from "../src/builder/session.ts";
+import {
+  type BuildRequest,
+  type Built,
+  type Practised,
+  session,
+  sessionOnce,
+  spent,
+} from "../src/builder/session.ts";
 import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
@@ -47,6 +53,7 @@ import { text, tool } from "../src/solve/answer.ts";
 import { openHarness } from "../src/solve/harness.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
+const COMPARISON_STARTED = "comparison.started";
 const TASK_STATE = "task.state";
 /** What a stand-in solve throws to stop a run part-way. */
 const STOPS = "the run stops";
@@ -311,7 +318,7 @@ describe("a round", () => {
     const report = await round(s.request);
     expect(report.fresh).not.toBe(s.old);
     const tested = { wins: 4, losses: 0, ties: 0, p: 0.0625 };
-    const began = read(s.log).findIndex(({ kind }) => kind === "comparison.started");
+    const began = read(s.log).findIndex(({ kind }) => kind === COMPARISON_STARTED);
     expect(s.of(COMPARISON_REPORTED)).toEqual([
       {
         session: "b-1",
@@ -363,7 +370,7 @@ describe("a round", () => {
     expect(s.asked.slice(16).every(({ side }) => side === "starter")).toBe(true);
     expect(s.of("build.started")[0]).toMatchObject({ tasks: ["p1"] });
     // What it compares was on record before its first solve: the harnesses, the terms and the tasks.
-    expect(s.of("comparison.started")).toEqual([
+    expect(s.of(COMPARISON_STARTED)).toEqual([
       {
         session: "b-1",
         old: s.old,
@@ -499,7 +506,7 @@ describe("a round", () => {
     const report = await round({ ...s.request, tasks: [...HELD, "s5"] });
     expect(report).toMatchObject({ versions: HELD, scored: { wins: 4 }, reading: "step" });
     expect(s.asked.some(({ version }) => version === "s5")).toBe(false);
-    expect(s.of("comparison.started")).toHaveLength(1);
+    expect(s.of(COMPARISON_STARTED)).toHaveLength(1);
     expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ tasks: 4 });
   });
 
@@ -945,7 +952,7 @@ describe("a round", () => {
     // The eight truss rounds of 2026-10-08 asked for no task, ran their sessions and scored nothing.
     await expect(round({ ...s.request, tasks: [] })).rejects.toThrow("no task to score");
     await expect(checkpoint(s.compare("g0", { tasks: [] }))).rejects.toThrow("no task to score");
-    expect(s.of("comparison.started")).toEqual([]);
+    expect(s.of(COMPARISON_STARTED)).toEqual([]);
     // A flag misread on a command line is no number, and a round that ran no solve would say it had.
     await expect(round({ ...s.request, concurrency: Number("four") })).rejects.toThrow("whole numbers");
     await expect(round({ ...s.request, solves: 0 })).rejects.toThrow("whole numbers");
@@ -1063,7 +1070,7 @@ describe("a checkpoint with no session", () => {
       // The reading is the full limit's: a budget is read, and decides nothing here.
       reading: NO_STEP,
     });
-    expect(s.of("comparison.started")[0]).toMatchObject({ budgets });
+    expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ budgets });
   });
 
   it("writes the operator's prediction with the terms, before the first solve, and keeps it", async () => {
@@ -1071,7 +1078,7 @@ describe("a checkpoint with no session", () => {
     const prediction = "no step: the starter is valid on most of these at this budget";
     const report = await checkpoint(s.compare("g0", { prediction }));
     const events = read(s.log);
-    const began = events.findIndex(({ kind }) => kind === "comparison.started");
+    const began = events.findIndex(({ kind }) => kind === COMPARISON_STARTED);
     expect(events[began]?.data.prediction).toBe(prediction);
     expect(began).toBeLessThan(events.findIndex(({ kind }) => kind === "solve.started"));
     expect(predicted(events, "g0")).toBe(prediction);
@@ -1080,7 +1087,7 @@ describe("a checkpoint with no session", () => {
     const plain = await checkpoint(s.compare("g1"));
     expect(report.reading).toBe(plain.reading);
     expect(predicted(read(s.log), "g1")).toBeNull();
-    expect(s.of("comparison.started")[1]).not.toHaveProperty("prediction");
+    expect(s.of(COMPARISON_STARTED)[1]).not.toHaveProperty("prediction");
   });
 
   it("reads the reference harness against itself beside the test, on solves of its own", async () => {
@@ -1109,7 +1116,7 @@ describe("a checkpoint with no session", () => {
     const report = await checkpoint(s.compare("g0", { cap: { dollars: 11, reserve: 3 } }));
     expect(report).toMatchObject({ scored: null, versions: [], capped: true, reading: NOT_SCORED });
     expect(s.asked).toHaveLength(5);
-    expect(s.of("comparison.started")[0]).toMatchObject({ cap: { dollars: 11, reserve: 3 } });
+    expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ cap: { dollars: 11, reserve: 3 } });
     // It is no checkpoint of the stop rule, and run again it says what it said and buys nothing.
     expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
     expect(await checkpoint(s.compare("g0", { cap: { dollars: 11, reserve: 3 } }))).toEqual(report);
@@ -1215,6 +1222,84 @@ describe("a checkpoint with no session", () => {
     expect(Number(s.of("build.finished")[0]?.billed)).toBeGreaterThan(0);
     expect(report).toMatchObject({ scored: null, capped: true, reading: NOT_SCORED });
     expect(s.asked).toEqual([]);
+  });
+});
+
+describe("a session with no comparison after it", () => {
+  const practise = call("practice", { tasks: ["t-p1"] });
+
+  // The plan's checkpoint (`docs/plan.md`, Phase 5): several sessions, then one comparison. Until
+  // 2026-10-09 a session ran only inside a round, so two sessions were two paid comparisons.
+  it("runs twice, the second from what the first left, and one checkpoint compares what they leave", async () => {
+    const s = await setup([edit, practise, finish, again, finish], step);
+    const { session: build, builder } = s.request;
+    const first = await sessionOnce(build, builder);
+    const kept = first.kept;
+    if (kept === null) throw new Error("the first session left no harness");
+    const second = await sessionOnce({ ...build, id: "b-2", parent: kept.dir }, builder);
+    expect(second.kept?.digest).not.toBe(kept.digest);
+    expect(latestBuilt(read(s.log))).toBe(second.kept?.digest ?? "");
+    // Two sessions are on record and no comparison: the one solve asked for was the practice.
+    expect(s.of("build.finished").map(({ session: id, ended }) => [id, ended])).toEqual([
+      ["b-1", "finished"],
+      ["b-2", "finished"],
+    ]);
+    expect(s.of(COMPARISON_STARTED)).toEqual([]);
+    expect(s.asked).toEqual([{ version: "p1", side: "fresh" }]);
+    // Asked for again, a session is read from the log and not run a second time.
+    expect(await sessionOnce({ ...build, id: "b-2", parent: kept.dir }, builder)).toEqual(second);
+    expect(s.sessions()).toBe(2);
+    // The one comparison is of the last harness with the reference, on tasks no session saw.
+    const report = await checkpoint(s.compare("g-1", { fresh: second.kept ?? s.starter }));
+    expect(report).toMatchObject({ reading: "step", fresh: second.kept?.digest, old: s.old });
+    expect(s.of(COMPARISON_STARTED)).toHaveLength(1);
+    expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 1, sinceStep: 0, stop: false });
+  });
+
+  it("refuses a second run of a session that did not end whole, as a round does", async () => {
+    const s = await setup([edit, finish], step);
+    const { session: build, builder } = s.request;
+    append(s.log, "build.started", { session: "b-1", parent: s.old });
+    await expect(sessionOnce(build, builder)).rejects.toThrow(
+      "session b-1 started and never finished; a round does not run a second session under one id",
+    );
+    await expect(sessionOnce({ ...build, parent: s.starter.dir }, builder)).rejects.toThrow(
+      "session b-1 started from another harness",
+    );
+    expect(s.sessions()).toBe(0);
+  });
+
+  it("starts no practice solve its dollar cap holds no reserve for, and says so as a count", async () => {
+    // The stand-in bills a solve $2. A cap of $5 with a reserve of $2 holds two solves: before the
+    // third the log holds $4, and a reserve more would pass the cap. The session's own count
+    // would have allowed it.
+    const s = await setup([edit, practise, practise, practise, finish], step);
+    const { session: build, builder } = s.request;
+    await sessionOnce({ ...build, cap: { dollars: 5, reserve: BILLED } }, builder);
+    const said = s
+      .of("build.call")
+      .flatMap(({ tool: name, text: told }) => (name === "practice" && isString(told) ? [told] : []));
+    expect(said).toHaveLength(3);
+    expect(said[0]).toContain("1 practice solve left.");
+    expect(said[1]).toContain("No practice solve is left:");
+    expect(said[2]).toContain("only 0 practice solves left, and this asks for 1");
+    // The Builder is told a count, and no sum of money.
+    expect(said.join("\n")).not.toContain("$");
+    expect(s.asked).toHaveLength(2);
+    expect(s.of("build.finished")[0]).toMatchObject({ practiceSolves: 2, ended: "finished" });
+    // Under no cap, the same session spends its own count.
+    const free = await setup([edit, practise, practise, practise, finish], step);
+    await sessionOnce(free.request.session, free.request.builder);
+    expect(free.asked).toHaveLength(3);
+  });
+
+  it("holds a round's session to the round's cap", async () => {
+    const s = await setup([edit, practise, practise, finish], step);
+    const report = await round({ ...s.request, cap: { dollars: 3, reserve: BILLED } });
+    // One practice solve is afforded and the second is not. The comparison then finds the cap
+    // spent before its first solve, and scores nothing.
+    expect(s.of("build.finished")[0]).toMatchObject({ practiceSolves: 1 });
+    expect(report).toMatchObject({ reading: NOT_SCORED, capped: true });
   });
 });
 

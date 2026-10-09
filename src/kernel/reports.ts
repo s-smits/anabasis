@@ -39,6 +39,13 @@ export interface Reported {
  *  rejection of an answer to it is not settled. Never which harness, and never a count. */
 export type Outcome = "won" | "tie" | "no-valid-answer" | "disputed";
 
+/** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
+ *  (`billedFor`), and what each solve is held at before it starts. */
+export interface Cap {
+  readonly dollars: number;
+  readonly reserve: number;
+}
+
 /** Checkpoints without a step at which the plan stops the campaign. */
 const STOP_AFTER = 3;
 /** Comparisons without a valid answer after which a task with none on record goes to a person. */

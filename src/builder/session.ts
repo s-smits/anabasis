@@ -57,9 +57,10 @@ import {
 import { REPORTED_COST } from "../backends/claude.ts";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { append, read } from "../kernel/log.ts";
+import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
+import type { Cap } from "../kernel/reports.ts";
 import { ended as endedSolves, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
@@ -86,6 +87,7 @@ import {
   finishTool,
   HOME_TOOL_TREE,
   parentToolTree,
+  practiceLeft,
   practiceTool,
   record,
   type Snapshot,
@@ -93,6 +95,9 @@ import {
   traceTool,
   walledTools,
 } from "./tools.ts";
+
+/** The event a session starts with, which names its parent and what it practises on. */
+const BUILD_STARTED = "build.started";
 
 /** A released task the Builder may practise on: its version, and what a solver is shown of it. */
 export interface PracticeTask {
@@ -152,6 +157,10 @@ export interface BuildRequest {
    *  since the Diagnoser reads only what the Referee ruled earned. `kill` is for their readers. */
   readonly referee?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<RefereeFinding>;
   readonly diagnose?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<Diagnosis>;
+  /** The dollar cap the session's spend is held to, where its solves are paid for: a round's own,
+   *  or the session's where it runs with no comparison after it. No practice solve starts that a
+   *  reserve for it would take past the cap (`practiceTool`). */
+  readonly cap?: Cap | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
 }
@@ -205,7 +214,7 @@ export async function session(
   const began = performance.now();
   const parent = await openHarness(request.parent);
   const before = read(log);
-  if (before.some(({ kind, data }) => kind === "build.started" && data.session === request.id)) {
+  if (before.some(({ kind, data }) => kind === BUILD_STARTED && data.session === request.id)) {
     throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
   }
   const states = taskStates(before);
@@ -234,7 +243,7 @@ export async function session(
   writeFileSync(join(dirs.home, "HARNESS.md"), HARNESS_ACCOUNT);
   // The Builder's own notes: what the last session to leave any left, and v1's starters otherwise.
   const earlier = before.flatMap(({ kind, data }) =>
-    kind === "build.started" && isString(data.session) ? [data.session] : [],
+    kind === BUILD_STARTED && isString(data.session) ? [data.session] : [],
   );
   seedMemory(dirs.home, request.memory, lastKept(request.memory, earlier));
   for (const { task } of request.tasks) {
@@ -243,7 +252,7 @@ export async function session(
       `${capturedJsonStringify(publicView(task), null, 2)}\n`,
     );
   }
-  append(log, "build.started", {
+  append(log, BUILD_STARTED, {
     session: request.id,
     parent: parent.digest,
     tasks: request.tasks.map(({ version }) => version),
@@ -276,7 +285,8 @@ export async function session(
       family: task.family,
       ...record(recorded, version, parent.digest),
     })),
-    limits,
+    // The count it opens with is the one `practice` holds it to: its own, or its cap's where fewer.
+    { ...limits, practiceSolves: practiceLeft(bench, recorded) },
     {
       start: shortDigest(parent.digest),
       fails: failsTold(recorded, new Map(request.tasks.map(({ version, task }) => [version, task.taskId]))),
@@ -401,6 +411,67 @@ export async function session(
     changed,
     ended,
   };
+}
+
+/**
+ * Why no command will go on with session `id` from this log, or null when it never started, or
+ * ended whole. A launcher asks before it starts the session, and a stop to say what it cut. One
+ * that started and never finished is refused, since its harness is gone and a second session under
+ * one id would be a second try. So is one that was killed or that crashed: what it froze is half a
+ * session's work.
+ */
+export function spent(events: readonly LogEvent[], id: string): string | null {
+  const mine = events.filter(({ data }) => data.session === id);
+  if (!mine.some(({ kind }) => kind === BUILD_STARTED)) return null;
+  const ended = mine.findLast(({ kind }) => kind === "build.finished")?.data.ended;
+  if (ended === undefined) {
+    return `session ${id} started and never finished; a round does not run a second session under one id`;
+  }
+  return ended === "killed" || ended === "crashed"
+    ? `session ${id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`
+    : null;
+}
+
+/** What session `id` left, from the log: undefined when it never ran, and otherwise the harness to
+ *  compare, null when it left none, with why when what it left does not open. A session whose last
+ *  state does not open leaves the last state it practised with, when it has one, so a harness and
+ *  a `broken` may come back together. */
+async function left(events: readonly LogEvent[], request: BuildRequest, parent: string) {
+  const mine = events.filter(({ data }) => data.session === request.id);
+  const started = mine.find(({ kind }) => kind === BUILD_STARTED)?.data;
+  const finished = mine.findLast(({ kind }) => kind === "build.finished")?.data;
+  if (started === undefined) return undefined;
+  if (started.parent !== parent) {
+    throw new Error(`session ${request.id} started from another harness than ${request.parent}`);
+  }
+  const why = spent(events, request.id);
+  if (why !== null) throw new Error(why);
+  const broken = isString(finished?.broken) ? finished.broken : null;
+  if (finished?.changed !== true || !isString(finished.harness)) return { kept: null, broken };
+  const dir = join(request.states, finished.harness);
+  if ((await openHarness(dir)).digest !== finished.harness) {
+    throw new Error(`${dir} is not the harness session ${request.id} froze`);
+  }
+  return { kept: { dir, digest: finished.harness }, broken };
+}
+
+/**
+ * Run session `request.id` once, and say what it left. A session the log already holds is not run
+ * again: it is read from the log, whether it ran now or in an earlier run of the command, and one
+ * that did not end whole is refused (`spent`). It is the session of a round, which then compares
+ * what it left, and the whole of a session run with no comparison after it: the plan's checkpoint
+ * is several sessions and then one comparison (`docs/plan.md`, Phase 5), and until 2026-10-09 no
+ * command ran a session by itself, so those ran as several paid rounds.
+ */
+export async function sessionOnce(
+  request: BuildRequest,
+  builder?: (request: BuildRequest) => Promise<Built>,
+) {
+  const parent = (await openHarness(request.parent)).digest;
+  if ((await left(read(request.log), request, parent)) === undefined) await (builder ?? build)(request);
+  const built = await left(read(request.log), request, parent);
+  if (built === undefined) throw new Error(`session ${request.id} ran and left no record in the log`);
+  return built;
 }
 
 /** The directories of session `id` of the campaign whose log is `log`, named for both. Named for

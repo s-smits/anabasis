@@ -2,7 +2,15 @@
 // asks for. One function decides it, and the launcher and the commands both ask that function: a
 // command started by hand is refused where a launch of it would be.
 import { afterAll, describe, expect, it } from "bun:test";
-import { admission, admitComparison, type Supply, supplyOf, type Wanted } from "../src/builder/admission.ts";
+import {
+  admission,
+  admitComparison,
+  admitSession,
+  sessionAdmission,
+  type Supply,
+  supplyOf,
+  type Wanted,
+} from "../src/builder/admission.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { sizeLines } from "../src/kernel/size.ts";
@@ -352,5 +360,82 @@ describe("a command about to start a comparison", () => {
     // Asked again before it has begun, it is admitted the same way and logged no second time.
     admitComparison(log, past);
     expect(overridden()).toHaveLength(1);
+  });
+});
+
+// The plan's checkpoint is several Builder sessions and then one comparison. A session run by
+// itself scores nothing, so it is asked less: its cap, a checker that has been read, the stop rule.
+describe("whether a session with no comparison may start", () => {
+  const CAP = { dollars: 150, reserve: 10 };
+  const root = mkdtempSync(join(tmpdir(), "ana-admission-session-"));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it("starts on a read checker under a cap, and says that nothing is compared", () => {
+    expect(sessionAdmission(SETS, { cap: CAP })).toEqual({
+      refusals: [],
+      notes: [
+        "1 released for practice · no comparison follows this session: tools/d2/checkpoint.ts compares what the campaign's sessions leave",
+      ],
+    });
+    // A cap that holds fewer reserves than the session may practise is said, and refuses nothing.
+    expect(sessionAdmission(SETS, { cap: CAP, practiceSolves: 24 })).toEqual({
+      refusals: [],
+      notes: [
+        expect.any(String),
+        "the cap of $150 holds a reserve of $10 for 15 practice solves, and the session's limit is 24: the Builder is told the fewer, which falls by less than one a solve while solves bill under their reserve",
+      ],
+    });
+    expect(sessionAdmission(SETS, { cap: CAP, practiceSolves: 15 }).notes).toHaveLength(1);
+    // What refuses a comparison for want of tasks to score does not refuse a session.
+    const none = { ...SETS, held: 0, untied: 0 };
+    expect(admission(none, WANTED).refusals).toHaveLength(1);
+    expect(sessionAdmission(none, { cap: CAP }).refusals).toEqual([]);
+  });
+
+  it("refuses one with no cap, on a checker nobody has read, or after the stop rule", () => {
+    expect(sessionAdmission(SETS, { cap: null }).refusals).toEqual([
+      "no --cap is named: a session is launched under a dollar cap, and no practice solve starts that a reserve for it would take past the cap",
+    ]);
+    expect(sessionAdmission({ ...SETS, faults: null }, { cap: CAP }).refusals).toEqual([
+      expect.stringContaining(
+        "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do. A practice solve is judged by the same checks",
+      ),
+    ]);
+    // With nothing to practise on, no check judges anything of the session.
+    const bare = { ...SETS, released: 0, faults: null };
+    expect(sessionAdmission(bare, { cap: CAP })).toMatchObject({
+      refusals: [],
+      notes: [expect.any(String), "no task is released: the Builder has nothing to practise on"],
+    });
+    const stopped = { ...SETS, stop: { checkpoints: 3, sinceStep: 3, stop: true } };
+    expect(sessionAdmission(stopped, { cap: CAP }).refusals).toEqual([
+      expect.stringContaining("the plan stops it at three without one"),
+    ]);
+    const past = sessionAdmission(stopped, { cap: CAP, pastStop: "a new budget" });
+    expect(past.refusals).toEqual([]);
+    expect(past.notes.at(-1)).toBe(
+      "going on past the plan's stop rule, 3 checkpoints after the last step: a new budget",
+    );
+  });
+
+  it("is asked by the command before its first event, and a rehearsal's is exempt", () => {
+    const log = join(root, "log.jsonl");
+    for (const { kind, data } of [
+      ...heldOut("p1"),
+      event("task.state", { version: "p1", state: "released" }),
+    ]) {
+      append(log, kind, data);
+    }
+    const asked = { id: "b-2", wanted: { cap: CAP } };
+    expect(() => admitSession(log, { ...asked, seats: "paid" })).toThrow("checker has never been read");
+    expect(admitSession(log, { ...asked, seats: "scripted" })).toEqual([]);
+    append(log, "checker.read", { contract: "c", checks: "k", faults: [] });
+    expect(admitSession(log, { ...asked, seats: "paid" })).toEqual([
+      "1 released for practice · no comparison follows this session: tools/d2/checkpoint.ts compares what the campaign's sessions leave",
+    ]);
+    // One the log holds a start of goes on: it was admitted when it began.
+    append(log, "build.started", { session: "b-2" });
+    append(log, "checker.read", { contract: "c", checks: "k2", faults: null });
+    expect(admitSession(log, { ...asked, seats: "paid" })).toEqual([]);
   });
 });

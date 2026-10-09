@@ -58,7 +58,9 @@
  *
  * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
  * on tasks that could not be made to leave room, or on its environment, and the last event of its
- * log says which (`campaign.ended`). A move that threw after it had begun is the environment's
+ * log says which (`campaign.ended`). With `--handover <dir>` it then writes what it hands over
+ * there: the reference harness as a directory that stands by itself, the public rules and the
+ * closing report (`close.ts`, row F51). A move that threw after it had begun is the environment's
  * ending, and run again the command goes on from the log. A move refused before it wrote
  * anything is no ending: the refusal is printed and nothing is recorded.
  *
@@ -89,6 +91,7 @@ import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
 import { campaignLog, openCampaign, packNamed } from "./campaign.ts";
 import { checkpointCommand } from "./checkpoint.ts";
+import { closeCommand } from "./close.ts";
 import { prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { COMPARISON_OPTIONS, capRead, type Seated, SESSION_OPTIONS, solved } from "./round.ts";
@@ -152,6 +155,7 @@ const OPTIONS = {
   "exam-minutes": { type: "string" },
   "exam-turns": { type: "string" },
   moves: { type: "string" },
+  handover: { type: "string" },
   "dry-run": { type: "boolean", default: false },
   unattended: { type: "boolean", default: false },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
@@ -572,6 +576,10 @@ export async function harnessBuilder(
     if (decided.move === "end") {
       for (const line of examLines(events, name, decided.ending)) console.log(line);
       if (!values["dry-run"]) ended(log, events, decided);
+      // What the campaign hands over, once it has an exam to open over (`close.ts`).
+      if (!values["dry-run"] && values.handover !== undefined && campaign !== null) {
+        await closeCommand([...packOf(values), "--to", values.handover]);
+      }
       return decided;
     }
     if (values["dry-run"] || made >= most) return decided;

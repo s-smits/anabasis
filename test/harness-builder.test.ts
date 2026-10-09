@@ -11,8 +11,11 @@ import { type LogEvent, read } from "../src/kernel/log.ts";
 import {
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -21,6 +24,8 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { openCampaign } from "../tools/d2/campaign.ts";
+import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 
@@ -268,6 +273,48 @@ describe("a campaign run by its log", () => {
     expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 3 }]);
     // Against the new reference nothing is built yet: the Builder builds.
     expect(next).toMatchObject({ move: "build" });
+    expect(strayed).toEqual([]);
+
+    // What the campaign hands over: the promoted harness as a folder that stands by itself, the
+    // public rules, and the closing report. It is written outside the repository and once.
+    const pack = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name];
+    const to = join(root, "handover");
+    expect(closeCommand([...pack, "--to", join(REPO, ".ana", "handover")])).rejects.toThrow(
+      "lies inside the repository",
+    );
+    const handed = await closeCommand([...pack, "--to", to]);
+    expect(handed.to).toBe(to);
+    expect(of(name, "harness.promoted")).toMatchObject([{ harness: handed.harness }]);
+    expect(closeCommand([...pack, "--to", to])).rejects.toThrow("holds something already");
+    // It holds no link: a kept harness names its programs by one, into a tree beside it, and what
+    // is handed over is the files themselves.
+    const links = readdirSync(join(to, "harness"), { recursive: true }).filter((entry) =>
+      lstatSync(join(to, "harness", String(entry))).isSymbolicLink(),
+    );
+    expect(links).toEqual([]);
+    expect(readFileSync(join(to, "harness", "agent", "BUILT_AGENTS.md"), "utf8")).toContain(
+      "A rehearsal added this line.",
+    );
+    expect(readFileSync(join(to, "RULES.md"), "utf8")).toContain("- R1: The answer is the base times six.");
+    const report = readFileSync(join(to, "REPORT.md"), "utf8");
+    expect(report).toContain(`harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2`);
+    expect(report).toContain("| g-1 |");
+    expect(report).toContain("The campaign has not ended");
+    // No task is named in it, and no check.
+    expect(report).not.toContain("t-1");
+    expect(report).not.toContain("check-product");
+
+    // The harness solves a task from where it was handed over, outside the campaign's folder.
+    const campaign = await openCampaign({ root, sweep: "s", cycle: "c01", bundle, name });
+    const seat = scriptedSeats(
+      { held: { old: "none", fresh: "pass" }, starter: "none" },
+      GRADED,
+      strayed,
+    )(campaign, { builder: undefined, reference: join(root, "no-such-harness") });
+    const task = [...campaign.packages().values()].find(({ taskId }) => taskId === "t-1");
+    if (task === undefined) throw new Error("the pack holds no t-1");
+    const solved = await seat.solve(task, { dir: join(to, "harness"), digest: handed.harness }, undefined);
+    expect(solved.ending).toEqual({ outcome: "pass" });
     expect(strayed).toEqual([]);
   });
 

@@ -239,9 +239,8 @@ ends (`tools/d2/harness-builder.ts`, section 6). The setting, the reference and 
 stay the log's and one admission's. The skill `run-improvement-campaign` remains the procedure
 for a session that runs a campaign with the operator: it reads the same table.
 
-Three designed parts of it are absent: one Builder conversation across sessions, a word the
-operator leaves between two moves, and the closing report with the reference harness exported.
-The plan holds each (`docs/plan.md`, rows F27, F50 and F51).
+Two designed parts of it are absent: one Builder conversation across sessions, and a word the
+operator leaves between two moves. The plan holds each (`docs/plan.md`, rows F27 and F50).
 
 The design has two layers, as v1's had:
 
@@ -349,6 +348,7 @@ flags.
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
 | 5 | `bun tools/d2/settle.ts ... --session b-1` | A person's labels for the rejections a comparison set aside, and its report once more |
 | 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing. A harness the rule would not promote takes `--despite "<why>"` |
+| 7 | `bun tools/d2/close.ts ... --to <dir>` | Nothing. It writes what the campaign hands over, outside the repository: the reference harness as a directory that stands by itself, the public rules, and the closing report |
 | all | `bun tools/d2/harness-builder.ts ... --budget <dollars> --builder <model> --examiner <model> --reviewer <model>` | What the campaign runs by, once (`campaign.opened`); then each move the table names, made by the command of its row above and recorded with its reason (`campaign.move`); and how the campaign ended (`campaign.ended`) |
 
 The last row is the Harness Builder's controller. It asks `decide` for the one move that follows,
@@ -357,7 +357,12 @@ prints it, makes it, and reads the log again. `--dry-run` prints the move and ma
 the freeze and the promotion (section 3). Its budget is one total: each move's cap is what is
 left of `--budget` once every billed dollar in the log is taken off, and the campaign ends on its
 budget where less is left than one solve is held at. It ends in one of six ways, and the log's
-last event says which: `budget`, `stop`, `exam`, `no-room`, `environment` or `operator`.
+last event says which: `budget`, `stop`, `exam`, `no-room`, `environment` or `operator`. With
+`--handover <dir>` it then writes what it hands over (row 7): the harness is copied whole, with
+the programs a kept state names by a link, and has to open there as the harness it was kept as.
+The closing report is a view of the log, names no task and holds no check, and says what was
+audited and what was not: what the Referee ruled, what a person's labels settled, and that no
+answer that passed was read by anyone.
 
 It opens a campaign over a stored pack, or from a prompt (`--prompt "<text>"` or `--prompt-file`,
 with `--solver`): the opening then holds the prompt, and the first move is the draft of row 0.
@@ -1273,8 +1278,8 @@ src/meta/       the owners of every runtime surface (section 12.8)
 tools/c/        the check program: accept, carry, rejections, repaired
 tools/d1b/      examine, draft
 tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote; exam,
-                which stages a drafted exam as a pack; and harness-builder, which runs a campaign
-                move after move
+                which stages a drafted exam as a pack; close, which writes what a campaign hands
+                over; and harness-builder, which runs a campaign move after move
 tools/runs/     launch, stop, rehearse, seed, pulse, view, compare, replay, zip
 tools/wri/      the whole-run investigation's reader of one log
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans

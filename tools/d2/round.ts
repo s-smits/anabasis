@@ -102,6 +102,7 @@ import {
   type Kept,
   keptAs,
   openCampaign,
+  packNamed,
   stayAwake,
 } from "./campaign.ts";
 import {
@@ -440,17 +441,10 @@ export const solved: Seated = (campaign, { builder }) => ({
 /** `bun tools/d2/round.ts`, and under a simulation's `seated` the same round with its seats scripted. */
 export async function roundCommand(args: readonly string[], seated: Seated = solved): Promise<Report> {
   const { values } = parseArgs({ args: [...args], options: ROUND_OPTIONS });
-  const { root, sweep, cycle, bundle, name, session } = values;
-  if (
-    root === undefined ||
-    sweep === undefined ||
-    cycle === undefined ||
-    bundle === undefined ||
-    name === undefined ||
-    session === undefined
-  ) {
-    throw new Error("name --root, --sweep, --cycle, --bundle, --name and --session");
-  }
+  const { session } = values;
+  const pack = packNamed(values, " and --session");
+  const { name } = pack;
+  if (session === undefined) throw new Error("name --session, the id the round takes in the log");
   // Read before the campaign is opened: a paid round with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
   const budgets = budgetsNamed(values.budget);
@@ -458,7 +452,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   // campaign is opened under it (`setting.ts`).
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
   const { limits } = setting.named;
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting.named });
+  const campaign = await openCampaign({ ...pack, ...setting.named });
   const packageOf = packaged(campaign);
   const reviewers = reviewersNamed(campaign, values);
   const parent = await parentNamed(campaign, { ...values, session });

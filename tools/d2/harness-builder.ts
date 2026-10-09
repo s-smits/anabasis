@@ -6,6 +6,9 @@
  *     --budget 400 --builder claude/claude-opus-5-5 --examiner claude/claude-opus-5-5 \
  *     --reviewer claude/claude-opus-5-5 --solve-model-turns 40 [--moves 1] [--dry-run] [--unattended]
  *
+ *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
+ *     --solver claude/claude-sonnet-5-5 --budget 60 --builder ... --examiner ... --reviewer ...
+ *
  * A campaign is a loop of moves over one log (`docs/plan.md`, "The process"). Until 2026-10-09 a
  * session carried each one by hand: it read the view, chose a move by a skill's walk, and typed
  * the command with its flags. This command does that. It reads the log, asks move 7 for the one
@@ -13,8 +16,16 @@
  * the command an operator would run, and reads the log again, until the campaign ends or `--moves`
  * are made. It chooses nothing of its own: the table chooses, and every refusal is the command's.
  *
+ * **A campaign opens over a stored pack, which four flags name, or from a prompt** (row F53).
+ * The prompt and who solves are then part of what it runs by, its first move is the Examiner's
+ * draft of the exam, and from there every command opens the campaign by its name alone, over the
+ * exam its log holds. Every check of a drafted exam is its author's own computation, so the
+ * exam's reading holds a fault a check and the campaign ends on its exam once: it goes on when
+ * the operator admits them by name, with `--admit` on this command.
+ *
  * What it runs each move as:
  *
+ *   draft the exam      tools/d1b/draft.ts, under `d-N`, for a campaign that opened from a prompt
  *   read the exam       tools/c/accept.ts, with the checks `--admit` names, which is the operator's
  *                       word for each, and with `--freeze` under `--unattended`
  *   set the tasks apart tools/d2/prepare.ts
@@ -59,30 +70,23 @@
  *
  * Not run here: see `campaign.ts`.
  */
+import { type draftExam, draftOf } from "#src/examiner/draft.ts";
 import type { examine } from "#src/examiner/session.ts";
-import {
-  type Decided,
-  decide,
-  decidedLine,
-  type Opening,
-  openingOf,
-  type Plan,
-  planOf,
-  SEATS,
-  type Seat,
-  SESSIONS,
-} from "#src/builder/decide.ts";
+import { type Decided, decide, decidedLine, type Plan } from "#src/builder/decide.ts";
+import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS } from "#src/builder/opening.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { taskStates, taskVersion } from "#src/kernel/task.ts";
-import { existsSync } from "#src/meta/filesystem.ts";
+import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { acceptCommand } from "../c/accept.ts";
+import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
-import { campaignLog, openCampaign } from "./campaign.ts";
+import { campaignLog, openCampaign, packNamed } from "./campaign.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
@@ -95,6 +99,8 @@ export interface Seats {
   readonly seated: Seated;
   /** An Examiner session: `examine`, unless a rehearsal's script stands in for it. */
   readonly examine?: typeof examine | undefined;
+  /** The session that drafts the exam of a campaign opened from a prompt: `draftExam`, or a script. */
+  readonly draft?: typeof draftExam | undefined;
 }
 
 /** What every move of one turn of the loop is made with. */
@@ -114,6 +120,8 @@ const OPTIONS = {
   cycle: SESSION_OPTIONS.cycle,
   bundle: SESSION_OPTIONS.bundle,
   name: SESSION_OPTIONS.name,
+  prompt: { type: "string" },
+  "prompt-file": { type: "string" },
   budget: { type: "string" },
   reserve: { type: "string" },
   ladder: { type: "string" },
@@ -178,6 +186,18 @@ function ladderOf(named: string | undefined, limit: number | null): number[] {
   return [...new Set(rungs)].filter((rung) => limit === null || rung < limit).toSorted((a, b) => b - a);
 }
 
+/** Whether a command names a stored pack, by any of the four flags that name one together. */
+const packed = ({ root, sweep, cycle, bundle }: Values): boolean =>
+  [root, sweep, cycle, bundle].some((each) => each !== undefined);
+
+/** The operator's prompt: what this command gives, in a flag or a file, or the record's. */
+function promptOf(values: Values, was: Opening | null): string | null {
+  const file = values["prompt-file"];
+  const given = (values.prompt ?? (file === undefined ? undefined : readFileSync(file, "utf8")))?.trim();
+  if (given === "") throw new Error("the prompt is empty");
+  return given ?? was?.prompt ?? null;
+}
+
 /**
  * What the campaign runs by: its record, or what this command names where that is another. A paid
  * campaign needs its total, and a rehearsal's is none.
@@ -200,6 +220,26 @@ function opened(log: string, values: Values, seats: "paid" | "scripted"): Openin
     if (model === undefined) return kept === null || effort === undefined ? kept : { ...kept, effort };
     return { model, effort: effort ?? kept?.effort ?? DEFAULTS.effort };
   };
+  const prompt = promptOf(values, was);
+  if (prompt === null && !packed(values)) {
+    throw new Error(
+      `name the campaign's pack with --root, --sweep, --cycle and --bundle, or give the prompt it opens from with --prompt: ${log} holds neither`,
+    );
+  }
+  const solver =
+    values.solver === undefined
+      ? (was?.solver ?? null)
+      : { model: values.solver, effort: values["solver-effort"] ?? was?.solver?.effort ?? DEFAULTS.effort };
+  if (prompt !== null && solver === null) {
+    throw new Error(
+      "name --solver: a campaign that opens from a prompt has no stored cycle to take its solver from",
+    );
+  }
+  if (prompt !== null && was !== null && was.prompt !== prompt && draftOf(events) !== null) {
+    throw new Error(
+      "the campaign's exam was drafted from another prompt than this command gives: a prompt names one campaign, and another takes a name of its own",
+    );
+  }
   const reserve = values.reserve ?? String(was?.budget?.reserve ?? DEFAULTS.reserve);
   const dollars = values.budget ?? (was?.budget == null ? undefined : String(was.budget.dollars));
   const named: Opening = {
@@ -211,6 +251,8 @@ function opened(log: string, values: Values, seats: "paid" | "scripted"): Openin
         : ladderOf(values.ladder, limit),
     sessions: values.sessions === undefined ? (was?.sessions ?? DEFAULTS.sessions) : Number(values.sessions),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
+    prompt,
+    solver: prompt === null ? null : solver,
   };
   if (!Number.isInteger(named.sessions) || named.sessions < 1) {
     throw new Error(
@@ -225,6 +267,9 @@ function opened(log: string, values: Values, seats: "paid" | "scripted"): Openin
     seats: Object.fromEntries(
       SEATS.map((each) => [each, named.seats[each] === null ? null : { ...named.seats[each] }]),
     ),
+    // A campaign over a stored pack records neither, as before a campaign could open from a prompt.
+    ...keyIfDefined("prompt", named.prompt ?? undefined),
+    ...keyIfDefined("solver", named.solver === null ? undefined : { ...named.solver }),
   };
   const kept = events.findLast(({ kind }) => kind === OPENED)?.data;
   if (!values["dry-run"] && (kept === undefined || !sameJsonValue(kept, record))) {
@@ -282,11 +327,21 @@ function packOf({ root, sweep, cycle, bundle, name }: Values): string[] {
 function sharedOf({ events, plan, opening, values }: Turn) {
   const { reviewer } = opening.seats;
   return {
+    // What no flag names, the opening names where it holds it: the solver of a campaign from a
+    // prompt and the full limit, so that a command run again with its name alone records the
+    // setting the campaign was opened with.
     setting:
       recordedSetting(events) === null
-        ? (["solver", "solver-effort", "solve-minutes", "solve-turns", "solve-model-turns"] as const).flatMap(
-            (each) => flag(each, values[each]),
-          )
+        ? [
+            ...flag("solver", values.solver ?? opening.solver?.model),
+            ...flag("solver-effort", values["solver-effort"] ?? opening.solver?.effort),
+            ...flag("solve-minutes", values["solve-minutes"]),
+            ...flag("solve-turns", values["solve-turns"]),
+            ...flag(
+              "solve-model-turns",
+              values["solve-model-turns"] ?? (opening.limit === null ? undefined : String(opening.limit)),
+            ),
+          ]
         : [],
     cap:
       plan.left == null
@@ -352,7 +407,7 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
       ...flag("admit", values.admit),
       ...(values.unattended ? ["--freeze"] : []),
     ]);
-    return {};
+    return { ...keyIfDefined("admitted", values.admit === undefined ? undefined : admitsOf(values)) };
   }
   if (decided.move === "prepare") {
     await prepareCommand([...pack, ...flag("practice", values.practice)]);
@@ -371,23 +426,31 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
     await checkpointCommand(args, seats.seated);
     return { session };
   }
-  if (decided.move === "examine") {
+  if (decided.move === "draft" || decided.move === "examine") {
+    const stand = decided.move === "draft" ? seats.draft : seats.examine;
     if (seats.seated === solved && examiner === null) {
-      throw new Error(`name --examiner: ${decided.why}, and an Examiner session writes tasks`);
+      throw new Error(`name --examiner: ${decided.why}, and an Examiner session does that`);
     }
-    if (seats.seated !== solved && seats.examine === undefined) {
+    if (seats.seated !== solved && stand === undefined) {
       throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
     }
-    const session = nextId(events, "x");
+    const session = nextId(events, decided.move === "draft" ? "d" : "x");
+    const seat = [
+      "--session",
+      session,
+      "--examiner",
+      examiner?.model ?? SCRIPTED,
+      "--examiner-effort",
+      examiner?.effort ?? DEFAULTS.effort,
+    ];
+    if (decided.move === "draft") {
+      await draftCommand([...flag("name", values.name), ...seat], seats.draft);
+      return { session };
+    }
     await examineCommand(
       [
         ...pack,
-        "--session",
-        session,
-        "--examiner",
-        examiner?.model ?? SCRIPTED,
-        "--examiner-effort",
-        examiner?.effort ?? DEFAULTS.effort,
+        ...seat,
         ...flag("tasks", values["exam-tasks"]),
         ...flag("proposals", values["exam-proposals"]),
         ...flag("minutes", values["exam-minutes"]),
@@ -418,6 +481,36 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
   return { session };
 }
 
+/** The checks `--admit` names, which is the operator's word for each. */
+function admitsOf(values: Values): string[] {
+  return (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()]));
+}
+
+/**
+ * What an operator reads where a campaign ends on its exam: the faults of the checker's last
+ * reading, and the command that admits the checks which stand on the operator's word alone. An
+ * exam drafted from a prompt always holds such checks, since no engine of the field is installed
+ * for it, so a campaign from a prompt waits here once, for that word.
+ */
+function examLines(events: readonly LogEvent[], name: string, ending: string): string[] {
+  if (ending !== "exam") return [];
+  const reading = events.findLast(({ kind }) => kind === "checker.read")?.data;
+  const faults = Array.isArray(reading?.faults) ? reading.faults.filter(isString) : [];
+  const admitted = Array.isArray(reading?.admitted) ? reading.admitted : [];
+  const authored = (Array.isArray(reading?.rows) ? reading.rows : []).flatMap((row) => {
+    const { id, instrument } = asRecord(row) ?? {};
+    return isString(id) && instrument === "authored" && !admitted.includes(id) ? [id] : [];
+  });
+  return [
+    ...faults.map((fault) => `fault: ${fault}`),
+    ...(authored.length === 0
+      ? []
+      : [
+          `to admit the checks their author's own computation decides, which is the operator's word for each: bun tools/d2/harness-builder.ts --name ${name} --admit ${authored.join(",")}`,
+        ]),
+  ];
+}
+
 /** Record how the campaign ended, as its last event, unless that is what its last event says. */
 function ended(log: string, events: readonly LogEvent[], decided: Extract<Decided, { move: "end" }>): void {
   const last = events.at(-1);
@@ -440,34 +533,30 @@ export async function harnessBuilder(
   seats: Seats = { seated: solved },
 ): Promise<Decided> {
   const values = flagsOf(args);
-  const { root, sweep, cycle, bundle, name } = values;
-  if (
-    root === undefined ||
-    sweep === undefined ||
-    cycle === undefined ||
-    bundle === undefined ||
-    name === undefined
-  ) {
-    throw new Error("name --root, --sweep, --cycle, --bundle and --name");
-  }
+  const { name } = values;
+  if (name === undefined) throw new Error("name --name, the campaign");
   const most = values.moves === undefined ? Number.POSITIVE_INFINITY : Number(values.moves);
   if (Number.isNaN(most) || most < 0) {
     throw new Error(`--moves ${String(values.moves)}: the moves to make are a number`);
   }
   const log = campaignLog(name);
-  // Opening the campaign stages its check program, and refuses one the log froze otherwise.
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name });
+  // Opening a campaign stages its check program, and refuses one the log froze otherwise. One that
+  // opens from a prompt has no exam to open over until its first draft stands.
+  let campaign = packed(values) ? await openCampaign(packNamed(values)) : null;
   const opening = opened(log, values, seats.seated === solved ? "paid" : "scripted");
   for (let made = 0; ; made += 1) {
     const events = existsSync(log) ? read(log) : [];
+    campaign ??= draftOf(events) === null ? null : await openCampaign(packNamed(values));
     const states = taskStates(events);
+    const pack = campaign;
     const plan = planOf(
       events,
       {
-        unprepared: campaign.tasks.some((task) => !states.has(taskVersion(campaign.pack(task)))),
+        unprepared: pack?.tasks.some((task) => !states.has(taskVersion(pack.pack(task)))) ?? false,
         level: Number(values.level),
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],
+        admits: admitsOf(values),
       },
       opening,
     );
@@ -476,6 +565,7 @@ export async function harnessBuilder(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
     if (decided.move === "end") {
+      for (const line of examLines(events, name, decided.ending)) console.log(line);
       if (!values["dry-run"]) ended(log, events, decided);
       return decided;
     }

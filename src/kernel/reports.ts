@@ -68,6 +68,7 @@ const BILLED: ReadonlySet<string> = new Set([
   "solve.finished",
   BUILD_FINISHED,
   "exam.finished",
+  "draft.finished",
   "referee.finding",
   "diagnosis.recorded",
 ]);

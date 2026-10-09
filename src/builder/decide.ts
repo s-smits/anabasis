@@ -16,8 +16,10 @@
  *
  * The order it asks in:
  *
- * 1. The exam. A checker nobody has read is read first, and one whose reading holds a fault that
- *    nobody froze ends the campaign: the exam was not accepted.
+ * 1. The exam. A campaign that opened from a prompt has it drafted, three drafts at most. A
+ *    checker nobody has read is read, and one whose reading holds a fault that nobody froze ends
+ *    the campaign: the exam was not accepted. It is read again where the operator's command
+ *    admits a check the last reading did not hold admitted.
  * 2. The tasks. A pack's tasks are taken in, practice is released, and a campaign with no task
  *    has some written.
  * 3. The budget, which ends the campaign where less is left than one solve is held at, and the
@@ -50,18 +52,10 @@
  * under it is what counts, and the ladder is walked by what those comparisons show.
  */
 import type { LogEvent } from "../kernel/log.ts";
-import {
-  billedAll,
-  type Cap,
-  lastReports,
-  latestBuilt,
-  promoted,
-  roomOf,
-  validAt,
-} from "../kernel/reports.ts";
+import { lastReports, latestBuilt, promoted, roomOf, validAt } from "../kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
 import { stableJson } from "../meta/stable-json.ts";
+import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { shortOf, supplyOf, type Wanted } from "./admission.ts";
 
@@ -70,6 +64,8 @@ export type Ending = "budget" | "stop" | "exam" | "no-room" | "environment" | "o
 
 /** The one move a campaign's log leads to, with its reason, or its ending. */
 export type Decided =
+  /** An Examiner session that drafts the exam of a campaign opened from a prompt (row F53). */
+  | { readonly move: "draft"; readonly why: string }
   | { readonly move: "accept"; readonly why: string }
   | { readonly move: "prepare"; readonly why: string }
   /** An Examiner session. `room` asks for tasks that leave a harness room (row F52). */
@@ -105,28 +101,13 @@ export interface Plan {
   readonly wanted: Pick<Wanted, "target" | "level" | "restarted">;
   /** The operator's reason to go on past the stop rule, where one was given. */
   readonly pastStop?: string | undefined;
+  /** Whether the campaign opened from a prompt: its exam is then drafted, and no pack holds it. */
+  readonly prompted?: boolean | undefined;
+  /** The checks the operator's command admits by name (`--admit`). */
+  readonly admits?: readonly string[] | undefined;
   /** The dollars left of the campaign's total and the reserve one solve is held at; null for a
    *  campaign with no total, as a rehearsal's, whose seats are paid nothing. */
   readonly left?: { readonly dollars: number; readonly reserve: number } | null | undefined;
-}
-
-/** Who sits in a seat: a model and its effort. */
-export interface Seat {
-  readonly model: string;
-  readonly effort: string;
-}
-
-/** What a campaign runs by, as `campaign.opened` records it (`tools/d2/harness-builder.ts`). */
-export interface Opening {
-  /** The dollars the campaign may bill in all, and the reserve one solve is held at; null for a
-   *  rehearsal's, whose seats are paid nothing. */
-  readonly budget: Cap | null;
-  /** The full limit of a solve in the model's turns, the shorter budgets its comparisons are also
-   *  read at, and the Builder sessions before a comparison. */
-  readonly limit: number | null;
-  readonly ladder: readonly number[];
-  readonly sessions: number;
-  readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
 }
 
 /** One comparison as move 7 reads it: where it began, its two harnesses, and its last report. */
@@ -173,17 +154,10 @@ interface Ground {
   readonly drafts: number;
 }
 
-/** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
-export const SEATS = ["builder", "examiner", "reviewer"] as const;
-/** The Builder sessions before a comparison, after the campaign's first, where nothing names
- *  them: the plan's checkpoint is several sessions and then one comparison. */
-export const SESSIONS = 3;
-/** The scored tasks of a campaign whose setting names none. */
-const TARGET = 12;
 /** The share of valid solves at or under which the budget rule takes a budget. */
 const HALF = 1 / 2;
-/** Tries at tasks that leave room, each an Examiner session and the comparison after it, after
- *  which the tasks could not be made to. */
+/** The tries the plan gives before an ending: drafts of an exam, Examiner sessions in a row that
+ *  held out no task, and comparisons of one harness that left no room. */
 const DRAFTS = 3;
 const STEP = "step";
 const STARTED = "comparison.started";
@@ -204,69 +178,6 @@ const fewYet = (since: number): string =>
     ? ""
     : `. The ${plural(since, "task")} written since ${since === 1 ? "is" : "are"} too few yet for a comparison to read a step on`;
 const short = (digest: string): string => digest.slice(0, 8);
-
-/** What a log's last opening holds a campaign to run by, or null where it holds none. */
-export function openingOf(events: readonly LogEvent[]): Opening | null {
-  const data = events.findLast(({ kind }) => kind === "campaign.opened")?.data;
-  if (data === undefined) return null;
-  const budget = asRecord(data.budget);
-  const seat = (name: (typeof SEATS)[number]): Seat | null => {
-    const named = asRecord(asRecord(data.seats)?.[name]);
-    return isString(named?.model) && isString(named.effort)
-      ? { model: named.model, effort: named.effort }
-      : null;
-  };
-  return {
-    budget:
-      isNumber(budget?.dollars) && isNumber(budget.reserve)
-        ? { dollars: budget.dollars, reserve: budget.reserve }
-        : null,
-    limit: isNumber(data.limit) ? data.limit : null,
-    ladder: Array.isArray(data.ladder) ? data.ladder.filter(isNumber) : [],
-    sessions: isNumber(data.sessions) ? data.sessions : SESSIONS,
-    seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
-  };
-}
-
-/**
- * What move 7 reads beside a log: the campaign's plan from its opening, the dollars left of its
- * total, the size its setting asks a comparison for, and what only the caller knows. A campaign
- * with no opening on record, as every one before 2026-10-09, runs by the defaults: the full limit
- * its first setting named, no shorter budget, and no total.
- */
-export function planOf(
-  events: readonly LogEvent[],
-  beside: {
-    /** Whether the campaign's pack holds a task its log does not. */
-    readonly unprepared: boolean;
-    readonly level: number;
-    /** The tasks to score, where the log's setting names none yet. */
-    readonly target?: number | undefined;
-    readonly pastStop?: string | undefined;
-  },
-  opening: Opening | null = openingOf(events),
-): Plan {
-  const first = events.find(({ kind }) => kind === SETTING)?.data;
-  const recorded = events.findLast(({ kind }) => kind === SETTING)?.data;
-  const named = Array.isArray(recorded?.tasks) ? recorded.tasks.length : recorded?.target;
-  const began = isNumber(first?.modelTurns) ? first.modelTurns : null;
-  return {
-    limit: opening === null ? began : opening.limit,
-    ladder: opening?.ladder ?? [],
-    sessions: opening?.sessions ?? SESSIONS,
-    unprepared: beside.unprepared,
-    wanted: {
-      target: isNumber(named) ? named : (beside.target ?? TARGET),
-      level: beside.level,
-      restarted: [],
-    },
-    left:
-      opening?.budget == null
-        ? null
-        : { dollars: opening.budget.dollars - billedAll(events), reserve: opening.budget.reserve },
-    ...keyIfDefined("pastStop", beside.pastStop),
-  };
-}
 
 /** Every comparison of a log, in the order they began. One a log of 8 October holds by its report
  *  alone stands where it first reported. */
@@ -426,7 +337,29 @@ function tried(ground: Ground, turns: number | null): boolean {
 }
 
 /** The plan's decision table over a campaign's log: the next move, or the campaign's ending. */
+/** The first move of a campaign that opened from a prompt and holds no exam: a draft, while the
+ *  plan's three have not been put. A session that put none, as one its provider failed, counts
+ *  as a session, so that a campaign does not draft against a dead provider without end. */
+function drafting(events: readonly LogEvent[]): Decided {
+  const sessions = events.filter(({ kind }) => kind === "draft.finished");
+  const tries = sessions.reduce((sum, { data }) => sum + (isNumber(data.tries) ? data.tries : 0), 0);
+  if (tries >= DRAFTS || sessions.length >= DRAFTS) {
+    return end(
+      "exam",
+      `the exam was not accepted: ${plural(tries, "draft")} in ${plural(sessions.length, "session")} did not stand at the host's reading`,
+    );
+  }
+  return {
+    move: "draft",
+    why:
+      tries === 0
+        ? "the campaign opened from a prompt and holds no exam: the Examiner drafts its rules, its checks and its first tasks"
+        : `${plural(tries, "draft")} did not stand at the host's reading, and ${String(DRAFTS - tries)} more may be put`,
+  };
+}
+
 export function decide(events: readonly LogEvent[], plan: Plan): Decided {
+  if (plan.prompted === true && draftOf(events) === null) return drafting(events);
   const supply = supplyOf(events);
   if (supply.faults === null) {
     return {
@@ -435,6 +368,15 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
     };
   }
   if (supply.faults > 0 && !supply.frozen) {
+    // A check its author's own computation decides stands on the operator's word, given by name.
+    // Where this command gives it for a check the last reading did not hold admitted, the exam is
+    // read again with it.
+    const kept = events.findLast(({ kind }) => kind === "checker.read")?.data.admitted;
+    const admitted = Array.isArray(kept) ? kept : [];
+    const more = (plan.admits ?? []).filter((id) => !admitted.includes(id));
+    if (more.length > 0) {
+      return { move: "accept", why: `the operator admits ${more.join(", ")}: the exam is read again` };
+    }
     return end(
       "exam",
       `the checker's last reading holds ${plural(supply.faults, "fault")} and nobody froze it: the exam is not accepted until its author repairs it, or the operator admits each check by name and freezes (tools/c/accept.ts)`,
@@ -767,6 +709,7 @@ function tooHard(ground: Ground, id: string, latest: string, since: number): Dec
 export function decidedLine(decided: Decided): string {
   const named = (harness: string) => (harness.length > 16 ? short(harness) : `the ${harness} harness`);
   const what = {
+    draft: () => "an Examiner session, to draft the exam",
     accept: () => "read the exam",
     prepare: () => "set the tasks apart",
     examine: () =>

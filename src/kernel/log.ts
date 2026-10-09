@@ -55,7 +55,12 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  (`tools/d2/harness-builder.ts`): `campaign.opened` is what a campaign runs by, its total budget,
  *  its seats and the budgets its comparisons are read at; `campaign.move` is a move it made, with
  *  the reason its decision table gave (`src/builder/decide.ts`); and `campaign.ended` is how the
- *  campaign ended, which is its last event. */
+ *  campaign ended, which is its last event.
+ *  The `draft.*` kinds are the session in which an Examiner drafts a campaign's exam from the
+ *  operator's prompt (`src/examiner/draft.ts`), the same five as an Examiner session's, and
+ *  `exam.drafted` holds the draft that stood, whole: its rules with their sources, its answer
+ *  format, its check program's source, its example tasks and its controls. A campaign opened from
+ *  a prompt reads its exam from that event and from no file beside the log. */
 export const EVENT_KINDS = [
   "campaign.opened",
   "campaign.setting",
@@ -71,6 +76,12 @@ export const EVENT_KINDS = [
   "build.call",
   "build.compacted",
   "build.finished",
+  "draft.started",
+  "draft.turn",
+  "draft.call",
+  "draft.compacted",
+  "draft.finished",
+  "exam.drafted",
   "exam.started",
   "exam.turn",
   "exam.call",

@@ -27,7 +27,8 @@
  *
  * It starts no solve and calls no model.
  */
-import { planOf, unpromoted } from "#src/builder/decide.ts";
+import { unpromoted } from "#src/builder/decide.ts";
+import { planOf } from "#src/builder/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { comparedAs, promoted } from "#src/kernel/reports.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";

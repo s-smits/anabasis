@@ -49,7 +49,15 @@ import { type CheckpointRequest, checkpoint, refuseTerms, type Report } from "#s
 import { read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { awaitingLines, campaignLog, starter, keptAs, openCampaign, stayAwake } from "./campaign.ts";
+import {
+  awaitingLines,
+  campaignLog,
+  starter,
+  keptAs,
+  openCampaign,
+  packNamed,
+  stayAwake,
+} from "./campaign.ts";
 import {
   budgetsNamed,
   predictionLines,
@@ -84,23 +92,16 @@ const OPTIONS = {
  *  solver scripted. */
 export async function checkpointCommand(args: readonly string[], seated: Seated = solved): Promise<Report> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { root, sweep, cycle, bundle, name, id } = values;
-  if (
-    root === undefined ||
-    sweep === undefined ||
-    cycle === undefined ||
-    bundle === undefined ||
-    name === undefined ||
-    id === undefined
-  ) {
-    throw new Error("name --root, --sweep, --cycle, --bundle, --name and --id");
-  }
+  const { id } = values;
+  const pack = packNamed(values, " and --id");
+  const { name } = pack;
+  if (id === undefined) throw new Error("name --id, the id the comparison takes in the log");
   // Read before the campaign is opened: a paid comparison with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
   const budgets = budgetsNamed(values.budget);
   // The campaign's setting is its log's, as a round reads it (`setting.ts`).
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting.named });
+  const campaign = await openCampaign({ ...pack, ...setting.named });
   const packageOf = packaged(campaign);
   const old = await keptAs(campaign, "--reference", values.reference);
   const fresh = await keptAs(campaign, "--new", values.new);

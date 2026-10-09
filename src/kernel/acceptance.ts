@@ -26,6 +26,7 @@
  */
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { pooled } from "../meta/pool.ts";
+import { answerFormatFault, type Contract } from "./contract.ts";
 import type { LogEvent } from "./log.ts";
 import {
   applicableTruthChecks,
@@ -89,6 +90,20 @@ export interface Acceptance {
 export interface Checker {
   readonly contract: string;
   readonly checks: string;
+}
+
+/** What a checker is read on: its verifier and brief, the tasks and controls put to it, answers
+ *  graded elsewhere, and whether the verifier's tool path holds a tool. */
+export interface Read {
+  readonly verify: Verifier;
+  readonly brief: Brief;
+  readonly contract: Contract;
+  readonly tasks: readonly Task[];
+  readonly controls: readonly Control[];
+  readonly stored: readonly Graded[];
+  readonly found: (toolId: string) => boolean;
+  /** Verifier runs in flight at once. */
+  readonly width: number;
 }
 
 /** One answer a log holds a verdict for, under another checker. */
@@ -265,6 +280,27 @@ export function acceptance(
     ]),
   ];
   return { checks, faults };
+}
+
+/**
+ * One reading of a checker without a model: every control through the checks twice, what each
+ * check was then seen to do, and the do-nothing answer on every task, where the format's own
+ * schema yields one that follows the format (`unformed` says why it does not). The acceptance
+ * command records it (`tools/c/accept.ts`), and an Examiner's draft is held to the same reading
+ * before it stands (`tools/d2/exam.ts`), so an exam is drafted against what it will be read by.
+ */
+export async function readChecker(given: Read) {
+  const { verify, brief, tasks, width } = given;
+  const runs = await runControls(verify, tasks, given.controls, width);
+  const idle = doNothingAnswer(given.contract.answerFormat);
+  const unformed = answerFormatFault(given.contract, idle);
+  return {
+    runs,
+    seen: acceptance(brief, tasks, runs, given.stored, given.found),
+    idle,
+    unformed,
+    rejected: unformed === null ? await runDoNothing(verify, tasks, idle, width) : [],
+  };
 }
 
 /** The checks their author's own computation decides that the operator has not admitted by name,

@@ -55,7 +55,7 @@ import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
-import { awaitingLines, openCampaign } from "./campaign.ts";
+import { awaitingLines, openCampaign, packNamed } from "./campaign.ts";
 import { type Campaign, ROUND_OPTIONS, scoredNamed } from "./round.ts";
 import { recordedSetting, targetNamed } from "./setting.ts";
 
@@ -110,17 +110,8 @@ async function confirmed(campaign: Campaign, version: string, accepted: Readonly
  *  has no stored accepted answer that passes today's verifier. */
 export async function prepareCommand(args: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { root, sweep, cycle, bundle, name } = values;
-  if (
-    root === undefined ||
-    sweep === undefined ||
-    cycle === undefined ||
-    bundle === undefined ||
-    name === undefined
-  ) {
-    throw new Error("name --root, --sweep, --cycle, --bundle and --name");
-  }
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name });
+  const { root, sweep } = values;
+  const campaign = await openCampaign(packNamed(values));
   const { log, contract } = campaign;
 
   const known = taskStates(read(log));
@@ -206,7 +197,8 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
 
   // Each named task against today's verifier, on the answers the stored sweep accepted for it.
   const accepted = new Map<string, JsonValue[]>();
-  for (const row of sweepRows(root, sweep)) {
+  // An exam drafted from a prompt has no stored sweep behind it, and so no stored answer.
+  for (const row of root === undefined || sweep === undefined ? [] : sweepRows(root, sweep)) {
     const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
     if (answer !== undefined) accepted.set(row.taskId, [...(accepted.get(row.taskId) ?? []), answer]);
   }

@@ -36,7 +36,7 @@ import { sessionOnce } from "#src/builder/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, keptAs, openCampaign, PROMOTED, stayAwake } from "./campaign.ts";
+import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
 import {
   capNamed,
   parentNamed,
@@ -55,22 +55,15 @@ import { firstRecord, keepSetting, recordedSetting, settingAsked } from "./setti
  *  started from. */
 export async function sessionCommand(args: readonly string[], seated: Seated = solved) {
   const { values } = parseArgs({ args: [...args], options: SESSION_OPTIONS });
-  const { root, sweep, cycle, bundle, name, session } = values;
-  if (
-    root === undefined ||
-    sweep === undefined ||
-    cycle === undefined ||
-    bundle === undefined ||
-    name === undefined ||
-    session === undefined
-  ) {
-    throw new Error("name --root, --sweep, --cycle, --bundle, --name and --session");
-  }
+  const { session } = values;
+  const pack = packNamed(values, " and --session");
+  const { name } = pack;
+  if (session === undefined) throw new Error("name --session, the id the session takes in the log");
   const paid = seated === solved ? "paid" : "scripted";
   // Read before the campaign is opened: a paid session with no cap starts nothing.
   const cap = capNamed(values, paid);
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting.named });
+  const campaign = await openCampaign({ ...pack, ...setting.named });
   const parent = await parentNamed(campaign, { ...values, session });
   // A scripted solve is told from its harness which side of a comparison it stands on, and a
   // practice solve stands on none: it is seated against the campaign's reference harness.

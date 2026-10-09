@@ -27,6 +27,8 @@
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
+import { openingOf } from "#src/builder/opening.ts";
+import { draftOf } from "#src/examiner/draft.ts";
 import { departure } from "#src/kernel/acceptance.ts";
 import {
   type Condition,
@@ -63,6 +65,7 @@ import { diagnose } from "#src/review/diagnoser.ts";
 import type { Reader } from "#src/review/reader.ts";
 import { referee } from "#src/review/referee.ts";
 import { writeStarter } from "#src/solve/starter.ts";
+import { stageExam } from "./exam.ts";
 import { guideOf, openHarness, treeContent } from "#src/solve/harness.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
 import {
@@ -80,11 +83,13 @@ import {
 } from "../m0/stored-sweep.ts";
 
 export interface CampaignArgs {
-  readonly root: string;
-  readonly sweep: string;
+  /** The stored pack a campaign opens over, which the four name together. A campaign that
+   *  opened from a prompt names none: its exam is the one its own log drafted (`exam.ts`). */
+  readonly root?: string | undefined;
+  readonly sweep?: string | undefined;
   /** The cycle whose model and effort the test condition takes. */
-  readonly cycle: string;
-  readonly bundle: string;
+  readonly cycle?: string | undefined;
+  readonly bundle?: string | undefined;
   readonly name: string;
   /** The model and effort that solve in the cycle's place, when not its own: a command's `--solver`
    *  and `--solver-effort` (`setting.ts`). */
@@ -134,6 +139,8 @@ export const LIMITS: Limits = {
   diskBytes: 2 * 1024 ** 3,
 };
 const REPO = resolve(import.meta.dir, "..", "..");
+/** The flags that name a stored pack together. */
+const PACK_FLAGS = 4;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
 
@@ -141,17 +148,72 @@ const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-cor
  *  setting the campaign recorded (`setting.ts`). */
 export const campaignLog = (name: string): string => join(REPO, ".ana", "d2", name, "log.jsonl");
 
+/**
+ * The campaign a command's flags name, and the pack it opens over: the stored one that `--root`,
+ * `--sweep`, `--cycle` and `--bundle` name together, or, where none of the four is given, the exam
+ * the campaign's own log drafted. Ten commands each held their own copy of this check until
+ * 2026-10-09, when a campaign could only open over a stored pack. `also` is what else the command
+ * needs, for the sentence that says what is missing.
+ */
+export function packNamed(
+  flags: Pick<CampaignArgs, "root" | "sweep" | "cycle" | "bundle"> & { readonly name?: string | undefined },
+  also = "",
+): CampaignArgs {
+  const { root, sweep, cycle, bundle, name } = flags;
+  const stored = [root, sweep, cycle, bundle].filter((each) => each !== undefined).length;
+  if (name === undefined || (stored > 0 && stored < PACK_FLAGS)) {
+    throw new Error(`name --root, --sweep, --cycle, --bundle, --name${also}`);
+  }
+  if (stored === 0 && draftOf(read(campaignLog(name))) === null) {
+    throw new Error(
+      `name --root, --sweep, --cycle and --bundle: campaign ${name} holds no exam of its own, which only a campaign that opened from a prompt drafts (tools/d2/harness-builder.ts --prompt)`,
+    );
+  }
+  return { root, sweep, cycle, bundle, name };
+}
+
+/**
+ * What a campaign's pack gives it: the pack's directory, its check program as a verifier opens
+ * it, the answer format, and who solves where no flag and no record says. A stored pack's format
+ * and solver are its cycle's; a drafted exam's format is the draft's, and its solver the one the
+ * campaign's opening names.
+ */
+function packOpened(dir: string, log: string, args: CampaignArgs) {
+  const { root, sweep, cycle, bundle } = args;
+  if (root !== undefined && sweep !== undefined && cycle !== undefined && bundle !== undefined) {
+    const checks = join(dir, "checks");
+    if (!existsSync(checks)) checkProgram(bundle, checks);
+    const row = sweepRows(root, sweep).find((each) => each.cycle === cycle);
+    if (row === undefined) throw new Error(`${sweep} graded no solve in ${cycle}`);
+    const stored = { model: rowModel(row), effort: storedRuntime(row).modelWorker.modelSelection.effort };
+    return { bundle, checks, format: recordedAnswerFormat(row), solver: () => stored };
+  }
+  const events = read(log);
+  const draft = draftOf(events);
+  if (draft === null) throw new Error(`${log} holds no drafted exam, and no stored pack was named`);
+  const named = openingOf(events)?.solver ?? null;
+  return {
+    ...stageExam(dir, draft),
+    format: draft.answerFormat,
+    solver: () => {
+      if (named === null) {
+        throw new Error(
+          `name --solver: campaign ${args.name} opened from a prompt, and neither its opening nor this command names who solves`,
+        );
+      }
+      // SAFETY: an effort the opening recorded from a command's `--solver-effort`.
+      return { model: modelNamed(named.model), effort: named.effort as ThinkingLevel };
+    },
+  };
+}
+
 export async function openCampaign(args: CampaignArgs) {
   const dir = join(REPO, ".ana", "d2", args.name);
   mkdirSync(dir, { recursive: true });
-  const checks = join(dir, "checks");
-  if (!existsSync(checks)) checkProgram(args.bundle, checks);
   const log = join(dir, "log.jsonl");
-  const { brief, tasks } = readPack(args.bundle);
-  const row = sweepRows(args.root, args.sweep).find((each) => each.cycle === args.cycle);
-  if (row === undefined) throw new Error(`${args.sweep} graded no solve in ${args.cycle}`);
-  const runtime = storedRuntime(row);
-  const contract = contractOf(brief, recordedAnswerFormat(row));
+  const { bundle, checks, format, solver } = packOpened(dir, log, args);
+  const { brief, tasks } = readPack(bundle);
+  const contract = contractOf(brief, format);
   // The checker this campaign runs under: its contract and its staged check program. Once the
   // operator has frozen one in the log (`tools/c/accept.ts --freeze`), a campaign whose own is
   // another does not open, since what the log counted was counted under the frozen one.
@@ -159,7 +221,7 @@ export async function openCampaign(args: CampaignArgs) {
   const moved = departure(read(log), checker);
   if (moved !== null) throw new Error(`${log}: ${moved}`);
   const resources = sweepResources(brief);
-  const tools = join(args.bundle, ".toolchain");
+  const tools = join(bundle, ".toolchain");
   const verify = openVerifier({ checks, tools });
   const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
     readFileSync(join(REPO, "package.json"), "utf8"),
@@ -260,9 +322,12 @@ export async function openCampaign(args: CampaignArgs) {
     resources,
     /** What every solve of this campaign's command is held to, which its settings hold. */
     limits,
+    /** The pack's directory, laid out as a stored bundle is: what a command reads its controls and
+     *  its tool path from. */
+    bundle,
     test: {
       ...(args.solver === undefined
-        ? { model: rowModel(row), effort: runtime.modelWorker.modelSelection.effort }
+        ? solver()
         : { model: modelNamed(args.solver.model), effort: args.solver.effort }),
       side: "test",
     } as const,
@@ -283,7 +348,7 @@ export async function openCampaign(args: CampaignArgs) {
       models: hostSession({ webSearch: false }),
     }),
     builder: hostSession({ webSearch: true }),
-    examiner: hostSession({ webSearch: false }),
+    examiner: examinerSession,
   };
 }
 
@@ -409,6 +474,10 @@ export function awaitingLines(campaign: {
 function hostSession(search: { readonly webSearch: boolean }) {
   return (home: string) => backends({ claude: { ...sweepOptions(home).claude, ...search } });
 }
+
+/** An Examiner's backends, for the session that drafts an exam before there is a campaign to
+ *  open (`tools/d1b/draft.ts`). */
+export const examinerSession = hostSession({ webSearch: false });
 
 /** The plan runs every solve under `caffeinate -s`, so the Mac cannot sleep inside a wall; it exits
  *  with this process, and unreferenced it does not hold this one open. */

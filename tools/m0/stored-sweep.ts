@@ -68,6 +68,10 @@ export interface Row extends StoredSolve {
 /** The parts of v1's `brief.json` read here. */
 interface PackBrief {
   readonly domain: string;
+  /** What a task may ask and what a practitioner takes as given, where the brief says them: an
+   *  exam drafted from a prompt does (`tools/d2/exam.ts`), and a v1 bundle's brief does not. */
+  readonly scope?: string;
+  readonly conventions?: string;
   readonly ruleDecisions: readonly (JsonObject & { id: string; statement: string; visibility: string })[];
   readonly truthChecks: readonly { assertion: string; execution: { publicInputPaths: string[] } }[];
   readonly artifactSchema: readonly JsonObject[];
@@ -310,9 +314,9 @@ export function packControls(bundle: string): Control[] {
 export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract {
   return {
     answerFormat,
-    conventions: "",
+    conventions: brief.conventions ?? "",
     rules: brief.ruleDecisions.filter((rule) => rule.visibility === "public"),
-    scope: brief.domain,
+    scope: brief.scope ?? brief.domain,
   };
 }
 
@@ -333,6 +337,15 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
       Object.fromEntries(keys.flatMap((key) => (row[key] === undefined ? [] : [[key, row[key]]]))),
     );
   const named: [string, JsonValue[]][] = [
+    // What a task may ask and what a practitioner takes as given, where the brief says them: an
+    // exam drafted from a prompt states its units and tolerances there, and a solver is held to
+    // nothing it could not read. A v1 bundle's brief says neither, and gets no such file.
+    [
+      "public-scope",
+      brief.scope === undefined && brief.conventions === undefined
+        ? []
+        : [{ domain: brief.domain, scope: brief.scope ?? "", conventions: brief.conventions ?? "" }],
+    ],
     [
       "public-validity-rules",
       brief.truthChecks.map((check) => ({
@@ -345,7 +358,7 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
       "public-rule-decisions",
       rows(
         brief.ruleDecisions.filter((decision) => decision.visibility === "public"),
-        ["id", "visibility", "statement", "families", "publicInputPaths"],
+        ["id", "visibility", "statement", "source", "families", "publicInputPaths"],
       ),
     ],
     [

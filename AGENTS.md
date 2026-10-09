@@ -150,7 +150,7 @@ wall keeps from it.
 
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
-| **Examiner** (model) | Writes task instances against a fixed contract and check program | The contract, examples, and one outcome for each task of the campaign | A target, a harness's name, a count of solves, a budget. It makes no solve | `src/examiner/` |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, examples, and one outcome for each task of the campaign. When it drafts: the operator's prompt, and what the host's reading found in each draft | A target, a harness's name, a count of solves, a budget. It makes no solve | `src/examiner/` |
 | **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules, practice tasks, practice results and traces, diagnoses, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
@@ -161,7 +161,8 @@ wall keeps from it.
 
 The tools of each model seat, as its source names them:
 
-- Examiner: `propose_tasks`, `read_example`, `finish`.
+- Examiner: `propose_tasks`, `read_example`, `finish`. In the session that drafts an exam:
+  `draft_exam`, `finish`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness`, `reset_harness`, `finish`.
 - Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`.
@@ -238,10 +239,9 @@ ends (`tools/d2/harness-builder.ts`, section 6). The setting, the reference and 
 stay the log's and one admission's. The skill `run-improvement-campaign` remains the procedure
 for a session that runs a campaign with the operator: it reads the same table.
 
-Four designed parts of it are absent: one Builder conversation across sessions, a word the
-operator leaves between two moves, the closing report with the reference harness exported, and
-an entrance from a prompt with no stored pack. The plan holds each (`docs/plan.md`, rows F27,
-F50, F51 and F53).
+Three designed parts of it are absent: one Builder conversation across sessions, a word the
+operator leaves between two moves, and the closing report with the reference harness exported.
+The plan holds each (`docs/plan.md`, rows F27, F50 and F51).
 
 The design has two layers, as v1's had:
 
@@ -332,12 +332,15 @@ side: not into a prompt, not into a pull request, not into a paste.
 
 ## 6. A campaign's commands
 
-A campaign runs as a sequence of commands over one log. Each names the stored pack
-(`--root --sweep --cycle --bundle`) and the campaign (`--name`). The head comment of each file is
-its manual and lists its flags.
+A campaign runs as a sequence of commands over one log. Each names the campaign (`--name`) and
+the pack it opens over: a stored one, by four flags together (`--root --sweep --cycle --bundle`),
+or none, for a campaign that opened from a prompt and whose exam its own log drafted
+(`packNamed`, `tools/d2/campaign.ts`). The head comment of each file is its manual and lists its
+flags.
 
 | Order | Command | What it puts in the log |
 | --- | --- | --- |
+| 0 | `bun tools/d1b/draft.ts --name <name> --session d-1 --examiner <model>` | For a campaign that opened from a prompt: the session in which an Examiner drafts its exam, and the draft that stood, whole (`exam.drafted`). The host reads each draft without a model before it stands |
 | 1 | `bun tools/c/accept.ts ... [--admit <checks>] [--freeze]` | What the check program was seen to do (`checker.read`), and the operator's word that the contract and that version stand (`contract.frozen`) |
 | 2 | `bun tools/d2/prepare.ts ... [--practice N] [--tasks <ids>]` | The pack's tasks held out and the practice tasks released. `--tasks` confirms each named task against today's verifier and writes nothing: a comparison names its scored tasks itself |
 | 3 | `bun tools/d1b/examine.ts ... --session x-1 --examiner <model>` | Further held-out tasks, written by an Examiner session |
@@ -355,6 +358,17 @@ the freeze and the promotion (section 3). Its budget is one total: each move's c
 left of `--budget` once every billed dollar in the log is taken off, and the campaign ends on its
 budget where less is left than one solve is held at. It ends in one of six ways, and the log's
 last event says which: `budget`, `stop`, `exam`, `no-room`, `environment` or `operator`.
+
+It opens a campaign over a stored pack, or from a prompt (`--prompt "<text>"` or `--prompt-file`,
+with `--solver`): the opening then holds the prompt, and the first move is the draft of row 0.
+A draft stands once the host's reading without a model finds no fault in it: its shape, a source
+on every rule, one check a rule, every control through the checks twice, and the smallest answer
+the format allows refused on every example (`draftReading`, `tools/d2/exam.ts`). What the reading
+cannot say is whether a rule is the field's and its source real. Every check of a drafted exam is
+its author's own computation, since nothing installs an engine of the field for a campaign, so
+its acceptance reading holds one fault a check and the campaign ends on its exam there, once. It
+goes on when the operator admits the checks by name: the command run again with
+`--admit <checks>`, which is rule 10's word and the operator's.
 
 Start a round, a checkpoint, a Builder session by itself or an Examiner session through the
 launcher, which reads the log and the host first and refuses a run that cannot report anything
@@ -518,7 +532,9 @@ Cite a rule by its number in a pull request or a review.
    writes or repairs a rule, a check or a task. That includes you: never hand-edit a pack, a check
    program, a task, a kept harness or a log to make a command pass. A defect that shows across
    domains is fixed in the host, a prompt or the contract code. A check ruled defective goes back
-   to its author, which at PR #80 no seat is (section 9 lists it).
+   to its author. For a campaign that opens from a prompt the Examiner drafts the exam once,
+   before its first task, and the host holds each draft to a reading without a model; no seat
+   repairs a check afterwards (section 9 lists it).
 
 3. **Nothing crosses the wall but the closed list of section 1.** The test is exact: a change to
    a hidden value, to a check, or to which held-out task was won must leave every message a
@@ -614,7 +630,10 @@ change that makes it false:
 
 - the Judge: the Referee has a probe and no shell, reads the check program, and is unmeasured
   against hand labels. No seat reads an answer that passed;
-- an author for the check program: no seat writes or repairs a check;
+- a repairer for the check program, and an engine behind a drafted one: the Examiner drafts an
+  exam for a campaign that opens from a prompt (section 6), no seat repairs a check, and every
+  check of a drafted exam is its author's own computation, which waits for the operator's
+  `--admit`;
 - one Builder conversation across sessions.
 
 ### Evidence
@@ -1244,16 +1263,18 @@ src/kernel/     the log, tasks, conditions, the verifier's contract, the compari
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
 src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round;
                 whether a comparison may start (admission); the one reading of a campaign (handover);
-                the move that follows from a log (decide)
-src/examiner/   an Examiner session, its prompt, and the outcomes it is told
+                the move that follows from a log (decide), and what a campaign runs by (opening)
+src/examiner/   an Examiner session, its prompt, and the outcomes it is told; the session that drafts
+                an exam from a prompt (draft)
 src/review/     the Referee, the Diagnoser, the probe, agreement with hand labels
 src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read
 src/backends/   the three model backends as one pi collection, and compaction
 src/meta/       the owners of every runtime surface (section 12.8)
 tools/c/        the check program: accept, carry, rejections, repaired
-tools/d1b/      examine
-tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote, and
-                harness-builder, which runs a campaign move after move
+tools/d1b/      examine, draft
+tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote; exam,
+                which stages a drafted exam as a pack; and harness-builder, which runs a campaign
+                move after move
 tools/runs/     launch, stop, rehearse, seed, pulse, view, compare, replay, zip
 tools/wri/      the whole-run investigation's reader of one log
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans

@@ -56,7 +56,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { labelled } from "#src/review/rejections.ts";
-import { openCampaign } from "./campaign.ts";
+import { openCampaign, packNamed } from "./campaign.ts";
 import { validLines } from "./round.ts";
 
 const { values } = parseArgs({
@@ -72,18 +72,9 @@ const { values } = parseArgs({
 });
 
 async function main(): Promise<number> {
-  const { root, sweep, cycle, bundle, name, session } = values;
-  if (
-    root === undefined ||
-    sweep === undefined ||
-    cycle === undefined ||
-    bundle === undefined ||
-    name === undefined ||
-    session === undefined
-  ) {
-    throw new Error("name --root, --sweep, --cycle, --bundle, --name and --session");
-  }
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name });
+  const { session } = values;
+  if (session === undefined) throw new Error("name --session, the comparison whose rejections are settled");
+  const campaign = await openCampaign(packNamed(values, " and --session"));
   const events = read(campaign.log);
   const dir = join(dirname(campaign.log), `settle-${session}`);
   const labelFile = join(dir, "labels.json");

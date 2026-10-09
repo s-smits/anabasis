@@ -35,23 +35,19 @@
  * It needs the pack and its tool tree on disk, and the Mac's verifier wall.
  */
 import {
-  acceptance,
   authoredFaults,
-  doNothingAnswer,
   doNothingFaults,
   frozenChecker,
-  runControls,
-  runDoNothing,
+  readChecker,
   toolFaults,
 } from "#src/kernel/acceptance.ts";
-import { answerFormatFault } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { openCampaign } from "../d2/campaign.ts";
+import { openCampaign, packNamed } from "../d2/campaign.ts";
 import { packControls, sweepRows, toolOnPath } from "../m0/stored-sweep.ts";
 
 const OPTIONS = {
@@ -70,15 +66,13 @@ const OPTIONS = {
  *  command's exit code: 1 where the reading holds a fault or a freeze was refused. */
 export async function acceptCommand(args: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { root, sweep, bundle, name } = values;
-  if (root === undefined || sweep === undefined || bundle === undefined || name === undefined) {
-    throw new Error("name --root, --sweep, --bundle and --name");
-  }
-  const rows = sweepRows(root, sweep);
-  const [first] = rows;
-  if (first === undefined) throw new Error(`${sweep} graded no solve`);
-  const campaign = await openCampaign({ root, sweep, cycle: values.cycle ?? first.cycle, bundle, name });
-  const { tasks, log, checker, contract } = campaign;
+  const { root, sweep } = values;
+  // A stored pack's verdicts are its sweep's, and its cycle the sweep's first graded row's where
+  // none is named. An exam drafted from a prompt has neither: its controls are all it is read on.
+  const rows = root === undefined || sweep === undefined ? [] : sweepRows(root, sweep);
+  if (sweep !== undefined && rows.length === 0) throw new Error(`${sweep} graded no solve`);
+  const campaign = await openCampaign(packNamed({ ...values, cycle: values.cycle ?? rows[0]?.cycle }));
+  const { tasks, log, checker, contract, bundle } = campaign;
   const brief = readBrief(campaign.checks);
   const admitted = new Set(
     (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()])),
@@ -101,14 +95,17 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     console.log("no control was run: a check whose tool is missing decides nothing");
     return 1;
   }
-  const runs = await runControls(campaign.verify, tasks, packControls(bundle), Number(values.jobs));
-  const seen = acceptance(brief, tasks, runs, stored, toolOnPath(bundle));
+  const { runs, seen, idle, unformed, rejected } = await readChecker({
+    verify: campaign.verify,
+    brief,
+    contract,
+    tasks,
+    controls: packControls(bundle),
+    stored,
+    found: toolOnPath(bundle),
+    width: Number(values.jobs),
+  });
   const { checks } = seen;
-  // The do-nothing answer, where the format's own schema yields one that follows the format.
-  const idle = doNothingAnswer(contract.answerFormat);
-  const unformed = answerFormatFault(contract, idle);
-  const rejected =
-    unformed === null ? await runDoNothing(campaign.verify, tasks, idle, Number(values.jobs)) : [];
   const faults = [...seen.faults, ...authoredFaults(checks, admitted), ...doNothingFaults(rejected)];
   append(log, "checker.read", {
     ...checker,

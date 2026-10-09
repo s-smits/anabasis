@@ -5,17 +5,19 @@
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
+import { draftExam } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
 import { type LogEvent, read } from "../src/kernel/log.ts";
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -314,5 +316,107 @@ describe("a campaign run by its log", () => {
     // answer in two turns, was ended by the budget of one.
     expect(strayed).toHaveLength(15);
     expect(strayed.every((line) => line.includes('"kind":"turns-ended"'))).toBe(true);
+  });
+  it("opens from a prompt: drafts its exam, waits for the operator's word on its checks, and reaches a comparison with no file written by hand", async () => {
+    const name = `${STEM}-prompt`;
+    names.push(name);
+    const folder = join(REPO, ".ana", "d2", name);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
+    const prompt = "Multiplying a base by six, as a fixture.";
+    const flags = ["--name", name, "--solver", "claude/claude-opus-5-5", "--practice", "2", "--solves", "1"];
+    const exam = {
+      domain: "Fixture products",
+      scope: "A task gives a base and asks for six times it.",
+      conventions: "The answer is a decimal string without a sign.",
+      rules: [
+        {
+          id: "R1",
+          statement: "The answer is the base times six.",
+          source: "A fixture: no field states it.",
+        },
+      ],
+      answer_format: FORMAT,
+      checks: [{ id: "check-product", rule: "R1", assertion: "The answer is six times the base." }],
+      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),\n};\n`,
+      tasks: TASKS.map(({ family, publicInput, hidden }) => ({ family, public_input: publicInput, hidden })),
+      accept_controls: TASKS.map(({ publicInput }, task) => ({
+        task,
+        answer: { answer: String(publicInput.base * 6) },
+      })),
+      reject_controls: [{ task: 0, answer: { answer: "13" }, check: "check-product" }],
+    };
+    // The first draft's reject control is the right answer, which no check refuses.
+    const wrong = {
+      ...exam,
+      reject_controls: [{ task: 0, answer: { answer: "12" }, check: "check-product" }],
+    };
+    const strayed: string[] = [];
+    const examples = TASKS.map(({ publicInput }, index) => ({
+      taskId: `ex-00${String(index + 1)}`,
+      answer: { answer: String(publicInput.base * 6) },
+      refusedBy: null,
+    }));
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, examples, strayed),
+      draft: (request) =>
+        draftExam({
+          ...request,
+          ...scripted([
+            ["draft_exam", wrong],
+            ["draft_exam", exam],
+          ]),
+        }),
+    };
+    // With no prompt and no pack there is nothing to open, and nothing is written.
+    expect(harnessBuilder(["--name", name], seats)).rejects.toThrow("give the prompt it opens from");
+    expect(await harnessBuilder([...flags, "--prompt", prompt, "--dry-run"], seats)).toMatchObject({
+      move: "draft",
+    });
+    expect(existsSync(join(folder, "log.jsonl"))).toBe(false);
+
+    // The Examiner drafts, the host reads each draft without a model, and the second stands. Its
+    // one check is its author's own computation, so the campaign waits for the operator's word.
+    const waits = await harnessBuilder([...flags, "--prompt", prompt], seats);
+    expect(waits).toMatchObject({ move: "end", ending: "exam" });
+    expect(of(name, "campaign.opened")).toMatchObject([
+      { prompt, solver: { model: "claude/claude-opus-5-5", effort: "high" } },
+    ]);
+    expect(of(name, "draft.call").map(({ text }) => (isString(text) ? text : "").split("\n")[0])).toEqual([
+      "The draft does not stand. 2 faults:",
+      "The draft stands: it is the campaign's exam. The session ends here.",
+    ]);
+    expect(of(name, "draft.finished")).toMatchObject([{ session: "d-1", stands: true, tries: 2 }]);
+    expect(of(name, "exam.drafted")).toHaveLength(1);
+    expect(of(name, "checker.read").at(-1)?.faults).toEqual([
+      "check-product is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit check-product)",
+    ]);
+    expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([
+      ["draft", "d-1"],
+      ["accept", null],
+    ]);
+
+    // With that word, by its name alone: the exam is read again, its tasks are set apart, a
+    // Builder builds, and the two harnesses are compared on the tasks the draft gave.
+    const next = await harnessBuilder(
+      ["--name", name, "--admit", "check-product", "--practice", "2", "--solves", "1", "--moves", "4"],
+      seats,
+    );
+    expect(
+      of(name, "campaign.move")
+        .slice(2)
+        .map(({ move, session }) => [move, session ?? null]),
+    ).toEqual([
+      ["accept", null],
+      ["prepare", null],
+      ["build", "b-1"],
+      ["compare", "g-1"],
+    ]);
+    expect(of(name, "checker.read").at(-1)).toMatchObject({ faults: [], admitted: ["check-product"] });
+    expect(of(name, "comparison.reported")).toMatchObject([
+      { reading: "step", scored: { wins: 5, losses: 0, ties: 0 } },
+    ]);
+    expect(next).toMatchObject({ move: "compare", noise: true });
+    expect(strayed).toEqual([]);
   });
 });

@@ -25,7 +25,7 @@ import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
 import { openHarness } from "../src/solve/harness.ts";
-import { starter, keptAs, LIMITS, openCampaign } from "../tools/d2/campaign.ts";
+import { starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
 import { budgetsNamed, capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
@@ -171,6 +171,19 @@ describe("a campaign", () => {
     // Asked for no more practice than there is, it says what a comparison of the size asked for can show.
     expect(prepare("--target", "3")).toBe(
       ["6 held out, 2 released for practice", ...sizeLines(3, ASKED)].join("\n"),
+    );
+  });
+
+  it("names its pack by four flags together, or by none where its own log drafted its exam", () => {
+    expect(packNamed(ARGS)).toEqual(ARGS);
+    // Three of the four name no pack, and a command says what else it needs.
+    expect(() => packNamed({ ...ARGS, cycle: undefined }, " and --session")).toThrow(
+      "name --root, --sweep, --cycle, --bundle, --name and --session",
+    );
+    expect(() => packNamed({ root, sweep: "s", cycle: "c01", bundle })).toThrow("--name");
+    // By its name alone a campaign opens over the exam its log holds, and this one's holds none.
+    expect(() => packNamed({ name: NAME })).toThrow(
+      `campaign ${NAME} holds no exam of its own, which only a campaign that opened from a prompt drafts`,
     );
   });
 

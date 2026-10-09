@@ -1,8 +1,9 @@
 // Move 7 of a campaign over hand-built logs: each row of the plan's decision table, and the order
-// the rows are asked in (`src/builder/decide.ts`).
+// the rows are asked in (`src/builder/decide.ts`), and what a campaign runs by (`opening.ts`).
 
 import { describe, expect, it } from "bun:test";
-import { type Decided, decide, openingOf, type Plan, planOf, unpromoted } from "../src/builder/decide.ts";
+import { type Decided, decide, type Plan, unpromoted } from "../src/builder/decide.ts";
+import { openingOf, planOf } from "../src/builder/opening.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 
@@ -85,6 +86,48 @@ describe("the exam and the tasks, before anything is built", () => {
     // The operator's freeze of that reading lets the campaign go on.
     const frozen = event("contract.frozen", { contract: "c", checks: "k", admitted: ["check-a"] });
     expect(move([faulty, frozen, ...SET_UP.slice(1)])).toMatchObject({ move: "build" });
+  });
+
+  it("drafts the exam of a campaign that opened from a prompt, and ends where three drafts did not stand", () => {
+    const plan = { ...PLAN, prompted: true };
+    expect(move([], plan)).toEqual({
+      move: "draft",
+      why: "the campaign opened from a prompt and holds no exam: the Examiner drafts its rules, its checks and its first tasks",
+    });
+    const fell = (tries: number) => event("draft.finished", { session: "d-1", stands: false, tries });
+    expect(move([fell(2)], plan)).toEqual({
+      move: "draft",
+      why: "2 drafts did not stand at the host's reading, and 1 more may be put",
+    });
+    expect(move([fell(2), fell(1)], plan)).toEqual({
+      move: "end",
+      ending: "exam",
+      why: "the exam was not accepted: 3 drafts in 2 sessions did not stand at the host's reading",
+    });
+    // Three sessions that put no draft, as ones their provider failed, end it too.
+    expect(move([fell(0), fell(0), fell(0)], plan)).toMatchObject({ move: "end", ending: "exam" });
+    // A draft that stood is the exam, and it is read like any other.
+    const stood = event("exam.drafted", { session: "d-1", draft: { domain: "a field" } });
+    expect(move([fell(1), stood], plan)).toMatchObject({ move: "accept" });
+    // A campaign over a stored pack drafts nothing.
+    expect(move([])).toMatchObject({ move: "accept" });
+  });
+
+  it("reads the exam again where the operator admits a check its last reading did not hold admitted", () => {
+    const reading = (admitted: readonly string[], faults: readonly string[]) =>
+      event("checker.read", { contract: "c", checks: "k", faults: [...faults], admitted: [...admitted] });
+    const unadmitted = [
+      reading([], ["check-a stands on the operator's word alone"]),
+      ...HELD.flatMap(heldOut),
+    ];
+    expect(move(unadmitted)).toMatchObject({ move: "end", ending: "exam" });
+    expect(move(unadmitted, { ...PLAN, admits: ["check-a"] })).toEqual({
+      move: "accept",
+      why: "the operator admits check-a: the exam is read again",
+    });
+    // Read with it admitted and a fault left, the exam is not accepted, and is not read a third time.
+    const left = [reading(["check-a"], ["check-b has refused nothing"]), ...HELD.flatMap(heldOut)];
+    expect(move(left, { ...PLAN, admits: ["check-a"] })).toMatchObject({ move: "end", ending: "exam" });
   });
 
   it("takes a pack's tasks in, has some written where there are none, and releases practice", () => {
@@ -516,7 +559,25 @@ describe("what a campaign runs by", () => {
 
   it("is its opening: the limit, the ladder, the sessions, and what is left of its total", () => {
     expect(openingOf([])).toBeNull();
-    expect(openingOf([opened])).toMatchObject({ limit: 40, sessions: 2, seats: { examiner: null } });
+    expect(openingOf([opened])).toMatchObject({
+      limit: 40,
+      sessions: 2,
+      seats: { examiner: null },
+      prompt: null,
+      solver: null,
+    });
+    // A campaign that opened from a prompt holds it, with who solves, and its plan says so.
+    const asked = {
+      ...opened.data,
+      prompt: "Queues.",
+      solver: { model: "claude/claude-sonnet-5-5", effort: "high" },
+    };
+    const prompted = event("campaign.opened", asked);
+    expect(openingOf([prompted])).toMatchObject({ prompt: "Queues.", solver: asked.solver });
+    expect(planOf([prompted], { unprepared: false, level: 0.1, admits: ["check-a"] })).toMatchObject({
+      prompted: true,
+      admits: ["check-a"],
+    });
     expect(planOf([opened, billed(31.5), billed(8.5)], { unprepared: false, level: 0.1 })).toEqual({
       limit: 40,
       ladder: [20, 10, 5],
@@ -524,6 +585,7 @@ describe("what a campaign runs by", () => {
       unprepared: false,
       wanted: { target: 12, level: 0.1, restarted: [] },
       left: { dollars: 360, reserve: 10 },
+      prompted: false,
     });
   });
 
@@ -542,6 +604,7 @@ describe("what a campaign runs by", () => {
       // The setting on record names twelve tasks to score, which stands over the caller's nine.
       wanted: { target: 12, level: 0.2, restarted: [] },
       left: null,
+      prompted: false,
       pastStop: "why",
     });
   });

@@ -28,7 +28,7 @@ import { read } from "#src/kernel/log.ts";
 import { taskSets, taskStates } from "#src/kernel/task.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { openCampaign, stayAwake } from "../d2/campaign.ts";
+import { openCampaign, packNamed, stayAwake } from "../d2/campaign.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 const OPTIONS = {
@@ -50,19 +50,9 @@ const OPTIONS = {
  *  with no model stands in for it to read what the command would have asked of one. */
 export async function examineCommand(args: readonly string[], session = examine): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { root, sweep, cycle, bundle, name, session: id, examiner } = values;
-  if (
-    root === undefined ||
-    sweep === undefined ||
-    cycle === undefined ||
-    bundle === undefined ||
-    name === undefined ||
-    id === undefined ||
-    examiner === undefined
-  ) {
-    throw new Error("name --root, --sweep, --cycle, --bundle, --name, --session and --examiner");
-  }
-  const campaign = await openCampaign({ root, sweep, cycle, bundle, name });
+  const { session: id, examiner } = values;
+  if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
+  const campaign = await openCampaign(packNamed(values, ", --session and --examiner"));
   // The brief's rows in the verifier's reading and in the pack's are the same rows in the same order.
   const declared = readBrief(campaign.checks).truthChecks;
   const before = taskStates(read(campaign.log));

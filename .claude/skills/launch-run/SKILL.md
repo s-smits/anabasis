@@ -23,7 +23,9 @@ The plan's first experiment is its first round (`docs/plan.md`, Phase 0). The Bu
 Starter Built Harness and builds on it, and the harness it leaves is compared with the starter on
 eight tasks the operator names, read at the full limit and at budgets fixed beforehand. A round
 starts from the starter and compares with it by default (`--parent latest`, `--reference
-starter`), so the round needs neither flag.
+promoted`), so the round needs neither flag. `promoted` is the campaign's reference harness: the
+starter until the operator promotes another with `tools/d2/promote.ts --harness <digest> --yes`,
+which is logged, and that harness for every comparison after.
 
 ```sh
 bun run runs launch <pack flags> --name <name> --session b-1 --builder <model> \

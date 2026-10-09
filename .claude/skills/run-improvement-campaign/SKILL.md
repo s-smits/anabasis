@@ -53,7 +53,7 @@ cap the reading: while one of them fails, a change anywhere below it is spent on
 | 5 | size | the tally has enough untied tasks to clear its level | `scored`, `unsolved`, the preflight's notes |
 | 6 | the host | solves started under a load below the cores, and the loads of the comparisons read together are alike | the reader's `HOST LOADED` and `LOAD MOVED` |
 | 7 | the repeat | a checkpoint of the same two harnesses on fresh solves reads the step again, and the reference against itself reads none | `--id <id> --noise`, `STEP NOT REPEATED` |
-| 8 | the next link | once promoted, the new reference still leaves room (link 3 again) | the operator's `--reference <digest>` |
+| 8 | the next link | once promoted, the new reference still leaves room (link 3 again) | the operator's `tools/d2/promote.ts --harness <digest> --yes`, and `harness.promoted` in the log |
 
 Link 3 is the one v1 never had and the one that most often decides. A reference valid on nearly
 every solve leaves a harness nothing to add, and one valid on none leaves the comparison nothing
@@ -85,7 +85,7 @@ change goes through [stack-pr](../stack-pr/SKILL.md), on top of the open stack, 
 `docs/transfer.md` moves in the same pull request.
 
 Four changes are not this loop's to make, and each waits for the operator's word: freezing a
-check program (`accept.ts --freeze`, `--admit`), promoting a harness (`--reference <digest>`),
+check program (`accept.ts --freeze`, `--admit`), promoting a harness (`promote.ts --yes`),
 changing what a solver is given or told (the Starter, the shell, the limits a campaign runs
 under), and stopping a live run. Bring each as one question with the evidence and a
 recommendation, and go on with whatever does not depend on the answer.

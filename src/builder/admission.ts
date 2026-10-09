@@ -37,7 +37,7 @@ import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { settingId } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { awaitingLabel, lastReports, latestBuilt, stopRule } from "../kernel/reports.ts";
+import { awaitingLabel, lastReports, latestBuilt, promoted, stopRule } from "../kernel/reports.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { ranUnder } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
@@ -97,8 +97,9 @@ const EXAMINE = "tools/d1b/examine.ts";
 const said = (rows: readonly (readonly [boolean, string])[]) =>
   rows.flatMap(([holds, text]) => (holds ? [text] : []));
 
-/** A log's supply for a comparison made against the harness `reference` names. */
-export function supplyOf(events: readonly LogEvent[], reference = "starter"): Supply {
+/** A log's supply for a comparison made against the harness `reference` names: `starter`,
+ *  `promoted` for the campaign's reference harness, `latest`, or a digest. */
+export function supplyOf(events: readonly LogEvent[], reference = "promoted"): Supply {
   const sets = taskSets(events);
   const waiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
   const solved = ranUnder(events).findLast(({ under }) => under.side === "test")?.under;
@@ -113,8 +114,8 @@ export function supplyOf(events: readonly LogEvent[], reference = "starter"): Su
   const tally = asRecord(last?.scored);
   const versions = Array.isArray(last?.versions) ? last.versions : [];
   // A task the harness to be compared with was valid on in every solve there can only tie again.
-  const named =
-    reference === "latest" ? latestBuilt(events) : reference === "starter" ? last?.starter : reference;
+  const kept = reference === "promoted" ? (promoted(events) ?? "starter") : reference;
+  const named = kept === "latest" ? latestBuilt(events) : kept === "starter" ? last?.starter : kept;
   const side = last?.old === named ? "old" : "fresh";
   const full = last?.[side] === named ? asRecord(last?.valid)?.[side] : null;
   const closed = Array.isArray(full) && isNumber(full.at(-1)) ? Number(full.at(-1)) : 0;

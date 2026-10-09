@@ -147,6 +147,11 @@ describe("what a log holds for the next comparison", () => {
     });
     expect(supplyOf([built, ...stepped], "latest").untied).toBe(0.25);
     expect(supplyOf(stepped, "h9").untied).toBe(0.75);
+    // The campaign's reference harness is the starter until one is promoted, and that one after.
+    expect(supplyOf(stepped, "promoted").untied).toBe(0.75);
+    const promotion = event("harness.promoted", { harness: "h1", from: "h0", rests: [] });
+    expect(supplyOf([...stepped, promotion], "promoted").untied).toBe(0.25);
+    expect(supplyOf([...stepped, promotion]).untied).toBe(0.25);
   });
 
   it("counts the tasks held out since that comparison, and the ones that wait for a label", () => {

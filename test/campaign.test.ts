@@ -218,7 +218,10 @@ describe("a campaign", () => {
     // the first Builder session forks it.
     expect(await keptAs(campaign, "--reference", "starter")).toEqual(least);
     expect(await keptAs(campaign, "--parent", "latest")).toEqual(least);
-    expect(ROUND_OPTIONS.reference.default).toBe("starter");
+    // A comparison is made against the campaign's reference harness, which is the starter until
+    // the operator promotes another.
+    expect(ROUND_OPTIONS.reference.default).toBe("promoted");
+    expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
     expect(ROUND_OPTIONS.parent.default).toBe("latest");
     // The stored cycle's own harness is none the campaign keeps: it comes from v1's runs.
     await expect(keptAs(campaign, "--reference", "start")).rejects.toThrow(
@@ -429,6 +432,59 @@ describe("a campaign", () => {
       );
     }
     expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
+  });
+
+  it("records a promotion on the operator's word, and compares against the promoted harness from then on", async () => {
+    const campaign = await openCampaign(ARGS);
+    const least = await starter(campaign);
+    // A harness a session could have frozen: the starter with a guide of its own.
+    const made = join(root, "made");
+    cpSync(least.dir, made, { recursive: true });
+    writeFileSync(join(made, "agent", "BUILT_AGENTS.md"), "Multiply the base by six.\n");
+    const { digest } = await openHarness(made);
+    cpSync(made, join(campaign.states, digest), { recursive: true });
+    const promote = (...more: string[]) => {
+      const cmd = [capturedExecPath, "tools/d2/promote.ts", "--name", NAME, ...more];
+      const ran = Bun.spawnSync({ cmd, cwd: REPO });
+      return `${ran.stdout.toString()}${ran.stderr.toString()}`;
+    };
+    const promotions = () =>
+      read(campaign.log).flatMap(({ kind, data }) => (kind === "harness.promoted" ? [data] : []));
+    // Asked without the operator's word, it says what the log holds and records nothing.
+    const asked = promote("--harness", digest);
+    expect(asked).toContain("the reference harness is the starter");
+    expect(asked).toContain(`no comparison on record measured ${digest}`);
+    expect(asked).toContain("nothing is recorded without --yes");
+    expect(promotions()).toEqual([]);
+    expect(promote("--harness", digest.slice(0, 8))).toContain("is no harness this campaign keeps");
+    // With it, the promotion is an event, and the reference harness is read from it.
+    expect(promote("--harness", digest, "--yes")).toContain("is the reference harness from here on");
+    expect(promotions()).toEqual([{ harness: digest, from: least.digest, rests: [] }]);
+    expect((await keptAs(campaign, "--reference", "promoted")).digest).toBe(digest);
+    expect(promote("--harness", digest, "--yes")).toContain("is the campaign's reference harness already");
+    expect(promotions()).toHaveLength(1);
+    // A round that names no --reference is made against it, where it was made against the starter.
+    const against: string[] = [];
+    const flags = [
+      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
+      "--cap",
+      "100",
+      "--parent",
+      "starter",
+      "--session",
+      "z-3",
+    ];
+    const seats = (opened: { readonly log: string }, given: { readonly reference: string }) => {
+      expect(opened.log).toBe(campaign.log);
+      against.push(given.reference);
+      return { builder: null, setting: "s", solve: () => Promise.reject(new Error("no solve is asked for")) };
+    };
+    await expect(roundCommand(flags, seats)).rejects.toThrow("name --builder");
+    await expect(roundCommand([...flags, "--reference", "starter"], seats)).rejects.toThrow("name --builder");
+    expect(against).toEqual([join(campaign.states, digest), least.dir]);
+    // The starter named again returns the campaign to it.
+    promote("--harness", "starter", "--yes");
+    expect(await keptAs(campaign, "--reference", "promoted")).toEqual(least);
   });
 
   it("opens under the limits and the solver a setting names, each another setting of its own", async () => {

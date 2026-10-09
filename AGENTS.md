@@ -178,7 +178,7 @@ exam, pay for it, and own what cannot be undone:
 - labelling drawn rejections blind;
 - the dollar cap, and which provider account spends;
 - saying whether a task that nobody answers is infeasible;
-- promoting a harness to reference (`--reference <digest>`);
+- promoting a harness to reference (`tools/d2/promote.ts --harness <digest> --yes`);
 - changing what a solver is given or told: the starter, the shell, the limits of a campaign;
 - stopping a live run.
 
@@ -186,10 +186,12 @@ Bring each as one question, with the evidence and a recommendation, and go on wi
 not depend on the answer. A continuing instruction ("keep going", "launch the next one")
 authorises work inside its scope and none of these seven.
 
-Other duties are the operator's today only because their owner is not in code: launching each
-step, naming the setting and the reference on every command, acting on the stop rule. Section 4
-names that owner. When you write about such a duty, name the owner it belongs to and say who
-stands in. Write "a person" only for a duty in the list above.
+One duty is the operator's today only because its owner is not in code: launching each step.
+Section 4 names that owner. When you write about such a duty, name the owner it belongs to and
+say who stands in. Write "a person" only for a duty in the list above. Three more were the
+operator's until 9 October and have an owner in code since: the setting and the reference are
+events a command reads (`campaign.setting`, `harness.promoted`), and the stop rule refuses the
+next comparison (section 7).
 
 The operator types nothing into a Builder session. Every message a Builder reads is built by the
 host from the contract, the practice tasks, the practice results and the tallies.
@@ -321,6 +323,7 @@ its manual and lists its flags.
 | 4 | `bun tools/d2/round.ts ... --session b-1 --builder <model>` | A Builder session, then the comparison of the harness it left with the reference |
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
 | 5 | `bun tools/d2/settle.ts ... --session b-1` | A person's labels for the rejections a comparison set aside, and its report once more |
+| 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing |
 
 Start a round, a checkpoint or an Examiner session through the launcher, which reads the log and
 the host first and refuses a run that cannot report anything (`tools/runs/launch.ts`):
@@ -355,7 +358,8 @@ record then counts.
 
 Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.10
 (`--level`), a stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve
-(`--reserve`), `--parent latest`, `--reference starter`; a Builder session of 240 minutes, 300
+(`--reserve`), `--parent latest`, `--reference promoted`, which is the harness last promoted and
+the starter until one is; a Builder session of 240 minutes, 300
 turns and 24 practice solves; a solve of 120 minutes and 24 prompts, with the model's own turns
 unlimited until `--solve-model-turns` names a number.
 
@@ -431,7 +435,9 @@ report. Three checkpoints without a step is the stop rule (`stopRule`, `src/kern
 The next comparison is then refused, unless the operator gives a reason to go on (`--past-stop`),
 which is logged as `stop.overridden`. A task with no valid answer in two comparisons goes to a person as
 possibly infeasible, unless a valid answer for it stands anywhere on record or a limit cut its
-solves (`awaitingLabel`). Promotion is the operator naming a harness as `--reference`.
+solves (`awaitingLabel`). Promotion is the operator's `promote.ts --yes`, which writes
+`harness.promoted`. A comparison that names no `--reference` is made against the harness last
+promoted, and one that names a digest is made against that harness and promotes nothing.
 
 ## 8. Rules
 
@@ -1177,7 +1183,7 @@ src/backends/   the three model backends as one pi collection, and compaction
 src/meta/       the owners of every runtime surface (section 12.8)
 tools/c/        the check program: accept, carry, rejections, repaired
 tools/d1b/      examine
-tools/d2/       campaign, setting, prepare, round, checkpoint, settle
+tools/d2/       campaign, setting, prepare, round, checkpoint, settle, promote
 tools/runs/     launch, stop, rehearse, seed, pulse, compare, replay, zip
 tools/wri/      the whole-run investigation's reader of one log
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans

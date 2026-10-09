@@ -32,8 +32,9 @@
  * the same cap. A comparison the cap cuts short reads `not-scored`. On 2026-10-08 eight rounds
  * cost over $220 and scored no task, under no cap.
  *
- * `--reference` names the harness the new one is compared with: `starter`, until the operator
- * promotes another by naming its digest (`campaign.ts`, `keptAs`). Once the reference is no longer
+ * `--reference` names the harness the new one is compared with, and is `promoted`: the campaign's
+ * reference harness, which is the starter until the operator promotes another
+ * (`tools/d2/promote.ts`) and the one last promoted from then on. Once the reference is no longer
  * the starter, a step is also held to the starter, which is then solved on the tallied tasks.
  * `--parent` names the harness the session starts from, and is `latest`: the one the last whole
  * session left, and the starter while none has. After a comparison without a step the Builder
@@ -88,6 +89,7 @@ import { modelNamed } from "../m0/stored-sweep.ts";
 import {
   awaitingLines,
   campaignLog,
+  PROMOTED,
   starter,
   type Kept,
   keptAs,
@@ -134,7 +136,7 @@ export type Seated = (
 /** The flags of every command that compares, and their defaults: the plan's (`docs/plan.md`,
  *  Tuning). */
 export const COMPARISON_OPTIONS = {
-  reference: { type: "string", default: "starter" },
+  reference: { type: "string", default: PROMOTED },
   tasks: { type: "string" },
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },

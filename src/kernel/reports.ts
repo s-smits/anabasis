@@ -9,9 +9,11 @@
  * does: a settling made weeks later moves no comparison behind the ones run since. Every fold here
  * starts from those. A comparison's solves are the ones whose start names it (`compare.ts`).
  *
- * No fold here names the harness a comparison is made against. That is the reference harness, the
- * Starter Built Harness until a step is promoted, and promotion is the operator's
- * (`docs/plan.md`, Phase 6). A Builder goes on from the harness its last session left
+ * The harness a comparison is made against is the reference harness: the Starter Built Harness
+ * until the operator promotes another, and from then on the one last promoted (`promoted`). The
+ * choice is the operator's and the record is the log's (`docs/plan.md`, Phase 6): until
+ * 2026-10-09 a promotion was a flag on one command, and the next command without it was read
+ * against the starter again. A Builder goes on from the harness its last session left
  * (`latestBuilt`), step or none.
  *
  * The stop rule is the plan's: no step in three checkpoints. Until 2026-10-09 it pooled a gain in
@@ -84,6 +86,29 @@ export function latestBuilt(events: readonly LogEvent[]): string | null {
       data.ended !== "crashed",
   )?.data.harness;
   return isString(left) ? left : null;
+}
+
+/**
+ * The harness the operator last promoted to be the reference, by its digest, or null while none
+ * has been: the reference harness is then the starter. A promotion is an event the operator
+ * confirmed (`tools/d2/promote.ts`), and one that names the starter returns the campaign to it.
+ */
+export function promoted(events: readonly LogEvent[]): string | null {
+  const harness = events.findLast(({ kind }) => kind === "harness.promoted")?.data.harness;
+  return isString(harness) ? harness : null;
+}
+
+/**
+ * The comparisons that measured `harness` as their new harness, as their last reports hold them:
+ * each one's id, the harness it was read against and how it read. It is what a promotion rests
+ * on, and what the operator is shown before one is recorded.
+ */
+export function comparedAs(events: readonly LogEvent[], harness: string) {
+  return lastReports(events).flatMap(({ session, data }) =>
+    data.fresh === harness && isString(data.old) && isString(data.reading)
+      ? [{ comparison: session, against: data.old, reading: data.reading }]
+      : [],
+  );
 }
 
 /**

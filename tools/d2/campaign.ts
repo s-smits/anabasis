@@ -38,7 +38,7 @@ import { contractHash } from "#src/kernel/contract.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
-import { awaitingLabel, latestBuilt } from "#src/kernel/reports.ts";
+import { awaitingLabel, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskVersion } from "#src/kernel/task.ts";
 import { checkProgramVersion, openVerifier, type Task } from "#src/kernel/verify.ts";
 import {
@@ -115,6 +115,8 @@ interface Solver {
   readonly models?: (home: string) => Models;
 }
 
+/** What names the reference harness of a campaign: the one last promoted, or the starter. */
+export const PROMOTED = "promoted";
 /** What names the control of a kept harness: `programs-of:latest`, `programs-of:<digest>`. */
 const PROGRAMS_OF = "programs-of:";
 
@@ -308,9 +310,10 @@ export async function starter(campaign: { readonly states: string }): Promise<Ke
 /**
  * A harness the campaign keeps, by the name a flag gives it: `starter` for the Starter Built
  * Harness, which the first Builder session forks and which is the reference harness until the
- * operator promotes another; `latest` for the one the last whole Builder session left, which is
- * the starter while none has; or the whole digest of one a session froze, which is the name of its
- * folder under the campaign's `states/`. `programs-of:` before any of those names its control, the
+ * operator promotes another; `promoted` for the reference harness itself, the one last promoted
+ * and the starter while none has been; `latest` for the one the last whole Builder session left,
+ * which is the starter while none has; or the whole digest of one a session froze, which is the
+ * name of its folder under the campaign's `states/`. `programs-of:` before any of those names its control, the
  * starter with that harness's installed programs alone (`programsOf`). Any other name is answered with the ones there are: on
  * 2026-10-08 a digest cut to its first eight characters, as every reader prints one, ended a
  * simulated round in a bare `ENOENT`. A state that opens as another harness is refused here: one
@@ -320,14 +323,17 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
   if (asked.startsWith(PROGRAMS_OF)) {
     return await programsOf(campaign, await keptAs(campaign, flag, asked.slice(PROGRAMS_OF.length)));
   }
-  const built = asked === "latest" ? latestBuilt(read(campaign.log)) : null;
-  if (asked === "starter" || (asked === "latest" && built === null)) return await starter(campaign);
+  const events = read(campaign.log);
+  const built = asked === "latest" ? latestBuilt(events) : asked === PROMOTED ? promoted(events) : null;
+  if (asked === "starter" || ((asked === "latest" || asked === PROMOTED) && built === null)) {
+    return await starter(campaign);
+  }
   const digest = built ?? asked;
   const kept = existsSync(campaign.states) ? readdirSync(campaign.states).sort() : [];
   if (!kept.includes(digest)) {
     const begun = kept.filter((each) => digest !== "" && each.startsWith(digest));
     const named =
-      "It also takes starter, for the harness every campaign starts from, and latest, for the last a session left";
+      "It also takes starter, for the harness every campaign starts from, promoted, for the reference harness, and latest, for the last a session left";
     throw new Error(
       kept.length === 0
         ? `${flag} ${asked} is no harness this campaign keeps: no session has kept one under ${campaign.states} yet. ${named}`

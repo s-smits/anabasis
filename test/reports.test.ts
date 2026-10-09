@@ -9,10 +9,12 @@ import {
   answered,
   awaitingLabel,
   billedFor,
+  comparedAs,
   lastReports,
   latestBuilt,
   outcomesOf,
   pairsReported,
+  promoted,
   stopRule,
 } from "../src/kernel/reports.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -336,6 +338,33 @@ describe("the outcome an Examiner hears of a task", () => {
     ];
     expect(answered(beside, "g-1")).toEqual(new Set(["again", "lower"]));
     expect([...outcomesOf(beside).values()]).toEqual(["tie", "tie"]);
+  });
+});
+
+describe("the reference harness of a campaign", () => {
+  const promotedTo = (harness: string) => event("harness.promoted", { harness, from: "base", rests: [] });
+
+  it("is the one the operator last promoted, and none until then", () => {
+    expect(promoted([])).toBeNull();
+    expect(promoted([promotedTo("h2")])).toBe("h2");
+    expect(promoted([promotedTo("h2"), promotedTo("h5")])).toBe("h5");
+    // A reference named on one command promotes nothing: only the event does.
+    expect(promoted([reported("b-1", "step", "h2", { old: "h9" })])).toBeNull();
+  });
+
+  it("shows what a promotion rests on: each comparison that measured the harness, as it last read", () => {
+    const log = [
+      reported("b-1", "no-step", "h2", { old: "base" }),
+      reported("g-1", "step", "h2", { old: "base" }),
+      reported("b-2", "step", "h3", { old: "h2" }),
+      // A settling writes a comparison's report once more, and the last one is its reading.
+      reported("b-1", "step", "h2", { old: "base", settled: {} }),
+    ];
+    expect(comparedAs(log, "h2")).toEqual([
+      { comparison: "b-1", against: "base", reading: "step" },
+      { comparison: "g-1", against: "base", reading: "step" },
+    ]);
+    expect(comparedAs(log, "h9")).toEqual([]);
   });
 });
 

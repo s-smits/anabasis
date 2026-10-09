@@ -27,7 +27,7 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
-/** The plan's events, and twenty that are not among them. `comparison.started` fixes a
+/** The plan's events, and twenty-one that are not among them. `comparison.started` fixes a
  *  comparison's terms before its first solve: the harnesses, the setting and the scored tasks
  *  (`src/builder/round.ts`). `anchor.drawn`, `anchor.scored` and `exam.word` are written by no
  *  command since 2026-10-09 and are kinds still, so that a log written before then reads: the
@@ -43,6 +43,8 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  contract and that version stand, and a campaign whose own differ from it does not open.
  *  `campaign.setting` is who solves a campaign's tasks, what a solve is held to and which tasks are
  *  scored, recorded once and again only on the operator's word (`tools/d2/setting.ts`).
+ *  `harness.promoted` is the operator's word that a kept harness is the reference harness from
+ *  there on (`tools/d2/promote.ts`).
  *  `stop.overridden` is the operator's reason for a comparison begun after the plan's stop rule
  *  had stopped the campaign (`src/builder/admission.ts`). */
 export const EVENT_KINDS = [
@@ -52,6 +54,7 @@ export const EVENT_KINDS = [
   "contract.frozen",
   "condition.recorded",
   "harness.version",
+  "harness.promoted",
   "build.started",
   "build.turn",
   "build.call",

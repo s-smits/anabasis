@@ -196,10 +196,11 @@ function stopped({ stop }: Supply, pastStop: string | undefined) {
   };
 }
 
-/** Why a comparison should not start on this supply, and what its reader should know when it does. */
-export function admission(supply: Supply, wanted: Wanted) {
+/** The numbers a comparison's size is read from on a supply: the tasks it would score, the fewest
+ *  a step takes at its level, the share its last comparison left untied, and the untied tasks that
+ *  share leaves it. */
+function sized(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "restarted">) {
   const scored = Math.min(wanted.target, supply.held);
-  const [size = "", ...power] = sizeLines(scored, wanted);
   // What a comparison's test can say at this size is arithmetic, and rehearsals found it before a
   // round paid to (2026-10-08): exam-1 held one task to score.
   const least = sweepOf(wanted.level);
@@ -207,6 +208,28 @@ export function admission(supply: Supply, wanted: Wanted) {
   const share = wanted.restarted.length === 0 ? (supply.untied ?? 1) : 1;
   // A task held out since that comparison has no share on record, and is counted whole.
   const untied = scored * (share + ((1 - share) * supply.since) / Math.max(1, supply.held));
+  return { scored, least, share, untied };
+}
+
+/**
+ * What a comparison on this supply is short of, where its tasks are what it is short of: held-out
+ * tasks to read a step on, or tasks its last comparison left to untie; null where it is short of
+ * neither. Both are refusals of `admission`, and this is how move 7 tells them from the others,
+ * since their answer is a move and no flag: write tasks, or set the budget again (`decide.ts`).
+ */
+export function shortOf(
+  supply: Supply,
+  wanted: Pick<Wanted, "target" | "level" | "restarted">,
+): "held" | "untied" | null {
+  const { scored, least, untied } = sized(supply, wanted);
+  if (scored < least) return "held";
+  return untied < least ? "untied" : null;
+}
+
+/** Why a comparison should not start on this supply, and what its reader should know when it does. */
+export function admission(supply: Supply, wanted: Wanted) {
+  const { scored, least, share, untied } = sized(supply, wanted);
+  const [size = "", ...power] = sizeLines(scored, wanted);
   // The comparison's test alone: both harnesses, on every scored task.
   const test = 2 * scored * wanted.solves;
   const { cap, pastStop } = wanted;

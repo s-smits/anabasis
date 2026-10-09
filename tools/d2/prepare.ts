@@ -23,7 +23,8 @@
  * labelling one task has not asked for another to leave the held-out set.
  *
  * `--tasks` names the tasks the next comparison is to score, by id, as `round.ts --tasks` then
- * takes them. A named task is never released here. A task is held out on the shape of its package
+ * takes them. A named task is never released here, and nor is one the campaign's recorded setting
+ * names to score where this command names none: a release cannot be taken back. A task is held out on the shape of its package
  * alone, so each named task is first confirmed against today's verifier: an answer the stored
  * sweep accepted for it must still pass, so that a rejection of it means something. On 2026-10-08
  * all 35 accept controls of the truss pack failed (`docs/transfer.md`). It says of each task
@@ -58,23 +59,21 @@ import { awaitingLines, openCampaign } from "./campaign.ts";
 import { type Campaign, ROUND_OPTIONS, scoredNamed } from "./round.ts";
 import { recordedSetting, targetNamed } from "./setting.ts";
 
-const { values } = parseArgs({
-  options: {
-    root: { type: "string" },
-    sweep: { type: "string" },
-    cycle: { type: "string" },
-    bundle: { type: "string" },
-    name: { type: "string" },
-    practice: { type: "string", default: "6" },
-    level: ROUND_OPTIONS.level,
-    target: ROUND_OPTIONS.target,
-    solves: ROUND_OPTIONS.solves,
-    tasks: ROUND_OPTIONS.tasks,
-    keep: { type: "string", multiple: true },
-    infeasible: { type: "string", multiple: true },
-    note: { type: "string" },
-  },
-});
+const OPTIONS = {
+  root: { type: "string" },
+  sweep: { type: "string" },
+  cycle: { type: "string" },
+  bundle: { type: "string" },
+  name: { type: "string" },
+  practice: { type: "string", default: "6" },
+  level: ROUND_OPTIONS.level,
+  target: ROUND_OPTIONS.target,
+  solves: ROUND_OPTIONS.solves,
+  tasks: ROUND_OPTIONS.tasks,
+  keep: { type: "string", multiple: true },
+  infeasible: { type: "string", multiple: true },
+  note: { type: "string" },
+} as const;
 
 /**
  * What today's verifier says of the answers the stored sweep accepted for task `version`, in one
@@ -107,7 +106,10 @@ async function confirmed(campaign: Campaign, version: string, accepted: Readonly
   };
 }
 
-async function main(): Promise<void> {
+/** `bun tools/d2/prepare.ts`. It returns the command's exit code: 1 where a task named to score
+ *  has no stored accepted answer that passes today's verifier. */
+export async function prepareCommand(args: readonly string[]): Promise<number> {
+  const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { root, sweep, cycle, bundle, name } = values;
   if (
     root === undefined ||
@@ -162,7 +164,6 @@ async function main(): Promise<void> {
       `--tasks ${packages.get(stray)?.taskId ?? stray}: the task is ${before.states.get(stray) ?? "not proposed"}, and only a held-out task is scored`,
     );
   }
-  // Nor are the tasks the recorded setting names to score: a release cannot be taken back (F47).
   const kept = values.tasks === undefined ? recorded?.tasks?.join(",") : undefined;
   const spoken = kept === undefined ? named : scoredNamed(campaign, kept, target);
   const pool = before.held.filter((version) => !spoken.includes(version));
@@ -201,7 +202,7 @@ async function main(): Promise<void> {
   const scored = named.length > 0 ? named.length : Math.min(target, sets.held.length - awaiting.length);
   const asked = { solves: Number(values.solves), level: Number(values.level) };
   for (const line of [...sizeLines(scored, asked), ...awaitingLines(campaign)]) console.log(line);
-  if (named.length === 0) return;
+  if (named.length === 0) return 0;
 
   // Each named task against today's verifier, on the answers the stored sweep accepted for it.
   const accepted = new Map<string, JsonValue[]>();
@@ -220,7 +221,7 @@ async function main(): Promise<void> {
       ? `each of the ${String(named.length)} tasks named to score has a stored accepted answer that passes today's verifier`
       : `${String(open)} of the ${String(named.length)} tasks named to score have no stored accepted answer that passes today's verifier: name others, or have the check program read (tools/c/accept.ts)`,
   );
-  if (open > 0) runtimeProcess.exitCode = 1;
+  return open > 0 ? 1 : 0;
 }
 
-await main();
+if (import.meta.main) runtimeProcess.exitCode = await prepareCommand(Bun.argv.slice(2));

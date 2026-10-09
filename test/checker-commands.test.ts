@@ -547,6 +547,11 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(round).toContain("a round         refused");
     for (const line of told) expect(round).toContain(line);
     expect(launched.said).toContain(`${SEED} is not launched`);
+    // Fix row F26: the view's last line is the one move the decision table names, and the
+    // campaign's own command, rehearsed and asked what it would do next, names the same.
+    const tabled = viewed.slice(viewed.indexOf("the table's move\n") + "the table's move\n".length).trim();
+    expect(tabled).toContain(": ");
+    expect(rehearse("--campaign", "--dry-run").said).toContain(`next · ${tabled}`);
     // Fix row F43: the launcher reads a cap as the command does, and refuses one that is no number.
     expect(
       cli("launch", ...flags, "--session", "b-9", "--cap", "$100", "--loaded", "--dry-run").said,

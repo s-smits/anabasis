@@ -18,26 +18,33 @@
  * Without `--yes` it records nothing. With it the event is written, with the comparisons it rests
  * on, so that a reader of the log sees what the operator saw.
  *
- * The choice is the operator's, and nothing here judges it: the plan promotes a step once it has
- * been repeated on fresh solves, and that rule is not enforced yet (the fix plan's F28).
+ * The plan promotes a step once it was read again on fresh solves and did not lose at the full
+ * limit (`docs/plan.md`, row F28). That rule is move 7's (`unpromoted`, `src/builder/decide.ts`),
+ * and it is asked here: a harness it would not promote now is refused, with the reason. The
+ * choice stays the operator's: `--despite "<why>"` promotes all the same, and the event keeps the
+ * reason. Returning the campaign to the starter is asked nothing. Until 2026-10-09 nothing held a
+ * promotion to the rule, and one comparison is one draw.
  *
  * It starts no solve and calls no model.
  */
+import { planOf, unpromoted } from "#src/builder/decide.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { comparedAs, promoted } from "#src/kernel/reports.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { campaignLog, keptAs, starter } from "./campaign.ts";
 
-const { values } = parseArgs({
-  options: {
-    name: { type: "string" },
-    harness: { type: "string" },
-    yes: { type: "boolean", default: false },
-  },
-});
+const OPTIONS = {
+  name: { type: "string" },
+  harness: { type: "string" },
+  yes: { type: "boolean", default: false },
+  despite: { type: "string" },
+} as const;
 
-async function main(): Promise<number> {
+/** `bun tools/d2/promote.ts`. It returns the command's exit code. */
+export async function promoteCommand(args: readonly string[]): Promise<number> {
+  const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { name, harness } = values;
   if (name === undefined || harness === undefined) throw new Error("name --name and --harness");
   const log = campaignLog(name);
@@ -60,15 +67,31 @@ async function main(): Promise<number> {
   for (const { comparison, against, reading } of rests) {
     console.log(`  ${comparison}: against ${said(against)}, read ${reading}`);
   }
+  // The level is none of the rule's: it reads the comparisons' own readings.
+  const plan = planOf(events, { unprepared: false, level: 0.1 });
+  const why = kept.digest === least.digest ? null : unpromoted(events, plan, kept.digest);
+  if (why !== null) console.log(`the plan would not promote it now: ${why}`);
   if (!values.yes) {
     console.log("nothing is recorded without --yes");
     return 0;
   }
-  append(log, "harness.promoted", { harness: kept.digest, from: now, rests });
+  const despite = values.despite?.trim() ?? "";
+  if (why !== null && despite === "") {
+    console.log(
+      'not promoted: a step is promoted once it was read again and did not lose at the full limit. It is yours to promote all the same: say why with --despite "<why>"',
+    );
+    return 1;
+  }
+  append(log, "harness.promoted", {
+    harness: kept.digest,
+    from: now,
+    rests,
+    ...keyIfDefined("despite", why === null ? undefined : despite),
+  });
   console.log(
     `${said(kept.digest)} is the reference harness from here on: a comparison that names no --reference is made against it`,
   );
   return 0;
 }
 
-runtimeProcess.exitCode = await main();
+if (import.meta.main) runtimeProcess.exitCode = await promoteCommand(Bun.argv.slice(2));

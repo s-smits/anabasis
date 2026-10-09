@@ -25,7 +25,8 @@ what is true now, since a handover is a few hours old the moment it is written:
 
 ```sh
 bun run runs pulse --once                      # every open run, in every worktree
-bun run runs view <name> --cap <dollars>       # one campaign: each step's handover, and the next moves
+bun run runs view <name> --cap <dollars>       # one campaign: each step's handover, the next moves,
+                                               # and as its last line the move the plan's table names
 bun .claude/skills/stack-pr/scripts/stack.ts   # the open stack and its top
 bun tools/wri/wri.ts read --log <worktree>/.ana/d2/<name>/log.jsonl
 ```
@@ -227,18 +228,31 @@ First say what happened to the link:
 - **unreached**: the link did not move, so the change never did what it was for. Repair its path
   (step 2), containment included, before naming another link.
 
-Then choose one move: repeat the comparison; ask the operator to promote and run the next
-session against the new reference; change one flag and run again; fix the one owner the evidence
-names; delete a mechanism nothing reads; investigate one consequential ambiguity; or stop,
-because the plan's stop rule fired (three moves in a row that could have shown a gain and showed
-none: a changed harness counts once against one reference, where its comparison left room, and
-so does a session that changed nothing) or the authorised spend ended.
+Then choose one move. For the campaign itself the plan's table names it, and the view prints it
+as its last line (`decide`, `src/builder/decide.ts`): read the exam, set the tasks apart, have
+tasks written, build, compare, repeat a step, set the budget again, promote, or end. The stop
+rule ends it (three moves in a row that could have shown a gain and showed none: a changed
+harness counts once against one reference, where its comparison left room, and so does a session
+that changed nothing), and so does the budget. One command makes the table's moves in turn,
+under one total budget:
 
-After a step, the plan defers the machinery (`docs/plan.md`, Phase 6): nothing there is built
-before a step has been repeated. So the first move after a repeated step is the cheap one that
-tests link 8 with what exists: a promotion and one more round. Build for difficulty only once
-that round ties, and then start from the one lever v1 found to work, several requirements that
-share one limit.
+```sh
+bun tools/d2/harness-builder.ts <the pack's flags> --name <name> --dry-run   # the move, and nothing made
+bun tools/d2/harness-builder.ts <the pack's flags> --name <name> --budget <dollars> \
+  --builder <model> --examiner <model> --reviewer <model> [--moves N]
+```
+
+It spends, so it takes the operator's word as a launch does, and `--unattended` is the
+operator's to add. Where the pass disagrees with the table, say so with the counts: the table is
+a default over the log, and what it cannot read is yours to bring. The moves it never names are
+the system's own: change one flag and run again; fix the one owner the evidence names; delete a
+mechanism nothing reads; investigate one consequential ambiguity.
+
+After a repeated step the table tests link 8 with what exists: where the campaign runs under a
+shortened budget the step is read once more at the full limit, then the harness is the one to
+promote, and the budget is set again from the promoted harness's own solves before the next
+session. Build for difficulty only once no budget leaves room, and then start from the one lever
+v1 found to work, several requirements that share one limit (`docs/plan.md`, row F52).
 
 Keep a negative result and its limits intact, and say which level of evidence each claim of the
 pass reached (attribution-and-proof lists the four).

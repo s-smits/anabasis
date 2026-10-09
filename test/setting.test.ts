@@ -12,6 +12,7 @@ import {
   firstRecord,
   keepSetting,
   type Recorded,
+  rebudget,
   recordedSetting,
   restarts,
   SETTING_DEFAULTS,
@@ -220,6 +221,28 @@ describe("a campaign's setting, recorded once", () => {
       data: { minutes: "8" },
     };
     expect(recordedSetting([torn])).toBeNull();
+  });
+});
+
+// The budget follows the reference harness (`docs/plan.md`, "The process"): move 7 sets it again,
+// which is a new setting, and every command from there on runs under it with no flag.
+describe("a budget set again", () => {
+  it("records the setting once more with the model's turns changed, and everything else as it stood", () => {
+    const root = mkdtempSync(join(tmpdir(), "ana-rebudget-"));
+    const log = join(root, "log.jsonl");
+    expect(() => rebudget(log, 10)).toThrow("records no setting yet");
+    keepSetting(log, { record: SHORT });
+    expect(rebudget(log, 10)).toEqual({ ...SHORT, modelTurns: 10 });
+    expect(recordedSetting(read(log))).toEqual({ ...SHORT, modelTurns: 10 });
+    // A command that names nothing runs under it, and the old budget named again is another setting.
+    expect(settingAsked({}, recordedSetting(read(log))).named.limits.modelTurns).toBe(10);
+    expect(() => settingAsked({ "solve-model-turns": "40" }, recordedSetting(read(log)))).toThrow(
+      "--solve-model-turns 40 names another setting than the campaign's, which was recorded as --solve-model-turns 10",
+    );
+    // Back at no limit of the model's turns: the campaign's full limit, where that is unlimited.
+    expect(rebudget(log, null).modelTurns).toBeNull();
+    expect(read(log).filter(({ kind }) => kind === "campaign.setting")).toHaveLength(3);
+    rmSync(root, { recursive: true, force: true });
   });
 });
 

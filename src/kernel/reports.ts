@@ -51,7 +51,7 @@ const STOP_AFTER = 3;
 /** The shares of valid solves by which the process reads room (`roomOf`): the reference harness
  *  above `full` leaves none, and both harnesses below `empty` are held by tasks too hard for the
  *  budget. The two fractions are the plan's proposal, and the operator's to set. */
-const ROOM = { full: 3 / 4, empty: 1 / 4 } as const;
+export const ROOM = { full: 3 / 4, empty: 1 / 4 } as const;
 /** Comparisons without a valid answer after which a task with none on record goes to a person. */
 const UNSOLVED_RUN = 2;
 /** The ways a solve ends at a limit of its own: its time, its model turns or its context. Such an
@@ -137,15 +137,26 @@ function validShare(counts: unknown): number | null {
 }
 
 /**
+ * The share of its solves on which the harness on `side` of a comparison was valid, by its report:
+ * at the limits the comparison ran under, or with `turns` at the shorter budget of that many of
+ * the model's turns it was also read at. Null where the report holds no such count.
+ */
+export function validAt(report: JsonObject, side: "old" | "fresh", turns?: number): number | null {
+  const rows = Array.isArray(report.budgets) ? report.budgets.map(asRecord) : [];
+  const row =
+    turns === undefined ? report : rows.find((each) => each?.turns === turns && each.seconds === undefined);
+  return validShare(asRecord(row?.valid)?.[side]);
+}
+
+/**
  * What room a comparison's report shows a harness to gain in, as the process reads it
  * (`docs/plan.md`, "How move 7 decides"): `none` where the reference harness was valid on more
  * than three solves in four, so that its tasks could mostly only tie; `too-hard` where neither
  * harness was valid on one solve in four; and `room` otherwise, and for a report that holds no
- * count of valid solves.
+ * count of valid solves. `turns` reads the same at a shorter budget the comparison was read at.
  */
-function roomOf(report: JsonObject): "none" | "too-hard" | "room" {
-  const valid = asRecord(report.valid);
-  const [old, fresh] = [validShare(valid?.old), validShare(valid?.fresh)];
+export function roomOf(report: JsonObject, turns?: number): "none" | "too-hard" | "room" {
+  const [old, fresh] = [validAt(report, "old", turns), validAt(report, "fresh", turns)];
   if (old === null || fresh === null) return "room";
   if (old > ROOM.full) return "none";
   return old < ROOM.empty && fresh < ROOM.empty ? "too-hard" : "room";
@@ -366,6 +377,15 @@ export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
 export function billedFor(events: readonly LogEvent[], id: string): number {
   const { session, comparison } = billedParts(events, id);
   return session + comparison;
+}
+
+/** Every billed dollar a log holds, whoever billed it: what a campaign's total budget is held
+ *  against (`docs/plan.md`, row F49). */
+export function billedAll(events: readonly LogEvent[]): number {
+  return events.reduce(
+    (sum, { kind, data }) => (BILLED.has(kind) && isNumber(data.billed) ? sum + data.billed : sum),
+    0,
+  );
 }
 
 /** The same sum in its two parts: what the Builder session under `id` billed, and what the

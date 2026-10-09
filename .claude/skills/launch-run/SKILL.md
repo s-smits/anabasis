@@ -78,7 +78,8 @@ notes are the ones a launch from this log would be given. It also says what only
 campaign shows: that there is nothing to compare, that a comparison waits for a person's labels,
 that a harness has read a step and is the operator's to promote, and that the stop rule has
 stopped the campaign. What the host or an id refuses is the launcher's alone. The view launches
-nothing.
+nothing. Its last line is the one move the plan's table names for this log (`decide`,
+`src/builder/decide.ts`), which is what `bun tools/d2/harness-builder.ts` would make next.
 
 ## What comes before a comparison
 

@@ -50,9 +50,17 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  `harness.promoted` is the operator's word that a kept harness is the reference harness from
  *  there on (`tools/d2/promote.ts`).
  *  `stop.overridden` is the operator's reason for a comparison begun after the plan's stop rule
- *  had stopped the campaign (`src/builder/admission.ts`). */
+ *  had stopped the campaign (`src/builder/admission.ts`).
+ *  The three `campaign.*` kinds beside the setting are the Harness Builder's
+ *  (`tools/d2/harness-builder.ts`): `campaign.opened` is what a campaign runs by, its total budget,
+ *  its seats and the budgets its comparisons are read at; `campaign.move` is a move it made, with
+ *  the reason its decision table gave (`src/builder/decide.ts`); and `campaign.ended` is how the
+ *  campaign ended, which is its last event. */
 export const EVENT_KINDS = [
+  "campaign.opened",
   "campaign.setting",
+  "campaign.move",
+  "campaign.ended",
   "checker.read",
   "contract.frozen",
   "condition.recorded",

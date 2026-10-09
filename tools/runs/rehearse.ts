@@ -8,6 +8,10 @@
  * comparison with no Builder session (`tools/d2/checkpoint.ts`). With `--no-comparison` the flags
  * are a session's, and rehearse one Builder session with no comparison after it
  * (`tools/d2/session.ts`): the plan's checkpoint is walked as two of those and then a checkpoint.
+ * With `--campaign` the flags are the Harness Builder's (`tools/d2/harness-builder.ts`), and the
+ * whole loop is rehearsed: every move the decision table names, until the campaign ends or
+ * `--moves` are made. No script sits in the Examiner's seat, so a rehearsal that comes to need
+ * tasks written stops there and says so.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's wall and disk cap, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
@@ -49,6 +53,7 @@ import { openHarness } from "#src/solve/harness.ts";
 import { shellQuote } from "#src/verify/solve-command-isolation.ts";
 import { starter } from "../d2/campaign.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";
+import { harnessBuilder } from "../d2/harness-builder.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
 import { sessionCommand } from "../d2/session.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
@@ -70,7 +75,7 @@ interface Script {
   readonly starter: End;
 }
 
-const OWN = new Set(["held", "starter", "no-comparison"]);
+const OWN = new Set(["held", "starter", "no-comparison", "campaign"]);
 const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A list price for the scripted model, which the meter refuses to run without: what a rehearsal
  *  meters is the script's own words at this price, and is no cost. */
@@ -208,6 +213,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
       held: { type: "string", default: "none:pass" },
       starter: { type: "string", default: "none" },
       "no-comparison": { type: "boolean", default: false },
+      campaign: { type: "boolean", default: false },
       id: { type: "string" },
       root: { type: "string" },
       sweep: { type: "string" },
@@ -226,7 +232,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   }
   if (!isString(held) || least === undefined || !isString(root) || !isString(sweep) || !isString(bundle)) {
     throw new Error(
-      "usage: bun run runs rehearse <the flags of tools/d2/round.ts, of tools/d2/checkpoint.ts, or of tools/d2/session.ts with --no-comparison, that name no model> [--held old:new] [--starter pass|fail|none]",
+      "usage: bun run runs rehearse <the flags of tools/d2/round.ts, of tools/d2/checkpoint.ts, of tools/d2/session.ts with --no-comparison, or of tools/d2/harness-builder.ts with --campaign, that name no model> [--held old:new] [--starter pass|fail|none]",
     );
   }
   const passes = sweepRows(root, sweep).flatMap((row) => {
@@ -240,8 +246,10 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     strayed,
   );
   const flags = passedOn(args, tokens, OWN);
-  // A checkpoint is named by its `--id` and runs no session, so no Builder's script can stray.
-  if (isString(values.id)) await checkpointCommand(flags, seats);
+  // A checkpoint is named by its `--id` and runs no session, so no Builder's script can stray, and
+  // a campaign's sessions are its own to count.
+  if (values.campaign === true) await harnessBuilder(flags, { seated: seats });
+  else if (isString(values.id)) await checkpointCommand(flags, seats);
   else if (
     values["no-comparison"] === true
       ? (await sessionCommand(flags, seats)) === null

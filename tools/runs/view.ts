@@ -13,10 +13,16 @@
  * load, an id that is spent. With no `--cap` every paid move is refused for want of one, as a
  * launch would be.
  *
+ * Its last line is the one move the plan's decision table names on this log (`decide`,
+ * `src/builder/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
+ * The view opens no campaign, so of a log that holds no task it says what holds for a campaign
+ * over a pack: that the pack's tasks are taken in first.
+ *
  * A step's line holds counts, digests, a tally, a reading and a cost. It names no task, and it is
  * for the operator and the session that stands in for the campaign's owner: what a Builder is told
  * of the same rows is `src/builder/past.ts`.
  */
+import { decide, decidedLine, planOf } from "#src/builder/decide.ts";
 import { type Campaign, campaignOf, type Handover, type Move, nextMoves } from "#src/builder/handover.ts";
 import { shortDigest } from "#src/builder/past.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -131,6 +137,16 @@ export function view(args: readonly string[]): void {
     );
   }
   const events = logEvents(run.path);
-  const lines = viewLines(name, campaignOf(events), nextMoves(events, askedFlagged(values, events)));
-  for (const line of lines) console.log(line);
+  const asked = askedFlagged(values, events);
+  const lines = viewLines(name, campaignOf(events), nextMoves(events, asked));
+  const decided = decide(
+    events,
+    planOf(events, {
+      unprepared: !events.some(({ kind }) => kind === "task.proposed"),
+      level: asked.comparison.level,
+      target: asked.comparison.target,
+      pastStop: asked.comparison.pastStop,
+    }),
+  );
+  for (const line of [...lines, "the table's move", `  ${decidedLine(decided)}`]) console.log(line);
 }

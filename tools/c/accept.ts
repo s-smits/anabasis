@@ -54,21 +54,22 @@ import { plural } from "#src/meta/text.ts";
 import { openCampaign } from "../d2/campaign.ts";
 import { packControls, sweepRows, toolOnPath } from "../m0/stored-sweep.ts";
 
-const { values } = parseArgs({
-  options: {
-    root: { type: "string" },
-    sweep: { type: "string" },
-    bundle: { type: "string" },
-    name: { type: "string" },
-    cycle: { type: "string" },
-    admit: { type: "string" },
-    jobs: { type: "string", default: "4" },
-    freeze: { type: "boolean", default: false },
-    despite: { type: "string" },
-  },
-});
+const OPTIONS = {
+  root: { type: "string" },
+  sweep: { type: "string" },
+  bundle: { type: "string" },
+  name: { type: "string" },
+  cycle: { type: "string" },
+  admit: { type: "string" },
+  jobs: { type: "string", default: "4" },
+  freeze: { type: "boolean", default: false },
+  despite: { type: "string" },
+} as const;
 
-async function main(): Promise<number> {
+/** `bun tools/c/accept.ts`: the reading, and with `--freeze` the operator's word. It returns the
+ *  command's exit code: 1 where the reading holds a fault or a freeze was refused. */
+export async function acceptCommand(args: readonly string[]): Promise<number> {
+  const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { root, sweep, bundle, name } = values;
   if (root === undefined || sweep === undefined || bundle === undefined || name === undefined) {
     throw new Error("name --root, --sweep, --bundle and --name");
@@ -165,4 +166,4 @@ async function main(): Promise<number> {
   return faults.length === 0 ? 0 : 1;
 }
 
-runtimeProcess.exitCode = await main();
+if (import.meta.main) runtimeProcess.exitCode = await acceptCommand(Bun.argv.slice(2));

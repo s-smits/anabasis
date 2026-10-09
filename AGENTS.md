@@ -93,7 +93,7 @@ the copied code is different.
 | A candidate passed a submit gate before it was measured | No gate on a harness. `check_harness` says whether it opens, and the comparison says whether it is better |
 | Difficulty was steered with a band, levels and staged test sizes | One fixed compute budget for both harnesses. No band and no levels |
 | A harness declared its own limits in `agent/config.yaml` | The host sets every limit, and that file is not read |
-| A controller loop chose build, measure, rebuild or stop | No loop in code yet: a session and the operator run each command (section 4) |
+| A controller loop chose build, measure, rebuild or stop | One table over the log names the move that follows, and one command makes it (section 4). It chooses no content |
 | Runs lived in `campaigns/` and `domains/` with opening, terminal and claim files | One log a campaign, under `.ana/d2/<name>/` |
 
 Words v1 used that have no meaning here: battery, epoch, climb, band, level, witness, F2, census,
@@ -178,7 +178,8 @@ exam, pay for it, and own what cannot be undone:
 - labelling drawn rejections blind;
 - the dollar cap, and which provider account spends;
 - saying whether a task that nobody answers is infeasible;
-- promoting a harness to reference (`tools/d2/promote.ts --harness <digest> --yes`);
+- promoting a harness to reference (`tools/d2/promote.ts --harness <digest> --yes`). The rule
+  names the harness (section 7), and another one takes the operator's reason (`--despite`);
 - changing what a solver is given or told: the starter, the shell, the limits of a campaign;
 - stopping a live run.
 
@@ -186,12 +187,15 @@ Bring each as one question, with the evidence and a recommendation, and go on wi
 not depend on the answer. A continuing instruction ("keep going", "launch the next one")
 authorises work inside its scope and none of these seven.
 
-One duty is the operator's today only because its owner is not in code: launching each step.
-Section 4 names that owner. When you write about such a duty, name the owner it belongs to and
-say who stands in. Write "a person" only for a duty in the list above. Three more were the
-operator's until 9 October and have an owner in code since: the setting and the reference are
-events a command reads (`campaign.setting`, `harness.promoted`), and the stop rule refuses the
-next comparison (section 7).
+Write "a person" only for a duty in the list above. Four more were the operator's until
+9 October and have an owner in code since: the setting and the reference are events a command
+reads (`campaign.setting`, `harness.promoted`), the stop rule refuses the next comparison
+(section 7), and the next step is named by a table and launched by one command (section 4).
+
+Two of the seven can be given once for a campaign in place of each time: `--unattended` on that
+command freezes an exam whose reading holds no fault, and promotes the harness the rule names.
+It is the operator's flag, and a session never adds it of its own accord. Whether it becomes the
+default is the operator's open decision (`docs/plan.md`, row F29).
 
 The operator types nothing into a Builder session. Every message a Builder reads is built by the
 host from the contract, the practice tasks, the practice results and the tallies.
@@ -224,20 +228,28 @@ Two names are easy to confuse, and new text keeps them apart:
 Older comments and `docs/plan.md`'s list of terms use "Harness Builder" for the inner agent. Do not
 copy that use.
 
-The Harness Builder is designed, and part of it is in the repository. Its loop exists as a
-procedure: the skill `run-improvement-campaign` (walk, choose, prove, predict, launch, watch,
-read, decide), which a coding session follows with the operator through the commands of
-section 6. Of its controller two parts exist. The campaign's state is one reading of its log
-(`campaignOf`, `src/builder/handover.ts`): each step's handover and the moves that may start
-next, which `bun run runs view <name>` prints. And the setting, the reference and every refusal
-are the log's and one admission's (section 6). What does not exist is the process that makes the
-move: nothing in code launches the next step, so the session reads the view and starts one. The
-design has two layers, as v1's had:
+The Harness Builder's controller is in the repository in three parts. The campaign's state is
+one reading of its log (`campaignOf`, `src/builder/handover.ts`): each step's handover and the
+moves that may start next, which `bun run runs view <name>` prints. The move that follows is one
+function of the log and the campaign's opening (`decide`, `src/builder/decide.ts`): the plan's
+decision table, which returns one move with its reason, or an ending. And one command makes that
+move by the command an operator would run, reads the log again, and goes on until the campaign
+ends (`tools/d2/harness-builder.ts`, section 6). The setting, the reference and every refusal
+stay the log's and one admission's. The skill `run-improvement-campaign` remains the procedure
+for a session that runs a campaign with the operator: it reads the same table.
 
-- **A controller in code.** It holds the campaign's state and admits the next move: set-up, an
-  Examiner session, a Builder session, a comparison, settling, or stop. It owns the setting, the
-  reference and every refusal, so that no flag is typed twice and no command starts past a
-  refusal. It chooses nothing about the content of a harness or a task.
+Four designed parts of it are absent: one Builder conversation across sessions, a word the
+operator leaves between two moves, the closing report with the reference harness exported, and
+an entrance from a prompt with no stored pack. The plan holds each (`docs/plan.md`, rows F27,
+F50, F51 and F53).
+
+The design has two layers, as v1's had:
+
+- **A controller in code.** It holds the campaign's state and names the next move: reading the
+  exam, setting the tasks apart, an Examiner session, a Builder session, a comparison, another
+  budget, a promotion, or an ending. It owns the setting, the reference and every refusal, so
+  that no flag is typed twice and no command starts past a refusal. It chooses nothing about the
+  content of a harness or a task.
 - **The Builder's view.** The inner agent is told what happened and never what to write.
 
 What the Harness Builder reads of each step is its handover, never its content:
@@ -257,9 +269,10 @@ agent that knew which held-out tasks were lost, and wrote freely to the agent th
 harness, would be v1's fault by another route. v1's Builder saw and wrote everything; one of its
 harnesses passed 75 of 75 of its own tasks and 2 of 23 of a shared set.
 
-A session that runs the loop stands where the controller will stand, so the limit binds it. It
+A session that runs the loop stands where the controller stands, so the limit binds it. It
 reads handovers from the log, it types nothing into a Builder session, and its reports reach no
-Builder, Examiner, Referee or Diagnoser.
+Builder, Examiner, Referee or Diagnoser. The controller's own reasons (`campaign.move`,
+`campaign.ended`) are the operator's to read and enter no seat's message.
 
 The Builder's side is meant to be one conversation for the whole campaign, kept by compaction as
 v1 kept it. Both of v1's compaction modes are in the source: under the Claude backend the CLI
@@ -332,7 +345,16 @@ its manual and lists its flags.
 | 4 | `bun tools/d2/session.ts ... --session b-2 --builder <model>` | A Builder session with no comparison after it, under a dollar cap of its own. The plan's checkpoint is several of these and then one comparison |
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
 | 5 | `bun tools/d2/settle.ts ... --session b-1` | A person's labels for the rejections a comparison set aside, and its report once more |
-| 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing |
+| 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing. A harness the rule would not promote takes `--despite "<why>"` |
+| all | `bun tools/d2/harness-builder.ts ... --budget <dollars> --builder <model> --examiner <model> --reviewer <model>` | What the campaign runs by, once (`campaign.opened`); then each move the table names, made by the command of its row above and recorded with its reason (`campaign.move`); and how the campaign ended (`campaign.ended`) |
+
+The last row is the Harness Builder's controller. It asks `decide` for the one move that follows,
+prints it, makes it, and reads the log again. `--dry-run` prints the move and makes none,
+`--moves N` makes at most that many, and `--unattended` is the operator's word, given once, for
+the freeze and the promotion (section 3). Its budget is one total: each move's cap is what is
+left of `--budget` once every billed dollar in the log is taken off, and the campaign ends on its
+budget where less is left than one solve is held at. It ends in one of six ways, and the log's
+last event says which: `budget`, `stop`, `exam`, `no-room`, `environment` or `operator`.
 
 Start a round, a checkpoint, a Builder session by itself or an Examiner session through the
 launcher, which reads the log and the host first and refuses a run that cannot report anything
@@ -341,6 +363,7 @@ launcher, which reads the log and the host first and refuses a run that cannot r
 ```text
 bun run runs launch [--env-file FILE] [--loaded] [--dry-run] [--no-comparison] <the command's own flags>
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
+bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
 bun run runs view <name> [the flags of a launch]
 bun run runs pulse | stop <name> | compare | replay | seed | zip
 ```
@@ -463,6 +486,18 @@ solves (`awaitingLabel`). Promotion is the operator's `promote.ts --yes`, which 
 `harness.promoted`. A comparison that names no `--reference` is made against the harness last
 promoted, and one that names a digest is made against that harness and promotes nothing.
 
+**What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
+prints it as its last line. A step is one draw: the same two harnesses are compared again, with
+the reference read against itself. A step read twice at a shortened budget is read once more at
+the full limit, where the new harness must win at least as many tasks as it loses, and then the
+harness is the one to promote (`unpromoted` says why another is not). No step with room sends the
+Builder to build again. A comparison without room changes the budget before the tasks: the budget
+rule takes the longest budget, of the one the comparison ran under and the shorter ones it was
+read at (the ladder: by default a half, a quarter and an eighth of the full limit), at which the
+reference harness was valid on at most half its solves. Where no budget leaves room, the Examiner
+is asked for other tasks, and after three such sessions in a row the campaign ends `no-room`.
+The half, and the two shares of `roomOf`, are the plan's proposal and the operator's to set.
+
 ## 8. Rules
 
 Cite a rule by its number in a pull request or a review.
@@ -566,11 +601,10 @@ words since its revision 358. The plan keeps the level of each part, and a pull 
 what it moves: in `docs/plan.md` that is the level column of the fix plan. Keep no second status list: not in this file, not in a new file, not in a
 code comment.
 
-Read at PR #80 (`d878c1b`), four designed parts are absent from the source. Check the plan and the
-head before relying on this list, and delete a line here in the change that makes it false:
+Read at PR #80 (`d878c1b`), four designed parts were absent from the source, and three still
+are. Check the plan and the head before relying on this list, and delete a line here in the
+change that makes it false:
 
-- the process of the Harness Builder's controller (section 4): the campaign's state is read in
-  one place and the next move is named, and no code makes the move;
 - the Judge: the Referee has a probe and no shell, reads the check program, and is unmeasured
   against hand labels. No seat reads an answer that passed;
 - an author for the check program: no seat writes or repairs a check;
@@ -1202,7 +1236,8 @@ the operator.
 src/kernel/     the log, tasks, conditions, the verifier's contract, the comparison, the reports
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
 src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round;
-                whether a comparison may start (admission); the one reading of a campaign (handover)
+                whether a comparison may start (admission); the one reading of a campaign (handover);
+                the move that follows from a log (decide)
 src/examiner/   an Examiner session, its prompt, and the outcomes it is told
 src/review/     the Referee, the Diagnoser, the probe, agreement with hand labels
 src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read
@@ -1210,7 +1245,8 @@ src/backends/   the three model backends as one pi collection, and compaction
 src/meta/       the owners of every runtime surface (section 12.8)
 tools/c/        the check program: accept, carry, rejections, repaired
 tools/d1b/      examine
-tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote
+tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote, and
+                harness-builder, which runs a campaign move after move
 tools/runs/     launch, stop, rehearse, seed, pulse, view, compare, replay, zip
 tools/wri/      the whole-run investigation's reader of one log
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans

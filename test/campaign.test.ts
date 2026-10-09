@@ -519,9 +519,21 @@ describe("a campaign", () => {
     expect(asked).toContain("nothing is recorded without --yes");
     expect(promotions()).toEqual([]);
     expect(promote("--harness", digest.slice(0, 8))).toContain("is no harness this campaign keeps");
-    // With it, the promotion is an event, and the reference harness is read from it.
-    expect(promote("--harness", digest, "--yes")).toContain("is the reference harness from here on");
-    expect(promotions()).toEqual([{ harness: digest, from: least.digest, rests: [] }]);
+    // Fix row F28: the plan promotes a step that was read again and did not lose at the full
+    // limit, and a harness no comparison measured is refused the word alone.
+    const refused = promote("--harness", digest, "--yes");
+    expect(refused).toContain(
+      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not read a step twice against the reference harness under the campaign's setting`,
+    );
+    expect(refused).toContain("not promoted: a step is promoted once it was read again");
+    expect(promotions()).toEqual([]);
+    // The choice stays the operator's, with a reason: the promotion is an event that keeps it,
+    // and the reference harness is read from it.
+    const despite = "the record is under test";
+    expect(promote("--harness", digest, "--yes", "--despite", despite)).toContain(
+      "is the reference harness from here on",
+    );
+    expect(promotions()).toEqual([{ harness: digest, from: least.digest, rests: [], despite }]);
     expect((await keptAs(campaign, "--reference", "promoted")).digest).toBe(digest);
     expect(promote("--harness", digest, "--yes")).toContain("is the campaign's reference harness already");
     expect(promotions()).toHaveLength(1);

@@ -1,7 +1,7 @@
 /**
  * What a campaign runs by: its opening, as the Harness Builder's command records it
  * (`campaign.opened`, `tools/d2/harness-builder.ts`), and the plan move 7 decides on, read from
- * that opening and the log (`decide.ts`).
+ * that opening and the log (`Plan`, `ground.ts`).
  *
  * The opening is the operator's conditions for the whole campaign, recorded once and again where
  * a command names another: the total budget, the full limit of a solve and the shorter budgets
@@ -22,7 +22,7 @@ import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, type Cap } from "../kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import type { Plan } from "./decide.ts";
+import type { Plan } from "./ground.ts";
 
 /** Who sits in a seat: a model and its effort. */
 export interface Seat {

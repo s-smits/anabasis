@@ -9,10 +9,10 @@
  * returns one move with its reason, or an ending.
  *
  * It decides which move, and nothing of a move's content: what a harness holds, what a task asks
- * and how it is solved stay a model's. It reads what the other owners already read, and adds no
- * fold of its own beside them: the supply and what a comparison is short of (`admission.ts`), the
- * stop rule and the room a report shows (`reports.ts`), the reference harness and the last one a
- * session left.
+ * and how it is solved stay a model's. Its rows are asked of one reading of the log, made once
+ * (`groundOf`, `ground.ts`), which adds no fold beside the owners it reads: the supply and what a
+ * comparison is short of (`admission.ts`), the stop rule and the room a report shows
+ * (`reports.ts`), the reference harness and the last one a session left.
  *
  * The order it asks in:
  *
@@ -24,8 +24,9 @@
  *    admits a check the last reading did not hold admitted.
  * 2. The tasks. A pack's tasks are taken in, practice is released, and a campaign with no task
  *    has some written.
- * 3. The budget, which ends the campaign where less is left than one solve is held at, and the
- *    stop rule, which ends it unless the operator said to go on.
+ * 3. The budget, which ends the campaign where less is left than one solve is held at, or than
+ *    the next comparison would bill by what the last one did, and the stop rule, which ends it
+ *    unless the operator said to go on.
  * 4. A comparison that began and has not reported goes on.
  * 5. After a promotion the budget is set again from the promoted harness's own solves.
  * 6. A step. Read once, it is one draw, and the same two harnesses are compared again with the
@@ -42,7 +43,7 @@
  *
  * A setting is recorded once and again at each change (`campaign.setting`), and no reading is
  * carried across two. A campaign returns to a budget, so the comparisons under its setting are
- * those of every stretch of the log that stood under it (`under`): what was read there the first
+ * those of every stretch of the log that stood under it (`under`, `ground.ts`): what was read there the first
  * time still stands, and no comparison is made twice for one answer.
  *
  * The budget rule is the plan's: the longest budget, of the one a comparison ran under and the
@@ -54,12 +55,12 @@
  * under it is what counts, and the ladder is walked by what those comparisons show.
  */
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, latestBuilt, promoted, roomOf, validAt } from "../kernel/reports.ts";
+import { billedParts, roomOf, validAt } from "../kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { stableJson } from "../meta/stable-json.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
-import { shortOf, supplyOf, type Wanted } from "./admission.ts";
+import { supplyOf } from "./admission.ts";
+import { type Ground, groundOf, idleDrafts, pairOf, type Plan, under } from "./ground.ts";
 import { pendingWords } from "./word.ts";
 
 /** How a campaign ends, as its last event says it. */
@@ -101,80 +102,12 @@ export type Decided =
       readonly answers?: readonly number[];
     };
 
-/** What a campaign was set to run by: what move 7 reads beside the log. */
-export interface Plan {
-  /** The full limit of a solve in the model's own turns, null where they are not limited. */
-  readonly limit: number | null;
-  /** The shorter budgets a comparison is also read at, in the model's turns. */
-  readonly ladder: readonly number[];
-  /** Builder sessions before a comparison, after the campaign's first, which follows one. */
-  readonly sessions: number;
-  /** Whether the campaign's pack holds a task its log does not. */
-  readonly unprepared: boolean;
-  /** The size a comparison is asked for at, as its admission reads it. */
-  readonly wanted: Pick<Wanted, "target" | "level" | "restarted">;
-  /** The operator's reason to go on past the stop rule, where one was given. */
-  readonly pastStop?: string | undefined;
-  /** Whether the campaign opened from a prompt: its exam is then drafted, and no pack holds it. */
-  readonly prompted?: boolean | undefined;
-  /** The checks the operator's command admits by name (`--admit`). */
-  readonly admits?: readonly string[] | undefined;
-  /** The dollars left of the campaign's total and the reserve one solve is held at; null for a
-   *  campaign with no total, as a rehearsal's, whose seats are paid nothing. */
-  readonly left?: { readonly dollars: number; readonly reserve: number } | null | undefined;
-}
-
-/** One comparison as move 7 reads it: where it began, its two harnesses, and its last report. */
-interface Compared {
-  readonly id: string;
-  readonly at: number;
-  readonly old: string;
-  readonly fresh: string;
-  readonly noise: boolean;
-  readonly report: JsonObject | null;
-  /** Where it first reported; null while it has not. */
-  readonly reported: number | null;
-}
-
-/** The comparisons made under one record of the campaign's setting. */
-/** One stretch of the log between two records of the setting. */
-interface Under {
-  /** The model's turns that setting holds a solve to. */
-  readonly turns: number | null;
-  /** Everything else the record holds, as one text: two stretches that agree in it and in the
-   *  turns stood under one setting. */
-  readonly rest: string;
-  readonly comparisons: readonly Compared[];
-}
-
-/** What the table's rows on the comparisons are read from: the log's comparisons by setting, the
- *  two harnesses in question, and what the next comparison would be short of. */
-interface Ground {
-  readonly events: readonly LogEvent[];
-  readonly plan: Plan;
-  readonly all: readonly Compared[];
-  readonly settings: readonly Under[];
-  /** The comparisons under the campaign's setting, in every stretch of the log that stood under
-   *  it, and the model's turns it holds a solve to. */
-  readonly here: readonly Compared[];
-  readonly turns: number | null;
-  /** What the campaign's setting holds beside the model's turns (`Under.rest`). */
-  readonly rest: string;
-  /** The reference harness, null before any comparison or promotion has named it. */
-  readonly reference: string | null;
-  readonly latest: string | null;
-  readonly tasksShort: ReturnType<typeof shortOf>;
-  /** The Examiner sessions in a row, up to the log's end, that held out no task. */
-  readonly drafts: number;
-}
-
 /** The share of valid solves at or under which the budget rule takes a budget. */
 const HALF = 1 / 2;
 /** The tries the plan gives before an ending: drafts of an exam, Examiner sessions in a row that
  *  held out no task, and comparisons of one harness that left no room. */
 const DRAFTS = 3;
 const STEP = "step";
-const STARTED = "comparison.started";
 const SETTING = "campaign.setting";
 const ROOM = "room";
 
@@ -192,78 +125,6 @@ const fewYet = (since: number): string =>
     ? ""
     : `. The ${plural(since, "task")} written since ${since === 1 ? "is" : "are"} too few yet for a comparison to read a step on`;
 const short = (digest: string): string => digest.slice(0, 8);
-
-/** Every comparison of a log, in the order they began. One a log of 8 October holds by its report
- *  alone stands where it first reported. */
-function comparisonsOf(events: readonly LogEvent[]): Compared[] {
-  const reports = new Map(lastReports(events).map((report) => [report.session, report]));
-  const begun = new Map<string, Compared>();
-  for (const [at, { kind, data }] of events.entries()) {
-    const { session, old, fresh } = data;
-    if (kind !== STARTED || !isString(session) || !isString(old) || !isString(fresh)) continue;
-    begun.set(session, {
-      id: session,
-      at,
-      old,
-      fresh,
-      noise: data.noise === true,
-      report: reports.get(session)?.data ?? null,
-      reported: reports.get(session)?.index ?? null,
-    });
-  }
-  for (const [id, { index, data }] of reports) {
-    if (begun.has(id) || !isString(data.old) || !isString(data.fresh)) continue;
-    begun.set(id, {
-      id,
-      at: index,
-      old: data.old,
-      fresh: data.fresh,
-      noise: false,
-      report: data,
-      reported: index,
-    });
-  }
-  return [...begun.values()].toSorted((one, other) => one.at - other.at);
-}
-
-/** The comparisons under each record of the setting, oldest first. A log with no record is one
- *  setting, and what stands before the first record belongs to it. */
-function settingsOf(events: readonly LogEvent[], comparisons: readonly Compared[]): Under[] {
-  const records = events.flatMap(({ kind, data }, index) =>
-    kind === SETTING
-      ? [
-          {
-            index,
-            turns: isNumber(data.modelTurns) ? data.modelTurns : null,
-            rest: stableJson({ ...data, modelTurns: null }),
-          },
-        ]
-      : [],
-  );
-  if (records.length === 0) return [{ turns: null, rest: "", comparisons }];
-  return records.map(({ index, turns, rest }, nth) => {
-    const next = records[nth + 1]?.index ?? Number.POSITIVE_INFINITY;
-    return {
-      turns,
-      rest,
-      comparisons: comparisons.filter(({ at }) => (nth === 0 || at > index) && at < next),
-    };
-  });
-}
-/** The comparisons made under the campaign's setting with so many of the model's turns, in every
- *  stretch of the log that stood there. A campaign returns to a budget, and what it read there
- *  the first time still stands: until 2026-10-09 only the last stretch was read, and a budget set
- *  again would have had its comparison made again. */
-function under({ settings, rest }: Pick<Ground, "settings" | "rest">, turns: number | null): Compared[] {
-  return settings.flatMap((each) => (each.turns === turns && each.rest === rest ? each.comparisons : []));
-}
-
-/** The reported comparisons of `fresh` with `old` among `comparisons`. */
-function pairOf(comparisons: readonly Compared[], fresh: string, old: string | null) {
-  return comparisons.flatMap((each) =>
-    each.fresh === fresh && each.old === old && each.report !== null ? [each.report] : [],
-  );
-}
 
 /** Whether the last two of a pair's comparisons both read a step: a step read again. */
 function readTwice(reports: readonly JsonObject[]): boolean {
@@ -321,15 +182,6 @@ function supplied(ground: Ground, last: JsonObject | undefined, why: string): De
     modelTurns: rung,
     why: `${why}, and the reference harness was valid on more than three solves in four: at ${budgetSaid(rung)} it was valid on at most half, so the budget is set again before tasks are written`,
   };
-}
-
-/** The Examiner sessions in a row, up to the log's end, that held out no task. A session that
- *  held one out moved the campaign, however few it wrote: the first campaign run by one command
- *  ended on three sessions that had written four tasks between them (2026-10-09). */
-function idleDrafts(events: readonly LogEvent[]): number {
-  const sessions = events.filter(({ kind }) => kind === "exam.finished").toReversed();
-  const wrote = sessions.findIndex(({ data }) => Array.isArray(data.held) && data.held.length > 0);
-  return wrote === -1 ? sessions.length : wrote;
 }
 
 /** An Examiner session, unless three in a row have already held out no task.
@@ -458,7 +310,32 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
       why: `comparison ${open.id} began and has not reported: it goes on from its log`,
     };
   }
-  return afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
+  const next = afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
+  return next.move === "compare" ? afforded(ground, next) : next;
+}
+
+/**
+ * A comparison, where what is left of the campaign's total holds one, and else the campaign's
+ * ending on its budget. A comparison the cap cuts before its last solve tallies nothing, and what
+ * it billed bought no reading: on 9 October the second campaign from a prompt had $1.45 left,
+ * began the repeat of a step whose first reading had billed $1.00 for two sides, and was cut
+ * after $1.06 of the three sides the repeat has. What a comparison will bill is read from the
+ * last one that reported under the campaign's setting, by the sides each solves: two, and three
+ * where the reference is read against itself. Under a setting no comparison has reported in,
+ * nothing says what one bills, and it starts.
+ */
+function afforded(ground: Ground, next: Extract<Decided, { move: "compare" }>): Decided {
+  const { events, plan, here } = ground;
+  const last = here.findLast(({ report }) => report !== null && report.capped !== true);
+  if (plan.left == null || last === undefined) return next;
+  const sides = (noise: boolean): number => (noise ? 3 : 2);
+  const was = billedParts(events, last.id).comparison;
+  const expected = (was * sides(next.noise)) / sides(last.noise);
+  if (plan.left.dollars >= expected) return next;
+  return end(
+    "budget",
+    `$${plan.left.dollars.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)} for ${String(sides(last.noise))} sides under this setting: the next solves ${String(sides(next.noise))} and would bill about $${expected.toFixed(2)}, so it would be cut before it reports`,
+  );
 }
 
 /**
@@ -485,32 +362,6 @@ function owed(ground: Ground): Decided | null {
     }
   }
   return null;
-}
-
-/** What the rows on the comparisons are read from, for a log and its plan. */
-function groundOf(events: readonly LogEvent[], plan: Plan): Ground {
-  const all = comparisonsOf(events);
-  const settings = settingsOf(events, all);
-  const turns = settings.at(-1)?.turns ?? null;
-  const rest = settings.at(-1)?.rest ?? "";
-  const here = under({ settings, rest }, turns);
-  // The share of tasks a comparison left untied was measured under its setting, so the one read
-  // is the last that tallied under the campaign's own: none, where it has not stood there yet,
-  // and then every task is counted whole. A budget set by the rule is set to untie them.
-  const stood = here.findLast(({ report }) => asRecord(report?.scored) !== null)?.report ?? null;
-  return {
-    events,
-    plan,
-    all,
-    settings,
-    here,
-    turns,
-    rest,
-    reference: promoted(events) ?? all.map(({ report }) => report?.starter).find(isString) ?? null,
-    latest: latestBuilt(events),
-    tasksShort: shortOf(supplyOf(events, "promoted", stood), plan.wanted),
-    drafts: idleDrafts(events),
-  };
 }
 
 /**

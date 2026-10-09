@@ -2,7 +2,8 @@
 // the rows are asked in (`src/builder/decide.ts`), and what a campaign runs by (`opening.ts`).
 
 import { describe, expect, it } from "bun:test";
-import { type Decided, decide, type Plan, unpromoted } from "../src/builder/decide.ts";
+import { type Decided, decide, unpromoted } from "../src/builder/decide.ts";
+import type { Plan } from "../src/builder/ground.ts";
 import { openingOf, planOf } from "../src/builder/opening.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -604,6 +605,41 @@ describe("the budget and the bounds", () => {
     ).toMatchObject({
       move: "compare",
     });
+  });
+
+  it("ends before a comparison that what is left would not hold, by what the last one billed", () => {
+    // A step read once, by a comparison of two sides whose solves billed 1.00 in all: the repeat
+    // reads the reference against itself as well, three sides, and would bill about 1.50.
+    const solve = (id: string, billed: number) => [
+      event("solve.started", { solve: id, comparison: "g-1" }),
+      event("solve.finished", { solve: id, billed, ending: { outcome: "pass" } }),
+    ];
+    const [start, report] = compared("g-1", "h1", "step", { tally: [5, 0, 1] });
+    const log = [
+      ...SET_UP,
+      built("b-1", "h1"),
+      ...(start === undefined ? [] : [start]),
+      ...solve("s-1", 0.6),
+      ...solve("s-2", 0.4),
+      ...(report === undefined ? [] : [report]),
+    ];
+    const left = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.4 } });
+    expect(move(log, left(1.45))).toEqual({
+      move: "end",
+      ending: "budget",
+      why: "$1.45 of the campaign's budget are left, and comparison g-1 billed $1.00 for 2 sides under this setting: the next solves 3 and would bill about $1.50, so it would be cut before it reports",
+    });
+    expect(move(log, left(1.5))).toMatchObject({ move: "compare", noise: true });
+    // A campaign with no total, as a rehearsal's, is held to none.
+    expect(move(log)).toMatchObject({ move: "compare", noise: true });
+    // Under a setting no comparison has reported in, nothing says what one bills, and it starts.
+    expect(move([...SET_UP, built("b-1", "h1")], left(0.5))).toMatchObject({ move: "compare" });
+    // A comparison that began goes on under what is left: its solves so far stand in the log.
+    const begun = [
+      ...log,
+      event("comparison.started", { session: "g-2", old: "start", fresh: "h1", starter: "start" }),
+    ];
+    expect(move(begun, left(0.5))).toMatchObject({ move: "compare", id: "g-2" });
   });
 
   it("ends where three Examiner sessions in a row held out no task", () => {

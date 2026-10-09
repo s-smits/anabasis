@@ -356,7 +356,9 @@ prints it, makes it, and reads the log again. `--dry-run` prints the move and ma
 `--moves N` makes at most that many, and `--unattended` is the operator's word, given once, for
 the freeze and the promotion (section 3). Its budget is one total: each move's cap is what is
 left of `--budget` once every billed dollar in the log is taken off, and the campaign ends on its
-budget where less is left than one solve is held at. It ends in one of six ways, and the log's
+budget where less is left than one solve is held at, or than the next comparison would bill by
+what the last one under its setting did (`afforded`, `src/builder/decide.ts`): a comparison the
+cap cuts tallies nothing. It ends in one of six ways, and the log's
 last event says which: `budget`, `stop`, `exam`, `no-room`, `environment` or `operator`. With
 `--handover <dir>` it then writes what it hands over (row 7): the harness is copied whole, with
 the programs a kept state names by a link, and has to open there as the harness it was kept as.
@@ -1287,8 +1289,9 @@ src/kernel/     the log, tasks, conditions, the verifier's contract, the compari
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
 src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round;
                 whether a comparison may start (admission); the one reading of a campaign (handover);
-                the move that follows from a log (decide), what a campaign runs by (opening), and
-                the words the operator left it (word)
+                the move that follows from a log (decide) and the reading of the log it is asked
+                of (ground), what a campaign runs by (opening), and the words the operator left
+                it (word)
 src/examiner/   an Examiner session, its prompt, and the outcomes it is told; the session that drafts
                 an exam from a prompt (draft)
 src/review/     the Referee, the Diagnoser, the probe, agreement with hand labels

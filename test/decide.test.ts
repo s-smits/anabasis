@@ -433,6 +433,21 @@ describe("no step", () => {
     expect(move([...none, ...more], plan)).toMatchObject({ move: "compare", noise: false });
   });
 
+  it("reads no room in the tasks neither harness answered", () => {
+    // Four tasks answered by both on every solve, and two by nobody: two solves in three were
+    // valid, and on the tasks anyone answered, all of them.
+    const mixed = { old: [2, 0, 4], fresh: [2, 0, 4] } as const;
+    const read = (unsolved: number) =>
+      compared("g-1", "h1", "no-step", {
+        tally: [0, 0, 6],
+        valid: mixed,
+        extra: { scored: { wins: 0, losses: 0, ties: 6, unsolved } },
+      });
+    expect(move([...first, ...read(2)])).toMatchObject({ move: "examine", room: true });
+    // Where each of those tasks was answered by one of the two harnesses, they are room.
+    expect(move([...first, ...read(0)])).toMatchObject({ move: "build" });
+  });
+
   it("ends the campaign where the tasks could not be made to leave room", () => {
     const full = { tally: [0, 0, 6], valid: { old: ALL, fresh: ALL } } as const;
     const tries = ["g-1", "g-2", "g-3", "g-4"].flatMap((id) => compared(id, "h1", "no-step", full));

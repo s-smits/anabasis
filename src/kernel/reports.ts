@@ -129,24 +129,36 @@ export function comparedAs(events: readonly LogEvent[], harness: string) {
 }
 
 /** A harness's share of valid solves, from a report's count of its tasks by how many of their
- *  solves were valid; null where the report holds no such count. */
-function validShare(counts: unknown): number | null {
+ *  solves were valid, over the tasks that are not `unanswered`; null where the report holds no
+ *  such count, and nothing where no task was answered. */
+function validShare(counts: unknown, unanswered: number): number | null {
   if (!Array.isArray(counts) || counts.length < 2 || !counts.every(isNumber)) return null;
   const tasks = counts.reduce((sum, each) => sum + each, 0);
   const valid = counts.reduce((sum, each, solves) => sum + each * solves, 0);
-  return tasks === 0 ? null : valid / (tasks * (counts.length - 1));
+  if (tasks === 0) return null;
+  return tasks > unanswered ? valid / ((tasks - unanswered) * (counts.length - 1)) : 0;
 }
 
 /**
  * The share of its solves on which the harness on `side` of a comparison was valid, by its report:
  * at the limits the comparison ran under, or with `turns` at the shorter budget of that many of
  * the model's turns it was also read at. Null where the report holds no such count.
+ *
+ * The share is over the tasks some solve of the comparison answered. A task neither harness
+ * answered at the full limit is hard for both or has no valid answer at all, and says nothing of
+ * the room one harness leaves the other: counted in, it reads as room. The first campaign opened
+ * from a prompt showed it (2026-10-09): an Examiner pressing its tasks to the margin wrote two of
+ * seven that ask for more addresses than their block has free, both harnesses failed both on
+ * every solve, and the reference harness's share fell from 14 of 14 to 14 of 18 solves, one such
+ * task short of reading as room. A task with no valid answer goes to a person after two
+ * comparisons (`awaitingLabel`), and is no room meanwhile.
  */
 export function validAt(report: JsonObject, side: "old" | "fresh", turns?: number): number | null {
   const rows = Array.isArray(report.budgets) ? report.budgets.map(asRecord) : [];
   const row =
     turns === undefined ? report : rows.find((each) => each?.turns === turns && each.seconds === undefined);
-  return validShare(asRecord(row?.valid)?.[side]);
+  const unanswered = asRecord(report.scored)?.unsolved;
+  return validShare(asRecord(row?.valid)?.[side], isNumber(unanswered) ? unanswered : 0);
 }
 
 /**

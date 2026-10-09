@@ -900,9 +900,10 @@ describe("a round", () => {
   });
 
   it("stops the campaign after three harnesses without a step, where their comparisons left room", async () => {
-    // Either harness answers two of the four tasks, the same two: nothing separates them, and the
+    // Either harness answers each task on one of its two solves: nothing separates them, and the
     // reference harness is valid on half its solves, which leaves a harness room to gain.
-    const half: Table = (version) => (version === "s1" || version === "s2" ? PASS : LATE);
+    // A harness's solves of a task are counted across the rounds, so every other one passes.
+    const half: Table = (_version, _side, nth) => (nth % 2 === 0 ? PASS : LATE);
     const s = await setup([edit, finish, again, finish, third, finish], half);
     for (const [index, id] of ["b-1", "b-2", "b-3"].entries()) {
       const report = await round(s.next(id));
@@ -915,6 +916,22 @@ describe("a round", () => {
     }
     // Sixteen solves a comparison, and no starter solve where none read a step.
     expect(s.asked).toHaveLength(48);
+  });
+
+  // Tasks nobody answers are no room: the reference harness is valid on every solve of the tasks
+  // anyone answered, and what it leaves a harness to gain is nothing (2026-10-09, a campaign
+  // whose Examiner wrote two tasks with no valid answer).
+  it("counts no comparison towards the stop where the tasks the reference failed were answered by nobody", async () => {
+    const two: Table = (version) => (version === "s1" || version === "s2" ? PASS : LATE);
+    const s = await setup([edit, finish, again, finish, third, finish], two);
+    for (const id of ["b-1", "b-2", "b-3"]) {
+      expect(await round(s.next(id))).toMatchObject({
+        scored: { wins: 0, losses: 0, ties: 4, unsolved: 2 },
+        valid: { old: [2, 0, 2], fresh: [2, 0, 2] },
+        reading: NO_STEP,
+      });
+    }
+    expect(stopRule(read(s.log))).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
   });
 
   // Fix row F48: where the reference harness is valid on every solve, no harness could have shown

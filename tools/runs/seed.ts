@@ -13,9 +13,9 @@
  * `seed.json` in the copy says where it came from and where it was cut. `rehearse` runs only where
  * that file is, since a scripted solve in a real campaign's log would be counted as a solve.
  *
- * Not copied: the launch receipts and outputs, which are the source run's. A kept harness state's
- * `.toolchain` still links to the tree the source keeps beside its states; a solve reads it behind
- * the wall and writes nothing there.
+ * Not copied: the launch receipts and outputs, which are the source run's. The states come with the
+ * tool trees kept beside them. A state frozen while its link named the tree by its whole path still
+ * links to the source's tree; a solve reads it behind the wall and writes nothing there.
  */
 import { read } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";

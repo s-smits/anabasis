@@ -23,7 +23,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, relative } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { type CommandWall, solveDirs } from "../src/solve/command.ts";
-import { harnessTools, openHarness } from "../src/solve/harness.ts";
+import { guideOf, harnessTools, openHarness } from "../src/solve/harness.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
@@ -207,10 +207,16 @@ describe("a v1 harness state", () => {
       mkdirSync(join(borrowed, "node_modules"));
       symlinkSync(elsewhere, join(borrowed, "node_modules", "sixfold"));
       await expect(openHarness(borrowed)).rejects.toThrow("index.cjs, which is outside the harness");
+      const honestGuide = tools("honest-guide", "");
       const guide = tools("guide", "");
       rmSync(join(guide, "agent", "BUILT_AGENTS.md"));
       symlinkSync(secret, join(guide, "agent", "BUILT_AGENTS.md"));
       await expect(openHarness(guide)).rejects.toThrow("agent/BUILT_AGENTS.md links outside the harness");
+      // A reader of a kept state reads the guide the solver read, and never through such a link.
+      expect(guideOf(guide)).toBeNull();
+      expect(guideOf(honestGuide)).toBe(readFileSync(join(FIXTURE, "agent", "BUILT_AGENTS.md"), "utf8"));
+      rmSync(join(honestGuide, "agent", "BUILT_AGENTS.md"));
+      expect(guideOf(honestGuide)).toBeNull();
       // Its own files and a package installed under it still bundle.
       const honest = tools("honest", 'import six from "sixfold";\nexport const SIX = six;');
       const sixfold = join(honest, "node_modules", "sixfold");

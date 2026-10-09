@@ -62,7 +62,7 @@ import { diagnose } from "#src/review/diagnoser.ts";
 import type { Reader } from "#src/review/reader.ts";
 import { referee } from "#src/review/referee.ts";
 import { writeStarter } from "#src/solve/starter.ts";
-import { openHarness, treeContent } from "#src/solve/harness.ts";
+import { guideOf, openHarness, treeContent } from "#src/solve/harness.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
 import {
   checkProgram,
@@ -225,7 +225,20 @@ export async function openCampaign(args: CampaignArgs) {
     referee: (solve: string, task: TaskPackage, kill: AbortSignal) =>
       referee({ ...reader, kill }, { solve, task, contract, checks, verify, log }),
     diagnose: (solve: string, task: TaskPackage, kill: AbortSignal) =>
-      diagnose({ ...reader, kill }, { solve, task, contract, log }),
+      diagnose(
+        { ...reader, kill },
+        {
+          solve,
+          task,
+          contract,
+          log,
+          // A solve's harness is one the campaign keeps under its digest, a session's or the starter.
+          guide: (harness) => {
+            const state = join(dir, "states", harness);
+            return existsSync(state) ? guideOf(state) : undefined;
+          },
+        },
+      ),
   });
   return {
     repo: REPO,

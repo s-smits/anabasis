@@ -9,6 +9,7 @@ import type { VerifierConfinementRequest } from "./verifier-port.ts";
 import {
   type ReadRootMetadata,
   sameReadRootMetadata,
+  settledBeforeRead,
   snapshotReadRootPath,
 } from "./read-root-attestation.ts";
 import {
@@ -108,7 +109,8 @@ export const VERIFIER_POSTURE: IsolationPosture = { network: false };
  *  files, every hashed file keeps identical complete metadata under `sameReadRootMetadata` (device,
  *  inode, mode, size, mtime, ctime and link target), and every import directive still
  *  resolves to the file it was read from, so a swapped directory link under an unchanged file is
- *  attested again rather than reused. */
+ *  attested again rather than reused. Support whose files changed within two seconds of its read
+ *  is not remembered at all (`settledBeforeRead`). */
 const SUPPORT_BY_RUNTIME = new Map<string, RememberedSupport>();
 
 function sandboxProfileClosure(entryPath: string): ProfileClosure {
@@ -164,6 +166,7 @@ function attestedSupport(sandboxExecPath: string, systemProfilePath: string): Da
   if (remembered !== undefined && supportStillCurrent(remembered, sandboxExecPath, systemProfilePath)) {
     return remembered.support;
   }
+  const readStartedNs = BigInt(Date.now()) * 1_000_000n;
   const mechanismPath = realpathSync.native(sandboxExecPath);
   const closure = sandboxProfileClosure(systemProfilePath);
   const support: DarwinSeatbeltSupport = {
@@ -173,11 +176,13 @@ function attestedSupport(sandboxExecPath: string, systemProfilePath: string): Da
     mechanismDigest: sha256OfFile(mechanismPath),
     baselineDigest: closure.digest,
   };
-  SUPPORT_BY_RUNTIME.set(key, {
-    files: [mechanismPath, ...closure.files].map(snapshotReadRootPath),
-    imports: closure.imports,
-    support,
-  });
+  // A file changed within its timestamp's grain of this read can be rewritten again under the same
+  // metadata (Linux stamps from the kernel's tick, some milliseconds wide), so only files settled
+  // before the read are remembered, as a read root's digests are.
+  const files = [mechanismPath, ...closure.files].map(snapshotReadRootPath);
+  if (files.every((file) => settledBeforeRead(file, readStartedNs))) {
+    SUPPORT_BY_RUNTIME.set(key, { files, imports: closure.imports, support });
+  }
   return support;
 }
 

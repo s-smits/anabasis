@@ -82,11 +82,13 @@ import { solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import { campaignOf } from "./handover.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, shortDigest } from "./past.ts";
-import { firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
+import { continuation, firstMessage, SYSTEM_PROMPT, type Used, usedLine } from "./prompt.ts";
 import {
   type Bench,
+  endingWith,
   finishTool,
   HOME_TOOL_TREE,
+  openingTool,
   parentToolTree,
   practiceLeft,
   practiceTool,
@@ -94,6 +96,7 @@ import {
   type Snapshot,
   snapshot,
   traceTool,
+  triedState,
   walledTools,
 } from "./tools.ts";
 
@@ -277,7 +280,6 @@ export async function session(
     fatal: null,
     note: null,
   };
-  const tools = [...walled(bench), practiceTool(bench), traceTool(bench), finishTool(bench)];
   const recorded = read(log);
   // The campaign as its log reads, once: the same rows the operator's view prints (`handover.ts`).
   const campaign = campaignOf(recorded);
@@ -300,6 +302,21 @@ export async function session(
       memory: builderMemoryBlock(dirs.home),
     },
   );
+  const turns: AssistantMessage[] = [];
+  // What the session has used of its limits, as every tool result and every continuation says it.
+  // A session under a cap reads what its practice solves billed from the log.
+  const used = (): Used => ({
+    turns: turns.length,
+    seconds: (performance.now() - began) / 1000,
+    practiceLeft: practiceLeft(bench, request.cap === undefined ? [] : read(log)),
+  });
+  const tools = [
+    ...walled(bench),
+    practiceTool(bench),
+    traceTool(bench),
+    openingTool(opening),
+    finishTool(bench),
+  ].map((each) => endingWith(each, () => usedLine(used(), limits)));
   const wall = new AbortController();
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
@@ -309,7 +326,6 @@ export async function session(
     bench.halt.signal,
     ...(request.kill ? [request.kill] : []),
   ]);
-  const turns: AssistantMessage[] = [];
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
@@ -335,7 +351,16 @@ export async function session(
         // v1's continuation carried the same notice: a file over its limit is cut on the next read.
         getFollowUpMessages: async () =>
           bench.note === null
-            ? [user([NUDGE, memoryOverCapNotice(dirs.home) ?? ""].filter((part) => part !== "").join("\n\n"))]
+            ? [
+                user(
+                  [
+                    continuation(used(), limits, await triedState(bench)),
+                    memoryOverCapNotice(dirs.home) ?? "",
+                  ]
+                    .filter((part) => part !== "")
+                    .join("\n\n"),
+                ),
+              ]
             : [],
         prepareRequest: loopCompaction(log, "build", request.id, stream, summaries),
       },

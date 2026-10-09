@@ -31,7 +31,8 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { isFunction, type JsonObject } from "../src/meta/json-shape.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
+import { isFunction, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -45,6 +46,8 @@ const WRITE_FILE = "write";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 /** A check's id and a Referee's reason: verifier-side text no Builder may be shown. */
+/** How the message sent after a turn with no tool call begins. */
+const GOES_ON = "You have not called finish";
 const CHECK = "check-canary-51c2";
 const REASON = "reason-canary-9d07";
 const CONTRACT: Contract = {
@@ -80,7 +83,7 @@ afterAll(() => {
 /** A scratch with the fixture harness as the parent, and a log in which v1 and v2 are released and
  *  v0 and v3 are held out. `endings` are what the practice solves end in, in order.
  *  With `tree`, the parent has an installed program. */
-async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree = false) {
+async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree = false, check = CHECK) {
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-builder-")));
   scratches.push(scratch);
   const parent = join(scratch, "parent");
@@ -139,7 +142,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     });
     record_("solve.turn", { solve, turn: 1, stopReason: "stop", text: "Submitted." });
     if (ending.outcome !== "pass") {
-      record_("verdict", { solve, answer: { answer: "41" }, kind: "fail", blocking: [CHECK] });
+      record_("verdict", { solve, answer: { answer: "41" }, kind: "fail", blocking: [check] });
     }
     record_("solve.finished", { solve, ending });
     return solve;
@@ -767,14 +770,72 @@ describe("a Builder session", () => {
     });
   });
 
-  it("is nudged when it stops without finishing, up to its turns, and freezes what it left", async () => {
+  it("is told to go on when it stops without finishing, up to its turns, and freezes what it left", async () => {
     const stop = fauxAssistantMessage("I think that is enough.");
     const s = await setup([edit, ...Array.from({ length: 12 }, () => stop)]);
     const built = await session({ ...s.request, limits: { ...LIMITS, turns: 3 } }, s, s.walled);
     expect(built).toMatchObject({ changed: true, ended: "turns" });
-    expect(s.sent[2]).toContain("You have not called finish.");
+    expect(s.sent[2]).toContain(GOES_ON);
     expect(s.of("build.turn")).toHaveLength(3);
     expect(s.of("harness.version")[0]).toMatchObject({ note: null, parent: s.digest });
+  });
+
+  // Fix row F17. Until 2026-10-09 a Builder was told its limits once, at its opening, and between
+  // turns only that it had not finished. In the seven sessions on record that message was never
+  // sent: every one of their 365 turns ended in a tool call. So the facts ride on tool results.
+  it("reads what it has used of its limits at the end of every tool result, and its goal again when a turn ends without a call", async () => {
+    const stop = fauxAssistantMessage("I think that is enough.");
+    const s = await setup([edit, call("practice", { tasks: ["t-1"] }), stop, finish]);
+    await session(s.request, s, s.walled);
+    const lines = s.of(BUILD_CALL).map(({ text: told }) => (isString(told) ? told.split("\n").at(-1) : ""));
+    // Every result ends with the line: the turn counts up and the practice solves down.
+    expect(lines).toEqual([
+      expect.stringMatching(/^\[Session: turn 1 of 12, 0:0\d of 10:00 used, 3 practice solves left\]$/),
+      expect.stringMatching(/^\[Session: turn 2 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
+      expect.stringMatching(/^\[Session: turn 4 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
+    ]);
+    // An error carries it as a result does.
+    const refused = await setup([call("practice", { tasks: ["t-9"] }), finish]);
+    await session(refused.request, refused, refused.walled);
+    expect(refused.of(BUILD_CALL)[0]).toMatchObject({
+      isError: true,
+      text: expect.stringMatching(
+        /not one of this session's practice tasks: t-1, t-2\n\n\[Session: turn 1 of 12, /,
+      ),
+    });
+    // The turn that ended with no call is answered with the goal and the facts, and with no course.
+    const continued = parseJsonAs<{ messages: { role: string; content: string }[] }>(s.sent[3] ?? "{}");
+    expect(continued.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: [
+        `${GOES_ON}, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is frozen and measured.`,
+        "The goal, unchanged: Your harness is measured against a reference harness, by that solver and under the same limits, on tasks you are never shown.",
+        "This session so far: 3 of 12 turns and 0 of 10 minutes used, 2 practice solves left. harness/ is as your last practice solve ran it.",
+        "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
+      ].join("\n\n"),
+    });
+    // Where harness/ stands is said as it is: unpractised, and changed since the last solve.
+    const idle = await setup([stop, finish]);
+    await session(idle.request, idle, idle.walled);
+    expect(idle.sent[1]).toContain("3 practice solves left. No practice solve has run in this session.");
+    const moved = await setup([call("practice", { tasks: ["t-1"] }), edit, stop, finish, finish]);
+    await session(moved.request, moved, moved.walled);
+    expect(moved.sent[3]).toContain(
+      "harness/ has changed since your last practice solve, so no solve has run it as it stands.",
+    );
+  });
+
+  // Fix row F18: a session whose opening was compacted away had its facts in no other place.
+  it("serves its opening message again, as it was sent", async () => {
+    const s = await setup([edit, call("read_opening", {}), finish]);
+    await session(s.request, s, s.walled);
+    const first = parseJsonAs<{ messages: { role: string; content: string }[] }>(s.sent[0] ?? "{}");
+    const opening = first.messages.find(({ role }) => role === "user")?.content ?? "";
+    expect(opening).toContain("Public rules of the domain:");
+    const served = s.of(BUILD_CALL)[1]?.text;
+    // The tool's answer is the opening message, and after it the line every result ends with.
+    expect(isString(served) ? served.split("\n[Session: ")[0] : "").toBe(opening);
+    expect(s.of(BUILD_CALL)[1]).toMatchObject({ tool: "read_opening", isError: false });
   });
 
   it("ends at its turns though it never stops calling tools", async () => {
@@ -782,7 +843,7 @@ describe("a Builder session", () => {
     const built = await session({ ...s.request, limits: { ...LIMITS, turns: 4 } }, s, s.walled);
     expect(built).toMatchObject({ changed: true, ended: "turns" });
     expect(s.of("build.turn")).toHaveLength(4);
-    expect(s.sent.join("\n")).not.toContain("You have not called finish.");
+    expect(s.sent.join("\n")).not.toContain(GOES_ON);
   });
 });
 
@@ -797,6 +858,166 @@ describe("what a Builder is shown of a solve", () => {
       "no result (check)",
     );
   });
+});
+
+// Fix row F19, and rule 3 of AGENTS.md: nothing crosses from the exam side to the build side but
+// a closed list. Until 2026-10-09 the tests held three canaries (a check's name, the Referee's
+// reason, a held-out solve's id) and no proof of the rest. Here two campaigns are alike in
+// everything a Builder may know and differ in everything it may not, and a session over each has
+// to read the same bytes.
+describe("what crosses to the Builder", () => {
+  /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
+   *  reason, a task's hidden value, and which held-out task the comparison's new harness won. */
+  interface Kept {
+    readonly check: string;
+    readonly reason: string;
+    readonly hidden: string;
+    readonly won: "h1" | "h2";
+  }
+  const ONE: Kept = { check: "check-one-7a1", reason: "reason-one-7a1", hidden: "hidden-one-7a1", won: "h1" };
+  const OTHER: Kept = {
+    check: "check-two-c4e",
+    reason: "reason-two-c4e",
+    hidden: "hidden-two-c4e",
+    won: "h2",
+  };
+  const FRESH = "f".repeat(64);
+
+  /**
+   * Everything a Builder reads in one session over a campaign that keeps `kept` from it: every
+   * context its model was sent, which holds its system prompt, its tools' descriptions, the
+   * opening, every tool result and every continuation, and every file of its home. The host's
+   * clock and the scratch's own path are taken out, since two runs differ in them and neither is
+   * the exam's. `leak` has the Diagnoser name the check that refused, which is a held-out detail in
+   * a Builder's message.
+   */
+  async function read_(kept: Kept, leak: "sealed" | "leaking" = "sealed"): Promise<string> {
+    const stop = fauxAssistantMessage("I think that is enough.");
+    const s = await setup(
+      [
+        edit,
+        call("practice", { tasks: ["t-1", "t-2"] }),
+        call("read_trace", { solve: "s-3" }),
+        call("read_trace", { solve: "s-3", call: 1 }),
+        call("read_opening", {}),
+        stop,
+        finish,
+      ],
+      [{ outcome: "fail", kind: "rejected" }, { outcome: "pass" }],
+      false,
+      kept.check,
+    );
+    const { log } = s.request;
+    // The exam side of the campaign: two held-out tasks with hidden values, and one comparison in
+    // which the new harness won one of them and tied the other. Both campaigns hold the same
+    // events in the same order, so every id a Builder may see is the same.
+    for (const version of ["h1", "h2"]) {
+      const task = {
+        taskId: `x-${version}`,
+        family: "fixture",
+        publicInput: { base: 3 },
+        hidden: kept.hidden,
+      };
+      append(log, "task.proposed", { version, taskId: task.taskId, session: "x-1", task });
+      append(log, "task.gate", { version, gate: 1, outcome: "passed" });
+    }
+    for (const version of ["h1", "h2"]) {
+      for (const side of [s.digest, FRESH]) {
+        const solve = `g-1-${version}-${side.slice(0, 4)}`;
+        const lost = version === kept.won && side === s.digest;
+        append(log, "solve.started", { solve, comparison: "g-1", task: `x-${version}` });
+        if (lost) {
+          append(log, "verdict", {
+            solve,
+            answer: { answer: kept.hidden },
+            kind: "fail",
+            blocking: [kept.check],
+          });
+          append(log, "referee.finding", { solve, ruling: "earned", check: kept.check, reason: kept.reason });
+        }
+        append(log, "solve.finished", {
+          solve,
+          ending: lost ? { outcome: "fail", kind: "rejected" } : { outcome: "pass" },
+        });
+      }
+    }
+    append(log, "comparison.reported", {
+      session: "g-1",
+      old: s.digest,
+      fresh: FRESH,
+      reading: "no-step",
+      scored: { wins: 1, losses: 0, ties: 1, p: 0.5, unsolved: 0 },
+      versions: kept.won === "h1" ? ["h1", "h2"] : ["h2", "h1"],
+      won: [kept.won],
+      aside: [],
+    });
+    await session(
+      {
+        ...s.request,
+        referee: async () => ({
+          ruling: "earned",
+          check: kept.check,
+          rule: "R1",
+          field: "answer",
+          reason: kept.reason,
+          probes: [],
+        }),
+        diagnose: async () => ({
+          owner: "solver",
+          cause: leak === "leaking" ? `Its answer failed ${kept.check}.` : "It never multiplied.",
+          falsifier: "A later solve that multiplies and still answers 41.",
+          firstDivergence: "margin of s-3",
+          contrastSuccess: null,
+          confidence: "low",
+        }),
+      },
+      s,
+      s.walled,
+    );
+    const files = readdirSync(s.home, { recursive: true, withFileTypes: true }).flatMap((entry) =>
+      entry.isFile()
+        ? [
+            `${join(entry.parentPath, entry.name)}\n${readFileSync(join(entry.parentPath, entry.name), "utf8")}`,
+          ]
+        : [],
+    );
+    return (
+      [...s.sent, ...files.toSorted()]
+        .join("\n")
+        .replaceAll(s.scratch, "<scratch>")
+        .replaceAll(/"(timestamp|durationMs)":\d+/g, '"$1":0')
+        // The scripted provider names itself and each of its calls anew in every set-up.
+        .replaceAll(/(faux|tool):\d+:\w+/g, "$1")
+        .replaceAll(/\d+:\d\d of 10:00 used/g, "0:00 of 10:00 used")
+    );
+  }
+
+  it("is byte-identical whatever a hidden value, a check, a ruling or the task that was won is", async () => {
+    const [one, other] = [await read_(ONE), await read_(OTHER)];
+    // The session read what a Builder may: its tasks, the fail and its diagnosis, the trace, the
+    // opening again, the continuation, and the comparison as a tally.
+    expect(one).toContain("Solve s-3.");
+    expect(one).toContain("- s-1, t-1, harness");
+    expect(one).toContain("It never multiplied.");
+    expect(one).toContain("1 won, 0 lost, 1 tied, which reads no step.");
+    expect(one).toContain("You have not called finish");
+    expect(one).toContain("practice/t-1.json");
+    for (const kept of [ONE, OTHER]) {
+      for (const canary of [kept.check, kept.reason, kept.hidden, "x-h1", "x-h2", "g-1-h"]) {
+        expect(one).not.toContain(canary);
+      }
+    }
+    expect(one === other).toBe(true);
+  }, 60_000);
+
+  // The nearest hostile case: a reviewer whose words name the check that refused. The Diagnoser is
+  // shown no check, so this cannot happen by its seat; it stands in for any path that would put a
+  // held-out detail into a message, and the comparison above then fails.
+  it("is not, once a held-out detail reaches one message", async () => {
+    const [one, other] = [await read_(ONE, "leaking"), await read_(OTHER, "leaking")];
+    expect(one === other).toBe(false);
+    expect(one).toContain(ONE.check);
+  }, 60_000);
 });
 
 describe("what a practice solve used", () => {

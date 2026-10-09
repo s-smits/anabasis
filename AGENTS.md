@@ -162,8 +162,8 @@ wall keeps from it.
 The tools of each model seat, as its source names them:
 
 - Examiner: `propose_tasks`, `read_example`, `finish`.
-- Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `check_harness`,
-  `preview_harness`, `reset_harness`, `finish`.
+- Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
+  `check_harness`, `preview_harness`, `reset_harness`, `finish`.
 - Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`.
 - Referee: `probe_check`, `read_check_program`, `record_ruling`.
 - Diagnoser: `read_trace`, `record_diagnosis`.
@@ -276,7 +276,12 @@ When you build towards the Harness Builder, take v1's four lessons with it:
 2. One reading of the log, rendered once for each reader through its own filter. Until
    21 September v1's Builder received one test set through four readers, and they disagreed: 20
    of 25 in one paragraph and 0 of 5 in the next.
-3. The standing facts are restated at every turn boundary, so a compaction needs no signal.
+3. The standing facts are restated where the agent reads, so a compaction needs no signal. Every
+   tool result of a Builder ends with the turn it is in, the session time used and the practice
+   solves left (`usedLine`, `src/builder/prompt.ts`); a turn that ends without a call is answered
+   with the goal and the same facts (`continuation`); and `read_opening` serves the opening
+   message again. In the seven Builder sessions on record on 9 October every one of 365 turns
+   ended in a tool call, so a message sent only between turns was never sent.
 4. The wall is a test and no convention: rule 3 of section 8 states it.
 
 ## 5. The log
@@ -465,8 +470,10 @@ Cite a rule by its number in a pull request or a review.
 
 3. **Nothing crosses the wall but the closed list of section 1.** The test is exact: a change to
    a hidden value, to a check, or to which held-out task was won must leave every message a
-   Builder or a solver reads byte-identical. A change that touches such a message says in its
-   pull request how it checked this. Withholding is a property of everything an agent can read:
+   Builder or a solver reads byte-identical. For a Builder that test is in the suite
+   (`test/builder.test.ts`, "what crosses to the Builder"): two campaigns that differ in every
+   such detail, one session over each, and every context and every file of its home compared. A
+   change that touches such a message says in its pull request how it checked this. Withholding is a property of everything an agent can read:
    prompts, tool descriptions, tool results and files in its home.
 
 4. **Terms are fixed before the first solve and never moved after a result.** The tasks, the

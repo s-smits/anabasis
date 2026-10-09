@@ -75,7 +75,7 @@ import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } fr
 import { installedPrograms, systemPrompt } from "../solve/prompt.ts";
 import { clockText, solverTools } from "../solve/run.ts";
 import { memoryOverCapNotice } from "./memory.ts";
-import { SHELL_WALLS } from "./prompt.ts";
+import { SHELL_WALLS, type Tried } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
 /** `harness/` frozen: a copy kept under its digest, what a solve would open it as, and the tools
@@ -509,6 +509,52 @@ async function standing(bench: Bench): Promise<string | null> {
   if (tried || left <= 0 || told.has("untried")) return null;
   told.add("untried");
   return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} and have it measured untried.`;
+}
+
+/** Where `harness/` stands against the session's practice, as a continuation says it (`Tried`). */
+export async function triedState(bench: Bench): Promise<Tried> {
+  if (bench.opened === null) return "unpractised";
+  try {
+    const { dir, harness } = await frozen(bench);
+    rmSync(dir, { recursive: true, force: true });
+    return harness.digest === bench.opened.harness.digest ? "tried" : "untried";
+  } catch {
+    return "broken";
+  }
+}
+
+/**
+ * The opening message again, as it was sent. A session whose conversation was compacted, or lost
+ * with its process, has the public rules, the practice tasks, the failed practice solves and the
+ * comparisons in no other place: they are built by the host from the log, and the Builder's own
+ * notes are its prose about them. v1 served its round's opening facts the same way.
+ */
+export function openingTool(opening: string): AgentTool {
+  return tool({
+    name: "read_opening",
+    label: "Read the opening",
+    description:
+      "Return this session's opening message again, as it was sent: the public rules and the answer format, the practice tasks with their record at the start, every failed practice solve and each comparison so far, and the session's limits. It changes nothing. Use it when the conversation no longer holds those facts.",
+    parameters: Type.Object({}),
+    executionMode: "sequential",
+    execute: async () => text(opening),
+  });
+}
+
+/** A Builder's tool with a line of the host's as the last of whatever it returns, a result or an
+ *  error: what the session has used of its limits (`usedLine`, `prompt.ts`). */
+export function endingWith(each: AgentTool, line: () => string): AgentTool {
+  return {
+    ...each,
+    execute: async (...call) => {
+      try {
+        const result = await each.execute(...call);
+        return { ...result, content: [...result.content, { type: "text", text: line() }] };
+      } catch (error) {
+        throw new Error(`${errorMessage(error)}\n\n${line()}`, { cause: error });
+      }
+    },
+  };
 }
 
 export function finishTool(bench: Bench): AgentTool {

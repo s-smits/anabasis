@@ -30,7 +30,7 @@ import {
 import { LIMITS } from "../tools/d2/campaign.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
 
-const SETS: Supply = { held: 4, awaiting: 0, released: 1, untied: null };
+const SETS: Supply = { held: 4, awaiting: 0, released: 1, untied: null, since: 0 };
 const ASKED: Asked = {
   target: 12,
   solves: 2,
@@ -137,7 +137,7 @@ describe("a launch's preflight", () => {
       reported("b-3", { scored: null, versions: [], capped: true, setting: here.setting }),
       reported("b-4", { scored: { wins: 0, losses: 0, ties: 0 }, versions: [], setting: here.setting }),
     ];
-    expect(supplyOf(log)).toEqual({ held: 0, awaiting: 0, released: 0, untied: 0.25 });
+    expect(supplyOf(log)).toEqual({ held: 0, awaiting: 0, released: 0, untied: 0.25, since: 0 });
     expect(supplyOf([]).untied).toBeNull();
     // A comparison made under other limits says nothing of the solver the log's last solves were:
     // its share is passed over, and with no comparison under this setting there is none.
@@ -149,6 +149,22 @@ describe("a launch's preflight", () => {
     const ran = { model: "p/m", effort: "high", limits: { ...LIMITS, turns: 48 } };
     expect(preflight(tied, { ...ASKED, ran }).refusals).toEqual([]);
     expect(preflight(tied, { ...ASKED, ran: { ...ran, limits: LIMITS } }).refusals).toHaveLength(1);
+    // A task held out since that comparison has no share on record and is counted whole. A round
+    // that tied nine of nine left no later one able to start, whatever an Examiner session then
+    // added, though more held-out tasks is the remedy the refusal names (2026-10-09).
+    const allTied = { ...tied, untied: 0 };
+    expect(preflight({ ...allTied, since: 3 }, ASKED).refusals).toEqual([
+      expect.stringContaining("12 scored tasks, the 3 held out since counted whole, leave about 3.0 untied"),
+    ]);
+    expect(preflight({ ...allTied, since: 4 }, ASKED).refusals).toEqual([]);
+    // They are the held-out tasks the comparison did not tally.
+    const heldOut = (version: string): LogEvent[] => [
+      { at, kind: "task.proposed", data: { version } },
+      { at, kind: "task.gate", data: { version, gate: 1, outcome: "passed" } },
+    ];
+    const before = [...heldOut("v"), ...here.events, reported("b-1", tallied(0, 0, here.setting))];
+    expect(supplyOf(before)).toMatchObject({ held: 1, untied: 0, since: 0 });
+    expect(supplyOf([...before, ...heldOut("w"), ...heldOut("x")])).toMatchObject({ held: 3, since: 2 });
   });
 
   it("says when the cap holds a reserve for fewer solves than the comparison's test makes", () => {

@@ -19,9 +19,9 @@
  *     result (`docs/plan.md`, Phase 2). The untied tasks are counted from the share the campaign's
  *     last comparison left untied, where that comparison was made under the setting this one
  *     would run under: another solver or other limits tie other tasks. Before any such
- *     comparison every scored task is counted, which is the most there can be. Until 2026-10-09
- *     this was a note, and the eight truss rounds of 2026-10-08 scored no task and read `no-step`
- *     eight times for over $220;
+ *     comparison every scored task is counted whole, and so is one held out since it. Until
+ *     2026-10-09 this was a note, and the eight truss rounds of 2026-10-08 scored no task and
+ *     read `no-step` eight times for over $220;
  *   - a comparison with no `--cap`: the plan requires a dollar cap at launch for each comparison;
  *   - an id whose comparison has reported: a comparison that reported is finished;
  *   - the same run already running here;
@@ -131,12 +131,13 @@ export interface Asked extends Host {
 /** What a launch reads of a log's tasks: how many are held out and may be scored, how many wait
  *  for a person's label and are left out, how many are released for practice, and the share of
  *  its tallied tasks left untied by the last comparison made under the setting of the log's last
- *  test-side solve, null before any. */
+ *  test-side solve, null before any, with how many tasks were held out since it tallied. */
 export interface Supply {
   readonly held: number;
   readonly awaiting: number;
   readonly released: number;
   readonly untied: number | null;
+  readonly since: number;
 }
 
 /** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
@@ -201,7 +202,7 @@ function flagOf(args: readonly string[], name: string): string | undefined {
 /** A log's supply of tasks, as `preflight` takes it. */
 export function supplyOf(events: readonly LogEvent[]): Supply {
   const sets = taskSets(events);
-  const awaiting = awaitingLabel(events).filter((version) => sets.held.includes(version)).length;
+  const waiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
   const solved = ranUnder(events).findLast(({ under }) => under.side === "test")?.under;
   const setting = solved === undefined ? null : settingId(solved);
   const last = lastReports(events).findLast(
@@ -212,12 +213,15 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
       data.setting === setting,
   )?.data;
   const tally = asRecord(last?.scored);
-  const tallied = Array.isArray(last?.versions) ? last.versions.length : 0;
+  const versions = Array.isArray(last?.versions) ? last.versions : [];
+  const tallied = versions.length;
   const untied =
     tally !== null && isNumber(tally.wins) && isNumber(tally.losses) && tallied > 0
       ? (tally.wins + tally.losses) / tallied
       : null;
-  return { held: sets.held.length - awaiting, awaiting, released: sets.released.length, untied };
+  const since = sets.held.filter((version) => ![...versions, ...waiting].includes(version)).length;
+  const [held, awaiting] = [sets.held.length - waiting.length, waiting.length];
+  return { held, awaiting, released: sets.released.length, untied, since };
 }
 
 /** Why a round or a checkpoint should not start, and what its reader should know when it does. */
@@ -230,7 +234,8 @@ export function preflight(supply: Supply, asked: Asked) {
   // A share measured of another solver, or under other limits, says little of this comparison.
   const restarted = restarts(asked.named, asked.ran);
   const share = restarted.length === 0 ? (supply.untied ?? 1) : 1;
-  const untied = scored * share;
+  // A task held out since that comparison has no share on record, and is counted whole.
+  const untied = scored * (share + ((1 - share) * supply.since) / Math.max(1, supply.held));
   // The comparison's test alone: both harnesses, on every scored task.
   const test = 2 * scored * asked.solves;
   const afforded = asked.cap === null ? test : Math.floor(asked.cap.dollars / asked.cap.reserve);
@@ -247,7 +252,7 @@ export function preflight(supply: Supply, asked: Asked) {
       ],
       [
         scored >= least && untied < least,
-        `the campaign's last comparison left ${String(Math.round(100 * share))}% of its tasks untied, and at that share ${String(scored)} scored tasks leave about ${untied.toFixed(1)} untied, where at --level ${String(asked.level)} a step takes ${String(least)}, all won: this comparison could hardly read a step. ${more}, or change the budget so that fewer tasks tie`,
+        `the campaign's last comparison left ${String(Math.round(100 * share))}% of its tasks untied, and at that share ${String(scored)} scored tasks${supply.since > 0 ? `, the ${String(supply.since)} held out since counted whole,` : ""} leave about ${untied.toFixed(1)} untied, where at --level ${String(asked.level)} a step takes ${String(least)}, all won: this comparison could hardly read a step. ${more}, or change the budget so that fewer tasks tie`,
       ],
       [
         asked.cap === null,

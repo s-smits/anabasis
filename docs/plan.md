@@ -76,7 +76,7 @@ One campaign is a loop of seven moves over one log. Code admits and chooses ever
 
 | What the report shows | What it means | The next move |
 | --- | --- | --- |
-| A step, read once | One draw | Compare the same two harnesses again on fresh solves, with the reference against itself beside it |
+| A step, read once | One draw | Compare the same two harnesses again on fresh solves, with the reference against itself beside it, unless that reading already stands under the setting, for this reference and with no task held out since (`noiseRead`) |
 | A step, read again | A step | Read it once at the full limit, where it must not lose. Promote the harness, set the budget again from its solves, and build against the new reference |
 | No step, and the reference is valid on more than three solves in four | The tasks leave no room at this budget | Set the budget again by the rule. Where no budget of the ladder leaves room, write tasks that do (F52) |
 | No step, and neither harness is valid on one solve in four | The tasks are too hard, or the budget too short | Lengthen the budget. Otherwise write other tasks |

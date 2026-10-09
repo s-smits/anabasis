@@ -533,8 +533,9 @@ solves (`awaitingLabel`). Promotion is the operator's `promote.ts --yes`, which 
 promoted, and one that names a digest is made against that harness and promotes nothing.
 
 **What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
-prints it as its last line. A step is one draw: the same two harnesses are compared again, with
-the reference read against itself. A step read twice at a shortened budget is read once more at
+prints it as its last line. A step is one draw: the same two harnesses are compared again. The
+reference is read against itself beside the first comparison under a setting and stands for the
+ones after it, until the reference is another harness or tasks were held out since (`noiseRead`). A step read twice at a shortened budget is read once more at
 the full limit, where the new harness must win at least as many tasks as it loses, and then the
 harness is the one to promote (`unpromoted` says why another is not). No step with room sends the
 Builder to build again. A comparison without room changes the budget before the tasks: the budget

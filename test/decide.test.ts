@@ -290,6 +290,31 @@ describe("a step", () => {
       reference: "promoted",
       noise: true,
     });
+    // Where the reference was read against itself under this setting, on the tasks the campaign
+    // holds, that reading stands and the repeat solves the two harnesses alone.
+    const noised = [
+      ...SET_UP,
+      built("b-1", "h1"),
+      ...compared("g-1", "h1", "step", { tally: [4, 0, 2], noise: true }),
+    ];
+    expect(move(noised)).toEqual({
+      move: "compare",
+      fresh: "latest",
+      reference: "promoted",
+      noise: false,
+      why: "comparison g-1 read a step, which is one draw: the same two harnesses are compared again on fresh solves. The reference was read against itself under this setting in comparison g-1, on the tasks the campaign holds",
+    });
+    // It is read again once tasks were held out since, and where the one on record is of
+    // another reference harness.
+    expect(move([...noised, ...heldOut("v7")])).toMatchObject({ move: "compare", noise: true });
+    const other = [
+      ...SET_UP,
+      built("b-0", "h0"),
+      ...compared("g-0", "h0", "no-step", { old: "other", noise: true }),
+      built("b-1", "h1"),
+      ...compared("g-1", "h1", "step", { tally: [4, 0, 2] }),
+    ];
+    expect(move(other)).toMatchObject({ move: "compare", noise: true });
   });
 
   it("is promoted when read again at the full limit", () => {

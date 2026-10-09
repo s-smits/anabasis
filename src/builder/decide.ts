@@ -526,8 +526,30 @@ function onLatest(ground: Ground): Decided {
     here.length === 0
       ? `harness ${short(latest)} has not been compared under the campaign's setting`
       : `${plural(sessions, "Builder session")} since the last comparison left harness ${short(latest)}`,
-    here.some(({ noise }) => noise) ? "alone" : "noise",
+    noiseRead(ground) === null ? "noise" : "alone",
   );
+}
+
+/**
+ * The comparison in which the reference harness was read against itself under the campaign's
+ * setting, on the tasks the campaign still holds, or null. That reading is the noise every
+ * comparison there has to exceed, and one stands for the setting: a second is a third of a
+ * comparison's solves for a second draw of the same share. It is read again once the reference
+ * is another harness or tasks were held out since, since either changes what it is a share of.
+ * Until 2026-10-09 any earlier one under the setting stood, whatever harness it was of, and a
+ * step's repeat read it again whatever stood: on that day the second campaign from a prompt had
+ * the budget for a repeat of two sides and not of three, four comparisons after the reference
+ * had been read against itself on the same tasks.
+ */
+function noiseRead({ events, here, reference }: Ground): string | null {
+  const read = here.findLast(
+    ({ noise, old, report }) => noise && old === reference && report !== null && report.capped !== true,
+  );
+  const since = events.some(
+    ({ kind, data }, index) =>
+      read !== undefined && index > read.at && kind === "task.gate" && data.outcome === "passed",
+  );
+  return read === undefined || since ? null : read.id;
 }
 
 /** The table's rows for the last comparison of the latest harness with the reference one. */
@@ -536,10 +558,14 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string): Deci
   const id = isString(last.session) ? last.session : "";
   const { reading } = last;
   if (reading === STEP) {
-    return compare(
-      `comparison ${id} read a step, which is one draw: the same two harnesses are compared again on fresh solves, with the reference read against itself`,
-      "noise",
-    );
+    const noise = noiseRead(ground);
+    const again = `comparison ${id} read a step, which is one draw: the same two harnesses are compared again on fresh solves`;
+    return noise === null
+      ? compare(`${again}, with the reference read against itself`, "noise")
+      : compare(
+          `${again}. The reference was read against itself under this setting in comparison ${noise}, on the tasks the campaign holds`,
+          "alone",
+        );
   }
   if (reading === "check-defects") {
     return end(

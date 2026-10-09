@@ -295,8 +295,9 @@ describe("a campaign run by its log", () => {
     const [first, repeat] = of(name, "comparison.reported");
     expect(first).toMatchObject({ reading: "step", scored: { wins: 5, losses: 0, ties: 0 } });
     expect(repeat).toMatchObject({ reading: "step", old: first?.old, fresh: first?.fresh });
-    // Both read the reference against itself beside the test, as a repeat does and a setting's first.
-    expect(of(name, "comparison.started").map(({ noise }) => noise)).toEqual([true, true]);
+    // The setting's first comparison read the reference against itself beside the test, and that
+    // reading stands for the repeat, which solves the two harnesses alone.
+    expect(of(name, "comparison.started").map(({ noise }) => noise)).toEqual([true, false]);
     expect(of(name, "harness.promoted")).toEqual([]);
 
     // With the word given once for the campaign, the harness is promoted. No budget leaves the
@@ -588,7 +589,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, "comparison.reported")).toMatchObject([
       { reading: "step", scored: { wins: 5, losses: 0, ties: 0 } },
     ]);
-    expect(next).toMatchObject({ move: "compare", noise: true });
+    expect(next).toMatchObject({ move: "compare", noise: false });
     expect(strayed).toEqual([]);
 
     // A term named again is recorded again, and a flag that names another setting than the

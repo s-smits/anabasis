@@ -11,12 +11,20 @@
  * with, whether a second run agrees, whether every check has been seen both to refuse an answer and
  * to let one pass, and whether every instrument a check names is there to run.
  *
+ * Two readings ask what no control of the pack's does (`docs/plan.md`, the correctness model). The
+ * do-nothing answer, the smallest the answer format allows, must be rejected on every task: Anchor
+ * tests its generated verifiers so, and cites a benchmark on which an agent that did nothing passed
+ * 38% of the tasks, because the verifier accepted an empty response. And a check whose author's own
+ * computation decides it, with no installed instrument, is a fault until the operator admits it by
+ * name: all 32 verified firmware fails in v1 ran on batteries whose instrument a Builder had
+ * written, and 24 of them were that stand-in rejecting valid code.
+ *
  * This reads and decides nothing: a fault is a sentence for the checker's owner, and what share of
  * faults a checker may carry is the operator's. One thing is not read here. A control tests the
  * faults its author thought of, so controls cannot show that the answers a check refused were
  * wrong; that takes a reading of the refused answers themselves (`src/review/rejections.ts`).
  */
-import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { pooled } from "../meta/pool.ts";
 import type { LogEvent } from "./log.ts";
 import {
@@ -47,6 +55,12 @@ export interface ControlRun extends Control {
 /** An answer whose verdict is on record: a control's first run, or a stored solve's. */
 export interface Graded {
   readonly task: Task;
+  readonly verdict: Verdict;
+}
+
+/** The do-nothing answer's verdict on one task. */
+export interface Idle {
+  readonly taskId: string;
   readonly verdict: Verdict;
 }
 
@@ -104,6 +118,62 @@ export function runControls(
     const first = await decided(verify, task, control.answer);
     return { ...control, verdicts: [first, await decided(verify, task, control.answer)] };
   });
+}
+
+/**
+ * The do-nothing answer: the smallest value a JSON Schema allows, built from the schema alone. An
+ * object holds its required properties and no other, an array its fewest items, a string its
+ * fewest characters, a number its minimum or zero; an enumeration gives its first value, and a
+ * choice of schemas its first. A keyword outside these is not read, so the value may miss the
+ * format, which the caller asks (`answerFormatFault`) before it puts the answer to a check.
+ */
+export function doNothingAnswer(schema: JsonValue | undefined): JsonValue {
+  const held = asRecord(schema);
+  if (held === null) return null;
+  if (held.const !== undefined) return held.const;
+  if (Array.isArray(held.enum)) return held.enum[0] ?? null;
+  const choice = [held.anyOf, held.oneOf].find((options) => Array.isArray(options));
+  if (Array.isArray(choice)) return doNothingAnswer(choice[0]);
+  const type = Array.isArray(held.type) ? held.type[0] : held.type;
+  if (type === "object") {
+    const properties = asRecord(held.properties) ?? {};
+    const required = Array.isArray(held.required) ? held.required.filter(isString) : [];
+    return Object.fromEntries(required.map((name) => [name, doNothingAnswer(properties[name])]));
+  }
+  if (type === "array") {
+    return Array.from({ length: isNumber(held.minItems) ? held.minItems : 0 }, () =>
+      doNothingAnswer(held.items),
+    );
+  }
+  if (type === "string") return "x".repeat(isNumber(held.minLength) ? held.minLength : 0);
+  if (type === "number" || type === "integer") {
+    if (isNumber(held.minimum)) return held.minimum;
+    return isNumber(held.exclusiveMinimum) ? held.exclusiveMinimum + 1 : 0;
+  }
+  return type === "boolean" ? false : null;
+}
+
+/** The do-nothing answer through every task's checks, `width` at once. */
+export function runDoNothing(
+  verify: Verifier,
+  tasks: readonly Task[],
+  answer: JsonValue,
+  width: number,
+): Promise<Idle[]> {
+  return pooled(tasks, width, async (task) => ({
+    taskId: task.taskId,
+    verdict: await decided(verify, task, answer),
+  }));
+}
+
+/** The tasks on which the do-nothing answer was not rejected, a sentence each: it passed, or a
+ *  check could not run on it, which is no rejection either. */
+export function doNothingFaults(idle: readonly Idle[]): string[] {
+  return idle.flatMap(({ taskId, verdict }) =>
+    verdict.kind === "fail"
+      ? []
+      : [`the do-nothing answer was not rejected on ${taskId}: ${spelled(verdict)}`],
+  );
 }
 
 /** Why a control's run is not what its label says, or null when it is. */
@@ -195,6 +265,18 @@ export function acceptance(
     ]),
   ];
   return { checks, faults };
+}
+
+/** The checks their author's own computation decides that the operator has not admitted by name,
+ *  a sentence each. An installed instrument needs no word, and a word for it is none. */
+export function authoredFaults(checks: readonly CheckReading[], admitted: ReadonlySet<string>): string[] {
+  return checks.flatMap(({ id, instrument }) =>
+    instrument === "authored" && !admitted.has(id)
+      ? [
+          `${id} is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit ${id})`,
+        ]
+      : [],
+  );
 }
 
 /** The checker the log holds as frozen, by its last `contract.frozen`; null when none is. */

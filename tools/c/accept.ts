@@ -10,8 +10,14 @@
  * instrument, the answers it let pass and refused, and how many of the reject controls that name it
  * it refused. Then the faults (`src/kernel/acceptance.ts`): a control that did not get the verdict
  * it is labelled with, or got two; a check never seen to refuse an answer, or to pass one; a tool a
- * check names that the verifier's tool path does not hold. The reading goes into the campaign's log
- * as `checker.read`, under the contract's hash and the check program's digest. Exits 1 on any fault.
+ * check names that the verifier's tool path does not hold; a task on which the do-nothing answer,
+ * the smallest the answer format allows, was not rejected; and a check its author's own computation
+ * decides, which stands only once the operator admits it by name (`--admit a,b`). The reading goes
+ * into the campaign's log as `checker.read`, under the contract's hash and the check program's
+ * digest. Exits 1 on any fault.
+ *
+ * `--cycle` names the stored cycle the campaign opens over, as every other command of a campaign
+ * names it; without it the cycle is the sweep's first graded row's.
  *
  * `--freeze` is the operator's word that this checker stands: with no fault in the reading, it
  * writes `contract.frozen` for the same two hashes. With a fault it writes nothing, unless the
@@ -28,9 +34,21 @@
  *
  * It needs the pack and its tool tree on disk, and the Mac's verifier wall.
  */
-import { acceptance, frozenChecker, runControls, toolFaults } from "#src/kernel/acceptance.ts";
+import {
+  acceptance,
+  authoredFaults,
+  doNothingAnswer,
+  doNothingFaults,
+  frozenChecker,
+  runControls,
+  runDoNothing,
+  toolFaults,
+} from "#src/kernel/acceptance.ts";
+import { answerFormatFault } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { readBrief } from "#src/kernel/verify.ts";
+import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openCampaign } from "../d2/campaign.ts";
@@ -42,6 +60,8 @@ const { values } = parseArgs({
     sweep: { type: "string" },
     bundle: { type: "string" },
     name: { type: "string" },
+    cycle: { type: "string" },
+    admit: { type: "string" },
     jobs: { type: "string", default: "4" },
     freeze: { type: "boolean", default: false },
     despite: { type: "string" },
@@ -56,8 +76,16 @@ async function main(): Promise<number> {
   const rows = sweepRows(root, sweep);
   const [first] = rows;
   if (first === undefined) throw new Error(`${sweep} graded no solve`);
-  const campaign = await openCampaign({ root, sweep, cycle: first.cycle, bundle, name });
-  const { tasks, log, checker } = campaign;
+  const campaign = await openCampaign({ root, sweep, cycle: values.cycle ?? first.cycle, bundle, name });
+  const { tasks, log, checker, contract } = campaign;
+  const brief = readBrief(campaign.checks);
+  const admitted = new Set(
+    (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()])),
+  );
+  const unknown = [...admitted].filter((id) => !brief.truthChecks.some((check) => check.id === id));
+  if (unknown.length > 0) {
+    throw new Error(`--admit names ${unknown.join(", ")}, and the check program holds no such check`);
+  }
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const stored = rows.flatMap(({ taskId, expected }) => {
     const task = byId.get(taskId);
@@ -65,7 +93,7 @@ async function main(): Promise<number> {
   });
   // A tool a check names and the path lacks is named before any control runs: the verifier cannot
   // decide such a check, and a run that stopped on it never reached the fault that says why.
-  const lost = toolFaults(readBrief(campaign.checks), toolOnPath(bundle));
+  const lost = toolFaults(brief, toolOnPath(bundle));
   if (lost.length > 0) {
     append(log, "checker.read", { ...checker, controls: 0, stored: 0, rows: [], faults: lost });
     for (const fault of lost) console.log(`fault: ${fault}`);
@@ -73,15 +101,36 @@ async function main(): Promise<number> {
     return 1;
   }
   const runs = await runControls(campaign.verify, tasks, packControls(bundle), Number(values.jobs));
-  const { checks, faults } = acceptance(readBrief(campaign.checks), tasks, runs, stored, toolOnPath(bundle));
+  const seen = acceptance(brief, tasks, runs, stored, toolOnPath(bundle));
+  const { checks } = seen;
+  // The do-nothing answer, where the format's own schema yields one that follows the format.
+  const idle = doNothingAnswer(contract.answerFormat);
+  const unformed = answerFormatFault(contract, idle);
+  const rejected =
+    unformed === null ? await runDoNothing(campaign.verify, tasks, idle, Number(values.jobs)) : [];
+  const faults = [...seen.faults, ...authoredFaults(checks, admitted), ...doNothingFaults(rejected)];
   append(log, "checker.read", {
     ...checker,
     controls: runs.length,
     stored: stored.length,
     rows: checks.map((row) => ({ ...row, missing: [...row.missing] })),
+    doNothing:
+      unformed === null
+        ? {
+            answer: idle,
+            tasks: rejected.length,
+            rejected: rejected.length - doNothingFaults(rejected).length,
+          }
+        : { unformed },
+    admitted: [...admitted],
     faults: [...faults],
   });
   console.log(`${String(runs.length)} controls twice, ${String(stored.length)} stored verdicts`);
+  console.log(
+    unformed === null
+      ? `the do-nothing answer ${capturedJsonStringify(idle)}: rejected on ${String(rejected.length - doNothingFaults(rejected).length)} of ${plural(rejected.length, "task")}`
+      : `no do-nothing answer was put to the checks: the smallest value the format's schema yields does not follow it (${unformed})`,
+  );
   console.log("check\tinstrument\tpassed\trefused\tcontrols refused of those naming it");
   for (const row of checks) {
     console.log(
@@ -105,6 +154,7 @@ async function main(): Promise<number> {
       append(log, "contract.frozen", {
         ...checker,
         ...(faults.length > 0 ? { despite, faults: faults.length } : {}),
+        ...keyIfDefined("admitted", admitted.size > 0 ? [...admitted] : undefined),
       });
     }
     console.log(

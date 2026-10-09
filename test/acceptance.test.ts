@@ -4,12 +4,16 @@
 import { describe, expect, it } from "bun:test";
 import {
   acceptance,
+  authoredFaults,
   type Control,
   departure,
+  doNothingAnswer,
+  doNothingFaults,
   frozenChecker,
   type Graded,
   regraded,
   runControls,
+  runDoNothing,
 } from "../src/kernel/acceptance.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import type { Brief, Task, Verifier } from "../src/kernel/verify.ts";
@@ -131,9 +135,68 @@ describe("a checker's acceptance", () => {
     ]);
   });
 
+  it("holds a check its author's own computation decides to the operator's word, by name", async () => {
+    const runs = await runControls(verify, [roof, mast], SOUND, 2);
+    const { checks } = acceptance(brief, [roof, mast], runs, [], everyTool);
+    // `mass` is decided by an installed instrument and needs no word; `span` is its author's own.
+    expect(authoredFaults(checks, new Set())).toEqual([
+      "span is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit span)",
+    ]);
+    expect(authoredFaults(checks, new Set(["mass"]))).toHaveLength(1);
+    expect(authoredFaults(checks, new Set(["span"]))).toEqual([]);
+  });
+
   it("stops on a control of a task the pack does not hold", async () => {
     const gone: Control = { taskId: "gone", answer: {}, refusedBy: null };
     await expect(runControls(verify, [roof], [gone], 1)).rejects.toThrow("a control names gone");
+  });
+});
+
+describe("the do-nothing answer", () => {
+  it("is the smallest value a format's schema allows", () => {
+    expect(
+      doNothingAnswer({
+        type: "object",
+        required: ["members", "mass", "name", "ok", "grade", "span"],
+        properties: {
+          members: {
+            type: "array",
+            minItems: 2,
+            items: {
+              type: "object",
+              required: ["id"],
+              properties: { id: { type: "string" }, note: { type: "string" } },
+            },
+          },
+          mass: { type: "number", exclusiveMinimum: 0 },
+          name: { type: "string", minLength: 3 },
+          ok: { type: "boolean" },
+          grade: { enum: ["S235", "S355"] },
+          span: { anyOf: [{ type: "integer", minimum: 4 }, { type: "null" }] },
+          optional: { type: "string" },
+        },
+      }),
+    ).toEqual({ members: [{ id: "" }, { id: "" }], mass: 1, name: "xxx", ok: false, grade: "S235", span: 4 });
+    expect(doNothingAnswer({ type: "array", items: { type: "number" } })).toEqual([]);
+    expect(doNothingAnswer({ type: ["string", "null"] })).toBe("");
+    expect(doNothingAnswer({ const: 7 })).toBe(7);
+    expect(doNothingAnswer("prose, not a schema")).toBeNull();
+  });
+
+  it("must be rejected on every task: a pass is a fault, and so is a check that could not run on it", async () => {
+    // This verifier passes an answer with no mass on a mast task, and its span check breaks on a
+    // roof task's empty answer.
+    const lax: Verifier = async (task, answer) =>
+      task.family === "roof" && asRecord(answer)?.span === undefined
+        ? { kind: "faulty", check: "span", reason: "no span to read" }
+        : verify(task, answer);
+    const idle = await runDoNothing(lax, [roof, mast], {}, 2);
+    expect(doNothingFaults(idle)).toEqual([
+      "the do-nothing answer was not rejected on roof-1: faulty span: no span to read",
+      "the do-nothing answer was not rejected on mast-1: pass",
+    ]);
+    const strict: Verifier = async () => ({ kind: "fail", blocking: ["mass"] });
+    expect(doNothingFaults(await runDoNothing(strict, [roof, mast], {}, 2))).toEqual([]);
   });
 });
 

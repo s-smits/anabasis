@@ -26,6 +26,8 @@ import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 const REPO = resolve(import.meta.dir, "..");
 /** A campaign's log, by its name in the campaign's folder. */
 const LOG = "log.jsonl";
+/** The fixture's one check is its author's own computation, which stands on the operator's word. */
+const ADMIT = { admit: "check-product" };
 const NAME = `test-check-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-checker-")));
 const bundle = join(root, "bundle");
@@ -167,7 +169,7 @@ function command(file: string, flags: Record<string, string>, ...bare: string[])
 /** A command over the stored sweep and its pack. */
 const run = (file: string, flags: Record<string, string>, ...bare: string[]) =>
   command(file, { root, sweep: "s", bundle, ...flags }, ...bare);
-const accept = (...bare: string[]) => run("tools/c/accept.ts", { name: ACCEPTED }, ...bare);
+const accept = (...bare: string[]) => run("tools/c/accept.ts", { name: ACCEPTED, ...ADMIT }, ...bare);
 /** What the accepted campaign's log holds of one kind. */
 const held = (kind: string) =>
   read(join(accepted, LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
@@ -181,10 +183,28 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     // Three controls and three stored verdicts: the check let three answers pass and refused three.
     expect(sound.said).toContain("3 controls twice, 3 stored verdicts");
     expect(sound.said).toContain("check-product\tauthored\t3\t3\t1 of 1");
+    // The smallest answer the format allows is put to both tasks, and the check rejects it on each.
+    expect(sound.said).toContain('the do-nothing answer {"answer":""}: rejected on 2 of 2 tasks');
     expect(sound.said).toContain("no fault");
     expect(sound.code).toBe(0);
     const [reading] = held("checker.read");
-    expect(reading).toMatchObject({ controls: 3, stored: 3, faults: [] });
+    expect(reading).toMatchObject({
+      controls: 3,
+      stored: 3,
+      doNothing: { answer: { answer: "" }, tasks: 2, rejected: 2 },
+      admitted: ["check-product"],
+      faults: [],
+    });
+
+    // Without the operator's word the same check is a fault, and a check nobody wrote is no word.
+    const unadmitted = run("tools/c/accept.ts", { name: ACCEPTED, cycle: "c01" });
+    expect(unadmitted.said).toContain(
+      "fault: check-product is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit check-product)",
+    );
+    expect(unadmitted.code).toBe(1);
+    expect(run("tools/c/accept.ts", { name: ACCEPTED, admit: "check-nobody" }).said).toContain(
+      "--admit names check-nobody, and the check program holds no such check",
+    );
 
     // A reject control whose edit is still a right answer: the check it names lets it pass, and the
     // operator's word does not freeze a checker read so.
@@ -205,8 +225,9 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(accept("--freeze").code).toBe(0);
     const [frozen, ...more] = held("contract.frozen");
     expect(more).toEqual([]);
-    expect(Object.keys(frozen ?? {})).toEqual(["contract", "checks"]);
-    expect(held("checker.read").at(-1)).toMatchObject(frozen ?? {});
+    expect(Object.keys(frozen ?? {})).toEqual(["contract", "checks", "admitted"]);
+    expect(frozen?.admitted).toEqual(["check-product"]);
+    expect(held("checker.read").at(-1)).toMatchObject({ contract: frozen?.contract, checks: frozen?.checks });
 
     // A check repaired in the campaign's own copy is another checker.
     const evaluator = join(accepted, "checks", "evaluator.ts");
@@ -240,7 +261,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(lost.code).toBe(1);
 
     // A pack whose accept control of t-2 has gone stale, while its check is as sound as before.
-    const stale = (...bare: string[]) => run("tools/c/accept.ts", { name: STALE }, ...bare);
+    const stale = (...bare: string[]) => run("tools/c/accept.ts", { name: STALE, ...ADMIT }, ...bare);
     const frozen = () =>
       read(join(REPO, ".ana", "d2", STALE, LOG)).flatMap((event) =>
         event.kind === "contract.frozen" ? [event.data] : [],

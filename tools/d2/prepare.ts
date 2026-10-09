@@ -61,13 +61,15 @@ import { awaitingLines, openCampaign, packNamed } from "./campaign.ts";
 import { type Campaign, ROUND_OPTIONS, scoredNamed } from "./round.ts";
 import { recordedSetting, targetNamed } from "./setting.ts";
 
+/** The practice tasks a campaign is brought to where no command names a count. */
+export const PRACTICE = 6;
 const OPTIONS = {
   root: { type: "string" },
   sweep: { type: "string" },
   cycle: { type: "string" },
   bundle: { type: "string" },
   name: { type: "string" },
-  practice: { type: "string", default: "6" },
+  practice: { type: "string", default: String(PRACTICE) },
   level: ROUND_OPTIONS.level,
   target: ROUND_OPTIONS.target,
   solves: ROUND_OPTIONS.solves,

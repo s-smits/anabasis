@@ -241,6 +241,45 @@ describe("what is built and what is compared", () => {
   });
 });
 
+describe("practice, before a Builder session", () => {
+  const plan = { ...PLAN, practice: 3 };
+  const lost = compared("g-1", "h1", "no-step", { tally: [0, 2, 4] });
+
+  it("is brought towards the count the campaign names once tasks were held out since the last release", () => {
+    // One task is released of the three the campaign names, and nothing was held out since: a
+    // release takes half of what is held once, and the Builder builds.
+    expect(move(SET_UP, plan)).toMatchObject({ move: "build" });
+    expect(move([...SET_UP, ...heldOut("v7")], plan)).toEqual({
+      move: "prepare",
+      why: "1 of the 3 practice tasks the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds",
+    });
+    // The same before a later session, after a comparison that read no step with room.
+    const later = [...SET_UP, built("b-1", "h1"), ...lost, ...heldOut("v7")];
+    expect(move(later, plan)).toMatchObject({ move: "prepare" });
+    // Once it released, the campaign builds: nothing was held out since.
+    const released = event("task.state", { version: "v7", state: "released" });
+    expect(move([...later, released], plan)).toMatchObject({ move: "build" });
+  });
+
+  it("is left as it is where the count is reached, no count is held, or the setting names the tasks to score", () => {
+    const more = [...SET_UP, ...heldOut("v7")];
+    expect(move(more, { ...PLAN, practice: 1 })).toMatchObject({ move: "build" });
+    expect(move(more)).toMatchObject({ move: "build" });
+    // Six of the seven held-out tasks are named to score, and half of the one that is left is none.
+    const named = event("campaign.setting", {
+      solver: null,
+      minutes: 120,
+      turns: 24,
+      modelTurns: null,
+      tasks: HELD,
+      target: 6,
+    });
+    expect(move([named, ...more], plan)).toMatchObject({ move: "build" });
+    // A comparison is no Builder session: the release waits for one.
+    expect(move([...more, built("b-1", "h1")], plan)).toMatchObject({ move: "compare" });
+  });
+});
+
 describe("a step", () => {
   const stepped = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [4, 0, 2] })];
 

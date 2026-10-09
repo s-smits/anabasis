@@ -126,6 +126,8 @@ export function planOf(
     readonly target?: number | undefined;
     readonly pastStop?: string | undefined;
     readonly admits?: readonly string[] | undefined;
+    /** The practice tasks the campaign is brought to, where the caller holds a count. */
+    readonly practice?: number | undefined;
   },
   opening: Opening | null = openingOf(events),
 ): Plan {
@@ -150,5 +152,6 @@ export function planOf(
     prompted: opening?.prompt != null,
     ...keyIfDefined("pastStop", beside.pastStop),
     ...keyIfDefined("admits", beside.admits),
+    ...keyIfDefined("practice", beside.practice),
   };
 }

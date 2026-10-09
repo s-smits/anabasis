@@ -105,7 +105,7 @@ import { examineCommand } from "../d1b/examine.ts";
 import { campaignLog, openCampaign, packNamed } from "./campaign.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
-import { prepareCommand } from "./prepare.ts";
+import { PRACTICE, prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { COMPARISON_OPTIONS, capRead, type Seated, SESSION_OPTIONS, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
@@ -658,6 +658,7 @@ export async function harnessBuilder(
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],
         admits: admitsOf(values),
+        practice: values.practice === undefined ? PRACTICE : Number(values.practice),
       },
       opening,
     );

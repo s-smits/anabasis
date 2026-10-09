@@ -385,6 +385,12 @@ a comparison's size, the practice tasks, and a solve's wall and prompts until th
 recorded. A term no command named is its move's default. A flag that names another setting than
 the campaign's record is refused with both, as every command refuses it.
 
+Practice follows the supply. One release takes at most half of what is held, so a campaign that
+opens on a few tasks releases fewer than `--practice` names. Before a Builder session the table
+has more released, by the contract's draw, where tasks were held out since the last release. A
+task that a comparison scored before its release keeps that comparison's solves on the exam
+side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
+
 It opens a campaign over a stored pack, or from a prompt (`--prompt "<text>"` or `--prompt-file`,
 with `--solver`): the opening then holds the prompt, and the first move is the draft of row 0.
 A draft stands once the host's reading without a model finds no fault in it: its shape, a source

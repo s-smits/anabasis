@@ -27,6 +27,9 @@ export interface Plan {
   readonly sessions: number;
   /** Whether the campaign's pack holds a task its log does not. */
   readonly unprepared: boolean;
+  /** The practice tasks the campaign is brought to (`--practice`, `tools/d2/prepare.ts`), where
+   *  the caller holds a count. */
+  readonly practice?: number | undefined;
   /** The size a comparison is asked for at, as its admission reads it. */
   readonly wanted: Pick<Wanted, "target" | "level" | "restarted">;
   /** The operator's reason to go on past the stop rule, where one was given. */

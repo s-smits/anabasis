@@ -40,6 +40,8 @@
  * 8. Nothing new to compare: the Builder builds. Something new: it is compared once the sessions
  *    before a comparison have run, or tasks are written where the comparison would be short of
  *    them.
+ * 9. Before a Builder session, practice is brought towards the count the campaign names, where
+ *    tasks were held out since the last release.
  *
  * A setting is recorded once and again at each change (`campaign.setting`), and no reading is
  * carried across two. A campaign returns to a budget, so the comparisons under its setting are
@@ -311,7 +313,35 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
     };
   }
   const next = afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
-  return next.move === "compare" ? afforded(ground, next) : next;
+  if (next.move === "compare") return afforded(ground, next);
+  return (next.move === "build" ? toPractise(ground, supply) : null) ?? next;
+}
+
+/**
+ * A release for practice before a Builder session, where the campaign holds fewer practice tasks
+ * than it names and tasks were held out since the last release. One release takes at most half of
+ * what is held (`tools/d2/prepare.ts`), so a campaign that opens on a few tasks releases fewer
+ * than it names, and until 2026-10-09 it stayed there whatever was written later. The second
+ * campaign from a prompt named three practice tasks, released two of its five examples, and held
+ * out sixteen more tasks, written to leave a harness room: both its Builder sessions practised on
+ * the same two examples, and the second spent two of its six practice solves. The campaigns on
+ * the operator's host practised on two, two, three and six tasks. The draw is the contract's, and
+ * no solve chooses a task. Null where nothing is to release.
+ */
+function toPractise({ events, plan }: Ground, supply: ReturnType<typeof supplyOf>): Decided | null {
+  const { practice } = plan;
+  const last = events.findLastIndex(({ kind, data }) => kind === "task.state" && data.state === "released");
+  const since = events.some(
+    ({ kind, data }, index) => index > last && kind === "task.gate" && data.outcome === "passed",
+  );
+  // The tasks the setting names to score are no practice, and a release takes half of the rest.
+  const named = events.findLast(({ kind }) => kind === SETTING)?.data.tasks;
+  const pool = supply.held - (Array.isArray(named) ? named.length : 0);
+  if (practice === undefined || supply.released >= practice || !since || pool < 2) return null;
+  return {
+    move: "prepare",
+    why: `${String(supply.released)} of the ${plural(practice, "practice task")} the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds`,
+  };
 }
 
 /**

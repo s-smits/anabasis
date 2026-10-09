@@ -364,6 +364,10 @@ The closing report is a view of the log, names no task and holds no check, and s
 audited and what was not: what the Referee ruled, what a person's labels settled, and that no
 answer that passed was read by anyone.
 
+A move that solves waits for the host: a Builder session and a comparison start once the
+one-minute load is at or under the cores, and the command says once that it waits. `--loaded`
+starts them all the same, as it does for a launch.
+
 It opens a campaign over a stored pack, or from a prompt (`--prompt "<text>"` or `--prompt-file`,
 with `--solver`): the opening then holds the prompt, and the first move is the draft of row 0.
 A draft stands once the host's reading without a model finds no fault in it: its shape, a source

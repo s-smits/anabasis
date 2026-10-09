@@ -67,6 +67,10 @@
  * A move is recorded once it is made (`campaign.move`), with the reason the table gave, so the
  * log holds what was decided beside what was done.
  *
+ * **A move that solves waits for the host.** A Builder session and a comparison start once the
+ * host's one-minute load is at or under its cores, since a solve's wall counts the clock.
+ * `--loaded` starts them all the same.
+ *
  * `--dry-run` prints the next move and makes none. Under a rehearsal's seats (`tools/runs/`) the
  * same loop runs with a script in each model seat, no budget and no model.
  *
@@ -85,6 +89,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname } from "#src/meta/path.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { draftCommand } from "../d1b/draft.ts";
@@ -105,6 +110,16 @@ export interface Seats {
   readonly examine?: typeof examine | undefined;
   /** The session that drafts the exam of a campaign opened from a prompt: `draftExam`, or a script. */
   readonly draft?: typeof draftExam | undefined;
+  /** The host a move starts into: its one-minute load, its cores, and how long the command waits
+   *  before it looks again. The host's own unless a test stands in for it. */
+  readonly host?: Host | undefined;
+}
+
+/** A host as a move's start reads it. */
+interface Host {
+  readonly load: () => number;
+  readonly cores: number;
+  readonly waitMs: number;
 }
 
 /** What every move of one turn of the loop is made with. */
@@ -156,6 +171,7 @@ const OPTIONS = {
   "exam-turns": { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },
+  loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
   unattended: { type: "boolean", default: false },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
@@ -164,6 +180,8 @@ const OPTIONS = {
  *  dollars, the Builder sessions before a comparison, and a seat's effort. */
 const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
 const OPENED = "campaign.opened";
+/** This host: its one-minute load, its cores, and half a minute between two looks at the load. */
+const HOST: Host = { load: () => loadavg()[0] ?? 0, cores: availableParallelism(), waitMs: 30_000 };
 const ENDED = "campaign.ended";
 /** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
  *  command wants a name, and the script is what is asked. */
@@ -490,6 +508,29 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
   return { session };
 }
 
+/**
+ * Wait until the host's load is at or under its cores, before a move that solves. A solve's wall
+ * counts the clock, so what starts into a loaded host reaches walls an idle one would not, and
+ * slows every run beside it: on 9 October one harness answered the same seven tasks in a median
+ * of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). The launcher
+ * refuses such a launch once (`tools/runs/launch.ts`), and a session then queued the next move
+ * by hand behind the load. A campaign that runs for hours meets the question at every move, so
+ * it waits here, says so once, and looks again. `--loaded` starts the move all the same, which
+ * is the operator's word that its times will not be compared.
+ */
+async function quiet(host: Host, move: string): Promise<void> {
+  let said = false;
+  for (let load = host.load(); load > host.cores; load = host.load()) {
+    if (!said) {
+      console.log(
+        `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: ${move} waits until it is at or under them, or pass --loaded`,
+      );
+    }
+    said = true;
+    await Bun.sleep(host.waitMs);
+  }
+}
+
 /** The checks `--admit` names, which is the operator's word for each. */
 function admitsOf(values: Values): string[] {
   return (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()]));
@@ -588,6 +629,12 @@ export async function harnessBuilder(
         `a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${decided.harness} --yes, or run this command with --unattended`,
       );
       return decided;
+    }
+    // A Builder session's practice solves and a comparison's solves are held to a wall: neither
+    // starts into a loaded host. A rehearsal's seats are scripts, whose times nobody compares.
+    const solves = decided.move === "build" || decided.move === "compare";
+    if (solves && !values.loaded && (seats.host !== undefined || seats.seated === solved)) {
+      await quiet(seats.host ?? HOST, decidedLine(decided).split(":")[0] ?? decided.move);
     }
     let left: JsonObject;
     try {

@@ -177,11 +177,25 @@ describe("a campaign run by its log", () => {
         builder: scripted([["finish", { note: "Nothing to change." }]]),
       }),
     };
+    // The host is loaded at the first two looks: a move that solves waits, and the others do not.
+    const looks: number[] = [];
+    const host = {
+      load: () => {
+        looks.push(looks.length);
+        return looks.length <= 2 ? 99 : 0;
+      },
+      cores: 4,
+      waitMs: 1,
+    };
     // A dry run names the first move and writes nothing.
     expect(await harnessBuilder([...flags, "--dry-run"], seats)).toMatchObject({ move: "accept" });
     expect(of(name, "campaign.opened")).toEqual([]);
 
-    const ending = await harnessBuilder([...flags, "--practice", "2"], seats);
+    const ending = await harnessBuilder([...flags, "--practice", "2"], { ...seats, host });
+    // Reading the exam and setting the tasks apart asked the host nothing. The first session
+    // looked three times: twice at a loaded host, where it said so and waited, and once at a
+    // quiet one. The two sessions after it looked once each.
+    expect(looks).toHaveLength(5);
     expect(ending).toEqual({
       move: "end",
       ending: "stop",

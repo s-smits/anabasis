@@ -465,15 +465,12 @@ describe("the Diagnoser", () => {
     record("verdict", { solve: "s-1", task: "t-1", answer: ANSWER, kind: "fail", blocking: ["span"] });
     record("solve.finished", { solve: "s-1", ending: { outcome: "fail", kind: "rejected" } });
   };
-  /** v1 released: screened, the anchor drawn from another version first. */
+  /** v1 released for practice, beside a held-out v0. */
   const released = (record: ReturnType<typeof setup>["record"]) => {
     for (const version of ["v0", "v1"]) {
       record("task.proposed", { version });
-      for (const gate of [1, 2, 3, 4]) {
-        record("task.gate", { version, gate, outcome: "passed", controls: "digest" });
-      }
+      record("task.gate", { version, gate: 1, outcome: "passed" });
     }
-    record("anchor.drawn", { tasks: ["v0"] });
     record("task.state", { version: "v1", state: "released" });
   };
   const fail = (s: ReturnType<typeof setup>) => ({

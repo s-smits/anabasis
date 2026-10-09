@@ -1,113 +1,61 @@
 /**
- * What an Examiner is told of the tasks earlier sessions of its campaign wrote: how each stands now.
+ * What an Examiner is told of the tasks its campaign holds: one outcome each.
  *
- * An Examiner session used to start with no memory. It was told one word of each task it wrote, and
- * the next session's Examiner, a new process, was told nothing of them, so nothing an earlier
- * session measured could move what a later one wrote. v1's author did hear what was measured:
- * every battery's counts, how long its slowest solve took, and after a full pass that the next
- * battery had to ask more (`renderReadout`, v1 `src/run/climb-readout.ts`). What v1 measured about
- * that channel is kept. An author told a zone, a share or a target count wrote towards it, and one
- * told each answer's distance from its limit moved limits (v1 `AGENTS.md`, "Tried and taken out").
- * An author told what was measured, and nothing to aim at, is what stayed.
+ * An Examiner session starts with no memory, and since 2026-10-09 it is put to no solver either: a
+ * task is held out on the shape of its package (`src/kernel/task.ts`), so nothing a session does
+ * tells its author whether a task was any good. What tells it is the comparisons. The plan has the
+ * author see every task of the campaign, the pack's and the ones earlier sessions wrote, the older
+ * and easier ones included, each with its outcome so far: one harness won, a tie between valid
+ * answers, no valid answer yet, or disputed (`docs/plan.md`, Phase 2). That is every word here
+ * beside the ones about a task's own standing in the campaign. It is a view of the log, and no
+ * store is kept for it. Until that day a session was shown the pack's tasks by id and family alone,
+ * and no outcome.
  *
- * So each line here is a measurement and no instruction: the word the task has now, read against
- * the harness the campaign stands on and not the one it began with (`src/kernel/ladder.ts`), how
- * many of the solves read failed, and which checks refused them. The checks are the Examiner's to
- * know, since it names them in its controls. Nothing of a solver's answer or trace is here, and
- * nothing of the harness.
- *
- * A wall-bound task is said to be so at the time limit it was measured under, and no more: the
- * verdict holds under those limits alone (`src/kernel/limits.ts`), and once the campaign runs
- * under a longer wall the task is back in the pool and reads `not yet measured` until it is solved
- * again. The limit is never given as a number, nor how near a solve came to it, for the reason
- * above.
+ * What v1 measured about this channel is kept. An author told a zone, a share or a target count
+ * wrote towards it, and one told each answer's distance from its limit moved limits (v1
+ * `AGENTS.md`, "Tried and taken out"); the plan lists the difficulty band among what it will not
+ * tell. So a line names no harness, no count of solves, no check and no budget.
  */
-import { type Rule, type Stand, solvesOf, standing } from "../kernel/ladder.ts";
+import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import type { Counted } from "../kernel/solve.ts";
-import { taskSets } from "../kernel/task.ts";
-import { asRecord, isString } from "../meta/json-shape.ts";
-import { countBy } from "../meta/tally.ts";
+import { type Outcome, outcomesOf } from "../kernel/reports.ts";
+import { taskStates } from "../kernel/task.ts";
+import type { Task } from "../kernel/verify.ts";
 
-/** What a state that is not a standing says of a task. */
+/** How each outcome is said. */
+const SAID: Readonly<Record<Outcome, string>> = {
+  won: "one harness won",
+  tie: "a tie between valid answers",
+  "no-valid-answer": "no valid answer yet",
+  disputed: "disputed: a rejection of an answer to it is not settled",
+};
+/** What a state that is not held out says of a task. */
 const SETTLED = new Map([
-  ["too-hard", "too hard for now: no stronger solve of it has passed"],
-  ["too-easy", "too easy: the solver passes it"],
-  [
-    "wall-bound",
-    "wall-bound: the solver only ran out of time on it, at the time limit it was measured under",
-  ],
   ["released", "in use as practice, and so never scored"],
-  ["disputed", "set aside: a check was at fault on a solver's answer"],
-]);
-/** How a fail that reached no check is said. */
-const UNJUDGED = new Map([
-  ["wall-ended", "ran to the wall"],
-  ["context-ended", "ran out of context"],
-  ["no-answer", "gave no answer"],
+  ["disputed", "disputed: a check was at fault on an answer to it"],
 ]);
 
-/** What stopped the failed ones among `solves`, as an author is told it: the checks that refused an
- *  answer, or how a solve ended short of one. Empty when none failed. */
-export function stoppedBy(
+/** One line a task among `tasks`, in their order: the task by id and family, and its outcome. A
+ *  task the log refused is left out, since it is no task of the exam. One the log does not hold,
+ *  and one no comparison has scored, is not yet compared. */
+export function heard(
   events: readonly LogEvent[],
-  solves: readonly { readonly solve: string; readonly ending: Counted }[],
-): string {
-  const blocking = new Map(
-    events.flatMap(({ kind, data }): [string, string[]][] =>
-      kind === "verdict" && isString(data.solve) && Array.isArray(data.blocking)
-        ? [[data.solve, data.blocking.filter(isString)]]
-        : [],
-    ),
-  );
-  const stopped = countBy(
-    solves.flatMap(({ solve, ending }) => {
-      if (ending.outcome !== "fail") return [];
-      const checks = blocking.get(solve) ?? [];
-      return checks.length > 0
-        ? checks.map((check) => `refused by ${check}`)
-        : [UNJUDGED.get(ending.kind) ?? "failed"];
+  tasks: readonly Pick<Task, "taskId" | "family">[],
+): string[] {
+  const states = taskStates(events);
+  const outcomes = outcomesOf(events);
+  const versions = new Map(
+    proposalsOf(events).flatMap(({ version, taskId, task }) => {
+      const id = task?.taskId ?? taskId;
+      return id === null ? [] : [[id, version] as const];
     }),
-    (how) => how,
   );
-  return Object.entries(stopped)
-    .map(([what, times]) => `${what}${times > 1 ? ` (${String(times)})` : ""}`)
-    .join(", ");
-}
-
-/** What was measured of a task on `solves`, after its word: the fails among them and what stopped
- *  them. */
-export function tally(
-  events: readonly LogEvent[],
-  solves: readonly { readonly solve: string; readonly ending: Counted }[],
-): string {
-  const failed = solves.filter(({ ending }) => ending.outcome === "fail").length;
-  const how = stoppedBy(events, solves);
-  return `${String(failed)} of ${String(solves.length)} solves failed${how === "" ? "" : `, ${how}`}`;
-}
-
-/** One line a task an Examiner session wrote, in the order they were written. A refused task is
- *  left out, since its author was told why when it was refused, and so is one still short of its
- *  controls, which the opening message hands over whole. */
-export function measured(events: readonly LogEvent[], stand: Stand, rule: Rule): string[] {
-  const { states, feasible } = taskSets(events);
-  return events.flatMap(({ kind, data }) => {
-    const task = asRecord(kind === "task.proposed" && isString(data.session) ? data.task : null);
-    const { version } = data;
-    if (task === null || !isString(version) || !isString(task.taskId)) return [];
+  return tasks.flatMap(({ taskId, family }) => {
+    const version = versions.get(taskId) ?? "";
     const state = states.get(version) ?? "";
-    if (state === "refused" || state === "stale") return [];
-    const name = `${task.taskId} (family ${isString(task.family) ? task.family : ""})`;
-    const settled = SETTLED.get(state);
-    if (settled !== undefined) return [`${name}: ${settled}`];
-    if (!feasible.has(version)) return [];
-    const read = solvesOf(events, version, stand).slice(-rule.solves);
-    const stood = standing(
-      read.map(({ ending }) => ending),
-      rule,
-    );
-    if (stood === "unknown") return [`${name}: not yet measured`];
-    const word = { stops: "scored", clears: "too easy", walled: "wall-bound" }[stood];
-    return [`${name}: ${word}: ${tally(events, read)}`];
+    if (state === "refused") return [];
+    const outcome = outcomes.get(version);
+    const said = SETTLED.get(state) ?? (outcome === undefined ? "not yet compared" : SAID[outcome]);
+    return [`${taskId} (family ${family}): ${said}`];
   });
 }

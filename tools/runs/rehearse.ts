@@ -1,19 +1,22 @@
 /**
- * `bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held fail:pass] [--anchor pass:pass]`
+ * `bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held fail:pass] [--baseline fail]`
  *
  * A round over a seeded campaign (`seed.ts`) with a script in each model seat and no model called.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's wall and disk cap, the harness's own
- * artifact-writer, the verifier, the screening rule, the comparison and the report. It is
- * `roundCommand` with other seats, so its flags and defaults are the round's. The three flags that
- * name a model are refused: no reviewer reads a rehearsal's fails.
+ * artifact-writer, the verifier, the comparison and the report. It is `roundCommand` with other
+ * seats, so its flags and defaults are the round's, but that it needs no `--cap`: a script is paid
+ * nothing. The three flags that name a model are refused. No reviewer reads a rehearsal, so every
+ * scripted rejection waits for a person and sets its task aside, as a paid round's would with no
+ * reviewer: the report's `counted` holds the tally were they to stand, and `tools/d2/settle.ts`
+ * settles it on labels, which is the path a rehearsal of a step walks to its end.
  *
  * The Builder's script adds one line to the harness's guide through its walled shell and finishes.
  * A solve's script hands the harness's artifact-writer an answer on record for the task and submits
- * it: an answer the checks accepted for a pass (the pack's accept control, or the answer a session's
- * stronger solve was accepted on), the task's first reject control for a fail. `--held` says how a
- * solve of a task outside the anchor ends under the old harness and under the new one, as
- * `old:new`, and `--anchor` the same for the anchor's tasks. The defaults script a step.
+ * it: an answer the checks accepted for a pass, one a check rejected for a fail. `--held` says how
+ * a solve of a held-out task ends under the reference harness and under the new one, as
+ * `old:new`, and `--baseline` how one ends under the minimal baseline, which is solved only when
+ * the comparison reads a step. The defaults script a step.
  *
  * It proves the joins and nothing of a model: that each command takes what the one before it left,
  * and that the readings come out as the script was written to make them. A scripted solve that
@@ -23,31 +26,31 @@
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import type { Control } from "#src/kernel/acceptance.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { taskVersion } from "#src/kernel/task.ts";
+import { verdictsOf } from "#src/kernel/solves.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { openHarness } from "#src/solve/harness.ts";
-import { carriable, setsOf } from "../d2/campaign.ts";
+import { baseline } from "../d2/campaign.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { passedOn } from "./launch.ts";
 import { SEED_FILE } from "./pulse.ts";
 
 type End = "pass" | "fail";
-/** How a scripted solve ends under the old harness and under the new one. */
+/** How a scripted solve ends under the reference harness and under the new one. */
 interface Sides {
   readonly old: End;
   readonly fresh: End;
 }
-/** The script of a rehearsal's solves: of the tasks outside the anchor, and of the anchor's. */
+/** The script of a rehearsal's solves: under the reference harness and the new, and under the baseline. */
 interface Script {
   readonly held: Sides;
-  readonly anchor: Sides;
+  readonly baseline: End;
 }
 
-const OWN = new Set(["held", "anchor"]);
+const OWN = new Set(["held", "baseline"]);
 const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A list price for the scripted model, which the meter refuses to run without: what a rehearsal
  *  meters is the script's own words at this price, and is no cost. */
@@ -59,30 +62,27 @@ const GUIDE = "harness/agent/BUILT_AGENTS.md";
 export function sidesOf(flag: string): Sides {
   const [old, fresh, ...more] = flag.split(":");
   if ((old !== "pass" && old !== "fail") || (fresh !== "pass" && fresh !== "fail") || more.length > 0) {
-    throw new Error(`${flag}: say how a solve ends under the old harness and the new, as pass:fail`);
+    throw new Error(`${flag}: say how a solve ends under the reference harness and the new, as pass:fail`);
   }
   return { old, fresh };
 }
 
 /**
  * The answers on record for each task, by its id: the first the checks accepted and the first a
- * check refused. `graded` are the pack's, the accepted ones first: a stored solve the sweep graded
+ * check rejected. `graded` are the pack's, the accepted ones first: a stored solve the sweep graded
  * a pass comes before the pack's own accept control, which can be stale. On the truss pack every
- * accept control of the anchor's four tasks was refused by four to seven checks (2026-10-08). A
- * session's log answers for the tasks it wrote: the answer its stronger solve was accepted on, and
- * the controls gate 4 passed.
+ * accept control of four tasks was rejected by four to seven checks (2026-10-08). The log answers
+ * for the tasks no pack holds: every answer a verdict of it accepted or rejected, so a task a
+ * session wrote can be scripted once some solve has answered it.
  */
 export function answersOf(graded: readonly Control[], events: readonly LogEvent[]) {
-  const written = carriable(events).feasible.flatMap(({ task, accepted, controls: set }) => [
-    { taskId: task.taskId, answer: accepted, refusedBy: null },
-    ...set.map(({ answer, expectedCheckId }) => ({
-      taskId: task.taskId,
-      answer,
-      refusedBy: expectedCheckId,
-    })),
-  ]);
+  const solved = [...verdictsOf(events).values()].flatMap(({ task, answer, checker }) =>
+    task === null || answer === undefined || checker === null || checker.kind === "faulty"
+      ? []
+      : [{ taskId: task, answer, refusedBy: checker.kind === "pass" ? null : "a check" }],
+  );
   const known = new Map<string, Partial<Record<End, JsonValue>>>();
-  for (const { taskId, answer, refusedBy } of [...graded, ...written]) {
+  for (const { taskId, answer, refusedBy } of [...graded, ...solved]) {
     const end = refusedBy === null ? "pass" : "fail";
     known.set(taskId, { [end]: answer, ...known.get(taskId) });
   }
@@ -106,17 +106,27 @@ function scripted(calls: readonly (readonly [string, JsonObject])[], asked: numb
 
 /** The seats of a rehearsal. `strayed` takes each solve that ended otherwise than scripted. */
 export function scriptedSeats(script: Script, graded: readonly Control[], strayed: string[]): Seated {
-  return (campaign, { parent }) => {
+  return (campaign, { reference }) => {
     const folder = dirname(campaign.log);
     if (!existsSync(join(folder, SEED_FILE))) {
       throw new Error(
         `${folder} is no seed: a rehearsal writes scripted solves, which a campaign's next round would count. Copy it first with bun run runs seed`,
       );
     }
-    const events = read(campaign.log);
-    const anchor = new Set(setsOf(events).anchor);
-    const answers = answersOf(graded, events);
-    let writer: Promise<string | undefined> | undefined;
+    const answers = answersOf(graded, read(campaign.log));
+    const least = baseline(campaign);
+    /** Each harness's artifact-writer by the harness's folder: the baseline's is not the cycle's. */
+    const writers = new Map<string, Promise<string | undefined>>();
+    const writerOf = (dir: string) => {
+      const known =
+        writers.get(dir) ??
+        openHarness(dir).then(({ kinds }) => [...kinds].find(([, kind]) => kind === "artifact-writer")?.[0]);
+      writers.set(dir, known);
+      return known;
+    };
+    /** Which of the three a solve's harness is, as a strayed solve is named. */
+    const sideOf = async (dir: string) =>
+      dir === reference ? "old" : dir === (await least).dir ? "baseline" : "new";
     return {
       builder: scripted(
         [
@@ -128,16 +138,13 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       // Every scripted solver is the same model at the same price, so one names the setting of all.
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill) => {
-        const sides = anchor.has(taskVersion(task)) ? script.anchor : script.held;
-        const wanted = harness.dir === parent ? sides.old : sides.fresh;
+        const side = await sideOf(harness.dir);
+        const wanted = { old: script.held.old, new: script.held.fresh, baseline: script.baseline }[side];
         const answer = asRecord(answers.get(task.taskId)?.[wanted]);
-        writer ??= openHarness(parent).then(
-          ({ kinds }) => [...kinds].find(([, kind]) => kind === "artifact-writer")?.[0],
-        );
-        const tool = await writer;
+        const tool = await writerOf(harness.dir);
         if (answer === null || tool === undefined) {
           throw new Error(
-            `${task.taskId} has no answer on record that the checks ${wanted === "pass" ? "accepted" : "refused"}, so no script can ${wanted} it`,
+            `${task.taskId} has no answer on record that the checks ${wanted === "pass" ? "accepted" : "rejected"}, so no script can ${wanted} it`,
           );
         }
         const by = scripted(
@@ -155,7 +162,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
             : ending.outcome === "fail" && ending.kind === "rejected";
         if (!held) {
           strayed.push(
-            `${done.solve}: ${task.taskId} under the ${harness.dir === parent ? "old" : "new"} harness was scripted to ${wanted} and ended ${JSON.stringify(ending)}`,
+            `${done.solve}: ${task.taskId} under the ${side === "baseline" ? "baseline" : `${side === "old" ? "reference" : "new"} harness`} was scripted to ${wanted} and ended ${JSON.stringify(ending)}`,
           );
         }
         return done;
@@ -172,7 +179,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     tokens: true,
     options: {
       held: { type: "string", default: "fail:pass" },
-      anchor: { type: "string", default: "pass:pass" },
+      baseline: { type: "string", default: "fail" },
       root: { type: "string" },
       sweep: { type: "string" },
       bundle: { type: "string" },
@@ -181,15 +188,21 @@ export async function rehearse(args: readonly string[]): Promise<void> {
       reviewer: { type: "string" },
     },
   });
-  const { held, anchor, root, sweep, bundle } = values;
+  const { held, baseline: least, root, sweep, bundle } = values;
   const seated = (["builder", "solver", "reviewer"] as const).filter((seat) => values[seat] !== undefined);
   if (seated.length > 0) {
     // A reviewer named here would be a live one, reading scripted fails for money.
     throw new Error(`a rehearsal seats no model: drop --${seated.join(", --")}`);
   }
-  if (!isString(held) || !isString(anchor) || !isString(root) || !isString(sweep) || !isString(bundle)) {
+  if (
+    !isString(held) ||
+    (least !== "pass" && least !== "fail") ||
+    !isString(root) ||
+    !isString(sweep) ||
+    !isString(bundle)
+  ) {
     throw new Error(
-      "usage: bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held old:new] [--anchor old:new]",
+      "usage: bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held old:new] [--baseline pass|fail]",
     );
   }
   const passes = sweepRows(root, sweep).flatMap((row) => {
@@ -199,11 +212,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   const strayed: string[] = [];
   const report = await roundCommand(
     passedOn(args, tokens, OWN),
-    scriptedSeats(
-      { held: sidesOf(held), anchor: sidesOf(anchor) },
-      [...passes, ...packControls(bundle)],
-      strayed,
-    ),
+    scriptedSeats({ held: sidesOf(held), baseline: least }, [...passes, ...packControls(bundle)], strayed),
   );
   if (report.fresh === null) strayed.push("the Builder's script left the harness as it was");
   if (strayed.length === 0) {

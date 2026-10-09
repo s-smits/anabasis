@@ -76,8 +76,8 @@ afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A scratch with the fixture harness as the parent, and a log in which v1 and v2 are released, v0
- *  is the anchor's and v3 is admitted. `endings` are what the practice solves end in, in order.
+/** A scratch with the fixture harness as the parent, and a log in which v1 and v2 are released and
+ *  v0 and v3 are held out. `endings` are what the practice solves end in, in order.
  *  With `tree`, the parent has an installed program. */
 async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree = false) {
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-builder-")));
@@ -97,14 +97,10 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
   const record_ = (kind: EventKind, data: JsonObject) => append(log, kind, data);
   for (const version of ["v0", "v1", "v2", "v3"]) {
     record_("task.proposed", { version });
-    for (const gate of [1, 2, 3, 4]) {
-      record_("task.gate", { version, gate, outcome: "passed", controls: "d" });
-    }
+    record_("task.gate", { version, gate: 1, outcome: "passed" });
   }
-  record_("anchor.drawn", { tasks: ["v0"] });
   record_("task.state", { version: "v1", state: "released" });
   record_("task.state", { version: "v2", state: "released" });
-  record_("task.state", { version: "v3", state: "admitted" });
   const digest = (await openHarness(parent)).digest;
   const condition = (task: string, harness: string): Condition => ({
     contract: "c1",
@@ -147,7 +143,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     record_("solve.finished", { solve, ending });
     return solve;
   };
-  // The parent's screening solves: v1 failed once, v3 is the admitted task's.
+  // Solves on record before the session: v1 failed once, and v3 is a held-out task's.
   solved("v1", digest, { outcome: "fail", kind: "rejected" });
   const exam = solved("v3", digest, { outcome: "fail", kind: "rejected" });
   const sent: string[] = [];
@@ -236,7 +232,7 @@ describe("a Builder session", () => {
     const s = await setup([]);
     const exam = { version: "v3", task: { taskId: "t-3", family: "fixture", publicInput: {} } };
     await expect(session({ ...s.request, tasks: [...TASKS, exam] }, s, s.walled)).rejects.toThrow(
-      "task t-3 is admitted, and a Builder practises on released tasks only",
+      "task t-3 is held, and a Builder practises on released tasks only",
     );
     const anchor = { version: "v0", task: { taskId: "t-0", family: "fixture", publicInput: {} } };
     await expect(session({ ...s.request, tasks: [anchor] }, s, s.walled)).rejects.toThrow("task t-0 is held");
@@ -328,55 +324,6 @@ describe("a Builder session", () => {
       "finish",
     ]);
     expect(record(s.events(), "v1", built.harness ?? "")).toEqual({ solves: ["s-3"], passed: 0 });
-  });
-
-  it("is told the objective, what a valid practice answer reports and the best known of its task", async () => {
-    const objective = {
-      quantity: "mass",
-      direction: "minimise",
-      path: "$.mass",
-      verifiedBy: "check-mass",
-      margin: { absolute: 0, relative: 0.01 },
-    } as const;
-    const s = await setup([call("practice", { tasks: ["t-1", "t-1", "t-2"] }), finish]);
-    // Each practice solve passes, and its verdict holds the answer with the mass it reports; the
-    // third reports none.
-    const masses = [120, 95, null];
-    await session(
-      {
-        ...s.request,
-        contract: { ...CONTRACT, objective },
-        practise: async (task, dir, harness, kill) => {
-          const made = await s.request.practise(task, dir, harness, kill);
-          const mass = masses.shift() ?? null;
-          append(s.request.log, "verdict", {
-            solve: made.solve,
-            task: task.task.taskId,
-            kind: "pass",
-            answer: mass === null ? { answer: "42" } : { answer: "42", mass },
-          });
-          return made;
-        },
-      },
-      s,
-      s.walled,
-    );
-    expect(s.sent[0]).toContain(
-      "Objective: minimise mass. Among answers that meet every rule, a lower mass is the better answer. An answer reports it at $.mass. The solver is told the same sentence with each task.",
-    );
-    const practised = s.sent[1] ?? "";
-    expect(practised).toContain(String.raw`t-1: pass. Solve s-3.\nIts answer is valid and reports mass 120.`);
-    expect(practised).toContain(String.raw`t-1: pass. Solve s-4.\nIts answer is valid and reports mass 95.`);
-    // Both solves of the task are set against the best valid value any solve of it has reported.
-    expect(
-      practised.split("Best valid mass any solve of this task has reported: 95 (solve s-4)."),
-    ).toHaveLength(3);
-    expect(practised).toContain("Its answer is valid and reports no mass at $.mass.");
-    // Under a contract that states no objective nothing of it is said.
-    const plain = await setup([call("practice", { tasks: ["t-1"] }), finish]);
-    await session(plain.request, plain, plain.walled);
-    expect(plain.sent.join("\n")).not.toContain("Objective:");
-    expect(plain.sent[1]).not.toContain("Its answer is valid");
   });
 
   it("takes a task out of practice when the Referee rules its fail a check defect", async () => {

@@ -14,7 +14,6 @@
  * than the solver's own method" (`built-starter.ts:247-262` at 3f93d06b). So a solve under this
  * prompt is not under the sweep's condition, and `tools/m0/live-solve.ts` says where the two part.
  */
-import { type Objective, objectiveLine } from "../kernel/contract.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
@@ -76,11 +75,9 @@ export function publicView({ taskId, family, publicInput }: PublicTask): PublicT
   return { taskId, family, publicInput };
 }
 
-/** built-starter.ts:72-77, and after it the contract's objective where it states one: a solver
- *  that is not asked for the lightest design does not look for it (`docs/plan.md`, Phase 2). */
-export function firstTurn(task: PublicTask, objective?: Objective): string {
-  const asked = `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(task.publicInput, null, 2)}`;
-  return objective === undefined ? asked : `${asked}\n\n${objectiveLine(objective)}`;
+/** built-starter.ts:72-77. */
+export function firstTurn(task: PublicTask): string {
+  return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(task.publicInput, null, 2)}`;
 }
 
 /**

@@ -1,55 +1,30 @@
 /**
- * One Examiner session: the agent that writes tasks, and the host that puts each through its gates.
+ * One Examiner session: the agent that writes tasks, and the host that holds each one out.
  *
- * The plan's D1b is "one Examiner session writes task instances only", and until this file nothing
- * in v2 wrote a task: every task a gate had seen came from a pack v1 authored. The session is given
- * the domain's public contract, its checks by id and assertion, and existing tasks for their shape.
- * It proposes instances, and for each the host runs the task's own gates (`src/kernel/task.ts`):
+ * The session is given the domain's public contract, its checks by id and assertion, and every task
+ * the campaign holds, each with its outcome so far and readable whole. It proposes instances, and the host puts each to the task's one gate
+ * (`src/kernel/task.ts`): the shape of its package. An instance that passes is a held-out task from
+ * then on, and every comparison may score it. The Examiner is told that, or why the gate refused.
  *
- * 1. the package's shape;
- * 2. one solve under the stronger condition, whose pass is the witness that the task can be done;
- * 3. the checks again on the answer that solve submitted;
- * 4. three reject controls, which the Examiner writes as edits of that answer.
+ * No solve runs here. Until 2026-10-09 a session put each instance to a stronger solver, whose
+ * pass was the witness that the task could be done, ran the checks again on that answer, had the
+ * Examiner write three reject controls as edits of it, and then solved the task three times under
+ * the measured solver to tell its author a word. The plan after the v1 review removes all of it
+ * (`docs/plan.md`, Phase 2): v1's solver matched whatever its author's side found, the first
+ * sessions here lost 14 of 25 tasks at the stronger solve, and the second session spent $48.45 of
+ * which the Examiner's own turns were $2.01. What a task's author hears instead comes from the
+ * comparisons, one outcome a task, at the next session's opening (`record.ts`).
  *
- * A task past gate 4 is feasible. It is then solved under the test condition and the Examiner is
- * told what was measured: a word, how many of the solves failed and what stopped them. That is a
- * supply reading and the author's feedback, and it moves no task: a session has one harness, and a
- * task admitted or dropped on one harness's solves would be chosen by that harness's fails, which
- * is the selection the plan's symmetric admission exists to prevent. So a feasible task stays
- * held, the word is logged as `exam.word`, and a round screens the task under both of its
- * harnesses, where those solves count as its parent's side (`src/builder/round.ts`).
+ * What the Examiner is never given: a harness, a solver's trace or answer, a check's program. It
+ * has no shell and reads no file.
  *
- * The harness is the one the campaign stands on, the caller's to name (`standsOn`), and three
- * things follow it (`src/kernel/ladder.ts`). The witness and the test solves run under it, so
- * feasible and too easy are read against where the campaign is. A reach task, one an earlier
- * stronger solve did not pass, is put to the stronger solver again when that solve ran under
- * another harness than this one: each costs one stronger solve and counts against the session's
- * candidates, and one that passes now is handed to the Examiner for its controls. And the opening
- * message says how every task earlier sessions wrote stands now (`record.ts`), since an Examiner
- * is a new process each session and was told nothing of them.
+ * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
+ * an earlier session already wrote is not taken again, whatever id it would get.
  *
- * What the Examiner is never given: a harness, a solver's trace, or the measured solver's answers.
- * It has no shell and reads no file. It does read the stronger solve's accepted answer, since a
- * reject control is an edit of it: one field replaced or one passage rewritten, made by the host
- * from the change the Examiner names (`changedAnswer`), so a control is one fact apart from the
- * answer by construction and no author copies an answer out three times. It is told a gate's reason
- * when a gate refuses. Gates 1, 3 and 4 judge its own package and the checks it writes controls
- * for; gate 2's one reason is a check that could not run on the stronger solver's answer, which is
- * the instance's fault or the check's and says nothing of the solver being measured.
- *
- * A task an earlier session left past gate 3 with no controls written is handed to this one, whole
- * and with its accepted answer, in the opening message: its stronger solve is paid, and the
- * Examiner that wrote it is gone. It keeps the id it was given.
- *
- * A task's limit is set the plain way here, the plan's option A of decision 15: the Examiner sets it
- * and learns from the words. Option B, the host setting it from the stronger solve, changes a task
- * after its version is taken and waits on the operator's word.
- *
- * The session ends at `finish`, at its wall or its turns, when the host has the feasible tasks it
- * was asked for, or when a solve or the verifier throws, which stops a run: the session writes its
- * record and throws it again. A turn of its own the provider failed ends it crashed, with what the
- * provider said. An instance is logged whole with its proposal, hidden values too, so a
- * later solve of it needs the log and nothing beside it; no tool here returns a line of the log.
+ * The session ends at `finish`, at its wall or its turns, or when the host has the tasks it was
+ * asked for. A turn of its own the provider failed ends it crashed, with what the provider said.
+ * An instance is logged whole with its proposal, hidden values too, so a later solve of it needs
+ * the log and nothing beside it; no tool here returns a line of the log.
  */
 import {
   type AgentMessage,
@@ -69,58 +44,33 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { REPORTED_COST } from "../backends/claude.ts";
-import type { Practised } from "../builder/session.ts";
 import type { Contract } from "../kernel/contract.ts";
-import type { Stand } from "../kernel/ladder.ts";
-import { append, type EventKind, type LogEvent, read } from "../kernel/log.ts";
+import { writtenTasks } from "../kernel/history.ts";
+import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
-import type { Counted } from "../kernel/solve.ts";
-import { verdictsOf } from "../kernel/solves.ts";
-import {
-  CONTROLS,
-  controlsGate,
-  determinismGate,
-  packageGate,
-  type RejectControl,
-  screen,
-  type TaskPackage,
-  taskVersion,
-} from "../kernel/task.ts";
-import type { Task, Verifier } from "../kernel/verify.ts";
+import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
+import type { Task } from "../kernel/verify.ts";
 import { mkdtempSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, type JsonValue } from "../meta/json-shape.ts";
 import { tmpdir } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
-import { pooled } from "../meta/pool.ts";
-import { asError, errorMessage } from "../meta/runtime-values.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { type Change, changedAnswer } from "../review/probe.ts";
-import type { RefereeFinding } from "../review/referee.ts";
 import { text, tool } from "../solve/answer.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
-import { measured, stoppedBy, tally } from "./record.ts";
-
-/** The log kinds a candidate task's gates and states are recorded under. */
-const GATE: EventKind = "task.gate";
-const STATE: EventKind = "task.state";
-
-/** What an Examiner is told of a task. */
-export type Word = "refused" | "too hard" | "too easy" | "wall-bound" | "scored" | "undecided";
+import { heard } from "./record.ts";
 
 export interface ExamLimits {
   readonly wallSeconds: number;
   /** The model's turns, each reply one, with or without a tool call. */
   readonly turns: number;
-  /** Solves in flight at once, the stronger condition's and the test condition's alike. */
-  readonly concurrency: number;
-  /** Instances the session may put to gate 2, each of which costs a stronger solve. */
-  readonly candidates: number;
-  /** Feasible tasks told a word of their test-side solves, at which the host has what it needs and
-   *  ends the session: the plan's 24. A feasible task whose solves did not all count is not among
-   *  them, since the supply rule could not be read on it. */
-  readonly feasible: number;
+  /** Instances the session may put to the gate. */
+  readonly proposals: number;
+  /** Held-out tasks at which the host has what it asked for and ends the session. The Examiner is
+   *  never told the number. */
+  readonly tasks: number;
 }
 
 export interface ExamRequest {
@@ -129,30 +79,11 @@ export interface ExamRequest {
   readonly contract: Contract;
   /** The checks as the Examiner is shown them. */
   readonly checks: readonly CheckRow[];
-  /** Existing tasks of the domain, shown whole on request, for their shape. */
+  /** The tasks the campaign holds, the pack's and the ones earlier sessions wrote. Each is listed
+   *  at the opening with its outcome so far (`record.ts`), and shown whole on request. */
   readonly examples: readonly Task[];
-  /** Tasks earlier sessions left past gate 3, each with the answer the checks accepted. */
-  readonly waiting: readonly { readonly task: Task; readonly accepted: JsonValue }[];
-  /** Reach tasks to put to the stronger solver again: ones no stronger solve of which ran under
-   *  this session's harness and stronger setting. */
-  readonly reach: readonly Task[];
-  /** Where the measured solver stands in this session: the harness its solves run under and their
-   *  setting. The campaign's earlier tasks are read against it. */
-  readonly standsOn: Stand;
   /** An instance as a package: the caller's rule ids and check program for it. */
   readonly pack: (task: Task) => TaskPackage;
-  readonly verify: Verifier;
-  /** One solve of the task under the stronger condition and under the test condition. The caller
-   *  builds each condition, records it and hands `kill` to the solve. A throw ends the session. */
-  readonly strong: (task: TaskPackage, version: string, kill: AbortSignal) => Promise<Practised>;
-  readonly test: (task: TaskPackage, version: string, kill: AbortSignal) => Promise<Practised>;
-  /** Test-side solves of a feasible task, and the fails among them that make it scored. */
-  readonly screening: { readonly solves: number; readonly fails: number };
-  /** The Referee, when the caller has a reader for it, and whether a fail it rules a check defect
-   *  disputes the task or is only noted beside its word: the hand reading is the gate until the
-   *  Referee's rulings have cleared the operator's bar (`src/review/agreement.ts`). */
-  readonly referee?: (solve: string, task: TaskPackage, kill: AbortSignal) => Promise<RefereeFinding>;
-  readonly refereeDecides: boolean;
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: ExamLimits;
@@ -164,175 +95,62 @@ export interface ExamRequest {
 }
 
 export interface Examined {
-  /** The versions of the tasks past gate 4 and not disputed since, in the order they got there. */
-  readonly feasible: readonly string[];
-  /** The word each was told, by version. */
-  readonly words: Readonly<Record<string, Word>>;
+  /** The versions of the tasks this session held out, in the order it proposed them. */
+  readonly held: readonly string[];
+  /** The versions of the instances the gate refused. */
+  readonly refused: readonly string[];
   /** How the session ended: by `finish`, with the tasks the host asked for, at a limit, or otherwise. */
   readonly ended: "finished" | "supplied" | "wall" | "turns" | "killed" | "crashed" | "stopped";
-}
-
-/** A reject control as the Examiner sends it: one change to the accepted answer, and the check
- *  that must refuse the result. */
-type ControlEdit = Change & { readonly check: string };
-
-/** A task past gate 3, waiting for its controls. */
-interface Waiting {
-  readonly task: TaskPackage;
-  readonly version: string;
-  readonly accepted: JsonValue;
-  tries: number;
 }
 
 /** What a session's tools share. */
 interface Desk {
   readonly request: ExamRequest;
   proposed: number;
-  /** Reach tasks put to the stronger solver again, each of which cost a candidate's solve. */
-  again: number;
-  /** The instances proposed so far, by content, so that one is not paid for twice. */
-  readonly seen: Set<string>;
-  readonly waiting: Map<string, Waiting>;
-  readonly feasible: string[];
-  /** Feasible tasks told too easy, wall-bound or scored: the ones the supply rule reads. */
-  screened: number;
-  readonly words: Map<string, Word>;
-  /** Referee failures, kept for the host. */
-  readonly faults: string[];
-  /** Aborted when a solve or the verifier threw, which ends the session. */
-  readonly halt: AbortController;
-  fatal: Error | null;
+  /** The instances this campaign has been given so far, by content, so that none is taken twice:
+   *  this session's, and the ones earlier sessions wrote. */
+  readonly seen: Map<string, "now" | "earlier">;
+  readonly held: string[];
+  readonly refused: string[];
   note: string | null;
 }
 
-/** Times a task's controls may be written before gate 4 refuses it: a control is checked by the
- *  verifier alone, and a second stronger solve of the same instance would cost far more. */
-const CONTROL_TRIES = 3;
-/** The most of an example or an accepted answer one result shows. */
+/** The most of an example one result shows. */
 const SHOWN_CHARS = 20_000;
 const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
 
-const shown = (value: JsonValue) => capturedJsonStringify(value, null, 2).slice(0, SHOWN_CHARS);
-
-/** A task an earlier session left waiting, as the opening message shows it: whole, since this
- *  session's Examiner did not write it, and with the answer its controls are edits of. */
-function handed({ task, accepted }: ExamRequest["waiting"][number]): string {
-  const { taskId, family, publicInput, hidden } = task;
-  return `${taskId}:\n${shown({ family, publicInput, hidden })}\nThe answer the checks accepted:\n${shown(accepted)}`;
+/** An instance by what a solver and the checks read of it, whatever id it carries. */
+function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
+  return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
 }
 
 /** Whether the host has the tasks it asked for. */
 function supplied(desk: Desk): boolean {
-  return desk.screened >= desk.request.limits.feasible;
+  return desk.held.length >= desk.request.limits.tasks;
 }
 
-/** A harness that cannot list its tools fails every task before its first turn. That is the host's
- *  to mend and no task's fault, so it ends the session where a task's own fail would be a word. */
-function refuseBroken(ending: Practised["ending"]): void {
-  if (ending.outcome === "fail" && ending.kind === "broken-harness") {
-    throw new Error(`the harness is broken, so no solve of any task counts: ${ending.reason}`);
-  }
-}
-
-/** Stop the session on what a solve or the verifier threw, and tell the Examiner only that. */
-function halted(desk: Desk, error: unknown): Error {
-  desk.fatal ??= asError(error);
-  desk.halt.abort();
-  return new Error("The host could not go on, which is not your task's fault. The session ends here.");
-}
-
-/** Record the word a task's author is told of it, and return it. */
-function told(desk: Desk, task: Pick<Task, "taskId">, version: string, word: Word, why: JsonObject): Word {
-  desk.words.set(version, word);
-  append(desk.request.log, "exam.word", {
-    session: desk.request.id,
-    version,
-    taskId: task.taskId,
-    word,
-    ...why,
-  });
-  return word;
-}
-
-/**
- * Gates 2 and 3 for one task: one solve under the stronger condition, and the checks again on its
- * answer. It returns the line the Examiner is told, and leaves the task waiting for its controls
- * when it is feasible so far. `again` is a reach task put to the stronger solver once more: it is
- * in `too-hard` already, and a pass takes it out.
- */
-async function witnessed(
-  desk: Desk,
-  task: TaskPackage,
-  version: string,
-  given: { readonly kill: AbortSignal; readonly again: boolean },
-): Promise<string> {
-  const { request } = desk;
-  const { log } = request;
-  const { kill, again } = given;
-  const record = (kind: EventKind, data: JsonObject) => append(log, kind, { version, ...data });
-  const refused = (reason: string) => {
-    record(STATE, { state: "refused", session: request.id });
-    return `${task.taskId}: ${told(desk, task, version, "refused", { reason })}: ${reason}`;
-  };
-  const { solve, ending } = await request.strong(task, version, kill);
-  refuseBroken(ending);
-  if (ending.outcome === "non-result" && ending.kind !== "check") {
-    told(desk, task, version, "undecided", { solve, kind: ending.kind });
-    return `${task.taskId}: undecided: the host could not finish a solve of it, which says nothing of the task.`;
-  }
-  if (ending.outcome === "non-result") {
-    record(GATE, { gate: 2, outcome: "refused", solve, reason: ending.reason });
-    return refused(`a check could not run on a solver's answer: ${ending.reason}`);
-  }
-  if (ending.outcome === "fail") {
-    // The task has no witness yet. That says something of this solve under this harness, and of
-    // the task only that it is not easy: in v1 most of a solver's misses were a check's (36 of 47,
-    // v1 #124), and the first sessions here lost 14 of 25 tasks at this gate for good. It waits as
-    // a reach task, and is put to the stronger solver again when the campaign's harness has
-    // improved. The Referee, where the caller has one, reads a refused answer and is noted beside
-    // the word, for whoever owns the checker.
-    const flagged: string[] = [];
-    if (ending.kind === "rejected" && request.referee !== undefined) {
-      try {
-        if ((await request.referee(solve, task, kill)).ruling === "check-defect") flagged.push(solve);
-      } catch (error) {
-        desk.faults.push(`${solve}: ${errorMessage(error)}`);
-      }
-    }
-    record(GATE, { gate: 2, outcome: "too-hard", solve, kind: ending.kind });
-    if (!again) record(STATE, { state: "too-hard", session: request.id });
-    told(desk, task, version, "too hard", { solve, kind: ending.kind, flagged, again });
-    const how = stoppedBy(read(log), [{ solve, ending }]);
-    return `${task.taskId}: too hard for now: the stronger solver did not pass it${how === "" ? "" : ` (${how})`}.`;
-  }
-  const accepted = verdictsOf(read(log)).get(solve)?.answer;
-  if (accepted === undefined) throw new Error(`solve ${solve} passed and left no answer in the log`);
-  record(GATE, { gate: 2, outcome: "passed", solve });
-
-  const repeated = await determinismGate(request.verify, task, accepted);
-  record(GATE, { gate: 3, ...repeated });
-  if (repeated.outcome === "refused") return refused(repeated.reason);
-  if (again) record(STATE, { state: "held", session: request.id });
-  desk.waiting.set(task.taskId, { task, version, accepted, tries: 0 });
-  return `${task.taskId}: feasible so far. The answer the checks accepted:\n${shown(accepted)}\nWrite its ${String(CONTROLS)} reject controls with write_controls.`;
-}
-
-/** Gates 1 to 3 for one instance the Examiner proposed: the line it is told. */
-async function gated(desk: Desk, instance: Task, kill: AbortSignal): Promise<string> {
+/** The gate for one instance the Examiner proposed: the line it is told. */
+function gated(desk: Desk, instance: Task): string {
   const { request } = desk;
   const task = request.pack(instance);
   const version = taskVersion(task);
-  const record = (kind: EventKind, data: JsonObject) => append(request.log, kind, { version, ...data });
   const { taskId, family, publicInput, hidden } = instance;
-  record("task.proposed", { taskId, session: request.id, task: { taskId, family, publicInput, hidden } });
+  append(request.log, "task.proposed", {
+    version,
+    taskId,
+    session: request.id,
+    task: { taskId, family, publicInput, hidden },
+  });
   const packaged = packageGate(request.contract, task);
-  record(GATE, { gate: 1, ...packaged });
-  if (packaged.outcome === "refused") {
-    record(STATE, { state: "refused", session: request.id });
-    return `${task.taskId}: ${told(desk, task, version, "refused", { reason: packaged.reason })}: ${packaged.reason}`;
+  append(request.log, "task.gate", { version, gate: 1, ...packaged });
+  if (packaged.outcome === "passed") {
+    desk.held.push(version);
+    return `${taskId}: held out.`;
   }
-  return await witnessed(desk, task, version, { kill, again: false });
+  append(request.log, "task.state", { version, state: "refused", session: request.id });
+  desk.refused.push(version);
+  return `${taskId}: refused: ${packaged.reason}`;
 }
 
 function proposeTool(desk: Desk): AgentTool {
@@ -341,7 +159,7 @@ function proposeTool(desk: Desk): AgentTool {
     name: "propose_tasks",
     label: "Propose tasks",
     description:
-      "Put task instances through the host's gates: shape, one solve by the stronger solver, and the checks again on its answer. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns refused with the gate's reason, too hard for now with how the stronger solve ended, or feasible so far with the answer the checks accepted. Each instance costs a long solve, and several in one call are solved side by side.",
+      "Put task instances to the host's gate, which reads the shape of each package. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out, or refused with the gate's reason. A task that is held out is in the exam from then on.",
     parameters: Type.Object({
       tasks: Type.Array(
         Type.Object({
@@ -353,191 +171,33 @@ function proposeTool(desk: Desk): AgentTool {
       ),
     }),
     executionMode: "sequential",
-    execute: async (_id, args, signal) => {
+    execute: async (_id, args) => {
       if (supplied(desk)) throw new Error(SUPPLIED);
-      const left = request.limits.candidates - desk.proposed - desk.again;
-      if (left <= 0) {
-        throw new Error(
-          "This session can propose no further task. Write the controls still waited for, or call finish.",
-        );
+      if (desk.proposed >= request.limits.proposals) {
+        throw new Error("This session can propose no further task. Call finish.");
       }
-      const kill = signal ?? desk.halt.signal;
       const lines: string[] = [];
-      const taken: Task[] = [];
       for (const { family, public_input, hidden } of args.tasks) {
         // SAFETY: a tool's arguments are JSON the provider parsed.
         const [publicInput, kept] = [public_input as JsonValue, (hidden ?? null) as JsonValue];
-        const content = hashJsonValue({ family, publicInput, hidden: kept });
-        if (desk.seen.has(content)) {
-          lines.push("An instance proposed before was not taken again.");
-        } else if (taken.length >= left) {
+        const content = contentOf({ family, publicInput, hidden: kept });
+        const before = desk.seen.get(content);
+        if (before !== undefined) {
+          lines.push(
+            before === "now"
+              ? "An instance proposed before was not taken again."
+              : "An instance an earlier session wrote was not taken again.",
+          );
+        } else if (desk.proposed >= request.limits.proposals) {
           lines.push("An instance was not taken: this session can propose no further task.");
+        } else if (supplied(desk)) {
+          lines.push(`An instance was not taken. ${SUPPLIED}`);
         } else {
-          desk.seen.add(content);
+          desk.seen.set(content, "now");
           desk.proposed += 1;
           const taskId = `${request.id}-${String(desk.proposed).padStart(3, "0")}`;
-          taken.push({ taskId, family, publicInput, hidden: kept });
+          lines.push(gated(desk, { taskId, family, publicInput, hidden: kept }));
         }
-      }
-      try {
-        lines.push(
-          ...(await pooled(taken, request.limits.concurrency, (instance) => gated(desk, instance, kill))),
-        );
-      } catch (error) {
-        throw halted(desk, error);
-      }
-      return text(lines.join("\n\n"));
-    },
-  });
-}
-
-/** Gate 4 for one waiting task: null when its controls hold, otherwise the line the Examiner is told. */
-async function controlled(desk: Desk, taskId: string, edits: readonly ControlEdit[]): Promise<string | null> {
-  const { request } = desk;
-  const waiting = desk.waiting.get(taskId);
-  if (waiting === undefined) return `${taskId} is not waiting for controls.`;
-  const { task, version, accepted } = waiting;
-  let controls: RejectControl[];
-  try {
-    controls = edits.map((edit) => ({ answer: changedAnswer(accepted, edit), expectedCheckId: edit.check }));
-  } catch (error) {
-    // A change that is not one is the Examiner's slip of the pen, and costs it no try.
-    return `${taskId}: ${errorMessage(error)}. Write its controls again.`;
-  }
-  const result = await controlsGate(request.contract, request.verify, task, accepted, controls);
-  if (result.outcome === "refused") {
-    waiting.tries += 1;
-    if (waiting.tries < CONTROL_TRIES) {
-      return `${taskId}: its controls do not hold: ${result.reason}. Write them again.`;
-    }
-  }
-  // The controls that held are logged whole beside their digest: a campaign under a repaired
-  // checker gates the task again from them with no session to write them a second time
-  // (`tools/c/carry.ts`).
-  append(request.log, GATE, {
-    version,
-    gate: 4,
-    ...result,
-    ...(result.outcome === "passed" ? { set: controls.map((control) => ({ ...control })) } : {}),
-  });
-  desk.waiting.delete(taskId);
-  if (result.outcome === "passed") return null;
-  append(request.log, STATE, { version, state: "refused", session: request.id });
-  return `${taskId}: ${told(desk, task, version, "refused", { reason: result.reason })}: ${result.reason}`;
-}
-
-/** The test-side solves of the tasks that just became feasible, and the word each is told. */
-async function worded(desk: Desk, tasks: readonly Waiting[], kill: AbortSignal): Promise<string[]> {
-  const { request } = desk;
-  const { solves, fails } = request.screening;
-  const jobs = tasks.flatMap((waiting) => Array.from({ length: solves }, () => waiting));
-  const ran = await pooled(jobs, request.limits.concurrency, async ({ task, version }) => {
-    const { solve, ending } = await request.test(task, version, kill);
-    refuseBroken(ending);
-    const faulty = ending.outcome === "non-result" && ending.kind === "check";
-    let ruled = false;
-    if (ending.outcome === "fail" && request.referee !== undefined) {
-      try {
-        ruled = (await request.referee(solve, task, kill)).ruling === "check-defect";
-      } catch (error) {
-        desk.faults.push(`${solve}: ${errorMessage(error)}`);
-      }
-    }
-    return { version, solve, ending, defect: faulty || (ruled && request.refereeDecides), ruled };
-  });
-  return tasks.map(({ task, version }) => {
-    const mine = ran.filter((each) => each.version === version);
-    const counted = mine.flatMap(({ ending }): Counted[] =>
-      ending.outcome === "non-result" ? [] : [ending],
-    );
-    const defect = mine.find((each) => each.defect);
-    let word: Word = "undecided";
-    if (defect !== undefined) {
-      append(request.log, STATE, {
-        version,
-        state: "disputed",
-        session: request.id,
-        solve: defect.solve,
-        reason: "a check was at fault on a solver's answer",
-      });
-      desk.feasible.splice(desk.feasible.indexOf(version), 1);
-      word = "refused";
-    } else if (counted.length === solves) {
-      // One harness screens here, so it stands on both sides of the two-harness rule.
-      const state = screen([counted, counted], fails);
-      word = state === "admitted" ? "scored" : state === "too-easy" ? "too easy" : state;
-      desk.screened += 1;
-    }
-    told(desk, task, version, word, {
-      solves: mine.map(({ solve }) => solve),
-      fails: counted.filter(({ outcome }) => outcome === "fail").length,
-      // Fails an advising Referee ruled a check defect, for the person who reads them.
-      flagged: mine.flatMap((each) => (each.ruled ? [each.solve] : [])),
-    });
-    if (word === "refused") return `${task.taskId}: refused: a check was at fault on a solver's answer`;
-    const solved = mine.flatMap(({ solve, ending }) =>
-      ending.outcome === "non-result" ? [] : [{ solve, ending }],
-    );
-    return `${task.taskId}: ${word}${word === "undecided" ? "" : `: ${tally(read(request.log), solved)}`}`;
-  });
-}
-
-function controlsTool(desk: Desk): AgentTool {
-  return tool({
-    name: "write_controls",
-    label: "Write controls",
-    description: `Write the ${String(CONTROLS)} reject controls of feasible tasks. A control is one change to the task's accepted answer, a field replaced or a passage rewritten, and the id of the check that must refuse the changed answer. The host makes the change, so send the change and not the answer. When a task's controls hold it is solved by the solver being measured, which takes as long as its solves, and the result is what was measured: too easy, wall-bound or scored, with the fails among its solves and what stopped them.`,
-    parameters: Type.Object({
-      sets: Type.Array(
-        Type.Object({
-          task: Type.String({ description: "The task's id, as propose_tasks returned it." }),
-          controls: Type.Array(
-            Type.Object({
-              check: Type.String({ description: "The id of the check that must refuse the changed answer." }),
-              path: Type.String({
-                description:
-                  "A rooted path to an existing leaf of the accepted answer: `$.items[0].value`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
-              }),
-              value: Type.Optional(
-                Type.String({
-                  description:
-                    'The value that replaces the field, as JSON text: `0.0001`, `"high"` or `null`. Omit it when you send `find` and `replace`.',
-                }),
-              ),
-              find: Type.Optional(
-                Type.String({
-                  description:
-                    "Exact text inside the string field at `path`, occurring there exactly once. Sent with `replace`, in place of `value`: how one line of a source file is changed.",
-                }),
-              ),
-              replace: Type.Optional(
-                Type.String({ description: "The text that takes the place of `find`." }),
-              ),
-            }),
-          ),
-        }),
-        { minItems: 1 },
-      ),
-    }),
-    executionMode: "sequential",
-    execute: async (_id, args, signal) => {
-      if (supplied(desk)) throw new Error(SUPPLIED);
-      const kill = signal ?? desk.halt.signal;
-      const lines: string[] = [];
-      const passed: Waiting[] = [];
-      try {
-        for (const { task: taskId, controls } of args.sets) {
-          const waiting = desk.waiting.get(taskId);
-          const line = await controlled(desk, taskId, controls);
-          if (line !== null) lines.push(line);
-          else if (waiting !== undefined) {
-            passed.push(waiting);
-            desk.feasible.push(waiting.version);
-          }
-        }
-        lines.push(...(await worded(desk, passed, kill)));
-      } catch (error) {
-        throw halted(desk, error);
       }
       return {
         ...text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`),
@@ -552,19 +212,20 @@ function exampleTool(desk: Desk): AgentTool {
   return tool({
     name: "read_example",
     label: "Read an example",
-    description:
-      "Return one existing task of the domain whole: its family, its public input and its hidden values.",
+    description: "Return one task of the exam whole: its family, its public input and its hidden values.",
     parameters: Type.Object({
-      task: Type.String({ description: "An example's id, from the opening message." }),
+      task: Type.String({ description: "A task's id, from the opening message." }),
     }),
     executionMode: "parallel",
     execute: async (_id, args) => {
       const example = examples.get(args.task);
       if (example === undefined) {
-        throw new Error(`${args.task} is not one of the examples: ${[...examples.keys()].join(", ")}`);
+        throw new Error(`${args.task} is not one of the tasks: ${[...examples.keys()].join(", ")}`);
       }
       const { taskId, family, publicInput, hidden } = example;
-      return text(shown({ taskId, family, publicInput, hidden }));
+      return text(
+        capturedJsonStringify({ taskId, family, publicInput, hidden }, null, 2).slice(0, SHOWN_CHARS),
+      );
     },
   });
 }
@@ -585,8 +246,7 @@ function finishTool(desk: Desk): AgentTool {
 }
 
 /** Why no Examiner session starts under `id` on this log, or null. A session's id prefixes its
- *  tasks' ids, and the Referee finds a task's accepted answer by them. A launcher asks before it
- *  starts one. */
+ *  tasks' ids. A launcher asks before it starts one. */
 export function claimed(events: readonly LogEvent[], id: string): string | null {
   return events.some(({ kind, data }) => kind === "exam.started" && data.session === id)
     ? `session ${id} is in the log already; a session's id names one session`
@@ -596,25 +256,15 @@ export function claimed(events: readonly LogEvent[], id: string): string | null 
 export async function examine(request: ExamRequest): Promise<Examined> {
   const { log, limits, model } = request;
   const began = performance.now();
-  const why = claimed(read(log), request.id);
+  const before = read(log);
+  const why = claimed(before, request.id);
   if (why !== null) throw new Error(why);
   const desk: Desk = {
     request,
     proposed: 0,
-    again: 0,
-    seen: new Set(),
-    waiting: new Map(
-      request.waiting.map(({ task, accepted }) => {
-        const packed = request.pack(task);
-        return [task.taskId, { task: packed, version: taskVersion(packed), accepted, tries: 0 }];
-      }),
-    ),
-    feasible: [],
-    screened: 0,
-    words: new Map(),
-    faults: [],
-    halt: new AbortController(),
-    fatal: null,
+    seen: new Map(writtenTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
+    held: [],
+    refused: [],
     note: null,
   };
   append(log, "exam.started", {
@@ -622,23 +272,14 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     model: priceKey(model),
     effort: request.effort,
     limits: { ...limits },
-    screening: request.screening,
     checks: request.checks.map(({ id }) => id),
     examples: request.examples.map(({ taskId }) => taskId),
-    standsOn: request.standsOn.harness,
-    setting: request.standsOn.setting,
-    reach: request.reach.map(({ taskId }) => taskId),
   });
-  const tools = [proposeTool(desk), controlsTool(desk), exampleTool(desk), finishTool(desk)];
+  const tools = [proposeTool(desk), exampleTool(desk), finishTool(desk)];
   const wall = new AbortController();
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
-  const signal = AbortSignal.any([
-    wall.signal,
-    done.signal,
-    desk.halt.signal,
-    ...(request.kill ? [request.kill] : []),
-  ]);
+  const signal = AbortSignal.any([wall.signal, done.signal, ...(request.kill ? [request.kill] : [])]);
   const turns: AssistantMessage[] = [];
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
@@ -647,33 +288,12 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   // session here, the tasks' hidden expectations included.
   const home = mkdtempSync(join(tmpdir(), "ana-claude-cli-examiner-"));
   let crash: string | null = null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
   try {
     const models = request.models(home);
     const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
-    // The reach tasks come first, before the Examiner's wall starts: each is a stronger solve under
-    // the harness the campaign stands on now, and one that passes waits for its controls like a
-    // task an earlier session left past gate 3.
-    const again = request.reach.slice(0, limits.candidates);
-    desk.again = again.length;
-    try {
-      await pooled(again, limits.concurrency, (task) => {
-        const packed = request.pack(task);
-        return witnessed(desk, packed, taskVersion(packed), { kill: signal, again: true });
-      });
-    } catch (error) {
-      throw halted(desk, error);
-    }
-    timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
     await runAgentLoop(
-      [
-        user(
-          firstMessage(request.contract, request.checks, request.examples, limits, {
-            waiting: [...desk.waiting.values()].map(handed),
-            earlier: measured(read(log), request.standsOn, request.screening),
-          }),
-        ),
-      ],
+      [user(firstMessage(request.contract, request.checks, heard(before, request.examples), limits))],
       { messages: system === undefined ? [] : [system], tools },
       {
         model,
@@ -683,8 +303,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
-          // The session ends at `finish` and at supply even beside another call in the turn, where
-          // pi would go on and a further instance would cost a further solve.
+          // The session ends at `finish` and at supply even beside another call in the turn.
           const over = desk.note !== null || supplied(desk) || turns.length >= limits.turns;
           return over ? { action: "end" } : undefined;
         },
@@ -702,8 +321,8 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     done.abort();
     rmSync(home, { recursive: true, force: true });
   }
-  const cut = wall.signal.aborted || desk.halt.signal.aborted || request.kill?.aborted === true;
-  crash ??= desk.fatal?.message ?? (cut ? null : failedTurn(turns));
+  const cut = wall.signal.aborted || request.kill?.aborted === true;
+  crash ??= cut ? null : failedTurn(turns);
   const by = {
     finished: desk.note !== null,
     supplied: supplied(desk),
@@ -712,21 +331,18 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     crashed: crash !== null,
     turns: turns.length >= limits.turns,
   };
-  const ended = desk.fatal === null ? (ENDINGS.find((reason) => by[reason]) ?? "stopped") : "crashed";
+  const ended = ENDINGS.find((reason) => by[reason]) ?? "stopped";
   const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
   const reported = asRecord(
     turns.flatMap((turn) => turn.diagnostics ?? []).findLast((d) => d.type === REPORTED_COST)?.details,
   )?.totalCostUsd;
-  const words = Object.fromEntries(desk.words);
   append(log, "exam.finished", {
     session: request.id,
     ended,
     note: desk.note,
     proposed: desk.proposed,
-    feasible: desk.feasible,
-    words,
-    waiting: [...desk.waiting.keys()],
-    reviewFaults: desk.faults,
+    held: desk.held,
+    refused: desk.refused,
     crash,
     turns: turns.length,
     tokens: { ...tokens },
@@ -734,6 +350,5 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     reportedCost: isNumber(reported) ? reported : null,
     seconds: (performance.now() - began) / 1000,
   });
-  if (desk.fatal !== null) throw desk.fatal;
-  return { feasible: desk.feasible, words, ended };
+  return { held: desk.held, refused: desk.refused, ended };
 }

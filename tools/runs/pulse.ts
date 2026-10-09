@@ -68,7 +68,9 @@ export const ROUND = "tools/d2/round.ts";
  *  hours, each naming it with `--name`: an Examiner session was read as closed while it ran, the
  *  first time one did (exam-1, 2026-10-08). */
 export const EXAMINE = "tools/d1b/examine.ts";
-const CAMPAIGN = [ROUND, EXAMINE];
+/** The command a comparison with no Builder session runs as. */
+export const CHECKPOINT = "tools/d2/checkpoint.ts";
+const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT];
 /** The file beside a log that says its campaign is a seed, and of what. */
 export const SEED_FILE = "seed.json";
 const LIVE = "tools/m0/live-solve.ts";
@@ -126,20 +128,17 @@ const SAID: Partial<
     return `⚠ ${task(data.solve)} ended without a result, ${word(ending?.kind)}: ${short(ending?.reason)}${cost(data)}`;
   },
   "referee.finding": (data) => `· the Referee on ${word(data.task)}: ${short(data.reason)}`,
-  "exam.word": (data) => `· ${word(data.taskId)} is told "${word(data.word)}"`,
-  "anchor.scored": (data) =>
-    `◆ anchor ${word(data.reading)}: ${word(data.wins)} won, ${word(data.losses)} lost, ${word(data.ties)} tied`,
-  // A report that scored nothing, or whose reading does not stand without its flagged tasks, is one to
-  // look at before it is believed (`src/builder/round.ts`).
+  // A report that scored nothing, one its cap cut, or one with tasks set aside on rejections nobody
+  // has settled, is one to look at before it is believed (`src/builder/round.ts`).
   "comparison.reported": (data) => {
     const settled = asRecord(data.settled);
     if (settled !== null) {
       return `◆ settled by hand as ${word(data.reading)}: ${word(settled.labelled)} labelled, ${word(settled.defects)} a check defect`;
     }
-    // A report written before the round named the counted reading holds it as its reading.
-    const [first, second] = [data.counted ?? data.reading, asRecord(data.unflagged)?.reading];
-    if (second !== undefined && second !== first) {
-      return `⚠ reported ${word(data.reading)}: ${word(first)} with its flagged tasks, ${word(second)} without`;
+    if (data.capped === true) return "⚠ reported not-scored: its dollar cap cut it short";
+    const aside = Array.isArray(data.aside) ? data.aside.length : 0;
+    if (aside > 0) {
+      return `⚠ reported ${word(data.reading)}, with ${String(aside)} task(s) set aside on rejections no person has settled`;
     }
     return `${data.reading === "not-scored" ? "⚠" : "◆"} reported ${word(data.reading)}`;
   },

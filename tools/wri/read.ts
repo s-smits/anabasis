@@ -13,18 +13,14 @@
  * bytes has done its job. A trigger that did not fire says this arithmetic found nothing, and not
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
  */
-import { pairsReported, screeningOrder } from "#src/builder/round.ts";
-import { binding, toldOf } from "#src/kernel/binding.ts";
-import { signP, sweepOf } from "#src/kernel/compare.ts";
+import { signP, UNITS } from "#src/kernel/compare.ts";
 import { type Condition, conditionsOf, settingId } from "#src/kernel/condition.ts";
-import { frontierOf, ladder, lastReports, type Stand } from "#src/kernel/ladder.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { taskStates } from "#src/kernel/task.ts";
-import { wallShare } from "#src/kernel/wall.ts";
+import { awaitingLabel, lastReports, outcomesOf } from "#src/kernel/reports.ts";
+import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { countBy } from "#src/meta/tally.ts";
+import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { weight, weightLine } from "#src/review/weight.ts";
 
 export interface Trigger {
   readonly lane: number;
@@ -85,24 +81,20 @@ interface Build {
   readonly calls: Call[];
 }
 
-/** A round's test-side solves, apart by what each was for. */
-interface Round {
-  readonly practice: readonly Solve[];
-  readonly screening: readonly Solve[];
-  readonly scoring: readonly Solve[];
-  readonly counted: readonly Solve[];
-  /** Scored versions this round did not admit itself. */
-  readonly carried: readonly string[];
+/** A comparison as its reports hold it, with the solves it counted. */
+interface Compared {
+  /** The id it reported under: a round's session, or a checkpoint's own. */
+  readonly session: string;
+  /** Its own report, which a settling leaves in the log, and where it stands. */
+  readonly own: JsonObject;
+  readonly at: number;
+  /** Its last report: its own, or the one a person's labels settled. */
+  readonly last: JsonObject;
+  /** The Builder session it followed, or null for a comparison with none. */
+  readonly build: Build | null;
   readonly scoredSet: ReadonlySet<string>;
-  /** The versions this round admitted. */
-  readonly admitted: ReadonlySet<string>;
-  /** The parent's solves the log held before the round, which its screening read of the tasks it
-   *  placed: the latest so many of each, under the round's own setting. */
-  readonly onRecord: readonly Solve[];
-  /** Versions admitted on those solves alone, with no screening solve of the round. */
-  readonly kept: readonly string[];
-  /** Versions the round retired: both of its harnesses passed them. */
-  readonly retired: readonly string[];
+  /** The test-side solves of its scored tasks under one of its harnesses that it could count. */
+  readonly scoring: readonly Solve[];
 }
 
 interface Index {
@@ -114,11 +106,10 @@ interface Index {
   readonly diagnoses: ReadonlyMap<string, JsonObject>;
   readonly states: ReadonlyMap<string, string>;
   readonly builds: readonly Build[];
-  readonly anchor: ReadonlySet<string>;
-  /** Feasible task versions still held outside the anchor, never yet admitted. */
-  readonly candidates: readonly string[];
-  /** The live pool: those, and the versions a round admitted. Every round screens it again. */
-  readonly pool: readonly string[];
+  readonly compared: readonly Compared[];
+  /** The held-out task versions, and the practice ones. */
+  readonly held: readonly string[];
+  readonly released: readonly string[];
   readonly of: (kind: LogEvent["kind"]) => JsonObject[];
 }
 
@@ -127,18 +118,18 @@ const WALL_BOUND_SHARE = 0.95;
 /** A pass under this share of its wall, on few calls, is the lead v1 read for a published recipe. */
 const SMALL_WALL_SHARE = 0.05;
 const FEW_CALLS = 3;
+/** The median ratio between the largest and the smallest use of a unit, over repeated solves of
+ *  one harness on one task, from which a budget in that unit splits two such solves about as often
+ *  as not. */
+const SPREAD_WORTH_A_LINE = 1.5;
 /** Minutes of silence in the log worth a line. */
 const SILENCE_MINUTES = 20;
-/** The condition's fields a pair may not differ in: every one but the harness and the task. */
-/** The solves a harness screening reads where a report names none: the plan's three. */
-const SCREENING_SOLVES = 3;
-const PAIRED = ["contract", "model", "effort", "compaction", "verifierTools", "sandbox", "host"] as const;
 const DEFECT = "check-defect";
-const TOO_HARD = "too hard";
 const TEST = "test";
 const BUILD_END = "build.finished";
 const EXAM_END = "exam.finished";
 const EXAM_START = "exam.started";
+const REPORTED = "comparison.reported";
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
@@ -161,18 +152,14 @@ export const TRIGGERS = {
   "TASKS CARRIED": 6,
   "SUPPLY THIN": 7,
   "GATE REFUSED": 7,
-  "TOO HARD": 8,
-  "TOO HARD FLAGGED": 8,
-  "WITNESSED ON A LATER TRY": 8,
-  "WITNESS PAST HALF ITS WALL": 8,
-  "CONTROLS REFUSED": 9,
-  "CONTROLS NOT ON RECORD": 9,
-  "TOO EASY": 10,
-  "WALL-BOUND TASKS": 10,
-  "RETIRED BY A ROUND": 10,
+  "NO VALID ANSWER": 8,
+  "AWAITING A LABEL": 8,
+  "TIES BETWEEN VALID ANSWERS": 9,
+  "USE OF THE BUDGET SPREADS": 9,
+  "TIED TASKS": 10,
+  "TALLY BY BUDGET": 10,
   "PASSES AT A SMALL WALL SHARE": 11,
-  "BRACKETED BY SESSION": 12,
-  "EXAMINER BEHIND THE FRONTIER": 12,
+  "OUTCOMES BY SESSION": 12,
   "HARNESS CHANGED": 13,
   "BROKEN AT END": 13,
   "MEASURED AN EARLIER STATE": 13,
@@ -187,24 +174,19 @@ export const TRIGGERS = {
   "PRACTISED TASK MEASURED": 18,
   "SHELL COMMANDS": 18,
   "WIN AT A SMALL WALL SHARE": 19,
-  "PAIR DIFFERS BEYOND HARNESS": 20,
-  "SCORED SET CARRIED": 21,
-  "ADMITTED BY": 21,
-  "PARENT SIDE ON RECORD": 21,
-  "SCREENING RULE NOT ON RECORD": 21,
-  "SCREENED OUT OF THE DRAWN ORDER": 21,
-  "ADMITTED ON FLAGGED FAILS": 21,
+  "SCORED SET MOVED": 21,
   "NOTHING SCORED": 22,
+  "CUT BY ITS CAP": 22,
   "FEW INFORMATIVE PAIRS": 22,
   "SET SHORT": 22,
-  "ANCHOR NOT HELD": 23,
-  "ANCHOR RATE BY ROUND": 23,
+  "BELOW THE BASELINE": 23,
+  "BASELINE UNREAD": 23,
   "FLIPS": 24,
+  "REFERENCE AGAINST ITSELF": 24,
   "HOST CODE MOVED": 20,
   "CHAIN": 25,
-  "STEP NOT BUILT ON": 25,
-  "NO CANDIDATES HELD": 25,
-  "WHAT BINDS": 25,
+  "STEP NOT REPEATED": 25,
+  "NO TASK HELD OUT": 25,
   "WALL SHARE": 26,
   "WALL-BOUND MISSES": 26,
   "LONG SOLVE, LITTLE CPU": 26,
@@ -216,10 +198,9 @@ export const TRIGGERS = {
   "SPEND LED BY A ROLE": 28,
   "DIAGNOSES": 29,
   "REPLAY MOVED THE VERDICT": 29,
-  "FLAGGED AND STILL COUNTED": 30,
-  "READING MOVES WITHOUT FLAGGED": 30,
-  "FLAGGED FAILS BY SIDE": 30,
-  "RULINGS AGAINST THE EFFECT": 30,
+  "SET ASIDE AND UNSETTLED": 30,
+  "READING MOVES WITH THE SET-ASIDE": 30,
+  "SET ASIDE BY SIDE": 30,
   "SETTLED BY HAND": 30,
   "REVIEW FAULTS": 30,
   "EARNED WITHOUT A PROBE": 30,
@@ -315,7 +296,7 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
       build.calls.push({ index, tool: text(data.tool), args: asRecord(data.args) });
     }
     if (build !== undefined && kind === BUILD_END) build.finished = data;
-    if (build !== undefined && kind === "comparison.reported") {
+    if (build !== undefined && kind === REPORTED) {
       build.own ??= data;
       build.report = data;
     }
@@ -328,27 +309,57 @@ function indexOf(events: readonly LogEvent[]): Index {
   const last = (kind: LogEvent["kind"]) =>
     new Map(events.flatMap((event) => (event.kind === kind ? [[text(event.data.solve), event.data]] : [])));
   const of = (kind: LogEvent["kind"]) => events.flatMap((event) => (event.kind === kind ? [event.data] : []));
-  const states = taskStates(events);
-  const anchor = new Set(of("anchor.drawn").flatMap((data) => strings(data.tasks)));
-  const feasible = of("task.gate").flatMap((data) =>
-    data.gate === 4 && data.outcome === "passed" ? [text(data.version)] : [],
-  );
+  const { states, held, released } = taskSets(events);
+  const solves = solvesOf(events, conditions);
+  const builds = buildsOf(events);
   return {
     events,
     conditions,
-    solves: solvesOf(events, conditions),
+    solves,
     verdicts: last("verdict"),
     rulings: last("referee.finding"),
     diagnoses: last("diagnosis.recorded"),
     states,
-    builds: buildsOf(events),
-    anchor,
-    candidates: feasible.filter((version) => states.get(version) === "held" && !anchor.has(version)),
-    pool: feasible.filter(
-      (version) => ["held", "admitted"].includes(states.get(version) ?? "") && !anchor.has(version),
-    ),
+    builds,
+    compared: comparedOf(events, { solves, conditions, builds }),
+    held,
+    released,
     of,
   };
+}
+
+/**
+ * Every comparison a log reported, with the solves it could count. A comparison counts a solve by
+ * its condition: under one of its three harnesses and its setting, and made since it began
+ * (`src/builder/round.ts`). A report written before 2026-10-09 names no setting; its solves are
+ * read from its round's own window of the log, as that round counted them.
+ */
+function comparedOf(
+  events: readonly LogEvent[],
+  log: Pick<Index, "solves" | "conditions" | "builds">,
+): Compared[] {
+  return lastReports(events).map(({ session, data: last }) => {
+    const at = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === session);
+    const own = events[at]?.data ?? last;
+    const build = log.builds.find((each) => each.session === session) ?? null;
+    const scoredSet = new Set([...strings(own.versions), ...strings(own.short), ...strings(own.aside)]);
+    const sides = new Set([text(own.old), text(own.fresh), text(own.baseline)]);
+    const began = isNumber(own.began) ? own.began : 0;
+    const counted = (solve: Solve) => {
+      if (!isString(own.setting)) return build !== null && solve.index > build.from;
+      const ran = log.conditions.get(solve.condition);
+      return (
+        sides.has(solve.harness) &&
+        ran !== undefined &&
+        settingId(ran) === own.setting &&
+        solve.index >= began
+      );
+    };
+    const scoring = log.solves.filter(
+      (solve) => solve.side === TEST && solve.index < at && scoredSet.has(solve.version) && counted(solve),
+    );
+    return { session, own, at, last, build, scoredSet, scoring };
+  });
 }
 
 /** Metered dollars by role, the largest first. */
@@ -371,60 +382,16 @@ function refusals(log: Index): Solve[] {
   });
 }
 
-/** A round's solves on the test side. A scored task's solves count from its admission on
- *  (`src/builder/round.ts`), so the ones before it screened the task. */
-function roundOf(log: Index, build: Build): Round {
-  const window = log.solves.filter(
-    (solve) => solve.index > build.from && solve.index < build.until && solve.side === TEST,
-  );
-  const scoredSet = new Set(strings(build.report?.versions));
-  const admittedAt = new Map(
-    log.events.flatMap(({ kind, data }, index) =>
-      kind === "task.state" && data.state === "admitted" && data.session === build.session
-        ? [[text(data.version), index] as const]
-        : [],
-    ),
-  );
-  const after = (solve: Solve) => solve.index > (admittedAt.get(solve.version) ?? -1);
-  const scoring = window.filter((solve) => scoredSet.has(solve.version) && after(solve));
-  // What the round placed, and the parent's solves the log already held of those tasks. A round
-  // reads the latest so many of them under its own setting before it solves the parent again
-  // (`src/builder/round.ts`), so they are screening evidence made outside its window.
-  const moved = log.events.flatMap(({ kind, data }) =>
-    kind === "task.state" && data.session === build.session ? [data] : [],
-  );
-  const placed = new Set(moved.map((data) => text(data.version)));
-  const own = log.conditions.get(window[0]?.condition ?? "");
-  const alike = (solve: Solve) => {
-    const ran = log.conditions.get(solve.condition);
-    return own !== undefined && ran !== undefined && settingId(ran) === settingId(own);
-  };
-  const earlier = log.solves.filter(
+/** A Builder session's practice solves: the test-side solves of its practice tasks made in its own
+ *  window of the log. */
+function practiceOf(log: Index, build: Build): Solve[] {
+  return log.solves.filter(
     (solve) =>
-      solve.index < build.from &&
+      solve.index > build.from &&
+      solve.index < build.until &&
       solve.side === TEST &&
-      solve.harness === build.parent &&
-      placed.has(solve.version) &&
-      (solve.outcome === "pass" || (solve.outcome === "fail" && solve.kind !== "broken-harness")) &&
-      alike(solve),
+      build.practice.has(solve.version),
   );
-  const read = count(asRecord(build.report?.screening)?.solves) || SCREENING_SOLVES;
-  return {
-    practice: window.filter((solve) => build.practice.has(solve.version)),
-    screening: window.filter((solve) => admittedAt.has(solve.version) && !after(solve)),
-    scoring,
-    counted: [...scoring, ...window.filter((solve) => log.anchor.has(solve.version))],
-    carried: [...scoredSet].filter((version) => !admittedAt.has(version)),
-    scoredSet,
-    admitted: new Set(admittedAt.keys()),
-    onRecord: [...Map.groupBy(earlier, (solve) => solve.version).values()].flatMap((solves) =>
-      solves.slice(-read),
-    ),
-    kept: moved.flatMap((data) =>
-      data.state === "admitted" && data.carried === true ? [text(data.version)] : [],
-    ),
-    retired: moved.flatMap((data) => (data.state === "too-easy" ? [text(data.version)] : [])),
-  };
 }
 
 /** Lanes 1 to 6: the exam's instrument, which is the pack author's. */
@@ -513,152 +480,133 @@ function instrumentTriggers(log: Index): Trigger[] {
 function taskTriggers(log: Index): Trigger[] {
   const proposed = log.of("task.proposed").filter((data) => isString(data.session));
   const written = new Set(proposed.map((data) => text(data.version)));
-  const gates = log.of("task.gate").filter((data) => written.has(text(data.version)));
-  const at = (gate: number, outcome: string) =>
-    gates.filter((data) => data.gate === gate && data.outcome === outcome);
-  const feasible = at(4, "passed").length;
-  const refusedAt = countBy(
+  // A task meets one gate, the shape of its package. A log written before 2026-10-09 holds three
+  // more a task, which no command runs now and no trigger here reads.
+  const gates = log.of("task.gate").filter((data) => data.gate === 1 && written.has(text(data.version)));
+  const passed = gates.filter((data) => data.outcome === "passed").length;
+  const reasons = countBy(
     gates.filter((data) => data.outcome === "refused"),
-    (data) => `gate ${String(count(data.gate))}`,
+    (data) => text(data.reason) || "unrecorded",
   );
-  // A task no stronger solve passed waits, and is put to the stronger solver again when the
-  // harness has moved: it is read by its last such solve, and every failed one is a try.
-  const witness = new Map(gates.flatMap((data) => (data.gate === 2 ? [[text(data.version), data]] : [])));
-  const hard = [...witness.values()].filter((data) => data.outcome === "too-hard");
-  const tried = at(2, "too-hard");
-  const everHard = new Set(tried.map((data) => text(data.version)));
-  const lifted = [...everHard].filter((version) => witness.get(version)?.outcome === "passed").length;
-  const hardKinds = countBy(hard, (data) => text(data.kind) || "unrecorded");
-  const told = [...toldOf(log.events).values()];
-  const flagged = told.filter((task) => task.word === TOO_HARD && task.flagged).length;
-  const witnesses = new Set(at(2, "passed").map((data) => text(data.solve)));
-  const slow = log.solves.filter((solve) => witnesses.has(solve.id) && solve.seconds > solve.wallSeconds / 2);
-  const controlKinds = countBy(
-    at(4, "refused").flatMap((data) =>
-      strings(data.kinds).length > 0 ? strings(data.kinds) : ["unrecorded"],
-    ),
-    (kind) => kind,
-  );
-  const bare = at(4, "passed").filter((data) => !Array.isArray(data.set)).length;
-  const words = countBy(told, (task) => task.word);
-  const [easy, bound] = [words["too easy"] ?? 0, words["wall-bound"] ?? 0];
-  const screened = easy + bound + (words.scored ?? 0);
-  const passed = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
-  const quick = passed.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE);
-  const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;
-  // A session's solves run under the harness the campaign stands on. One that stood elsewhere
-  // wrote against a solver the campaign has left behind.
-  const behind = log.events.flatMap(({ kind, data }, index) => {
-    const stood = frontierOf(log.events.slice(0, index));
-    if (kind !== EXAM_START || stood === null || data.standsOn === stood) return [];
-    return [
-      `${text(data.session)} stood on ${isString(data.standsOn) ? short(data.standsOn) : "no named harness"}, and the last step had left ${short(stood)}`,
-    ];
-  });
-  // Tasks a round's two harnesses both passed, and how many of them an earlier round had scored.
-  const scoredBefore = new Set<string>();
-  const retired = log.builds.flatMap((build) => {
-    const round = roundOf(log, build);
-    const once = round.retired.filter((version) => scoredBefore.has(version)).length;
-    for (const version of round.admitted) scoredBefore.add(version);
-    return round.retired.length === 0
+  const outcomes = outcomesOf(log.events);
+  const unanswered = [...outcomes.values()].filter((outcome) => outcome === "no-valid-answer").length;
+  const awaiting = awaitingLabel(log.events).filter((version) => log.held.includes(version));
+  const decided = log.compared.flatMap(({ session, last }) => {
+    const scored = asRecord(last.scored);
+    const [wins, losses, ties] = [count(scored?.wins), count(scored?.losses), count(scored?.ties)];
+    const tasks = wins + losses + ties;
+    return scored === null || tasks === 0
       ? []
-      : [
-          `${build.session}: ${String(round.retired.length)}, ${String(once)} of them admitted by an earlier round`,
-        ];
+      : [{ session, last, wins, losses, ties, tasks, unsolved: count(scored.unsolved) }];
   });
-  // A session's words cover the tasks it proposed and the reach tasks it put to the stronger
-  // solver again, which it did not propose: both are what its scored words are a share of. Over
-  // its proposals alone, a simulated session that wrote two tasks and tried two again read
-  // "4 of 2" (2026-10-08).
-  const triedAgain = new Map(
-    log.of(EXAM_START).map((data) => {
-      const [listed, most] = [items(data.reach).length, asRecord(data.limits)?.candidates];
-      return [text(data.session), isNumber(most) ? Math.min(listed, most) : listed];
-    }),
-  );
-  const bracketed = log.of(EXAM_END).map((data) => {
-    const scored = Object.values(asRecord(data.words) ?? {}).filter((word) => word === "scored").length;
-    const put = count(data.proposed) + (triedAgain.get(text(data.session)) ?? 0);
-    return `${text(data.session)} ${share(scored, put)}`;
+  const tied = decided.filter(({ ties }) => ties > 0);
+  // The plan's condition for an objective: more than half of the tasks tie with valid answers on
+  // both sides. A tie holds as many valid answers under each harness, so one that is not unsolved
+  // is such a tie.
+  const validTies = decided.filter(({ ties, unsolved, tasks }) => (ties - unsolved) * 2 > tasks);
+  const spreading = decided.flatMap(({ session, last }) => {
+    const units = Object.entries(asRecord(last.spread) ?? {}).flatMap(([unit, value]) => {
+      const [middle, most] = [asRecord(value)?.median, asRecord(value)?.most];
+      return isNumber(middle) && isNumber(most) && middle >= SPREAD_WORTH_A_LINE
+        ? [`${unit} x${middle.toFixed(1)} at the median and x${most.toFixed(1)} at most`]
+        : [];
+    });
+    return units.length === 0 ? [] : [`${session}: ${units.join(", ")}`];
+  });
+  const byBudget = decided.flatMap(({ session, last, wins, losses, ties }) => {
+    const read = items(last.budgets).flatMap((budget) => {
+      const row = asRecord(budget) ?? {};
+      const named = UNITS.flatMap((unit) => (isNumber(row[unit]) ? [`${unit} ${String(row[unit])}`] : []));
+      return [
+        `${named.join(", ")}: ${String(count(row.wins))}-${String(count(row.losses))}-${String(count(row.ties))}`,
+      ];
+    });
+    return read.length === 0
+      ? []
+      : [`${session}: ${String(wins)}-${String(losses)}-${String(ties)} at its limits; ${read.join("; ")}`];
+  });
+  const done = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
+  const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE);
+  const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;
+  // What became of each Examiner session's held-out tasks, by the one outcome its author hears.
+  const bySession = Map.groupBy(proposed, (data) => text(data.session));
+  const heard = [...bySession].flatMap(([session, tasks]) => {
+    const said = countBy(
+      tasks.filter((data) => log.held.includes(text(data.version))),
+      (data) => outcomes.get(text(data.version)) ?? "not compared",
+    );
+    return Object.keys(said).length === 0 ? [] : [`${session}: ${tally(said)}`];
   });
   return [
-    ...(proposed.length > 0 && feasible * 2 < proposed.length
-      ? [fired("SUPPLY THIN", `${share(feasible, proposed.length)} proposed tasks passed gate 4`)]
+    ...(proposed.length > 0 && passed * 2 < proposed.length
+      ? [fired("SUPPLY THIN", `${share(passed, proposed.length)} proposed tasks passed the gate`)]
       : []),
-    ...(Object.keys(refusedAt).length > 0 ? [fired("GATE REFUSED", tally(refusedAt))] : []),
-    ...(hard.length > 0
+    ...(Object.keys(reasons).length > 0 ? [fired("GATE REFUSED", tally(reasons))] : []),
+    ...(unanswered > 0
       ? [
           fired(
-            "TOO HARD",
-            `${share(hard.length, proposed.length)}; ended: ${tally(hardKinds)}${tried.length > everHard.size ? `; ${plural(tried.length - everHard.size, "later try")} failed again` : ""}`,
+            "NO VALID ANSWER",
+            `${share(unanswered, outcomes.size)} scored tasks have no valid answer from any harness`,
           ),
         ]
       : []),
-    ...(lifted > 0
+    ...(awaiting.length > 0
       ? [
           fired(
-            "WITNESSED ON A LATER TRY",
-            `${share(lifted, everHard.size)} tasks a stronger solve had failed were passed when tried again`,
+            "AWAITING A LABEL",
+            `${plural(awaiting.length, "task")} with no valid answer in two comparisons in a row, left out of the scored set until a person labels each: ${awaiting.map(short).join(" ")}`,
           ),
         ]
       : []),
-    ...(flagged > 0
-      ? [fired("TOO HARD FLAGGED", `${plural(flagged, "task")} closed on a refusal ruled a check defect`)]
+    ...(validTies.length > 0
+      ? [
+          fired(
+            "TIES BETWEEN VALID ANSWERS",
+            validTies
+              .map(
+                ({ session, ties, unsolved, tasks }) => `${session}: ${share(ties - unsolved, tasks)} tasks`,
+              )
+              .join("; "),
+          ),
+        ]
       : []),
-    ...(slow.length > 0 ? [fired("WITNESS PAST HALF ITS WALL", share(slow.length, witnesses.size))] : []),
-    ...(Object.keys(controlKinds).length > 0 ? [fired("CONTROLS REFUSED", tally(controlKinds))] : []),
-    ...(bare > 0
-      ? [fired("CONTROLS NOT ON RECORD", `${plural(bare, "task")} passed gate 4 with a digest alone`)]
+    ...(spreading.length > 0 ? [fired("USE OF THE BUDGET SPREADS", spreading.join("; "))] : []),
+    ...(tied.length > 0
+      ? [
+          fired(
+            "TIED TASKS",
+            tied
+              .map(
+                ({ session, ties, tasks, unsolved }) =>
+                  `${session}: ${share(ties, tasks)}, ${String(unsolved)} of them with no valid answer`,
+              )
+              .join("; "),
+          ),
+        ]
       : []),
-    ...(easy > 0 ? [fired("TOO EASY", share(easy, screened))] : []),
-    ...(bound > 0 ? [fired("WALL-BOUND TASKS", share(bound, screened))] : []),
-    ...(passed.length > 0 && quick.length * 2 > passed.length
+    ...(byBudget.length > 0 ? [fired("TALLY BY BUDGET", byBudget.join("; "))] : []),
+    ...(done.length > 0 && quick.length * 2 > done.length
       ? [
           fired(
             "PASSES AT A SMALL WALL SHARE",
-            `${share(quick.length, passed.length)} test-side passes, in ${plural(sequences, "call sequence")}`,
+            `${share(quick.length, done.length)} test-side passes, in ${plural(sequences, "call sequence")}`,
           ),
         ]
       : []),
-    ...(bracketed.length > 0 ? [fired("BRACKETED BY SESSION", bracketed.join("; "))] : []),
-    ...(behind.length > 0 ? [fired("EXAMINER BEHIND THE FRONTIER", behind.join("; "))] : []),
-    ...(retired.length > 0 ? [fired("RETIRED BY A ROUND", retired.join("; "))] : []),
+    ...(heard.length > 0 ? [fired("OUTCOMES BY SESSION", heard.join("; "))] : []),
   ];
-}
-
-/**
- * Where the campaign stands and what binds its climb, as `tools/d2/prepare.ts` prints them, or
- * null for a log with no test-side solve to name a setting. The harness is the last step's, or the
- * first session's parent while no round has stepped; the setting is the latest test-side solve's;
- * the rule and the level are the last report's, or the plan's.
- */
-function climbOf(log: Index) {
-  const latest = log.solves.findLast((solve) => solve.side === TEST);
-  const ran = log.conditions.get(latest?.condition ?? "");
-  const first = log.builds[0]?.parent ?? log.solves.find((solve) => solve.side === TEST)?.harness;
-  const harness = frontierOf(log.events) ?? first;
-  if (ran === undefined || harness === undefined) return null;
-  const stand: Stand = { harness, setting: settingId(ran) };
-  const report = log.builds.findLast((build) => build.report !== null)?.report;
-  const asked = asRecord(report?.screening) ?? asRecord(log.of(EXAM_START).at(-1)?.screening);
-  const rule = { solves: count(asked?.solves) || SCREENING_SOLVES, fails: count(asked?.fails) || 2 };
-  return {
-    stand,
-    placed: ladder(log.events, stand, rule),
-    short: binding(log.events, stand, {
-      rule,
-      least: sweepOf(count(report?.level) || 0.1),
-      limits: ran.limits,
-    }),
-  };
 }
 
 /** Lanes 13 to 19: the harness, which is the Builder's. */
 function harnessTriggers(log: Index): Trigger[] {
   return log.builds.flatMap((build) => {
     const { session, finished, parent, calls } = build;
-    const round = roundOf(log, build);
+    const compared = log.compared.find((each) => each.build === build);
+    const round = {
+      practice: practiceOf(log, build),
+      scoring: compared?.scoring ?? [],
+      scoredSet: compared?.scoredSet ?? new Set<string>(),
+    };
     const changed = finished?.changed === true;
     const child = text(finished?.harness);
     const written = [
@@ -687,9 +635,7 @@ function harnessTriggers(log: Index): Trigger[] {
       );
     const answered = failed.filter((fail) => laterPass(fail, false)).length;
     const flipped = failed.filter((fail) => laterPass(fail, true)).length;
-    const exposed = [...round.scoredSet, ...log.anchor].filter((version) =>
-      build.practice.has(version),
-    ).length;
+    const exposed = [...round.scoredSet].filter((version) => build.practice.has(version)).length;
     const shell = calls.filter(({ tool }) => tool === "bash").length;
     const lostBefore = new Set(
       round.scoring
@@ -790,131 +736,55 @@ function harnessTriggers(log: Index): Trigger[] {
 /** Lanes 20 to 25: the comparison, which is the host's. */
 function comparisonTriggers(log: Index): Trigger[] {
   const hosts = new Set([...log.conditions.values()].map((condition) => condition.host)).size;
-  const reported = log.builds.filter((build) => build.report !== null);
-  const perRound = reported.flatMap((build) => {
-    const { session, parent } = build;
-    const round = roundOf(log, build);
-    // The fields, beyond the harness, in which the round's counted solves differ among themselves.
-    const ran = round.counted.flatMap((solve) => log.conditions.get(solve.condition) ?? []);
-    const moved = PAIRED.filter((field) => ran.some((condition) => condition[field] !== ran[0]?.[field]));
-    // The screening evidence of an admitted task: the round's own solves before its admission,
-    // and the parent's the log already held, which the round read in place of solving again.
-    const reused = round.onRecord.filter((solve) => round.admitted.has(solve.version));
-    const failedUnder = (old: boolean) =>
-      new Set(
-        [...reused, ...round.screening].flatMap((solve) =>
-          (solve.harness === parent) === old && solve.outcome === "fail" ? [solve.version] : [],
-        ),
-      );
-    const [byOld, byNew] = [failedUnder(true), failedUnder(false)];
-    // The order a round screens in is drawn from the contract's hash and the session's id, so it
-    // replays from the log: the tasks that were screened should be the first so many of the draw
-    // over the tasks then held outside the anchor.
-    const then = taskStates(log.events.slice(0, build.from));
-    const feasibleThen = log.events.flatMap(({ kind, data }, index) =>
-      index < build.from && kind === "task.gate" && data.gate === 4 && data.outcome === "passed"
-        ? [text(data.version)]
-        : [],
+  const perComparison = log.compared.flatMap(({ session, own, last, scoring }) => {
+    // The rejections that set a task aside: not ruled a true fail, on a task the report names.
+    const aside = new Set(strings(own.aside));
+    const open = scoring.filter(
+      (solve) =>
+        solve.kind === "rejected" &&
+        aside.has(solve.version) &&
+        log.rulings.get(solve.id)?.ruling !== "earned",
     );
-    // The pool as the round found it: held or admitted, outside the anchor.
-    const heldThen = feasibleThen.filter(
-      (version) => ["held", "admitted"].includes(then.get(version) ?? "") && !log.anchor.has(version),
-    );
-    const window = log.solves.filter(
-      (solve) => solve.index > build.from && solve.index < build.until && solve.side === TEST,
-    );
-    const placed = new Set([...round.admitted, ...round.retired]);
-    const screenedThen = heldThen.filter(
-      (version) => placed.has(version) || window.some((solve) => solve.version === version),
-    );
-    const contract = log.conditions.get(window[0]?.condition ?? "")?.contract ?? "";
-    const drawn = new Set(screeningOrder(heldThen, contract, session).slice(0, screenedThen.length));
-    const outOfOrder = screenedThen.filter((version) => !drawn.has(version)).length;
-    const defect = (solve: Solve) => log.rulings.get(solve.id)?.ruling === DEFECT;
-    // Admitted tasks whose screening fails were every one ruled a check's fault: chosen by the exam.
-    const screened = Map.groupBy(
-      round.screening.filter((solve) => solve.outcome === "fail"),
-      (solve) => solve.version,
-    );
-    const onFlags = [...screened.values()].filter((fails) => fails.every(defect)).length;
-    // A task disputed since, by the Referee or by a person's label, is in no comparison.
-    const countedDefects = round.counted.filter(
-      (solve) => solve.outcome === "fail" && defect(solve) && log.states.get(solve.version) !== "disputed",
-    );
-    const underOld = countedDefects.filter((solve) => solve.harness === parent).length;
-    const both = [...byOld].filter((version) => byNew.has(version)).length;
-    const scored = asRecord(build.report?.scored);
+    const underOld = open.filter((solve) => solve.harness === own.old).length;
+    const scored = asRecord(last.scored);
     const informative = count(scored?.wins) + count(scored?.losses);
     const tasks = informative + count(scored?.ties);
-    const level = count(build.report?.level);
+    const level = count(last.level);
     // The least clean sweep that clears the report's level, by the report's own test.
     const sweep = Array.from({ length: 64 }, (_, index) => index + 1).find((wins) => signP(wins, 0) <= level);
     // No result with a loss clears on this many informative pairs: the reading rests on a sweep.
     const fragile = signP(Math.max(0, informative - 1), 1) > level;
-    const target = build.report?.target;
-    const [lacking, unscreened] = [items(build.report?.short).length, items(build.report?.unscreened).length];
-    const anchor = asRecord(build.report?.anchor);
+    const asked = last.tasks;
+    const lacking = items(last.short).length;
+    const against = asRecord(last.against);
+    // The tasks a comparison scores are fixed at its start, before any solve. One that reported
+    // other tasks than it began with lost them on the way: to a dispute, or short of their solves.
+    const began = log.events.find(
+      ({ kind, data }) => kind === "comparison.started" && data.session === session,
+    )?.data;
+    const fixed = strings(began?.tasks);
+    const moved = fixed.filter((version) => !strings(last.versions).includes(version)).length;
     const seen = new Map<string, Set<string>>();
-    for (const solve of round.counted.filter((each) => each.outcome === "pass" || each.outcome === "fail")) {
+    for (const solve of scoring.filter((each) => each.outcome === "pass" || each.outcome === "fail")) {
       const key = `${solve.version} ${solve.harness}`;
       seen.set(key, (seen.get(key) ?? new Set()).add(text(solve.outcome)));
     }
     const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
+    const noise = asRecord(last.noise);
     return [
-      ...(moved.length > 0 ? [fired("PAIR DIFFERS BEYOND HARNESS", `${session}: ${moved.join(", ")}`)] : []),
-      ...(round.carried.length > 0
+      ...(moved > 0
         ? [
             fired(
-              "SCORED SET CARRIED",
-              `${session}: ${share(round.carried.length, round.scoredSet.size)} scored tasks were admitted outside this round`,
+              "SCORED SET MOVED",
+              `${session}: ${share(moved, fixed.length)} tasks it began with are not in its tally`,
             ),
           ]
         : []),
-      ...(round.screening.length > 0 || round.kept.length > 0
+      ...(open.length > 0
         ? [
             fired(
-              "ADMITTED BY",
-              `${session}: the parent's fails ${String(byOld.size - both)}, the child's ${String(byNew.size - both)}, both ${String(both)}; ${String(screenedThen.length)} of ${plural(heldThen.length, "candidate")} screened${outOfOrder === 0 ? ", the first of the draw" : ""}`,
-            ),
-          ]
-        : []),
-      ...(round.onRecord.length > 0
-        ? [
-            fired(
-              "PARENT SIDE ON RECORD",
-              `${session}: ${plural(round.onRecord.length, "solve")} of the parent on ${plural(new Set(round.onRecord.map((solve) => solve.version)).size, "task")} were made before the round and read by its screening; ${String(round.kept.length)} admitted on them with no screening solve of the round, ${String(round.retired.length)} retired`,
-            ),
-          ]
-        : []),
-      ...(onFlags > 0
-        ? [
-            fired(
-              "ADMITTED ON FLAGGED FAILS",
-              `${session}: ${share(onFlags, screened.size)} tasks were admitted on fails all ruled a check defect`,
-            ),
-          ]
-        : []),
-      ...(countedDefects.length > 0
-        ? [
-            fired(
-              "FLAGGED FAILS BY SIDE",
-              `${session}: ${plural(countedDefects.length, "counted fail")} ruled a check defect, ${String(underOld)} under the parent and ${String(countedDefects.length - underOld)} under the child`,
-            ),
-          ]
-        : []),
-      ...(outOfOrder > 0
-        ? [
-            fired(
-              "SCREENED OUT OF THE DRAWN ORDER",
-              `${session}: ${share(outOfOrder, screenedThen.length)} screened tasks are not among the first ${String(screenedThen.length)} of the draw over ${plural(heldThen.length, "candidate")}`,
-            ),
-          ]
-        : []),
-      ...(round.screening.length > 0 && asRecord(build.report?.screening) === null
-        ? [
-            fired(
-              "SCREENING RULE NOT ON RECORD",
-              `${session}: ${plural(round.screening.length, "screening solve")}, and the report names neither how many a harness nor how many fails admit`,
+              "SET ASIDE BY SIDE",
+              `${session}: ${plural(open.length, "rejection")} set ${plural(aside.size, "task")} aside, ${String(underOld)} under the reference harness and ${String(open.length - underOld)} under the others`,
             ),
           ]
         : []),
@@ -922,9 +792,12 @@ function comparisonTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "NOTHING SCORED",
-              `${session}: no task was scored${isNumber(target) ? `, at a target of ${String(target)}` : ""}; the report reads ${text(build.report?.reading)}`,
+              `${session}: no task was scored${isNumber(asked) ? `, of ${String(asked)} asked for` : ""}; the report reads ${text(last.reading)}`,
             ),
           ]
+        : []),
+      ...(last.capped === true
+        ? [fired("CUT BY ITS CAP", `${session}: the dollar cap ended it before it was read`)]
         : []),
       ...(scored !== null && tasks > 0 && level > 0 && fragile
         ? [
@@ -934,19 +807,20 @@ function comparisonTriggers(log: Index): Trigger[] {
             ),
           ]
         : []),
-      ...(lacking + unscreened > 0
+      ...(lacking > 0 ? [fired("SET SHORT", `${session}: ${String(lacking)} short of solves`)] : []),
+      ...(against !== null && count(against.wins) < count(against.losses)
         ? [
             fired(
-              "SET SHORT",
-              `${session}: ${String(lacking)} short of solves, ${String(unscreened)} unscreened`,
+              "BELOW THE BASELINE",
+              `${session}: ${String(count(against.wins))} won and ${String(count(against.losses))} lost against the baseline; the report reads ${text(last.reading)}`,
             ),
           ]
         : []),
-      ...(anchor !== null && anchor.reading !== "held"
+      ...(last.reading === "baseline-unread"
         ? [
             fired(
-              "ANCHOR NOT HELD",
-              `${session}: ${text(anchor.reading)}, ${String(count(anchor.informative))} informative`,
+              "BASELINE UNREAD",
+              `${session}: its test clears its level and the baseline was not solved for it`,
             ),
           ]
         : []),
@@ -958,55 +832,45 @@ function comparisonTriggers(log: Index): Trigger[] {
             ),
           ]
         : []),
+      ...(noise === null
+        ? []
+        : [
+            fired(
+              "REFERENCE AGAINST ITSELF",
+              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${count(noise.p) <= level ? ", which reads a step where none can be" : ""}`,
+            ),
+          ]),
     ];
   });
-  // One harness on the anchor in more than one round: the same bytes on the same tasks, measured again.
-  const anchorRates = new Map<string, string[]>();
-  for (const build of reported) {
-    const solved = roundOf(log, build).counted.filter((solve) => log.anchor.has(solve.version));
-    for (const [harness, some] of Map.groupBy(solved, (solve) => solve.harness)) {
-      const passed = some.filter((solve) => solve.outcome === "pass").length;
-      anchorRates.set(harness, [
-        ...(anchorRates.get(harness) ?? []),
-        `${share(passed, some.length)} in ${build.session}`,
-      ]);
-    }
-  }
-  const again = [...anchorRates].filter(([, rounds]) => rounds.length > 1);
-  const chain = reported.map((build) => {
-    const fresh = isString(build.report?.fresh) ? short(build.report.fresh) : "none";
-    return `${build.session} ${short(build.parent)}>${fresh} ${text(build.report?.reading)}`;
+  const chain = log.compared.map(({ session, own, last, build }) => {
+    const fresh = isString(last.fresh) ? short(last.fresh) : "none";
+    // A report written before 2026-10-09 names no reference harness: it compared with its parent.
+    return `${session} ${short(text(own.old) || (build?.parent ?? ""))}>${fresh} ${text(last.reading)}`;
   });
-  const climb = climbOf(log);
-  const parents = new Set(log.builds.map((build) => build.parent));
-  const steps = reported.filter((build) => build.report?.reading === "step" && build !== log.builds.at(-1));
-  const unbuilt = steps.filter((build) => !parents.has(text(build.report?.fresh))).length;
+  // A step is repeated once on fresh solves before anything is promoted: a second comparison of
+  // the same two harnesses.
+  const sidesOf = ({ own, last }: Compared) => `${text(own.old)} ${text(last.fresh)}`;
+  const steps = log.compared.filter(({ last }) => last.reading === "step");
+  const unrepeated = steps.filter(
+    (step) => !log.compared.some((other) => other !== step && sidesOf(other) === sidesOf(step)),
+  ).length;
   return [
     ...(hosts > 1
       ? [fired("HOST CODE MOVED", `${String(hosts)} versions of the host's code in one log`)]
       : []),
-    ...perRound,
+    ...perComparison,
     ...(chain.length > 0 ? [fired("CHAIN", chain.join("; "))] : []),
-    ...(unbuilt > 0
-      ? [fired("STEP NOT BUILT ON", `${plural(unbuilt, "step")} no later session started from`)]
-      : []),
-    ...(again.length > 0
+    ...(unrepeated > 0
       ? [
           fired(
-            "ANCHOR RATE BY ROUND",
-            again.map(([harness, rounds]) => `${short(harness)}: ${rounds.join(", ")}`).join("; "),
+            "STEP NOT REPEATED",
+            `${plural(unrepeated, "step")} no second comparison of the same two harnesses has repeated`,
           ),
         ]
       : []),
-    ...(log.anchor.size > 0 && log.pool.length === 0
-      ? [
-          fired(
-            "NO CANDIDATES HELD",
-            "the pool is empty: no feasible task is held or admitted outside the anchor, so a round has nothing to screen and scores nothing",
-          ),
-        ]
+    ...(log.states.size > 0 && log.held.length === 0
+      ? [fired("NO TASK HELD OUT", "no task is held out, so a comparison has nothing to score")]
       : []),
-    ...(climb === null ? [] : [fired("WHAT BINDS", `${climb.short.binds}: ${climb.short.why}`)]),
   ];
 }
 
@@ -1017,17 +881,22 @@ function solveTriggers(log: Index): Trigger[] {
   const walled = missed.filter(
     (solve) => solve.kind === "wall-ended" || solve.seconds > solve.wallSeconds * WALL_BOUND_SHARE,
   ).length;
-  const wallShares = log.builds.flatMap((build) => {
-    const { scoring } = roundOf(log, build);
-    const under = (old: boolean) =>
-      wallShare(scoring.filter((solve) => (solve.harness === build.parent) === old));
-    const [before, after] = [under(true), under(false)];
-    return before === null || after === null
+  const wallShares = log.compared.flatMap(({ session, own, scoring }) => {
+    // The median share of its wall a harness's solves used, or null for none under a wall. v1 read
+    // this share as the measure that moves on every battery and leads a fail (lane 26).
+    const under = (harness: JsonValue | undefined) =>
+      median(
+        scoring.flatMap((solve) =>
+          solve.harness === harness && solve.wallSeconds > 0 ? [solve.seconds / solve.wallSeconds] : [],
+        ),
+      );
+    const [before, after] = [under(own.old), under(own.fresh)];
+    return before === null || after === null || own.old === own.fresh
       ? []
       : [
           fired(
             "WALL SHARE",
-            `${build.session}: median ${percent(before)} under the parent, ${percent(after)} under the child`,
+            `${session}: median ${percent(before)} under the reference harness, ${percent(after)} under the new`,
           ),
         ];
   });
@@ -1109,9 +978,12 @@ function reviewTriggers(log: Index): Trigger[] {
   const disputed = new Set(
     [...log.states].flatMap(([version, state]) => (state === "disputed" ? [version] : [])),
   );
-  const flagged = new Set(log.builds.flatMap((build) => strings(build.report?.flagged)));
-  const standing = [...flagged].filter((version) => !disputed.has(version)).length;
-  const ends = [...log.of(BUILD_END), ...log.of(EXAM_END), ...log.of("comparison.reported")];
+  // The tasks a comparison set aside that no settling has decided since.
+  const waiting = new Set(
+    log.compared.flatMap(({ last }) => (asRecord(last.settled) === null ? strings(last.aside) : [])),
+  );
+  const standing = [...waiting].filter((version) => !disputed.has(version)).length;
+  const ends = [...log.of(BUILD_END), ...log.of(EXAM_END), ...log.of(REPORTED)];
   const faults = ends.reduce((sum, data) => sum + items(data.reviewFaults).length, 0);
   const unprobed = [...log.rulings.values()].filter(
     (data) => data.ruling === "earned" && items(data.probes).length === 0 && count(data.turns) > 0,
@@ -1129,24 +1001,24 @@ function reviewTriggers(log: Index): Trigger[] {
     ...(standing > 0
       ? [
           fired(
-            "FLAGGED AND STILL COUNTED",
-            `${plural(standing, "task")} with a fail ruled a check defect stayed in a comparison`,
+            "SET ASIDE AND UNSETTLED",
+            `${plural(standing, "task")} left out of a comparison on a rejection no person has labelled`,
           ),
         ]
       : []),
-    ...log.builds.flatMap((build) => {
-      // A report written before the round named the counted reading holds it as its reading.
-      const own = build.own;
-      const second = asRecord(own?.unflagged);
-      const counted = text(own?.counted) || text(own?.reading);
-      const settled = asRecord(build.report?.settled);
+    ...log.compared.flatMap(({ session, own, last }) => {
+      // The tally were every rejection that set a task aside to stand, beside the one without them.
+      const [counted, scored] = [asRecord(own.counted), asRecord(own.scored)];
+      const level = count(own.level);
+      const clears = (tested: JsonObject) => count(tested.p) <= level;
+      const settled = asRecord(last.settled);
       return [
-        ...(second === null || second.reading === counted
+        ...(counted === null || scored === null || clears(counted) === clears(scored)
           ? []
           : [
               fired(
-                "READING MOVES WITHOUT FLAGGED",
-                `${build.session}: ${counted} with ${plural(items(own?.flagged).length, "flagged task")} counted, ${text(second.reading)} without${own?.reading === "flags-decide" ? "; the round claims neither" : ""}`,
+                "READING MOVES WITH THE SET-ASIDE",
+                `${session}: ${String(count(scored.wins))}-${String(count(scored.losses))} without the ${plural(items(own.aside).length, "task")} set aside, ${String(count(counted.wins))}-${String(count(counted.losses))} were their rejections to stand, and only one of the two clears its level`,
               ),
             ]),
         ...(settled === null
@@ -1154,27 +1026,10 @@ function reviewTriggers(log: Index): Trigger[] {
           : [
               fired(
                 "SETTLED BY HAND",
-                `${build.session}: ${plural(count(settled.labelled), "fail")} labelled, ${String(count(settled.defects))} a check defect, ${plural(items(settled.disputed).length, "task")} disputed; the round's own report read ${text(own?.reading)}, the settled one reads ${text(build.report?.reading)}`,
+                `${session}: ${plural(count(settled.labelled), "rejection")} labelled, ${String(count(settled.defects))} a check defect, ${plural(items(settled.disputed).length, "task")} disputed and ${String(items(settled.restored).length)} restored; the comparison's own report read ${text(own.reading)}, the settled one reads ${text(last.reading)}`,
               ),
             ]),
       ];
-    }),
-    // What each report's scored test rests on, set against the Referee's error. A log holds no
-    // hand label, so read from here that error is unmeasured (`src/review/weight.ts`).
-    ...lastReports(log.events).flatMap((report) => {
-      try {
-        const read = weight(log.events, pairsReported(log.events, report), {
-          level: count(report.data.level),
-          measured: null,
-        });
-        return read.informative === 0
-          ? []
-          : [fired("RULINGS AGAINST THE EFFECT", `${report.session}: ${weightLine(read)}`)];
-      } catch {
-        // A round whose solves differ in more than the harness has no pairs to read, and lane 20
-        // names it.
-        return [];
-      }
     }),
     ...(faults > 0 ? [fired("REVIEW FAULTS", plural(faults, "reviewer failure"))] : []),
     ...(unprobed > 0 ? [fired("EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size))] : []),
@@ -1196,7 +1051,6 @@ function rowsOf(log: Index): Row[] {
         (solve) => `${solve.outcome ?? ""} ${solve.kind ?? ""}`.trim(),
       ),
     );
-  const climb = climbOf(log);
   const sessions = log.builds.map((build) => {
     const child = isString(build.finished?.harness) ? short(build.finished.harness) : "none";
     const ended = text(build.finished?.ended) || "never";
@@ -1208,7 +1062,7 @@ function rowsOf(log: Index): Row[] {
       title: "campaign and log",
       lines: [
         `${plural(log.events.length, "event")}, ${log.events[0]?.at ?? ""} to ${log.events.at(-1)?.at ?? ""}`,
-        `${plural(log.builds.length, "Builder session")}, ${plural(log.of(EXAM_START).length, "Examiner session")}, ${plural(log.of("comparison.reported").length, "report")}`,
+        `${plural(log.builds.length, "Builder session")}, ${plural(log.of(EXAM_START).length, "Examiner session")}, ${plural(log.of(REPORTED).length, "report")}`,
         `metered dollars: ${spendOf(log)
           .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
           .join(", ")}`,
@@ -1238,13 +1092,8 @@ function rowsOf(log: Index): Row[] {
       title: "task sets",
       lines: [
         `${plural(proposals.length, "task")}: ${having("session")} written by a session, ${having("carried")} carried, the rest the pack's`,
-        `states: ${tally(countBy([...log.states.values()], (state) => state))}; anchor ${String(log.anchor.size)}`,
-        `${plural(log.candidates.length, "feasible task")} held outside the anchor, for a round to screen`,
-        ...(climb === null
-          ? []
-          : [
-              `against ${short(climb.stand.harness)}, where the campaign stands: ${String(climb.placed.pool.stops.length)} of the pool stop it, ${String(climb.placed.pool.clears.length)} it clears, ${String(climb.placed.pool.walled.length)} ended at the wall, ${String(climb.placed.pool.unknown.length)} no solve has placed; ${String(climb.placed.reach.length)} wait for a witness`,
-            ]),
+        `states: ${tally(countBy([...log.states.values()], (state) => state))}`,
+        `${plural(log.held.length, "task")} held out, for a comparison to score; ${String(log.released.length)} released for practice`,
       ],
     },
     {
@@ -1252,7 +1101,8 @@ function rowsOf(log: Index): Row[] {
       title: "case partition",
       lines: [
         `test side: ${partition(TEST)}`,
-        `strong side: ${partition("strong")}`,
+        // A log written before 2026-10-09 holds solves of a stronger condition, which no comparison counts.
+        ...(done.some((solve) => solve.side === "strong") ? [`strong side: ${partition("strong")}`] : []),
         `${plural(log.solves.length - done.length, "solve")} never finished`,
       ],
     },

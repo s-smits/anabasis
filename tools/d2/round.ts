@@ -1,51 +1,47 @@
 /**
- * One round over a campaign, the plan's D2: a Builder session from the harness the campaign stands
- * on, the screening of the live pool under the old and the new harness, the scoring solves, and
- * the readings.
+ * One round over a campaign: a Builder session from the latest harness the campaign keeps, then the
+ * comparison of the harness it left with the reference harness, on the held-out tasks.
  *
  *   bun tools/d2/round.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
- *     --builder claude/claude-opus-5-5 --reviewer claude/claude-opus-5-5
+ *     --builder claude/claude-opus-5-5 --reviewer claude/claude-opus-5-5 --cap 600
  *
- * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice, the anchor
- * is the anchor, and the live pool is every feasible task held or admitted outside it. The pool is
- * screened in an order drawn by the contract's hash and the session's id, and never in the order of
- * what an earlier solve showed of it, so that neither harness's fails choose which come first. A
- * task an earlier round admitted is in the pool like any other: this round admits it again or
- * retires it, on the parent's solves the log already holds and the child's own
- * (`src/builder/round.ts`). Until 2026-10-08 a round scored only what it screened itself, and an
- * `--admitted` flag scored an earlier admission as it stood, chosen by other harnesses' fails.
+ * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice, and the
+ * scored set is `--target` of the held-out tasks, drawn by the contract's hash alone, so that no
+ * harness's results choose it (`src/builder/round.ts`, `scoredSet`).
  *
- * The defaults are the plan's: 24 scored tasks, three scoring solves a harness, screening on three
- * solves and two fails (its decision 26), the sign test at 0.10, an anchor floor of 8 and a stop
- * past three check defects. The anchor's level defaults to the scored set's; a guard may be asked
- * to fire sooner with `--anchor-level`. `--reviewer` gives the Builder the Referee and the
- * Diagnoser on its practice fails and the round the Referee on screening and scoring fails. There
- * the Referee advises: a fail it rules a check defect stands and its task is reported as flagged,
- * for the hand reading the plan keeps as the gate. The report holds the reading without the flagged
- * tasks beside the one with them (`unflagged`, `counted`); where the two differ it reads
- * `flags-decide` and claims neither, and `tools/d2/settle.ts` settles it on a person's labels. `--referee-decides` lets such a ruling dispute
- * the task, once its rulings have cleared the operator's bar against hand labels
- * (`src/review/agreement.ts`).
+ * The defaults are the plan's after the v1 review (`docs/plan.md`, Tuning): 12 scored tasks, two
+ * solves a harness, the sign test at 0.10, and a stop past three check defects. At those a round's
+ * comparison is 48 solves, all of them fresh and side by side, and 24 more under the minimal
+ * baseline when it reads a step. Until 2026-10-09 a round was about 430.
+ *
+ * `--cap` is the round's dollar cap and is required: no solve starts that a reserve for it and for
+ * each one running (`--reserve`, $10) would take past it, counted from the session's first event.
+ * A comparison the cap cuts short reads `not-scored`. On 2026-10-08 eight rounds cost over $220
+ * and scored no task, under no cap.
+ *
+ * `--reference` names the harness the new one is compared with: `start`, the stored cycle's, until
+ * the operator promotes another by naming its digest (`campaign.ts`, `keptAs`). `--parent` names
+ * the harness the session starts from, and is `latest`, the one the last whole session left: after
+ * a comparison without a step the Builder continues from its latest harness, and the operator may
+ * send it back to an earlier one.
+ *
+ * `--reviewer` gives the Builder the Referee and the Diagnoser on its practice fails, and the
+ * comparison the Referee on every rejected answer. A rejection counts only once it is ruled a true
+ * fail. One ruled a check defect or unclear, and with no reviewer every one, sets its task aside
+ * until a person has labelled it (`tools/d2/settle.ts`). `--budget` reads the same solves at a
+ * shorter budget as well, as `turns=12,cpu=600,seconds=1800` with any of the three, and may be
+ * given more than once; the budgets are fixed with the comparison's other terms before its first
+ * solve.
  *
  * Every solve is the cycle's own model at its effort, unless `--solver` and `--solver-effort` name
  * another to solve in its place. Every solve is held to the sweep's wall and turns, unless
  * `--solve-minutes` and `--solve-turns` name others. The four are the campaign's, and every
- * command of it takes them from one owner (`setting.ts`): another solver or a longer wall is
- * another setting, under which every standing restarts, and that file says what it costs in
- * solves. `--minutes` and `--turns` are the Builder session's own.
- *
- * The session starts from the frontier: the harness the campaign's last step left, or the cycle's
- * while no round has stepped (`src/kernel/ladder.ts`). So a step is built on without being asked
- * for, and a round that read no step is followed by another from the same parent. `--parent
- * <digest>` names another harness an earlier session kept: the operator's way to build on one the
- * plan's rules did not call a step, and a cross round's (`model-condition-comparison`). It takes
- * the whole digest, the name of the harness's folder under the campaign's `states/`, and a name
- * that is none of those is refused with the ones there are.
+ * command that solves takes them from one owner (`setting.ts`). `--minutes` and `--turns` are the
+ * Builder session's own.
  *
  * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
- * three-session reading are printed from the log, and after them what the rounds that fell short
- * of a step show together and what a repeat would need (`src/kernel/size.ts`).
+ * stop rule are printed from the log.
  *
  * A simulation runs this same command with a script in each of its two model seats
  * (`tools/runs/rehearse.ts`), so that what it walks is what a paid round walks.
@@ -53,45 +49,55 @@
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { type RoundReport, round, screeningOrder, stopRule } from "#src/builder/round.ts";
+import { type Cap, type Report, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { shortOfAStep } from "#src/builder/short.ts";
+import { type Budget, UNITS } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
-import { shortLines } from "#src/kernel/size.ts";
-import type { TaskPackage } from "#src/kernel/task.ts";
-import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
+import { stopRule } from "#src/kernel/reports.ts";
+import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
-import {
-  frontier,
-  type Kept,
-  openCampaign,
-  poolOf,
-  SCREENING_OPTIONS,
-  screeningRule,
-  setsOf,
-  stayAwake,
-} from "./campaign.ts";
+import { awaitingLines, baseline, type Kept, keptAs, openCampaign, stayAwake } from "./campaign.ts";
 import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 
-/** A round's two model seats: who builds, and who solves a task under a harness. */
-interface Seats {
-  readonly builder: Pick<BuildRequest, "model" | "models">;
+/** The solver's seat: who solves a task under a harness. */
+interface SolverSeat {
   readonly solve: (task: TaskPackage, harness: Kept, kill: AbortSignal | undefined) => Promise<Practised>;
-  /** The setting those solves record, which names whose solves on record the round may read. */
+  /** The setting those solves record, which names whose solves on record a comparison counts. */
   readonly setting: string;
 }
 
-/** Who sits in a round's seats, once its campaign is open and its parent harness is known. */
+/** A round's two model seats: who solves, and who builds. A comparison with no session takes the
+ *  first and never reads the second (`checkpoint.ts`). */
+interface Seats extends SolverSeat {
+  readonly builder: Pick<BuildRequest, "model" | "models"> | null;
+}
+
+/** Who sits in the seats, once the campaign is open and the comparison's reference harness is
+ *  known, by its folder. */
 export type Seated = (
   campaign: Campaign,
-  given: { readonly builder: string | undefined; readonly parent: string },
+  given: { readonly builder: string | undefined; readonly reference: string },
 ) => Seats;
+
+/** The flags of every command that compares, and their defaults: the plan's (`docs/plan.md`,
+ *  Tuning). */
+export const COMPARISON_OPTIONS = {
+  reference: { type: "string", default: "start" },
+  reviewer: { type: "string" },
+  "reviewer-effort": { type: "string", default: "high" },
+  target: { type: "string", default: "12" },
+  solves: { type: "string", default: "2" },
+  level: { type: "string", default: "0.1" },
+  defects: { type: "string", default: "3" },
+  budget: { type: "string", multiple: true },
+  cap: { type: "string" },
+  reserve: { type: "string", default: "10" },
+} as const;
 
 /** A round's flags and their defaults. A launch reads the same ones (`tools/runs/launch.ts`), so
  *  what it says a round can read is said of the round that would start. */
@@ -105,34 +111,57 @@ export const ROUND_OPTIONS = {
   builder: { type: "string" },
   "builder-effort": { type: "string", default: "high" },
   ...SETTING_OPTIONS,
-  reviewer: { type: "string" },
-  "reviewer-effort": { type: "string", default: "high" },
-  "referee-decides": { type: "boolean", default: false },
-  target: { type: "string", default: "24" },
-  solves: { type: "string", default: "3" },
-  ...SCREENING_OPTIONS,
-  level: { type: "string", default: "0.1" },
-  "anchor-level": { type: "string" },
-  "anchor-floor": { type: "string", default: "8" },
-  defects: { type: "string", default: "3" },
+  ...COMPARISON_OPTIONS,
   "practice-solves": { type: "string", default: "24" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "300" },
-  parent: { type: "string" },
+  parent: { type: "string", default: "latest" },
 } as const;
 
-/** This host's backends in both seats: the Builder `--builder` names, and the campaign's solver. */
-const hosted: Seated = (campaign, { builder }) => {
-  if (builder === undefined) throw new Error("name --builder");
-  return {
-    builder: { model: modelNamed(builder), models: campaign.builder },
-    solve: (task, harness, kill) => campaign.solveOnce(task, harness, campaign.test, kill),
-    setting: campaign.setting(campaign.test),
-  };
-};
+/** The budgets `--budget` names, each as `turns=12,cpu=600,seconds=1800` with any of the three. */
+export function budgetsNamed(flags: readonly string[] = []): Budget[] {
+  return flags.map((flag): Budget => {
+    const named = flag.split(",").map((part) => {
+      const [unit = "", most, ...more] = part.split("=");
+      return { unit, most: more.length === 0 ? Number(most) : Number.NaN };
+    });
+    if (named.some(({ unit, most }) => !UNITS.some((known) => known === unit) || !(most > 0))) {
+      throw new Error(
+        `--budget ${flag}: a budget names turns, cpu or seconds, each with a number above nothing, as turns=12,cpu=600`,
+      );
+    }
+    const budget: Record<string, number> = Object.fromEntries(named.map(({ unit, most }) => [unit, most]));
+    return budget;
+  });
+}
+
+/**
+ * The dollar cap `--cap` and `--reserve` name. A command whose solves are paid for is refused
+ * without one (`docs/plan.md`, Phase 0); a simulation, whose seats are scripts, may name none.
+ */
+export function capNamed(
+  values: { readonly cap?: string | undefined; readonly reserve: string },
+  seats: "paid" | "scripted",
+): Cap | undefined {
+  if (values.cap === undefined) {
+    if (seats === "scripted") return undefined;
+    throw new Error(
+      "name --cap, the billed dollars this comparison may hold: no solve starts that would take it past them, and a comparison the cap cuts short reads not-scored",
+    );
+  }
+  return { dollars: Number(values.cap), reserve: Number(values.reserve) };
+}
+
+/** This host's backends in the seats: the campaign's solver, and the Builder `--builder` names
+ *  where one is named. */
+export const solved: Seated = (campaign, { builder }) => ({
+  builder: builder === undefined ? null : { model: modelNamed(builder), models: campaign.builder },
+  solve: (task, harness, kill) => campaign.solveOnce(task, harness, campaign.test, kill),
+  setting: campaign.setting(campaign.test),
+});
 
 /** `bun tools/d2/round.ts`, and under a simulation's `seated` the same round with its seats scripted. */
-export async function roundCommand(args: readonly string[], seated: Seated = hosted): Promise<RoundReport> {
+export async function roundCommand(args: readonly string[], seated: Seated = solved): Promise<Report> {
   const { values } = parseArgs({ args: [...args], options: ROUND_OPTIONS });
   const { root, sweep, cycle, bundle, name, session } = values;
   if (
@@ -147,10 +176,13 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
   }
   // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
   const effort = (flag: string) => flag as ThinkingLevel;
+  // Read before the campaign is opened: a paid round with no cap starts nothing.
+  const cap = capNamed(values, seated === solved ? "paid" : "scripted");
+  const budgets = budgetsNamed(values.budget);
   const setting = settingNamed(values);
   const { limits } = setting;
   const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting });
-  const sets = setsOf(read(campaign.log));
+  const sets = taskSets(read(campaign.log));
   const packages = campaign.packages();
   const packageOf = (version: string): TaskPackage => {
     const task = packages.get(version);
@@ -164,33 +196,15 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
     reviewer === undefined
       ? null
       : campaign.reviewers(campaign.reader(modelNamed(reviewer), effort(values["reviewer-effort"])));
-  // A session the log already holds goes on from the harness it started from, wherever the
-  // frontier has moved since: its own step moves it.
+  // A session the log already holds goes on from the harness it started from, whatever a later
+  // session has left since.
   const began = read(campaign.log).find(
     ({ kind, data }) => kind === "build.started" && data.session === session,
   )?.data.parent;
-  const startedFrom =
-    isString(began) && existsSync(join(campaign.states, began))
-      ? join(campaign.states, began)
-      : campaign.parent;
-  // `--parent` names a harness by the folder a session froze it under, which is its whole digest.
-  // Any other name is answered with the ones there are: on 2026-10-08 a digest cut to its first
-  // eight characters, as every reader prints one, ended a simulated round in a bare `ENOENT`.
-  const kept = existsSync(campaign.states) ? readdirSync(campaign.states).sort() : [];
-  const asked = values.parent;
-  if (asked !== undefined && !kept.includes(asked)) {
-    const begun = kept.filter((digest) => asked !== "" && digest.startsWith(asked));
-    const from =
-      "With no --parent a round starts from the harness the last step left, or from the cycle's while no round has stepped";
-    throw new Error(
-      kept.length === 0
-        ? `--parent ${asked} is no harness this campaign keeps: no session has kept one under ${campaign.states} yet. ${from}`
-        : `--parent ${asked} is no harness this campaign keeps. It takes one of the digests under ${campaign.states}, whole: ${kept.join(", ")}.${begun.length === 1 ? ` ${asked} begins ${String(begun[0])}.` : ""} ${from}`,
-    );
-  }
-  const named = asked === undefined ? null : join(campaign.states, asked);
-  const parent = named ?? (isString(began) ? startedFrom : (await frontier(campaign)).dir);
-  const seats = seated(campaign, { builder: values.builder, parent });
+  const parent = (await keptAs(campaign, "--parent", isString(began) ? began : values.parent)).dir;
+  const reference = await keptAs(campaign, "--reference", values.reference);
+  const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
+  if (seats.builder === null) throw new Error("name --builder");
   stayAwake();
   const report = await round({
     session: {
@@ -218,28 +232,25 @@ export async function roundCommand(args: readonly string[], seated: Seated = hos
             diagnose: (solve, task, kill) => reviewers.diagnose(solve, packageOf(task.version), kill),
           }),
     },
-    candidates: screeningOrder(poolOf(sets), contractHash(campaign.contract), session),
-    anchor: sets.anchor,
-    target: Number(values.target),
-    screening: screeningRule(values),
+    reference,
+    baseline: await baseline(campaign),
+    tasks: scoredSet(read(campaign.log), Number(values.target), contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
-    anchorLevel: Number(values["anchor-level"] ?? values.level),
-    anchorFloor: Number(values["anchor-floor"]),
     defects: Number(values.defects),
+    budgets,
+    cap,
     concurrency: limits.concurrency,
     solve: (version, dir, digest, kill) => seats.solve(packageOf(version), { dir, digest }, kill),
     setting: seats.setting,
-    ...(reviewers === null
-      ? {}
-      : { referee: (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill) }),
-    refereeDecides: values["referee-decides"],
+    referee:
+      reviewers === null
+        ? undefined
+        : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
   });
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
-  // The rule's companion: what the rounds that fell short show together (`src/kernel/size.ts`).
-  const fell = shortOfAStep(read(campaign.log), Number(values.level));
-  for (const line of shortLines(fell.together, fell.bought)) console.log(line);
+  for (const line of awaitingLines(campaign)) console.log(line);
   return report;
 }
 

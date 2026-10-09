@@ -1,5 +1,5 @@
-// A launch is refused while its round could report nothing or would confound its own times, and a
-// stop ends the run's own process and what it started, and no sibling.
+// A launch is refused while its comparison could report nothing or would confound its own times,
+// and a stop ends the run's own process and what it started, and no sibling.
 import { describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -12,6 +12,7 @@ import {
 import { spent } from "../src/builder/round.ts";
 import { claimed } from "../src/examiner/session.ts";
 import { append, type LogEvent } from "../src/kernel/log.ts";
+import { sizeLines } from "../src/kernel/size.ts";
 import {
   type Asked,
   examPreflight,
@@ -20,93 +21,99 @@ import {
   leftOpen,
   preflight,
   start,
+  type Supply,
+  supplyOf,
 } from "../tools/runs/launch.ts";
 import { LIMITS } from "../tools/d2/campaign.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
 
-const SETS = {
-  feasible: ["a1", "a2", "p1", "c1"],
-  anchor: ["a1", "a2"],
-  released: ["p1"],
-  admitted: [],
-  candidates: ["c1"],
-};
+const SETS: Supply = { held: 4, awaiting: 0, released: 1, untied: null };
 const ASKED: Asked = {
-  target: undefined,
-  // A level one win clears and a floor the anchor meets: a round of this size can read step.
-  level: 0.5,
-  anchorFloor: 2,
+  target: 12,
+  solves: 2,
+  level: 0.1,
+  builds: true,
+  capped: true,
   loaded: false,
   load: 3,
   cores: 12,
   running: [],
   missing: null,
   spent: null,
-  solves: 3,
   named: { solver: undefined, limits: LIMITS },
   ran: null,
 };
 
 describe("a launch's preflight", () => {
-  it("lets a round start that has an anchor and a task to screen, and says its sets and its size", () => {
+  it("lets a comparison start that can read a step, and says its sets and its size", () => {
     const { refusals, notes } = preflight(SETS, ASKED);
     expect(refusals).toEqual([]);
-    expect(notes).toHaveLength(3);
-    expect(notes.slice(0, 2)).toEqual([
-      "2 anchor · 1 released for practice · 1 held to screen · 0 admitted",
-      "at most 1 task can be scored; at --level 0.5 the smallest results that clear are 1-0",
+    expect(notes).toEqual([
+      "4 held out · 1 released for practice · 4 to score",
+      ...sizeLines(4, { solves: 2, level: 0.1 }),
     ]);
-    // One task, won outright 12 times in 100: the chance is the effect's own share.
-    expect(notes[2]).toStartWith(
-      "the chance that the scored test clears on 1 task at 3 solves a side, were the true effect: 12 points as 12 tasks in 100 turned from failed to passed, 0.12; ",
+    expect(notes[1]).toBe(
+      "4 held-out tasks can be scored; at --level 0.1 the smallest results that clear are 4-0",
+    );
+    // A target caps the scored set as few held-out tasks do.
+    expect(preflight({ ...SETS, held: 20 }, ASKED).notes[0]).toBe(
+      "20 held out · 1 released for practice · 12 to score",
     );
   });
 
-  it("refuses a scoring round with nothing to screen, and lets an anchor-only one say it cannot step", () => {
-    const bare = { ...SETS, candidates: [] };
-    expect(preflight(bare, ASKED).refusals).toEqual([
-      expect.stringContaining("nothing to screen and cannot step"),
+  // As exam-1 stood on 2026-10-08, with one task to score. It was a note then, and eight rounds ran.
+  it("refuses a comparison of fewer tasks than a step takes: it could not read one", () => {
+    const small = preflight({ ...SETS, held: 3 }, ASKED);
+    expect(small.refusals).toEqual([
+      "3 held-out tasks can be scored, and at --level 0.1 a step takes 4, all won: this comparison cannot read a step. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks",
     ]);
-    expect(preflight(bare, { ...ASKED, target: "24" }).refusals).toHaveLength(1);
-    const anchorOnly = preflight(bare, { ...ASKED, target: "0" });
-    expect(anchorOnly.refusals).toEqual([]);
-    expect(anchorOnly.notes[1]).toContain("cannot read step");
-    // A task an earlier round admitted is in the pool: this round screens it again.
-    expect(preflight({ ...bare, admitted: ["s1"] }, ASKED).refusals).toEqual([]);
+    expect(small.notes).toEqual(["3 held out · 1 released for practice · 3 to score"]);
+    // A target under the least sweep is refused as few tasks are, and says which it is.
+    expect(preflight(SETS, { ...ASKED, target: 3 }).refusals).toEqual([
+      expect.stringContaining("and ask for a --target of 4 or more"),
+    ]);
+    expect(preflight(SETS, { ...ASKED, level: 0.05 }).refusals).toEqual([
+      expect.stringContaining("a step takes 5"),
+    ]);
   });
 
-  // As exam-1 stood on 2026-10-08: an anchor under the round's floor of eight, and one task held.
-  it("says when a round is too small for either of its tests, at the round's own defaults", () => {
-    const small = { ...ASKED, level: 0.1, anchorFloor: 8 };
-    expect(preflight(SETS, small).notes.slice(1)).toEqual([
-      "at most 1 task(s) can be scored, and at --level 0.1 a step takes 4, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy",
-      "the anchor holds 2 task(s) and --anchor-floor is 8: the anchor cannot be tested, so the round reads neither step nor anchor-lost",
+  it("counts untied tasks: it refuses a comparison the campaign's own tie share leaves too few of", () => {
+    // The last comparison left a quarter of its tasks untied. Twelve tasks then leave about
+    // three, and a step takes four.
+    const tied = { ...SETS, held: 12, untied: 0.25 };
+    expect(preflight(tied, ASKED).refusals).toEqual([
+      "the campaign's last comparison left 25% of its tasks untied, and at that share 12 scored tasks leave about 3.0 untied, where at --level 0.1 a step takes 4, all won: this comparison could hardly read a step. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks, or change the budget so that fewer tasks tie",
     ]);
-    // Four tasks to screen can read a step, and the launch says what it takes and how likely it is:
-    // all four won, which a quarter of the tasks turned gives 1 time in 256.
-    const four = { ...SETS, candidates: ["c1", "c2", "c3", "c4"] };
-    const able = preflight(four, { ...small, anchorFloor: 2 }).notes;
-    expect(able).toHaveLength(3);
-    expect(able[1]).toBe(
-      "at most 4 tasks can be scored; at --level 0.1 the smallest results that clear are 4-0",
-    );
-    expect(able[2]).toContain("25 points as 25 tasks in 100 turned, 0.00;");
-    // The solves a side move the chance of an effect spread over every task, and of no other.
-    const once = preflight(four, { ...small, anchorFloor: 2, solves: 1 }).notes[2] ?? "";
-    expect(once).toContain("at 1 solve a side");
-    expect(once.split("; ")[0]).toBe((able[2] ?? "").split("; ")[0]?.replace("3 solves", "1 solve"));
-    expect(once.split("; ")[3]).not.toBe((able[2] ?? "").split("; ")[3]);
-    // A target under the sweep caps the scored set as few candidates do.
-    expect(preflight(four, { ...small, anchorFloor: 2, target: "3" }).notes[1]).toContain("at most 3");
-    expect(preflight(four, { ...small, anchorFloor: 2, level: 0.05 }).notes[1]).toContain("a step takes 5");
+    // At a half, twelve leave six, and it starts. Before any comparison every task is counted.
+    expect(preflight({ ...tied, untied: 0.5 }, ASKED).refusals).toEqual([]);
+    expect(preflight({ ...tied, untied: null }, ASKED).refusals).toEqual([]);
+    // The share is the last tallied comparison's: its wins and losses over the tasks it tallied.
+    const at = "2026-10-09T00:00:00.000Z";
+    const reported = (session: string, more: LogEvent["data"]): LogEvent => ({
+      at,
+      kind: "comparison.reported",
+      data: { session, ...more },
+    });
+    const log = [
+      reported("b-1", { scored: { wins: 6, losses: 0, ties: 2 }, versions: Array(8).fill("v") }),
+      reported("b-2", { scored: { wins: 1, losses: 1, ties: 6 }, versions: Array(8).fill("v") }),
+      // One the cap cut, and one with every task set aside, tallied nothing and say nothing of it.
+      reported("b-3", { scored: null, versions: [], capped: true }),
+      reported("b-4", { scored: { wins: 0, losses: 0, ties: 0 }, versions: [] }),
+    ];
+    expect(supplyOf(log)).toEqual({ held: 0, awaiting: 0, released: 0, untied: 0.25 });
+    expect(supplyOf([]).untied).toBeNull();
   });
 
-  it("refuses an empty log, a campaign with no anchor, a loaded host, a second start and a missing env file", () => {
-    const none = { feasible: [], anchor: [], released: [], admitted: [], candidates: [] };
-    expect(preflight(none, ASKED).refusals).toEqual([expect.stringContaining("holds no feasible task")]);
-    expect(preflight({ ...SETS, anchor: [] }, ASKED).refusals).toEqual([
-      expect.stringContaining("no anchor is drawn"),
+  it("refuses a comparison that names no dollar cap", () => {
+    expect(preflight(SETS, { ...ASKED, capped: false }).refusals).toEqual([
+      "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
     ]);
+  });
+
+  it("refuses an empty log, a loaded host, a second start and a missing env file", () => {
+    const none = { ...SETS, held: 0, released: 0 };
+    expect(preflight(none, ASKED).refusals).toEqual([expect.stringContaining("holds no held-out task")]);
     const loaded = { ...ASKED, load: 14.2 };
     expect(preflight(SETS, loaded).refusals).toEqual([expect.stringContaining("load is 14.2 on 12 cores")]);
     expect(preflight(SETS, { ...loaded, loaded: true }).refusals).toEqual([]);
@@ -114,7 +121,14 @@ describe("a launch's preflight", () => {
       "this campaign's log is already being written here, by pid 41",
     ]);
     expect(preflight(SETS, { ...ASKED, missing: "gone.env" }).refusals).toEqual(["gone.env is not there"]);
-    expect(preflight({ ...SETS, released: [] }, ASKED).notes.at(-1)).toContain("nothing to practise on");
+    // A round's Builder needs practice, and a checkpoint has no Builder.
+    const unreleased = { ...SETS, released: 0 };
+    expect(preflight(unreleased, ASKED).notes.at(-1)).toContain("nothing to practise on");
+    expect(preflight(unreleased, { ...ASKED, builds: false }).notes.join("\n")).not.toContain("practise");
+    // A task that waits for a person's label is said, and is not among the tasks to score.
+    expect(preflight({ ...SETS, awaiting: 2 }, ASKED).notes).toContain(
+      "2 held-out task(s) wait for a person's label and are not scored (tools/d2/prepare.ts)",
+    );
   });
 
   it("refuses a session whose Builder started and did not end whole, in the round's own words", () => {
@@ -127,15 +141,9 @@ describe("a launch's preflight", () => {
     expect(spent([started], "b-1")).toContain("started and never finished");
     expect(spent([started, ended("killed")], "b-1")).toContain("was killed");
     expect(spent([started, ended("wall")], "b-1")).toBeNull();
-    // A whole session with no report, and another Builder session started after it: the round's
-    // window has ended. Once it has reported, a later session is nothing to it.
+    // A whole session with no report goes on whenever it is asked to, whatever ran since.
     const later = { at, kind: "build.started", data: { session: "b-2" } } as const;
-    const report = { at, kind: "comparison.reported", data: { session: "b-1" } } as const;
-    expect(spent([started, ended("wall"), later], "b-1")).toContain(
-      "has no report and session b-2 started after it",
-    );
-    expect(spent([later, started, ended("wall")], "b-1")).toBeNull();
-    expect(spent([started, ended("wall"), report, later], "b-1")).toBeNull();
+    expect(spent([started, ended("wall"), later], "b-1")).toBeNull();
     expect(preflight(SETS, { ...ASKED, spent: "session b-1 was cut" }).refusals).toEqual([
       "session b-1 was cut. Pass another --session",
     ]);
@@ -145,17 +153,18 @@ describe("a launch's preflight", () => {
 describe("a launch under limits the log's last solves did not run under", () => {
   const longer = { ...LIMITS, wallSeconds: 4 * 3600 };
 
-  it("says that every standing restarts, for a round and for an Examiner session", () => {
-    // No solve on record, or the same limits: nothing restarts, and nothing is said.
-    expect(preflight(SETS, ASKED).notes.join("\n")).not.toContain("no standing carries over");
+  it("says that what the log measured so far was another setting's, for a round and a checkpoint", () => {
+    const told = "are another setting's";
+    // No solve on record, or the same limits: nothing moved, and nothing is said.
+    expect(preflight(SETS, ASKED).notes.join("\n")).not.toContain(told);
     const ran = { model: "p/m", effort: "high", limits: LIMITS };
-    expect(preflight(SETS, { ...ASKED, ran }).notes.join("\n")).not.toContain("carries over");
+    expect(preflight(SETS, { ...ASKED, ran }).notes.join("\n")).not.toContain(told);
     const note =
-      "a solve here is held to 240 minutes and 24 turns, and the log's last test-side solves ran under 120 minutes and 24 turns: under other limits no standing carries over, so each task screened is solved under both harnesses and each reach task is put to the stronger solver again (tools/d2/setting.ts)";
+      "a solve here is held to 240 minutes and 24 turns, and the log's last test-side solves ran under 120 minutes and 24 turns: the tallies, the tie share and the cost of a solve on record are another setting's, and say little of this comparison (tools/d2/setting.ts)";
     const under = (limits: typeof LIMITS) => ({ solver: undefined, limits });
     expect(preflight(SETS, { ...ASKED, named: under(longer), ran }).notes.at(-1)).toBe(note);
-    const exam = examPreflight([], { ...ASKED, named: under(longer), ran, reviewer: true });
-    expect(exam.notes.at(-1)).toBe(note);
+    // An Examiner session solves nothing, so nothing of the kind is said of it.
+    expect(examPreflight([], { ...ASKED, named: under(longer), ran }).notes.join("\n")).not.toContain(told);
     // More turns are other limits too.
     expect(preflight(SETS, { ...ASKED, named: under({ ...LIMITS, turns: 48 }), ran }).notes.at(-1)).toContain(
       "held to 120 minutes and 48 turns",
@@ -163,10 +172,10 @@ describe("a launch under limits the log's last solves did not run under", () => 
     // Another solver than the log's last is said the same way, and the same one is not.
     const other = { solver: { model: "p/other", effort: "high" as const }, limits: LIMITS };
     expect(preflight(SETS, { ...ASKED, named: other, ran }).notes.at(-1)).toContain(
-      "solves here are p/other at high, and the log's last test-side solves were p/m at high: another solver's standings do not carry over",
+      "solves here are p/other at high, and the log's last test-side solves were p/m at high: the tallies",
     );
     const same = { solver: { model: "p/m", effort: "high" as const }, limits: LIMITS };
-    expect(preflight(SETS, { ...ASKED, named: same, ran }).notes.join("\n")).not.toContain("carry over");
+    expect(preflight(SETS, { ...ASKED, named: same, ran }).notes.join("\n")).not.toContain(told);
   });
 
   it("refuses a wall the command itself would refuse, before anything starts", async () => {
@@ -174,16 +183,16 @@ describe("a launch under limits the log's last solves did not run under", () => 
     await expect(launch([...flags, "--solve-minutes", "0"])).rejects.toThrow(
       "--solve-minutes 0 --solve-turns 24: a solve's wall and its turns are whole numbers of at least one",
     );
-    await expect(launch([...flags, "--examiner", "m", "--solve-turns", "2.5"])).rejects.toThrow(
-      "--solve-minutes 120 --solve-turns 2.5",
-    );
+    await expect(
+      launch(["--name", "no-such-campaign", "--id", "g2", "--solve-turns", "2.5"]),
+    ).rejects.toThrow("--solve-minutes 120 --solve-turns 2.5");
   });
 });
 
 describe("an Examiner session's preflight", () => {
-  const at = "2026-10-08T00:00:00.000Z";
+  const at = "2026-10-09T00:00:00.000Z";
   const event = (kind: LogEvent["kind"], data: LogEvent["data"]): LogEvent => ({ at, kind, data });
-  /** A session's task as far as gate 3: the log of exam-1 when the provider's limit ended x-1. */
+  /** One session's task, held out. */
   const left = [
     event("exam.started", { session: "x-1" }),
     event("task.proposed", {
@@ -193,45 +202,23 @@ describe("an Examiner session's preflight", () => {
       task: { taskId: "x-1-001", family: "fixture", publicInput: {}, hidden: null },
     }),
     event("task.gate", { version: "v1", gate: 1, outcome: "passed" }),
-    event("verdict", { solve: "s-1", task: "x-1-001", answer: { answer: "1" }, kind: "pass" }),
-    event("task.gate", { version: "v1", gate: 2, outcome: "passed", solve: "s-1" }),
-    event("task.gate", { version: "v1", gate: 3, outcome: "passed" }),
   ];
 
-  const REVIEWED = { ...ASKED, reviewer: true };
-
-  it("needs the campaign's log and no set in it, and says what the session is handed", () => {
-    expect(examPreflight(left, REVIEWED)).toEqual({
+  it("needs the campaign's log and no set in it, and says where its tasks go", () => {
+    expect(examPreflight(left, ASKED)).toEqual({
       refusals: [],
-      notes: [
-        "x-1-001 passed gate 3 in an earlier session and is handed to this one for its controls",
-        expect.stringContaining("no anchor is drawn: run tools/d2/prepare.ts after this session"),
-      ],
+      notes: ["1 held out · 0 released for practice: what this session writes is held out beside them"],
     });
-    // A pack's task through its four gates and drawn: this session's tasks come after the anchor.
-    const drawn = [
-      ...left,
-      event("task.proposed", { version: "a1" }),
-      ...[1, 2, 3, 4].map((gate) =>
-        event("task.gate", { version: "a1", gate, outcome: "passed", controls: "d" }),
-      ),
-      event("anchor.drawn", { tasks: ["a1"] }),
-    ];
-    expect(examPreflight(drawn, REVIEWED).notes[1]).toContain("is not drawn into the anchor");
-    expect(examPreflight(null, { ...ASKED, reviewer: false })).toEqual({
+    expect(examPreflight(null, ASKED)).toEqual({
       refusals: [expect.stringContaining("the campaign has no log in this worktree")],
       notes: [],
     });
-    // With no reviewer a too-hard word is all that is kept of a refused stronger solve.
-    expect(examPreflight(left, { ...ASKED, reviewer: false }).notes.at(-1)).toContain(
-      "no --reviewer: a task whose stronger solve a check refuses is closed as too hard",
-    );
   });
 
   it("refuses a session id the log holds, a loaded host and a second writer, as a round's does", () => {
     expect(claimed(left, "x-2")).toBeNull();
     const again = examPreflight(left, {
-      ...REVIEWED,
+      ...ASKED,
       spent: claimed(left, "x-1"),
       load: 14.2,
       running: [41],

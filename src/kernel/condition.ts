@@ -6,7 +6,7 @@
  * host's, which a Built Harness used to declare for itself: on 7 October each harness state carried
  * its own `config.yaml` naming its wall, turn cap, shell timeouts and concurrency.
  */
-import type { OpenRecord } from "../meta/json-shape.ts";
+import { asRecord, isNumber, type JsonValue, type OpenRecord } from "../meta/json-shape.ts";
 import { hashJsonValue, requireJsonValue, sameJsonValue } from "../meta/stable-json.ts";
 import { append, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
@@ -63,17 +63,34 @@ export interface Condition {
    *  commit that touches neither opens no new condition, and an uncommitted change to either does,
    *  where a commit id did the opposite on both counts. */
   readonly host: string;
-  /** Which side of the pair: the test condition, or the stronger one. */
+  /** The test condition. Until 2026-10-09 a task was also solved once under a stronger condition,
+   *  to show it could be done, and a log written before then holds such solves. No comparison
+   *  counts one (`compare.ts`). */
   readonly side: "test" | "strong";
 }
 
 /**
  * What a solve ran under apart from its task and its harness: the solver, its limits, the checker's
- * side and the host. A comparison holds all of it still (`compare.ts`), and so does every reading
- * of how a task stands against a harness (`ladder.ts`): a solve another model made, or the same
- * model under other limits or other host code, is no solve of this solver's.
+ * side and the host. A comparison holds all of it still (`compare.ts`): a solve another model made,
+ * or the same model under other limits or other host code, is no solve of this solver's, and is
+ * neither counted nor reused.
  */
 export type Setting = Omit<Condition, "task" | "harness" | "solverTools">;
+
+/** The limits a log event holds under `value`, or null where it holds none whole. */
+export function limitsIn(value: JsonValue | undefined): Limits | null {
+  const held = asRecord(value);
+  if (held === null) return null;
+  const { wallSeconds, turns, shellDefaultSeconds, shellMaxSeconds, concurrency, diskBytes } = held;
+  return isNumber(wallSeconds) &&
+    isNumber(turns) &&
+    isNumber(shellDefaultSeconds) &&
+    isNumber(shellMaxSeconds) &&
+    isNumber(concurrency) &&
+    isNumber(diskBytes)
+    ? { wallSeconds, turns, shellDefaultSeconds, shellMaxSeconds, concurrency, diskBytes }
+    : null;
+}
 
 /** The condition's identity: the hash of its canonical JSON, so field order does not move it. */
 export function conditionId(condition: Condition): string {

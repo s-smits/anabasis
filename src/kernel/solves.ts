@@ -5,7 +5,7 @@
  * A solve is three records in the log. Its start names its condition by id alone, the condition
  * record says which task version, harness and side that was (`condition.ts`), and its ending and
  * its verdict name the solve. Every reader of a campaign joins them: a task's standing against a
- * harness (`ladder.ts`), the pairs a comparison counts (`compare.ts`), a Builder's practice record,
+ * harness, the pairs a comparison counts (`compare.ts`), a Builder's practice record,
  * the reviewers' packets, the launcher and the investigation's reader. Until 2026-10-08 each made
  * the join for itself, in fourteen places, and they had come to differ in small ways: one read a
  * task's solves in the order they started and another in the order they ended, which are not the
@@ -17,7 +17,7 @@
  * "the latest so many" means; `verdictsOf` is the last verdict of each.
  */
 import { asRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import { type Condition, conditionsOf } from "./condition.ts";
+import { type Condition, conditionsOf, type Limits, limitsIn } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
 import type { Counted } from "./solve.ts";
 import type { Verdict } from "./verify.ts";
@@ -99,6 +99,31 @@ export function ranUnder(events: readonly LogEvent[]): Ran[] {
     const under = conditions.get(solve.condition);
     return under === undefined ? [] : [{ ...solve, under }];
   });
+}
+
+/** Who solved last on the test side of a log, and under what limits: the model, the effort and the
+ *  limits of the condition its last test-side solve started under, or null before any. It is what a
+ *  command about to solve as another solver, or under other limits, is set against
+ *  (`tools/d2/setting.ts`). */
+export function solverLast(
+  events: readonly LogEvent[],
+): { readonly model: string; readonly effort: string; readonly limits: Limits } | null {
+  const tested = new Map(
+    events.flatMap(({ kind, data }) => {
+      const condition = asRecord(data.condition);
+      return kind === "condition.recorded" && isString(data.id) && condition?.side === "test"
+        ? [[data.id, condition] as const]
+        : [];
+    }),
+  );
+  const started = events.findLast(
+    ({ kind, data }) => kind === "solve.started" && isString(data.condition) && tested.has(data.condition),
+  )?.data.condition;
+  const ran = tested.get(isString(started) ? started : "");
+  const limits = limitsIn(ran?.limits);
+  return ran !== undefined && isString(ran.model) && isString(ran.effort) && limits !== null
+    ? { model: ran.model, effort: ran.effort, limits }
+    : null;
 }
 
 /** The finished among `solves`, in the order they ended. */

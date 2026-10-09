@@ -16,12 +16,12 @@
  *
  * The checks are replayed on the logged answer before any reading. A replay that gives another
  * verdict than the log holds is a check that does not repeat, and the host rules it a check-defect
- * itself; one that reaches no verdict leaves the fail unclear. Gate 3 asks the same of the accepted
- * answer and of no other, so a failing answer is where a check that does not repeat first shows.
+ * itself; one that reaches no verdict leaves the fail unclear. Nothing else runs a check twice on
+ * one answer, so a rejected answer is where a check that does not repeat first shows.
  *
  * The packet sets an answer the checks accepted for the task beside the one under review, where the
- * log holds one: gate 2's is there for every feasible task, and the difference between the two is
- * the shortest way to what a check objects to.
+ * log holds one: any solve of the task that passed left one, and the difference between the two is
+ * the shortest way to what a check objects to. A task no solve has answered validly has none.
  *
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
  * rules and logs, one `referee.finding` per fail.

@@ -33,8 +33,6 @@ import { Type } from "typebox";
 import { createBashTool } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { bestKnown } from "../kernel/compare.ts";
-import { objectiveValue } from "../kernel/contract.ts";
 import { ended, passed, ranUnder, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
@@ -346,34 +344,12 @@ export function practiceTool(bench: Bench): AgentTool {
         );
       }
       const events = read(request.log);
-      const { objective } = request.contract;
-      const verdicts = verdictsOf(events);
-      const best = objective === undefined ? null : bestKnown(events, objective);
       const said = solved.flat().map(({ task, solve, ending, lines }) => {
         const [now, before] = [kept.harness.digest, bench.parent].map((harness) =>
           record(events, task.version, harness),
         );
-        // The objective is public and the task is a practice one, so what its answer reports and
-        // the best valid value any solve of it has reported leak nothing (`docs/plan.md`, Phase 2).
-        const value =
-          objective === undefined || ending.outcome !== "pass"
-            ? null
-            : objectiveValue(objective, verdicts.get(solve)?.answer);
-        const known = best?.get(task.version);
         return [
           `${task.task.taskId}: ${endingText(ending)}. Solve ${solve}.`,
-          ...(objective === undefined || ending.outcome !== "pass"
-            ? []
-            : [
-                value === null
-                  ? `Its answer is valid and reports no ${objective.quantity} at ${objective.path}.`
-                  : `Its answer is valid and reports ${objective.quantity} ${String(value)}.`,
-              ]),
-          ...(objective === undefined || known === undefined
-            ? []
-            : [
-                `Best valid ${objective.quantity} any solve of this task has reported: ${String(known.value)} (solve ${known.solve}).`,
-              ]),
           `Record under this harness: passed ${String(now?.passed ?? 0)} of ${String(now?.solves.length ?? 0)}. Under the harness you started from: ${String(before?.passed ?? 0)} of ${String(before?.solves.length ?? 0)}.`,
           ...lines,
         ].join("\n");

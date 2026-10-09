@@ -1,38 +1,42 @@
 /**
- * Launch a round once its log says it can report something, or an Examiner session, and stop a
- * run: v1's launch-run, on v2's records.
+ * Launch a round or a checkpoint once its log says it can report something, or an Examiner
+ * session, and stop a run: v1's launch-run, on v2's records.
  *
  *   bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of tools/d2/round.ts>
+ *   bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of tools/d2/checkpoint.ts>
  *   bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of tools/d1b/examine.ts>
  *   bun run runs stop <name> ... [--yes]
  *
- * Flags that hold `--examiner` are an Examiner session's, and any others a round's.
+ * Flags that hold `--examiner` are an Examiner session's, flags that hold `--id` a checkpoint's,
+ * and any others a round's.
  *
  * `launch` runs in the worktree whose source should run. Before it starts anything it reads the
  * campaign's sets from the log and the host, and refuses:
  *
- *   - a log with no feasible task or no anchor (`admit-sweep.ts`, `prepare.ts`);
- *   - a scoring round with no task held outside the anchor: it has nothing to screen, so its scored
- *     set stays empty and it reads `no-step` whatever the Builder made. The eight truss rounds of
- *     2026-10-08 had no such task, and read `no-step` eight times for over $220;
- *   - the same round already running here;
+ *   - a log with no held-out task (`prepare.ts`);
+ *   - a comparison that would leave fewer untied tasks than a step takes at its level. It could not
+ *     read a step whatever the harnesses did, and the plan blocks a launch that cannot give a
+ *     result (`docs/plan.md`, Phase 2). The untied tasks are counted from the share the campaign's
+ *     last comparison left untied; before any comparison, every scored task is counted, which is
+ *     the most there can be. Until 2026-10-09 this was a note, and the eight truss rounds of
+ *     2026-10-08 scored no task and read `no-step` eight times for over $220;
+ *   - a comparison with no `--cap`: the plan requires a dollar cap at launch for each comparison;
+ *   - the same run already running here;
  *   - a host whose load is over its cores, unless `--loaded` says its times will not be compared;
  *   - an `--env-file` that is not there. The path is Bun's to read and is never opened here;
- *   - a `--session` whose Builder started and did not end whole, or whose round has no report
- *     while another Builder session has started since, as the round itself would (`spent`).
+ *   - a `--session` whose Builder started and did not end whole, as the round itself would
+ *     (`spent`), or one an Examiner session already took (`claimed`).
  *
- * Its notes then say what a round of this size can show before it is paid for (`roundSize`,
- * `src/kernel/size.ts`): the most tasks it can score, the smallest results that clear its level,
- * and the chance of one for a few stated effects. A launch reads the log alone and knows no
- * standing, so every task to screen counts as one the round may admit. They also say when the
- * `--solve-minutes` and `--solve-turns` it was given are not the limits the log's last test-side
- * solves ran under, or the `--solver` and `--solver-effort` it names are not who made them, since
- * every standing then restarts (`tools/d2/setting.ts`). A launch that names no `--solver` solves
- * as the stored cycle's own, which it does not open, and says nothing of the solver.
+ * Its notes then say what a comparison of this size can show before it is paid for (`sizeLines`,
+ * `src/kernel/size.ts`): the smallest results that clear its level, and the plan's power at it.
+ * They also say when the `--solve-minutes` and `--solve-turns` it was given are not the limits the
+ * log's last test-side solves ran under, or the `--solver` and `--solver-effort` it names are not
+ * who made them, since no solve on record is then counted (`tools/d2/setting.ts`). A launch that
+ * names no `--solver` solves as the stored cycle's own, which it does not open, and says nothing
+ * of the solver.
  *
- * An Examiner session meets the last four of these, its id being one the log holds already, and
- * needs the campaign's log and no set in it. Its notes say what it is handed and where its tasks
- * can go: a task an earlier session left past gate 3, and whether the anchor is drawn yet.
+ * An Examiner session solves nothing, so it meets the host's refusals and its id's, and needs the
+ * campaign's log and no set in it.
  *
  * It then starts the command with the same flags, niced, in a process group of its own, with its
  * output in `.ana/d2/<name>/launch-<session>.out` and `.err`, and writes `launch-<session>.json`
@@ -41,10 +45,10 @@
  *
  * `stop` ends the process that writes each named run's log and every process that one started, and
  * nothing else: a round started by hand can share its process group with a sibling. A name is
- * matched whole. Without `--yes` it prints what it would end. A round goes on from its log when it
- * is launched again with the same `--session`, unless the stop fell inside its Builder session: that
- * session never finished, the round refuses a second one under its id, and so does `launch`. An
- * Examiner session's id is spent wherever the stop fell, and the next is handed what it left.
+ * matched whole. Without `--yes` it prints what it would end. A round or a checkpoint goes on from
+ * its log when it is launched again under the same id, unless the stop fell inside a Builder
+ * session: that session never finished, the round refuses a second one under its id, and so does
+ * `launch`. An Examiner session's id is spent wherever the stop fell.
  *
  * A stop also releases what the run held on the host: the capped root of each solve and Builder
  * session its log started and never finished, which only the ended process would have let go. A
@@ -53,10 +57,13 @@
  */
 import { existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { sweepOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { roundSize, sizeLines } from "#src/kernel/size.ts";
-import { solverLast } from "#src/kernel/wall.ts";
-import { isString } from "#src/meta/json-shape.ts";
+import { awaitingLabel, lastReports } from "#src/kernel/reports.ts";
+import { sizeLines } from "#src/kernel/size.ts";
+import { solverLast } from "#src/kernel/solves.ts";
+import { taskSets } from "#src/kernel/task.ts";
+import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -66,10 +73,19 @@ import { sessionDirs } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
-import { carriable, setsOf } from "../d2/campaign.ts";
 import { ROUND_OPTIONS } from "../d2/round.ts";
 import { type NamedSetting, restarts, SETTING_OPTIONS, settingNamed } from "../d2/setting.ts";
-import { EXAMINE, logEvents, processes, ROUND, type Run, runs, standing, writers } from "./pulse.ts";
+import {
+  CHECKPOINT,
+  EXAMINE,
+  logEvents,
+  processes,
+  ROUND,
+  type Run,
+  runs,
+  standing,
+  writers,
+} from "./pulse.ts";
 import { seedCut } from "./seed.ts";
 
 const START_MS = 8000;
@@ -93,14 +109,26 @@ export interface Host {
   readonly ran: ReturnType<typeof solverLast>;
 }
 
-/** What a round's launch is asked for beside it. */
+/** What a comparison's launch is asked for beside it. */
 export interface Asked extends Host {
-  /** `--target`, as given: only "0" asks for no scored task. */
-  readonly target: string | undefined;
-  /** `--level`, `--anchor-floor` and `--solves`, as given or as the round defaults them. */
-  readonly level: number;
-  readonly anchorFloor: number;
+  /** `--target`, `--solves` and `--level`, as given or as the round defaults them. */
+  readonly target: number;
   readonly solves: number;
+  readonly level: number;
+  /** Whether the command runs a Builder session before it compares. */
+  readonly builds: boolean;
+  /** Whether a `--cap` is named. */
+  readonly capped: boolean;
+}
+
+/** What a launch reads of a log's tasks: how many are held out and may be scored, how many wait
+ *  for a person's label and are left out, how many are released for practice, and the share of
+ *  its tallied tasks the last comparison left untied, null before any. */
+export interface Supply {
+  readonly held: number;
+  readonly awaiting: number;
+  readonly released: number;
+  readonly untied: number | null;
 }
 
 /** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
@@ -144,52 +172,61 @@ function refused(asked: Host): string[] {
   ]);
 }
 
-/** Why a round should not start, and what its reader should know when it does. */
-export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
-  const scoring = asked.target !== "0";
-  // The live pool: what is held outside the anchor, and what an earlier round admitted, which every
-  // round screens again (`src/builder/round.ts`).
-  const toScreen = sets.candidates.length + sets.admitted.length;
+/** A log's supply of tasks, as `preflight` takes it. */
+export function supplyOf(events: readonly LogEvent[]): Supply {
+  const sets = taskSets(events);
+  const awaiting = awaitingLabel(events).filter((version) => sets.held.includes(version)).length;
+  const last = lastReports(events).findLast(
+    ({ data }) => Array.isArray(data.versions) && data.versions.length > 0 && asRecord(data.scored) !== null,
+  )?.data;
+  const tally = asRecord(last?.scored);
+  const tallied = Array.isArray(last?.versions) ? last.versions.length : 0;
+  const untied =
+    tally !== null && isNumber(tally.wins) && isNumber(tally.losses) && tallied > 0
+      ? (tally.wins + tally.losses) / tallied
+      : null;
+  return { held: sets.held.length - awaiting, awaiting, released: sets.released.length, untied };
+}
+
+/** Why a round or a checkpoint should not start, and what its reader should know when it does. */
+export function preflight(supply: Supply, asked: Asked) {
+  const scored = Math.min(asked.target, supply.held);
+  const [size = "", ...power] = sizeLines(scored, asked);
+  // What a comparison's test can say at this size is arithmetic, and rehearsals found it before a
+  // round paid to (2026-10-08): exam-1 held one task to score.
+  const least = sweepOf(asked.level);
+  const untied = scored * (supply.untied ?? 1);
+  const more = `Run an Examiner session (${EXAMINE}) for more held-out tasks`;
   const refusals = [
     ...said([
       [
-        sets.feasible.length === 0,
-        "the log holds no feasible task: put the pack's tasks in it with tools/m1/admit-sweep.ts --log <log> --feasible",
+        supply.held === 0,
+        "the log holds no held-out task to score: run tools/d2/prepare.ts, which takes the pack's tasks in",
       ],
-      [sets.feasible.length > 0 && sets.anchor.length === 0, "no anchor is drawn: run tools/d2/prepare.ts"],
       [
-        scoring && toScreen === 0 && sets.anchor.length > 0,
-        `the pool is empty, with no task held outside the anchor and none admitted, so the round has nothing to screen and cannot step: run an Examiner session (${EXAMINE}), or pass --target 0 for a round that reads its anchor alone`,
+        supply.held > 0 && scored < least,
+        `${size}. ${more}${asked.target < least ? `, and ask for a --target of ${String(least)} or more` : ""}`,
+      ],
+      [
+        scored >= least && untied < least,
+        `the campaign's last comparison left ${String(Math.round(100 * (supply.untied ?? 1)))}% of its tasks untied, and at that share ${String(scored)} scored tasks leave about ${untied.toFixed(1)} untied, where at --level ${String(asked.level)} a step takes ${String(least)}, all won: this comparison could hardly read a step. ${more}, or change the budget so that fewer tasks tie`,
+      ],
+      [
+        !asked.capped,
+        "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
       ],
     ]),
     ...refused(asked),
   ];
-  // What the round's two tests can say at this size is arithmetic, and rehearsals found it before a
-  // round paid to (2026-10-08): exam-1 held one task to screen, and four anchor tasks under a floor
-  // of eight. A launch knows no standing, so every task to screen is one the round may admit.
-  const size = roundSize(
-    { stops: 0, unplaced: toScreen },
-    {
-      target: Number(asked.target ?? ROUND_OPTIONS.target.default),
-      solves: asked.solves,
-      level: asked.level,
-    },
-  );
   const notes = [
+    `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(scored)} to score`,
+    ...(scored < least ? [] : [size, ...power]),
     ...said([
       [
-        true,
-        `${String(sets.anchor.length)} anchor · ${String(sets.released.length)} released for practice · ${String(sets.candidates.length)} held to screen · ${String(sets.admitted.length)} admitted`,
+        supply.awaiting > 0,
+        `${String(supply.awaiting)} held-out task(s) wait for a person's label and are not scored (tools/d2/prepare.ts)`,
       ],
-      [!scoring, "--target 0: the round scores no task and cannot read step. Its anchor is all it compares"],
-    ]),
-    ...sizeLines(size),
-    ...said([
-      [
-        sets.anchor.length > 0 && sets.anchor.length < asked.anchorFloor,
-        `the anchor holds ${String(sets.anchor.length)} task(s) and --anchor-floor is ${String(asked.anchorFloor)}: the anchor cannot be tested, so the round reads neither step nor anchor-lost`,
-      ],
-      [sets.released.length === 0, "no task is released: the Builder has nothing to practise on"],
+      [asked.builds && supply.released === 0, "no task is released: the Builder has nothing to practise on"],
     ]),
     ...restarts(asked.named, asked.ran),
   ];
@@ -197,44 +234,25 @@ export function preflight(sets: ReturnType<typeof setsOf>, asked: Asked) {
 }
 
 /** The same for an Examiner session on a campaign whose log is `events`, or null where the
- *  campaign has none here. It needs no set: what it writes is what a round later screens. */
-export function examPreflight(
-  events: readonly LogEvent[] | null,
-  asked: Host & { /** Whether `--reviewer` names a model. */ readonly reviewer: boolean },
-) {
-  const sets = setsOf(events ?? []);
-  const waiting = carriable(events ?? []).waiting.map(({ task }) => task.taskId);
+ *  campaign has none here. It solves nothing and needs no set: what it writes is held out. */
+export function examPreflight(events: readonly LogEvent[] | null, asked: Host) {
+  const sets = taskSets(events ?? []);
   const refusals = [
     ...said([
       [
         events === null,
-        "the campaign has no log in this worktree: open it with tools/c/accept.ts and tools/m1/admit-sweep.ts --log <log> --feasible",
+        "the campaign has no log in this worktree: open it with tools/c/accept.ts and tools/d2/prepare.ts",
       ],
     ]),
     ...refused(asked),
   ];
   const notes = said([
     [
-      waiting.length > 0,
-      `${waiting.join(", ")} passed gate 3 in an earlier session and is handed to this one for its controls`,
-    ],
-    [
-      sets.anchor.length > 0,
-      "the anchor is drawn: what this session writes is a round's to screen, and is not drawn into the anchor",
-    ],
-    [
-      events !== null && sets.anchor.length === 0,
-      "no anchor is drawn: run tools/d2/prepare.ts after this session, and its tasks stand a chance of the anchor",
-    ],
-    // The plan's decision 51 asks for a reviewer on these sessions. x-2 was launched with none and
-    // closed five of its six candidates as too hard: five stronger solves, $34.54 billed, that no
-    // Referee read (exam-1, 2026-10-08).
-    [
-      events !== null && !asked.reviewer,
-      "no --reviewer: a task whose stronger solve a check refuses is closed as too hard, and no Referee reads whether the check was at fault",
+      events !== null,
+      `${String(sets.held.length)} held out · ${String(sets.released.length)} released for practice: what this session writes is held out beside them`,
     ],
   ]);
-  return { refusals, notes: [...notes, ...restarts(asked.named, asked.ran)] };
+  return { refusals, notes };
 }
 
 /** Start `cmd` in a process group of its own, its output under `base`, and return the process. */
@@ -277,19 +295,23 @@ export async function launch(args: readonly string[]): Promise<void> {
       "dry-run": { type: "boolean", default: false },
       name: { type: "string" },
       session: { type: "string" },
-      target: { type: "string" },
-      level: ROUND_OPTIONS.level,
-      "anchor-floor": ROUND_OPTIONS["anchor-floor"],
+      id: { type: "string" },
+      target: ROUND_OPTIONS.target,
       solves: ROUND_OPTIONS.solves,
+      level: ROUND_OPTIONS.level,
+      cap: ROUND_OPTIONS.cap,
+      tasks: { type: "string" },
       ...SETTING_OPTIONS,
       examiner: { type: "string" },
-      reviewer: { type: "string" },
     },
   });
-  const { name, session, target, "env-file": envFile } = values;
+  const { name, "env-file": envFile } = values;
+  // A checkpoint is named by its `--id`, which stands where a session's id does.
+  const checking = isString(values.id);
+  const session = checking ? values.id : values.session;
   if (!isString(name) || !isString(session)) {
     throw new Error(
-      `usage: bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of ${ROUND} or of ${EXAMINE}>`,
+      `usage: bun run runs launch [--env-file FILE] [--loaded] [--dry-run] <the flags of ${ROUND}, of ${CHECKPOINT} or of ${EXAMINE}>`,
     );
   }
   const examining = isString(values.examiner);
@@ -307,7 +329,8 @@ export async function launch(args: readonly string[]): Promise<void> {
     cores,
     running: run === undefined ? [] : writers(run, processes()).map(({ pid }) => pid),
     missing: isString(envFile) && !existsSync(envFile) ? envFile : null,
-    spent: (examining ? claimed : spent)(events ?? [], session),
+    // A checkpoint runs no session, so no id of one can be spent on it.
+    spent: checking ? null : (examining ? claimed : spent)(events ?? [], session),
     // The command's own reading of its four flags, so a wall it would refuse is refused here.
     named: settingNamed({
       solver: isString(values.solver) ? values.solver : undefined,
@@ -318,13 +341,15 @@ export async function launch(args: readonly string[]): Promise<void> {
     ran: solverLast(events ?? []),
   };
   const { refusals, notes } = examining
-    ? examPreflight(events, { ...host, reviewer: isString(values.reviewer) })
-    : preflight(setsOf(events ?? []), {
+    ? examPreflight(events, host)
+    : preflight(supplyOf(events ?? []), {
         ...host,
-        target: isString(target) ? target : undefined,
-        level: Number(values.level),
-        anchorFloor: Number(values["anchor-floor"]),
+        // A checkpoint that names its tasks scores those, however many the log holds beside them.
+        target: isString(values.tasks) ? values.tasks.split(",").length : Number(values.target),
         solves: Number(values.solves),
+        level: Number(values.level),
+        builds: !checking,
+        capped: isString(values.cap),
       });
   for (const note of notes) console.log(`· ${note}`);
   if (run === undefined || refusals.length > 0) {
@@ -340,7 +365,7 @@ export async function launch(args: readonly string[]): Promise<void> {
     "19",
     capturedExecPath,
     ...(isString(envFile) ? [`--env-file=${envFile}`] : []),
-    examining ? EXAMINE : ROUND,
+    examining ? EXAMINE : checking ? CHECKPOINT : ROUND,
     ...flags,
   ];
   if (values["dry-run"] === true) {
@@ -436,12 +461,12 @@ export async function stop(args: readonly string[]): Promise<void> {
     const events = logEvents(run.path);
     const session = events.findLast(({ kind }) => kind === "build.started")?.data.session;
     const cut = ran.some((arg) => arg.endsWith(EXAMINE))
-      ? "An Examiner session's id names one session: the next takes another --session, and is handed the tasks this one left past gate 3"
+      ? "An Examiner session's id names one session: the next takes another --session"
       : isString(session)
         ? spent(events, session)
         : null;
     console.log(
-      `  stopped, its log as it was. ${cut ?? "A round goes on from it when launched again with the same --session"}`,
+      `  stopped, its log as it was. ${cut ?? "A round or a checkpoint goes on from it when launched again under the same id"}`,
     );
   }
   // What a run was stopped or killed inside is still there, whenever that was: a mounted volume, or

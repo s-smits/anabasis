@@ -16,22 +16,25 @@ the pen apart, and each part has its own way of going wrong.
   In the truss pack that is v1 and a person. No session of v2 writes or repairs a check. So a pass
   means what the check reads, a refusal means the check refused, and neither means more until the
   check itself has been read.
-- **The Examiner** writes task instances and their three reject controls, against checks it is
-  shown by id and assertion only. It writes no check and sets no verdict. Of each task it is told
-  what was measured: a word, how many solves failed and which checks refused them. A new session
-  is told the same of every task earlier sessions wrote, read against the harness the campaign
-  stands on now. It is never told a target, a share or a level.
-- **The stronger solver** holds the witness. A task is feasible because one solve the author did
-  not make was accepted, and for no other reason. It runs under the harness the campaign stands
-  on, so the witness rises with the harness: a task it did not pass waits, and is tried again
-  when that harness or the stronger solver itself has changed.
+- **The Examiner** writes task instances, against checks it is shown by id and assertion only.
+  It writes no check, no control and no verdict, and it is put to no solver. At a session's
+  opening it is told one outcome of every task the campaign holds: one harness won, a tie between
+  valid answers, no valid answer yet, or disputed (`src/examiner/record.ts`). It is never told
+  which harness, a count, a budget, a target or a level.
 - **The Builder** writes the harness: the guide, the tools, the tool tree. It sees practice tasks,
-  their records and the reviewers' readings of its practice fails. It never sees a check, a scored
-  task or the anchor.
-- **The host** owns the conditions, the walls, the gates, the draw, the screening and the
-  comparison. The Referee and the Diagnoser advise it. It decides nothing about promotion. It
-  also owns what leaves the exam: a task is retired when both harnesses of a round pass it and
-  carried when the parent still fails it, and no author removes a task.
+  their records and the reviewers' readings of its practice fails. It never sees a check or a
+  held-out task.
+- **The host** owns the conditions, the limits, the one gate, the draw of the scored set and the
+  comparison. The Referee and the Diagnoser advise it. It decides nothing about promotion: the
+  reference harness is the one the campaign started with until the operator names another.
+- **A person** rules where no reviewer has: a rejection the Referee did not rule a true fail sets
+  its task aside until someone has labelled it, and a task no harness answered validly in two
+  comparisons in a row leaves the scored set until someone has read it.
+
+No stronger solver holds a witness any more, and nothing selects a task by pass or fail. Until
+2026-10-09 a task met four more gates, was screened by two harnesses and scored beside an anchor
+(`docs/plan.md`, Phase 2). A log from before then holds those events, and the reader reads them
+as history.
 
 Six readings follow from that, and every row and lane applies them.
 
@@ -41,14 +44,15 @@ Six readings follow from that, and every row and lane applies them.
 - **Name the bytes.** A solve ran under one condition: a contract, a harness digest, a task
   version that holds the check program's hash, a verifier tool tree, a sandbox, the host's code.
   Two solves under conditions that differ in more than the harness are not a pair.
-- **Keep the kinds of ending apart.** A pass, a refused answer, a miss with no verdict (the wall,
-  the context, no answer), and a non-result are four things. Only a refused answer says anything
-  about a check, and only a pass or a counted fail enters a comparison.
+- **Keep the kinds of ending apart.** A valid answer, a rejected answer, a solve that reached its
+  limits with no answer, and a non-result are four things. Only a rejected answer says anything
+  about a check and needs a ruling; a solve with no answer is not valid with none; a non-result
+  is solved again and is in no pair.
 - **A ruling is a reading.** The Referee's agreement with a person is unmeasured until hand labels
   exist, and an earned ruling that probed nothing restates the check. Count rulings as a reviewer's
   and say so.
-- **A comparison is only its pairs.** A tie carries nothing, a flip is the solver's variance, and a
-  task chosen by one side's fails favours the other side unless its counted solves are fresh.
+- **A comparison is only its untied tasks.** A tie carries nothing, a flip is the solver's
+  variance, and a task left out for one side's rejections is that side's loss removed.
 - **Separate what was observed from what is inferred.** Every finding states the recorded
   observation and the cause it proposes as two sentences, so a reader can keep the first while
   rejecting the second. An earlier diagnosis is a hypothesis for the lane, never its premise.
@@ -70,7 +74,7 @@ of these, and a finding names exactly one:
 | owner | what it is |
 | --- | --- |
 | `pack/evaluator`, `pack/brief`, `pack/controls`, `pack/tasks` | the imported correctness model, by file |
-| `examiner/task`, `examiner/controls` | an instance or its controls, as a session wrote them |
+| `examiner/task` | an instance, as a session wrote it |
 | `harness/guide`, `harness/tools`, `harness/tool-tree`, `harness/config` | the Built Harness, by part |
 | `builder-prompt`, `examiner-prompt`, `reviewer-prompt` | what a role is told, with the file under `src/` named |
 | `host` | the host's code, with the file named |
@@ -107,20 +111,16 @@ reason for freezing over named faults: quote the count, not the reason's text.
 
 **C. conditions.** List the conditions by side and model, and the number of distinct values of
 each field. One contract, one sandbox, one verifier tool tree and one host hash is the clean case.
-More than one host hash means the code was edited inside the campaign; a round counts only solves
-in its own window for that reason. Say how many finished solves name no response model: there the
+More than one host hash means the code was edited inside the campaign; a comparison counts only
+solves made since it began for that reason. Say how many finished solves name no response model: there the
 served model is the provider's word and nothing attests it.
 
 **D. task sets.** Partition the task versions: the pack's, a session's, carried from another
-checker's campaign. Then by state, and name the anchor, the released practice tasks, the admitted
-set and what is still held. The sets a round uses must be disjoint: a version both practised and
-measured is lane 18's finding and is settled here first. The row's last line counts the feasible
-tasks still held outside the anchor, never yet admitted. A round screens the whole pool, those
-and the tasks an earlier round admitted, so the line after it is the one to read: how the pool
-stands against the harness the campaign stands on, by the solves the log already holds
-(`src/kernel/ladder.ts`). Tasks that stop that harness are what the next round can score; tasks
-it clears will retire; tasks no solve has placed cost screening solves on both sides; tasks that
-wait for a witness are no part of the exam yet.
+checker's campaign. Then by state: held out, released for practice, disputed, refused. The sets a
+round uses must be disjoint: a version both practised and measured is lane 18's finding and is
+settled here first. The row's last line counts the held-out tasks, which every comparison may
+score, and the practice tasks. A task no harness answered validly in two comparisons in a row is
+held out still and is left out of the scored set until a person labels it; lane 8 names those.
 
 **E. case partition.** For each side, count passes, fails by kind and non-results by kind from
 `solve.finished`, and the solves that started and never finished. A fail of kind `rejected` has a
@@ -228,7 +228,7 @@ equivalent unit. Record their digests. Only then put each to the campaign's chec
 accepted, valid and refused, with the refusing check. A refused valid answer is a false rejection
 with a witness, which a ruling is not. An alternative you cannot show valid from public facts
 proves nothing either way and is dropped, with the count of those dropped. Do not use a solver's
-recorded answer as a base where the task is scored or in the anchor. The decision it changes is
+recorded answer as a base where the task is held out. The decision it changes is
 whether a repair of the named check is owed; it routes to `pack/evaluator`, and the corpus goes to
 the checker's owner as the repair's accept controls.
 
@@ -246,103 +246,92 @@ the reading of them, withdrawn refusals by what was ruled of each, accepted answ
 ruled defects still refused, and the controls the repair broke. Say whether the repair moved only
 answers that were read and ruled the old checker's fault, and what it left: `unrepaired` is a
 defect ruled and not fixed, `unread` a withdrawal nobody can defend. Then read what `carry.ts`
-did: tasks feasible again with no solve, tasks refused because the repaired checks no longer
-accept their witness, and tasks closed as too hard that the repaired checks would accept, which
-have no controls and are in neither campaign's sets. The decision it changes is whether results
+did: every task a session wrote that was neither refused nor disputed is proposed again under
+the repaired checks and put to the one gate, with no solve; a task the gate refuses there is in
+neither campaign's sets. Solves are not carried. The decision it changes is whether results
 of the two campaigns may be read together; it routes to `operator` for a freeze not given or a
 repair adopted against its reading, and `pack/evaluator` for a defect left standing.
 
 ### The tasks
 
-**7. Supply funnel and gate rent.**
+**7. Supply and the gate.**
 
 Starts from `SUPPLY THIN (lane 7)` and `GATE REFUSED (lane 7)`.
 
-The question is where tasks are lost between a proposal and the scored set, and whether each gate
+The question is where tasks are lost between a proposal and the scored set, and whether the gate
 that refused was right to. v1's gate audit asked of every refusal whether it was 98% sure to
-refuse something wrong, and removed 23 of 54 that were not; ask the same of the five gates.
-`tools/d1b/supply.ts --log` prints the funnel: proposed, refused by gate, too hard by how the
-stronger solve ended, controls refused by kind, feasible, and the words. Gate 1 and gate 4 refuse
-what the Examiner wrote; gate 2 and gate 3 refuse a task for its checks, a check that could not
-run on an answer or did not repeat, and those are the checker's faults charged to a task. For each
-gate that refused, read a sample of the reasons in `task.gate` and say whether the refusal named a
-real defect and whether the Examiner could have acted on the reason it was given. A yield of one
-feasible task in five, the first sessions' figure, puts the plan's 24 feasible tasks past a
-session's 72 candidates: say which gate a change would have to move. Do not propose loosening a
-gate from the yield alone. The decision it changes is which gate is read next and whether D1b's
-supply rule can be met; it routes to `examiner-prompt` (`src/examiner/prompt.ts`) where the
-Examiner was not told what a gate needs, `host` (`src/kernel/task.ts`) where a gate refuses on
-something that is not a defect, and `pack/evaluator` for gates 2 and 3.
+refuse something wrong, and removed 23 of 54 that were not; ask the same here. A task meets one
+gate, the shape of its package (`src/kernel/task.ts`): its family, its inputs, its rule ids, and
+that the checks have what they need to run on it. For each refusal read the reason in `task.gate`
+and say whether it named a real defect and whether the Examiner could have acted on the reason it
+was given. Then read what leaves the set after the gate: tasks disputed on a check's fault, tasks
+refused by a person as infeasible, and tasks waiting for a label (lane 8). The plan sizes a
+comparison at 12 held-out tasks and asks for more when ties leave fewer than 8 untied; say how
+many the campaign holds against that. Do not propose loosening the gate from the yield alone. The
+decision it changes is whether another Examiner session is bought before the next comparison; it
+routes to `examiner-prompt` (`src/examiner/prompt.ts`) where the Examiner was not told what the
+gate needs, and `host` (`src/kernel/task.ts`) where the gate refuses on something that is not a
+defect.
 
-**8. Witness strength at gate 2.**
+**8. Tasks no harness answers.**
 
-Starts from `TOO HARD (lane 8)`, `TOO HARD FLAGGED (lane 8)`,
-`WITNESSED ON A LATER TRY (lane 8)` and `WITNESS PAST HALF ITS WALL (lane 8)`.
+Starts from `NO VALID ANSWER (lane 8)` and `AWAITING A LABEL (lane 8)`.
 
-The question is what the stronger solve proves, both ways. A pass makes the task feasible on one
-solve. A fail leaves it without a witness, and it waits: the state keeps the name `too-hard`,
-and a later Examiner session puts the task to the stronger solver again when that solver stands
-elsewhere, under a harness a step has left or as another model or effort. So `TOO HARD` counts
-tasks by their last stronger solve and says how many later tries failed again, and
-`WITNESSED ON A LATER TRY` counts the tasks a second try passed. Read those first: a task one
-harness could not witness and the next could is the witness rising with the harness, or one
-solver's variance, and the two are told apart by how many of the retried tasks moved. Read the too-hard tasks by how the solve ended.
-A solve its wall ended measured the wall: compare its seconds with the walls of the passes, and
-say whether the tasks ask for more time than the condition gives. A refused answer is the case
-with two readings, a task beyond the stronger solver or a check that refused a right answer, and
-with `--reviewer` the Referee ruled on it: `flagged` in `exam.word` names the refusals it ruled a
-check defect, which a repair of the checker would give back. For the witnesses that passed, read
-the trace's shape, not its text: turns, calls, seconds against the wall. A witness that passed at
-the edge of its wall is a task the test side will mostly miss at the wall, which is lane 10's
-wall-bound word. One solve is weak evidence either way, and the recorded slip rate of a solver on
-a task it can do is about one in twenty: say how many tasks that could account for here. The
-decision it changes is whether one failed solve a harness is enough before a task waits for the
-next (the plan's decision 51, which the second try answers only when the harness moves); it routes to `pack/evaluator` for flagged refusals, `examiner/task` for instances past the
-wall, and `operator` for the gate's rule.
+The question is why a task has no valid answer under either harness: it is hard, it is wrongly
+checked, or it has no valid answer at all. No stronger solver proves a task possible now, so the
+exam can hold a task nobody can do, and it ties whatever the harnesses are. `NO VALID ANSWER`
+counts the scored tasks whose last comparison held none. `AWAITING A LABEL` names the ones two
+comparisons in a row left so: they are out of the scored set until a person labels each with
+`tools/d2/prepare.ts`, `--keep` or `--infeasible`. Read each by how its solves ended. Solves that
+reached their limits measured the budget: compare what they used with what the valid solves of
+other tasks used. Rejected answers are the case with two readings, and the rulings on them say
+which: a check that rejects every answer is a check defect on the task, and a task whose every
+rejection is a true fail may be infeasible, which no ruling on one answer can show. v1's record
+is that most rejections were the check's: 36 of 47 rehearsal misses. Four of the five tasks the
+second live Examiner session lost were rejected on one limit its author set without solving. Do
+not label a task from the count alone. The decision it changes is the label each waiting task
+gets; it routes to `operator` for the label, `pack/evaluator` where the rejections are a check's
+fault, and `examiner/task` for an instance whose own limits exclude every answer.
 
-**9. The Examiner's controls.**
+**9. Whether validity separates, and in which unit.**
 
-Starts from `CONTROLS REFUSED (lane 9)` and `CONTROLS NOT ON RECORD (lane 9)`.
+Starts from `TIES BETWEEN VALID ANSWERS (lane 9)` and `USE OF THE BUDGET SPREADS (lane 9)`.
 
-The question is whether the controls of an admitted task test the check they name, and why the
-refused ones failed. A control is one change to the accepted answer and the id of the check that
-must refuse it. Gate 4 names every fault at once, by kind: the count, a repeat, an answer outside
-the format, an answer the checks pass, a check that could not run, an answer refused by another
-check than the one named. `passed` and `other-check` are the informative ones: the first says the
-Examiner changed something no check reads, the second that it misread which check enforces what.
-Count the kinds across the session and read whether a task spent its three tries on one fault or
-on three. Then, for the tasks that passed the gate, read the controls gate 4 kept in `set`: do
-the three changes touch three different facts, or one fact three times; does each named check
-cite the rule the change breaks. Three near-identical controls pass the gate and calibrate
-nothing. A task whose gate 4 holds a digest alone was admitted before controls were kept whole
-and cannot be carried to a repaired checker. The decision it changes is whether an admitted
-task's checks were shown to bind on it; it routes to `examiner/controls`, and to
-`examiner-prompt` when the kinds say the Examiner does not know what the checks read.
+The question is whether a valid answer within the budget tells two harnesses apart, and whether
+the budget's unit is steady enough to be a budget. `TIES BETWEEN VALID ANSWERS` fires on a
+comparison where more than half of the tallied tasks tie with valid answers on both sides. That
+is the plan's condition for building an objective (`docs/plan.md`, Phase 3): until it holds, no
+objective is built, and where it holds the first question is whether a shorter budget would have
+separated the same solves, which lane 10's `TALLY BY BUDGET` answers from the report.
+`USE OF THE BUDGET SPREADS` reads the report's `spread`: over the tasks with two measured solves
+under one harness, the largest use of a unit divided by the smallest, at the median and at most.
+A unit whose use doubles between two solves of the same harness on the same task splits them at
+random under any budget near it. Read the three units side by side, turns, CPU seconds and
+seconds, and say which moved least. Seconds move with the host's load, which each
+`solve.started` and `solve.finished` records. Do not read a spread from fewer than a handful of
+tasks as settled. The decision it changes is the budget's unit and size, and whether Phase 3 is
+built; it routes to `operator`.
 
-**10. Bracket and limit slack.**
+**10. Ties and the budget.**
 
-Starts from `TOO EASY (lane 10)`, `WALL-BOUND TASKS (lane 10)` and
-`RETIRED BY A ROUND (lane 10)`.
+Starts from `TIED TASKS (lane 10)` and `TALLY BY BUDGET (lane 10)`.
 
-The question is whether the feasible tasks bracket the test-side solver, and why the ones that do
-not are easy. A task is scored when a harness fails it often enough in screening, too easy when
-none does, wall-bound when every fail ended at the wall. Every round screens the whole pool
-again, the tasks earlier rounds admitted among them, and retires a task both of its harnesses
-pass: `RETIRED BY A ROUND` counts those by round, and how many had been scored before. A task
-retired after it was scored is the exam's line moving as it should, the harness having got past
-it. A round that retires most of what it screens, with nothing admitted in its place, has an
-exam behind its harness, and lane 25's `WHAT BINDS` says which compartment is short. For the too-easy tasks read, from the
-accepted answer's verdict and the task's public input, how far inside each published limit the
-witness sat: an instance whose limits the stronger solver cleared with room is one the test side
-clears too. v1 measured which demand lowers pass rates and which does not. Tightening a limit
-toward a reference did not: 5 of 6 passed at limits reset to a 3.4-hour search's best. Widening
-did not: 71 of 74 batteries after a widened exam passed whole. Requirements that compete under one
-shared limit did: 7 of 20 and 2 of 23, against 22 of 23 taken one at a time. So for each
-too-easy task say which of those it is: slack in a limit, a new condition added beside the old,
-or requirements that never meet. A wall-bound task measures the wall and is not bracketed. Do not
-prescribe an instance. The decision it changes is what the Examiner is asked for next; it routes
-to `examiner/task` and to `examiner-prompt` when its one sentence on depth is not what the
-instances follow.
+The question is what share of the tasks tie, why, and at which budget the fewest would. A tie
+says nothing, and the share of untied tasks is what sizes every later comparison. With two solves
+a side and no true difference, 38% of tasks tie when a solve is valid half the time, 51% at four
+times in five and 69% at nine in ten (`src/kernel/size.ts`), so a budget is set where the
+reference harness is valid about half the time. `TIED TASKS` gives each comparison's ties and how
+many of them had no valid answer; the rest are ties between valid answers. `TALLY BY BUDGET`
+gives the same solves read at each budget the comparison fixed before its first solve
+(`within`, `src/kernel/compare.ts`): a solve that used more than a budget counts as no answer at
+it. That reading is an approximation, since the solver was told the long limit only. Read which
+budget leaves the most tasks untied and how valid the reference harness is there. v1's limit
+never bound: six tasks passed in 2.5 to 26 minutes of a 120-minute limit, and 265 of 299
+batteries passed whole. Say what demand the tied tasks make: v1 measured that requirements
+sharing one limit lowered pass counts, 7 of 20 against 22 of 23, where a tightened limit and a
+widened exam did not. Do not prescribe an instance. The decision it changes is the size of the
+budget and what the Examiner is asked for next; it routes to `operator` for the budget and
+`examiner/task` for tasks every harness answers at any budget.
 
 **11. Public disclosure and one recipe.**
 
@@ -365,27 +354,23 @@ Builder's.
 
 **12. Pressure on the Examiner.**
 
-Starts from `BRACKETED BY SESSION (lane 12)` and `EXAMINER BEHIND THE FRONTIER (lane 12)`.
+Starts from `OUTCOMES BY SESSION (lane 12)`.
 
-The question is whether anything moves the Examiner toward tasks that bracket the solver, session
-over session. v1 pressed its Builder with zones, targets, slack figures and a reference-distance
-pointer, and removed each after measuring it: every one pointed the author at one route. v2 tells
-the Examiner what was measured of each task and nothing to aim at: a word, the fails among its
-solves and the checks that refused them, and at a session's opening the same of every task
-earlier sessions wrote, read against the harness the campaign stands on (`src/examiner/record.ts`).
-That is the one channel by which a harder exam is asked for, so read whether it carried. A
-session's solves run under the harness the campaign stands on; `EXAMINER BEHIND THE FRONTIER`
-names a session that stood elsewhere after a step, whose words describe a solver the campaign had
-left. Read, in session order, the share of proposals
-that came out scored, too easy, too hard and refused, and what changed in the instances between
-sessions: families, the number of requirements meeting in one limit, sizes. The public inputs are
-in `task.proposed`; describe how they differ and quote none. Say whether the second session's
-instances answer what the first session's were measured to be, or repeat its shape. A session
-that proposed the same kind of instance after being told six were too easy was not moved by the
-record. Do not propose telling the
-Examiner a share, a target or a level: v1 measured that. The decision it changes is whether D1b's
-inputs are revised before a third session (the plan's supply rule); it routes to
-`examiner-prompt`, and to `operator` for the rule's reading.
+The question is whether anything moves the Examiner toward tasks that separate harnesses,
+session over session. v1 pressed its Builder with zones, targets, slack figures and a
+reference-distance pointer, and removed each after measuring it: every one pointed the author at
+one route. v2 tells the Examiner one outcome of every task the campaign holds and nothing to aim
+at (`src/examiner/record.ts`). That is the one channel by which a better exam is asked for, so
+read whether it carried. `OUTCOMES BY SESSION` gives, for each session's held-out tasks, how many
+one harness won, how many tied, how many have no valid answer and how many no comparison has
+scored. Read them in session order, and what changed in the instances between sessions:
+families, the number of requirements meeting in one limit, sizes. The public inputs are in
+`task.proposed`; describe how they differ and quote none. An author told "one harness won" can
+reach that outcome with tasks whose solves vary widely in what they need: such tasks split
+evenly and add nothing, so set a session's wins beside lane 24's reading of the reference
+harness against itself. Do not propose telling the Examiner a share, a target or a level: v1
+measured that. The decision it changes is whether the Examiner's inputs are revised before
+another session; it routes to `examiner-prompt`, and to `operator` for the reading.
 
 ### The harness
 
@@ -498,7 +483,7 @@ Starts from `PRACTISED TASK MEASURED (lane 18)` and `SHELL COMMANDS (lane 18)`, 
 
 The question is whether the child could know the exam. A harness that carries the scored tasks'
 answers scores higher on exactly those and is no better on any other. Settle the sets first, from
-row D: no version is both practised and scored or in the anchor. Then read what the session
+row D: no version is both practised and scored. Then read what the session
 could reach. Its shell has the network and its home; its home held `harness/`, `practice/` and
 the public resources. The parent state is v1's and carried a correctness model with every task's
 hidden values until the copy given to a Builder dropped it at every depth; confirm from the
@@ -533,159 +518,130 @@ or `host`, by where the value came from.
 
 **20. Pair identity and source reach.**
 
-Starts from `HOST CODE MOVED (lane 20)` and `PAIR DIFFERS BEYOND HARNESS (lane 20)`.
+Starts from `HOST CODE MOVED (lane 20)`.
 
-The question is whether the two sides of each pair differ in the harness and in nothing else. A
-condition is a content address: the contract, the harness, the task version, the model and its
-effort, frozen prices, the runtime's pinned packages, the compaction mode, the solver's and the
-verifier's tool trees, the sandbox, the limits, the host's code and the side. `pairsOf` refuses
-solves whose conditions differ in more than the harness, and a round counts only its own window.
-Confirm it from the log all the same: for the counted solves of each round, list the distinct
-values of every field but the harness. Then read what a condition does not hold: the machine's
-load, which each `solve.started` and `solve.finished` records and nothing acts on; the hour; the
-provider's served model, which `responseModels` names or leaves empty; how many solves ran at
-once. The two harnesses are interleaved task by task so neither has the quieter hours: check the
-order of `solve.started` within the round. Where the host's code moved inside the campaign, name
-the commits between the two hashes if this checkout has them, and say which changed source a
-solve could have reached. A round the launcher started names its commit, and whether the tree was
-dirty, in `launch-<session>.json` beside the log. The decision it changes is whether a difference between the sides is
-the harness's; it routes to `host` (`src/kernel/condition.ts`, `src/builder/round.ts`) for a
-field a condition should hold and does not, and `environment` for load.
+The question is whether the two sides of each comparison differ in the harness and in nothing
+else. A condition is a content address: the contract, the harness, the task version, the model
+and its effort, frozen prices, the runtime's pinned packages, the compaction mode, the solver's
+and the verifier's tool trees, the sandbox, the limits, the host's code and the side. A
+comparison counts a solve under one of its harnesses and its own setting, started after its
+`comparison.started` event, and no solve made before (`src/builder/round.ts`). Confirm it from
+the log all the same: for the counted solves of each comparison, list the distinct values of
+every field but the harness. Then read what a condition does not hold: the machine's load, which
+each `solve.started` and `solve.finished` records and nothing acts on; the hour; the provider's
+served model, which `responseModels` names or leaves empty; how many solves ran at once. The two
+harnesses take the first place in turn, task by task, so neither has the quieter hours: check
+the order of `solve.started` within the comparison. Where the host's code moved inside the
+campaign, name the commits between the two hashes if this checkout has them. A run the launcher
+started names its commit, and whether the tree was dirty, in `launch-<session>.json` beside the
+log. The decision it changes is whether a difference between the sides is the harness's; it
+routes to `host` (`src/kernel/condition.ts`, `src/builder/round.ts`) for a field a condition
+should hold and does not, and `environment` for load.
 
-**21. Selection and the symmetry of screening.**
+**21. The scored set and what left it.**
 
-Starts from `SCORED SET CARRIED (lane 21)`, `ADMITTED BY (lane 21)`,
-`PARENT SIDE ON RECORD (lane 21)`, `ADMITTED ON FLAGGED FAILS (lane 21)`,
-`SCREENED OUT OF THE DRAWN ORDER (lane 21)` and `SCREENING RULE NOT ON RECORD (lane 21)`.
+Starts from `SCORED SET MOVED (lane 21)`.
 
-The question is whether the way tasks entered the scored set favours a side. A task is admitted
-when either harness fails it often enough in screening, and its counted solves start after the
-admission, so the solves that chose it are not the solves that score it. That removes the
-regression a selected sample would otherwise show, provided two things hold, and both are read
-from the log. First, every counted solve of a scored task follows that task's `admitted` state.
-Second, the admission was symmetric in practice: say how many tasks were admitted on the
-parent's fails alone, on the child's alone, on both. A set admitted almost wholly on the parent's
-fails is what an improved child produces, and also what a child fitted to the practice tasks'
-kind produces; it is evidence of neither until the fresh solves are read. A task whose screening fails were
-every one ruled a check defect was admitted by the exam and by neither harness: a check that
-refused the parent's answer in screening is likely to refuse it again in scoring, and where it
-spares the child the task arrives in the tally as a win the check made.
-A round screens the whole pool, the tasks earlier rounds admitted among them, and it does not
-solve the parent again where the log already holds the parent's solves of a task: it reads the
-latest so many, made under its own setting, the same solver, limits and host code. A task those
-solves already stop is admitted again with no screening solve at all (`carried` on its
-admission). `PARENT SIDE ON RECORD` counts both. The parent's side of such a screening was made
-at another time than the child's, so read what else differed between them: the load on the
-host, and which round or Examiner session made them. That choice costs the comparison nothing
-as long as the first condition above holds, since the counted solves are made fresh on both
-sides after the admission; confirm it for every carried task. What it can do is admit a task on
-fails a quieter host would not repeat, which the fresh solves then show as a tie. In a log from
-before 2026-10-08 a scored set could be carried whole from an earlier admission, by a stored
-sweep's solves or an earlier round's, chosen by other harnesses' fails and never screened by its
-round: `SCORED SET CARRIED` names that, and such a tally is fit for a plumbing run and nothing else.
-The pool is screened in an order drawn from the contract's hash and the session's id, since
-an order chosen after seeing solves is a second look. The order has no record of its own and
-needs none: the reader draws it again from those two values over the pool as the round found it,
-and `ADMITTED BY` says whether the tasks that were screened are the first so many of the
-draw. `SCREENED OUT OF THE DRAWN ORDER` fires when they are not, which a driver other than
-`tools/d2/round.ts` or a candidate list edited by hand would produce. The rule itself, how many
-solves a harness and how many fails admit, is in the report's `screening` and its `target`; a
-report without them was written before the round recorded either, and the rule is then the
-driver's defaults or whatever its command line said, which the log does not hold; a round the
-launcher started left its flags in `launch-<session>.json` beside the log. The decision it changes
-is whether the scored set's tally is a test or a description; it routes to `host`
-(`src/builder/round.ts`, `src/kernel/ladder.ts`, `tools/d2/round.ts`) and to `operator` for a
-scored set no round screened.
+The question is whether the tasks a comparison tallied are the tasks it fixed before its first
+solve, and whether what left favours a side. No result chooses the scored set: it is drawn from
+the held-out tasks by the contract's hash, or named by the operator, and written into
+`comparison.started` with the harnesses, the solves a side, the level, the budgets and the cap.
+`SCORED SET MOVED` fires when the tally holds fewer tasks than that event. A task leaves three
+ways, and the report names each: `short` of its solves under a harness, `disputed` when a check
+could not run, and `aside` on a rejection not ruled a true fail. The third is the one that can
+lean: a task is set aside for a rejection under either harness, so rejections that fall on one
+side remove that side's losses, which lane 30's `SET ASIDE BY SIDE` counts. Read `counted` in
+the report, the tally were every such rejection to stand, beside `scored`. A comparison asked
+for again on other terms under the same id is refused; confirm no second `comparison.started`
+carries the id. Until 2026-10-09 a round screened candidates and admitted the ones a harness
+failed; a log from before then holds those admissions, and their tallies are of a selected set.
+The decision it changes is whether the tally is of the set that was fixed; it routes to `host`
+(`src/builder/round.ts`) and to `operator` for the labels that would return a task.
 
 **22. Sign test, ties and power.**
 
-Starts from `NOTHING SCORED (lane 22)`, `FEW INFORMATIVE PAIRS (lane 22)` and
-`SET SHORT (lane 22)`, and is standing.
+Starts from `NOTHING SCORED (lane 22)`, `CUT BY ITS CAP (lane 22)`,
+`FEW INFORMATIVE PAIRS (lane 22)` and `SET SHORT (lane 22)`, and is standing.
 
-The question is what the round's test could and could not have shown at its size. A sign test
-reads the tasks on which the sides differ; a tie carries nothing. v1 found the signal too rare to
-settle a comparison at the size it ran: 11 of 322 batteries held a fail nobody contested, and
-showing a doubled rate would have taken about 650 batteries an arm. The plan's own estimate is
-that 24 tasks detect a 12-point gain about one time in three. So read the report's `scored`:
-wins, losses, ties, the p, the pooled gain in points and its upper bound. Say how many informative
-pairs there were, what the smallest result is that would have cleared the level with that many,
-and what gain the set could have detected half the time. The trigger does the first part by the
-report's own test: it fires when no result with a loss could have cleared the level on that many
-pairs, and names the least sweep that does. A round that scored no task tested nothing: since the
-report learned to say so it reads `not-scored`, and before that it read `no-step`, as the eight
-truss rounds of 8 October did at a target of none. Read every such `no-step` in an older log as
-no test. A `no-step` at four informative pairs is
-no evidence of no gain, and a `step` at five rests on five tasks: say both plainly. Read the
-tasks the report left out, `short` of counted solves, `unscreened`, `disputed`, and whether
-leaving them out could have moved the tally. Then read beside the test the measure that moves on
-every solve, lane 26's wall share, and whether the two agree in sign. The decision it changes is
-whether the operator repeats the round, enlarges the set or reads the result as it stands; it
-routes to `operator`, and to `host` (`src/kernel/compare.ts`) only for an arithmetic fault.
+The question is what the comparison's test could and could not have shown at its size. A sign
+test reads the tasks on which the sides differ; a tie carries nothing. v1 found the signal too
+rare to settle a comparison at the size it ran: 11 of 322 batteries held a fail nobody
+contested. The plan's table is in untied tasks: 12 of them detect a harness that truly wins
+three in four about 65% of the time, and 12 tasks at two solves a side, with the reference
+harness valid half the time and the new one three times in four, 51% (`src/kernel/size.ts`). So
+read the report's `scored`: wins, losses, ties, the p and how many ties had no valid answer. Say
+how many untied tasks there were and what the smallest result is that would have cleared the
+level with that many. The trigger does that by the report's own test: it fires when no result
+with a loss could have cleared the level on that many, and names the least sweep that does. A
+comparison that tallied no task tested nothing and reads `not-scored`; before the report learned
+to say so it read `no-step`, as the eight truss rounds of 8 October did. `CUT BY ITS CAP` names
+one its dollar cap ended: it is finished, reads `not-scored`, and its solves are in no tally. A
+`no-step` at four untied tasks is no evidence of no gain, and a `step` at five rests on five
+tasks: say both plainly. One comparison of equal harnesses reads a step up to one time in ten,
+and three in a row at least once about 14% of the time, which is why a step is repeated before
+anything is promoted. Read the tasks the report left out, `short`, `aside` and `disputed`, and
+whether leaving them out could have moved the tally. The decision it changes is whether the
+operator repeats the comparison, enlarges the set or reads the result as it stands; it routes
+to `operator`, and to `host` (`src/kernel/compare.ts`) only for an arithmetic fault.
 
-**23. Anchor and drift.**
+**23. The minimal baseline.**
 
-Starts from `ANCHOR NOT HELD (lane 23)` and `ANCHOR RATE BY ROUND (lane 23)`.
+Starts from `BELOW THE BASELINE (lane 23)` and `BASELINE UNREAD (lane 23)`.
 
-The question is whether the gain holds on tasks drawn before any round and never released, and
-whether the measure itself stayed still. The anchor is drawn by the contract's hash from every
-feasible task, before the practice tasks are released. A step is the scored set clearing its
-level with the anchor held; `not-tested` is an anchor with too few informative tasks to say, and
-whether a step may rest on that is the operator's. Read the anchor's tally beside the scored
-set's: the same sign with fewer tasks is agreement at low power; the opposite sign is the
-finding. Then read drift across rounds: the parent's pass rate on the anchor in each round that
-solved it. The anchor's solves are made fresh each round because the host's code is part of a
-condition, so the same harness on the same tasks is measured more than once: a parent that
-passes 9 of 12 in one round and 5 of 12 in the next moved with something that is not the
-harness. `ANCHOR RATE BY ROUND` gives those counts for every harness solved on the anchor in more
-than one round. An anchor task that was disputed leaves every comparison and is still an anchor task;
-count them. The decision it changes is whether a step is believed outside the tasks that showed
-it; it routes to `operator` for a thin anchor and `environment` or `host` for drift.
+The question is whether a harness does better than no harness. The minimal baseline is the
+solver with a shell and the answer writer, with no guide and no domain tool
+(`src/solve/baseline.ts`). It is a fixed lower reference and no side of the sign test. The
+plan's first experiment sets it against the harness the campaign starts with, and stops the
+plan if that comparison leaves too few tasks untied at every budget: v1's solver wrote its own
+search and passed, and twelve firmware tasks passed faster with the simulator withheld. Later a
+step is held to it: a comparison that clears its level solves the baseline on the same tasks,
+and reads a step only with at least as many wins as losses against it. `BELOW THE BASELINE`
+names a harness that beat the reference and lost to no harness at all. `BASELINE UNREAD` names
+a test that cleared its level with no baseline solve to hold it to, which a person's settling
+can leave: the new harness is then compared with the baseline in a comparison of its own.
+Read which tasks the baseline answers that a harness does not, by the solves' endings and
+never their text. The decision it changes is whether a step is believed, and at the first gate
+whether anything else is built; it routes to `operator`, and to `harness/guide` or
+`harness/tools` where a harness loses to its absence.
 
 **24. Flips and solver variance.**
 
-Starts from `FLIPS (lane 24)`.
+Starts from `FLIPS (lane 24)` and `REFERENCE AGAINST ITSELF (lane 24)`.
 
 The question is how much of the tally is the solver's variance. A task that the same harness
-both passed and failed under one condition is a flip. v1 recorded a fail repeating 5 times in 21
-on the same bytes, and in one truss run 13 tasks solved 59 times failed twice with both fails
-passing beside them. Each scored task is solved several times a side, and a pair is a win when
-the sides differ by the comparison's rule: read that rule in `src/kernel/compare.ts` and say how
-a task with a split on one side is counted. Count the flips per harness. Where the child flips
-less than the parent on the same tasks, the gain may be steadiness; where both flip alike, a win
-by one solve in three is within what one harness does to itself. Screening needs two fails in
-three for the same reason: say how many admitted tasks would not have been admitted on a second
-draw of the screening solves, from the scoring solves' own split. The decision it changes is how
-many solves a side a task needs before its pair is believed; it routes to `operator` (the plan's
-decision on scoring solves) and `environment` when flips cluster in hours of high load.
+both answered validly and did not, under one condition, is a flip. v1 recorded a fail repeating
+5 times in 21 on the same bytes, and in one truss run 13 tasks solved 59 times failed twice
+with both fails passing beside them. Under a fixed budget a flip is also a solve that needed a
+little more than the budget once and a little less the next time. `REFERENCE AGAINST ITSELF` is
+the direct measure, the plan's A/A comparison: the reference harness is solved twice as often,
+its first solves of a task in the order they started are the test's, and those against its
+later ones give a second tally. Two samples of one harness should tie on most tasks and win as
+often as lose; the tally's untied share is the noise every comparison at that budget has to
+exceed, and a p at or under the level there is a step where none can be. Count the flips per
+harness beside it. Where the new harness flips less than the reference on the same tasks, the
+gain may be steadiness; where both flip alike, a win by one solve in two is within what one
+harness does to itself. The decision it changes is how many solves a side a task needs, and
+whether the budget's unit is fit; it routes to `operator`, and `environment` when flips cluster
+in hours of high load.
 
-**25. The step chain across sessions.**
+**25. The chain of comparisons.**
 
-Starts from `CHAIN (lane 25)`, `WHAT BINDS (lane 25)`, `STEP NOT BUILT ON (lane 25)` and
-`NO CANDIDATES HELD (lane 25)`.
+Starts from `CHAIN (lane 25)`, `STEP NOT REPEATED (lane 25)` and `NO TASK HELD OUT (lane 25)`.
 
-The question is whether the campaign is climbing: whether one step was built on by the next, and
-whether the exam rose with it. A climb is two lines that move, the harness answering and the
-exam asking more. v1 moved the second by prose to its Builder and measured the result: 570 of
-1,465 tasks after a full pass were carried unchanged, and a failed task was dropped or eased
-three times in six. Here the second line is read from the log (`src/kernel/ladder.ts`): the
-campaign stands on the harness its last step left, a round starts there, retires the tasks both
-of its harnesses pass and carries the ones its parent still fails, and the stronger solver and
-the Examiner's record are both read against that harness. Read the chain: each session's
-parent, child and reading. A round after a step that started from another harness than the
-step's child was sent there with `--parent`, and `STEP NOT BUILT ON` names a step nothing
-started from. A second step from the same parent is the same step found twice. Read
-`stopRule`'s three-session reading from the round's output. Then read `WHAT BINDS`, which names
-the compartment that is short where the campaign stands (`src/kernel/binding.ts`): the harness,
-when enough of the pool stops it or is unplaced; otherwise what the Examiner sessions on this
-harness were told, the witness when the stronger solver did not pass their tasks, the checks,
-the limits, the tasks, or the correctness model when a second session against the same harness
-still wrote mostly tasks the solver passes. It is a reading on small counts and decides
-nothing: recount it from row D and the sessions' words, and say whether the command that ran
-next was the one it pointed to. A campaign with an empty pool measures nothing at all: eight
-rounds on the truss pack ran so on 8 October, for over $220, and each could only read that no
-task was scored. The decision it changes is which compartment moves next: a round, an Examiner
-session, a stronger witness, a repair of the checker, or a requirement added to the
-correctness model; it routes to `operator`.
+The question is whether the campaign is climbing: whether a step was found, repeated, and built
+on. Read the chain: each comparison's reference harness, the harness compared with it, and its
+reading. The reference harness is the one the campaign started with until the operator promotes
+another by naming it; a Builder session starts from the latest harness a session left, step or
+none, and the operator may send it back to an earlier one. So a chain of sessions each starting
+from the last, all compared with the same reference, is the plan's design and no fault. A step
+is repeated once on fresh solves before anything is promoted: `STEP NOT REPEATED` names a step
+no second comparison of the same two harnesses has followed. A second step of another child
+against the same reference is another harness, not a repeat. Read the stop rule from the
+command's output: three checkpoints that tallied a task since the last step, with none, stop
+the campaign. A campaign with no held-out task measures nothing at all: eight rounds on the
+truss pack ran so on 8 October, for over $220, and each could only read that no task was
+scored. The decision it changes is what runs next: a repeat, a promotion, another checkpoint,
+an Examiner session, or a stop; it routes to `operator`.
 
 ### The solve, its failure and its cost
 
@@ -725,7 +681,7 @@ are fails. Read each non-result's kind and reason: `provider` after its retries,
 side whose bad solves are rerun and whose good ones stand is favoured: `NON-RESULTS` gives each
 round's count under the parent and under the session's states. A solve that started and
 never finished was cut by a kill; its root may still be on disk. A fail of kind `broken-harness`
-fails every task alike and may not screen. For a session that crashed, name the turn and whether
+fails every task alike. For a session that crashed, name the turn and whether
 its round was refused as the rule says. The decision it changes is whether a count is trusted as
 written; it routes to `host` (`src/solve/run.ts`, `src/kernel/solve.ts`) for a kind that hides a
 cause, `environment` for a provider or the machine, and `harness/tools` for a harness that does
@@ -762,56 +718,49 @@ rules or the solver, with a cause, a first divergence and what would refute it, 
 the two readings side by side for each fail and say where they disagree: a fail the Referee
 ruled earned and the Diagnoser laid to the public rules is one the two read differently. The
 Referee's replay runs the checks again on the logged answer; a replay whose verdict differs from
-the logged one is a check that does not repeat, which gate 3 exists to catch and did not. Then
+the logged one is a check that does not repeat. Then
 read what the Builder changed after each diagnosis and whether it was the owner named. An
 abstention is useful and is counted, not charged. The Diagnoser reads practice fails only: a
-scored fail is never diagnosed, because the reading would carry the task to the Builder; confirm
+held-out task's fail is never diagnosed, because the reading would carry the task to the Builder; confirm
 none was. The decision it changes is whether the next change goes to the harness or to the
 exam's owner; it routes to `reviewer-prompt` (`src/review/referee.ts`,
 `src/review/diagnoser.ts`) for readings that cannot both be right, `pack/evaluator` for a check
 that does not repeat, and `harness/guide` or `harness/tools` for a repair on the wrong side.
 
-**30. Rulings, routing and what each role was told.**
+**30. Rulings, labels and what each role was told.**
 
-Starts from `FLAGGED AND STILL COUNTED (lane 30)`, `READING MOVES WITHOUT FLAGGED (lane 30)`,
-`FLAGGED FAILS BY SIDE (lane 30)`, `RULINGS AGAINST THE EFFECT (lane 30)`,
-`SETTLED BY HAND (lane 30)`, `REVIEW FAULTS (lane 30)` and `EARNED WITHOUT A PROBE (lane 30)`.
-`RULINGS AGAINST THE EFFECT` sets a report's scored test against its reviewers
-(`src/review/weight.ts`): how many of its informative pairs hold a fail no reviewer ruled on, and
-how many of its wins, or of its losses when it did not clear, would have to rest on a mistaken
-ruling for the test to read the other way. Read the second count against the first and against
-the Referee's error, which the line gives as `unmeasured` unless hand labels measured it: a
-reading two mistaken rulings would move, on rulings nobody measured, is no firmer than those two.
+Starts from `SET ASIDE AND UNSETTLED (lane 30)`, `READING MOVES WITH THE SET-ASIDE (lane 30)`,
+`SET ASIDE BY SIDE (lane 30)`, `SETTLED BY HAND (lane 30)`, `REVIEW FAULTS (lane 30)` and
+`EARNED WITHOUT A PROBE (lane 30)`.
 
-The question is what became of each ruling, and whether each role was told enough to act and no
-more than it may know. A check-defect ruling disputes its task only when the Referee decides,
-which waits on its rulings clearing the operator's bar against hand labels; advising, the fail
-stands and the task is flagged for a person. So read the flagged tasks: how many stayed in a
-comparison, on which side their flagged fails fell, and whether removing them would move the
-reading. `FLAGGED FAILS BY SIDE` counts the first two: a flagged fail under the parent makes a
-win and one under the child a loss, so flags that fall on one side are the ones that move a
-tally. The report answers the last itself: `unflagged` holds the two tests and their reading
-with the flagged tasks left out, `counted` the reading with them in, and where the two differ
-the round reads `flags-decide` and claims neither: counted, the reading rests on fails a reviewer
-laid to a check, and left out, on one reviewer's word. A person settles it with
-`tools/d2/settle.ts`: a fail labelled a check defect disputes its task, a flagged fail labelled
-earned stands, and the report is written once more as the labels leave it, with `settled`
-saying how many fails were labelled and what they disputed. `SETTLED BY HAND` sets the two
-reports side by side. Read whether every flagged fail was labelled, whether the labels were made
-from the packets or from the rulings, and whether a task disputed for a check's fault was taken
-to the checker's owner: a dispute removes a task from the tally and repairs nothing. A report
-with flags and no `unflagged` was written before the round kept one, and a round stopped and
-run again before then lists only the second run's flags. A flag nobody read is a ruling that changed
-nothing. Count the rulings that recur: the
-same check ruled a defect across sessions is a repair owed, and lane 6 reads whether one was
-made. Then read what each role was told. The Builder is told a task's record, a ruling's kind
-and a diagnosis, and never a check's id or a reviewer's failure text, which can name one:
-confirm it from what `build.call` returned. The Examiner is told one word and a gate's reason.
-The bar itself cannot be cleared on a pack with no hand-labelled check defect, by design: say
-whether that is this pack. The decision it changes is whether the Referee's rulings may start to
-decide; it routes to `operator` for the bar and the labels, `reviewer-prompt` for rulings made
-without a probe, and `host` (`src/builder/tools.ts`, `src/examiner/session.ts`) for a role told
-more than it may know.
+The question is what became of each rejection, and whether each role was told enough to act and
+no more than it may know. A rejected answer counts as not valid only once it is ruled a true
+fail. One ruled a check defect or unclear, and one nobody ruled on, sets its task aside: out of
+every tally of that comparison, for both harnesses. A comparison run with no reviewer sets every
+rejection aside, which is how the plan's first experiment is read before there is a Judge. So
+read the tasks set aside. `SET ASIDE BY SIDE` counts their rejections under the reference
+harness and under the others: a rejection under one harness removes a task that harness would
+have lost, so rejections that fall on one side move the tally toward it.
+`READING MOVES WITH THE SET-ASIDE` fires when the report's `counted`, the tally were every such
+rejection to stand, clears its level and `scored` does not, or the reverse: the reading then
+rests on labels nobody has made. `SET ASIDE AND UNSETTLED` counts the tasks still waiting. A
+person settles a comparison with `tools/d2/settle.ts`: a task whose rejections are all labelled
+earned is restored, one labelled a check defect is disputed for good, one labelled unclear
+stays out, and the report is written once more with `settled` saying what the labels did.
+`SETTLED BY HAND` sets the two reports side by side. Read whether the labels were made from the
+packets or from the rulings, and whether a task disputed for a check's fault was taken to the
+checker's owner: a dispute removes a task and repairs nothing. The Referee's agreement with a
+person is unmeasured until its rulings are set against labels made before it read
+(`src/review/agreement.ts`), and it ruled all 64 stored rejections a true fail with no label to
+compare: count its earned rulings as a reviewer's, and those made without a probe as restating
+the check. Count the rulings that recur: the same check ruled a defect across sessions is a
+repair owed, and lane 6 reads whether one was made. Then read what each role was told. The
+Builder is told a task's record, a ruling's kind and a diagnosis, and never a check's id or a
+reviewer's failure text: confirm it from what `build.call` returned. The Examiner is told one
+outcome a task and the gate's reason. The decision it changes is whether the Referee's rulings
+may count without a person reading each; it routes to `operator` for the bar and the labels,
+`reviewer-prompt` for rulings made without a probe, and `host` (`src/builder/tools.ts`,
+`src/examiner/session.ts`) for a role told more than it may know.
 
 ## Retired from v1
 

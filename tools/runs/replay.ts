@@ -3,34 +3,34 @@
  *
  * Every campaign log in the repository's worktrees, or those whose names hold one of `name`, through
  * this tree's readers of a log: its events and their kinds (`read`), the task states and the sets a
- * round takes (`setsOf`), what its sessions wrote (`carriable`), each recorded condition, the
- * plan's three-session rule over its reports (`stopRule`), and the whole-run investigation's fold
- * of it into rows and triggers (`tools/wri/read.ts`). It writes nothing.
+ * comparison takes (`taskSets`), what its sessions wrote (`writtenTasks`), each recorded condition,
+ * the plan's stop rule over its reports (`stopRule`), and the whole-run investigation's fold of it
+ * into rows and triggers (`tools/wri/read.ts`). It writes nothing.
  *
  * It is the check to run when an event's shape, a fold or a reader has changed. A log a real run
  * wrote that this tree refuses is named in the reader's own words, with exit code 1. A log being
  * appended to at that instant can read torn: run it again.
  */
-import { stopRule } from "#src/builder/round.ts";
 import { conditionsOf } from "#src/kernel/condition.ts";
+import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
+import { stopRule } from "#src/kernel/reports.ts";
+import { taskSets } from "#src/kernel/task.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { carriable, setsOf } from "../d2/campaign.ts";
 import { overview } from "../wri/read.ts";
 import { runs } from "./pulse.ts";
 
 /** What this tree's readers make of the log at `path`, in a line. */
 export function replayed(path: string): string {
   const events = read(path);
-  const sets = setsOf(events);
-  const { feasible, waiting } = carriable(events);
+  const sets = taskSets(events);
   return [
     `${String(events.length)} events`,
     `${String(conditionsOf(events).size)} conditions`,
-    `${String(sets.anchor.length)} anchor, ${String(sets.released.length)} released, ${String(sets.candidates.length)} held, ${String(sets.admitted.length)} admitted`,
-    `${String(feasible.length)} written and feasible, ${String(waiting.length)} waiting for controls`,
-    `${String(stopRule(events).sessions)} reported`,
+    `${String(sets.held.length)} held out, ${String(sets.released.length)} released`,
+    `${String(writtenTasks(events).length)} written by a session`,
+    `${String(stopRule(events).checkpoints)} compared`,
     `${String(new Set(overview(events).triggers.map(({ lane }) => lane)).size)} lanes with something to read`,
   ].join(" · ");
 }

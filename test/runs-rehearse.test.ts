@@ -3,10 +3,11 @@
 // artifact-writer the one its side was scripted to, and names a solve that ended otherwise.
 import { afterAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
-import { append, type LogEvent, read } from "../src/kernel/log.ts";
-import { type TaskPackage, taskVersion } from "../src/kernel/task.ts";
+import { type LogEvent, read } from "../src/kernel/log.ts";
+import type { TaskPackage } from "../src/kernel/task.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -20,7 +21,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { parseArgs } from "../src/meta/process.ts";
-import type { Kept } from "../tools/d2/campaign.ts";
+import { baseline, type Kept } from "../tools/d2/campaign.ts";
 import type { Campaign } from "../tools/d2/round.ts";
 import { passedOn } from "../tools/runs/launch.ts";
 import { answersOf, rehearse, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
@@ -78,7 +79,7 @@ describe("a seed", () => {
     const from = campaignAt("source", LINES, '{"at":"2026');
     const to = join(root, "seeded");
     const made = seedCampaign(from, to, { before: "x-1" });
-    expect(made).toMatchObject({ from, events: 3, of: 5, before: "x-1", waiting: [] });
+    expect(made).toMatchObject({ from, events: 3, of: 5, before: "x-1", sets: { held: [], released: [] } });
     expect(read(join(to, "log.jsonl")).map(({ kind }) => kind)).toEqual([
       "task.proposed",
       "build.started",
@@ -117,7 +118,7 @@ describe("a replay", () => {
       line("task.gate", { version: "v1", gate, outcome: "passed", controls: "d" }),
     );
     expect(replayed(at("replayed", [LINES[0] ?? "", ...gates, ...LINES.slice(1, 3)]))).toBe(
-      "7 events · 0 conditions · 0 anchor, 0 released, 1 held, 0 admitted · 0 written and feasible, 0 waiting for controls · 0 reported · 2 lanes with something to read",
+      "7 events · 0 conditions · 1 held out, 0 released · 0 written by a session · 0 compared · 2 lanes with something to read",
     );
     expect(() => replayed(at("strange", [line("round.imagined", {})]))).toThrow("is not a log event");
     // A gate for a task the log never proposed is a fold's refusal, not a line's.
@@ -134,15 +135,22 @@ describe("a rehearsal's script", () => {
     }
   });
 
-  it("takes each task's first answer of each ending: a graded pass before the pack's accept control, and a session's own", () => {
+  it("takes each task's first answer of each ending: a graded pass before the pack's accept control, and what the log's solves answered", () => {
     const event = (kind: LogEvent["kind"], data: LogEvent["data"]): LogEvent => ({ at: AT, kind, data });
     const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null };
-    const set = [{ answer: { answer: "0" }, expectedCheckId: "check-product" }];
+    // A task a session wrote is in no pack. Once solves have answered it, their answers script it.
     const events = [
       event("task.proposed", { version: "v9", taskId: "x-1-001", session: "x-1", task: written }),
       event("verdict", { solve: "s-9", task: "x-1-001", answer: { answer: "24" }, kind: "pass" }),
-      event("task.gate", { version: "v9", gate: 2, solve: "s-9", outcome: "passed" }),
-      event("task.gate", { version: "v9", gate: 4, outcome: "passed", controls: "d", set }),
+      event("verdict", {
+        solve: "s-10",
+        task: "x-1-001",
+        answer: { answer: "0" },
+        kind: "fail",
+        blocking: ["check-product"],
+      }),
+      // An answer outside the format reached no check, and is no answer a check rejected.
+      event("verdict", { solve: "s-11", task: "x-1-001", answer: { junk: 1 }, kind: "fail", fault: "f" }),
     ];
     const graded = [
       { taskId: "t-1", answer: { answer: "graded" }, refusedBy: null },
@@ -158,28 +166,19 @@ describe("a rehearsal's script", () => {
   });
 
   it("hands on another command's flags without its own", () => {
-    const args = [
-      "--held",
-      "pass:pass",
-      "--name",
-      "sim",
-      "--anchor=fail:pass",
-      "--session",
-      "r-1",
-      "--referee-decides",
-    ];
+    const args = ["--held", "pass:pass", "--name", "sim", "--baseline=fail", "--session", "r-1", "--yes"];
     const { tokens } = parseArgs({
       args,
       strict: false,
       tokens: true,
-      options: { held: { type: "string" }, anchor: { type: "string" } },
+      options: { held: { type: "string" }, baseline: { type: "string" } },
     });
-    expect(passedOn(args, tokens, new Set(["held", "anchor"]))).toEqual([
+    expect(passedOn(args, tokens, new Set(["held", "baseline"]))).toEqual([
       "--name",
       "sim",
       "--session",
       "r-1",
-      "--referee-decides",
+      "--yes",
     ]);
   });
 });
@@ -193,12 +192,12 @@ describe("a rehearsal's seats", () => {
     ruleIds: ["R1"],
     checks: join(root, "no-checks"),
   });
-  const [anchored, held] = [pack("t-1"), pack("t-2")];
-  const graded = [anchored, held].flatMap(({ taskId }) => [
+  const [other, held] = [pack("t-1"), pack("t-2")];
+  const graded = [other, held].flatMap(({ taskId }) => [
     { taskId, answer: { answer: `${taskId} right` }, refusedBy: null },
     { taskId, answer: { answer: `${taskId} wrong` }, refusedBy: "check-product" },
   ]);
-  const SCRIPT = { held: sidesOf("fail:pass"), anchor: sidesOf("pass:pass") };
+  const SCRIPT = { held: sidesOf("fail:pass"), baseline: "fail" } as const;
 
   /** A campaign over `folder` whose solves end as `ending`, and each solve's first scripted call. */
   function campaignOver(folder: string, ending: Ending) {
@@ -207,6 +206,7 @@ describe("a rehearsal's seats", () => {
     // SAFETY: a rehearsal's seats read a campaign's log, its test solver and `solveOnce`, and no more.
     const campaign = {
       log,
+      states: join(folder, "kept"),
       test: { effort: "medium", side: "test" },
       limits: { turns: 24 },
       setting: () => "scripted",
@@ -223,7 +223,7 @@ describe("a rehearsal's seats", () => {
   it("are refused on a campaign that is no seed, whose next round would count their solves", () => {
     const { campaign } = campaignOver(campaignAt("real", []), { outcome: "pass" });
     expect(() =>
-      scriptedSeats(SCRIPT, graded, [])(campaign, { builder: undefined, parent: FIXTURE }),
+      scriptedSeats(SCRIPT, graded, [])(campaign, { builder: undefined, reference: FIXTURE }),
     ).toThrow("is no seed");
   });
 
@@ -237,38 +237,39 @@ describe("a rehearsal's seats", () => {
     );
   });
 
-  it("script each solve by its task's set and its harness, and name the one that ended otherwise", async () => {
+  it("script each solve by its harness, and name the one that ended otherwise", async () => {
     const folder = campaignAt("rehearsed", []);
     writeFileSync(join(folder, SEED_FILE), "{}\n");
-    const { campaign, calls, log } = campaignOver(folder, { outcome: "pass" });
-    for (const version of [anchored, held].map(taskVersion)) {
-      append(log, "task.proposed", { version });
-      for (const gate of [1, 2, 3, 4]) {
-        append(log, "task.gate", { version, gate, outcome: "passed", controls: "d" });
-      }
-    }
-    append(log, "anchor.drawn", { tasks: [taskVersion(anchored)], seed: "s", from: 2 });
+    const { campaign, calls } = campaignOver(folder, { outcome: "pass" });
     const strayed: string[] = [];
-    const seats = scriptedSeats(SCRIPT, graded, strayed)(campaign, { builder: undefined, parent: FIXTURE });
-    expect(seats.builder.model.id).toBe("script");
+    const seats = scriptedSeats(
+      SCRIPT,
+      graded,
+      strayed,
+    )(campaign, { builder: undefined, reference: FIXTURE });
+    expect(seats.builder?.model.id).toBe("script");
+    // The new harness is one a session kept: each solve is handed its own harness's answer writer.
     const fresh = { dir: join(root, "fresh"), digest: "f" };
+    cpSync(FIXTURE, fresh.dir, { recursive: true });
     const old = { dir: FIXTURE, digest: "o" };
-    await seats.solve(anchored, old, undefined);
     await seats.solve(held, fresh, undefined);
     expect(strayed).toEqual([]);
-    // A held task under the old harness is scripted to fail, and this campaign's solves all pass.
+    // Under the reference harness and under the baseline a task is scripted to fail, and this
+    // campaign's solves all pass.
     await seats.solve(held, old, undefined);
+    await seats.solve(other, await baseline(campaign), undefined);
     expect(calls).toMatchObject([
-      { name: "record_answer", arguments: { answer: "t-1 right" } },
       { name: "record_answer", arguments: { answer: "t-2 right" } },
       { name: "record_answer", arguments: { answer: "t-2 wrong" } },
+      { name: "record_answer", arguments: { answer: "t-1 wrong" } },
     ]);
     expect(strayed).toEqual([
-      's-3: t-2 under the old harness was scripted to fail and ended {"outcome":"pass"}',
+      's-2: t-2 under the reference harness was scripted to fail and ended {"outcome":"pass"}',
+      's-3: t-1 under the baseline was scripted to fail and ended {"outcome":"pass"}',
     ]);
     // A task with no answer on record for its scripted ending stops the rehearsal where it is.
     await expect(seats.solve(pack("t-3"), old, undefined)).rejects.toThrow(
-      "t-3 has no answer on record that the checks refused",
+      "t-3 has no answer on record that the checks rejected",
     );
   });
 });

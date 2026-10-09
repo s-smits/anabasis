@@ -1,62 +1,90 @@
 /**
- * The comparison: does the new harness beat the old on tasks neither was built on?
+ * The comparison: does the new harness beat the reference harness on tasks neither was built on?
  *
- * A task is solved the same number of times under each harness and counts once. Every solve of the
- * new harness is paired with every solve of the old one (`pairings`). In a pair a valid answer
- * beats a rejected one, and of two valid answers the one with the better objective wins when the
- * difference exceeds the contract's margin (`contract.ts`). The harness that wins more pairs wins
- * the task, and otherwise the task is a tie. A tie says nothing and leaves the test. The step is
- * read off a one-sided sign test of wins against losses. At the plan's p <= 0.10 its smallest wins
- * are 4-0, 6-1, 7-2 and 9-3.
+ * Both harnesses solve the same held-out tasks under the same compute budget, and each task
+ * counts once. Every solve of the new harness is paired with every solve of the reference one
+ * (`pairings`), and in a pair a valid answer beats one that is not. Two valid answers are even,
+ * and so are two that are not. The harness that wins more pairs wins the task, and otherwise the
+ * task is a tie. A tie says nothing and leaves the test. The step is read off a one-sided sign
+ * test of wins against losses. At the plan's p <= 0.10 its smallest wins are 4-0, 6-1, 7-2 and 9-3.
  *
- * Until 2026-10-09 a task went to the harness that passed it more often, and two valid answers
- * were equal. v1 measured what that can separate: 265 of 299 batteries passed every case
- * (`docs/v1.md`). Under a contract with no objective the pairing gives exactly the old reading: of
- * n solves a side with f and o valid, the new harness wins f(n-o) pairs and the old o(n-f), and
- * the first is the larger exactly when f is.
+ * How each ending of a solve enters a pair (`solve.ts` names the endings; the table is the plan's,
+ * `docs/plan.md`, Phase 2):
  *
- * The anchor is the set no screening chose, and it guards the other direction. The plan asks that
- * a step "hold" it and names no test, so it is read here as the same sign test turned round: the
- * anchor is lost when its losses beat its wins at the level the caller gives it, which need not be
- * the win test's: a guard may be asked to fire sooner. An anchor task both harnesses pass on every
- * solve informs nothing, and neither does one both fail on every solve: neither can show a win or a
- * loss. The anchor is drawn from unscreened tasks, so both kinds are common in it. Below a floor of
- * informative tasks the anchor is not tested, which is not the same as held.
+ * | The solve ended | Its part in a pair |
+ * | --- | --- |
+ * | pass: every check accepted the answer, within the limits | valid. It beats an answer that is not, and is even with another valid one |
+ * | fail, `rejected`, and the rejection stands | not valid. It loses to a valid answer and is even with another that is not |
+ * | fail, `wall-ended`, `context-ended`, `no-answer` | not valid. There is no answer to recompute, so no ruling is needed |
+ * | fail, `broken-harness` | not valid: the harness is the thing compared, and one that cannot list its tools answers nothing |
+ * | fail, `rejected`, ruled a check defect or unclear, or waiting for a person | the task is set aside and left out of the test for both harnesses (`src/builder/round.ts`) |
+ * | non-result of any kind | no measurement. It was solved again, and is in no pair; a task left short of its solves is in no tally |
  *
- * How many tasks, how many solves, the level and the floor are the caller's: they wait on D1's
- * supply and noise. Nothing here decides a step; it reports the two readings, and the pooled gain
- * the plan's stop rule reads (`gain`).
+ * With the same number of solves a side, the pairing reads exactly as "the harness with more valid
+ * answers wins": of n solves a side with f and o valid, the new harness wins f(n-o) pairs and the
+ * reference o(n-f), and the first is the larger exactly when f is. It is stated over pairs because
+ * that is the form an objective joins, should validity leave too many ties: the plan adds one only
+ * then, computed by the host from the answer, and never a value the answer reports about itself
+ * (Phase 3). No objective is built here.
  *
- * The pairs are a view over the log (`pairsOf`). A task's solves count from the event that set it
- * apart for scoring, its admission or the anchor's draw, so a screening solve, which comes before
- * admission, never counts in a score. The log's condition records say which harness each solve ran
- * under, and a task whose solves differ in anything but the harness is refused: two solves are
- * comparable only when their conditions differ in the one thing being compared (`condition.ts`).
+ * Every held-out task is compared (`task.ts`). Until 2026-10-09 a screening chose the scored tasks
+ * by which harness failed them, and an anchor of unscreened tasks guarded that choice. With no
+ * choice by pass or fail there is nothing to guard. The controls are the minimal baseline and the
+ * reference harness set against itself (`pairsOf`, `halves`).
+ *
+ * How many tasks, how many solves and the level are the caller's. Nothing here decides a step; it
+ * reports the tally and its test.
+ *
+ * The pairs are a view over the log (`pairsOf`). A solve counts for a side when its condition
+ * names the task, that side's harness, the test side and the setting the comparison is made under
+ * (`condition.ts`), and it was started after the comparison began. So the two sides are solved
+ * afresh, side by side, at every comparison. An earlier solve of the same harness is not counted:
+ * a condition names the host's code, which changes between comparisons, and one frozen draw of
+ * the reference harness's solves would bias every later comparison read against it (the review of
+ * 2026-10-09, findings 6 and 7). A side's solves are in the order they started. Where a side holds
+ * more than a tally takes, the first started are taken, and the order solves ended in would take
+ * the quick ones, which under a budget are the valid ones.
  */
 import { sha256 } from "../meta/digest.ts";
-import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
-import { keysIf } from "../meta/optional-key.ts";
+import { asRecord, isNumber } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { conditionsOf, fieldsApart } from "./condition.ts";
-import { beats, type Objective, objectiveValue } from "./contract.ts";
+import { conditionsOf, settingId } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
-import { ended, passed, ranUnder, verdictsOf } from "./solves.ts";
-import { taskStates } from "./task.ts";
+import { ended, passed, ranUnder } from "./solves.ts";
+import { taskSets } from "./task.ts";
 
-/** One task version's counted solves under the old harness and under the new: true for a pass. */
+/** What one counted solve used, as its `solve.finished` holds it: null where the log has none. */
+export interface Used {
+  readonly turns: number | null;
+  /** CPU seconds of the solve's commands. */
+  readonly cpu: number | null;
+  readonly seconds: number | null;
+  /** Billed dollars. */
+  readonly billed: number | null;
+}
+
+/** The three units a compute budget can be given in. */
+export const UNITS = ["turns", "cpu", "seconds"] as const;
+
+/** How far repeated solves of one harness on one task differ in a unit: over the tasks and sides
+ *  with two measured solves or more, the largest use divided by the smallest, as the median of
+ *  those ratios and the largest. Null where no task has two. */
+export interface Spread {
+  readonly tasks: number;
+  readonly median: number;
+  readonly most: number;
+}
+
+/** One task version's counted solves under the reference harness and under the new: true for a
+ *  valid answer. */
 export interface Paired {
   readonly task: string;
   readonly old: readonly boolean[];
   readonly fresh: readonly boolean[];
-  /** Each of those solves' seconds, in the same order; null where the log has none. */
-  readonly seconds?: { readonly old: readonly (number | null)[]; readonly fresh: readonly (number | null)[] };
-  /** Each of those solves as the log names it, in the same order: what a reading of the fails
-   *  behind a pair starts from (`src/review/weight.ts`). */
+  /** Each of those solves as the log names it, in the same order. */
   readonly solves?: { readonly old: readonly string[]; readonly fresh: readonly string[] };
-  /** The objective value each of those solves' answers reports, in the same order: null for a
-   *  rejected answer, and for a valid one that reports none. Absent under a contract with no
-   *  objective. */
-  readonly values?: { readonly old: readonly (number | null)[]; readonly fresh: readonly (number | null)[] };
+  /** What each of those solves used of its limits, in the same order. */
+  readonly used?: { readonly old: readonly Used[]; readonly fresh: readonly Used[] };
 }
 
 export interface Tally {
@@ -65,12 +93,27 @@ export interface Tally {
   readonly ties: number;
 }
 
-export type AnchorReading = "held" | "lost" | "not-tested";
+/** What a comparison is made between: the two harnesses by digest, and the setting every counted
+ *  solve ran under (`settingId`). */
+export interface Sides {
+  readonly old: string;
+  readonly fresh: string;
+  readonly setting: string;
+  /** Where in the log the comparison began: a solve started before that place is no solve of it. */
+  readonly since: number;
+  /** The solves a side of a harness set against itself: its first so many solves of a task are the
+   *  one side and the ones after them the other. It is how the noise of one harness is read, and
+   *  the one case in which both sides may name the same harness. */
+  readonly halves?: number | undefined;
+}
 
-/** What a harness and its tool tree move together; a comparison holds every other field still. */
-const COMPARED = new Set(["harness", "solverTools"]);
-/** The 90th percentile of the standard normal. */
-const Z90 = 1.2815515655446004;
+/** A compute budget a comparison is read at after the fact: a solve that used more of any named
+ *  unit than this counts as no answer. */
+export interface Budget {
+  readonly turns?: number | undefined;
+  readonly cpu?: number | undefined;
+  readonly seconds?: number | undefined;
+}
 
 /** The chance of at least `wins` wins among `wins + losses` untied tasks, were either harness as
  *  likely to win each. No untied task is no evidence, and reads 1. */
@@ -92,30 +135,17 @@ export function sweepOf(level: number): number {
   return sweep;
 }
 
-/**
- * One task's pairings: every solve of the new harness against every solve of the old, and how many
- * each side won. A valid answer beats a rejected one. Two valid answers are told apart by the
- * objective alone, and only past its margin; with no objective, or a value an answer did not
- * report, neither wins. Two rejected answers decide nothing.
- */
-export function pairings(pair: Paired, objective?: Objective) {
-  const outcomes = pair.fresh.flatMap((valid, mine) =>
-    pair.old.map((other, theirs) => {
-      if (valid !== other) return valid ? 1 : -1;
-      if (!valid || objective === undefined) return 0;
-      return beats(objective, pair.values?.fresh[mine] ?? null, pair.values?.old[theirs] ?? null);
-    }),
-  );
-  return {
-    fresh: outcomes.filter((won) => won === 1).length,
-    old: outcomes.filter((won) => won === -1).length,
-  };
+/** One task's pairings: every solve of the new harness against every solve of the reference one,
+ *  and how many each side won. A valid answer beats one that is not, and nothing else decides. */
+export function pairings(pair: Paired) {
+  const [valid, other] = [pair.fresh.filter(Boolean).length, pair.old.filter(Boolean).length];
+  return { fresh: valid * (pair.old.length - other), old: other * (pair.fresh.length - valid) };
 }
 
 /** Each task once: won by the harness that wins more of its pairings, and tied otherwise. A task
  *  solved more often under one harness than the other is refused, since the harness with more
  *  solves has more chances. */
-export function tally(pairs: readonly Paired[], objective?: Objective): Tally {
+export function tally(pairs: readonly Paired[]): Tally {
   const counts = { wins: 0, losses: 0, ties: 0 };
   for (const pair of pairs) {
     const { task, old, fresh } = pair;
@@ -124,69 +154,69 @@ export function tally(pairs: readonly Paired[], objective?: Objective): Tally {
         `task ${task} has ${String(old.length)} solve(s) under the old harness and ${String(fresh.length)} under the new; a comparison needs as many of each`,
       );
     }
-    const won = pairings(pair, objective);
+    const won = pairings(pair);
     counts[won.fresh > won.old ? "wins" : won.fresh < won.old ? "losses" : "ties"] += 1;
   }
   return counts;
 }
 
 /** The scored set's reading: the tally, and the sign test's p for the new harness. */
-export function scored(pairs: readonly Paired[], objective?: Objective): Tally & { readonly p: number } {
-  const counts = tally(pairs, objective);
+export function scored(pairs: readonly Paired[]): Tally & { readonly p: number } {
+  const counts = tally(pairs);
   return { ...counts, p: signP(counts.wins, counts.losses) };
 }
 
-/** The anchor's reading at `level`, with how many of its tasks could inform it: `floor` is the
- *  fewest that test it at all. */
-export function anchor(
-  pairs: readonly Paired[],
-  level: number,
-  floor: number,
-): Tally & { readonly informative: number; readonly reading: AnchorReading } {
-  const counts = tally(pairs);
-  const informative = pairs.filter(({ old, fresh }) => {
-    const solves = [...old, ...fresh];
-    return solves.some(Boolean) && !solves.every(Boolean);
-  }).length;
-  const reading =
-    informative < floor ? "not-tested" : signP(counts.losses, counts.wins) <= level ? "lost" : "held";
-  return { ...counts, informative, reading };
+/**
+ * The same pairs read at a shorter budget: a solve that used more of a unit the budget names than
+ * the budget allows counts as no answer, valid or not. One set of solves so gives the comparison
+ * at every shorter budget. It is an approximation: the solver was told the long limit only, and
+ * one told a short one may spend its turns otherwise (`docs/plan.md`, Phase 0). A solve whose use
+ * of a named unit the log does not hold is counted as within it.
+ */
+export function within(pairs: readonly Paired[], budget: Budget): Paired[] {
+  const over = (used: Used | undefined) =>
+    UNITS.some((unit) => {
+      const [most, spent] = [budget[unit], used?.[unit] ?? null];
+      return most !== undefined && spent !== null && spent > most;
+    });
+  const cut = (valid: readonly boolean[], used: readonly Used[] | undefined) =>
+    valid.map((each, index) => each && !over(used?.[index]));
+  return pairs.map((pair) => ({
+    ...pair,
+    old: cut(pair.old, pair.used?.old),
+    fresh: cut(pair.fresh, pair.used?.fresh),
+  }));
 }
 
 /**
- * The pooled gain in points: the mean over tasks of the new harness's pass rate less the old's, and
- * the bound that mean stays under with 90% confidence, one-sided. The plan's stop rule reads the
- * bound: after three Builder sessions, a pooled gain below ten points at that confidence ends the
- * experiment. The task is the unit, as in the sign test, and the bound is Student's over the tasks'
- * differences, its quantile by the Cornish-Fisher expansion to two terms, which is right to the third
- * decimal from six tasks up.
- *
- * Fewer than two tasks bound nothing, and read as the largest gain there is. Tasks that all differ
- * alike have no spread, so their bound is their mean: the caller's count of tasks is what says how
- * much that is worth.
+ * How far the use of each unit moved between repeated solves of one harness on one task. It is what
+ * decides the unit a budget is given in: a unit whose use doubles between two solves of the same
+ * harness splits them at random under any budget near it (`docs/plan.md`, Phase 0). A solve that
+ * used none of a unit is left out of that unit's ratio.
  */
-export function gain(pairs: readonly Paired[]) {
-  const rate = (solves: readonly boolean[]) => solves.filter(Boolean).length / solves.length;
-  const gains = pairs.map(({ old, fresh }) => 100 * (rate(fresh) - rate(old)));
-  const count = gains.length;
-  if (count < 2) return { points: gains[0] ?? 0, upper: 100 };
-  const mean = gains.reduce((sum, each) => sum + each, 0) / count;
-  const spread = Math.sqrt(gains.reduce((sum, each) => sum + (each - mean) ** 2, 0) / (count - 1));
-  const freedom = count - 1;
-  const quantile =
-    Z90 + (Z90 ** 3 + Z90) / (4 * freedom) + (5 * Z90 ** 5 + 16 * Z90 ** 3 + 3 * Z90) / (96 * freedom ** 2);
-  return { points: mean, upper: Math.min(100, mean + (quantile * spread) / Math.sqrt(count)) };
-}
-
-/** Each harness's mean seconds over the set's counted solves, null for none timed. v1 found pass
- *  counts could not separate two harnesses at this size and read solve time beside them; it is
- *  reported here, and nothing decides on it. */
-export function solveSeconds(pairs: readonly Paired[]) {
-  const mean = (side: "old" | "fresh") => {
-    const timed = pairs.flatMap((pair) => pair.seconds?.[side] ?? []).filter(isNumber);
-    return timed.length === 0 ? null : timed.reduce((sum, each) => sum + each, 0) / timed.length;
+export function spread(pairs: readonly Paired[]): Record<(typeof UNITS)[number], Spread | null> {
+  const of = (unit: (typeof UNITS)[number]): Spread | null => {
+    const ratios = pairs
+      .flatMap(({ used }) => [used?.old ?? [], used?.fresh ?? []])
+      .flatMap((side) => {
+        const spent = side.flatMap((each) => {
+          const value = each[unit];
+          return value !== null && value > 0 ? [value] : [];
+        });
+        return spent.length < 2 ? [] : [Math.max(...spent) / Math.min(...spent)];
+      })
+      .sort((a, b) => a - b);
+    const middle = ratios[Math.floor(ratios.length / 2)];
+    const most = ratios.at(-1);
+    return middle === undefined || most === undefined
+      ? null
+      : {
+          tasks: ratios.length,
+          median: ratios.length % 2 === 1 ? middle : ((ratios[ratios.length / 2 - 1] ?? middle) + middle) / 2,
+          most,
+        };
   };
-  return { old: mean("old"), fresh: mean("fresh") };
+  return { turns: of("turns"), cpu: of("cpu"), seconds: of("seconds") };
 }
 
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of
@@ -206,125 +236,70 @@ export function draw(versions: readonly string[], count: number, seed: string): 
 }
 
 /**
- * The pairs a comparison of harness `old` with harness `fresh` reads, for `versions`, from the log
- * alone. Only the test side's pass and fail endings count; a non-result was run again. A version a
- * check defect was ruled on is left out on both sides and named in `disputed`, so a ruling can
- * remove a comparison and cannot make a win. Refused: any other version that is neither admitted
- * nor the anchor's, and a task whose solves ran under conditions that differ in more than the
- * harness. With the contract's `objective`, each solve carries the value its answer reports: the
- * answer is the one its verdict holds, and a rejected answer has none.
+ * The pairs a comparison of two harnesses reads, for `versions`, from the log alone. A solve counts
+ * for a side when its condition names the task, that side's harness, the test side and the
+ * comparison's setting, it was started after the comparison began, and it ended in a pass or a
+ * fail; a non-result was solved again. Each side's solves are in the order they started. A
+ * disputed version is left out on both sides and named in `disputed`, so a dispute can remove a
+ * task from the test and cannot make a win. Any other version that is no held-out task is refused.
  */
-export function pairsOf(
-  events: readonly LogEvent[],
-  versions: readonly string[],
-  old: string,
-  fresh: string,
-  objective?: Objective,
-) {
-  const conditions = conditionsOf(events);
-  const verdicts = verdictsOf(events);
-  const valued = (counted: readonly { readonly solve: string; readonly pass: boolean }[]) =>
-    counted.map(({ solve, pass }) =>
-      pass && objective !== undefined ? objectiveValue(objective, verdicts.get(solve)?.answer) : null,
-    );
-  const states = taskStates(events);
+export function pairsOf(events: readonly LogEvent[], versions: readonly string[], sides: Sides) {
+  const { old, fresh, setting, since, halves } = sides;
+  if (old === fresh && halves === undefined) {
+    throw new Error(`a comparison sets two harnesses against each other, and both sides are ${old}`);
+  }
+  const { states, held } = taskSets(events);
+  const heldOut = new Set(held);
+  /** Each recorded condition's setting, by the condition's id: a setting is hashed once a condition
+   *  and not once a solve. */
+  const settings = new Map(
+    [...conditionsOf(events)].map(([id, condition]) => [id, settingId(condition)] as const),
+  );
+  const counted = ended(ranUnder(events))
+    .filter(
+      (solve) =>
+        solve.under.side === "test" &&
+        solve.started >= since &&
+        settings.get(solve.condition) === setting &&
+        passed(solve) !== null,
+    )
+    .sort((a, b) => a.started - b.started);
   const disputed = versions.filter((task) => states.get(task) === "disputed");
-  const pairs = versions.flatMap((task) => {
+  const pairs = versions.flatMap((task): Paired[] => {
     if (disputed.includes(task)) return [];
-    const from = events.findLastIndex(
-      ({ kind, data }) =>
-        (kind === "task.state" && data.version === task && data.state === "admitted") ||
-        (kind === "anchor.drawn" && Array.isArray(data.tasks) && data.tasks.includes(task)),
-    );
     const state = states.get(task);
-    if (from === -1 || (state !== "admitted" && state !== "held")) {
-      throw new Error(
-        `task ${task} is ${state ?? "not proposed"}; only an admitted task or an anchor task is scored`,
-      );
+    if (!heldOut.has(task)) {
+      const why =
+        state === undefined
+          ? "is not proposed"
+          : state === "held"
+            ? "has not passed its gate"
+            : `is ${state}`;
+      throw new Error(`task ${task} ${why}; only a held-out task is scored`);
     }
-    const later = events.slice(from);
-    const ran = new Map<string, string>();
-    for (const { kind, data } of later) {
-      const id = isString(data.condition) ? data.condition : "";
-      const condition = conditions.get(id);
-      if (
-        kind === "solve.started" &&
-        isString(data.solve) &&
-        condition?.task === task &&
-        condition.side === "test" &&
-        (condition.harness === old || condition.harness === fresh)
-      ) {
-        ran.set(data.solve, id);
-      }
-    }
-    const [first, ...rest] = [...new Set(ran.values())].map((id) => conditions.get(id));
-    const apart = rest.flatMap((other) =>
-      first === undefined || other === undefined ? [] : fieldsApart(first, other),
-    );
-    const moved = [...new Set(apart)].filter((field) => !COMPARED.has(field));
-    if (moved.length > 0) {
-      throw new Error(
-        `task ${task}: its solves differ in ${moved.join(", ")}, and a comparison holds everything but the harness`,
-      );
-    }
-    const counted = (harness: string) =>
-      later.flatMap(({ kind, data }) => {
-        const outcome = asRecord(data.ending)?.outcome;
-        const under = conditions.get(ran.get(isString(data.solve) ? data.solve : "") ?? "");
-        return kind === "solve.finished" &&
-          under?.harness === harness &&
-          (outcome === "pass" || outcome === "fail")
-          ? [
-              {
-                solve: isString(data.solve) ? data.solve : "",
-                pass: outcome === "pass",
-                seconds: isNumber(data.seconds) ? data.seconds : null,
-              },
-            ]
-          : [];
+    const under = (harness: string) =>
+      counted.filter((solve) => solve.under.task === task && solve.under.harness === harness);
+    const own = under(old);
+    const [before, after] = old === fresh ? [own.slice(0, halves), own.slice(halves)] : [own, under(fresh)];
+    const used = (solves: typeof counted) =>
+      solves.map(({ end }): Used => {
+        const cpu = asRecord(end.cpu)?.seconds;
+        return {
+          turns: isNumber(end.turns) ? end.turns : null,
+          cpu: isNumber(cpu) ? cpu : null,
+          seconds: isNumber(end.seconds) ? end.seconds : null,
+          billed: isNumber(end.billed) ? end.billed : null,
+        };
       });
-    const [before, after] = [counted(old), counted(fresh)];
     return [
       {
         task,
-        old: before.map(({ pass }) => pass),
-        fresh: after.map(({ pass }) => pass),
-        seconds: { old: before.map(({ seconds }) => seconds), fresh: after.map(({ seconds }) => seconds) },
-        solves: { old: before.map(({ solve }) => solve), fresh: after.map(({ solve }) => solve) },
-        ...keysIf(objective !== undefined, () => ({ values: { old: valued(before), fresh: valued(after) } })),
+        old: before.map((solve) => passed(solve) === true),
+        fresh: after.map((solve) => passed(solve) === true),
+        solves: { old: before.map(({ id }) => id), fresh: after.map(({ id }) => id) },
+        used: { old: used(before), fresh: used(after) },
       },
     ];
   });
   return { pairs, disputed };
-}
-
-/**
- * The best valid answer the log holds of each task version, on the test side and under any harness:
- * the value it reports, the solve that gave it and the harness that solve ran under. The plan keeps
- * no reference answer, since a design task has many valid ones (`docs/plan.md`, principle 3). This
- * is the reference point instead: what a later answer is set against, and what the Builder is told
- * of a practice task. A version no valid answer reports a value for has none.
- */
-export function bestKnown(
-  events: readonly LogEvent[],
-  objective: Objective,
-): Map<string, { readonly value: number; readonly solve: string; readonly harness: string }> {
-  const verdicts = verdictsOf(events);
-  const best = new Map<
-    string,
-    { readonly value: number; readonly solve: string; readonly harness: string }
-  >();
-  for (const solve of ended(ranUnder(events))) {
-    const value = passed(solve) === true ? objectiveValue(objective, verdicts.get(solve.id)?.answer) : null;
-    const { task, harness, side } = solve.under;
-    const known = best.get(task);
-    if (
-      side === "test" &&
-      value !== null &&
-      (known === undefined || beats(objective, value, known.value) === 1)
-    ) {
-      best.set(task, { value, solve: solve.id, harness });
-    }
-  }
-  return best;
 }

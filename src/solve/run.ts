@@ -230,7 +230,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
     timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
     await runAgentLoop(
-      [user(firstTurn(request.task, request.contract.objective))],
+      [user(firstTurn(request.task))],
       { messages: system === undefined ? [] : [system], tools },
       {
         model: request.model,

@@ -23,7 +23,7 @@ import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta
 import { asRecord } from "#src/meta/json-shape.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { carriable, setsOf } from "../d2/campaign.ts";
+import { taskSets } from "#src/kernel/task.ts";
 import { SEED_FILE } from "./pulse.ts";
 
 const LOG = "log.jsonl";
@@ -85,12 +85,7 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
     const origin = { from: resolve(from), events: kept, of: lines.length, before: cut.before ?? null };
     writeFileSync(join(to, SEED_FILE), `${capturedJsonStringify(origin, null, 2)}\n`);
     // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
-    const events = read(join(to, LOG));
-    return {
-      ...origin,
-      sets: setsOf(events),
-      waiting: carriable(events).waiting.map(({ task }) => task.taskId),
-    };
+    return { ...origin, sets: taskSets(read(join(to, LOG))) };
   } catch (error) {
     rmSync(to, { recursive: true, force: true });
     throw error;
@@ -115,12 +110,12 @@ export async function seed(args: readonly string[]): Promise<void> {
     );
   }
   const to = resolve(import.meta.dir, "..", "..", ".ana", "d2", name);
-  const { sets, waiting, ...made } = seedCampaign(from, to, { before, events });
+  const { sets, ...made } = seedCampaign(from, to, { before, events });
   console.log(
     `seeded ${name} from ${made.from}: ${String(made.events)} of ${String(made.of)} events${made.before === null ? "" : `, cut before session ${made.before}`}`,
   );
   console.log(
-    `  ${String(sets.feasible.length)} feasible: ${String(sets.anchor.length)} anchor, ${String(sets.released.length)} released, ${String(sets.candidates.length)} held for screening, ${String(sets.admitted.length)} admitted; ${String(waiting.length)} past gate 3 waiting for controls`,
+    `  ${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`,
   );
   console.log(`  scripted  bun run runs rehearse ... --name ${name} --session <id>`);
   console.log(`  live      bun run runs launch ... --name ${name} --session <id>`);

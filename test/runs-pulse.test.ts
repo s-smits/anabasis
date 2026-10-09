@@ -78,8 +78,8 @@ describe("the runs pulse", () => {
     ]);
     const examined = [...examining, event(7, "exam.finished", { session: "x-1", ended: "finished" })];
     expect(pulse(round, examined, false, seen, START + 8 * 60_000).said).toEqual(["◆ exam x-1 ended"]);
-    // A reading that does not stand without its flagged tasks, and a round that scored nothing, are
-    // each something to look at.
+    // A report with tasks set aside on rejections nobody has settled, one its cap cut, and one
+    // that scored nothing, are each something to look at.
     const says = (data: JsonObject) =>
       pulse(
         round,
@@ -88,29 +88,26 @@ describe("the runs pulse", () => {
         { ...done.seen, lines: 5 },
         START,
       ).said;
-    expect(says({ reading: "flags-decide", counted: "step", unflagged: { reading: "no-step" } })).toEqual([
-      "⚠ reported flags-decide: step with its flagged tasks, no-step without",
+    expect(says({ reading: "no-step", aside: ["v1", "v2"] })).toEqual([
+      "⚠ reported no-step, with 2 task(s) set aside on rejections no person has settled",
     ]);
-    // A report written before the round named the counted reading holds it as its reading.
-    expect(says({ reading: "step", unflagged: { reading: "no-step" } })).toEqual([
-      "⚠ reported step: step with its flagged tasks, no-step without",
+    expect(says({ reading: "not-scored", capped: true, aside: [] })).toEqual([
+      "⚠ reported not-scored: its dollar cap cut it short",
     ]);
-    expect(says({ reading: "step", counted: "step", unflagged: { reading: "step" } })).toEqual([
-      "◆ reported step",
-    ]);
+    expect(says({ reading: "step", aside: [] })).toEqual(["◆ reported step"]);
     expect(says({ reading: "no-step", settled: { labelled: 2, defects: 2 } })).toEqual([
       "◆ settled by hand as no-step: 2 labelled, 2 a check defect",
     ]);
     expect(says({ reading: "not-scored", unflagged: null })).toEqual(["⚠ reported not-scored"]);
   });
 
-  it("folds the same line twice into one, as an anchor's two harnesses start a task", () => {
-    const anchor = [
+  it("folds the same line twice into one, as a comparison's two harnesses start a task", () => {
+    const twice = [
       ...built,
       event(5, "solve.started", { solve: "s2", task: "wind-01", model: "claude/claude-opus-5" }),
       event(5, "solve.started", { solve: "s3", task: "wind-01", model: "claude/claude-opus-5" }),
     ];
-    const look = pulse(round, anchor, true, { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
+    const look = pulse(round, twice, true, { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
     expect(look.said).toEqual(["· wind-01 started on claude/claude-opus-5 (×2)"]);
     expect(look.status).toContain("2 running");
   });

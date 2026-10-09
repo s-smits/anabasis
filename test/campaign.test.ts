@@ -1,9 +1,12 @@
 // A campaign over a sweep laid out as v1's left one, as far as it goes without a model or a wall: it
-// opens, names its sets from the log, finds a task a session wrote beside the pack's own, and
-// `prepare.ts`, run as the operator runs it, draws the anchor and releases the practice tasks once.
+// opens, `prepare.ts`, run as the operator runs it, takes the pack's tasks in, releases the practice
+// tasks once and takes a person's label of a task, a task a session wrote stands beside the pack's
+// own, and the campaign keeps its harnesses by name: the one it started with, the minimal baseline
+// and the latest a session left.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { append, type LogEvent, read } from "../src/kernel/log.ts";
-import { taskStates, taskVersion } from "../src/kernel/task.ts";
+import { append, read } from "../src/kernel/log.ts";
+import { sizeLines } from "../src/kernel/size.ts";
+import { taskSets, taskVersion } from "../src/kernel/task.ts";
 import {
   cpSync,
   mkdirSync,
@@ -16,9 +19,10 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { carriable, frontier, LIMITS, openCampaign, setsOf } from "../tools/d2/campaign.ts";
+import { openHarness } from "../src/solve/harness.ts";
+import { baseline, keptAs, LIMITS, openCampaign } from "../tools/d2/campaign.ts";
 import { SETTING_OPTIONS, settingNamed } from "../tools/d2/setting.ts";
-import { ROUND_OPTIONS, roundCommand } from "../tools/d2/round.ts";
+import { budgetsNamed, capNamed, ROUND_OPTIONS, roundCommand } from "../tools/d2/round.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -26,6 +30,7 @@ const NAME = `test-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-campaign-")));
 const bundle = join(root, "bundle");
 const ARGS = { root, sweep: "s", cycle: "c01", bundle, name: NAME };
+const ASKED = { solves: 2, level: 0.1 };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
   family: "fixture",
@@ -97,16 +102,13 @@ function layOut(): void {
 describe("a campaign", () => {
   /** `prepare.ts` as the operator runs it, with whatever flags `more` adds, and what it printed. */
   const prepare = (...more: string[]) => {
-    const flags = Object.entries({ ...ARGS, anchor: "3", practice: "2" }).flatMap(([flag, value]) => [
-      `--${flag}`,
-      value,
-    ]);
+    const flags = Object.entries({ ...ARGS, practice: "2" }).flatMap(([flag, value]) => [`--${flag}`, value]);
     const cmd = [capturedExecPath, "tools/d2/prepare.ts", ...flags, ...more];
     const ran = Bun.spawnSync({ cmd, cwd: REPO });
     return `${ran.stdout.toString()}${ran.stderr.toString()}`.trim();
   };
 
-  it("opens over a stored sweep, names its sets from the log, and prepares them once", async () => {
+  it("opens over a stored sweep, takes the pack's tasks in at their gate, and releases practice once", async () => {
     layOut();
     const campaign = await openCampaign(ARGS);
     expect(campaign.contract.rules).toMatchObject([
@@ -119,15 +121,7 @@ describe("a campaign", () => {
     expect(campaign.log.startsWith(join(REPO, ".ana", "d2", NAME))).toBe(true);
     expect(read(campaign.log)).toEqual([]);
 
-    // The pack's tasks as `admit-sweep.ts --feasible` leaves them: proposed, four gates passed, held.
-    const versions = TASKS.map((task) => taskVersion(campaign.pack(task)));
-    for (const version of versions) {
-      append(campaign.log, "task.proposed", { version });
-      for (const gate of [1, 2, 3, 4]) {
-        append(campaign.log, "task.gate", { version, gate, outcome: "passed", controls: "d" });
-      }
-    }
-    // One more, as an Examiner session leaves it: its instance whole in its proposal, gate 4 not yet passed.
+    // One task as an Examiner session leaves it: its instance whole in its proposal, its gate passed.
     const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 40 }, hidden: { seed: 1 } };
     const extra = taskVersion(campaign.pack(written));
     append(campaign.log, "task.proposed", {
@@ -136,49 +130,107 @@ describe("a campaign", () => {
       session: "x-1",
       task: written,
     });
-    expect(setsOf(read(campaign.log))).toMatchObject({ anchor: [], released: [], admitted: [] });
-    expect(setsOf(read(campaign.log)).candidates.sort()).toEqual([...versions].sort());
+    append(campaign.log, "task.gate", { version: extra, gate: 1, outcome: "passed" });
+
+    // The pack's seven tasks are proposed and put to their one gate, with no solve and no stored
+    // answer. Two of the eight held out are then released for practice, by the contract's draw.
+    const versions = TASKS.map((task) => taskVersion(campaign.pack(task)));
+    const summary = ["6 held out, 2 released for practice", ...sizeLines(6, ASKED)].join("\n");
+    expect(prepare()).toBe(`7 of the pack's tasks proposed: 7 held out, 0 refused\n${summary}`);
+    const sets = taskSets(read(campaign.log));
+    expect([sets.held.length, sets.released.length]).toEqual([6, 2]);
+    expect([...sets.held, ...sets.released].toSorted()).toEqual([...versions, extra].toSorted());
+    expect(read(campaign.log).filter(({ kind }) => kind === "anchor.drawn")).toEqual([]);
     const packages = campaign.packages();
     expect(packages.get(extra)).toMatchObject({ taskId: "x-1-001", hidden: { seed: 1 }, ruleIds: ["R1"] });
     expect(versions.every((version) => packages.has(version))).toBe(true);
-
-    // While no round has stepped the campaign stands on the stored cycle's harness.
-    const stands = await frontier(campaign);
-    expect(stands.dir).toBe(campaign.parent);
-    // No solve has placed a task yet, so the draws are blind and the ladder says so.
-    const against = `against the frontier ${stands.digest.slice(0, 8)}`;
-    const unsolved = "no solve under these limits is on record against this harness";
-    const binds =
-      "what binds: tasks. 2 of the pool can be scored and a step takes 4: no Examiner session has written against this harness";
-    // After the ladder, whether the wall binds and what a round of this size can show.
-    const summary = [
-      "7 feasible: 3 anchor, 2 released for practice (2 the frontier is not known to clear), 2 in the pool",
-      `${against}: 0 stop it, 0 it clears, 0 ended at the wall, 2 no solve has placed; 0 wait for a witness`,
-      `against a wall of 120 minutes: 0 of 2 pool tasks walled, 0 tasks set aside as wall-bound outside the pool (Examiner sessions wrote 0 of the pool, 0 of the walled and 0 of the wall-bound); ${unsolved}`,
-      "at most 2 task(s) can be scored, and at --level 0.1 a step takes 4, all won: this round cannot read step. Its screening still retires each candidate both harnesses pass, as too-easy",
-      binds,
-    ].join("\n");
+    // A second run proposes and releases nothing.
+    const events = read(campaign.log).length;
     expect(prepare()).toBe(summary);
-    const sets = setsOf(read(campaign.log));
-    expect([sets.anchor.length, sets.released.length, sets.candidates.length]).toEqual([3, 2, 2]);
-    expect(new Set([...sets.anchor, ...sets.released, ...sets.candidates]).size).toBe(7);
-    const states = taskStates(read(campaign.log));
-    expect(sets.released.every((version) => states.get(version) === "released")).toBe(true);
-    // The draw names its seed and its pool, and a second run draws and releases nothing.
-    const drawn = read(campaign.log).filter((event) => event.kind === "anchor.drawn");
-    expect(drawn).toHaveLength(1);
-    expect(drawn[0]?.data).toMatchObject({ from: 7 });
-    expect(prepare()).toBe(summary);
-    expect(read(campaign.log).filter((event) => event.kind === "anchor.drawn")).toHaveLength(1);
-    expect(setsOf(read(campaign.log)).released).toEqual(sets.released);
+    expect(read(campaign.log)).toHaveLength(events);
+    // Asked for no more practice than there is, it says what a comparison of the size asked for can show.
+    expect(prepare("--target", "3")).toBe(
+      ["6 held out, 2 released for practice", ...sizeLines(3, ASKED)].join("\n"),
+    );
+  });
 
-    // A round that read a step moves the frontier to the harness it kept, and one that did not
-    // leaves it there.
-    const kept = join(campaign.states, stands.digest);
-    cpSync(campaign.parent, kept, { recursive: true });
-    append(campaign.log, "comparison.reported", { session: "b-1", reading: "step", fresh: stands.digest });
-    append(campaign.log, "comparison.reported", { session: "b-2", reading: "no-step", fresh: "other" });
-    expect(await frontier(campaign)).toEqual({ dir: kept, digest: stands.digest });
+  it("takes a person's label of a held-out task: kept in the scored set, or refused as infeasible", async () => {
+    const campaign = await openCampaign(ARGS);
+    const packages = campaign.packages();
+    const [kept = "", gone = ""] = taskSets(read(campaign.log)).held;
+    const idOf = (version: string) => packages.get(version)?.taskId ?? "";
+    const said = prepare("--keep", idOf(kept), "--infeasible", idOf(gone), "--note", "no member carries it");
+    expect(said).toStartWith(
+      `${idOf(kept)}: kept in the scored set\n${idOf(gone)}: refused as infeasible\n5 held out, 2 released`,
+    );
+    const sets = taskSets(read(campaign.log));
+    expect(sets.held).toContain(kept);
+    expect(sets.states.get(gone)).toBe("refused");
+    expect(
+      read(campaign.log).filter(({ kind, data }) => kind === "task.state" && "reason" in data),
+    ).toMatchObject([
+      {
+        data: {
+          version: kept,
+          state: "held",
+          reason: "a person read the task as feasible: no member carries it",
+        },
+      },
+      {
+        data: {
+          version: gone,
+          state: "refused",
+          reason: "a person read the task as infeasible: no member carries it",
+        },
+      },
+    ]);
+    // Only a held-out task is labelled: not a refused one, a practice task or a name no task has.
+    expect(prepare("--keep", idOf(gone))).toContain("is no held-out task of this campaign");
+    expect(prepare("--infeasible", idOf(sets.released[0] ?? ""))).toContain("is no held-out task");
+    expect(prepare("--keep", "t-99")).toContain("t-99 is no held-out task of this campaign");
+  });
+
+  it("keeps the harness it started with, the minimal baseline, and the latest a session left, each by name", async () => {
+    const campaign = await openCampaign(ARGS);
+    const start = await keptAs(campaign, "--reference", "start");
+    expect(start.dir).toBe(campaign.parent);
+    // Until a session has left a harness, the latest is the one the campaign started with.
+    expect(await keptAs(campaign, "--parent", "latest")).toEqual(start);
+    // The baseline is a harness like any other: it opens, with a shell, an answer writer, no guide
+    // and no domain tool, and it is kept under its digest among the campaign's states.
+    const least = await baseline(campaign);
+    const opened = await openHarness(least.dir);
+    expect(least).toEqual({ dir: join(campaign.states, opened.digest), digest: opened.digest });
+    expect(opened.guide).toBeNull();
+    expect(opened.presets).toEqual(["shell"]);
+    expect([...opened.kinds.values()]).toEqual(["artifact-writer"]);
+    expect(opened.toolTree).toBeNull();
+    expect(least.digest).not.toBe(start.digest);
+    expect(await baseline(campaign)).toEqual(least);
+    expect(await keptAs(campaign, "--new", "baseline")).toEqual(least);
+    expect(readdirSync(campaign.states)).toEqual([least.digest]);
+
+    // A session leaves a harness under its digest, and the Builder goes on from it whether or not
+    // its comparison read a step. The reference harness stays the one the campaign started with:
+    // no reading moves it, and promotion is the operator's, by naming another.
+    const child = join(root, "child");
+    cpSync(campaign.parent, child, { recursive: true });
+    writeFileSync(join(child, "agent", "BUILT_AGENTS.md"), "Multiply first.\n");
+    const { digest } = await openHarness(child);
+    cpSync(child, join(campaign.states, digest), { recursive: true });
+    append(campaign.log, "build.finished", {
+      session: "b-1",
+      harness: digest,
+      changed: true,
+      ended: "finished",
+    });
+    append(campaign.log, "comparison.reported", { session: "b-1", reading: "step", fresh: digest });
+    const built = { dir: join(campaign.states, digest), digest };
+    expect(await keptAs(campaign, "--parent", "latest")).toEqual(built);
+    expect(await keptAs(campaign, "--reference", "start")).toEqual(start);
+    expect(await keptAs(campaign, "--reference", digest)).toEqual(built);
+    // The harness the campaign started with is named by its digest too, though no state holds it.
+    expect(await keptAs(campaign, "--parent", start.digest)).toEqual(start);
   });
 
   it("says which harnesses a campaign keeps when --parent names none of them", async () => {
@@ -188,9 +240,8 @@ describe("a campaign", () => {
     mkdirSync(join(campaign.states, digest), { recursive: true });
     // The round as the operator runs it. It is refused before a seat is taken or a session starts.
     const round = (parent: string) => {
-      const flags = Object.entries({ ...ARGS, session: "b-9", builder: "faux/none", parent }).flatMap(
-        ([flag, value]) => [`--${flag}`, value],
-      );
+      const given = { ...ARGS, session: "b-9", builder: "faux/none", cap: "100", parent };
+      const flags = Object.entries(given).flatMap(([flag, value]) => [`--${flag}`, value]);
       const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/round.ts", ...flags], cwd: REPO });
       return `${ran.stdout.toString()}${ran.stderr.toString()}`;
     };
@@ -203,44 +254,6 @@ describe("a campaign", () => {
     // Nor is another folder of the campaign a harness, wherever the name leads.
     expect(round("../checks")).toContain("--parent ../checks is no harness this campaign keeps");
     expect(read(campaign.log).filter(({ kind }) => kind === "build.started")).toEqual([]);
-  });
-
-  it("returns a wall-bound task to the pool when it is prepared under a longer wall, and under nothing else", async () => {
-    const campaign = await openCampaign(ARGS);
-    const stands = await frontier(campaign);
-    const sets = setsOf(read(campaign.log));
-    // A round set one pool task aside as wall-bound, under the limits every campaign has run at.
-    const [bound = ""] = sets.candidates;
-    append(campaign.log, "task.state", {
-      version: bound,
-      state: "wall-bound",
-      session: "b-0",
-      limits: campaign.limits,
-    });
-    // Under the same wall it stays set aside, and the reading counts it.
-    const same = prepare();
-    expect(same).toContain("0 of 1 pool task walled, 1 task set aside as wall-bound outside the pool");
-    expect(same).not.toContain("returned to the pool");
-    expect(taskStates(read(campaign.log)).get(bound)).toBe("wall-bound");
-    // Under a longer wall it returns to the pool, with the limits it returned under on record.
-    const longer = prepare("--solve-minutes", "240").split("\n");
-    expect(longer[0]).toBe(
-      "1 wall-bound task returned to the pool: the wall named here is longer than the one that bound them, and no other limit is tighter",
-    );
-    expect(longer[2]).toStartWith(`against the frontier ${stands.digest.slice(0, 8)}: 0 stop it`);
-    expect(longer[3]).toStartWith(
-      "against a wall of 240 minutes: 0 of 2 pool tasks walled, 0 tasks set aside",
-    );
-    expect(taskStates(read(campaign.log)).get(bound)).toBe("held");
-    expect(read(campaign.log).at(-1)?.data).toMatchObject({
-      version: bound,
-      state: "held",
-      limits: { ...campaign.limits, wallSeconds: 240 * 60 },
-    });
-    // It is held like any other from then on: a second run moves nothing.
-    const events = read(campaign.log).length;
-    expect(prepare("--solve-minutes", "240")).not.toContain("returned to the pool");
-    expect(read(campaign.log)).toHaveLength(events);
   });
 
   it("holds every solve to the limits a command names, through one owner, and to the sweep's when it names none", async () => {
@@ -257,7 +270,7 @@ describe("a campaign", () => {
     expect(settingNamed(defaults)).toEqual({ solver: undefined, limits: LIMITS });
     const unnamed = await openCampaign({ ...ARGS, ...settingNamed(defaults) });
     expect(unnamed.setting(unnamed.test)).toBe(plain.setting(plain.test));
-    // A longer wall or more turns is another setting, on the test side and the stronger alike.
+    // A longer wall or more turns is another setting.
     const named = settingNamed({ ...defaults, "solve-minutes": "240", "solve-turns": "48" }).limits;
     expect(named).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
     const longer = await openCampaign({ ...ARGS, limits: named });
@@ -271,8 +284,6 @@ describe("a campaign", () => {
     });
     expect(other.solver).toEqual({ model: "anthropic/claude-sonnet-5-5", effort: "low" });
     expect(longer.setting(longer.test)).not.toBe(plain.setting(plain.test));
-    const strong = { ...plain.test, side: "strong" } as const;
-    expect(longer.setting(strong)).not.toBe(plain.setting(strong));
     for (const [minutes, turns] of [
       ["0", "24"],
       ["1.5", "24"],
@@ -297,11 +308,9 @@ describe("a campaign", () => {
       "0",
     ];
     const session = ["--session", "z-9"];
-    await expect(roundCommand([...flags, ...session])).rejects.toThrow(refused);
-    for (const command of [
-      ["tools/d2/prepare.ts"],
-      ["tools/d1b/examine.ts", ...session, "--examiner", "none/none", "--strong", "none/none"],
-    ]) {
+    const capped = ["--cap", "100"];
+    await expect(roundCommand([...flags, ...session, ...capped])).rejects.toThrow(refused);
+    for (const command of [["tools/d2/checkpoint.ts", "--id", "z-9", ...capped]]) {
       const ran = Bun.spawnSync({ cmd: [capturedExecPath, ...command, ...flags], cwd: REPO });
       expect(ran.exitCode).not.toBe(0);
       expect(ran.stderr.toString()).toContain(refused);
@@ -309,54 +318,31 @@ describe("a campaign", () => {
     expect(read(plain.log).some(({ data }) => data.session === "z-9")).toBe(false);
   });
 
-  it("reads from a log what a campaign under a repaired checker can take with no solve", () => {
-    const at = "2026-10-08T00:00:00.000Z";
-    const event = (kind: LogEvent["kind"], data: LogEvent["data"]): LogEvent => ({ at, kind, data });
-    /** A task a session wrote, as far as gate 2: its proposal, and its stronger solve's verdict. */
-    const written = (id: string, version: string, solved: LogEvent["data"]): LogEvent[] => [
-      event("task.proposed", {
-        version,
-        taskId: id,
-        session: "x-1",
-        task: { taskId: id, family: "fixture", publicInput: { base: 4 }, hidden: null },
-      }),
-      event("task.gate", { version, gate: 1, outcome: "passed" }),
-      event("verdict", { solve: `s-${id}`, task: id, answer: { answer: id }, kind: "pass" }),
-      event("task.gate", { version, gate: 2, solve: `s-${id}`, ...solved }),
-    ];
-    const set = [{ answer: { answer: "0" }, expectedCheckId: "check-product" }];
-    const events = [
-      // Feasible, its controls whole in the log.
-      ...written("x-1-001", "v1", { outcome: "passed" }),
-      event("task.gate", { version: "v1", gate: 4, outcome: "passed", controls: "d", set }),
-      // Feasible in a log written before the controls were kept: only their digest is there.
-      ...written("x-1-002", "v2", { outcome: "passed" }),
-      event("task.gate", { version: "v2", gate: 4, outcome: "passed", controls: "d" }),
-      // Closed as too hard on an answer a check refused, which a repair may accept; and at the
-      // wall, which no repair changes.
-      ...written("x-1-003", "v3", { outcome: "too-hard", kind: "rejected" }),
-      ...written("x-1-004", "v4", { outcome: "too-hard", kind: "wall-ended" }),
-      // A pack's task is no session's: its proposal holds no instance.
-      event("task.proposed", { version: "v5" }),
-      // Past gate 3 when its session ended, with no controls written: the next session's to take.
-      ...written("x-1-006", "v6", { outcome: "passed" }),
-      event("task.gate", { version: "v6", gate: 3, outcome: "passed" }),
-      // Past gate 2 only: gate 3 has not said the checks repeat on its answer.
-      ...written("x-1-007", "v7", { outcome: "passed" }),
-    ];
-    const { feasible, recovered, waiting, bare } = carriable(events);
-    expect(waiting.map(({ task, accepted }) => [task.taskId, accepted])).toEqual([
-      ["x-1-006", { answer: "x-1-006" }],
+  it("starts no paid comparison without a dollar cap, and reads its budgets before anything starts", async () => {
+    const flags = Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]);
+    await expect(roundCommand([...flags, "--session", "z-8", "--builder", "faux/none"])).rejects.toThrow(
+      "name --cap, the billed dollars this comparison may hold",
+    );
+    const ran = Bun.spawnSync({
+      cmd: [capturedExecPath, "tools/d2/checkpoint.ts", "--id", "z-8", ...flags],
+      cwd: REPO,
+    });
+    expect(ran.stderr.toString()).toContain("name --cap");
+    expect(capNamed({ cap: "375", reserve: "10" }, "paid")).toEqual({ dollars: 375, reserve: 10 });
+    // A simulation's seats are scripts, which are paid nothing, and may name none.
+    expect(capNamed({ reserve: "10" }, "scripted")).toBeUndefined();
+    expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
+    // A budget names any of the three units, and each flag is one budget to read the comparison at.
+    expect(budgetsNamed(["turns=12", "turns=8,cpu=600", "seconds=1800"])).toEqual([
+      { turns: 12 },
+      { turns: 8, cpu: 600 },
+      { seconds: 1800 },
     ]);
-    expect(feasible).toEqual([
-      {
-        task: { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null },
-        solve: "s-x-1-001",
-        accepted: { answer: "x-1-001" },
-        controls: set,
-      },
-    ]);
-    expect(recovered.map(({ task, solve }) => [task.taskId, solve])).toEqual([["x-1-003", "s-x-1-003"]]);
-    expect(bare).toBe(1);
+    expect(budgetsNamed()).toEqual([]);
+    for (const flag of ["turns", "turns=0", "tokens=5", "turns=4=5", ""]) {
+      expect(() => budgetsNamed([flag])).toThrow("a budget names turns, cpu or seconds");
+    }
+    const campaign = await openCampaign(ARGS);
+    expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });
 });

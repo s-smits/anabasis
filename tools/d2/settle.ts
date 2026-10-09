@@ -1,34 +1,45 @@
 /**
- * Settle a round's reading by hand: the plan's gate while the Referee advises, with a record.
+ * Settle a comparison's reading by hand: the plan's person in the loop, with a record.
  *
  *   bun tools/d2/settle.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 [--all]
+ *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session g0 [--all]
  *
- * A round whose reading differs with and without the tasks its Referee flagged reads `flags-decide`
- * and claims neither (`src/builder/round.ts`). This command is how a person decides it.
+ * A rejected answer counts in a comparison only once its rejection is ruled a true fail. One the
+ * Referee ruled a check defect or unclear, and one nobody ruled on, sets its task aside, out of
+ * every tally of the comparison (`src/builder/round.ts`). This command is how a person decides
+ * those. `--session` is the comparison's id: a round's session, or a checkpoint's `--id`. A
+ * comparison run with no reviewer is read this way throughout, which is how the plan's first
+ * experiment is read before there is a Judge (`docs/plan.md`, Phase 0).
  *
  * Run once, it writes `labels.json` under `.ana/d2/<name>/settle-<session>/`, one empty entry a
- * fail, and one packet a fail beside it: the task with its hidden values, the public rules, the
- * answer and the checks that refused it. A packet holds no ruling. The fails are those the Referee
- * ruled a check defect, on tasks the report counts; with `--all`, every answer of the comparison
- * that some check refused, which is the plan's hand reading in full. A person writes `earned`,
- * `check-defect` or `unclear` into each entry.
+ * rejection, and one packet a rejection beside it: the task with its hidden values, the public
+ * rules, the answer and the checks that rejected it. A packet holds no ruling. The rejections are
+ * those that set a task aside; with `--all`, every answer of the comparison that some check
+ * rejected, under any of its harnesses, the ones ruled a true fail included. A person writes
+ * `earned`, `check-defect` or `unclear` into each entry, and a person's label stands over the
+ * Referee's ruling of the same rejection.
  *
- * Run again, it settles (`settleReading`): every flagged fail must be labelled `earned` or `check-defect`.
- * A fail labelled a check defect disputes its task, which leaves this comparison and every later
- * one; a flagged fail labelled earned stands. The round's report is written once more, as its last,
- * with the reading the labels leave and what was settled. The round's own report stays in the log.
+ * Run again, it settles (`settleReading`): every rejection that set a task aside must carry a
+ * label. A task whose rejections are then all earned is restored to the tally. One labelled a check
+ * defect disputes its task, which leaves this comparison and every later one. One labelled unclear
+ * leaves its task out of this comparison. The report is written once more, as the comparison's
+ * last, with the reading the labels leave and what was settled. Its own report stays in the log.
  *
- * These labels are made beside a log that holds the Referee's rulings, so they are not blind and
- * measure nothing of the Referee: its bar is cleared on labels drawn before it reads
- * (`tools/c/rejections.ts`). A task disputed here on a check's fault is a repair owed to the
- * checker's owner, and the labels file is what `tools/c/repaired.ts --labels` takes.
+ * A settling makes no solve. Where the labels leave a test that clears its level and the baseline
+ * was not solved for it, the reading is `baseline-unread`: compare the new harness with the
+ * baseline in a comparison of its own (`checkpoint.ts --reference baseline --new <digest>`).
+ *
+ * Labels made beside a log that holds the Referee's rulings are not blind and measure nothing of
+ * the Referee: its bar is cleared on labels drawn before it reads (`tools/c/rejections.ts`). A task
+ * disputed here on a check's fault is a repair owed to the check program's owner, and the labels
+ * file is what `tools/c/repaired.ts --labels` takes.
  *
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
-import { settleReading, stopRule, toLabel } from "#src/builder/round.ts";
+import { settleReading, toLabel } from "#src/builder/round.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
+import { stopRule } from "#src/kernel/reports.ts";
 import { refusedBy, verdictsOf } from "#src/kernel/solves.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -72,11 +83,11 @@ async function main(): Promise<number> {
     console.log(capturedJsonStringify(stopRule(read(campaign.log)), null, 2));
     return 0;
   }
-  const { flagged, others } = toLabel(events, session);
-  const solves = values.all ? [...flagged, ...others] : flagged;
+  const { aside, others } = toLabel(events, session);
+  const solves = values.all ? [...aside, ...others] : aside;
   if (solves.length === 0) {
     console.log(
-      `session ${session} has no fail to label: ${plural(flagged.length, "flagged fail")}, ${plural(others.length, "other refused answer")}${values.all ? "" : ", which --all draws"}`,
+      `comparison ${session} has no rejection to label: ${plural(aside.length, "rejection")} set a task aside, and ${plural(others.length, "other rejected answer")} ${others.length === 1 ? "is" : "are"} ruled a true fail${values.all ? "" : ", which --all draws"}`,
     );
     return 0;
   }
@@ -100,7 +111,7 @@ async function main(): Promise<number> {
     `${capturedJsonStringify(Object.fromEntries(solves.map((solve) => [solve, ""])), null, 2)}\n`,
   );
   console.log(
-    `${plural(solves.length, "fail")} to label in ${labelFile}, ${String(flagged.length)} of them flagged, a packet each beside it`,
+    `${plural(solves.length, "rejection")} to label in ${labelFile}, ${String(aside.length)} of them setting a task aside, a packet each beside it`,
   );
   return 0;
 }

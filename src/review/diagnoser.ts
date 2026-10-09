@@ -26,8 +26,8 @@
  *   trace; this one has a loop, and an excerpt of six calls from a solve of sixty turns shows less
  *   than the Builder reads for itself.
  * - The contrast is a pass under the failed solve's own condition. v1 read one battery, which is one
- *   condition. A v2 log also holds gate 2's pass by the stronger condition for every feasible task,
- *   and beside that pass a fail shows what the model changes, not what the harness does.
+ *   condition. A v2 log holds the task's solves under other harnesses too, and beside a pass under
+ *   another harness a fail shows more than this harness's part in it.
  * - The packet says how often the task passed under that condition, so one fail among passes can be
  *   read as the chance it may be.
  * - No Judge objection in the packet; v2 has no Judge.

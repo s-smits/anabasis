@@ -1,16 +1,34 @@
 // The whole-run investigation's reader folds one log into six rows and the triggers that start its
-// lanes. This round is small enough to count by hand: one practice task, one task screened and
-// admitted on the parent's fails alone, one anchor task, a refusal ruled a check defect that stays
-// in the tally, and an edit made after the last practice.
+// lanes. This campaign is small enough to count by hand: one practice task and four held-out ones,
+// a round whose comparison sets two tasks aside on rejections, a ruling of a check defect, an edit
+// made after the last practice, and then comparisons that tie, find no valid answer, meet their cap
+// and are settled by hand.
 import { describe, expect, it } from "bun:test";
-import { type Condition, conditionId } from "../src/kernel/condition.ts";
+import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { screeningOrder } from "../src/builder/round.ts";
 import { overview, rendered, TRIGGERS } from "../tools/wri/read.ts";
 
-const START = Date.parse("2026-10-08T12:00:00Z");
+const START = Date.parse("2026-10-09T12:00:00Z");
+const HELD = ["v1", "v2", "v3", "v4"];
+const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
+/** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
+const REPORT = {
+  scored: TESTED,
+  budgets: [],
+  spread: null,
+  billed: null,
+  against: null,
+  noise: null,
+  counted: null,
+  versions: [],
+  disputed: [],
+  aside: [],
+  short: [],
+  capped: false,
+  settled: null,
+};
 const events: LogEvent[] = [];
 const record = (kind: EventKind, data: JsonObject) => {
   events.push({ at: new Date(START + events.length * 1_000).toISOString(), kind, data });
@@ -39,10 +57,12 @@ const condition = (task: string, harness: string): Condition => ({
   host: "host-1",
   side: "test",
 });
+const SETTING = settingId(condition("any", "any"));
 
 let solves = 0;
-/** One finished solve of `task` under `harness`, with the verdict a refusal carries. */
-function solve(task: string, harness: string, outcome: "pass" | "fail"): string {
+/** One finished solve of `task` under `harness`: a valid answer, one a check rejected, with the
+ *  verdict a rejection carries, or none within its limits. */
+function solve(task: string, harness: string, outcome: "pass" | "rejected" | "late"): string {
   const ran = condition(task, harness);
   const id = `s${String((solves += 1))}`;
   record("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
@@ -50,13 +70,24 @@ function solve(task: string, harness: string, outcome: "pass" | "fail"): string 
   record("solve.call", { solve: id, turn: 1, tool: "submit", isError: false });
   record("solve.finished", {
     solve: id,
-    ending: outcome === "pass" ? { outcome } : { outcome, kind: "rejected" },
+    ending:
+      outcome === "pass"
+        ? { outcome }
+        : { outcome: "fail", kind: outcome === "late" ? "wall-ended" : "rejected" },
     seconds: 50,
     responseModels: ["m-1"],
     metered: 1,
   });
-  if (outcome === "fail") record("verdict", { solve: id, task, kind: "fail", blocking: ["check-a"] });
+  if (outcome === "rejected") record("verdict", { solve: id, task, kind: "fail", blocking: ["check-a"] });
   return id;
+}
+
+/** A comparison's start and where it stands, as `src/builder/round.ts` writes one. */
+function started(session: string, old: string, fresh: string) {
+  const terms = { old, fresh, baseline: "hbase", setting: SETTING, solves: 1, level: 0.1 };
+  const began = events.length;
+  record("comparison.started", { session, ...terms, noise: false, budgets: [], cap: null, tasks: HELD });
+  return { session, ...terms, tasks: 4, began };
 }
 
 record("contract.frozen", { contract: "c1", checks: "k1" });
@@ -66,70 +97,71 @@ record("checker.read", {
   faults: [],
   rows: [{ id: "check-a", instrument: "authored", passed: 3, refused: 1, caught: 1, named: 1 }],
 });
-for (const version of ["t1", "t2", "a1"]) {
+for (const version of ["t1", ...HELD]) {
   record("task.proposed", { version });
-  for (const gate of [1, 2, 3, 4]) record("task.gate", { version, gate, outcome: "passed", controls: "d" });
+  record("task.gate", { version, gate: 1, outcome: "passed" });
 }
-record("anchor.drawn", { tasks: ["a1"] });
 record("task.state", { version: "t1", state: "released" });
 record("build.started", { session: "b-1", parent: "hp", tasks: ["t1"] });
 record("build.call", { session: "b-1", tool: "write_file", args: { path: "agent/tools.mjs" } });
 record("build.call", { session: "b-1", tool: "practice", args: { task: "t1" } });
 // The practice solve runs under the state as it then stood, hb; the edit after it makes hc.
-solve("t1", "hb", "fail");
+solve("t1", "hb", "rejected");
 record("build.call", { session: "b-1", tool: "write_file", args: { path: "agent/BUILT_AGENTS.md" } });
 record("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true, metered: 2 });
-// Screening: the parent fails t2 twice and the child passes it, so the parent's fails admit it.
-solve("t2", "hp", "fail");
-solve("t2", "hp", "fail");
-solve("t2", "hc", "pass");
-record("task.state", { version: "t2", state: "admitted", session: "b-1" });
-// Scoring, counted from the admission on, and the anchor.
-const refused = solve("t2", "hp", "fail");
-solve("t2", "hc", "pass");
-solve("a1", "hp", "pass");
-solve("a1", "hc", "pass");
+// The round's comparison. The reference harness's answers to v1 and v2 are rejected, one ruled a
+// check defect and one ruled by nobody, and it gives none to v3 and v4 within its limits. The new
+// harness answers all four.
+const round = started("b-1", "hp", "hc");
+const defect = solve("v1", "hp", "rejected");
+solve("v1", "hc", "pass");
+solve("v2", "hp", "rejected");
+solve("v2", "hc", "pass");
+for (const version of ["v3", "v4"]) {
+  solve(version, "hp", "late");
+  solve(version, "hc", "pass");
+}
 record("referee.finding", {
-  solve: refused,
-  task: "t2",
+  solve: defect,
+  task: "v1",
   ruling: "check-defect",
   check: "check-a",
   probes: [],
 });
-record("comparison.reported", {
-  session: "b-1",
-  target: 1,
-  level: 0.1,
-  versions: ["t2"],
-  scored: { wins: 1, losses: 0, ties: 0 },
-  anchor: { reading: "not-tested", informative: 0 },
-  flagged: ["t2"],
-  unflagged: { scored: { wins: 0, losses: 0, ties: 0, p: 1 }, reading: "not-scored" },
-  short: [],
-  unscreened: [],
-  fresh: "hc",
+const OWN = {
+  ...REPORT,
+  ...round,
+  scored: { wins: 2, losses: 0, ties: 0, p: 0.25, unsolved: 0 },
+  budgets: [{ turns: 4, wins: 1, losses: 0, ties: 1, p: 0.5 }],
+  spread: { turns: { tasks: 2, median: 2, most: 3 }, cpu: null, seconds: { tasks: 2, median: 1, most: 1 } },
+  noise: { wins: 0, losses: 0, ties: 2, p: 1 },
+  counted: { wins: 4, losses: 0, ties: 0, p: 0.0625 },
+  versions: ["v3", "v4"],
+  aside: ["v1", "v2"],
   reading: "no-step",
-});
+};
+record("comparison.reported", OWN);
 
 const seen = overview(events);
 const detail = (name: keyof typeof TRIGGERS) =>
   seen.triggers.find((trigger) => trigger.name === name)?.detail;
+/** The triggers of the log as it stands now, each name's last detail. */
+const later = () => {
+  const { triggers } = overview(events);
+  return (name: keyof typeof TRIGGERS) => triggers.findLast((trigger) => trigger.name === name)?.detail;
+};
 
 describe("the whole-run investigation's reader", () => {
   it("settles the six rows from the log alone", () => {
     expect(seen.rows.map((row) => row.id)).toEqual(["A", "B", "C", "D", "E", "F"]);
     const lines = seen.rows.flatMap((row) => row.lines);
     expect(lines).toContain("frozen: contract c1, check program k1");
-    expect(lines).toContain("test side: fail rejected 4, pass 4");
-    expect(lines).toContain("0 of 8 finished solves name no response model");
-    expect(lines).toContain("states: admitted 1, held 1, released 1; anchor 1");
-    expect(lines).toContain("0 feasible tasks held outside the anchor, for a round to screen");
-    // The admitted task is the pool, and the parent's three fails of it are on record.
+    expect(lines).toContain("test side: fail rejected 3, fail wall-ended 2, pass 4");
+    expect(lines).toContain("0 of 9 finished solves name no response model");
+    expect(lines).toContain("states: held 4, released 1");
+    expect(lines).toContain("4 tasks held out, for a comparison to score; 1 released for practice");
     expect(lines).toContain(
-      "against hp, where the campaign stands: 1 of the pool stop it, 0 it clears, 0 ended at the wall, 0 no solve has placed; 0 wait for a witness",
-    );
-    expect(lines).toContain(
-      "metered dollars: solver 8.00, builder 2.00, examiner 0.00, referee 0.00, diagnoser 0.00",
+      "metered dollars: solver 9.00, builder 2.00, examiner 0.00, referee 0.00, diagnoser 0.00",
     );
     expect(lines).toContain("b-1: hp > hc, ended finished, 0 practice solves, reading no-step");
   });
@@ -141,43 +173,40 @@ describe("the whole-run investigation's reader", () => {
     }
   });
 
-  it("starts the instrument lanes on an authored check and a refusal ruled a check defect", () => {
+  it("starts the instrument lanes on an authored check and a rejection ruled a check defect", () => {
     expect(detail("INSTRUMENT AUTHORED")).toBe("1 of 1 checks decide by their author's own computation");
-    expect(detail("CHECK DEFECT RULED")).toBe("1 of 4; by check: check-a 1");
-    expect(detail("REFUSED UNREAD")).toBe("3 of 4 refused answers no reviewer ruled on");
-    expect(detail("FLAGGED AND STILL COUNTED")).toBe(
-      "1 task with a fail ruled a check defect stayed in a comparison",
-    );
+    expect(detail("CHECK DEFECT RULED")).toBe("1 of 3; by check: check-a 1");
+    expect(detail("REFUSED UNREAD")).toBe("2 of 3 refused answers no reviewer ruled on");
   });
 
-  it("reads a round's solves by what each was for", () => {
-    // Two screening fails under the parent chose the task; the fail after the admission scores it.
-    expect(detail("ADMITTED BY")).toBe(
-      "b-1: the parent's fails 1, the child's 0, both 0; 1 of 1 candidate screened, the first of the draw",
+  it("reads what a comparison left out on its rejections, and what that could move", () => {
+    // Two rejections under the reference harness set two tasks aside: one ruled a check defect,
+    // one ruled by nobody. Left out, a task the new harness would have won is no win of its.
+    expect(detail("SET ASIDE BY SIDE")).toBe(
+      "b-1: 2 rejections set 2 tasks aside, 2 under the reference harness and 0 under the others",
     );
+    expect(detail("SET ASIDE AND UNSETTLED")).toBe(
+      "2 tasks left out of a comparison on a rejection no person has labelled",
+    );
+    expect(detail("READING MOVES WITH THE SET-ASIDE")).toBe(
+      "b-1: 2-0 without the 2 tasks set aside, 4-0 were their rejections to stand, and only one of the two clears its level",
+    );
+    expect(detail("SCORED SET MOVED")).toBe("b-1: 2 of 4 tasks it began with are not in its tally");
     expect(detail("FEW INFORMATIVE PAIRS")).toBe(
-      "b-1: 1 of 1 tasks tell the harnesses apart; at level 0.1 the least sweep that clears is 4-0, and no result with a loss clears on 1 pair",
+      "b-1: 2 of 2 tasks tell the harnesses apart; at level 0.1 the least sweep that clears is 4-0, and no result with a loss clears on 2 pairs",
     );
-    expect(detail("SCREENING RULE NOT ON RECORD")).toBe(
-      "b-1: 3 screening solves, and the report names neither how many a harness nor how many fails admit",
-    );
-    // The one fail ruled a check defect is the parent's, counted after the admission; the two that
-    // admitted the task were read by nobody.
-    expect(detail("FLAGGED FAILS BY SIDE")).toBe(
-      "b-1: 1 counted fail ruled a check defect, 1 under the parent and 0 under the child",
-    );
-    expect(detail("ADMITTED ON FLAGGED FAILS")).toBeUndefined();
-    expect(detail("READING MOVES WITHOUT FLAGGED")).toBe(
-      "b-1: no-step with 1 flagged task counted, not-scored without",
-    );
-    // The pool holds the task this round admitted, which the next round screens again.
-    expect(detail("NO CANDIDATES HELD")).toBeUndefined();
-    expect(detail("WHAT BINDS")).toBe(
-      "tasks: 1 of the pool can be scored and a step takes 4: no Examiner session has written against this harness",
-    );
-    expect(detail("ANCHOR NOT HELD")).toBe("b-1: not-tested, 0 informative");
-    expect(detail("WALL SHARE")).toBe("b-1: median 50.0% under the parent, 50.0% under the child");
     expect(detail("CHAIN")).toBe("b-1 hp>hc no-step");
+  });
+
+  it("reads the budget from what a comparison measured: the tally at each, the spread, and its own noise", () => {
+    expect(detail("TALLY BY BUDGET")).toBe("b-1: 2-0-0 at its limits; turns 4: 1-0-1");
+    // Turns doubled between two solves of one harness on one task at the median; seconds did not move.
+    expect(detail("USE OF THE BUDGET SPREADS")).toBe("b-1: turns x2.0 at the median and x3.0 at most");
+    expect(detail("REFERENCE AGAINST ITSELF")).toBe(
+      "b-1: 0 won, 0 lost and 2 tied between two samples of the reference harness",
+    );
+    expect(detail("WALL SHARE")).toBe("b-1: median 50.0% under the reference harness, 50.0% under the new");
+    expect(detail("WALL-BOUND MISSES")).toBe("2 of 5");
   });
 
   it("reads what the Builder did before it stopped", () => {
@@ -203,88 +232,116 @@ describe("the whole-run investigation's reader", () => {
       "SUPPLY THIN",
       "FLIPS",
       "NOTHING SCORED",
-      "ANCHOR RATE BY ROUND",
-      // The report names neither its parent nor its solves a side, as an older log's does not.
-      "RULINGS AGAINST THE EFFECT",
-    ]) {
+      "TIED TASKS",
+      "TIES BETWEEN VALID ANSWERS",
+      "NO VALID ANSWER",
+      "AWAITING A LABEL",
+      "CUT BY ITS CAP",
+      "BASELINE UNREAD",
+      "BELOW THE BASELINE",
+      "STEP NOT REPEATED",
+      "SETTLED BY HAND",
+    ] as const) {
       expect(names).not.toContain(absent);
     }
-    expect(rendered(seen)).toContain("CHECK DEFECT RULED (lane 4): 1 of 4; by check: check-a 1");
+    expect(rendered(seen)).toContain("CHECK DEFECT RULED (lane 4): 1 of 3; by check: check-a 1");
   });
 
-  it("names a round that scored nothing, and one harness measured on the anchor in two rounds", () => {
-    // A second session from the same parent, in a round asked for no scored task.
-    record("build.started", { session: "b-2", parent: "hp", tasks: ["t1"] });
-    record("build.finished", { session: "b-2", ended: "finished", harness: "hd", changed: true });
-    solve("a1", "hp", "fail");
-    solve("a1", "hd", "pass");
-    record("comparison.reported", {
-      session: "b-2",
-      target: 0,
-      level: 0.1,
-      screening: { solves: 3, fails: 2 },
-      versions: [],
-      scored: { wins: 0, losses: 0, ties: 0 },
-      anchor: { reading: "not-tested", informative: 1 },
-      fresh: "hd",
-      reading: "not-scored",
-    });
-    const later = overview(events).triggers;
-    const said = (name: keyof typeof TRIGGERS) => later.findLast((trigger) => trigger.name === name)?.detail;
-    expect(said("NOTHING SCORED")).toBe(
-      "b-2: no task was scored, at a target of 0; the report reads not-scored",
-    );
-    expect(said("ANCHOR RATE BY ROUND")).toBe("hp: 1 of 1 in b-1, 0 of 1 in b-2");
-    expect(said("CHAIN")).toBe("b-1 hp>hc no-step; b-2 hp>hd not-scored");
-    expect(later.filter((trigger) => trigger.name === "FEW INFORMATIVE PAIRS")).toHaveLength(1);
-  });
-
-  it("replays the screening order, and names a round that screened out of it", () => {
-    for (const version of ["c1", "c2"]) {
-      record("task.proposed", { version });
-      for (const gate of [1, 2, 3, 4]) {
-        record("task.gate", { version, gate, outcome: "passed", controls: "d" });
+  it("names the ties between valid answers, and a task no harness answered in two comparisons in a row", () => {
+    // Two comparisons of the reference harness with the baseline. Both answer v2 to v4 validly
+    // every time, and neither answers v1 within its limits.
+    for (const session of ["g-1", "g-2"]) {
+      const terms = started(session, "hp", "hbase");
+      for (const harness of ["hp", "hbase"]) {
+        solve("v1", harness, "late");
+        for (const version of ["v2", "v3", "v4"]) solve(version, harness, "pass");
       }
+      const scored = { ...TESTED, ties: 4, unsolved: 1 };
+      record("comparison.reported", { ...REPORT, ...terms, scored, versions: HELD, reading: "no-step" });
+      const said = later();
+      expect(said("TIED TASKS")).toEndWith(`${session}: 4 of 4, 1 of them with no valid answer`);
+      // Three of four tasks tie with valid answers on both sides: the plan's condition for an objective.
+      expect(said("TIES BETWEEN VALID ANSWERS")).toEndWith(`${session}: 3 of 4 tasks`);
+      expect(said("NO VALID ANSWER")).toBe("1 of 4 scored tasks have no valid answer from any harness");
+      expect(said("AWAITING A LABEL")).toBe(
+        session === "g-1"
+          ? undefined
+          : "1 task with no valid answer in two comparisons in a row, left out of the scored set until a person labels each: v1",
+      );
     }
-    record("build.started", { session: "b-3", parent: "hp", tasks: ["t1"] });
-    record("build.finished", { session: "b-3", ended: "finished", harness: "he", changed: true });
-    // The pool is the two new candidates and the task an earlier round admitted. Of the three,
-    // the one the draw puts last is the only one screened.
-    const last = screeningOrder(["t2", "c1", "c2"], "c1", "b-3").at(-1) ?? "";
-    solve(last, "hp", "pass");
-    solve(last, "he", "pass");
-    record("comparison.reported", { session: "b-3", versions: [], scored: null, reading: "no-change" });
-    const said = overview(events).triggers.findLast(
-      (trigger) => trigger.name === "SCREENED OUT OF THE DRAWN ORDER",
+    expect(later()("CHAIN")).toBe("b-1 hp>hc no-step; g-1 hp>hbase no-step; g-2 hp>hbase no-step");
+  });
+
+  it("names a comparison its cap cut, one that tallied nothing, and one below the baseline", () => {
+    record("comparison.reported", {
+      ...REPORT,
+      ...started("g-3", "hp", "hbase"),
+      scored: null,
+      capped: true,
+      reading: "not-scored",
+    });
+    expect(later()("CUT BY ITS CAP")).toBe("g-3: the dollar cap ended it before it was read");
+    record("comparison.reported", { ...REPORT, ...started("g-4", "hp", "hbase"), reading: "not-scored" });
+    expect(later()("NOTHING SCORED")).toBe(
+      "g-4: no task was scored, of 4 asked for; the report reads not-scored",
     );
-    expect(said?.detail).toBe(
-      "b-3: 1 of 1 screened tasks are not among the first 1 of the draw over 3 candidates",
+    record("comparison.reported", {
+      ...REPORT,
+      ...started("g-5", "hp", "hd"),
+      scored: { ...TESTED, wins: 4, p: 0.0625, unsolved: 0 },
+      against: { ...TESTED, wins: 1, losses: 3 },
+      versions: HELD,
+      reading: "below-baseline",
+    });
+    expect(later()("BELOW THE BASELINE")).toBe(
+      "g-5: 1 won and 3 lost against the baseline; the report reads below-baseline",
     );
   });
 
-  it("says what a person's labels settled, beside what the round's own report read", () => {
-    // The first round's report, written again as the labels left it.
+  it("names a step no second comparison of the same two harnesses has repeated", () => {
+    const stepped = {
+      scored: { ...TESTED, wins: 4, p: 0.0625, unsolved: 0 },
+      versions: HELD,
+      reading: "step",
+    };
+    record("comparison.reported", { ...REPORT, ...started("g-6", "hp", "he"), ...stepped });
+    expect(later()("STEP NOT REPEATED")).toBe(
+      "1 step no second comparison of the same two harnesses has repeated",
+    );
+    // The same two harnesses compared once more, on fresh solves: the step is repeated.
+    record("comparison.reported", { ...REPORT, ...started("g-7", "hp", "he"), ...stepped });
+    expect(later()("STEP NOT REPEATED")).toBeUndefined();
+  });
+
+  it("says what a person's labels settled, beside what the comparison's own report read", () => {
+    // The first round's report, written again as the labels left it: v1's rejection a check defect,
+    // v2's earned. The test now clears its level, and the baseline was never solved for it.
+    record("task.state", { version: "v1", state: "disputed", session: "b-1" });
     record("comparison.reported", {
-      session: "b-1",
-      fresh: "hc",
-      versions: [],
-      scored: { wins: 0, losses: 0, ties: 0 },
-      flagged: [],
-      unflagged: null,
-      counted: "not-scored",
-      reading: "not-scored",
-      settled: { labelled: 1, defects: 1, disputed: ["t2"] },
+      ...OWN,
+      scored: { wins: 3, losses: 0, ties: 0, p: 0.125, unsolved: 0 },
+      counted: null,
+      versions: ["v2", "v3", "v4"],
+      disputed: ["v1"],
+      aside: [],
+      reading: "baseline-unread",
+      settled: { labelled: 2, defects: 1, disputed: ["v1"], restored: ["v2"] },
     });
-    const later = overview(events).triggers;
-    const said = (name: keyof typeof TRIGGERS) => later.find((trigger) => trigger.name === name)?.detail;
-    expect(said("SETTLED BY HAND")).toBe(
-      "b-1: 1 fail labelled, 1 a check defect, 1 task disputed; the round's own report read no-step, the settled one reads not-scored",
+    const said = later();
+    expect(overview(events).triggers.find(({ name }) => name === "SETTLED BY HAND")?.detail).toBe(
+      "b-1: 2 rejections labelled, 1 a check defect, 1 task disputed and 1 restored; the comparison's own report read no-step, the settled one reads baseline-unread",
     );
-    // The round's own report still says the reading moved without its flagged task.
-    expect(said("READING MOVES WITHOUT FLAGGED")).toBe(
-      "b-1: no-step with 1 flagged task counted, not-scored without",
+    expect(overview(events).triggers.find(({ name }) => name === "BASELINE UNREAD")?.detail).toBe(
+      "b-1: its test clears its level and the baseline was not solved for it",
     );
-    expect(said("CHAIN")).toStartWith("b-1 hp>hc not-scored");
+    // The comparison's own report still says what its set-aside tasks could move, and nothing of
+    // it waits for a person any more.
+    expect(
+      overview(events).triggers.find(({ name }) => name === "READING MOVES WITH THE SET-ASIDE"),
+    ).toBeDefined();
+    expect(said("SET ASIDE AND UNSETTLED")).toBeUndefined();
+    expect(said("CHAIN")).toStartWith("g-1 hp>hbase no-step");
+    expect(said("CHAIN")).toEndWith("b-1 hp>hc baseline-unread");
   });
 
   it("says of an empty log only that it has no checker on record", () => {
@@ -295,182 +352,46 @@ describe("the whole-run investigation's reader", () => {
   });
 });
 
-describe("the reader on a campaign whose exam follows its harness", () => {
+describe("the reader on a log written before the plan after the v1 review", () => {
+  // Such a log holds four gates a task, the states screening moved a task through, the anchor's
+  // draw, a stronger side's solves and reports that name no setting. The reader reads it as
+  // history: its tasks are held out, and none of its old kinds starts a lane.
   const log: LogEvent[] = [];
   const put = (kind: EventKind, data: JsonObject) => {
     log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
   };
-  let made = 0;
-  /** One finished solve, on the test side unless told. */
-  const ran = (task: string, harness: string, outcome: "pass" | "fail", side: Condition["side"] = "test") => {
-    const under = { ...condition(task, harness), side };
-    const id = `m${String((made += 1))}`;
-    put("condition.recorded", { id: conditionId(under), condition: requireJsonValue(under) });
-    put("solve.started", { solve: id, condition: conditionId(under), limits: { wallSeconds: 100 } });
-    put("solve.finished", {
-      solve: id,
-      ending: outcome === "pass" ? { outcome } : { outcome, kind: "rejected" },
-      seconds: 50,
-    });
-    return id;
-  };
-  for (const version of ["t2", "t3", "a1"]) {
+  for (const version of ["t2", "a1"]) {
     put("task.proposed", { version });
     for (const gate of [1, 2, 3, 4]) put("task.gate", { version, gate, outcome: "passed", controls: "d" });
   }
   put("anchor.drawn", { tasks: ["a1"] });
-  // A task a session wrote, which the stronger solver did not pass under the first harness.
-  put("exam.started", { session: "x-1", standsOn: "hp" });
-  put("task.proposed", { version: "r1", taskId: "r1", session: "x-1", task: { taskId: "r1" } });
-  put("task.gate", { version: "r1", gate: 1, outcome: "passed" });
-  put("task.gate", { version: "r1", gate: 2, outcome: "too-hard", solve: ran("r1", "hp", "fail", "strong") });
-  put("task.state", { version: "r1", state: "too-hard", session: "x-1" });
-  put("exam.word", { session: "x-1", version: "r1", word: "too hard" });
-  put("exam.finished", { session: "x-1", proposed: 1, words: { r1: "too hard" } });
-  // Round one: both harnesses fail t2 twice, and both pass t3 three times.
+  const strong = { ...condition("t2", "hp"), side: "strong" as const };
+  put("condition.recorded", { id: conditionId(strong), condition: requireJsonValue(strong) });
+  put("solve.started", { solve: "w1", condition: conditionId(strong), limits: { wallSeconds: 100 } });
+  put("solve.finished", { solve: "w1", ending: { outcome: "pass" }, seconds: 50 });
   put("build.started", { session: "b-1", parent: "hp", tasks: [] });
   put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
-  for (const harness of ["hp", "hc"]) for (const _nth of [1, 2]) ran("t2", harness, "fail");
   put("task.state", { version: "t2", state: "admitted", session: "b-1" });
-  for (const harness of ["hp", "hc"]) for (const _nth of [1, 2, 3]) ran("t3", harness, "pass");
-  put("task.state", { version: "t3", state: "too-easy", session: "b-1" });
-  ran("t2", "hp", "fail");
-  ran("t2", "hc", "fail");
-  const report = { level: 0.1, screening: { solves: 3, fails: 2 }, short: [], unscreened: [] };
-  put("comparison.reported", { ...report, session: "b-1", versions: ["t2"], fresh: "hc", reading: "step" });
-  // A session after the step that still stood on the first harness, and tried the reach task again.
-  put("exam.started", { session: "x-2", standsOn: "hp", reach: ["r1"] });
-  put("task.gate", { version: "r1", gate: 2, outcome: "passed", solve: ran("r1", "hp", "pass", "strong") });
-  put("task.gate", { version: "r1", gate: 3, outcome: "passed" });
-  put("task.state", { version: "r1", state: "held", session: "x-2" });
-  put("exam.finished", { session: "x-2", proposed: 0, words: { r1: "scored" } });
-  // Round two starts from the step. Its parent's three fails of t2 are on record, so it admits the
-  // task again with no screening solve, and scores it on fresh ones.
-  put("build.started", { session: "b-2", parent: "hc", tasks: [] });
-  put("build.finished", { session: "b-2", ended: "finished", harness: "hd", changed: true });
-  put("task.state", { version: "t2", state: "admitted", session: "b-2", carried: true });
-  ran("t2", "hc", "fail");
-  ran("t2", "hd", "pass");
+  put("anchor.scored", { session: "b-1", reading: "held", wins: 0, losses: 0, ties: 1 });
   put("comparison.reported", {
-    ...report,
-    session: "b-2",
-    versions: ["t2"],
-    fresh: "hd",
-    reading: "no-step",
-  });
-  const seenLater = overview(log);
-  const of = (name: keyof typeof TRIGGERS) =>
-    seenLater.triggers.flatMap((trigger) => (trigger.name === name ? [trigger.detail] : []));
-
-  it("names the parent's solves a round read from the log, and what it kept and retired", () => {
-    expect(of("PARENT SIDE ON RECORD")).toEqual([
-      "b-2: 3 solves of the parent on 1 task were made before the round and read by its screening; 1 admitted on them with no screening solve of the round, 0 retired",
-    ]);
-    // The second round's admission rests on the parent's fails, though it made no screening solve.
-    expect(of("ADMITTED BY")).toEqual([
-      "b-1: the parent's fails 0, the child's 0, both 1; 2 of 2 candidates screened, the first of the draw",
-      "b-2: the parent's fails 1, the child's 0, both 0; 1 of 1 candidate screened, the first of the draw",
-    ]);
-    expect(of("RETIRED BY A ROUND")).toEqual(["b-1: 1, 0 of them admitted by an earlier round"]);
-    expect(of("SCORED SET CARRIED")).toEqual([]);
-  });
-
-  it("reads a reach task by its last stronger solve, and names a session that stood behind the step", () => {
-    expect(of("TOO HARD")).toEqual([]);
-    expect(of("WITNESSED ON A LATER TRY")).toEqual([
-      "1 of 1 tasks a stronger solve had failed were passed when tried again",
-    ]);
-    expect(of("EXAMINER BEHIND THE FRONTIER")).toEqual(["x-2 stood on hp, and the last step had left hc"]);
-    // x-2 proposed nothing and bracketed the task it tried again: one of the one it put to the
-    // stronger solver, and not one of none.
-    expect(of("BRACKETED BY SESSION")).toEqual(["x-1 0 of 1; x-2 1 of 1"]);
-  });
-
-  it("says where the campaign stands and what binds its climb", () => {
-    const lines = seenLater.rows.flatMap((row) => row.lines);
-    expect(lines).toContain(
-      "against hc, where the campaign stands: 1 of the pool stop it, 0 it clears, 0 ended at the wall, 0 no solve has placed; 0 wait for a witness",
-    );
-    // No session wrote against the harness the step left: the one after it stood on the first.
-    expect(of("WHAT BINDS")).toEqual([
-      "tasks: 1 of the pool can be scored and a step takes 4: no Examiner session has written against this harness",
-    ]);
-  });
-});
-
-describe("the reader on what a round's reading rests on", () => {
-  const log: LogEvent[] = [];
-  const put = (kind: EventKind, data: JsonObject) => {
-    log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
-  };
-  let made = 0;
-  /** One finished solve under `harness`, with the host's code as `host` names it. */
-  const ran = (task: string, harness: string, outcome: "pass" | "fail", host = "host-1") => {
-    const under = { ...condition(task, harness), host };
-    const id = `w${String((made += 1))}`;
-    put("condition.recorded", { id: conditionId(under), condition: requireJsonValue(under) });
-    put("solve.started", { solve: id, condition: conditionId(under), limits: { wallSeconds: 100 } });
-    put("solve.finished", {
-      solve: id,
-      ending: outcome === "pass" ? { outcome } : { outcome, kind: "rejected" },
-      seconds: 50,
-    });
-    return id;
-  };
-  const WON = ["v1", "v2", "v3", "v4"];
-  for (const version of [...WON, "l1", "a1"]) {
-    put("task.proposed", { version });
-    for (const gate of [1, 2, 3, 4]) put("task.gate", { version, gate, outcome: "passed", controls: "d" });
-  }
-  put("anchor.drawn", { tasks: ["a1"] });
-  const report = { level: 0.1, solves: 1, screening: { solves: 3, fails: 2 }, short: [], unscreened: [] };
-  // Round one, at one solve a side: the child wins four tasks and loses one. The Referee read the
-  // fails behind two of the wins and behind the loss, and let each stand.
-  put("build.started", { session: "b-1", parent: "hp", tasks: [] });
-  put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
-  for (const version of [...WON, "l1"]) put("task.state", { version, state: "admitted", session: "b-1" });
-  const fails = WON.map((version) => {
-    const failed = ran(version, "hp", "fail");
-    ran(version, "hc", "pass");
-    return failed;
-  });
-  ran("l1", "hp", "pass");
-  for (const read of [...fails.slice(0, 2), ran("l1", "hc", "fail")]) {
-    put("referee.finding", { solve: read, ruling: "earned", probes: [] });
-  }
-  put("comparison.reported", {
-    ...report,
     session: "b-1",
-    old: "hp",
-    fresh: "hc",
-    versions: [...WON, "l1"],
-    scored: { wins: 4, losses: 1, ties: 0 },
-    reading: "no-step",
-  });
-  // Round two scores one task whose two sides ran under different host code: no pair to read.
-  put("build.started", { session: "b-2", parent: "hp", tasks: [] });
-  put("build.finished", { session: "b-2", ended: "finished", harness: "hd", changed: true });
-  put("task.state", { version: "v1", state: "admitted", session: "b-2" });
-  ran("v1", "hp", "fail");
-  ran("v1", "hd", "pass", "host-2");
-  put("comparison.reported", {
-    ...report,
-    session: "b-2",
-    old: "hp",
-    fresh: "hd",
-    versions: ["v1"],
+    level: 0.1,
+    versions: ["t2"],
     scored: { wins: 1, losses: 0, ties: 0 },
+    flagged: [],
+    unflagged: null,
+    counted: "no-step",
+    fresh: "hc",
     reading: "no-step",
   });
-  const of = (name: keyof typeof TRIGGERS) =>
-    overview(log).triggers.flatMap((trigger) => (trigger.name === name ? [trigger.detail] : []));
+  const old = overview(log);
 
-  it("sets each report's scored test against its reviewers, with their error unmeasured", () => {
-    // 4-1 is 6 in 32 and does not clear; with the loss gone, 4-0 does. Two wins were read by nobody.
-    expect(of("RULINGS AGAINST THE EFFECT")).toEqual([
-      "b-1: 2 of 5 informative pairs rest on a fail no reviewer read; the scored test does not clear its level, and 1 of its 1 losses resting on a mistaken ruling would move it; the Referee's error is unmeasured",
-    ]);
-    // The round with no pairs to read is named by the lane that owns why.
-    expect(of("PAIR DIFFERS BEYOND HARNESS")).toEqual(["b-2: host"]);
+  it("holds its tasks out and says its stronger side's solves apart", () => {
+    const lines = old.rows.flatMap((row) => row.lines);
+    expect(lines).toContain("states: held 2");
+    expect(lines).toContain("2 tasks held out, for a comparison to score; 0 released for practice");
+    expect(lines).toContain("strong side: pass 1");
+    expect(old.triggers.find(({ name }) => name === "CHAIN")?.detail).toBe("b-1 hp>hc no-step");
+    for (const trigger of old.triggers) expect(trigger.lane).toBe(TRIGGERS[trigger.name]);
   });
 });

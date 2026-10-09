@@ -15,8 +15,8 @@
  *
  * The walls, each with the test that holds it:
  * - Practice is on released tasks only. The task fold says which those are, at the session's start
- *   and again at every practice, so an admitted or an anchor task is refused by its state and not by
- *   the caller's care.
+ *   and again at every practice, so a held-out task is refused by its state and not by the caller's
+ *   care.
  * - The Builder's shell is the solver's command wall (`build`), so the repository, the operator's
  *   home and other solves' scratch are closed by the operating system.
  * - The installed programs are the session's own copy of the parent's, and nothing it installs

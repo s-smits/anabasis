@@ -101,6 +101,32 @@ describe("the runs pulse", () => {
     expect(says({ reading: "not-scored", unflagged: null })).toEqual(["⚠ reported not-scored"]);
   });
 
+  it("reads a checkpoint by its own start, in a log that holds an earlier comparison's report", () => {
+    // A campaign's log holds many comparisons. A checkpoint starts no session, so only its own
+    // start says that the report before it is another's.
+    const earlier = [...built, event(5, "comparison.reported", { reading: "no-step" })];
+    const solving = [
+      ...earlier,
+      event(6, "comparison.started", { session: "g0" }),
+      event(7, "solve.started", { solve: "s9", task: "mass-04", model: "claude/claude-opus-5" }),
+    ];
+    const seen = { lines: 8, open: true, quiet: false };
+    expect(pulse(round, solving, true, seen, START + 8 * 60_000).status).toStartWith("r1  solving");
+    // Gone with that solve unfinished and no report of its own, it is said to be gone.
+    const gone = pulse(round, solving, false, seen, START + 9 * 60_000);
+    expect(gone.status).toStartWith("r1  closed");
+    expect(gone.said).toEqual(["⚠ the process is gone before comparison.reported"]);
+    // Its own report ends it.
+    const ended = [
+      ...solving,
+      event(8, "solve.finished", { solve: "s9", ending: { outcome: "pass" } }),
+      event(9, "comparison.reported", { session: "g0", reading: "not-scored", capped: true }),
+    ];
+    const done = pulse(round, ended, false, { ...seen, lines: 10 }, START + 10 * 60_000);
+    expect(done.status).toStartWith("r1  reported not-scored");
+    expect(done.said).toEqual([]);
+  });
+
   it("folds the same line twice into one, as a comparison's two harnesses start a task", () => {
     const twice = [
       ...built,

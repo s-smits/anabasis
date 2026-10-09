@@ -3,7 +3,7 @@
  *
  *   bun tools/d2/checkpoint.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --id g0 \
- *     --target 8 --cap 375 --budget turns=12 --budget turns=6
+ *     --tasks <eight task ids> --cap 437 --budget turns=12 --budget turns=6
  *
  * With no `--reference` and no `--new` it is the plan's first experiment and its gate G0
  * (`docs/plan.md`, Phase 0): the minimal baseline, which is the solver with a shell and the answer

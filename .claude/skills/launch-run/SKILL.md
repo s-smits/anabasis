@@ -24,7 +24,7 @@ against the harness the campaign starts with, on eight tasks the operator names,
 limit and at budgets fixed beforehand.
 
 ```sh
-bun run runs launch <pack flags> --name <name> --id g0 --tasks <eight task ids> --cap 375 \
+bun run runs launch <pack flags> --name <name> --id g0 --tasks <eight task ids> --cap 437 \
   --budget turns=12 --budget turns=6
 ```
 

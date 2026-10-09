@@ -104,7 +104,7 @@ should write these as its predictions.
 | script | reading | why |
 | --- | --- | --- |
 | `--held none:pass` (the default) | `step` | four wins are p 0.0625, and the baseline, solved because the test cleared, answers nothing |
-| `--held none:pass --baseline pass` | `step`, or `below-baseline` at two solves a side where the new harness is valid once | as many wins as losses against the baseline is enough, and fewer is not |
+| `--held none:pass --baseline pass` | `step` | against the baseline every task ties between valid answers, and as many wins as losses is enough |
 | `--held pass:pass` | `no-step` | four ties between valid answers; the baseline is not solved |
 | `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; twice in a row and each task waits for a person's label |
 | `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
@@ -113,7 +113,9 @@ should write these as its predictions.
 | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
 
 `check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
-ruling of a check defect to count one.
+ruling of a check defect to count one. So is `below-baseline`: a script ends every solve of a side
+alike, and losing to the baseline while beating the reference harness takes a side that is valid
+only some of the time.
 
 ## What the first rehearsals settled
 

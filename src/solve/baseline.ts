@@ -2,10 +2,10 @@
  * The minimal baseline: a harness with a shell and the tool that writes the answer, no guide and
  * no domain tool.
  *
- * The plan's first harness has no parent to be compared with, and every later one needs a fixed
- * reference that no screening chose (`docs/plan.md`, Phase 2). The solver with nothing built for it
- * is that reference: the opponent of the first harness, and beside its parent the second opponent
- * of every later one. A solve cannot run with no harness at all, since a harness without an answer
+ * The plan's first question is whether a harness changes what the solver achieves at all, and
+ * every later harness needs a fixed lower reference (`docs/plan.md`, Phases 0 and 2). The solver
+ * with nothing built for it is both: the other arm of the first experiment, and what a step is
+ * held to beside the reference harness. A solve cannot run with no harness at all, since a harness without an answer
  * writer does not open (`harness.ts`), so the baseline is the least one that does.
  *
  * It is written out in v1's on-disk format like any other harness state, and is named by its digest

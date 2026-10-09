@@ -23,8 +23,8 @@
  *   answered validly is held out like any other and ties until one does.
  * - The reject controls are the check program's and are read once for it (`tools/c/accept.ts`),
  *   where they were written per task from the stronger solve's answer.
- * - Nothing selects tasks by pass or fail. The comparison pairs every solve of two harnesses on
- *   the stated objective, so a task both harnesses pass can still separate them.
+ * - Nothing selects tasks by pass or fail. Both harnesses solve every held-out task under one
+ *   compute budget, and a valid answer within it is what the comparison counts.
  *
  * A log written before that holds the old gates and the states screening moved a task through:
  * `too-hard`, `admitted`, `too-easy`, `wall-bound`, and the anchor's draw. They are read here as

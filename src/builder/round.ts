@@ -30,7 +30,8 @@
  * The reference harness is then solved twice as often. Its first solves of a task, in the order
  * they started, are the test's, and those against its later ones give a second tally: how often a
  * fixed budget splits two solves of one harness at random, which is the noise every comparison has
- * to exceed. It should read no step, and it decides nothing here.
+ * to exceed. It should read no step, and it decides nothing here. The later solves run after the
+ * test's own are done, so that second tally also holds whatever the later hour moved.
  *
  * `budgets` reads the same solves at shorter budgets (`within`, `compare.ts`): a solve that used
  * more than a budget allows counts as no answer at it. The report holds the tally at each, and how
@@ -38,8 +39,11 @@
  *
  * `cap` is the comparison's dollar cap. Before each solve the log's billed dollars since the
  * comparison's first event are summed, and the solve is not started when a reserve for it and for
- * each solve still running would take the sum past the cap. A comparison the cap cuts short reads
- * `not-scored` and is finished: its tally would be of the tasks that happened to come first. In a
+ * each solve still running would take the sum past the cap. A lane that cannot start a solve
+ * while others are in flight steps aside, since what they bill may be under their reserve; when
+ * none is in flight and the next solve still cannot start, the cap is reached. A comparison the
+ * cap cuts short reads `not-scored` and is finished: its tally would be of the tasks that
+ * happened to come first. In a
  * round the first event is the session's, so the cap holds the session's spend as well; a session
  * is stopped by its own limits and not by the cap.
  *
@@ -54,6 +58,8 @@
  * nothing to recompute and needs no ruling. A check that could not run disputes its task at once.
  * Past `defects` tasks with a check that could not run or a rejection the Referee ruled a check
  * defect, the checkpoint stops, since the check program then needs its owner before more is spent.
+ * A task a person released or refused while the comparison ran is left out and named
+ * (`withdrawn`).
  *
  * A checkpoint that wrote its report is finished, and run again it returns that report and does
  * nothing: topping up a set a dispute thinned, after the tallies could be seen, would be a second
@@ -227,6 +233,9 @@ export interface Report {
   readonly aside: readonly string[];
   /** Task versions left out as short of `solves` counted solves under a harness. */
   readonly short: readonly string[];
+  /** Task versions that left the held-out set while the comparison ran: released for practice, or
+   *  refused by a person as infeasible. */
+  readonly withdrawn: readonly string[];
   /** Whether the dollar cap cut the comparison short. */
   readonly capped: boolean;
   readonly reading: Reading;
@@ -302,6 +311,7 @@ const REPORT_KEYS = [
   "disputed",
   "aside",
   "short",
+  "withdrawn",
   "capped",
   "reading",
   "settled",
@@ -323,6 +333,7 @@ const NOTHING = {
   disputed: [],
   aside: [],
   short: [],
+  withdrawn: [],
   capped: false,
   settled: null,
 } as const;
@@ -442,7 +453,8 @@ function refuseUnscorable(terms: Terms, log: string, practised: ReadonlySet<stri
   }
   if (!(terms.level > 0 && terms.level < 1)) throw new Error("a sign test's level lies between 0 and 1");
   const { cap } = terms;
-  if (cap !== undefined && !(cap.dollars > 0 && cap.reserve > 0 && Number.isFinite(cap.dollars))) {
+  const dollars = cap === undefined ? [] : [cap.dollars, cap.reserve];
+  if (!dollars.every((amount) => Number.isFinite(amount) && amount > 0)) {
     throw new Error("a cap and its reserve are dollars, and both are more than nothing");
   }
   const { states, held } = taskSets(read(log));
@@ -503,7 +515,11 @@ function compared(log: string, id: string, fixed: Fixed, labels: ReadonlyMap<str
   const events = asReported(all, id);
   // A dispute stands whenever it was made: a settling's own come after the comparison's report.
   const states = taskStates(all);
-  const live = fixed.tasks.filter((task) => states.get(task) !== "disputed");
+  // A task a person released or refused while the comparison ran is no held-out task any more. It
+  // is left out and named, since a comparison that could not report would lose every solve it paid.
+  const held = new Set(taskSets(events).held);
+  const scorable = fixed.tasks.filter((task) => states.get(task) !== "disputed");
+  const live = scorable.filter((task) => held.has(task));
   const open = new Set(
     rejections(events, fixed, labels).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
   );
@@ -545,6 +561,7 @@ function compared(log: string, id: string, fixed: Fixed, labels: ReadonlyMap<str
     versions: pairs.map(({ task }) => task),
     aside: live.filter((task) => open.has(task)),
     short: live.filter((task) => first.short.includes(task)),
+    withdrawn: scorable.filter((task) => !held.has(task)),
     reading: reading(),
   };
 }
@@ -632,7 +649,11 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     const worker = async (): Promise<void> => {
       for (let job = jobs.shift(); job !== undefined && going(); job = jobs.shift()) {
         if (!affords()) {
-          capped = true;
+          // The job is left for a lane that can afford it. With solves in flight the reserve held
+          // for each may come back in part, so this lane steps aside; with none in flight nothing
+          // more will, and the cap is reached.
+          jobs.unshift(job);
+          capped = running === 0;
           return;
         }
         running += 1;
@@ -859,7 +880,10 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
   if (report === null || fixed === null || report.scored === null) return NOTHING_TO_LABEL;
   const found = asReported(events, id);
   const states = taskStates(found);
-  const mine = rejections(found, fixed, NO_LABELS).filter(({ task }) => states.get(task) !== "disputed");
+  // Another comparison's solves of other tasks under the same harness are not this one's to label.
+  const mine = rejections(found, fixed, NO_LABELS).filter(
+    ({ task }) => fixed.tasks.includes(task) && states.get(task) !== "disputed",
+  );
   const pick = (aside: boolean) =>
     mine.flatMap(({ solve, ruling }) => ((ruling !== EARNED) === aside ? [solve] : []));
   return { aside: pick(true), others: pick(false) };

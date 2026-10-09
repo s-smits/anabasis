@@ -12,7 +12,7 @@
  * Referee reads anything, since the log shows a ruling to whoever opens it and a label made after
  * that was not made blind. So the draw refuses a log that holds a ruling, and the caller starts no
  * reading while a drawn fail is unlabelled. The sample is drawn by a seed fixed before the fails
- * were known, as the anchor's is (`compare.ts`, `draw`).
+ * were known, as the scored set's is (`compare.ts`, `draw`).
  *
  * This counts and decides nothing. What share of check defects a checker may carry, and the bar the
  * Referee must clear against the labels (`agreement.ts`), are the operator's.

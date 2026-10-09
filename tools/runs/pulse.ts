@@ -75,6 +75,9 @@ const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT];
 export const SEED_FILE = "seed.json";
 const LIVE = "tools/m0/live-solve.ts";
 const QUIET_MS = 20 * 60_000;
+const REPORTED = "comparison.reported";
+/** The events that start something a run then has to finish. */
+const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", "comparison.started"]);
 const GIB = 2 ** 30;
 
 const runsAs = (args: readonly string[], tools: readonly string[]) =>
@@ -144,15 +147,26 @@ const SAID: Partial<
   },
 };
 
-/** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. */
+/** Where the last thing a log started begins: a Builder session, an Examiner session or a
+ *  comparison. A campaign's log holds many, and a run stands where its last one does. */
+function lastStart(log: readonly LogEvent[]): number {
+  return log.findLastIndex(({ kind }) => STARTS.has(kind));
+}
+
+/** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A
+ *  report counts when it follows the last start: a checkpoint solving after an earlier
+ *  comparison's report has not reported. */
 function stage(log: readonly LogEvent[], solving: boolean, open: boolean): string {
-  const report = log.findLast(({ kind }) => kind === "comparison.reported");
+  const from = Math.max(lastStart(log), 0);
+  const since = log.slice(from);
+  const report = since.findLast(({ kind }) => kind === REPORTED);
   if (report !== undefined) return `reported ${word(report.data.reading)}`;
   if (!open) return "closed";
+  // Inside a session when the last thing started is one, and it has not finished.
   const session = (["build", "exam"] as const).find(
-    (role) => count(log, `${role}.started`) > count(log, `${role}.finished`),
+    (role) => log[from]?.kind === `${role}.started` && count(since, `${role}.finished`) === 0,
   );
-  if (session !== undefined) return `${session} turn ${String(count(log, `${session}.turn`))}`;
+  if (session !== undefined) return `${session} turn ${String(count(since, `${session}.turn`))}`;
   return solving ? "solving" : "working";
 }
 
@@ -207,14 +221,15 @@ export function pulse(
   const quiet = open && last !== undefined && now - Date.parse(last.at) > QUIET_MS;
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - Date.parse(last.at))}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
-  // A run's end is its last session's: an Examiner session writes no report, and the second on
-  // exam-1 (2026-10-08) ended whole and was said to be gone before one.
-  const from = log.findLastIndex(({ kind }) => kind === "build.started" || kind === "exam.started");
+  // A run's end is that of the last thing it started: an Examiner session writes no report, and
+  // the second on exam-1 (2026-10-08) ended whole and was said to be gone before one. A checkpoint
+  // starts no session, so its own start is where its report is looked for.
+  const from = lastStart(log);
   const end = log[from]?.kind === "exam.started" ? "exam.finished" : run.end;
   const ended =
     count(log.slice(Math.max(from, 0)), end) > 0 && solves.every(({ finished }) => finished !== null);
   if (before?.open === true && !open && !ended) lines.push(`⚠ the process is gone before ${end}`);
-  // An anchor starts each task on the old harness and the fresh one, so a line may come twice.
+  // A comparison starts each task under two harnesses, so a line may come twice.
   const told = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>
     n === 1 ? line : `${line} (×${String(n)})`,
   );

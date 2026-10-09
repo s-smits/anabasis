@@ -83,13 +83,26 @@ export function latestBuilt(events: readonly LogEvent[]): string | null {
 
 /**
  * The plan's stop rule over the comparisons a log holds: how many checkpoints tallied a task, how
- * many of them have passed since the last step, and whether that is three. A session that left its
+ * many of them have passed since the last step, and whether that is three. A checkpoint is a
+ * comparison of a harness a Builder session left. The first experiment and the gate after it set
+ * the baseline and the starting harness against each other, and are no checkpoint: counted, two
+ * of them would leave a campaign one Builder session before its stop. A session that left its
  * harness unchanged, a comparison stopped on its check defects, one its dollar cap cut and one with
- * every task set aside or short tested nothing, and are no checkpoints.
+ * every task set aside or short tested nothing, and are no checkpoints either.
  */
 export function stopRule(events: readonly LogEvent[]) {
+  const built = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === "build.finished" && isString(data.harness) ? [data.harness] : [],
+    ),
+  );
   const compared = lastReports(events).filter(
-    ({ data }) => asRecord(data.scored) !== null && Array.isArray(data.versions) && data.versions.length > 0,
+    ({ data }) =>
+      asRecord(data.scored) !== null &&
+      Array.isArray(data.versions) &&
+      data.versions.length > 0 &&
+      isString(data.fresh) &&
+      built.has(data.fresh),
   );
   const sinceStep = compared.length - 1 - compared.findLastIndex(({ data }) => data.reading === STEP);
   return { checkpoints: compared.length, sinceStep, stop: sinceStep >= STOP_AFTER };

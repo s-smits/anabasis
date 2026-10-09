@@ -19,7 +19,6 @@
 import { asRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { type Condition, conditionsOf, type Limits, limitsIn } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
-import type { Counted } from "./solve.ts";
 import type { Verdict } from "./verify.ts";
 
 /** One solve attempt as its own events tell it. */
@@ -61,9 +60,6 @@ export interface Judged {
    *  format reached no check, and a non-result decided nothing. */
   readonly checker: Verdict | null;
 }
-
-/** The kinds of fail a solver owns outright, as `solve.ts` types them. */
-const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
 
 /** Every solve a log holds, in the order they started. */
 export function solvesIn(events: readonly LogEvent[]): Solve[] {
@@ -140,18 +136,6 @@ export function ended<Each extends Solve>(solves: readonly Each[]): (Each & Ende
  *  non-result or a solve with no ending, which are no measurement. */
 export function passed({ ending }: Pick<Solve, "ending">): boolean | null {
   return ending?.outcome === "pass" ? true : ending?.outcome === "fail" ? false : null;
-}
-
-/** A solve's ending as a screening counts it, or null for one it cannot: a non-result, no ending
- *  yet, or a fail of a kind `solve.ts` does not know. */
-export function counted({ ending }: Pick<Solve, "ending">): Counted | null {
-  if (ending?.outcome === "pass") return { outcome: "pass" };
-  if (ending?.outcome !== "fail") return null;
-  if (ending.kind === "broken-harness") {
-    return { outcome: "fail", kind: "broken-harness", reason: isString(ending.reason) ? ending.reason : "" };
-  }
-  const failed = FAILS.find((known) => known === ending.kind);
-  return failed === undefined ? null : { outcome: "fail", kind: failed };
 }
 
 /** The last verdict a log holds for each solve, by the solve. */

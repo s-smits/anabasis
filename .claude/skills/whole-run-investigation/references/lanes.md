@@ -546,10 +546,10 @@ The question is whether the tasks a comparison tallied are the tasks it fixed be
 solve, and whether what left favours a side. No result chooses the scored set: it is drawn from
 the held-out tasks by the contract's hash, or named by the operator, and written into
 `comparison.started` with the harnesses, the solves a side, the level, the budgets and the cap.
-`SCORED SET MOVED` fires when the tally holds fewer tasks than that event. A task leaves three
+`SCORED SET MOVED` fires when the tally holds fewer tasks than that event. A task leaves four
 ways, and the report names each: `short` of its solves under a harness, `disputed` when a check
-could not run, and `aside` on a rejection not ruled a true fail. The third is the one that can
-lean: a task is set aside for a rejection under either harness, so rejections that fall on one
+could not run, `withdrawn` when a person released or refused it while the comparison ran, and
+`aside` on a rejection not ruled a true fail. The last is the one that can lean: a task is set aside for a rejection under either harness, so rejections that fall on one
 side remove that side's losses, which lane 30's `SET ASIDE BY SIDE` counts. Read `counted` in
 the report, the tally were every such rejection to stand, beside `scored`. A comparison asked
 for again on other terms under the same id is refused; confirm no second `comparison.started`

@@ -160,9 +160,14 @@ export function roundOf(
   const found = lastReports(events).find((each) => each.session === session);
   const pairs = found === undefined ? [] : pairsReported(events, found);
   // The tasks the comparison tallied, and beside them the ones it solved and left out: short of
-  // their solves, or set aside on a rejection.
+  // their solves, set aside on a rejection, or withdrawn from the held-out set while it ran.
   const tallied = strings(report?.versions);
-  const scoredSet = [...tallied, ...strings(report?.short), ...strings(report?.aside)];
+  const scoredSet = [
+    ...tallied,
+    ...strings(report?.short),
+    ...strings(report?.aside),
+    ...strings(report?.withdrawn),
+  ];
   const baseline = isString(report?.baseline) ? report.baseline : "";
   const reference = isString(report?.old) ? report.old : parent;
 

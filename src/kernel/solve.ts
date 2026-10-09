@@ -30,6 +30,3 @@ export type Ending =
       readonly kind: "provider" | "sandbox-crash" | "killed" | "moved-files" | "check" | "verifier";
       readonly reason: string;
     };
-
-/** An ending a score or a screening can count: a pass or a fail. */
-export type Counted = Exclude<Ending, { readonly outcome: "non-result" }>;

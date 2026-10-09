@@ -342,7 +342,9 @@ function comparedOf(
     const at = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === session);
     const own = events[at]?.data ?? last;
     const build = log.builds.find((each) => each.session === session) ?? null;
-    const scoredSet = new Set([...strings(own.versions), ...strings(own.short), ...strings(own.aside)]);
+    const scoredSet = new Set(
+      ["versions", "short", "aside", "withdrawn"].flatMap((left) => strings(own[left])),
+    );
     const sides = new Set([text(own.old), text(own.fresh), text(own.baseline)]);
     const began = isNumber(own.began) ? own.began : 0;
     const counted = (solve: Solve) => {

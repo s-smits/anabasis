@@ -96,13 +96,25 @@ describe("the harness a Builder goes on from", () => {
 });
 
 describe("the stop rule", () => {
+  /** The harnesses Builder sessions left, which is what makes a comparison of one a checkpoint. */
+  const sessions = ["h2", "h3", "h4"].map((harness) =>
+    event("build.finished", { session: `s-${harness}`, harness, changed: true, ended: "finished" }),
+  );
+
   it("stops after three checkpoints without a step, counted from the last step", () => {
     const flat = (session: string) => reported(session, "no-step", "h2");
     expect(stopRule([])).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
-    expect(stopRule([flat("b-1"), flat("b-2")])).toEqual({ checkpoints: 2, sinceStep: 2, stop: false });
-    expect(stopRule([flat("b-1"), flat("b-2"), flat("b-3")])).toMatchObject({ sinceStep: 3, stop: true });
+    expect(stopRule([...sessions, flat("b-1"), flat("b-2")])).toEqual({
+      checkpoints: 2,
+      sinceStep: 2,
+      stop: false,
+    });
+    expect(stopRule([...sessions, flat("b-1"), flat("b-2"), flat("b-3")])).toMatchObject({
+      sinceStep: 3,
+      stop: true,
+    });
     // A step starts the count again, and a result short of one for another reason counts.
-    const after = [flat("b-1"), flat("b-2"), reported("b-3", "step", "h3"), flat("b-4")];
+    const after = [...sessions, flat("b-1"), flat("b-2"), reported("b-3", "step", "h3"), flat("b-4")];
     expect(stopRule(after)).toEqual({ checkpoints: 4, sinceStep: 1, stop: false });
     const lower = (session: string) => reported(session, "below-baseline", "h4");
     expect(stopRule([...after, lower("b-5"), lower("b-6")])).toMatchObject({ sinceStep: 3, stop: true });
@@ -114,12 +126,20 @@ describe("the stop rule", () => {
     const capped = (session: string) => reported(session, "not-scored", "h2", { scored: null, capped: true });
     // Every task set aside until a person has labelled its rejections: a tally of no task.
     const waiting = reported("b-5", "not-scored", "h2", { versions: [], aside: ["v1"] });
-    const log = [idle("b-1"), idle("b-2"), stopped("b-3"), capped("b-4"), waiting];
+    const log = [...sessions, idle("b-1"), idle("b-2"), stopped("b-3"), capped("b-4"), waiting];
     expect(stopRule(log)).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
     // A report a person settled is its checkpoint's one report, read as the labels left it.
-    const settled = [reported("b-1", "no-step", "h2"), reported("b-1", "step", "h2")];
+    const settled = [...sessions, reported("b-1", "no-step", "h2"), reported("b-1", "step", "h2")];
     expect(stopRule(settled)).toEqual({ checkpoints: 1, sinceStep: 0, stop: false });
-    expect(lastReports(settled).map(({ session, index }) => [session, index])).toEqual([["b-1", 1]]);
+    expect(lastReports(settled).map(({ session, index }) => [session, index])).toEqual([["b-1", 4]]);
+  });
+
+  it("counts no comparison of harnesses no Builder session left: the first experiment is no checkpoint", () => {
+    // The baseline against the starting harness, twice, and then one round that read no step.
+    const gates = [reported("g0", "no-step", "baseline"), reported("g2", "no-step", "baseline")];
+    expect(stopRule(gates)).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
+    const round = [...gates, ...sessions, reported("b-1", "no-step", "h2")];
+    expect(stopRule(round)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
   });
 });
 

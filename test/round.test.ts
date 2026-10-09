@@ -322,6 +322,7 @@ describe("a round", () => {
         disputed: [],
         aside: [],
         short: [],
+        withdrawn: [],
         capped: false,
         reading: "step",
         settled: null,
@@ -744,6 +745,27 @@ describe("a round", () => {
     expect(s.asked.filter(({ version, side }) => version === "s4" && side === "fresh")).toHaveLength(4);
   });
 
+  it("leaves out and names a task a person released or refused while the comparison ran", async () => {
+    // A comparison that could not report would lose every solve it paid for.
+    let solved = 0;
+    const s = await setup([edit, finish], (version, side, nth, digest) => {
+      solved += 1;
+      // A person releases one task for practice and refuses another as infeasible, mid-run.
+      const moved = { 6: ["s4", "released"], 7: ["s3", "refused"] }[solved];
+      if (moved !== undefined) {
+        append(s.log, "task.state", { version: moved[0] ?? "", state: moved[1] ?? "" });
+      }
+      return step(version, side, nth, digest);
+    });
+    expect(await round(s.request)).toMatchObject({
+      scored: { wins: 2, losses: 0 },
+      versions: ["s1", "s2"],
+      withdrawn: ["s3", "s4"],
+      short: [],
+      reading: NO_STEP,
+    });
+  });
+
   it("stops on more check defects than it allows, and says so in place of a reading", async () => {
     const s = await setup([edit, finish], () => REJECTED);
     const ruled = { s1: "check-defect", s2: "check-defect", s3: "check-defect" } as const;
@@ -944,10 +966,18 @@ describe("a checkpoint with no session", () => {
     expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
     expect(await checkpoint(s.compare("g0", { cap: { dollars: 11, reserve: 3 } }))).toEqual(report);
     expect(s.asked).toHaveLength(5);
-    // A solve in flight is held at the reserve as well, so four lanes start fewer than one does.
+    // Four lanes start no more than one does. A lane that cannot afford a solve while others are
+    // in flight steps aside and leaves the job, and the cap is reached when none is in flight.
     const wide = await setup([], () => PASS);
-    await checkpoint(wide.compare("g0", { cap: { dollars: 11, reserve: 3 }, concurrency: 4 }));
-    expect(wide.asked.length).toBeLessThan(5);
+    const cut = await checkpoint(wide.compare("g0", { cap: { dollars: 11, reserve: 3 }, concurrency: 4 }));
+    expect(cut).toMatchObject({ capped: true, reading: NOT_SCORED });
+    expect(wide.asked).toHaveLength(5);
+    // A cap that holds every solve but not four reserves at once cuts nothing: the lanes take turns.
+    const tight = await setup([], () => PASS);
+    expect(
+      await checkpoint(tight.compare("g0", { cap: { dollars: 35, reserve: 3 }, concurrency: 4 })),
+    ).toMatchObject({ scored: { ties: 4 }, capped: false });
+    expect(tight.asked).toHaveLength(16);
     // A cap that holds the whole comparison cuts nothing.
     const roomy = await setup([], () => PASS);
     expect(await checkpoint(roomy.compare("g0", { cap: { dollars: 35, reserve: 3 } }))).toMatchObject({

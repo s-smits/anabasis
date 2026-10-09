@@ -229,7 +229,7 @@ The building session's. Code only, and no model.
 | F12 | No command runs a Builder session without a comparison | A session move of its own, under the same cap | Two sessions and one checkpoint run in a rehearsal | Tested |
 | F13 | Nobody holds the whole campaign, and the one reader of it was built for investigation | A campaign view: one command prints each step's handover and the admissible next move, from one reading of the log (`tools/wri/read.ts` is reused) | The view of a rehearsed campaign names the same next move that the launcher admits | Planned |
 | F14 | A budget can be read in four units, and two are used | Keep the model's turns and seconds. Drop prompts and CPU seconds as units, and keep CPU as a reported figure (`src/kernel/compare.ts`) | The report holds no unread count | Tested |
-| F15 | Dead ends: three event kinds, three functions of `src/kernel/history.ts`, and modules without an importer | Confirm each by search, then remove it | Typecheck and lint pass without them | Planned |
+| F15 | Dead ends: three event kinds, three functions of `src/kernel/history.ts`, and modules without an importer | Confirm each by search, then remove it | Typecheck and lint pass without them | Tested |
 
 ### Step 2: the Builder's side of the Harness Builder
 

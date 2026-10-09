@@ -72,6 +72,7 @@ import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import {
   admission,
+  EXAMINE,
   sessionAdmission,
   type Supply,
   supplyOf,
@@ -94,7 +95,6 @@ import {
 } from "../d2/setting.ts";
 import {
   CHECKPOINT,
-  EXAMINE,
   logEvents,
   processes,
   ROUND,

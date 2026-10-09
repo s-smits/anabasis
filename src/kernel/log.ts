@@ -27,7 +27,11 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
-/** The plan's events, and twenty-one that are not among them. `comparison.started` fixes a
+/** The kinds of event a log holds. A kind that no command writes any more stays in the list where a
+ *  log may hold it, since a log is evidence and has to read. A kind no log holds is none: three
+ *  were in this list until 2026-10-09 that no command wrote (two never, one for ten minutes of
+ *  8 October's history) and that none of the 25 campaign logs kept then held.
+ *  `comparison.started` fixes a
  *  comparison's terms before its first solve: the harnesses, the setting and the scored tasks
  *  (`src/builder/round.ts`). `anchor.drawn`, `anchor.scored` and `exam.word` are written by no
  *  command since 2026-10-09 and are kinds still, so that a log written before then reads: the
@@ -48,7 +52,6 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  `stop.overridden` is the operator's reason for a comparison begun after the plan's stop rule
  *  had stopped the campaign (`src/builder/admission.ts`). */
 export const EVENT_KINDS = [
-  "world.accepted",
   "campaign.setting",
   "checker.read",
   "contract.frozen",
@@ -76,14 +79,12 @@ export const EVENT_KINDS = [
   "solve.finished",
   "verdict",
   "referee.finding",
-  "referee.dispute",
   "diagnosis.recorded",
   "comparison.started",
   "comparison.reported",
   "stop.overridden",
   "anchor.drawn",
   "anchor.scored",
-  "task.released",
 ] as const;
 
 export type EventKind = (typeof EVENT_KINDS)[number];

@@ -116,8 +116,9 @@ interface StartingSession {
   readonly seats: "paid" | "scripted";
 }
 
-/** Where a refusal sends its reader for more held-out tasks. */
-const EXAMINE = "tools/d1b/examine.ts";
+/** The command an Examiner session runs as: where a refusal sends its reader for more held-out
+ *  tasks, and what a launch of one starts (`tools/runs/pulse.ts`). */
+export const EXAMINE = "tools/d1b/examine.ts";
 // The reading was a step done late and by hand in the first live rounds (2026-10-09), and on
 // truss 22 of 32 solves were then rejected, 14 on one check, with nothing to say whose fault.
 const UNREAD =

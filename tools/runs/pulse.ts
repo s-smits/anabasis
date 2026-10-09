@@ -12,6 +12,7 @@
  * a look covers the open runs and those open at the last look, so a run's ending is said once.
  * Quiet, no event for 20 minutes in an open run, is said when it starts and when it ends.
  */
+import { EXAMINE } from "#src/builder/admission.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
 import {
@@ -64,10 +65,9 @@ interface Memory {
 
 /** The command a round runs as: what a launch starts and what a running round is known by. */
 export const ROUND = "tools/d2/round.ts";
-/** The command an Examiner session runs as. With a round's it is what writes a campaign's log for
- *  hours, each naming it with `--name`: an Examiner session was read as closed while it ran, the
- *  first time one did (exam-1, 2026-10-08). */
-export const EXAMINE = "tools/d1b/examine.ts";
+// An Examiner session's command (`EXAMINE`) is with a round's what writes a campaign's log for
+// hours, each naming it with `--name`: an Examiner session was read as closed while it ran, the
+// first time one did (exam-1, 2026-10-08).
 /** The command a comparison with no Builder session runs as. */
 export const CHECKPOINT = "tools/d2/checkpoint.ts";
 /** The command a Builder session with no comparison after it runs as. */

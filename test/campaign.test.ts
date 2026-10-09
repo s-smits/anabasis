@@ -12,8 +12,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -249,6 +251,50 @@ describe("a campaign", () => {
     writeFileSync(join(built.dir, "agent", "BUILT_AGENTS.md"), "Add first.\n");
     await expect(keptAs(campaign, "--parent", "latest")).rejects.toThrow(
       `${built.dir} no longer opens as the harness it is kept as`,
+    );
+  });
+
+  it("keeps a harness's control: the starter with that harness's installed programs alone", async () => {
+    layOut();
+    const campaign = await openCampaign(ARGS);
+    const least = await starter(campaign);
+    // A harness as a session keeps one: a guide, and its tool tree by a link to the copy beside it.
+    const tree = join(campaign.states, "tree-one");
+    mkdirSync(join(tree, "bin"), { recursive: true });
+    writeFileSync(join(tree, "bin", "engine"), "#!/bin/sh\necho engine\n", { mode: 0o755 });
+    const made = join(root, "made");
+    cpSync(least.dir, made, { recursive: true });
+    writeFileSync(join(made, "agent", "BUILT_AGENTS.md"), "Run engine first.\n");
+    const place = async (from: string) => {
+      const { digest } = await openHarness(from);
+      const dir = join(campaign.states, digest);
+      cpSync(from, dir, { recursive: true, verbatimSymlinks: true });
+      return { dir, digest };
+    };
+    // The link is made where the states are, since it names the tree relatively.
+    const staged = join(campaign.states, "staged");
+    cpSync(made, staged, { recursive: true });
+    symlinkSync(join("..", "tree-one"), join(staged, ".toolchain"));
+    const built = await place(staged);
+    rmSync(staged, { recursive: true });
+
+    const control = await keptAs(campaign, "--new", `programs-of:${built.digest}`);
+    const opened = await openHarness(control.dir);
+    // The programs and nothing else: no guide, no tool, and so neither the starter nor the harness.
+    expect(opened.guide).toBeNull();
+    expect(opened.kinds.size).toBe(0);
+    expect(opened.toolTree).toBe(join(control.dir, ".toolchain"));
+    expect(readFileSync(join(control.dir, ".toolchain", "bin", "engine"), "utf8")).toContain("echo engine");
+    expect(new Set([control.digest, built.digest, least.digest]).size).toBe(3);
+    expect(control.dir).toBe(join(campaign.states, control.digest));
+    // Asked for again it is the same harness, and nothing half-made is left among the states.
+    expect(await keptAs(campaign, "--reference", `programs-of:${built.digest}`)).toEqual(control);
+    const kept = readdirSync(campaign.states);
+    expect(kept).toContain(control.digest);
+    expect(kept.filter((name) => name.startsWith("control-"))).toEqual([]);
+    // A harness that installed nothing has no control but the starter.
+    await expect(keptAs(campaign, "--new", "programs-of:starter")).rejects.toThrow(
+      `${least.digest} installed no program, so the control for its programs is the starter itself`,
     );
   });
 

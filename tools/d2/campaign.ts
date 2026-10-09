@@ -48,6 +48,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
 } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -113,6 +114,9 @@ interface Solver {
   /** The backends of a solver this host's do not serve: a simulation's script (`tools/runs/rehearse.ts`). */
   readonly models?: (home: string) => Models;
 }
+
+/** What names the control of a kept harness: `programs-of:latest`, `programs-of:<digest>`. */
+const PROGRAMS_OF = "programs-of:";
 
 /** The sweep's `config.yaml` and its solves' `maxTurns`, with a disk cap the sweep did not have, as
  *  `live-solve.ts` has them, but four solves at a time where a parity solve runs alone. Concurrency
@@ -288,12 +292,16 @@ export async function starter(campaign: { readonly states: string }): Promise<Ke
  * Harness, which the first Builder session forks and which is the reference harness until the
  * operator promotes another; `latest` for the one the last whole Builder session left, which is
  * the starter while none has; or the whole digest of one a session froze, which is the name of its
- * folder under the campaign's `states/`. Any other name is answered with the ones there are: on
+ * folder under the campaign's `states/`. `programs-of:` before any of those names its control, the
+ * starter with that harness's installed programs alone (`programsOf`). Any other name is answered with the ones there are: on
  * 2026-10-08 a digest cut to its first eight characters, as every reader prints one, ended a
  * simulated round in a bare `ENOENT`. A state that opens as another harness is refused here: one
  * that lost its tool tree when its campaign was moved had two solves paid for under its name.
  */
 export async function keptAs(campaign: Keeping, flag: string, asked: string): Promise<Kept> {
+  if (asked.startsWith(PROGRAMS_OF)) {
+    return await programsOf(campaign, await keptAs(campaign, flag, asked.slice(PROGRAMS_OF.length)));
+  }
   const built = asked === "latest" ? latestBuilt(read(campaign.log)) : null;
   if (asked === "starter" || (asked === "latest" && built === null)) return await starter(campaign);
   const digest = built ?? asked;
@@ -311,6 +319,39 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
   const dir = join(campaign.states, digest);
   if ((await openHarness(dir)).digest === digest) return { dir, digest };
   throw new Error(`${dir} no longer opens as the harness it is kept as`);
+}
+
+/**
+ * The control for what a harness installed: the Starter Built Harness with that harness's tool
+ * tree and nothing else of it, kept under its own digest like any harness. Compared with the
+ * starter it reads what the installed programs are worth by themselves, and compared with the
+ * harness it was taken from, what the guide and the tools add to them.
+ *
+ * Buffer's first step, on 9 October, is why. Its harness installed the field's engine, a checker
+ * and an optimiser in its guide, and won 5 tasks to 0 at an eight-minute wall, where 2 of the
+ * starter's 20 solves had fetched anything; at two hours, that morning, the starter installed the
+ * engine itself and was valid on 18 solves of 18. Which part of the harness the step was could not
+ * be read from one comparison of the whole.
+ */
+async function programsOf(campaign: Keeping, source: Kept): Promise<Kept> {
+  const tree = join(source.dir, ".toolchain");
+  if (!existsSync(tree)) {
+    throw new Error(
+      `${source.digest} installed no program, so the control for its programs is the starter itself`,
+    );
+  }
+  // Made among the states, so that the link a kept state names its tree by leads to the same tree.
+  const scratch = mkdtempSync(join(campaign.states, "control-"));
+  try {
+    writeStarter(scratch);
+    cpSync(tree, join(scratch, ".toolchain"), { recursive: true, verbatimSymlinks: true });
+    const { digest } = await openHarness(scratch);
+    const dir = join(campaign.states, digest);
+    if (!existsSync(dir)) renameSync(scratch, dir);
+    return { dir, digest };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 /**

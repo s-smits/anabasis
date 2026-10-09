@@ -17,6 +17,11 @@
  * and reads a harness against the starter where a settling, a stop or the cap left a step unread
  * against it (`--reference starter --new <digest>`).
  *
+ * `programs-of:` before a name is that harness's control: the starter with the harness's installed
+ * programs and nothing else of it. `--reference starter --new programs-of:latest` reads what the
+ * programs are worth by themselves, and `--reference programs-of:latest --new latest` what the
+ * guide and the tools add to them. A step is the whole harness's until those two are read.
+ *
  * `--noise` also reads the reference harness against itself, the plan's A/A comparison: it is
  * solved twice as often, and its first solves of a task are set against its later ones. With the
  * starter as the reference and a fixed budget, this command is gate G2: 8 tasks, four solves under

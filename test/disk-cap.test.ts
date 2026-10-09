@@ -35,7 +35,7 @@ describe("the disk cap", () => {
         ].join("; ");
         const result = spawnSync(
           "/bin/sh",
-          ["-c", stageCommandIsolation(policy, join(parent, "command.sb"), command)],
+          ["-c", stageCommandIsolation(policy, join(parent, "command.sb"), command, "$$")],
           { cwd: dirs.work, env: policy.environment, timeout: 30_000 },
         );
         const output = `${result.stdout}${result.stderr}`;

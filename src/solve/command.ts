@@ -110,7 +110,8 @@ export async function runWalled(
       temp,
       toolTree: wall.toolTree,
     });
-    const staged = stageCommandIsolation(policy, profile, command);
+    // The shell pi starts leads the group and waits here for `times`, so the launch is its child.
+    const staged = stageCommandIsolation(policy, profile, command, "$PPID");
     return await SHELL.exec(`(\n${staged}\n)\ns=$?\ntimes > ${shellQuote(times)}\nexit $s`, work, {
       onData: options.onData,
       signal: options.signal,

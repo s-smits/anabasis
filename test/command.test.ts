@@ -68,6 +68,16 @@ describe("a solve's walled commands", () => {
         const read = await run(wall, `cat ${JSON.stringify(join(reader, "session"))} 2>&1; true`);
         expect(read.output).toContain("Operation not permitted");
 
+        // A command that backgrounds work and returns has left nothing running. The shell around the
+        // wall leads the command's group, not the shell that reaps it: read by its own pid, the group
+        // was empty and a solver's loop ran on for over 20 minutes after its command (2026-10-09).
+        const left = await run(wall, "nohup sleep 30 >/dev/null 2>&1 & echo $!");
+        expect(left.exitCode).toBe(0);
+        await Bun.sleep(100);
+        expect(() => runtimeProcess.kill(Number(left.output), 0)).toThrow("ESRCH");
+        // The leader was spared: it wrote the command's CPU record after the reaping.
+        expect(wall.cpu.unmeasured).toBe(0);
+
         // Every command is held to the condition's shell limits here, whoever launched it: one that
         // names no timeout runs for the default, and one that names too long a timeout for the maximum.
         await expect(run(wall, "sleep 5")).rejects.toThrow("timeout:1");

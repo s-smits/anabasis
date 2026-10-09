@@ -3,7 +3,14 @@
 // host-only folder, the repository nor a reviewer's Claude home can be read, and no command outlives
 // the shell limits.
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -77,11 +84,27 @@ describe("a solve's walled commands", () => {
         expect(() => runtimeProcess.kill(Number(left.output), 0)).toThrow("ESRCH");
         // The leader was spared: it wrote the command's CPU record after the reaping.
         expect(wall.cpu.unmeasured).toBe(0);
+        // A job in a process group of its own is out of that trap's reach once the shell that started
+        // it has gone, and GNU `timeout` makes one: a solver's three searches under it ran on after
+        // their command returned (2026-10-09). It still works on the solve's volume.
+        const apart = await run(wall, "set -m; sleep 30 >/dev/null 2>&1 & echo $!");
+        await Bun.sleep(100);
+        expect(() => runtimeProcess.kill(Number(apart.output), 0)).toThrow("ESRCH");
 
         // Every command is held to the condition's shell limits here, whoever launched it: one that
         // names no timeout runs for the default, and one that names too long a timeout for the maximum.
         await expect(run(wall, "sleep 5")).rejects.toThrow("timeout:1");
         await expect(run(wall, "sleep 5", undefined, 60)).rejects.toThrow("timeout:2");
+        // A command the wall cuts is killed by its group and never runs its trap, so a child in a
+        // group of its own outlived that too: five of the nine commands one run's wall cut sat under
+        // an inner `timeout` (2026-10-09).
+        await expect(run(wall, 'set -m; sleep 30 & echo $! > "$HOME/cut"; wait')).rejects.toThrow(
+          "timeout:1",
+        );
+        await Bun.sleep(100);
+        expect(() => runtimeProcess.kill(Number(readFileSync(join(dirs.home, "cut"), "utf8")), 0)).toThrow(
+          "ESRCH",
+        );
       } finally {
         await release();
         rmSync(dirs.host, { recursive: true, force: true });

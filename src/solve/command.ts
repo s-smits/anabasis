@@ -1,8 +1,8 @@
 /**
  * The one place a solve launches a command: the solver's bash calls and the harness's own tool calls
  * both come through `runWalled`, under the command wall v1's Built shell ran under
- * (`stageCommandIsolation`), on pi's local shell backend, which kills the command's process tree on
- * a timeout or an abort.
+ * (`stageCommandIsolation`), on pi's local shell backend, which kills the command's process group on
+ * a timeout or an abort. Whatever else the command left working on the solve's volume is ended here.
  *
  * A solve owns two directories under the shared scratch parent, which the command wall closes to
  * every command but its own trees:
@@ -27,6 +27,7 @@ import {
 import type { Limits } from "../kernel/condition.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "../meta/filesystem.ts";
 import { basename, join } from "../meta/path.ts";
+import { endHolders } from "../verify/disk-cap.ts";
 import {
   BUILT_COMMAND_SCRATCH_ROOT,
   commandIsolationPolicy,
@@ -119,6 +120,9 @@ export async function runWalled(
       env: policy.environment,
     });
   } finally {
+    // What left the command's group is out of its exit trap's reach, and a command the host killed
+    // never ran that trap. Both still work on the solve's volume, where one command runs at a time.
+    await endHolders(wall.dirs.root);
     const seconds = childSeconds(times);
     if (seconds === null) wall.cpu.unmeasured++;
     else wall.cpu.seconds += seconds;

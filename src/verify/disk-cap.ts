@@ -111,10 +111,10 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
  * "No such file or directory". Three of four solves stopped two seconds after they started were
  * left so, and the stop gave up at the first (2026-10-08).
  *
- * A process the solve left behind is ended here, where the root it works in goes. A command's own
- * exit reaps what it started (`stageCommandIsolation`), and a command the host kills never runs
- * that: its children live on under launchd with the volume as their working directory. The forced
- * detach closed their files and left them running, and one that then wrote its home made the bare
+ * A process the solve left behind is ended here, where the root it works in goes. Each command's
+ * end already ends what it left on the volume (`runWalled`), so this is for a solve stopped or
+ * killed inside a command, and for what outran those passes. The forced detach closed such a
+ * process's files and left it running, and one that then wrote its home made the bare
  * mountpoint again, so the release threw on a folder that was not empty and took a round and its
  * three other solves with it; the process ran on at 80 forks a second (2026-10-09). So whatever
  * holds a file on a volume that will not detach is killed first, and what a process wrote into the
@@ -137,9 +137,10 @@ export async function releaseDiskCap(root: string): Promise<void> {
   rmSync(root, { recursive: true, force: true });
 }
 
-/** Kill every process with a file open on the volume at `root`, and again while one that forks
- *  leaves another: a few passes, since the forced detach takes whatever outlasts them. */
-async function endHolders(root: string): Promise<void> {
+/** Darwin's, as Linux ends a pid namespace: kill every process with a file open on the volume at
+ *  `root`, for a few passes while one that forks leaves another; a forced detach takes the rest. */
+export async function endHolders(root: string): Promise<void> {
+  if (runtimeProcess.platform !== "darwin") return;
   for (let pass = 0; pass < 5; pass++) {
     const listed = Bun.spawn(["/usr/sbin/lsof", "-t", "+f", "--", root], {
       stdin: "ignore",

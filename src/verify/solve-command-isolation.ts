@@ -512,7 +512,7 @@ export function stageCommandIsolation(
   // command runs in a subshell so that its own `exec` replaces that child rather than the shell
   // owning the trap — `sleep 30 & exec /bin/true` in the trap's shell leaves the sleep running. A
   // subshell keeps `$$` and the group, so the group kill still reaches a child the replaced process
-  // orphaned. A process that left the group and was already reparented to launchd is out of reach.
+  // orphaned. One that left the group and was reparented to launchd is `runWalled`'s to end.
 
   const reaped = `trap 'd(){ for c in $(pgrep -P "$1"); do echo "$c"; d "$c"; done; }; g=$(pgrep -g ${leader}); for p in $g $(for q in $g; do d "$q"; done); do [ "$p" != "$$" ] && [ "$p" != "${leader}" ] && kill -9 "$p" 2>/dev/null; done' EXIT\n(\n${command}\n)`;
   return `exec ${shellQuote(policy.mechanismPath)} -f ${shellQuote(profileFile)} /bin/sh -c ${shellQuote(reaped)}`;

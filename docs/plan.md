@@ -290,6 +290,7 @@ Faults the building session knew of that the 33 rows do not hold, found while it
 | F38 | `prepare.ts --tasks` confirms that a stored accepted answer still passes today's verifier and writes nothing, so a pack task's feasibility is not on record for the rule of PR #76 | The confirmation is logged, and counts as a valid answer on record | A confirmed task never waits for a label | Planned |
 | F39 | After F13 and F16 the investigation's reader is still a reader of its own: the campaign view cannot be read from `tools/`, where `tools/wri/read.ts` lives | Its rows and the triggers that restate a handover read the campaign view | `tools/wri/read.ts` folds no comparison, session or task set for itself | Planned |
 | F40 | The repository's copy of this plan was a revision behind, with notes of its own | It is this revision, and a pull request moves the level of the rows it names | No second file tracks status | In source |
+| F41 | F7 holds a command to the campaign's record, and the campaigns that ran before 9 October have none: the first command there would record whatever it named, and recode's solver was held to 15 of its own turns by a flag | The first record of a campaign that holds solves is the setting its last test-side solves ran under, unless the operator says it is new; the refusal gives the flags (`firstRecord`, `tools/d2/setting.ts`) | The first command of this source on recode, with the flag left out, refuses | Tested |
 
 Two passages of the plan's own text disagree with these rows, and are the plan's author's to mend:
 

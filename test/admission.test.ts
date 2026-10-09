@@ -287,6 +287,12 @@ describe("whether a comparison may start", () => {
     // A reason given where the rule does not stop the campaign says nothing.
     expect(admission(SETS, { ...WANTED, pastStop: "just in case" }).notes.join("\n")).not.toContain("stop");
   });
+
+  it("refuses a first record of the setting that is another than the log's solves ran under", () => {
+    const why = "the campaign's log records no setting yet, and this command names another";
+    expect(admission(SETS, { ...WANTED, unrecorded: why }).refusals).toEqual([why]);
+    expect(sessionAdmission(SETS, { cap: WANTED.cap, unrecorded: why }).refusals).toEqual([why]);
+  });
 });
 
 describe("a command about to start a comparison", () => {

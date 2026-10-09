@@ -79,6 +79,7 @@ import { type Budget, UNITS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
+import { priceKey } from "#src/kernel/meter.ts";
 import { type Cap, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
@@ -98,6 +99,7 @@ import {
 import {
   type AskedSetting,
   commandSeconds,
+  firstRecord,
   keepSetting,
   recordedSetting,
   restarts,
@@ -310,6 +312,9 @@ export function wantedNamed(
   given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
 ): Wanted {
   const { named, tasks, target } = given.setting;
+  // The campaign is open, so who solves is known whether or not a flag named it.
+  const solving = solvingAs(campaign, named);
+  const ran = solverLast(read(campaign.log));
   return {
     // A comparison that names its tasks scores those, however many the log holds beside them.
     target: tasks === undefined ? target : tasks.split(",").length,
@@ -317,9 +322,17 @@ export function wantedNamed(
     level: Number(values.level),
     builds: given.builds,
     cap: given.cap ?? null,
-    restarted: restarts(named, solverLast(read(campaign.log))),
+    restarted: restarts(solving, ran),
     pastStop: predictionNamed(values["past-stop"]),
+    unrecorded: firstRecord(given.setting, solving, ran),
   };
+}
+
+/** Who an open campaign's test-side solves are by, as a condition names the model, and what they
+ *  are held to: what a log's last solves are set against (`restarts`, `firstRecord`). */
+export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "named">["named"]) {
+  const { model, effort } = campaign.test;
+  return { solver: { model: priceKey(model), effort }, limits };
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */

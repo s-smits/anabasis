@@ -34,6 +34,7 @@
 import { admitSession } from "#src/builder/admission.ts";
 import { sessionOnce } from "#src/builder/session.ts";
 import { read } from "#src/kernel/log.ts";
+import { solverLast } from "#src/kernel/solves.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { campaignLog, keptAs, openCampaign, PROMOTED, stayAwake } from "./campaign.ts";
 import {
@@ -45,8 +46,9 @@ import {
   SESSION_OPTIONS,
   sessionNamed,
   solved,
+  solvingAs,
 } from "./round.ts";
-import { keepSetting, recordedSetting, settingAsked } from "./setting.ts";
+import { firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
 
 /** `bun tools/d2/session.ts`, and under a simulation's `seated` the same session with its seats
  *  scripted. Returns what the session left: the harness it froze, or null where it left the one it
@@ -76,6 +78,7 @@ export async function sessionCommand(args: readonly string[], seated: Seated = s
       cap: cap ?? null,
       pastStop: predictionNamed(values["past-stop"]),
       practiceSolves: Number(values["practice-solves"]),
+      unrecorded: firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log))),
     },
     seats: paid,
   });

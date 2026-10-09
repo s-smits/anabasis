@@ -31,6 +31,13 @@
  * A record is written as a command begins its comparison and not before, so a command that is
  * refused records nothing (`keepSetting`).
  *
+ * A campaign whose solves were made before a setting was recorded, as every campaign's were until
+ * 2026-10-09, has a setting all the same: the one its last test-side solves ran under. The first
+ * command to record one names that setting, or says with `--new-setting` that the campaign's
+ * changes there (`firstRecord`). It is refused otherwise. Recode ran on 9 October with its solver
+ * held to 15 of its own turns; a first command there that left the flag out would have recorded a
+ * campaign with no such limit, and solved under it, without a word.
+ *
  * `--solve-turns` counts prompts, of which every finished solve of the first rounds was given one,
  * so it bound no solve; it is v1's cap on nudges and stays that. The model's own turns are the
  * budget told to the solver and enforced, which seconds cannot be on a loaded host.
@@ -94,6 +101,15 @@ export interface AskedSetting {
   readonly tasks: string | undefined;
   readonly target: number;
   readonly record: Recorded | null;
+  /** Whether the record would be the campaign's first, with no word from the operator that the
+   *  setting is new: it is then held to what the log's solves ran under (`firstRecord`). */
+  readonly first: boolean;
+}
+
+/** Who a command solves as, where its caller knows, and what it holds a solve to. */
+interface Solving {
+  readonly solver?: { readonly model: string; readonly effort: string } | undefined;
+  readonly limits: Limits;
 }
 
 /** Where the notes send their reader for what a restart costs. */
@@ -289,6 +305,7 @@ export function settingAsked(values: SettingFlags, recorded: Recorded | null): A
     tasks: flags.tasks,
     target: asked.target,
     record: recorded !== null && moved.length === 0 ? null : asked,
+    first: recorded === null && values["new-setting"] !== true,
   };
 }
 
@@ -328,13 +345,7 @@ export function commandSeconds(wallSeconds: number): Pick<Limits, "shellDefaultS
  * cycle's, and nothing is said of the solver then. Another host's code, pins or prices are another
  * setting too, and are not read here: a log's conditions hold them, and no flag names them.
  */
-export function restarts(
-  named: {
-    readonly solver?: { readonly model: string; readonly effort: string } | undefined;
-    readonly limits: Limits;
-  },
-  ran: ReturnType<typeof solverLast>,
-): string[] {
+export function restarts(named: Solving, ran: ReturnType<typeof solverLast>): string[] {
   if (ran === null) return [];
   const { solver, limits } = named;
   const held = (to: Limits) =>
@@ -356,4 +367,25 @@ export function restarts(
         ]
       : []),
   ];
+}
+
+/**
+ * Why a command may not record its setting as the campaign's first, or undefined where it may. A
+ * log that holds test-side solves and no record has a setting already, the one those solves ran
+ * under, and the first record is that one unless the operator says the setting is new. The
+ * refusal names it as flags, so that it can be typed once and is then the campaign's.
+ */
+export function firstRecord(
+  asked: Pick<AskedSetting, "first">,
+  named: Solving,
+  ran: ReturnType<typeof solverLast>,
+): string | undefined {
+  if (!asked.first || ran === null || restarts(named, ran).length === 0) return undefined;
+  const { limits } = ran;
+  const was = [
+    `--solver ${ran.model} --solver-effort ${ran.effort}`,
+    `--solve-minutes ${String(limits.wallSeconds / 60)} --solve-turns ${String(limits.turns)}`,
+    ...(limits.modelTurns === undefined ? [] : [`--solve-model-turns ${String(limits.modelTurns)}`]),
+  ].join(" ");
+  return `the campaign's log records no setting yet, and this command names another than its last test-side solves ran under, which was ${was}. Name that setting, which is then recorded as the campaign's, or pass --new-setting to record what this command names, which opens a new condition that no tally on record speaks for (${DOCUMENTED})`;
 }

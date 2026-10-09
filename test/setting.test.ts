@@ -9,6 +9,7 @@ import { join } from "../src/meta/path.ts";
 import { LIMITS } from "../tools/d2/campaign.ts";
 import { ROUND_OPTIONS } from "../tools/d2/round.ts";
 import {
+  firstRecord,
   keepSetting,
   type Recorded,
   recordedSetting,
@@ -119,6 +120,7 @@ describe("a campaign's setting, recorded once", () => {
       tasks: undefined,
       target: 12,
       record: UNNAMED,
+      first: true,
     });
     const first = settingAsked(
       {
@@ -246,5 +248,52 @@ describe("a setting that is not the one the log's last solves ran under", () => 
       "solves here are p/other at high, and the log's last test-side solves were p/m at high: the tallies",
     );
     expect(other[0]).toContain(told);
+  });
+});
+
+// A campaign whose solves were made before a setting was recorded has one all the same: the one
+// its last test-side solves ran under. Recode ran on 9 October with its solver held to 15 of its
+// own turns, under a 30-minute wall, and its log holds no record.
+describe("the first record of a campaign that already holds solves", () => {
+  const ran = {
+    model: "anthropic/claude-sonnet-5-5",
+    effort: "high",
+    limits: { ...LIMITS, wallSeconds: 1800, modelTurns: 15 },
+  };
+  const same = { "solve-minutes": "30", "solve-model-turns": "15" };
+  const solver = { model: ran.model, effort: ran.effort };
+
+  it("is the setting those solves ran under, named as flags where a command names another", () => {
+    const forgot = settingAsked({}, null);
+    expect(forgot.first).toBe(true);
+    expect(firstRecord(forgot, { ...forgot.named, solver }, ran)).toBe(
+      "the campaign's log records no setting yet, and this command names another than its last test-side solves ran under, which was --solver anthropic/claude-sonnet-5-5 --solver-effort high --solve-minutes 30 --solve-turns 24 --solve-model-turns 15. Name that setting, which is then recorded as the campaign's, or pass --new-setting to record what this command names, which opens a new condition that no tally on record speaks for (tools/d2/setting.ts)",
+    );
+    // Another solver under the same limits is another setting as much.
+    const named = settingAsked(same, null);
+    expect(
+      firstRecord(named, { ...named.named, solver: { model: "p/other", effort: "high" } }, ran),
+    ).toContain("names another than its last test-side solves ran under");
+    // A wall with no model turns on record is named without the flag.
+    const unlimited = { ...ran, limits: { ...LIMITS, wallSeconds: 480 } };
+    expect(firstRecord(forgot, forgot.named, unlimited)).toContain(
+      "--solve-minutes 8 --solve-turns 24. Name that setting",
+    );
+  });
+
+  it("is free where the command names that setting, where nothing was solved, and on the operator's word", () => {
+    const named = settingAsked(same, null);
+    expect(firstRecord(named, { ...named.named, solver }, ran)).toBeUndefined();
+    // A launch knows the solver only where a flag names it, and holds the limits alone otherwise.
+    expect(firstRecord(named, named.named, ran)).toBeUndefined();
+    const forgot = settingAsked({}, null);
+    expect(firstRecord(forgot, forgot.named, null)).toBeUndefined();
+    const anew = settingAsked({ "new-setting": true }, null);
+    expect(anew.first).toBe(false);
+    expect(firstRecord(anew, { ...anew.named, solver }, ran)).toBeUndefined();
+    // Once a record stands it is the record that holds a command, and this question is not asked.
+    const recorded = settingAsked({}, SHORT);
+    expect(recorded.first).toBe(false);
+    expect(firstRecord(recorded, recorded.named, ran)).toBeUndefined();
   });
 });

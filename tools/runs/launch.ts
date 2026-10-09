@@ -85,6 +85,7 @@ import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { ROUND_OPTIONS } from "../d2/round.ts";
 import {
+  firstRecord,
   type NamedSetting,
   recordedSetting,
   restarts,
@@ -380,6 +381,9 @@ export async function launch(args: readonly string[]): Promise<void> {
   const wanted: WantedSession = {
     cap: isString(values.cap) ? { dollars: Number(values.cap), reserve: Number(values.reserve) } : null,
     pastStop: isString(values["past-stop"]) ? values["past-stop"] : undefined,
+    // The launcher opens no campaign, so it knows the solver only where a flag names it: the
+    // command asks again with the campaign open.
+    unrecorded: firstRecord(setting, setting.named, host.ran),
   };
   const { refusals, notes } = examining
     ? examPreflight(events, host)

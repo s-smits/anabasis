@@ -22,7 +22,9 @@
  * - a campaign the plan's stop rule has stopped: three checkpoints without a step
  *   (`stopRule`, `docs/plan.md`, Phase 5). The operator may go on past it by saying why
  *   (`--past-stop`), and the reason is logged. Until 2026-10-09 four commands printed the rule's
- *   reading and none acted on it.
+ *   reading and none acted on it;
+ * - a first record of the campaign's setting that is another than the log's solves ran under,
+ *   unless the operator says it is new (`unrecorded`).
  *
  * A rehearsal is exempt from all of it, by name and here: its seats are scripts, which are paid
  * nothing, and it has to be able to walk any path a seed can be cut to. The refusals a comparison
@@ -83,10 +85,13 @@ export interface Wanted {
   readonly restarted: readonly string[];
   /** The operator's reason to go on past the stop rule, where one is given. */
   readonly pastStop?: string | undefined;
+  /** Why the setting asked for may not be recorded as the campaign's first, where the caller found
+   *  that the log's solves ran under another (`firstRecord`, `tools/d2/setting.ts`). */
+  readonly unrecorded?: string | undefined;
 }
 
 /** What a Builder session with no comparison after it asks for. */
-export type WantedSession = Pick<Wanted, "cap" | "pastStop">;
+export type WantedSession = Pick<Wanted, "cap" | "pastStop" | "unrecorded">;
 
 /** A comparison a command is about to start. */
 export interface Starting {
@@ -215,6 +220,7 @@ export function admission(supply: Supply, wanted: Wanted) {
       supply.held > 0 && supply.faults === null,
       `${UNREAD}. A comparison on an unread checker pays for rejections nobody can attribute`,
     ],
+    [wanted.unrecorded !== undefined, wanted.unrecorded ?? ""],
   ]);
   const refusals = [...asked, ...stopped(supply, pastStop).refusals];
   const notes = [
@@ -243,7 +249,8 @@ export function admission(supply: Supply, wanted: Wanted) {
 
 /** Why a Builder session with no comparison after it should not start on this supply, and what its
  *  reader should know when it does. */
-export function sessionAdmission(supply: Supply, { cap, pastStop, practiceSolves }: WantedPractice) {
+export function sessionAdmission(supply: Supply, wanted: WantedPractice) {
+  const { cap, pastStop, practiceSolves } = wanted;
   const afforded = cap === null ? null : Math.floor(cap.dollars / cap.reserve);
   const asked = said([
     [
@@ -254,6 +261,7 @@ export function sessionAdmission(supply: Supply, { cap, pastStop, practiceSolves
       supply.released > 0 && supply.faults === null,
       `${UNREAD}. A practice solve is judged by the same checks, and a Builder builds on what they reject`,
     ],
+    [wanted.unrecorded !== undefined, wanted.unrecorded ?? ""],
   ]);
   const refusals = [...asked, ...stopped(supply, pastStop).refusals];
   const notes = [

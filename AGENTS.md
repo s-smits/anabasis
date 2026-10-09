@@ -354,9 +354,11 @@ The setting of a campaign is recorded once in its log, as the event `campaign.se
 are scored (`--tasks` or `--target`). The first command that begins a comparison records what it
 names, with the defaults for the rest. From then on a command that names nothing runs under the
 record, and one whose flag names another is refused, by the command and by the launcher, unless
-`--new-setting` gives the operator's word that the campaign's setting changes there. A solver that
-is another model, at another effort or under other limits is another solver, and no solve on
-record then counts.
+`--new-setting` gives the operator's word that the campaign's setting changes there. A campaign
+whose solves were made before a setting was recorded has one all the same, the one its last
+test-side solves ran under, and the first record is held to it in the same way (`firstRecord`).
+A solver that is another model, at another effort or under other limits is another solver, and no
+solve on record then counts.
 
 Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.10
 (`--level`), a stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve

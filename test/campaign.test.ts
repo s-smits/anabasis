@@ -4,7 +4,9 @@
 // own, and the campaign keeps its harnesses by name: the one it started with, the starter
 // and the latest a session left.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
+import { priceKey } from "../src/kernel/meter.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets, taskVersion } from "../src/kernel/task.ts";
 import {
@@ -21,6 +23,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { errorMessage } from "../src/meta/runtime-values.ts";
 import { openHarness } from "../src/solve/harness.ts";
 import { starter, keptAs, LIMITS, openCampaign } from "../tools/d2/campaign.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
@@ -33,6 +36,8 @@ const NAME = `test-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-campaign-")));
 const bundle = join(root, "bundle");
 const ARGS = { root, sweep: "s", cycle: "c01", bundle, name: NAME };
+/** A campaign whose solves were made before any setting was recorded. */
+const EARLIER = `${NAME}-earlier`;
 const ASKED = { solves: 2, level: 0.1 };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
@@ -47,7 +52,9 @@ setDefaultTimeout(60_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  rmSync(join(REPO, ".ana", "d2", NAME), { recursive: true, force: true });
+  for (const name of [NAME, EARLIER]) {
+    rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
+  }
 });
 
 /** The sweep, its one graded solve, the cycle's harness state and the pack, as v1 lays them out. */
@@ -591,5 +598,61 @@ describe("a campaign", () => {
     const kept = read(campaign.log).filter(({ kind }) => kind === "campaign.setting");
     expect(kept.map(({ data }) => data.minutes)).toEqual([8]);
     expect(read(campaign.log).some(({ data }) => data.session === "z-4")).toBe(false);
+  });
+
+  // Recode ran on 9 October with its solver held to 15 of its own turns, and its log holds no
+  // record of a setting: the first command of this source there has to name what it ran under.
+  it("holds the first record of a campaign that already holds solves to what they ran under", async () => {
+    const campaign = await openCampaign({ ...ARGS, name: EARLIER });
+    const { model, effort } = campaign.test;
+    // One test-side solve by the cycle's own solver, under an eight-minute wall and 15 model turns.
+    const condition: Condition = {
+      contract: "c1",
+      harness: "h1",
+      task: "v1",
+      model: priceKey(model),
+      effort,
+      prices: { [priceKey(model)]: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+      runtime: {},
+      compaction: "off",
+      solverTools: "h1",
+      verifierTools: "t1",
+      sandbox: "p1",
+      limits: { ...LIMITS, wallSeconds: 480, modelTurns: 15 },
+      host: "h",
+      side: "test",
+    };
+    append(campaign.log, "solve.started", {
+      solve: "s-1",
+      condition: recordCondition(campaign.log, condition),
+    });
+    const flags = [
+      ...Object.entries({ ...ARGS, name: EARLIER }).flatMap(([flag, value]) => [`--${flag}`, value]),
+      "--cap",
+      "100",
+      "--parent",
+      "starter",
+      "--builder",
+      "faux/none",
+    ];
+    const refusal = "the campaign's log records no setting yet, and this command names another";
+    const was = `which was --solver ${priceKey(model)} --solver-effort ${effort} --solve-minutes 8 --solve-turns 24 --solve-model-turns 15`;
+    /** What a command refused with, or nothing where it ran. */
+    const refused = (ran: Promise<unknown>) => ran.then(() => "", errorMessage);
+    // A round and a session by itself, each started by hand with the setting left out.
+    const round = await refused(roundCommand([...flags, "--session", "z-1"]));
+    expect(round).toContain(refusal);
+    expect(round).toContain(was);
+    expect(await refused(sessionCommand([...flags, "--session", "z-2"]))).toContain(was);
+    // Named as its solves ran, the setting is free to be recorded; what still refuses is the rest.
+    const named = [...flags, "--solve-minutes", "8", "--solve-model-turns", "15"];
+    const rest = await refused(roundCommand([...named, "--session", "z-1"]));
+    expect(rest).toContain("the log holds no held-out task to score");
+    expect(rest).not.toContain(refusal);
+    // So it is on the operator's word that the setting is new.
+    expect(await refused(roundCommand([...flags, "--session", "z-1", "--new-setting"]))).not.toContain(
+      refusal,
+    );
+    expect(read(campaign.log).some(({ kind }) => kind === "campaign.setting")).toBe(false);
   });
 });

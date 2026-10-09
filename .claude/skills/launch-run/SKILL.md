@@ -160,6 +160,12 @@ the setting, as when the budget is set anew, pass `--new-setting` with what the 
 under from then on. Nothing is carried over from the old record, and no tally on record speaks
 for the new one.
 
+A campaign that ran before 9 October holds solves and no record. Its setting is the one its last
+test-side solves ran under, and the first command of this source there has to name it once: a
+launch or a command that names another is refused, and the refusal gives the flags to type.
+Recode's solver was held to 15 of its own turns, so its first command names
+`--solve-model-turns 15` beside its solver and its wall, or says `--new-setting`.
+
 A comparison that can start may still be read only after a person has labelled its rejections.
 With no `--reviewer`, every rejected answer sets its task aside until `tools/d2/settle.ts` has
 labels for it; with one, the Referee's ruling of a true fail counts. Say which was meant before

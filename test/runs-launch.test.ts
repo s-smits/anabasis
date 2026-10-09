@@ -15,6 +15,7 @@ import { claimed } from "../src/examiner/session.ts";
 import { append, type LogEvent } from "../src/kernel/log.ts";
 import {
   type Asked,
+  endedEarly,
   examPreflight,
   family,
   launch,
@@ -143,6 +144,19 @@ describe("a launch of a Builder session with no comparison after it", () => {
     // Inside a round the same session goes on to its comparison, and is not refused.
     expect(spent([started, ended], "b-2")).toBeNull();
     expect(sessionTaken([started, ended], "b-3")).toBeNull();
+  });
+
+  // live-1's session b-2 left its harness as it was in 4.9 s and exited with code 0, which the
+  // launcher reported as a start that failed (2026-10-09).
+  it("is said to have finished when it ends whole inside the start window", () => {
+    const base = "/logs/launch-b-2";
+    expect(endedEarly(null, "live-1 b-2", base)).toBeNull();
+    expect(endedEarly(0, "live-1 b-2", base)).toBe(
+      "live-1 b-2 finished within 8 s: read /logs/launch-b-2.out",
+    );
+    expect(() => endedEarly(1, "live-1 b-2", base)).toThrow(
+      "live-1 b-2 ended within 8 s, with code 1: read /logs/launch-b-2.err",
+    );
   });
 
   it("is named by --no-comparison, which neither a checkpoint nor an Examiner session takes", async () => {

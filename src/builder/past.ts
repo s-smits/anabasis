@@ -21,8 +21,12 @@
  * - A comparison is told as its tally and its reading, and only once it has tallied a task. It
  *   names no task, no share of valid answers, no ruling and no cost: a held-out task is never
  *   shown, and which of them were won is a way to it. That is a few bits a comparison, which the
- *   plan accepts while comparisons are few.
+ *   plan accepts while comparisons are few. The line says how many tasks the tally is over, which
+ *   is the tally's own sum. Until 2026-10-09 it gave the three counts with no unit, and the first
+ *   live Builder to be told one (Sonnet 5.5 at high, told "0 won, 0 lost, 5 tied") wrote in its
+ *   note that its harness had tied "on all 5 comparisons so far", of which the log held one.
  */
+import { plural } from "../meta/text.ts";
 import type { Handover, PracticeFail } from "./handover.ts";
 
 /** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. */
@@ -68,7 +72,8 @@ export function failsTold(fails: readonly PracticeFail[], tasks: ReadonlyMap<str
 
 /**
  * Every comparison of the campaign that tallied a task, a line each, oldest first: the harness
- * that was measured, the tally and the reading. No task is named and no count but the tally's.
+ * that was measured, the tally with the number of tasks it is over, and the reading. No task is
+ * named and no count but the tally's.
  */
 export function comparisonsTold(steps: readonly Handover[]): string[] {
   return steps.flatMap((step) => {
@@ -76,7 +81,7 @@ export function comparisonsTold(steps: readonly Handover[]): string[] {
     if (step.step !== "comparison" || step.tally === null || reading === undefined) return [];
     const { wins, losses, ties } = step.tally;
     return [
-      `- Harness ${shortDigest(step.fresh)} against the reference harness: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
+      `- Harness ${shortDigest(step.fresh)} against the reference harness, one comparison over ${plural(wins + losses + ties, "task")}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
     ];
   });
 }

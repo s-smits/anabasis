@@ -46,7 +46,9 @@
  * It then starts the command with the same flags, niced, in a process group of its own, with its
  * output in `.ana/d2/<name>/launch-<session>.out` and `.err`, and writes `launch-<session>.json`
  * beside them: the flags, the commit and the load it started under. Starting proves the process
- * stayed up for `START_MS`, and no model work.
+ * stayed up for `START_MS`, and no model work. A command that ends inside that window with code 0
+ * finished, and is said to have: a Builder session that leaves its harness as it was can take
+ * seconds, and the first live one to do so (4.9 s, 2026-10-09) was reported as a start that failed.
  *
  * `stop` ends the process that writes each named run's log and every process that one started, and
  * nothing else: a round started by hand can share its process group with a sibling. A name is
@@ -449,10 +451,10 @@ export async function launch(args: readonly string[]): Promise<void> {
   };
   writeFileSync(`${base}.json`, `${capturedJsonStringify(receipt, null, 2)}\n`);
   const ended = await Promise.race([child.exited, Bun.sleep(START_MS).then(() => null)]);
-  if (ended !== null) {
-    throw new Error(
-      `${name} ended within ${String(START_MS / 1000)} s, with code ${String(ended)}: read ${base}.err`,
-    );
+  const early = endedEarly(ended, `${name} ${session}`, base);
+  if (early !== null) {
+    console.log(early);
+    return;
   }
   child.unref();
   console.log(
@@ -460,6 +462,18 @@ export async function launch(args: readonly string[]): Promise<void> {
   );
   console.log(`  watch  bun run runs pulse ${name}`);
   console.log(`  stop   bun run runs stop ${name} --yes`);
+}
+
+/**
+ * What a launch says of a command that ended inside its start window, and nothing of one that still
+ * runs (`ended` is then null). Code 0 is a command that finished; any other is a start that failed,
+ * which throws.
+ */
+export function endedEarly(ended: number | null, run: string, base: string): string | null {
+  if (ended === null) return null;
+  const within = `within ${String(START_MS / 1000)} s`;
+  if (ended !== 0) throw new Error(`${run} ended ${within}, with code ${String(ended)}: read ${base}.err`);
+  return `${run} finished ${within}: read ${base}.out`;
 }
 
 /** `pid` and every process it started, the nearest first, from a `ps` table of pid and parent. */

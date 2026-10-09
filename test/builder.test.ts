@@ -407,7 +407,7 @@ describe("a Builder session", () => {
       opening.indexOf("Public rules of the domain:"),
     );
     expect(s.sent[0]).toContain(
-      String.raw`Comparisons so far, on tasks you are not shown:\n- Harness ffffffff against the reference harness: 1 won, 0 lost, 6 tied, which reads no step.`,
+      String.raw`Comparisons so far, on tasks you are not shown:\n- Harness ffffffff against the reference harness, one comparison over 7 tasks: 1 won, 0 lost, 6 tied, which reads no step.`,
     );
     // The held-out task's own fail is on record, and no line of the message is of it.
     expect(s.sent[0]).not.toContain(s.exam);

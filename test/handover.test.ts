@@ -348,10 +348,10 @@ describe("the Builder's filter over that reading", () => {
     c.compared("g-5", { old: HA, fresh: HB }, null);
     const told = comparisonsTold(campaignOf(c.events()).steps);
     expect(told).toEqual([
-      "- Harness aaaaaaaa against the reference harness: 4 won, 0 lost, 0 tied, which reads a step.",
-      "- Harness bbbbbbbb against the reference harness: 1 won, 0 lost, 3 tied, which reads no step.",
-      "- Harness bbbbbbbb against the reference harness: 4 won, 0 lost, 0 tied, which reads no step: it did not hold against the starting harness of the campaign.",
-      "- Harness bbbbbbbb against the reference harness: 4 won, 0 lost, 0 tied, which reads a step, not yet read against the starting harness of the campaign.",
+      "- Harness aaaaaaaa against the reference harness, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads a step.",
+      "- Harness bbbbbbbb against the reference harness, one comparison over 4 tasks: 1 won, 0 lost, 3 tied, which reads no step.",
+      "- Harness bbbbbbbb against the reference harness, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads no step: it did not hold against the starting harness of the campaign.",
+      "- Harness bbbbbbbb against the reference harness, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads a step, not yet read against the starting harness of the campaign.",
     ]);
     // No held-out task, no share of valid answers, no ruling and no cost.
     expect(told.join("\n")).not.toMatch(/s[1-4]\b|0\.0625|valid|earned|\$/);
@@ -401,6 +401,29 @@ describe("the moves that may start next", () => {
     unread.record("task.state", { version: "p1", state: "released" });
     expect(move(unread, "a Builder session by itself")?.refusals.join("\n")).toContain("never been read");
     expect(move(unread, "an Examiner session")).toMatchObject({ may: true, refusals: [] });
+  });
+
+  // live-1, 2026-10-09: every task of its one comparison tied, so the round and the checkpoint were
+  // refused, and the session beside them read "may start" with nothing joining the two. Here the
+  // round is refused for having no held-out task, which the session does not need either.
+  it("say of a session by itself that no comparison could follow it, where a round is refused", () => {
+    const whole = campaign();
+    whole.setUp();
+    expect(move(whole, "a Builder session by itself")?.notes.join("\n")).not.toContain("is refused");
+    const c = campaign();
+    c.record("task.proposed", { version: "p1" });
+    c.record("task.gate", { version: "p1", gate: 1, outcome: "passed" });
+    c.record("task.state", { version: "p1", state: "released" });
+    c.record("checker.read", { contract: "c", checks: "k", faults: [] });
+    expect(move(c, "a round")).toMatchObject({ may: false });
+    const alone = move(c, "a Builder session by itself");
+    expect(alone?.may).toBe(true);
+    expect(alone?.notes.at(-1)).toBe(
+      "a comparison of the harness it leaves is refused as the log stands, for the reasons a round is given",
+    );
+    // A session that is itself refused says its own refusal and no more.
+    const capless = { ...ASKED, comparison: { ...WANTED, cap: null }, session: { cap: null } };
+    expect(move(c, "a Builder session by itself", capless)?.notes.join("\n")).not.toContain("is refused");
   });
 
   it("are a checkpoint once a session has left a harness that is not the reference", () => {

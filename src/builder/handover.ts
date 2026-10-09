@@ -143,6 +143,8 @@ export interface Move {
 const REPAIRED_AFTER = 2;
 const RULINGS = ["earned", "check-defect", "unclear"] as const;
 const STEP = "step";
+const UNCOMPARED =
+  "a comparison of the harness it leaves is refused as the log stands, for the reasons a round is given";
 
 const count = (value: unknown): number => (isNumber(value) ? value : 0);
 const listed = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
@@ -327,8 +329,10 @@ export function nextMoves(events: readonly LogEvent[], asked: Asked): Move[] {
       : comparedAs(events, latest).filter(
           ({ against: old, reading }) => reading === STEP && (reference === null || old === reference),
         );
+  const round = admission(against, { ...asked.comparison, builds: true });
+  const alone = sessionAdmission(supply, asked.session);
   return [
-    move("a round", admission(against, { ...asked.comparison, builds: true })),
+    move("a round", round),
     move(
       "a checkpoint",
       latest === null || latest === reference
@@ -340,7 +344,14 @@ export function nextMoves(events: readonly LogEvent[], asked: Asked): Move[] {
           }
         : admission(against, { ...asked.comparison, builds: false }),
     ),
-    move("a Builder session by itself", sessionAdmission(supply, asked.session)),
+    move("a Builder session by itself", {
+      refusals: alone.refusals,
+      // A session scores nothing, so its admission does not ask whether a comparison could follow.
+      // The view says so where none could: live-1 on 2026-10-09 read "may start" for a session
+      // beside a refused round and a refused checkpoint, with nothing joining the two.
+      notes:
+        alone.refusals.length === 0 && round.refusals.length > 0 ? [...alone.notes, UNCOMPARED] : alone.notes,
+    }),
     move("an Examiner session", {
       refusals: [],
       notes: [

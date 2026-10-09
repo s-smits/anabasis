@@ -13,7 +13,7 @@ const condition: Condition = {
   model: "claude/claude-opus-5",
   effort: "high",
   prices: { "claude/claude-opus-5": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } },
-  runtime: { "@earendil-works/pi-ai": "1.0.4", "@anthropic-ai/claude-agent-sdk": "0.3.285" },
+  runtime: { "@earendil-works/pi-ai": "1.1.0", "@anthropic-ai/claude-agent-sdk": "0.3.285" },
   compaction: "off",
   solverTools: "s1",
   verifierTools: "v1",

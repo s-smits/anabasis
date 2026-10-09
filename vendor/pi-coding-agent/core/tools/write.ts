@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.0.4 (github.com/earendil-works/pi, 7c10bd43, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/core/tools/write.ts. Departure: the TUI renderers are left out, since no terminal UI draws these calls.
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { mkdir as fsMkdir, writeFile as fsWriteFile } from "fs/promises";

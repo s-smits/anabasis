@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.0.4 (github.com/earendil-works/pi, 7c10bd43, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/core/tools/bash.ts. Departure: the TUI renderers are left out, since no terminal UI draws these calls.
 // Their update throttle, BASH_UPDATE_THROTTLE_MS = 100 in renderers/bash.ts, is copied here as a constant.
 // Departure: `tempDir` in the options, where a cut command's full output goes (see utils/output-files.ts).

@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.0.4 (github.com/earendil-works/pi, 7c10bd43, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/utils/shell.ts. Departure: getShellEnv no longer puts pi's own bin
 // directory first on PATH, since this repository installs none; a solve's shell passes its own
 // environment through the bash tool's spawnHook.

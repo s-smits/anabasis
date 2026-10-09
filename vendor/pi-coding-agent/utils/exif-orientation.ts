@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.0.4 (github.com/earendil-works/pi, 7c10bd43, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/utils/exif-orientation.ts, verbatim but for
 // the compiler: this repository's strict options force the `!` on indexed reads and the `| undefined` on optional fields.
 import type { PhotonImageType } from "./photon.ts";

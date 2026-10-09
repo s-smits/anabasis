@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.0.4 (github.com/earendil-works/pi, 7c10bd43, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/utils/image-resize-core.ts, verbatim.
 import { applyExifOrientation } from "./exif-orientation.ts";
 import { loadPhoton } from "./photon.ts";
@@ -19,6 +19,16 @@ export interface ResizedImage {
 	height: number;
 	wasResized: boolean;
 }
+
+/**
+ * Tag on image resize worker replies. Node can post its own messages on the worker channel
+ * (for example `{ "watch:require": [...] }` under `node --watch`), so replies must be identifiable.
+ */
+export const IMAGE_RESIZE_WORKER_RESPONSE_TYPE = "pi:image-resize-response";
+
+export type ResizeImageWorkerResponse =
+	| { type: typeof IMAGE_RESIZE_WORKER_RESPONSE_TYPE; result: ResizedImage | null }
+	| { type: typeof IMAGE_RESIZE_WORKER_RESPONSE_TYPE; error: string };
 
 // 4.5MB of base64 payload. Provides headroom below Anthropic's 5MB limit.
 const DEFAULT_MAX_BYTES = 4.5 * 1024 * 1024;

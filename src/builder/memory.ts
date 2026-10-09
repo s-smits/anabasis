@@ -1,0 +1,422 @@
+/**
+ * Builder-owned Markdown notes, bounded when read and carried between sessions: what a build would
+ * otherwise have to learn again, never evidence about a harness. The Builder edits these files in
+ * its own session, so no extra model turn is spent rewriting them, and they are no part of the
+ * harness that is frozen and measured.
+ *
+ * Copied from v1, `src/author/builder-memory.ts` (s-smits/anabasis at 3f93d06, MIT), with its
+ * tests (`test/author-builder-memory.test.ts`): the two files and their starters, the byte limits
+ * and the cut that keeps both ends and marks what went, the one copy of a repeated section, the
+ * notes block a fresh session opens on, the notice for a file over its limit, and the carry, with
+ * the `scratch/` helpers under their two limits and no link followed. The plan keeps v1's notes as
+ * what a session opens with when the conversation is lost (`docs/plan.md`, Phase 5), and every v2
+ * session is that case.
+ *
+ * Departures, each because v2 is laid out otherwise:
+ * - v1 carried from one epoch's workspace to the next, both under the campaign's root. A v2
+ *   session's workspace is its home, on a volume that is released when the session ends. So the
+ *   carry is made once, when a session ends, out of its home into a folder the campaign keeps for
+ *   the session (`keepMemory`), and the next session's home is seeded with what that folder holds
+ *   (`seedMemory`). The carry itself is v1's, given the two directories and the session's id in
+ *   place of an epoch record.
+ * - One succession, where v1 had two. A changed request or Builder opened an epoch whose
+ *   scratchpad stayed behind (`binding`); a v2 campaign has one contract, and a change to it opens
+ *   another campaign, with nothing of this one carried.
+ * - A notes file is read only where it is a plain file. v1 read whatever stood at the path. A v2
+ *   Builder is behind a wall that the host is not, and the host carries what it reads here into
+ *   the next home and its opening message: a link at `MEMORY.md` would carry a file the wall
+ *   denies. v1's walk of `scratch/` already follows no link.
+ * - `CANDIDATE_INTERFACE` and `noteAtMemoryHead` are not taken. The first said which paths a v1
+ *   candidate's diff may hold, and a v2 harness is `harness/` and nothing beside it. The second
+ *   wrote the controller's line on how a workspace was seeded, and a v2 home is always seeded the
+ *   same way.
+ * - The starters name what a v2 Builder works with: programs where v1 had a verifier in reach,
+ *   a session where v1 had a build, a comparison where v1 had a battery.
+ */
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "../meta/filesystem.ts";
+import { compareCodeUnits } from "../meta/stable-json.ts";
+import { dirname, join } from "../meta/path.ts";
+
+/** What the carry copied, and the names it left behind: a tree as `dir/`, a file by its path. */
+interface ScratchCarry {
+  carried: string[];
+  left: string[];
+}
+
+/** One top-level entry of `scratch/`: the regular files that would cross under it, by path from
+ *  `scratch/`, their bytes, and those over the per-file limit, which stay behind. */
+interface ScratchEntry {
+  files: string[];
+  bytes: number;
+  large: string[];
+}
+
+export const MEMORY_FILE = "MEMORY.md";
+export const SCRATCHPAD_FILE = "SCRATCHPAD.md";
+
+/** File-size limits that keep memory short enough to reread: 8 KB is roughly two thousand tokens,
+ *  included once per pass. Longer text is cut at a line boundary and marked, so the author can see
+ *  that older content went rather than meeting a shorter file with no explanation. One constant per
+ *  file bounds both the inherited write and the prompt read, including a read after the Builder has
+ *  edited the file directly, because two constants would mean the write path and the read path
+ *  disagreeing about what fits. */
+export const MEMORY_CAP_BYTES = 8_000;
+const SCRATCHPAD_CAP_BYTES = 2_000;
+
+/** Headings keyed to what the Builder actually decides, so a pass finds its own section. */
+export const STARTER_MEMORY = `# Builder memory
+
+Keep the useful notes for this domain here. Update them when your understanding changes and keep
+them short enough to read before each session. The public rules are in every session's opening
+message; this file records what the next session would otherwise need to learn again.
+
+## Domain and representation
+
+## Programs and tools
+
+## Task families
+
+## Access limits and constraints
+
+## Known failures and fixes
+
+## Risk
+<!-- One line: what most threatens the next comparison's reading. -->
+`;
+
+const STARTER_SCRATCHPAD = `# Scratchpad
+
+Open questions and next steps for the next session. Remove a line when it is resolved.
+`;
+
+const FILES: ReadonlyArray<readonly [string, string, number]> = [
+  [MEMORY_FILE, STARTER_MEMORY, MEMORY_CAP_BYTES],
+  [SCRATCHPAD_FILE, STARTER_SCRATCHPAD, SCRATCHPAD_CAP_BYTES],
+];
+
+/** The line a cut leaves where it removed text, and the pattern that finds every earlier one, so a
+ *  second cut folds their counts into its own line instead of stacking bookkeeping. */
+const CUT_MARKER_PATTERN = /<!-- memory cut to \d+ bytes: (\d+) bytes dropped here -->\n?/g;
+
+/** Room reserved inside the ceiling for that marker line, which is about 60 bytes. Reserving it is
+ *  what keeps a cut file inside the limit it was cut to. */
+const CUT_MARKER_RESERVE_BYTES = 96;
+
+/** The share of a cut file's budget kept from its head; the rest comes from its tail. */
+const HEAD_SHARE = 2 / 3;
+
+/** Where each end of a cut may stop: after a line break, or after any whitespace. */
+const WHOLE_UNITS = { head: [/^([\s\S]*\n)/, /^([\s\S]*\s)/], tail: [/\n([\s\S]*)$/, /\s([\s\S]*)$/] };
+
+/** The host's lines at the head of a notes file: the markers `carryMemoryForward` writes to say
+ *  where an inherited file came from and which helper files crossed beside it. A cut that dropped
+ *  a carry marker would leave a predecessor's notes reading as this session's own, so the cut
+ *  keeps them whole ahead of its head share. Every one of them describes the session that wrote
+ *  it, so the next carry strips them all. A cut's own marker is not among them: it sits where the text
+ *  went and stays true of the text in any session. A file holding nothing else ends on the last
+ *  marker's `-->`, because the read trims it. */
+const HEAD_MARKER_PATTERN = /^(?:<!-- (?:carried forward from|scratch\/ holds)[^\n]*-->(?:\n+|$))+/;
+
+/** The Builder's own helper scripts and the small data they read — generators, local checks, debug
+ *  probes — live under `scratch/`, and a successor session otherwise rebuilds each one from nothing,
+ *  so the tree crosses, whole directories included. A file crosses only under the per-file limit:
+ *  the helpers are kilobytes, while an output file can hold hundreds of megabytes. The carry as a
+ *  whole stops at the ceiling, sixteen files at the per-file limit, which sits above the few
+ *  megabytes a Builder's files under the per-file limit have added up to. A top-level folder
+ *  crosses whole or not at all, and a file over the per-file limit never crosses, even inside a
+ *  folder that does. The top-level entries are taken smallest first, so that a large folder sorting
+ *  early cannot spend the ceiling before the scripts are reached. Scratch is outside `harness/`, so
+ *  nothing that crosses can enter a harness. */
+export const SCRATCH_DIR = "scratch";
+const SCRATCH_FILE_LIMIT_BYTES = 256 * 1024;
+const SCRATCH_CARRY_LIMIT_BYTES = 16 * SCRATCH_FILE_LIMIT_BYTES;
+
+/** The two limits in the words the handover and the carry marker both use. */
+export const SCRATCH_LIMITS = `files up to ${String(SCRATCH_FILE_LIMIT_BYTES / 1024)} KB each, ${String(SCRATCH_CARRY_LIMIT_BYTES / 1024)} KB in all`;
+
+/** How many helper names the carry marker spells out; the rest are counted. A predecessor can leave
+ *  a hundred helpers, and naming each one spent a third of the memory ceiling on a file listing the
+ *  Builder can read with ls. */
+const HELPER_NAMES_SHOWN = 5;
+
+/** Starter note files exactly as a session's home is seeded with them. One owner for the bytes and for the
+ *  question "has this been authored", because `authoredBody` decides that by comparing against
+ *  these same strings: a second copy of the starter text would make an untouched file look
+ *  written. */
+export const STARTER_MEMORY_FILES: ReadonlyArray<readonly [string, string]> = FILES.map(
+  ([name, starter]) => [name, starter] as const,
+);
+
+/** The authored body of one memory file, or "" when it is missing or still the untouched starter.
+ *  An unwritten file is omitted from the prompt entirely, so a first pass receives the same prompt
+ *  it would receive if memory did not exist, rather than an empty memory section inviting it to
+ *  treat the headings as a form to fill in. A starter under the host's lines is just those lines. */
+function authoredBody(workspace: string, file: string, starter: string): string {
+  let text: string;
+  try {
+    // The entry itself, never what a link there points at (see the departures above).
+    if (!lstatSync(join(workspace, file)).isFile()) return "";
+    text = readFileSync(join(workspace, file), "utf8");
+  } catch {
+    return "";
+  }
+  const markers = HEAD_MARKER_PATTERN.exec(text)?.[0] ?? "";
+  return (text.slice(markers.length).trim() === starter.trim() ? markers : text).trim();
+}
+
+/** A memory file grows by appending, so the same headed section arrives once per pass and several
+ *  identical copies of it spend the byte cap on text the next session already knows. Keep one copy
+ *  of each exact section and drop a heading that carries nothing under it. */
+function withoutRepeatedSections(text: string): string {
+  const seen = new Set<string>();
+  const [head = "", ...sections] = `\n${text}`.split("\n## ");
+  const kept: string[] = [];
+  for (const section of sections) {
+    const trimmed = section.trim();
+    if (!trimmed.includes("\n") || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    kept.push(section);
+  }
+  return [head, ...kept].join("\n## ").slice(1);
+}
+
+/** One end of a cut, back to whole lines unless that keeps under half the slice, and then to whole
+ *  words; either way a character the byte slice split goes with the partial unit. A line cut alone
+ *  emptied a note written as one paragraph: run custom-sol-20260929T132256243Z-2d7812 carried none
+ *  of a 2,052-byte next-experiment plan over a 72-byte overflow. */
+function wholeUnits(slice: string, end: keyof typeof WHOLE_UNITS): string {
+  const [line = "", word = ""] = WHOLE_UNITS[end].map((unit) => unit.exec(slice)?.[1] ?? "");
+  return line.length * 2 >= slice.length ? line : word;
+}
+
+/**
+ * Limit one memory file to its declared size, keeping both ends and cutting the middle at line
+ * boundaries. Which text survives is the whole decision, and Builders do not agree on where the
+ * newest note goes: most write newest-first or under a title and fixed section headings, so a cut
+ * that kept only the tail dropped exactly the note the last pass wrote, while an append-only writer
+ * puts it at the end. Two thirds of the budget go to the head and the rest to the tail, so either
+ * convention keeps its newest note, and the Risk section, which closes the starter layout, stays
+ * too.
+ *
+ * The marker sits where the text went and names how many bytes went, so a writer sees that its file
+ * was cut instead of meeting a shorter file with no explanation; earlier markers fold into the new
+ * count. The host's lines at the head are kept inside the ceiling wherever the cut falls, so the
+ * write path and the read path preserve them by one rule.
+ */
+function cappedToEnds(text: string, bytes: number): string {
+  const encoder = new TextEncoder();
+  if (encoder.encode(text).byteLength <= bytes) return text;
+  const pinned = HEAD_MARKER_PATTERN.exec(text)?.[0] ?? "";
+  let earlier = 0;
+  const unmarked = text.slice(pinned.length).replace(CUT_MARKER_PATTERN, (_line, dropped: string) => {
+    earlier += Number.parseInt(dropped, 10);
+    return "";
+  });
+  const body = encoder.encode(unmarked);
+  const budget = Math.max(0, bytes - encoder.encode(pinned).byteLength - CUT_MARKER_RESERVE_BYTES);
+  const decoder = new TextDecoder();
+  const head = wholeUnits(decoder.decode(body.subarray(0, Math.floor(budget * HEAD_SHARE))), "head");
+  const headBytes = encoder.encode(head).byteLength;
+  const tailSlice = decoder.decode(
+    body.subarray(Math.max(headBytes, body.byteLength - (budget - headBytes))),
+  );
+  const tail = wholeUnits(tailSlice, "tail");
+  const dropped = earlier + body.byteLength - headBytes - encoder.encode(tail).byteLength;
+  return `${pinned}${head}<!-- memory cut to ${bytes} bytes: ${dropped} bytes dropped here -->\n${tail}`;
+}
+
+/** One line saying a notes file is over the size a fresh session reads whole, or null when it fits.
+ *  The cut happens on the next read, so the line is what lets the Builder shorten the file itself
+ *  before the host chooses which middle to drop. */
+export function memoryOverCapNotice(workspace: string): string | null {
+  const over = FILES.flatMap(([file, , cap]) => {
+    const size = existsSync(join(workspace, file)) ? Bun.file(join(workspace, file)).size : 0;
+    return size > cap ? [`${file} is ${String(size)} bytes, over its ${String(cap)}-byte limit`] : [];
+  });
+  if (over.length === 0) return null;
+  return `${over.join("; ")}: the next session reads its head and tail and drops the middle, so shorten it now.`;
+}
+
+/**
+ * The memory block that opens a session's first message. The block is empty until a session has
+ * written something beyond the starter text, so a first session receives the same message a
+ * session without memory would, with no empty memory section added to its instructions.
+ *
+ * It is rendered first in the opening message, ahead of the public rules and the host's own
+ * statements. Below them instead, under the current rules, tasks and session limits, the oldest
+ * text reads as the latest instruction. The header says the model wrote these notes, that they may
+ * describe an earlier condition, and that everything below overrides them; the carried file's
+ * session marker says where they came from, which is already the history a reader needs, so the
+ * block adds no further identity field.
+ *
+ * The size limit is applied on the read as well as on the carry. `carryMemoryForward` bounds what
+ * it stores, but the Builder can grow MEMORY.md afterwards through ordinary file edits, so a read
+ * that trusted the stored size would put an unbounded file into a prompt. Both paths use the same
+ * rule, keep both ends and mark what went, rather than choosing separate limits or cutting
+ * different parts of the file.
+ */
+export function builderMemoryBlock(workspace: string): string {
+  const blocks = FILES.values()
+    .map(([file, starter, cap]) => [file, authoredBody(workspace, file, starter), cap] as const)
+    .filter(([, body]) => body !== "")
+    .map(([file, body, cap]) => `--- ${file} ---\n${cappedToEnds(withoutRepeatedSections(body), cap)}`)
+    .toArray();
+  if (blocks.length === 0) return "";
+  return [
+    "Historical notes, model-authored and possibly stale. You wrote these files in earlier sessions,",
+    'and they are in your home directory now; a "carried forward from <session>" marker inside a file',
+    "names the session it came from. Nothing here is checked by the host. Everything below this block",
+    "is current and overrides it.",
+    "",
+    blocks.join("\n\n"),
+  ].join("\n");
+}
+
+function listed(names: readonly string[]): string {
+  const rest = names.length - HELPER_NAMES_SHOWN;
+  return `${names.slice(0, HELPER_NAMES_SHOWN).join(", ")}${rest > 0 ? ` and ${String(rest)} more` : ""}`;
+}
+
+function helperMarker(from: string, { carried, left }: ScratchCarry): string {
+  const held =
+    carried.length === 0
+      ? `none of ${from}'s files`
+      : `${from}'s ${String(carried.length)} helper file${carried.length === 1 ? "" : "s"}: ${listed(carried)}`;
+  const behind =
+    left.length === 0 ? "" : `; left behind, over the limit of ${SCRATCH_LIMITS}: ${listed(left)}`;
+  return `<!-- scratch/ holds ${held}${behind}. -->`;
+}
+
+/** Add what lies at `path` under `root` to `found`. `lstat` describes the entry itself and not what a
+ *  link points at, so a linked file or directory is neither one and nothing is followed out of the
+ *  tree. The walk stops once the entry's bytes are past the ceiling, so a directory of many small
+ *  files is not read to its end, and the entry stays behind however much more it holds. Only bytes
+ *  stop it: a tree of empty files, or of files over the per-file limit, is walked in full, one stat
+ *  each. */
+function gatherScratch(root: string, path: string, found: ScratchEntry): void {
+  if (found.bytes > SCRATCH_CARRY_LIMIT_BYTES) return;
+  const stat = lstatSync(join(root, path));
+  if (stat.isDirectory()) {
+    for (const child of readdirSync(join(root, path)).sort(compareCodeUnits)) {
+      gatherScratch(root, join(path, child), found);
+    }
+  } else if (stat.isFile()) {
+    if (stat.size > SCRATCH_FILE_LIMIT_BYTES) {
+      found.large.push(path);
+    } else {
+      found.files.push(path);
+      found.bytes += stat.size;
+    }
+  }
+}
+
+function carryScratchHelpers(prior: string, next: string): ScratchCarry {
+  const from = join(prior, SCRATCH_DIR);
+  const to = join(next, SCRATCH_DIR);
+  const carry: ScratchCarry = { carried: [], left: [] };
+  // The lstat refuses a `scratch` that is itself a link, which would carry whatever it points at.
+  if (lstatSync(from, { throwIfNoEntry: false })?.isDirectory() !== true || existsSync(to)) return carry;
+  const entries = readdirSync(from).map((name) => {
+    const found: ScratchEntry = { files: [], bytes: 0, large: [] };
+    gatherScratch(from, name, found);
+    return { name, found };
+  });
+  // Smallest first, the name breaking a tie, so that a large folder sorting early (a cache, a
+  // trash) cannot spend the ceiling before the scripts beside it are reached.
+  entries.sort((a, b) => a.found.bytes - b.found.bytes || compareCodeUnits(a.name, b.name));
+  let bytes = 0;
+  for (const { name, found } of entries) {
+    if (bytes + found.bytes > SCRATCH_CARRY_LIMIT_BYTES) {
+      carry.left.push(lstatSync(join(from, name)).isDirectory() ? `${name}/` : name);
+      continue;
+    }
+    bytes += found.bytes;
+    carry.carried.push(...found.files);
+    carry.left.push(...found.large);
+  }
+  // The marker names helpers in path order whatever order they were taken in.
+  carry.carried.sort(compareCodeUnits);
+  carry.left.sort(compareCodeUnits);
+  for (const path of carry.carried) {
+    mkdirSync(dirname(join(to, path)), { recursive: true });
+    writeFileSync(join(to, path), readFileSync(join(from, path)));
+  }
+  return carry;
+}
+
+/**
+ * A session's notes carried out of `prior`, the home it worked in, into `next`, a folder that holds
+ * what the session after it opens on; `from` names the session in the markers. Every session opens
+ * in a new home, so this is the ordinary way one hands its notes to the next. Harness identity is
+ * untouched: the notes sit outside `harness/`.
+ *
+ * Both files cross, because SCRATCHPAD.md holds the open questions and next steps written for
+ * exactly this next session. Each opens on a marker naming where it came from, so an inherited
+ * line is never read as this session's own. Only an authored file crosses, only into a slot the
+ * successor has not written, and never fatally.
+ */
+export function carryMemoryForward(prior: string, next: string, from: string): void {
+  let helpers: ScratchCarry = { carried: [], left: [] };
+  try {
+    helpers = carryScratchHelpers(prior, next);
+  } catch {
+    // Helpers are a convenience like the notes themselves: a failed copy leaves the Builder to
+    // rewrite them, which costs minutes, while failing the session over them would cost the round.
+  }
+  const helperLine = helpers.carried.length + helpers.left.length === 0 ? [] : [helperMarker(from, helpers)];
+  for (const [file, starter, cap] of FILES) {
+    // The line at the head of a carried file.
+    const carried = `<!-- carried forward from ${from}, an earlier session of this campaign. Correct what no longer holds. -->`;
+    const marker = [carried, ...(file === MEMORY_FILE ? helperLine : [])].join("\n");
+    try {
+      // The predecessor's own markers name its predecessor, while this session names only the file
+      // it inherits from. Kept, they would stack one line per session at the head of the file.
+      const body = authoredBody(prior, file, starter).replace(HEAD_MARKER_PATTERN, "");
+      if (body === "" || existsSync(join(next, file))) continue;
+      mkdirSync(next, { recursive: true });
+      // The predecessor's file may already be over its ceiling, and the marker adds to it. Cap here
+      // so the successor opens on a file the read path passes through whole.
+      writeFileSync(join(next, file), cappedToEnds(`${marker}\n\n${body}\n`, cap));
+    } catch {
+      // Inherited notes are a convenience, never a precondition: the session starts on the starter
+      // instead of failing to open over notes it would have been able to rewrite.
+    }
+  }
+}
+
+/**
+ * Keep what session `id` left in `home` for the session after it, under the campaign's `root`: one
+ * folder a session, made only where the session left a note or a helper. v2's own: v1's successor
+ * workspace stood under the campaign's root, where the carry could write into it.
+ */
+export function keepMemory(home: string, root: string, id: string): void {
+  carryMemoryForward(home, join(root, id), id);
+}
+
+/**
+ * Seed a new home with its notes: what the folder kept for session `from` holds, where a session
+ * left any, and the starters for what is then still missing. The kept folder is the host's own
+ * writing (`carryMemoryForward`), plain files and directories, so it is copied as it stands.
+ */
+export function seedMemory(home: string, root: string, from: string | null): void {
+  const kept = from === null ? null : join(root, from);
+  if (kept !== null && existsSync(kept)) cpSync(kept, home, { recursive: true });
+  for (const [file, starter] of STARTER_MEMORY_FILES) {
+    if (!existsSync(join(home, file))) writeFileSync(join(home, file), starter);
+  }
+}
+
+/** The last session of `sessions`, oldest first, that the campaign keeps notes of; null when it
+ *  keeps none. A session that left its starters untouched keeps nothing, and one that was handed
+ *  notes and left them as they were keeps them on, so the last folder holds all that crossed. */
+export function lastKept(root: string, sessions: readonly string[]): string | null {
+  return sessions.findLast((session) => existsSync(join(root, session))) ?? null;
+}

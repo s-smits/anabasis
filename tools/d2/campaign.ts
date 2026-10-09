@@ -231,6 +231,7 @@ export async function openCampaign(args: CampaignArgs) {
     repo: REPO,
     log,
     states: join(dir, "states"),
+    memory: join(dir, "memory"),
     checks,
     brief,
     tasks,

@@ -177,6 +177,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     id: "b-1",
     parent: parent,
     states: join(scratch, "states"),
+    memory: join(scratch, "memory"),
     tasks: TASKS,
     contract: CONTRACT,
     resources: [publicResource("span table", { maxSpan: 12 })],
@@ -285,6 +286,20 @@ describe("a Builder session", () => {
     );
     expect(s.sent[0]).toContain("t-2 (family fixture): not yet solved under the harness you start from.");
     expect(s.sent[0]).toContain("3 practice solves, 10 minutes and 12 turns");
+    // What the log holds of the campaign so far: the fail on record, and no notes yet.
+    expect(s.sent[0]).toContain(
+      `You start from harness ${s.digest.slice(0, 8)}. Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\\n- s-1, t-1, harness ${s.digest.slice(0, 8)}: fail (rejected); open.`,
+    );
+    // No session before this one left notes, so the message opens on the rules and holds no notes
+    // block: v1's starters are in the home, and an untouched starter renders nothing.
+    expect(s.sent[0]).toContain(String.raw`{"role":"user","content":"Public rules of the domain:`);
+    expect(s.sent[0]).not.toContain("Historical notes");
+    expect(readFileSync(join(s.home, "MEMORY.md"), "utf8")).toStartWith("# Builder memory\n");
+    expect(readFileSync(join(s.home, "SCRATCHPAD.md"), "utf8")).toStartWith("# Scratchpad\n");
+    expect(s.sent[0]).toContain(
+      "The next session opens in a new home, and what you learned reaches it only through MEMORY.md, SCRATCHPAD.md and scratch/ in your home directory (files up to 256 KB each, 4096 KB in all;",
+    );
+    expect(s.sent[0]).not.toContain("Comparisons so far");
     // The one limit on a harness, as the operator settled it on 9 October: a program may test a
     // candidate against a public rule, and nothing returns a finished answer.
     expect(s.sent[0]).toContain("No program, tool or guide line returns a finished answer for a task");
@@ -334,6 +349,71 @@ describe("a Builder session", () => {
       "finish",
     ]);
     expect(record(s.events(), "v1", built.harness ?? "")).toEqual({ solves: ["s-3"], passed: 0 });
+  });
+
+  it("opens on the notes its last session left and each comparison's tally, and leaves notes of its own", async () => {
+    const long = "a lesson written by hand\n".repeat(400);
+    const s = await setup([
+      call(WRITE_FILE, {
+        path: "MEMORY.md",
+        content: "# Builder memory\n\nA table of factors did not help.\n",
+      }),
+      call(WRITE_FILE, { path: "scratch/gen.py", content: "print(6)\n" }),
+      // A notes file over its limit: finish is refused with the notice, as v1's submit was.
+      call(WRITE_FILE, { path: "SCRATCHPAD.md", content: long }),
+      finish,
+      call(WRITE_FILE, { path: "SCRATCHPAD.md", content: "# Scratchpad\n\n- try the base as a string\n" }),
+      finish,
+    ]);
+    // What an earlier session, b-0, left: kept under the campaign as v1's carry writes it.
+    const kept = join(s.request.memory, "b-0");
+    mkdirSync(kept, { recursive: true });
+    writeFileSync(
+      join(kept, "MEMORY.md"),
+      "<!-- carried forward from b-0, an earlier session of this campaign. Correct what no longer holds. -->\n\n# Builder memory\n\nThe base is always odd.\n",
+    );
+    append(s.request.log, "build.started", { session: "b-0", parent: s.digest, tasks: [] });
+    append(s.request.log, "build.finished", {
+      session: "b-0",
+      ended: "finished",
+      harness: null,
+      changed: false,
+    });
+    append(s.request.log, "comparison.reported", {
+      session: "b-0",
+      old: s.digest,
+      fresh: "f".repeat(64),
+      reading: "no-step",
+      scored: { wins: 1, losses: 0, ties: 6, p: 0.5 },
+      versions: ["v0", "v3"],
+    });
+    await session(s.request, s, s.walled);
+    // The notes block comes first in the opening message, ahead of the rules, under v1's header.
+    expect(s.sent[0]).toContain(
+      String.raw`{"role":"user","content":"Historical notes, model-authored and possibly stale. You wrote these files in earlier sessions,`,
+    );
+    expect(s.sent[0]).toContain(String.raw`--- MEMORY.md ---\n<!-- carried forward from b-0,`);
+    expect(s.sent[0]).toContain("The base is always odd.");
+    const opening = s.sent[0] ?? "";
+    expect(opening.indexOf("The base is always odd.")).toBeLessThan(
+      opening.indexOf("Public rules of the domain:"),
+    );
+    expect(s.sent[0]).toContain(
+      String.raw`Comparisons so far, on tasks you are not shown:\n- Harness ffffffff against the reference harness: 1 won, 0 lost, 6 tied, which reads no step.`,
+    );
+    // The held-out task's own fail is on record, and no line of the message is of it.
+    expect(s.sent[0]).not.toContain(s.exam);
+    expect(s.sent[4]).toContain(
+      "Not finished. SCRATCHPAD.md is 10000 bytes, over its 2000-byte limit: the next session reads its head and tail and drops the middle, so shorten it now. Then call finish again.",
+    );
+    expect(s.of(BUILD_FINISHED).at(-1)).toMatchObject({ session: "b-1", ended: "finished" });
+    // Its own notes and its helper are kept for the next session, each note under v1's marker.
+    const own = join(s.request.memory, "b-1");
+    expect(readFileSync(join(own, "MEMORY.md"), "utf8")).toBe(
+      "<!-- carried forward from b-1, an earlier session of this campaign. Correct what no longer holds. -->\n<!-- scratch/ holds b-1's 1 helper file: gen.py. -->\n\n# Builder memory\n\nA table of factors did not help.\n",
+    );
+    expect(readFileSync(join(own, "SCRATCHPAD.md"), "utf8")).toContain("- try the base as a string");
+    expect(readFileSync(join(own, "scratch", "gen.py"), "utf8")).toBe("print(6)\n");
   });
 
   it("takes a task out of practice when the Referee rules its fail a check defect", async () => {

@@ -26,6 +26,10 @@
  * checks cleared; this Builder is never shown a check; and both harnesses are solved under the
  * same limits, which price the search. A tool that hands over the answer stays forbidden.
  *
+ * A session is a new conversation, so the opening message carries what the plan gives a Builder
+ * whose conversation was lost: the notes its earlier sessions left, which are v1's (`memory.ts`),
+ * and, from the log, every failed practice solve so far and each comparison's tally (`past.ts`).
+ *
  * New here: what the harness is measured on, and how a practice result is to be read. It is
  * measured against the reference harness, which is the Starter Built Harness until a step is
  * promoted and so need not be the harness a later session starts from. v1 gave its
@@ -36,6 +40,7 @@
 import type { Contract } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
+import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
 
 /** A practice task as the opening message lists it. */
 export interface Listed {
@@ -44,6 +49,18 @@ export interface Listed {
   /** Its counted solves under the harness the session starts from, from the log. */
   readonly solves: readonly string[];
   readonly passed: number;
+}
+
+/** What a session is told of the sessions before it (`memory.ts`). */
+export interface Past {
+  /** The harness the session starts from, as the lists below name a harness. */
+  readonly start: string;
+  /** Every failed practice solve of the campaign on this session's tasks, a line each. */
+  readonly fails: readonly string[];
+  /** Every comparison of the campaign that tallied a task, a line each. */
+  readonly comparisons: readonly string[];
+  /** The notes block a session opens on, v1's (`memory.ts`); empty until a session has written any. */
+  readonly memory: string;
 }
 
 /** The limits a session is told it runs under. */
@@ -64,6 +81,16 @@ export const SYSTEM_PROMPT = [
   "check_harness opens the harness as a solve would and lists what a solver gets from each part. Run it before you practise, since a harness that does not open fails every task. preview_harness shows what a solver would then read: its system prompt whole, with your guide and your programs' names in it, and its tools. reset_harness puts harness/agent back as this session found it. Practice solves are limited and each takes as long as a solve. Your turns are limited too, and every reply of yours is one, with or without a tool call. When harness/ holds what you want measured, call finish. The session also ends at its limits, and what harness/ holds then is what is frozen.",
 ].join("\n");
 
+/** What the next session receives from this one (v1's `HANDOVER`, `src/author/builder-session.ts`
+ *  at 3f93d06). Every session opens in a new home, and the Builder's own notes cross only through
+ *  these files; `finish` ends the session at the turn that calls it, so a note meant for after it
+ *  is never written. */
+const HANDOVER =
+  `The next session opens in a new home, and what you learned reaches it only through ${MEMORY_FILE}, ` +
+  `${SCRATCHPAD_FILE} and ${SCRATCH_DIR}/ in your home directory (${SCRATCH_LIMITS}; a larger file stays behind, a top-level folder that ` +
+  "no longer fits stays behind whole, and a symbolic link never crosses). finish ends this session at " +
+  "that turn, so bring them up to date before you call it.";
+
 export const NUDGE =
   "You have not called finish. Go on with the harness, or call finish when harness/ holds what you want measured.";
 
@@ -71,24 +98,36 @@ export const NUDGE =
  *  is the solver's, and the facts are the ones a solver's prompt gives of it
  *  (`src/solve/prompt.ts`, `environment`): the shell is the solver's `bash`, started in the home. */
 export const SHELL_WALLS =
-  " The command runs in your home directory, where harness/, practice/, resources.json and HARNESS.md are. It has network access, so a program the solver runs, and what that program needs, can be installed under harness/.toolchain. It can write your home directory, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.";
+  " The command runs in your home directory, where harness/, practice/, resources.json, HARNESS.md and your notes are. It has network access, so a program the solver runs, and what that program needs, can be installed under harness/.toolchain. It can write your home directory, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.";
 
 /** The opening message: the domain's public contract, the practice tasks with their record under the
- *  harness the session starts from, and the session's limits. A task's public part is a file in
- *  the home, since a pack's inputs run long. */
-export function firstMessage(contract: Contract, tasks: readonly Listed[], told: Told): string {
+ *  harness the session starts from, what the campaign's log holds of the sessions before this one,
+ *  and the session's limits. A task's public part is a file in the home, since a pack's inputs run
+ *  long. */
+export function firstMessage(contract: Contract, tasks: readonly Listed[], told: Told, past: Past): string {
   const listed = tasks.map(({ taskId, family, solves, passed }) =>
     solves.length === 0
       ? `- ${taskId} (family ${family}): not yet solved under the harness you start from.`
       : `- ${taskId} (family ${family}): passed ${String(passed)} of ${String(solves.length)} under the harness you start from. Solves: ${solves.join(", ")}.`,
   );
   return [
+    // First, and not last: it is the Builder's own prose and may predate what stands below it.
+    ...(past.memory === "" ? [] : [past.memory]),
     `Public rules of the domain:\n${contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n") || "(none)"}`,
     ...(contract.conventions === "" ? [] : [`Conventions: ${contract.conventions}`]),
     `Scope: ${contract.scope}`,
     `The solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     "The public resources every solve's home holds under public/resources/ are in resources.json.",
     `Practice tasks, each one's public part in practice/<task>.json:\n${listed.join("\n") || "(none)"}`,
+    `You start from harness ${past.start}.${
+      past.fails.length === 0
+        ? " No practice solve of these tasks has failed in this campaign so far."
+        : ` Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\n${past.fails.join("\n")}`
+    }`,
+    ...(past.comparisons.length === 0
+      ? []
+      : [`Comparisons so far, on tasks you are not shown:\n${past.comparisons.join("\n")}`]),
+    HANDOVER,
     `This session has ${plural(told.practiceSolves, "practice solve")}, ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
   ].join("\n\n");
 }

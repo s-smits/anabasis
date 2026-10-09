@@ -290,6 +290,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
       id: session,
       parent,
       states: campaign.states,
+      memory: campaign.memory,
       tasks: sets.released.map((version) => ({ version, task: packageOf(version) })),
       contract: campaign.contract,
       resources: campaign.resources,

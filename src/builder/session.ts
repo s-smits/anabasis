@@ -78,6 +78,8 @@ import { HARNESS_ACCOUNT } from "../solve/starter.ts";
 import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
 import { mountDiskCap } from "../verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../verify/solve-sandbox.ts";
+import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
+import { comparisonsTold, failsTold, shortDigest } from "./past.ts";
 import { firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 import {
   type Bench,
@@ -118,6 +120,9 @@ export interface BuildRequest {
   readonly parent: string;
   /** Where a frozen harness is kept, under its digest. The caller's, outside every wall. */
   readonly states: string;
+  /** Where the campaign keeps each session's notes, a folder a session (`memory.ts`). The
+   *  caller's, outside every wall. */
+  readonly memory: string;
   /** Released tasks, and nothing else. */
   readonly tasks: readonly PracticeTask[];
   readonly contract: Contract;
@@ -227,6 +232,11 @@ export async function session(
   writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
   // The account of a harness's files is this host's, whichever harness the session forks.
   writeFileSync(join(dirs.home, "HARNESS.md"), HARNESS_ACCOUNT);
+  // The Builder's own notes: what the last session to leave any left, and v1's starters otherwise.
+  const earlier = before.flatMap(({ kind, data }) =>
+    kind === "build.started" && isString(data.session) ? [data.session] : [],
+  );
+  seedMemory(dirs.home, request.memory, lastKept(request.memory, earlier));
   for (const { task } of request.tasks) {
     writeFileSync(
       join(dirs.home, "practice", `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),
@@ -266,6 +276,12 @@ export async function session(
       ...record(recorded, version, parent.digest),
     })),
     limits,
+    {
+      start: shortDigest(parent.digest),
+      fails: failsTold(recorded, new Map(request.tasks.map(({ version, task }) => [version, task.taskId]))),
+      comparisons: comparisonsTold(recorded),
+      memory: builderMemoryBlock(dirs.home),
+    },
   );
   const wall = new AbortController();
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
@@ -299,7 +315,11 @@ export async function session(
           // `finish` ends the session even beside another call in its turn, where pi would go on.
           return bench.note !== null || turns.length >= limits.turns ? { action: "end" } : undefined;
         },
-        getFollowUpMessages: async () => (bench.note === null ? [user(NUDGE)] : []),
+        // v1's continuation carried the same notice: a file over its limit is cut on the next read.
+        getFollowUpMessages: async () =>
+          bench.note === null
+            ? [user([NUDGE, memoryOverCapNotice(dirs.home) ?? ""].filter((part) => part !== "").join("\n\n"))]
+            : [],
         prepareRequest: loopCompaction(log, "build", request.id, stream, summaries),
       },
       traceSink(log, "build", request.id, () => turns.length),
@@ -354,6 +374,8 @@ export async function session(
   const reported = asRecord(
     turns.flatMap((turn) => turn.diagnostics ?? []).findLast((d) => d.type === REPORTED_COST)?.details,
   )?.totalCostUsd;
+  // Kept before the session is recorded as ended, so a session on record as ended has its notes.
+  keepMemory(dirs.home, request.memory, request.id);
   append(log, "build.finished", {
     session: request.id,
     ended,

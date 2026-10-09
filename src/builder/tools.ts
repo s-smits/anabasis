@@ -43,7 +43,8 @@ import { Type } from "typebox";
 import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { ended, passed, ranUnder, verdictsOf } from "../kernel/solves.ts";
+import { limitsIn } from "../kernel/condition.ts";
+import { ended, passed, ranUnder, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
   cpSync,
@@ -59,7 +60,7 @@ import {
   symlinkSync,
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { isString } from "../meta/json-shape.ts";
+import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
@@ -71,7 +72,8 @@ import { CODING_TOOLS, codingTools, selectedCodingTools } from "../solve/coding-
 import { type CommandWall, runWalled } from "../solve/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
 import { installedPrograms, systemPrompt } from "../solve/prompt.ts";
-import { solverTools } from "../solve/run.ts";
+import { clockText, solverTools } from "../solve/run.ts";
+import { memoryOverCapNotice } from "./memory.ts";
 import { SHELL_WALLS } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
@@ -256,12 +258,41 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
   return bench.opened;
 }
 
-function diagnosisText(diagnosis: Diagnosis): string {
+/** How much of its limits a finished solve used, as a sentence after its ending: the seconds from
+ *  its start to its end, the verifier's among them, of its time limit, and the model's own turns.
+ *  Empty where the log holds no end for the solve. A Builder that is not told this cannot tell a
+ *  harness that passes with a minute to spare from one that passes at the limit, and the
+ *  comparison is read at budgets shorter than the limit (`docs/plan.md`, Phase 2). */
+export function usedText(events: readonly LogEvent[], solve: string): string {
+  const { start, end } = solvesIn(events).find(({ id }) => id === solve) ?? {};
+  const limit = limitsIn(start?.limits)?.wallSeconds;
+  if (!isNumber(end?.seconds) || !isNumber(end.turns) || limit === undefined) return "";
+  return ` It took ${clockText(end.seconds)} of ${clockText(limit)} and ${plural(end.turns, "model turn")}.`;
+}
+
+/** The first call of a solve whose arguments or result hold `quote`, by its number in the trace;
+ *  null where no call does, as when the quote is of the answer or of the solver's own words. */
+function callQuoted(calls: readonly JsonObject[], quote: string): number | null {
+  const squash = (value: string) => value.replace(/\s+/g, " ").trim();
+  const wanted = squash(quote);
+  const found = calls.findIndex(
+    (call) =>
+      squash(isString(call.text) ? call.text : "").includes(wanted) ||
+      squash(capturedJsonStringify(call.args ?? null)).includes(wanted),
+  );
+  return found === -1 ? null : found + 1;
+}
+
+/** A diagnosis as the Builder reads it. The first divergence is a quotation, which is how the
+ *  Diagnoser is held to what it saw, so it reads as raw output; the cause is its sentence. The
+ *  quotation is given with the call it stands in, which `read_trace` opens. */
+function diagnosisText(diagnosis: Diagnosis, calls: readonly JsonObject[]): string {
   if ("abstain" in diagnosis) return `The Diagnoser abstained: ${diagnosis.abstain}`;
+  const call = callQuoted(calls, diagnosis.firstDivergence);
   return [
     `Diagnosis (owner ${diagnosis.owner}, confidence ${diagnosis.confidence}): ${diagnosis.cause}`,
     `It would be refuted by: ${diagnosis.falsifier}`,
-    `First divergence, quoted from the trace: ${diagnosis.firstDivergence}`,
+    `Where the solve first went wrong, quoted from ${call === null ? "its trace" : `call ${String(call)} of its trace`}: ${diagnosis.firstDivergence}`,
   ].join("\n");
 }
 
@@ -288,7 +319,8 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
           "The Referee could not settle whether this fail counts, so it is counted and not diagnosed.",
         );
       } else if (request.diagnose !== undefined) {
-        lines.push(diagnosisText(await request.diagnose(solve, task, kill)));
+        const diagnosis = await request.diagnose(solve, task, kill);
+        lines.push(diagnosisText(diagnosis, callsOf(solveOf(read(request.log), solve))));
       }
     } catch (error) {
       bench.faults.push(`${solve}: ${errorMessage(error)}`);
@@ -305,7 +337,7 @@ export function practiceTool(bench: Bench): AgentTool {
     name: "practice",
     label: "Practise",
     description:
-      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the task's record under this harness and under the one you started from, the solve's id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve.",
+      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time and the model turns it took, the task's record under this harness and under the one you started from, the solve's id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve.",
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -360,7 +392,7 @@ export function practiceTool(bench: Bench): AgentTool {
           record(events, task.version, harness),
         );
         return [
-          `${task.task.taskId}: ${endingText(ending)}. Solve ${solve}.`,
+          `${task.task.taskId}: ${endingText(ending)}. Solve ${solve}.${usedText(events, solve)}`,
           `Record under this harness: passed ${String(now?.passed ?? 0)} of ${String(now?.solves.length ?? 0)}. Under the harness you started from: ${String(before?.passed ?? 0)} of ${String(before?.solves.length ?? 0)}.`,
           ...lines,
         ].join("\n");
@@ -425,6 +457,10 @@ export function finishTool(bench: Bench): AgentTool {
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
     execute: async (_id, args) => {
+      // `finish` ends the session at this turn, so a notice on the next turn would reach nobody:
+      // the call itself carries it, as v1's submit did (`src/gate/submit-tool.ts` at 3f93d06).
+      const notes = memoryOverCapNotice(bench.home);
+      if (notes !== null) throw new Error(`Not finished. ${notes} Then call finish again.`);
       bench.note = args.note.trim();
       return { ...text("Finished."), terminate: true };
     },

@@ -1,8 +1,8 @@
 /**
  * `bun run runs seed --from <campaign folder> --name <name> [--before <session> | --events <n>]`
  *
- * A campaign is its folder: the log, the staged check program and the harness states its sessions
- * kept. A seed is a copy of one under another name in this worktree, with the log cut where a
+ * A campaign is its folder: the log, the staged check program, the harness states its sessions
+ * kept and the notes each session left the next (`src/builder/memory.ts`). A seed is a copy of one under another name in this worktree, with the log cut where a
  * question starts, so that the campaign's own commands (`tools/d2/campaign.ts`) go on from a
  * recorded position and the run that recorded it is never written.
  *
@@ -13,14 +13,16 @@
  * `seed.json` in the copy says where it came from and where it was cut. `rehearse` runs only where
  * that file is, since a scripted solve in a real campaign's log would be counted as a solve.
  *
- * Not copied: the launch receipts and outputs, which are the source run's. The states come with the
+ * Not copied: the launch receipts and outputs, which are the source run's, and the notes of a
+ * session the cut log no longer holds, which a session run again under its id would otherwise find
+ * in its place. The states come with the
  * tool trees kept beside them. A state frozen while its link named the tree by its whole path still
  * links to the source's tree; a solve reads it behind the wall and writes nothing there.
  */
 import { read } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord } from "#src/meta/json-shape.ts";
+import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -82,10 +84,17 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
         cpSync(join(from, part), join(to, part), { recursive: true, verbatimSymlinks: true });
       }
     }
+    // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
+    const events = read(join(to, LOG));
+    for (const { kind, data } of events) {
+      const notes = kind === "build.started" && isString(data.session) ? join("memory", data.session) : null;
+      if (notes !== null && existsSync(join(from, notes))) {
+        cpSync(join(from, notes), join(to, notes), { recursive: true, verbatimSymlinks: true });
+      }
+    }
     const origin = { from: resolve(from), events: kept, of: lines.length, before: cut.before ?? null };
     writeFileSync(join(to, SEED_FILE), `${capturedJsonStringify(origin, null, 2)}\n`);
-    // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
-    return { ...origin, sets: taskSets(read(join(to, LOG))) };
+    return { ...origin, sets: taskSets(events) };
   } catch (error) {
     rmSync(to, { recursive: true, force: true });
     throw error;

@@ -33,6 +33,9 @@ not in the log.
 5. `anchor.scored` and `comparison.reported`: the two tests and the round's reading.
 6. `states/<digest>/agent/`: the harness a session kept, as the solver had it. The guide is
    `BUILT_AGENTS.md`, the tools are `tools.ts` and their kinds are in `tools-spec.json`.
+7. `memory/<session>/`: the notes a Builder session left the next, `MEMORY.md` and
+   `SCRATCHPAD.md`, and its helper files under `scratch/`. They are the Builder's own words and no
+   part of a harness.
 
 **What a bundle cannot answer.** What the harness a session started from held, unless an earlier
 session of the same run kept it: the Builder's changes are its `build.call`s. How a check decides,

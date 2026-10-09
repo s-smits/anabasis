@@ -53,6 +53,11 @@ function campaignAt(name: string, lines: readonly string[], tail = ""): string {
   writeFileSync(join(folder, "checks", "brief.json"), "{}");
   writeFileSync(join(folder, "states", "abc", "agent", "BUILT_AGENTS.md"), "guide\n");
   writeFileSync(join(folder, "launch-b-1.json"), "{}");
+  // The notes two Builder sessions left, each in the folder the campaign keeps for it.
+  for (const session of ["b-1", "b-2"]) {
+    mkdirSync(join(folder, "memory", session), { recursive: true });
+    writeFileSync(join(folder, "memory", session, "MEMORY.md"), `notes of ${session}\n`);
+  }
   return folder;
 }
 
@@ -88,6 +93,10 @@ describe("a seed", () => {
     ]);
     expect(readFileSync(join(to, "states", "abc", "agent", "BUILT_AGENTS.md"), "utf8")).toBe("guide\n");
     expect(existsSync(join(to, "checks", "brief.json"))).toBe(true);
+    // The notes of a session the cut log holds come with it. Those of a later session stay: a
+    // session run again under that id would find them in the place its own are kept.
+    expect(readFileSync(join(to, "memory", "b-1", "MEMORY.md"), "utf8")).toBe("notes of b-1\n");
+    expect(existsSync(join(to, "memory", "b-2"))).toBe(false);
     expect(parseJsonAs<object>(readFileSync(join(to, SEED_FILE), "utf8"))).toEqual({
       from,
       events: 3,

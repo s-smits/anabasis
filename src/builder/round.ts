@@ -108,7 +108,7 @@ import {
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { awaitingLabel, billedFor, type Cap, unsolved, whole } from "../kernel/reports.ts";
+import { awaitingLabel, billedFor, type Cap, capHolds, unsolved, whole } from "../kernel/reports.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -489,9 +489,7 @@ function refuseUnreadable(terms: Terms): void {
     );
   }
   if (!(terms.level > 0 && terms.level < 1)) throw new Error("a sign test's level lies between 0 and 1");
-  const { cap } = terms;
-  const dollars = cap === undefined ? [] : [cap.dollars, cap.reserve];
-  if (!dollars.every((amount) => Number.isFinite(amount) && amount > 0)) {
+  if (terms.cap !== undefined && !capHolds(terms.cap)) {
     throw new Error("a cap and its reserve are dollars, and both are more than nothing");
   }
   // A budget that names neither unit would read what the full limit reads under another name. One
@@ -499,6 +497,26 @@ function refuseUnreadable(terms: Terms): void {
   if ((terms.budgets ?? []).some((budget) => Object.keys(asBudget(budget)).length === 0)) {
     throw new Error("a budget names turns or seconds, or both, each as a number");
   }
+}
+
+/**
+ * Refuse the terms a comparison is asked for on: terms no comparison could be read on, and, for
+ * one that has not begun, tasks that could not be scored. `practised` is what its session may
+ * practise on, and empty for a checkpoint. A comparison that reported is asked nothing.
+ *
+ * A comparison asks this of itself before its first event. A command asks it before it records
+ * anything, so that a refused command leaves the log as it was: until 2026-10-09 a round refused
+ * for a mistyped task had recorded the campaign's setting first, and the corrected command was
+ * then refused as another setting (the third review, row F44).
+ */
+export function refuseTerms(
+  terms: Terms,
+  of: { readonly log: string; readonly id: string; readonly practised: ReadonlySet<string> },
+): void {
+  const events = read(of.log);
+  if (reported(events, of.id) !== null) return;
+  refuseUnreadable(terms);
+  if (startOf(events, of.id) === undefined) refuseUnscorable(terms, of.log, of.practised);
 }
 
 /**
@@ -870,8 +888,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
       `a comparison sets two harnesses against each other, and both sides are ${old.digest}; the reference harness is read against itself beside a comparison, with noise`,
     );
   }
-  refuseUnreadable(request);
-  if (startOf(read(log), id) === undefined) refuseUnscorable(request, log, new Set());
+  refuseTerms(request, { log, id, practised: new Set() });
   const fixed = begin(request);
   const work = floor(request, fixed);
   const head = { old: fixed.old, fresh: fixed.fresh, starter: fixed.starter };
@@ -925,10 +942,7 @@ export async function round(request: RoundRequest): Promise<Report> {
   // finished comparison, topping up a set a dispute thinned, would be a second look at its data.
   const before = reported(read(log), id);
   if (before !== null) return before;
-  refuseUnreadable(terms);
-  if (startOf(read(log), id) === undefined) {
-    refuseUnscorable(terms, log, new Set(session.tasks.map(({ version }) => version)));
-  }
+  refuseTerms(terms, { log, id, practised: new Set(session.tasks.map(({ version }) => version)) });
   // The session is read from the log whether it ran now or in an earlier run of this round.
   const built = await sessionOnce({ ...session, cap: request.cap }, builder);
   const asked = { ...terms, log, id, kill: session.kill };
@@ -1001,6 +1015,18 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
   if (report.scored === null || fixed === null) {
     throw new Error(
       `comparison ${id} reads ${report.reading} and compared nothing, so there is nothing to settle`,
+    );
+  }
+  // A budget in a unit that is read no longer would come back with no unit, which reads the full
+  // limit under no name, and the settled report would hold that in place of the budget the
+  // comparison began with (the third review, row F46).
+  const began = startOf(before, id)?.budgets;
+  const dropped = [
+    ...new Set((Array.isArray(began) ? began : []).flatMap((budget) => Object.keys(asRecord(budget) ?? {}))),
+  ].filter((unit) => !UNITS.some((known) => known === unit));
+  if (dropped.length > 0) {
+    throw new Error(
+      `comparison ${id} began with a budget in ${dropped.join(" and ")}, which this source reads no longer (${UNITS.join(" and ")} are read): its report stands as it was written. Settle it from the commit it was made at`,
     );
   }
   const { aside, others } = toLabel(before, id);

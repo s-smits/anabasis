@@ -72,6 +72,16 @@ export async function sessionCommand(args: readonly string[], seated: Seated = s
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
   const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting.named });
   const parent = await parentNamed(campaign, { ...values, session });
+  // A scripted solve is told from its harness which side of a comparison it stands on, and a
+  // practice solve stands on none: it is seated against the campaign's reference harness.
+  const reference = await keptAs(campaign, "--reference", PROMOTED);
+  const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
+  const request = sessionNamed(
+    campaign,
+    { ...values, session },
+    { parent, limits: setting.named.limits, seats, reviewers: reviewersNamed(campaign, values) },
+  );
+  // Asked last of all that can refuse, and before anything is recorded.
   const notes = admitSession(campaign.log, {
     id: session,
     wanted: {
@@ -83,15 +93,6 @@ export async function sessionCommand(args: readonly string[], seated: Seated = s
     seats: paid,
   });
   for (const note of notes) console.log(`· ${note}`);
-  // A scripted solve is told from its harness which side of a comparison it stands on, and a
-  // practice solve stands on none: it is seated against the campaign's reference harness.
-  const reference = await keptAs(campaign, "--reference", PROMOTED);
-  const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
-  const request = sessionNamed(
-    campaign,
-    { ...values, session },
-    { parent, limits: setting.named.limits, seats, reviewers: reviewersNamed(campaign, values) },
-  );
   keepSetting(campaign.log, setting);
   stayAwake();
   const { kept, broken } = await sessionOnce({ ...request, cap });

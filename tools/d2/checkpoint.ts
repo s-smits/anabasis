@@ -45,7 +45,7 @@
  * Not run here: see `campaign.ts`.
  */
 import { admitComparison } from "#src/builder/admission.ts";
-import { checkpoint, type Report } from "#src/builder/round.ts";
+import { type CheckpointRequest, checkpoint, refuseTerms, type Report } from "#src/builder/round.ts";
 import { read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -104,24 +104,9 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   const packageOf = packaged(campaign);
   const old = await keptAs(campaign, "--reference", values.reference);
   const fresh = await keptAs(campaign, "--new", values.new);
-  // Asked before anything of this comparison is written, as a launch of it asks.
-  const notes = admitComparison(campaign.log, {
-    id,
-    reference: values.reference,
-    wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
-    seats: seated === solved ? "paid" : "scripted",
-  });
-  for (const note of notes) console.log(`· ${note}`);
-  if (old.digest === fresh.digest) {
-    throw new Error(
-      `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness (tools/d2/round.ts)" : ""}. A harness is read against itself beside a comparison, with --noise`,
-    );
-  }
   const reviewers = reviewersNamed(campaign, values);
   const seats = seated(campaign, { builder: undefined, reference: old.dir });
-  keepSetting(campaign.log, setting);
-  stayAwake();
-  const report = await checkpoint({
+  const request: CheckpointRequest = {
     log: campaign.log,
     id,
     old,
@@ -142,7 +127,27 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
       reviewers === null
         ? undefined
         : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
+  };
+  // Every refusal comes before anything is recorded, as in a round: the admission's, as a launch
+  // of it asks, then the comparison's own terms, and only then the campaign's setting.
+  const notes = admitComparison(campaign.log, {
+    id,
+    reference: values.reference,
+    wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
+    seats: seated === solved ? "paid" : "scripted",
+    own: () => {
+      if (old.digest === fresh.digest) {
+        throw new Error(
+          `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness (tools/d2/round.ts)" : ""}. A harness is read against itself beside a comparison, with --noise`,
+        );
+      }
+      refuseTerms(request, { log: campaign.log, id, practised: new Set() });
+    },
   });
+  for (const note of notes) console.log(`· ${note}`);
+  keepSetting(campaign.log, setting);
+  stayAwake();
+  const report = await checkpoint(request);
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
   for (const line of [

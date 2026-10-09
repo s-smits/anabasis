@@ -66,6 +66,13 @@ const BILLED: ReadonlySet<string> = new Set([
   "diagnosis.recorded",
 ]);
 
+/** Whether a cap can hold anything: its dollars and its reserve are numbers above nothing. One
+ *  typed with a dollar sign reads as no number, and until 2026-10-09 a session by itself ran
+ *  under it with no solve refused (the third review, row F43). */
+export function capHolds({ dollars, reserve }: Cap): boolean {
+  return [dollars, reserve].every((amount) => Number.isFinite(amount) && amount > 0);
+}
+
 /** Each comparison's last report in a log, in the order the comparisons first reported. */
 export function lastReports(events: readonly LogEvent[]): Reported[] {
   const found = new Map<string, Reported>();

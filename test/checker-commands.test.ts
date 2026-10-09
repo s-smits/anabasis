@@ -491,6 +491,20 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     const of = (kind: string) =>
       read(join(seeded, LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
 
+    // Fix row F44: a round refused on its own terms leaves the log as it was. Until 2026-10-09 it
+    // had recorded the campaign's setting first, a mistyped task with it, and the corrected
+    // command was then refused as another setting.
+    const lines = () => read(join(seeded, LOG)).length;
+    const before = lines();
+    expect(rehearse("--session", "b-0", "--tasks", "t-9").said).toContain(
+      "--tasks t-9: the campaign holds no task of that id",
+    );
+    expect(rehearse("--session", "b-0", "--tasks", "t-1,t-2").said).toContain(
+      "is a practice task, and a round scores no task its session saw",
+    );
+    expect(lines()).toBe(before);
+    expect(of("campaign.setting")).toEqual([]);
+
     const first = rehearse("--no-comparison", "--session", "b-1");
     expect(first.said).toContain("the rehearsal went as scripted");
     expect(first.said).toContain("tools/d2/checkpoint.ts --new latest compares it");
@@ -533,5 +547,9 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(round).toContain("a round         refused");
     for (const line of told) expect(round).toContain(line);
     expect(launched.said).toContain(`${SEED} is not launched`);
+    // Fix row F43: the launcher reads a cap as the command does, and refuses one that is no number.
+    expect(
+      cli("launch", ...flags, "--session", "b-9", "--cap", "$100", "--loaded", "--dry-run").said,
+    ).toContain("--cap $100 --reserve 10: a cap and its reserve are dollars as plain numbers");
   });
 });

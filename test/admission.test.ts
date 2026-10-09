@@ -308,7 +308,7 @@ describe("a command about to start a comparison", () => {
     return log;
   };
   const read1 = event("checker.read", { contract: "c", checks: "k", faults: [] });
-  const asked = { id: "g-1", reference: "starter", wanted: WANTED };
+  const asked = { id: "g-1", reference: "starter", wanted: WANTED, own: () => undefined };
 
   it("is refused as a launch of it would be: started by hand on an unread checker, nothing starts", () => {
     const log = logOf();
@@ -330,13 +330,62 @@ describe("a command about to start a comparison", () => {
     expect(admitComparison(logOf(), { ...asked, seats: "scripted" })).toEqual([]);
   });
 
-  it("goes on with a comparison or a session the log holds: it was admitted when it began", () => {
+  it("goes on with a comparison the log holds the start of: it was admitted when it began", () => {
     const begun = logOf([event("comparison.started", { session: "g-1" })]);
     expect(admitComparison(begun, { ...asked, seats: "paid" })).toEqual([]);
-    const built = logOf([event("build.started", { session: "g-1" })]);
-    expect(admitComparison(built, { ...asked, seats: "paid" })).toEqual([]);
     // Another id's start admits nothing for this one.
     expect(() => admitComparison(begun, { ...asked, id: "g-2", seats: "paid" })).toThrow("never been read");
+  });
+
+  // Fix row F42: a session that ran by itself left a start under its id, and until 2026-10-09 a
+  // round started by hand under that id compared with no check, on an unread checker.
+  it("is asked the whole check under the id of a session that ran by itself", () => {
+    const alone = logOf([
+      event("build.started", { session: "b-2" }),
+      event("build.finished", { session: "b-2", ended: "finished" }),
+    ]);
+    expect(() => admitComparison(alone, { ...asked, id: "b-2", seats: "paid" })).toThrow("never been read");
+    // The session itself goes on from its own start, and a comparison's start admits no session.
+    const session = { id: "b-2", wanted: { cap: WANTED.cap }, seats: "paid" } as const;
+    expect(admitSession(alone, session)).toEqual([]);
+    const compared = logOf([event("comparison.started", { session: "b-2" })]);
+    expect(admitSession(compared, session)).not.toEqual([]);
+  });
+
+  // Fix row F44: a command's own refusals come after the admission's and before anything is
+  // written, so a command refused on either leaves the log as it was.
+  it("asks the comparison's own terms after its refusals and before it writes anything", () => {
+    const asks: string[] = [];
+    const own = () => {
+      asks.push("own");
+      throw new Error("task t-9 is not proposed, and only a held-out task is scored");
+    };
+    // The admission refuses first, and the terms are not asked.
+    expect(() => admitComparison(logOf(), { ...asked, own, seats: "paid" })).toThrow("never been read");
+    expect(asks).toEqual([]);
+    // Past the stop rule on the operator's reason, refused terms leave no override in the log.
+    const stopped = logOf([
+      read1,
+      ...["b-1", "b-2", "b-3"].flatMap((id) => [
+        event("build.finished", { session: id, ended: "finished", harness: `h-${id}`, changed: true }),
+        reported(id, {
+          old: "h0",
+          fresh: `h-${id}`,
+          starter: "h0",
+          scored: { wins: 1, losses: 1, ties: 2 },
+          versions: ["v1", "v2", "v3", "v4"],
+          setting: "s",
+          reading: "no-step",
+        }),
+      ]),
+    ]);
+    const past = { ...asked, id: "b-4", own, wanted: { ...WANTED, pastStop: "new tasks since" } };
+    const before = read(stopped).length;
+    expect(() => admitComparison(stopped, { ...past, seats: "paid" })).toThrow("task t-9 is not proposed");
+    expect(asks).toEqual(["own"]);
+    expect(read(stopped)).toHaveLength(before);
+    // A rehearsal is admitted unasked, and its own terms still hold it.
+    expect(() => admitComparison(stopped, { ...past, seats: "scripted" })).toThrow("task t-9");
   });
 
   it("logs the operator's reason when it goes on past the stop rule, once", () => {

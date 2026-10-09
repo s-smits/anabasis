@@ -353,9 +353,12 @@ unless `--loaded` says that its times will not be compared.
 
 Whether a comparison may start is one function's to say (`admission`, `src/builder/admission.ts`).
 The launcher asks it before it spawns anything, and a round or a checkpoint asks it again before
-its first event, so a command started by hand is refused where a launch of it would be. What only
-a host or an id can refuse stays with the launcher. A rehearsal is exempt by name: its seats are
-scripts, which are paid nothing.
+its first event, so a command started by hand is refused where a launch of it would be. What goes
+on unasked is what the log holds the start of, of its own kind: a comparison that began, or a
+session that began, and the launcher reads the same answer. A command writes nothing before its
+last refusal: the admission's, then the comparison's own terms, and only then an override of the
+stop rule and the campaign's setting. What only a host or an id can refuse stays with the
+launcher. A rehearsal is exempt by name: its seats are scripts, which are paid nothing.
 
 The setting of a campaign is recorded once in its log, as the event `campaign.setting`
 (`tools/d2/setting.ts`): who solves and under which limits, which five flags name (`--solver`,

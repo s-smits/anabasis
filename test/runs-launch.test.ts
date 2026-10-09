@@ -74,6 +74,25 @@ describe("a launch's preflight", () => {
     expect(preflight(stopped, { ...ASKED, pastStop: "new tasks since" }).refusals).toEqual([]);
   });
 
+  // Fix row F45: the command lets a comparison that began go on unasked, and the launcher asked
+  // the whole check of it again, so a checkpoint stopped after it set a task aside could not be
+  // launched a second time.
+  it("asks a comparison that began nothing again, as the command does, and still reads the host", () => {
+    const unread = { ...SETS, faults: null, held: 1 };
+    expect(preflight(unread, ASKED).refusals.length).toBeGreaterThan(0);
+    const going = preflight(unread, { ...ASKED, continued: true });
+    expect(going.refusals).toEqual([]);
+    expect(going.notes[0]).toBe("this comparison goes on from its log: it was admitted when it began");
+    expect(preflight(unread, { ...ASKED, continued: true, load: 14.2 }).refusals).toEqual([
+      expect.stringContaining("load is 14.2 on 12 cores"),
+    ]);
+    // One that reported is finished, whether or not it began.
+    const reported = "comparison g0 has reported no-step, and a comparison that reported is finished";
+    expect(preflight(SETS, { ...ASKED, continued: true, reported }).refusals).toEqual([
+      `${reported}. Pass another id`,
+    ]);
+  });
+
   it("refuses a loaded host, a second start and a missing env file", () => {
     const loaded = { ...ASKED, load: 14.2 };
     expect(preflight(SETS, loaded).refusals).toEqual([expect.stringContaining("load is 14.2 on 12 cores")]);

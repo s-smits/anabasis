@@ -147,7 +147,8 @@ async function main(): Promise<void> {
     ...(values.infeasible ?? []).map((taskId) => ({ taskId, state: "refused" })),
   ];
   // The size it speaks of is the campaign's recorded one, where the command names none.
-  const target = targetNamed(values.target ?? String(recordedSetting(read(campaign.log))?.target ?? 12));
+  const recorded = recordedSetting(read(campaign.log));
+  const target = targetNamed(values.target ?? String(recorded?.target ?? 12));
   const practice = Number(values.practice);
   if (!Number.isInteger(practice) || practice < 0) {
     throw new Error(`--practice ${values.practice}: the practice tasks are a whole number`);
@@ -161,7 +162,10 @@ async function main(): Promise<void> {
       `--tasks ${packages.get(stray)?.taskId ?? stray}: the task is ${before.states.get(stray) ?? "not proposed"}, and only a held-out task is scored`,
     );
   }
-  const pool = before.held.filter((version) => !named.includes(version));
+  // Nor are the tasks the recorded setting names to score: a release cannot be taken back (F47).
+  const kept = values.tasks === undefined ? recorded?.tasks?.join(",") : undefined;
+  const spoken = kept === undefined ? named : scoredNamed(campaign, kept, target);
+  const pool = before.held.filter((version) => !spoken.includes(version));
   const missing = labels.length > 0 ? 0 : Math.max(0, practice - before.released.length);
   const released = Math.min(missing, Math.floor(pool.length / 2));
   const seed = `${contractHash(contract)}:practice`;
@@ -171,7 +175,7 @@ async function main(): Promise<void> {
   }
   if (released < missing) {
     console.log(
-      `practice is ${String(missing - released)} short of ${values.practice}: a release takes at most half of the ${String(pool.length)} held out${named.length === 0 ? "" : " and not named to score"}, so that a comparison has tasks to score`,
+      `practice is ${String(missing - released)} short of ${values.practice}: a release takes at most half of the ${String(pool.length)} held out${spoken.length === 0 ? "" : " and not named to score"}, so that a comparison has tasks to score`,
     );
   }
 

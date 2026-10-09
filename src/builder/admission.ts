@@ -36,6 +36,13 @@
  * It needs its cap, a checker that has been read, since its practice solves are judged by the same
  * checks, and a campaign the stop rule has not stopped.
  *
+ * What goes on unasked is what the log holds a start of, of its own kind (`begun`): a comparison
+ * that began, and a session that began. Until 2026-10-09 either start exempted both, so a round
+ * started by hand under the id of a session that had run by itself compared with no check at all,
+ * on an unread checker and past the stop rule (the third review, row F42). The launcher reads the
+ * same answer, so a comparison stopped after its start is launched again under its id where the
+ * launcher had asked it the whole check a second time (row F45).
+ *
  * What only a host or an id can refuse stays with the launcher: a second writer of the log, a
  * loaded host, a missing env file, an id whose comparison has reported or whose session was cut.
  * A command answers the last two itself, by saying what it said or by refusing the session.
@@ -102,6 +109,10 @@ export interface Starting {
   readonly wanted: Wanted;
   /** Who sits in the seats: models that are paid, or a rehearsal's scripts. */
   readonly seats: "paid" | "scripted";
+  /** The refusals the comparison makes of its own terms (`refuseTerms`, `round.ts`), which throw.
+   *  They are asked after the admission's and before anything is written, so that a command
+   *  refused on either leaves the log as it was (the third review, row F44). */
+  readonly own: () => void;
 }
 
 /** What a session's start is asked beside it: the practice solves its limits allow. */
@@ -119,6 +130,7 @@ interface StartingSession {
 /** The command an Examiner session runs as: where a refusal sends its reader for more held-out
  *  tasks, and what a launch of one starts (`tools/runs/pulse.ts`). */
 export const EXAMINE = "tools/d1b/examine.ts";
+const STARTED = "comparison.started";
 // The reading was a step done late and by hand in the first live rounds (2026-10-09), and on
 // truss 22 of 32 solves were then rejected, 14 on one check, with nothing to say whose fault.
 const UNREAD =
@@ -283,14 +295,34 @@ export function sessionAdmission(supply: Supply, wanted: WantedPractice) {
   return { refusals, notes };
 }
 
+/** Whether the log holds the start of the comparison, or of the Builder session, that `id` names:
+ *  what was admitted when it began, and goes on unasked. */
+export function begun(
+  events: readonly LogEvent[],
+  id: string,
+  start: "comparison.started" | "build.started",
+): boolean {
+  return events.some(({ kind, data }) => kind === start && data.session === id);
+}
+
 /**
- * What both admissions do with a decision: one the log already holds a start of goes on, since it
- * was admitted when it began; every refusal is thrown at once; and where the start goes on past
- * the stop rule, the operator's reason is logged under its id, once.
+ * What both admissions do with a decision: one the log already holds a start of, of its own kind,
+ * goes on, since it was admitted when it began; every refusal is thrown at once; and where the
+ * start goes on past the stop rule, the operator's reason is logged under its id, once.
  */
 function entered(
   log: string,
-  { id, pastStop }: { readonly id: string; readonly pastStop: string | undefined },
+  {
+    id,
+    pastStop,
+    start,
+    own,
+  }: {
+    readonly id: string;
+    readonly pastStop: string | undefined;
+    readonly start: Parameters<typeof begun>[2];
+    readonly own?: (() => void) | undefined;
+  },
   decide: (events: readonly LogEvent[]) => {
     readonly supply: Supply;
     readonly refusals: readonly string[];
@@ -298,12 +330,10 @@ function entered(
   },
 ): string[] {
   const events = read(log);
-  const begun = events.some(
-    ({ kind, data }) => (kind === "comparison.started" || kind === "build.started") && data.session === id,
-  );
-  if (begun) return [];
+  if (begun(events, id, start)) return [];
   const { supply, refusals, notes } = decide(events);
   if (refusals.length > 0) throw new Error(refusals.join("\n"));
+  own?.();
   const overridden = events.some(({ kind, data }) => kind === "stop.overridden" && data.session === id);
   if (supply.stop.stop && pastStop !== undefined && !overridden) {
     const { checkpoints, sinceStep } = supply.stop;
@@ -315,13 +345,16 @@ function entered(
 /**
  * Admit the comparison a command is about to start on the campaign whose log is `log`, and return
  * what its reader should know; throws every refusal at once where it may not start. One the log
- * already holds a start of, its own or its session's, goes on: it was admitted when it began. A
- * rehearsal is admitted unasked. Where the comparison goes on past the stop rule, the operator's
+ * already holds the start of goes on: it was admitted when it began. The start of a session under
+ * its id admits no comparison. A rehearsal is admitted unasked. Where the comparison goes on past the stop rule, the operator's
  * reason is logged under its id, once.
  */
-export function admitComparison(log: string, { id, reference, wanted, seats }: Starting): string[] {
-  if (seats === "scripted") return [];
-  return entered(log, { id, pastStop: wanted.pastStop }, (events) => {
+export function admitComparison(log: string, { id, reference, wanted, seats, own }: Starting): string[] {
+  if (seats === "scripted") {
+    if (!begun(read(log), id, STARTED)) own();
+    return [];
+  }
+  return entered(log, { id, pastStop: wanted.pastStop, start: STARTED, own }, (events) => {
     const supply = supplyOf(events, reference);
     return { supply, ...admission(supply, wanted) };
   });
@@ -330,7 +363,7 @@ export function admitComparison(log: string, { id, reference, wanted, seats }: S
 /** The same for a Builder session with no comparison after it (`tools/d2/session.ts`). */
 export function admitSession(log: string, { id, wanted, seats }: StartingSession): string[] {
   if (seats === "scripted") return [];
-  return entered(log, { id, pastStop: wanted.pastStop }, (events) => {
+  return entered(log, { id, pastStop: wanted.pastStop, start: "build.started" }, (events) => {
     const supply = supplyOf(events);
     return { supply, ...sessionAdmission(supply, wanted) };
   });

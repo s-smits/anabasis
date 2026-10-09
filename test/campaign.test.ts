@@ -38,6 +38,11 @@ const bundle = join(root, "bundle");
 const ARGS = { root, sweep: "s", cycle: "c01", bundle, name: NAME };
 /** A campaign whose solves were made before any setting was recorded. */
 const EARLIER = `${NAME}-earlier`;
+/** A Builder a backend serves, for a command that is to get as far as its admission: a model no
+ *  backend serves is refused with the command's other flags, before the log is asked anything. */
+const SERVED = "claude/claude-opus-5-5";
+/** A campaign whose recorded setting names the tasks to score. */
+const RECORDED = `${NAME}-recorded`;
 const ASKED = { solves: 2, level: 0.1 };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
@@ -52,7 +57,7 @@ setDefaultTimeout(60_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  for (const name of [NAME, EARLIER]) {
+  for (const name of [NAME, EARLIER, RECORDED]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   }
 });
@@ -343,6 +348,21 @@ describe("a campaign", () => {
     });
     expect(ran.stderr.toString()).toContain("name --cap");
     expect(capNamed({ cap: "375", reserve: "10" }, "paid")).toEqual({ dollars: 375, reserve: 10 });
+    // Fix row F43: a cap that is no number above nothing held nothing, and is refused wherever a
+    // cap is read: by a round, a checkpoint, a session by itself and the launcher.
+    for (const [cap, reserve] of [
+      ["$40", "10"],
+      ["0", "10"],
+      ["40", "-1"],
+      ["forty", "10"],
+    ] as const) {
+      expect(() => capNamed({ cap, reserve }, "scripted")).toThrow(
+        `--cap ${cap} --reserve ${reserve}: a cap and its reserve are dollars as plain numbers, each above nothing`,
+      );
+    }
+    await expect(
+      sessionCommand([...flags, "--session", "z-8", "--builder", "faux/none", "--cap", "$40"]),
+    ).rejects.toThrow("--cap $40 --reserve 10: a cap and its reserve are dollars as plain numbers");
     // A simulation's seats are scripts, which are paid nothing, and may name none.
     expect(capNamed({ reserve: "10" }, "scripted")).toBeUndefined();
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
@@ -395,9 +415,7 @@ describe("a campaign", () => {
     ];
     // The campaign's checker has never been read, which only the launcher refused until 2026-10-09.
     const unread = "the campaign's checker has never been read: run tools/c/accept.ts";
-    await expect(roundCommand([...flags, "--session", "z-5", "--builder", "faux/none"])).rejects.toThrow(
-      unread,
-    );
+    await expect(roundCommand([...flags, "--session", "z-5", "--builder", SERVED])).rejects.toThrow(unread);
     const ran = Bun.spawnSync({
       cmd: [
         capturedExecPath,
@@ -438,7 +456,7 @@ describe("a campaign", () => {
     // A comparison's flags are none of a session's: it scores nothing and is read against nothing.
     await expect(sessionCommand([...flags, "--cap", "100", "--solves", "2"])).rejects.toThrow("--solves");
     // On a checker nobody has read its practice solves would be judged by checks nobody has seen.
-    await expect(sessionCommand([...flags, "--cap", "100", "--builder", "faux/none"])).rejects.toThrow(
+    await expect(sessionCommand([...flags, "--cap", "100", "--builder", SERVED])).rejects.toThrow(
       "the campaign's checker has never been read: run tools/c/accept.ts",
     );
     // A rehearsal's seats are scripts: it is exempt, and is seated against the campaign's
@@ -600,6 +618,38 @@ describe("a campaign", () => {
     expect(read(campaign.log).some(({ data }) => data.session === "z-4")).toBe(false);
   });
 
+  // Fix row F47: `prepare.ts` read the recorded target and not the recorded tasks, so its draw
+  // could release for practice a task the campaign's setting names to score, for good.
+  it("releases for practice no task the campaign's recorded setting names to score", async () => {
+    const campaign = await openCampaign({ ...ARGS, name: RECORDED });
+    const prepared = (practice: string) => {
+      const flags = Object.entries({ ...ARGS, name: RECORDED, practice }).flatMap(([flag, value]) => [
+        `--${flag}`,
+        value,
+      ]);
+      const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/prepare.ts", ...flags], cwd: REPO });
+      return `${ran.stdout.toString()}${ran.stderr.toString()}`;
+    };
+    expect(prepared("0")).toContain("7 held out, 0 released for practice");
+    const scored = ["t-1", "t-2", "t-3", "t-4"];
+    append(campaign.log, "campaign.setting", {
+      solver: null,
+      minutes: 120,
+      turns: 24,
+      modelTurns: null,
+      tasks: scored,
+      target: 12,
+    });
+    // Three are asked for, and half of the three tasks the record does not name is one.
+    expect(prepared("3")).toContain(
+      "practice is 2 short of 3: a release takes at most half of the 3 held out and not named to score",
+    );
+    const packages = campaign.packages();
+    const released = taskSets(read(campaign.log)).released.map((version) => packages.get(version)?.taskId);
+    expect(released).toHaveLength(1);
+    expect(released.filter((taskId) => scored.includes(taskId ?? ""))).toEqual([]);
+  });
+
   // Recode ran on 9 October with its solver held to 15 of its own turns, and its log holds no
   // record of a setting: the first command of this source there has to name what it ran under.
   it("holds the first record of a campaign that already holds solves to what they ran under", async () => {
@@ -633,7 +683,7 @@ describe("a campaign", () => {
       "--parent",
       "starter",
       "--builder",
-      "faux/none",
+      SERVED,
     ];
     const refusal = "the campaign's log records no setting yet, and this command names another";
     const was = `which was --solver ${priceKey(model)} --solver-effort ${effort} --solve-minutes 8 --solve-turns 24 --solve-model-turns 15`;

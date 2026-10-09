@@ -74,6 +74,7 @@ import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import {
   admission,
+  begun,
   EXAMINE,
   sessionAdmission,
   type Supply,
@@ -85,7 +86,7 @@ import { sessionDirs, spent } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
-import { ROUND_OPTIONS } from "../d2/round.ts";
+import { capRead, ROUND_OPTIONS } from "../d2/round.ts";
 import {
   firstRecord,
   type NamedSetting,
@@ -136,6 +137,9 @@ export interface Host {
 export interface Asked extends Host, Omit<Wanted, "restarted"> {
   /** Why the comparison's id is taken (`reportedAs`), or null. */
   readonly reported: string | null;
+  /** Whether the log holds this comparison's own start (`begun`): it was admitted when it began,
+   *  and goes on from its log as the command lets it. */
+  readonly continued?: boolean | undefined;
 }
 
 /** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
@@ -209,13 +213,17 @@ function flagOf(args: readonly string[], name: string): string | undefined {
  *  the comparison's own admission on this log, then what only its id and this host can refuse. */
 export function preflight(supply: Supply, asked: Asked) {
   const { refusals, notes } = admission(supply, { ...asked, restarted: restarts(asked.named, asked.ran) });
+  // A comparison that began is not asked again, here as in the command: a checkpoint that set a
+  // task aside and was stopped could not be launched again while the launcher asked the whole
+  // check of it a second time (the third review, row F45).
+  const going = asked.continued === true && asked.reported === null;
   return {
     refusals: [
-      ...refusals,
+      ...(going ? [] : refusals),
       ...said([[asked.reported !== null, `${String(asked.reported)}. Pass another id`]]),
       ...refused(asked),
     ],
-    notes,
+    notes: going ? ["this comparison goes on from its log: it was admitted when it began", ...notes] : notes,
   };
 }
 
@@ -346,7 +354,8 @@ export function askedFlagged(values: Readonly<Record<string, Loose>>, events: re
   const setting = settingFlagged(values, events);
   const ran = solverLast(events);
   const session: WantedPractice = {
-    cap: isString(values.cap) ? { dollars: Number(values.cap), reserve: Number(values.reserve) } : null,
+    // Read as the command reads it, so a cap that is no number is refused before anything starts.
+    cap: isString(values.cap) ? capRead(values.cap, String(values.reserve)) : null,
     pastStop: isString(values["past-stop"]) ? values["past-stop"] : undefined,
     unrecorded: firstRecord(setting, setting.named, ran),
     practiceSolves: Number(values["practice-solves"]),
@@ -416,6 +425,7 @@ export async function launch(args: readonly string[]): Promise<void> {
           ...asked.comparison,
           builds: !checking,
           reported: reportedAs(events ?? [], session),
+          continued: begun(events ?? [], session, "comparison.started"),
         });
   for (const note of notes) console.log(`· ${note}`);
   if (run === undefined || refusals.length > 0) {

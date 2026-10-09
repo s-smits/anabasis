@@ -73,14 +73,22 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison, type Wanted } from "#src/builder/admission.ts";
-import { predicted, type Report, round, scoredSet, type Valid } from "#src/builder/round.ts";
+import {
+  predicted,
+  refuseTerms,
+  type Report,
+  type RoundRequest,
+  round,
+  scoredSet,
+  type Valid,
+} from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type Budget, UNITS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
-import { type Cap, stopRule } from "#src/kernel/reports.ts";
+import { type Cap, capHolds, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -366,6 +374,21 @@ export function budgetsNamed(flags: readonly string[] = []): Budget[] {
 }
 
 /**
+ * The dollars `--cap` and `--reserve` name, read in one place for every command and for the
+ * launcher: each is a plain number above nothing. A cap typed as "$40" is no number, and held
+ * nothing where it was not checked (`capHolds`).
+ */
+export function capRead(cap: string, reserve: string): Cap {
+  const named = { dollars: Number(cap), reserve: Number(reserve) };
+  if (!capHolds(named)) {
+    throw new Error(
+      `--cap ${cap} --reserve ${reserve}: a cap and its reserve are dollars as plain numbers, each above nothing, as --cap 40 --reserve 10`,
+    );
+  }
+  return named;
+}
+
+/**
  * The dollar cap `--cap` and `--reserve` name. A command whose solves are paid for is refused
  * without one (`docs/plan.md`, Phase 0); a simulation, whose seats are scripts, may name none.
  */
@@ -379,7 +402,7 @@ export function capNamed(
       "name --cap, the billed dollars this comparison may hold: no solve starts that would take it past them, and a comparison the cap cuts short reads not-scored",
     );
   }
-  return { dollars: Number(values.cap), reserve: Number(values.reserve) };
+  return capRead(values.cap, values.reserve);
 }
 
 /**
@@ -440,18 +463,9 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   const reviewers = reviewersNamed(campaign, values);
   const parent = await parentNamed(campaign, { ...values, session });
   const reference = await keptAs(campaign, "--reference", values.reference);
-  const notes = admitComparison(campaign.log, {
-    id: session,
-    reference: values.reference,
-    wanted: wantedNamed(campaign, values, { setting, cap, builds: true }),
-    seats: seated === solved ? "paid" : "scripted",
-  });
-  for (const note of notes) console.log(`· ${note}`);
   const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
   const built = sessionNamed(campaign, { ...values, session }, { parent, limits, seats, reviewers });
-  keepSetting(campaign.log, setting);
-  stayAwake();
-  const report = await round({
+  const request: RoundRequest = {
     session: built,
     reference,
     starter: await starter(campaign),
@@ -469,7 +483,25 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
       reviewers === null
         ? undefined
         : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
+  };
+  // Every refusal comes before anything is recorded: the admission's, then the round's own
+  // terms, and only then an override of the stop rule and the campaign's setting.
+  const notes = admitComparison(campaign.log, {
+    id: session,
+    reference: values.reference,
+    wanted: wantedNamed(campaign, values, { setting, cap, builds: true }),
+    seats: seated === solved ? "paid" : "scripted",
+    own: () =>
+      refuseTerms(request, {
+        log: campaign.log,
+        id: session,
+        practised: new Set(built.tasks.map(({ version }) => version)),
+      }),
   });
+  for (const note of notes) console.log(`· ${note}`);
+  keepSetting(campaign.log, setting);
+  stayAwake();
+  const report = await round(request);
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
   for (const line of [

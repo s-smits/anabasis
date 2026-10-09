@@ -1095,6 +1095,29 @@ describe("a checkpoint with no session", () => {
     ]);
   });
 
+  // Fix row F46: a settling reads the comparison's terms back from its start. A budget in a unit
+  // that is read no longer came back with no unit, which reads the full limit, and the settled
+  // report held that row in place of the budget the comparison began with.
+  it("settles on the budgets a comparison began with, and refuses one begun in a unit it reads no longer", async () => {
+    const s = await setup([edit, finish], rejecting);
+    await round({ ...s.request, budgets: [{ turns: 12 }] });
+    const labels = new Map(toLabel(read(s.log), "b-1").aside.map((solve) => [solve, "earned"] as const));
+    // The same comparison as a source of 8 October began it: read also at 600 CPU seconds.
+    const older = join(dirname(s.log), "older.jsonl");
+    for (const { kind, data } of read(s.log)) {
+      const began = kind === COMPARISON_STARTED ? { budgets: [{ turns: 12 }, { cpu: 600 }] } : {};
+      append(older, kind, { ...data, ...began });
+    }
+    expect(() => settleReading(older, "b-1", labels)).toThrow(
+      "comparison b-1 began with a budget in cpu, which this source reads no longer (turns and seconds are read): its report stands as it was written",
+    );
+    expect(read(older).filter(({ kind }) => kind === COMPARISON_REPORTED)).toHaveLength(1);
+    const settled = settleReading(s.log, "b-1", labels);
+    expect(settled.budgets.map(({ turns, seconds }) => ({ turns, seconds }))).toEqual([
+      { turns: 12, seconds: undefined },
+    ]);
+  });
+
   it("writes the operator's prediction with the terms, before the first solve, and keeps it", async () => {
     const s = await setup([], step);
     const prediction = "no step: the starter is valid on most of these at this budget";

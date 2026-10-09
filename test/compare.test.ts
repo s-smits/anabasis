@@ -253,6 +253,19 @@ describe("the pairs a comparison reads from the log", () => {
     expect(pairsOf(disputed, ["v1", "v0"], sides)).toEqual({ pairs: [other], disputed: ["v1"] });
   });
 
+  it("counts no solve that opened another harness than its condition names", () => {
+    // The runner stops a comparison on such a solve, and the comparison goes on from this log: a
+    // kept harness once opened without its tool tree (2026-10-09), and its answer stayed in the
+    // log under the condition that names the whole harness.
+    const log = [
+      ...held,
+      ...solve(base, "pass", { harness: "old" }),
+      ...solve(fresh, "fail", { harness: "other" }),
+      ...solve(fresh, "pass", { harness: "new" }),
+    ];
+    expect(pairsOf(log, ["v1"], sides).pairs[0]).toMatchObject({ old: [P], fresh: [P] });
+  });
+
   it("reads no solve another solver made: a setting is the solver, its limits and the host", () => {
     const moved = { ...fresh, host: "h2" };
     const log = [...held, ...solve(base, "pass"), ...solve(moved, "pass"), ...solve(fresh, "fail")];

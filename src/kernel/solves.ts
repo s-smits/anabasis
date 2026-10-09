@@ -88,12 +88,15 @@ export function solvesIn(events: readonly LogEvent[]): Solve[] {
 }
 
 /** The solves whose condition the log records, each with it. A condition that does not hash to its
- *  id is refused, as `conditionsOf` refuses it. */
+ *  id is refused, as `conditionsOf` refuses it. A solve that opened another harness than its
+ *  condition names ran under none: its runner stopped on it (`practised`), and what goes on from
+ *  the log must not count it. */
 export function ranUnder(events: readonly LogEvent[]): Ran[] {
   const conditions = conditionsOf(events);
   return solvesIn(events).flatMap((solve) => {
     const under = conditions.get(solve.condition);
-    return under === undefined ? [] : [{ ...solve, under }];
+    const opened = solve.end?.harness;
+    return under === undefined || (isString(opened) && opened !== under.harness) ? [] : [{ ...solve, under }];
   });
 }
 

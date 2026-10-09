@@ -55,7 +55,8 @@ prompted with, below verbose.
 - anything from a `non-result`. It is no measurement: count passes, fails and non-results apart, and
   rates over passes and fails alone.
 - that two solves are alike in time. `solve.started.load` is the host's load when the solve began,
-  and a wall reached under a heavy load is not the wall reached on an idle host.
+  and `cores`, from 9 October, the cores it is a load on. A wall reached under a heavy load is not
+  the wall reached on an idle host.
 
 `checks/` at medium is the checker's own source and reference, and it stays out of any prompt
 written for a Builder or a solver. A `correctness-model/` inside a harness is a copy of it that the

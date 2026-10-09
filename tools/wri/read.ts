@@ -52,6 +52,10 @@ interface Solve {
    *  start named any (2026-10-09). */
   readonly comparison: string | null;
   readonly wallSeconds: number;
+  /** The host's one-minute load when it started, and the cores that is a load on; null where its
+   *  start holds none, as before 2026-10-09 for the cores. */
+  readonly load: number | null;
+  readonly cores: number | null;
   outcome: string | null;
   kind: string | null;
   seconds: number;
@@ -130,6 +134,12 @@ const FEW_CALLS = 3;
  *  one harness on one task, from which a budget in that unit splits two such solves about as often
  *  as not. */
 const SPREAD_WORTH_A_LINE = 1.5;
+/** The factor between the loads two comparisons ran under from which they are read as made on
+ *  different hosts, and the load under which no factor is worth a line: a load of four moves no
+ *  wall on a host of four cores or more. On 2026-10-09 one harness answered the same tasks in a
+ *  median of 105 s under a load of 31 and of 40 s under a load of 6. */
+const LOAD_MOVED = 2;
+const LOAD_WORTH_A_LINE = 4;
 /** Minutes of silence in the log worth a line. */
 const SILENCE_MINUTES = 20;
 const DEFECT = "check-defect";
@@ -199,6 +209,8 @@ export const TRIGGERS = {
   "STEP NOT REPEATED": 25,
   "NO TASK HELD OUT": 25,
   "WALL SHARE": 26,
+  "HOST LOADED": 26,
+  "LOAD MOVED": 26,
   "WALL-BOUND MISSES": 26,
   "LONG SOLVE, LITTLE CPU": 26,
   "CPU UNMEASURED": 26,
@@ -250,6 +262,7 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
     const id = text(data.solve);
     if (kind === "solve.started") {
       const condition = conditions.get(text(data.condition));
+      const [minute] = items(data.load);
       solves.set(id, {
         id,
         index,
@@ -259,6 +272,8 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
         side: condition?.side ?? "",
         comparison: isString(data.comparison) ? data.comparison : null,
         wallSeconds: count(asRecord(data.limits)?.wallSeconds),
+        load: isNumber(minute) ? minute : null,
+        cores: isNumber(data.cores) ? data.cores : null,
         outcome: null,
         kind: null,
         seconds: 0,
@@ -940,6 +955,29 @@ function solveTriggers(log: Index): Trigger[] {
           ),
         ];
   });
+  // The one-minute load each comparison's solves started under. A wall counts the clock, so the
+  // same wall holds less work on a loaded host: a comparison made there reaches walls an idle host
+  // would not, and two comparisons under different loads were not made under one budget, whatever
+  // their settings say.
+  const loads = log.compared.flatMap(({ session, scoring }) => {
+    const at = scoring.flatMap((solve) => (solve.load === null ? [] : [solve.load]));
+    const middle = median(at);
+    const cores = scoring.findLast((solve) => solve.cores !== null)?.cores ?? null;
+    return middle === null ? [] : [{ session, middle, most: Math.max(...at), cores }];
+  });
+  const loaded = loads.flatMap(({ session, middle, most, cores }) =>
+    cores !== null && middle > cores
+      ? [
+          fired(
+            "HOST LOADED",
+            `${session}: load ${middle.toFixed(1)} at the median and ${most.toFixed(1)} at most when its solves started, on ${plural(cores, "core")}`,
+          ),
+        ]
+      : [],
+  );
+  const middles = loads.map(({ middle }) => middle);
+  const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
+  const moved = loads.length > 1 && busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
   const starved = done.filter(
     (solve) => solve.cpu !== null && solve.seconds > 60 && solve.cpu < solve.seconds * 0.02,
   );
@@ -985,6 +1023,15 @@ function solveTriggers(log: Index): Trigger[] {
   return [
     ...(walled > 0 ? [fired("WALL-BOUND MISSES", share(walled, missed.length))] : []),
     ...wallShares,
+    ...loaded,
+    ...(moved
+      ? [
+          fired(
+            "LOAD MOVED",
+            `median load when each comparison's solves started: ${loads.map(({ session, middle }) => `${session} ${middle.toFixed(1)}`).join("; ")}`,
+          ),
+        ]
+      : []),
     ...(starved.length > 0 ? [fired("LONG SOLVE, LITTLE CPU", plural(starved.length, "solve"))] : []),
     ...(cut.length > 0
       ? [

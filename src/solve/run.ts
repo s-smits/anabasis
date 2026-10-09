@@ -51,7 +51,7 @@ import { boundText } from "../meta/bounded-text.ts";
 import { lstatSync, mkdirSync, rmSync } from "../meta/filesystem.ts";
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { loadavg } from "../meta/os.ts";
+import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -155,7 +155,10 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     model: priceKey(model),
     effort: request.effort,
     limits: request.limits,
+    // The load with the cores it is a load on: a wall counts the clock, and 30 runnable processes
+    // are another host on 12 cores than on 64. Until 2026-10-09 a log held the load alone.
     load: loadavg(),
+    cores: availableParallelism(),
     ...keyIfDefined("comparison", request.comparison),
   });
   const played = await play(request, id);

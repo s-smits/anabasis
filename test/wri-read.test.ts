@@ -508,3 +508,80 @@ describe("the reader of a round compared with another harness than its session s
     );
   });
 });
+
+describe("the reader of the load a comparison's solves started under", () => {
+  /** A log of one comparison a row: its id, the one-minute load each of its solves started under,
+   *  and the host's cores where the log holds them. */
+  const read = (rows: readonly (readonly [string, readonly number[], number?])[]) => {
+    const log: LogEvent[] = [];
+    const put = (kind: EventKind, data: JsonObject) => {
+      log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
+    };
+    put("task.proposed", { version: "v1" });
+    put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
+    for (const [session, loads, cores] of rows) {
+      const terms = { session, old: "hbase", fresh: "hy", starter: "hbase", setting: SETTING };
+      put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
+      for (const [index, load] of loads.entries()) {
+        const ran = condition("v1", index % 2 === 0 ? "hbase" : "hy");
+        const id = `${session}-${String(index)}`;
+        put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+        put("solve.started", {
+          solve: id,
+          condition: conditionId(ran),
+          limits: { wallSeconds: 100 },
+          load: [load, 1, 1],
+          comparison: session,
+          ...keyIfDefined("cores", cores),
+        });
+        put("solve.finished", {
+          solve: id,
+          ending: { outcome: "pass" },
+          seconds: 50,
+          responseModels: ["m-1"],
+        });
+      }
+      put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
+    }
+    const { triggers } = overview(log);
+    for (const trigger of triggers) expect(trigger.lane).toBe(TRIGGERS[trigger.name]);
+    return (name: keyof typeof TRIGGERS) =>
+      triggers.flatMap((trigger) => (trigger.name === name ? [trigger.detail] : []));
+  };
+
+  it("names a comparison made over the host's cores, where the log holds them", () => {
+    const said = read([
+      ["g-1", [30, 34, 50, 28], 12],
+      ["g-2", [5, 7, 6, 6], 12],
+    ]);
+    expect(said("HOST LOADED")).toEqual([
+      "g-1: load 32.0 at the median and 50.0 at most when its solves started, on 12 cores",
+    ]);
+    // A log written before a solve's start held the cores has a load and nothing to hold it to.
+    expect(read([["g-1", [30, 34, 50, 28]]])("HOST LOADED")).toEqual([]);
+  });
+
+  it("gives each comparison's median load where the busiest ran under twice the calmest or more", () => {
+    const said = read([
+      ["b-1", [30, 34, 50, 28]],
+      ["g-1", [5, 7, 6, 6]],
+    ]);
+    expect(said("LOAD MOVED")).toEqual([
+      "median load when each comparison's solves started: b-1 32.0; g-1 6.0",
+    ]);
+  });
+
+  it("says nothing of two comparisons under one load, of an idle host, or of one comparison", () => {
+    const even = read([
+      ["b-1", [30, 34], 64],
+      ["g-1", [20, 22], 64],
+    ]);
+    expect([...even("LOAD MOVED"), ...even("HOST LOADED")]).toEqual([]);
+    const idle = read([
+      ["b-1", [0.4, 0.6]],
+      ["g-1", [2, 3]],
+    ]);
+    expect(idle("LOAD MOVED")).toEqual([]);
+    expect(read([["b-1", [30, 34]]])("LOAD MOVED")).toEqual([]);
+  });
+});

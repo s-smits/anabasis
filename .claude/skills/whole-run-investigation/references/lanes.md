@@ -658,8 +658,8 @@ an Examiner session, or a stop; it routes to `operator`.
 
 **26. Solver process and walls.**
 
-Starts from `WALL-BOUND MISSES (lane 26)`, `WALL SHARE (lane 26)`,
-`LONG SOLVE, LITTLE CPU (lane 26)` and `CPU UNMEASURED (lane 26)`.
+Starts from `WALL-BOUND MISSES (lane 26)`, `WALL SHARE (lane 26)`, `HOST LOADED (lane 26)`,
+`LOAD MOVED (lane 26)`, `LONG SOLVE, LITTLE CPU (lane 26)` and `CPU UNMEASURED (lane 26)`.
 
 The question is how the solver spent its walls, and whether a miss measured the task or the
 wall. The limits are the host's, in the condition: the solve's wall, the turn cap, the shell's
@@ -671,7 +671,12 @@ fails at 1.5% of the wall were not the solver's. So read the median share under 
 the child on the scored set, and say whether the child's solves got shorter, longer or the same
 on the tasks both passed. Read `cpu.seconds` against `seconds` and the load at start and end: a
 long solve with little CPU waited on the machine or the provider, and on 7 October wall time ran
-2.3 times CPU time under load. A command cut at its timeout or by an abort ends with its CPU
+2.3 times CPU time under load. A wall counts the clock, so a loaded host holds less work in it.
+`HOST LOADED` names a comparison whose solves started, at the median, under a load over the
+host's cores, where the log holds the cores (from 9 October). `LOAD MOVED` gives each
+comparison's median load where the busiest ran under twice the calmest or more: on 9 October one
+harness answered the same tasks in a median of 105 s under a load of 31 and of 40 s under a load
+of 6, so a step and its repeat, or two readings at one wall, were not made under one budget. A command cut at its timeout or by an abort ends with its CPU
 time unmeasured, and the solve's `cpu.seconds` is then the sum of the others: a floor and no
 reading. `CPU UNMEASURED` counts those solves, and for each comparison the share of its solves
 among them, since its report sums what was measured and so reads a budget or a spread in `cpu`

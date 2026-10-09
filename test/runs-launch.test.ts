@@ -86,7 +86,7 @@ describe("a launch's preflight", () => {
     // three, and a step takes four.
     const tied = { ...SETS, held: 12, untied: 0.25 };
     expect(preflight(tied, ASKED).refusals).toEqual([
-      "the campaign's last comparison left 25% of its tasks untied, and at that share 12 scored tasks leave about 3.0 untied, where at --level 0.1 a step takes 4, all won: this comparison could hardly read a step. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks, or change the budget so that fewer tasks tie",
+      "the campaign's last comparison left 25% of its tasks for this one to untie: the rest tied there, or this one's reference harness was valid on them in every solve. At that share 12 scored tasks leave about 3.0 untied, where at --level 0.1 a step takes 4, all won: this comparison could hardly read a step. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks, or change the budget so that fewer tasks tie",
     ]);
     // At a half, twelve leave six, and it starts. Before any comparison every task is counted.
     expect(preflight({ ...tied, untied: 0.5 }, ASKED).refusals).toEqual([]);
@@ -144,6 +144,30 @@ describe("a launch's preflight", () => {
     const moved = [...log, ...longer.events];
     expect(supplyOf(moved).untied).toBeNull();
     expect(supplyOf([...moved, reported("b-5", tallied(4, 0, longer.setting))]).untied).toBe(0.5);
+    // A task the harness to be compared with was valid on in every solve can only tie again. After
+    // a step read 7-0-4 the harness that won was valid in every solve on 8 of the 11 tasks, so a
+    // round made against it had 3 to win where the share on record said 7 (2026-10-09).
+    const stepped = [
+      ...here.events,
+      reported("g-1", {
+        ...tallied(6, 0, here.setting),
+        old: "h0",
+        fresh: "h1",
+        starter: "h0",
+        valid: { old: [6, 1, 1], fresh: [1, 1, 6] },
+      }),
+    ];
+    expect(supplyOf(stepped).untied).toBe(0.75);
+    expect(supplyOf(stepped, "h1").untied).toBe(0.25);
+    // `latest` is the harness the last whole session left. One that comparison did not solve has
+    // no record in it.
+    const built: LogEvent = {
+      at,
+      kind: "build.finished",
+      data: { session: "b-1", changed: true, harness: "h1", ended: "finished" },
+    };
+    expect(supplyOf([built, ...stepped], "latest").untied).toBe(0.25);
+    expect(supplyOf(stepped, "h9").untied).toBe(0.75);
     // And a launch that names other limits than the log's last solves ran under counts every
     // task, since the share on record is another setting's.
     const ran = { model: "p/m", effort: "high", limits: { ...LIMITS, turns: 48 } };

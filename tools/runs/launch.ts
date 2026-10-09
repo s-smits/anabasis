@@ -18,8 +18,11 @@
  *     read a step whatever the harnesses did, and the plan blocks a launch that cannot give a
  *     result (`docs/plan.md`, Phase 2). The untied tasks are counted from the share the campaign's
  *     last comparison left untied, where that comparison was made under the setting this one
- *     would run under: another solver or other limits tie other tasks. Before any such
- *     comparison every scored task is counted whole, and so is one held out since it. Until
+ *     would run under: another solver or other limits tie other tasks. A task the harness this
+ *     one is made with was valid on in every solve there can only tie again, so no more are
+ *     counted than it left to win: after buffer's first step the harness that won was valid in
+ *     every solve on 8 of 11 tasks (2026-10-09). Before any such comparison every scored task
+ *     is counted whole, and so is one held out since it. Until
  *     2026-10-09 this was a note, and the eight truss rounds of 2026-10-08 scored no task and
  *     read `no-step` eight times for over $220;
  *   - a comparison with no `--cap`: the plan requires a dollar cap at launch for each comparison;
@@ -64,7 +67,7 @@ import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { sweepOf } from "#src/kernel/compare.ts";
 import { settingId } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { awaitingLabel, lastReports } from "#src/kernel/reports.ts";
+import { awaitingLabel, lastReports, latestBuilt } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { ranUnder, solverLast } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -131,7 +134,8 @@ export interface Asked extends Host {
 /** What a launch reads of a log's tasks: how many are held out and may be scored, how many wait
  *  for a person's label and are left out, how many are released for practice, and the share of
  *  its tallied tasks left untied by the last comparison made under the setting of the log's last
- *  test-side solve, null before any, with how many tasks were held out since it tallied. */
+ *  test-side solve, and by the harness the next would be made with, null before any, with how
+ *  many tasks were held out since it tallied. */
 export interface Supply {
   readonly held: number;
   readonly awaiting: number;
@@ -199,8 +203,9 @@ function flagOf(args: readonly string[], name: string): string | undefined {
   return at === -1 ? undefined : args[at + 1];
 }
 
-/** A log's supply of tasks, as `preflight` takes it. */
-export function supplyOf(events: readonly LogEvent[]): Supply {
+/** A log's supply of tasks, as `preflight` takes it, for a comparison made with the harness
+ *  `--reference` names. */
+export function supplyOf(events: readonly LogEvent[], reference = "starter"): Supply {
   const sets = taskSets(events);
   const waiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
   const solved = ranUnder(events).findLast(({ under }) => under.side === "test")?.under;
@@ -215,9 +220,15 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
   const tally = asRecord(last?.scored);
   const versions = Array.isArray(last?.versions) ? last.versions : [];
   const tallied = versions.length;
+  // A task the harness to be compared with was valid on in every solve there can only tie again.
+  const named =
+    reference === "latest" ? latestBuilt(events) : reference === "starter" ? last?.starter : reference;
+  const side = last?.old === named ? "old" : "fresh";
+  const full = last?.[side] === named ? asRecord(last?.valid)?.[side] : null;
+  const closed = Array.isArray(full) && isNumber(full.at(-1)) ? Number(full.at(-1)) : 0;
   const untied =
     tally !== null && isNumber(tally.wins) && isNumber(tally.losses) && tallied > 0
-      ? (tally.wins + tally.losses) / tallied
+      ? Math.min(tally.wins + tally.losses, tallied - closed) / tallied
       : null;
   const since = sets.held.filter((version) => ![...versions, ...waiting].includes(version)).length;
   const [held, awaiting] = [sets.held.length - waiting.length, waiting.length];
@@ -252,7 +263,7 @@ export function preflight(supply: Supply, asked: Asked) {
       ],
       [
         scored >= least && untied < least,
-        `the campaign's last comparison left ${String(Math.round(100 * share))}% of its tasks untied, and at that share ${String(scored)} scored tasks${supply.since > 0 ? `, the ${String(supply.since)} held out since counted whole,` : ""} leave about ${untied.toFixed(1)} untied, where at --level ${String(asked.level)} a step takes ${String(least)}, all won: this comparison could hardly read a step. ${more}, or change the budget so that fewer tasks tie`,
+        `the campaign's last comparison left ${String(Math.round(100 * share))}% of its tasks for this one to untie: the rest tied there, or this one's reference harness was valid on them in every solve. At that share ${String(scored)} scored tasks${supply.since > 0 ? `, the ${String(supply.since)} held out since counted whole,` : ""} leave about ${untied.toFixed(1)} untied, where at --level ${String(asked.level)} a step takes ${String(least)}, all won: this comparison could hardly read a step. ${more}, or change the budget so that fewer tasks tie`,
       ],
       [
         asked.cap === null,
@@ -350,6 +361,7 @@ export async function launch(args: readonly string[]): Promise<void> {
       cap: ROUND_OPTIONS.cap,
       reserve: ROUND_OPTIONS.reserve,
       tasks: { type: "string" },
+      reference: ROUND_OPTIONS.reference,
       ...SETTING_OPTIONS,
       examiner: { type: "string" },
     },
@@ -391,7 +403,7 @@ export async function launch(args: readonly string[]): Promise<void> {
   };
   const { refusals, notes } = examining
     ? examPreflight(events, host)
-    : preflight(supplyOf(events ?? []), {
+    : preflight(supplyOf(events ?? [], String(values.reference)), {
         ...host,
         // A checkpoint that names its tasks scores those, however many the log holds beside them.
         target: isString(values.tasks) ? values.tasks.split(",").length : targetNamed(String(values.target)),

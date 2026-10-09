@@ -8,6 +8,15 @@
  * its comparisons are read at, the Builder sessions before a comparison, who sits in each seat,
  * and, for a campaign that opens from a prompt, the prompt and who solves. None of them moves a
  * comparison's reading. The setting is the log's own record (`campaign.setting`).
+ *
+ * It also keeps the terms of the campaign's moves as a command last named them (`TERMS`): the
+ * limits of a Builder session and of an Examiner session, the size of a comparison, the practice
+ * tasks, and a solve's wall and prompts until a setting is recorded. Until 2026-10-09 it kept
+ * none, and a command that named nothing ran each move by its default. The second campaign from a
+ * prompt was opened with a solve's wall of 8 minutes, 6 scored tasks and Builder sessions of 25
+ * minutes and 6 practice solves; continued by its name alone, it recorded a setting of 120
+ * minutes and 12 tasks and gave each session 240 minutes and 24 practice solves, and nothing said
+ * so.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, type Cap } from "../kernel/reports.ts";
@@ -36,7 +45,32 @@ export interface Opening {
   readonly prompt: string | null;
   /** Who solves, where no stored cycle says: a campaign from a prompt names it at its opening. */
   readonly solver: Seat | null;
+  /** The terms of the campaign's moves, each as a command last named it; a move runs by its
+   *  default for a term no command has named. */
+  readonly terms: Terms;
 }
+
+/** The flags of a campaign's moves that its opening keeps: a solve's wall and prompts and the
+ *  scored tasks, which the first setting records; a comparison's solves a side, level and stop on
+ *  check defects; a Builder session's minutes, turns and practice solves; the practice tasks; and
+ *  an Examiner session's tasks, proposals, minutes and turns. */
+export const TERMS = [
+  "solve-minutes",
+  "solve-turns",
+  "target",
+  "solves",
+  "level",
+  "defects",
+  "minutes",
+  "turns",
+  "practice-solves",
+  "practice",
+  "exam-tasks",
+  "exam-proposals",
+  "exam-minutes",
+  "exam-turns",
+] as const;
+export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 
 /** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
 export const SEATS = ["builder", "examiner", "reviewer"] as const;
@@ -55,6 +89,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
   const seated = (named: JsonObject | null): Seat | null =>
     isString(named?.model) && isString(named.effort) ? { model: named.model, effort: named.effort } : null;
   const seat = (name: (typeof SEATS)[number]) => seated(asRecord(asRecord(data.seats)?.[name]));
+  const terms = asRecord(data.terms);
   return {
     budget:
       isNumber(budget?.dollars) && isNumber(budget.reserve)
@@ -66,6 +101,12 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
+    terms: Object.fromEntries(
+      TERMS.flatMap((term) => {
+        const named = terms?.[term];
+        return isString(named) ? [[term, named]] : [];
+      }),
+    ),
   };
 }
 

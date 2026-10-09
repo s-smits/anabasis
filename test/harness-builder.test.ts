@@ -221,6 +221,7 @@ describe("a campaign run by its log", () => {
         ladder: [],
         sessions: 3,
         seats: { builder: null, examiner: null, reviewer: null },
+        terms: { practice: "2" },
       },
     ]);
     // The ending is the log's last event, and run again the command says it and adds nothing.
@@ -448,7 +449,9 @@ describe("a campaign run by its log", () => {
     mkdirSync(folder, { recursive: true });
     writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
     const prompt = "Multiplying a base by six, as a fixture.";
-    const flags = ["--name", name, "--solver", "claude/claude-opus-5-5", "--practice", "2", "--solves", "1"];
+    const solver = ["--solver", "claude/claude-opus-5-5"];
+    const terms = ["--practice", "2", "--solves", "1", "--solve-minutes", "8", "--practice-solves", "5"];
+    const flags = ["--name", name, ...solver, ...terms];
     const exam = {
       domain: "Fixture products",
       scope: "A task gives a base and asks for six times it.",
@@ -521,7 +524,11 @@ describe("a campaign run by its log", () => {
     const waits = await harnessBuilder([...flags, "--prompt", prompt], seats);
     expect(waits).toMatchObject({ move: "end", ending: "exam" });
     expect(of(name, "campaign.opened")).toMatchObject([
-      { prompt, solver: { model: "claude/claude-opus-5-5", effort: "high" } },
+      {
+        prompt,
+        solver: { model: "claude/claude-opus-5-5", effort: "high" },
+        terms: { practice: "2", solves: "1", "solve-minutes": "8", "practice-solves": "5" },
+      },
     ]);
     expect(of(name, "draft.call").map(({ text }) => (isString(text) ? text : "").split("\n")[0])).toEqual([
       "The draft does not stand. 2 faults:",
@@ -538,11 +545,14 @@ describe("a campaign run by its log", () => {
     ]);
 
     // With that word, by its name alone: the exam is read again, its tasks are set apart, a
-    // Builder builds, and the two harnesses are compared on the tasks the draft gave.
-    const next = await harnessBuilder(
-      ["--name", name, "--admit", "check-product", "--practice", "2", "--solves", "1", "--moves", "4"],
-      seats,
-    );
+    // Builder builds, and the two harnesses are compared on the tasks the draft gave. Every move
+    // runs by the terms the campaign was opened with, which this command does not name: the
+    // second campaign from a prompt, continued so, ran each by its default (2026-10-09).
+    const next = await harnessBuilder(["--name", name, "--admit", "check-product", "--moves", "4"], seats);
+    expect(of(name, "campaign.opened")).toHaveLength(1);
+    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8 }]);
+    expect(of(name, "task.state").filter(({ state }) => state === "released")).toHaveLength(2);
+    expect(of(name, "comparison.started")).toMatchObject([{ solves: 1 }]);
     expect(
       of(name, "campaign.move")
         .slice(2)
@@ -559,5 +569,16 @@ describe("a campaign run by its log", () => {
     ]);
     expect(next).toMatchObject({ move: "compare", noise: true });
     expect(strayed).toEqual([]);
+
+    // A term named again is recorded again, and a flag that names another setting than the
+    // campaign's is refused with both.
+    await harnessBuilder(["--name", name, "--practice-solves", "3", "--moves", "0"], seats);
+    expect(of(name, "campaign.opened").at(-1)).toMatchObject({
+      terms: { practice: "2", solves: "1", "solve-minutes": "8", "practice-solves": "3" },
+    });
+    expect(harnessBuilder(["--name", name, "--solve-minutes", "30", "--moves", "0"], seats)).rejects.toThrow(
+      "--solve-minutes 30 names another setting than the campaign's, which was recorded as --solve-minutes 8",
+    );
+    expect(of(name, "campaign.opened")).toHaveLength(2);
   });
 });

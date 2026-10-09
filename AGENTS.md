@@ -376,6 +376,13 @@ the next move's boundary and never inside a move (`pendingWords`, `src/builder/w
 waits for none, and the event that acts on a word names it (`answers`), so each takes effect once. A stop followed by the same command is a
 pause. A word reaches no seat: no Builder, Examiner, solver or reviewer reads it or its reason.
 
+The opening (`campaign.opened`) keeps what the campaign runs by, so that its command goes on by
+its name alone: the total, the full limit and the ladder, the seats, and the terms of its moves
+as a command last named them (`TERMS`, `src/builder/opening.ts`), which are a session's limits,
+a comparison's size, the practice tasks, and a solve's wall and prompts until the setting is
+recorded. A term no command named is its move's default. A flag that names another setting than
+the campaign's record is refused with both, as every command refuses it.
+
 It opens a campaign over a stored pack, or from a prompt (`--prompt "<text>"` or `--prompt-file`,
 with `--solver`): the opening then holds the prompt, and the first move is the draft of row 0.
 A draft stands once the host's reading without a model finds no fault in it: its shape, a source

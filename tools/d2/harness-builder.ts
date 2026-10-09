@@ -40,10 +40,12 @@
  * reserve one solve is held at (`--budget`, `--reserve`), the full limit of a solve in the model's
  * turns (`--solve-model-turns`), the ladder of shorter budgets (`--ladder`, by default a half, a
  * quarter and an eighth of the limit), the Builder sessions before a comparison (`--sessions`),
- * and who sits in each seat. A later run that names nothing runs by the record, and one that
- * names another records it again: these are the operator's conditions, and none of them moves a
- * comparison's reading. The setting is the log's own record (`campaign.setting`), named by the
- * first command that begins and by no flag after.
+ * who sits in each seat, and the terms of its moves as a command last named them (`TERMS`,
+ * `src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks. A later
+ * run that names nothing runs by the record, and one that names another records it again: these
+ * are the operator's conditions, and a comparison logs its own terms at its start. The setting is
+ * the log's own record (`campaign.setting`), named by the first command that begins. A flag that
+ * names another setting afterwards is refused with both, as every command refuses it.
  *
  * **The budget is one total** (`docs/plan.md`, row F49). Each move's cap is what is left of it:
  * the total less every billed dollar the log holds. Where less is left than one solve is held at,
@@ -83,7 +85,7 @@
 import { type draftExam, draftOf } from "#src/examiner/draft.ts";
 import type { examine } from "#src/examiner/session.ts";
 import { type Decided, decide, decidedLine, type Plan } from "#src/builder/decide.ts";
-import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS } from "#src/builder/opening.ts";
+import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS, TERMS } from "#src/builder/opening.ts";
 import { pendingWords, type Word } from "#src/builder/word.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, promoted } from "#src/kernel/reports.ts";
@@ -106,7 +108,7 @@ import { prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { COMPARISON_OPTIONS, capRead, type Seated, SESSION_OPTIONS, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
-import { rebudget, recordedSetting, SETTING_OPTIONS } from "./setting.ts";
+import { rebudget, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
 
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
 export interface Seats {
@@ -161,10 +163,12 @@ const OPTIONS = {
   "solve-minutes": SETTING_OPTIONS["solve-minutes"],
   "solve-turns": SETTING_OPTIONS["solve-turns"],
   "solve-model-turns": SETTING_OPTIONS["solve-model-turns"],
+  // With no default of their own: one no command has named is the comparison's to default, and
+  // one a command named is the opening's to keep (`TERMS`).
   target: COMPARISON_OPTIONS.target,
-  solves: COMPARISON_OPTIONS.solves,
-  level: COMPARISON_OPTIONS.level,
-  defects: COMPARISON_OPTIONS.defects,
+  solves: { type: "string" },
+  level: { type: "string" },
+  defects: { type: "string" },
   minutes: { type: "string" },
   turns: { type: "string" },
   "practice-solves": { type: "string" },
@@ -284,6 +288,13 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     prompt,
     solver: prompt === null ? null : solver,
+    // Each term as this command names it, and as the record holds it where it names none.
+    terms: {
+      ...was?.terms,
+      ...Object.fromEntries(
+        TERMS.flatMap((term) => (values[term] === undefined ? [] : [[term, values[term]]])),
+      ),
+    },
   };
   if (!Number.isInteger(named.sessions) || named.sessions < 1) {
     throw new Error(
@@ -301,6 +312,8 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
     // A campaign over a stored pack records neither, as before a campaign could open from a prompt.
     ...keyIfDefined("prompt", named.prompt ?? undefined),
     ...keyIfDefined("solver", named.solver === null ? undefined : { ...named.solver }),
+    // A campaign whose commands named no term records none, as before the opening kept them.
+    ...keyIfDefined("terms", Object.keys(named.terms).length === 0 ? undefined : { ...named.terms }),
   };
   // The record as it was written, less the word it answered: a record is written again where
   // what the campaign runs by is another, and where a word asked for it.
@@ -404,10 +417,8 @@ function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn
     decided.id === undefined
       ? [
           ...(decided.noise ? ["--noise"] : []),
-          "--solves",
-          values.solves,
-          "--level",
-          values.level,
+          ...flag("solves", values.solves),
+          ...flag("level", values.level),
           ...plan.ladder.flatMap((rung) =>
             turns === null || rung < turns ? ["--budget", `turns=${String(rung)}`] : [],
           ),
@@ -426,8 +437,7 @@ function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn
       "--reference",
       decided.reference,
       ...terms,
-      "--defects",
-      values.defects,
+      ...flag("defects", values.defects),
       ...flag("target", recorded === null ? values.target : undefined),
       ...reviewer,
       ...pastStop,
@@ -597,19 +607,40 @@ export async function harnessBuilder(
   args: readonly string[],
   seats: Seats = { seated: solved },
 ): Promise<Decided> {
-  const values = flagsOf(args);
-  const { name } = values;
+  const given = flagsOf(args);
+  const { name } = given;
   if (name === undefined) throw new Error("name --name, the campaign");
-  const most = values.moves === undefined ? Number.POSITIVE_INFINITY : Number(values.moves);
+  const most = given.moves === undefined ? Number.POSITIVE_INFINITY : Number(given.moves);
   if (Number.isNaN(most) || most < 0) {
-    throw new Error(`--moves ${String(values.moves)}: the moves to make are a number`);
+    throw new Error(`--moves ${String(given.moves)}: the moves to make are a number`);
   }
   const log = campaignLog(name);
   // Opening a campaign stages its check program, and refuses one the log froze otherwise. One that
   // opens from a prompt has no exam to open over until its first draft stands.
-  let campaign = packed(values) ? await openCampaign(packNamed(values)) : null;
+  let campaign = packed(given) ? await openCampaign(packNamed(given)) : null;
   const paid = seats.seated === solved ? "paid" : "scripted";
-  let opening = opened(log, values, paid);
+  // A flag of this command that names another setting than the campaign's is refused with both,
+  // as every command refuses it. The model's turns are the budget, which moves by the rule, and
+  // the scored tasks are the record's where it names them.
+  const recorded = recordedSetting(read(log));
+  if (recorded !== null) {
+    settingAsked(
+      {
+        solver: given.solver,
+        "solver-effort": given["solver-effort"],
+        "solve-minutes": given["solve-minutes"],
+        "solve-turns": given["solve-turns"],
+        "solve-model-turns": recorded.modelTurns === null ? undefined : String(recorded.modelTurns),
+        tasks: recorded.tasks?.join(","),
+        target: recorded.tasks === null ? given.target : String(recorded.target),
+      },
+      recorded,
+    );
+  }
+  let opening = opened(log, given, paid);
+  // Every move is made with the terms the opening keeps: this command's, and the record's for
+  // each it does not name.
+  const values: Values = { ...given, ...opening.terms };
   for (let made = 0; ; made += 1) {
     // A total the operator left as a word is what the campaign runs by from this move on.
     const total = pendingWords(read(log)).findLast(({ word }) => word === "budget");
@@ -622,7 +653,7 @@ export async function harnessBuilder(
       events,
       {
         unprepared: pack?.tasks.some((task) => !states.has(taskVersion(pack.pack(task)))) ?? false,
-        level: Number(values.level),
+        level: Number(values.level ?? COMPARISON_OPTIONS.level.default),
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],
         admits: admitsOf(values),

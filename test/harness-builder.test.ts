@@ -27,6 +27,7 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { openCampaign } from "../tools/d2/campaign.ts";
 import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
+import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -329,6 +330,68 @@ describe("a campaign run by its log", () => {
     if (task === undefined) throw new Error("the pack holds no t-1");
     const solved = await seat.solve(task, { dir: join(to, "harness"), digest: handed.harness }, undefined);
     expect(solved.ending).toEqual({ outcome: "pass" });
+    expect(strayed).toEqual([]);
+  });
+
+  it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {
+    const name = `${STEM}-word`;
+    const flags = [...seeded(name), "--practice", "2", "--solves", "1", "--sessions", "1"];
+    const strayed: string[] = [];
+    const scriptedSolves = scriptedSeats(
+      { held: { old: "none", fresh: "pass" }, starter: "none" },
+      GRADED,
+      strayed,
+    );
+    // The operator leaves a stop while the first comparison's first solve runs.
+    let left = false;
+    const seats: Seats = {
+      seated: (campaign, given) => {
+        const seat = scriptedSolves(campaign, given);
+        return {
+          ...seat,
+          solve: (task, harness, kill, comparison) => {
+            if (comparison !== undefined && !left) {
+              left = true;
+              wordCommand(["--name", name, "--stop", "enough for today"]);
+            }
+            return seat.solve(task, harness, kill, comparison);
+          },
+        };
+      },
+    };
+    const stopped = await harnessBuilder(flags, seats);
+    // The comparison ran whole and read what it would have read, and the campaign stopped after it.
+    expect(of(name, "comparison.reported")).toMatchObject([
+      { session: "g-1", reading: "step", scored: { wins: 5, losses: 0, ties: 0 } },
+    ]);
+    expect(stopped).toMatchObject({
+      move: "end",
+      ending: "operator",
+      why: "the operator's word: enough for today",
+    });
+    const log = read(join(REPO, ".ana", "d2", name, "log.jsonl"));
+    const at = log.findIndex(({ kind }) => kind === "campaign.word");
+    expect(log.at(-1)).toMatchObject({ kind: "campaign.ended", data: { ending: "operator", answers: [at] } });
+    expect(of(name, "campaign.move").map(({ move }) => move)).toEqual([
+      "accept",
+      "prepare",
+      "build",
+      "compare",
+    ]);
+
+    // Run again, the campaign goes on: the word was heard once. A word for other tasks and one
+    // for another total are each acted on at the next move, and named by what acted on them.
+    expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({ move: "compare" });
+    wordCommand(["--name", name, "--budget", "50"]);
+    wordCommand(["--name", name, "--tasks", "the step was too easy"]);
+    expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({
+      move: "examine",
+      why: "the operator asked for other tasks: the step was too easy",
+    });
+    expect(of(name, "campaign.opened").at(-1)).toMatchObject({ budget: { dollars: 50 } });
+    // No word is left for a campaign that has no opening, and none that names two things.
+    expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
+    expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");
     expect(strayed).toEqual([]);
   });
 

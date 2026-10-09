@@ -56,9 +56,13 @@
  * command with the promotion to make, and going on past the stop rule, which takes
  * `--past-stop "<why>"` either way.
  *
+ * **A word the operator leaves** (`word.ts`, row F50) is read at each move's boundary: a stop
+ * ends the campaign there, other tasks are written first, and another total is what the campaign
+ * runs by from that move on. A word changes nothing in the move that was running when it came.
+ *
  * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
- * on tasks that could not be made to leave room, or on its environment, and the last event of its
- * log says which (`campaign.ended`). With `--handover <dir>` it then writes what it hands over
+ * on tasks that could not be made to leave room, on its environment or on the operator's word,
+ * and the last event of its log says which (`campaign.ended`). With `--handover <dir>` it then writes what it hands over
  * there: the reference harness as a directory that stands by itself, the public rules and the
  * closing report (`close.ts`, row F51). A move that threw after it had begun is the environment's
  * ending, and run again the command goes on from the log. A move refused before it wrote
@@ -80,6 +84,7 @@ import { type draftExam, draftOf } from "#src/examiner/draft.ts";
 import type { examine } from "#src/examiner/session.ts";
 import { type Decided, decide, decidedLine, type Plan } from "#src/builder/decide.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS } from "#src/builder/opening.ts";
+import { pendingWords, type Word } from "#src/builder/word.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { taskStates, taskVersion } from "#src/kernel/task.ts";
@@ -225,7 +230,7 @@ function promptOf(values: Values, was: Opening | null): string | null {
  * What the campaign runs by: its record, or what this command names where that is another. A paid
  * campaign needs its total, and a rehearsal's is none.
  */
-function opened(log: string, values: Values, seats: "paid" | "scripted"): Opening {
+function opened(log: string, values: Values, seats: "paid" | "scripted", heard?: Word): Opening {
   const events = read(log);
   const was = openingOf(events);
   if (seats === "paid" && values.budget === undefined && was?.budget == null) {
@@ -264,7 +269,10 @@ function opened(log: string, values: Values, seats: "paid" | "scripted"): Openin
     );
   }
   const reserve = values.reserve ?? String(was?.budget?.reserve ?? DEFAULTS.reserve);
-  const dollars = values.budget ?? (was?.budget == null ? undefined : String(was.budget.dollars));
+  // A total the operator left as a word while the command ran stands over the flag it was
+  // started with, which is older (`word.ts`).
+  const told = heard?.dollars == null ? values.budget : String(heard.dollars);
+  const dollars = told ?? (was?.budget == null ? undefined : String(was.budget.dollars));
   const named: Opening = {
     budget: dollars === undefined ? null : capRead(dollars, reserve),
     limit,
@@ -294,13 +302,18 @@ function opened(log: string, values: Values, seats: "paid" | "scripted"): Openin
     ...keyIfDefined("prompt", named.prompt ?? undefined),
     ...keyIfDefined("solver", named.solver === null ? undefined : { ...named.solver }),
   };
-  const kept = events.findLast(({ kind }) => kind === OPENED)?.data;
-  if (!values["dry-run"] && (kept === undefined || !sameJsonValue(kept, record))) {
+  // The record as it was written, less the word it answered: a record is written again where
+  // what the campaign runs by is another, and where a word asked for it.
+  const { answers: _answered, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
+  if (!values["dry-run"] && (heard !== undefined || !sameJsonValue(kept, record))) {
     // A campaign that opens from a prompt has no folder until now: one over a stored pack got
     // its own when the pack was opened. The first live campaign from a prompt stopped here
     // (2026-10-09), since the test that covered it had made the folder for another reason.
     mkdirSync(dirname(log), { recursive: true });
-    append(log, OPENED, record);
+    append(log, OPENED, {
+      ...record,
+      ...keyIfDefined("answers", heard === undefined ? undefined : [heard.at]),
+    });
   }
   return named;
 }
@@ -564,12 +577,14 @@ function examLines(events: readonly LogEvent[], name: string, ending: string): s
 /** Record how the campaign ended, as its last event, unless that is what its last event says. */
 function ended(log: string, events: readonly LogEvent[], decided: Extract<Decided, { move: "end" }>): void {
   const last = events.at(-1);
-  if (last?.kind === ENDED && last.data.ending === decided.ending) return;
+  // An ending on a word the operator just left is a new one, whatever the last event says.
+  if (decided.answers === undefined && last?.kind === ENDED && last.data.ending === decided.ending) return;
   append(log, ENDED, {
     ending: decided.ending,
     why: decided.why,
     reference: promoted(events) ?? "starter",
     latest: latestBuilt(events),
+    ...keyIfDefined("answers", decided.answers === undefined ? undefined : [...decided.answers]),
   });
 }
 
@@ -593,8 +608,12 @@ export async function harnessBuilder(
   // Opening a campaign stages its check program, and refuses one the log froze otherwise. One that
   // opens from a prompt has no exam to open over until its first draft stands.
   let campaign = packed(values) ? await openCampaign(packNamed(values)) : null;
-  const opening = opened(log, values, seats.seated === solved ? "paid" : "scripted");
+  const paid = seats.seated === solved ? "paid" : "scripted";
+  let opening = opened(log, values, paid);
   for (let made = 0; ; made += 1) {
+    // A total the operator left as a word is what the campaign runs by from this move on.
+    const total = pendingWords(read(log)).findLast(({ word }) => word === "budget");
+    if (total !== undefined && !values["dry-run"]) opening = opened(log, values, paid, total);
     const events = existsSync(log) ? read(log) : [];
     campaign ??= draftOf(events) === null ? null : await openCampaign(packNamed(values));
     const states = taskStates(events);
@@ -650,7 +669,15 @@ export async function harnessBuilder(
     if (read(log).length === events.length) {
       throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
     }
-    append(log, "campaign.move", { move: decided.move, why: decided.why, ...left });
+    append(log, "campaign.move", {
+      move: decided.move,
+      why: decided.why,
+      ...left,
+      ...keyIfDefined(
+        "answers",
+        decided.move === "examine" && decided.answers ? [...decided.answers] : undefined,
+      ),
+    });
   }
 }
 

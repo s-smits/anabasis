@@ -16,6 +16,8 @@
  *
  * The order it asks in:
  *
+ * 0. The operator's word, where one was left and nothing has acted on it: a stop ends the
+ *    campaign there, and a word for other tasks has them written once the exam stands.
  * 1. The exam. A campaign that opened from a prompt has it drafted, three drafts at most. A
  *    checker nobody has read is read, and one whose reading holds a fault that nobody froze ends
  *    the campaign: the exam was not accepted. It is read again where the operator's command
@@ -58,6 +60,7 @@ import { stableJson } from "../meta/stable-json.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { shortOf, supplyOf, type Wanted } from "./admission.ts";
+import { pendingWords } from "./word.ts";
 
 /** How a campaign ends, as its last event says it. */
 export type Ending = "budget" | "stop" | "exam" | "no-room" | "environment" | "operator";
@@ -68,8 +71,14 @@ export type Decided =
   | { readonly move: "draft"; readonly why: string }
   | { readonly move: "accept"; readonly why: string }
   | { readonly move: "prepare"; readonly why: string }
-  /** An Examiner session. `room` asks for tasks that leave a harness room (row F52). */
-  | { readonly move: "examine"; readonly why: string; readonly room: boolean }
+  /** An Examiner session. `room` asks for tasks that leave a harness room (row F52). `answers`
+   *  names the operator's word it follows, where it follows one (`pendingWords`). */
+  | {
+      readonly move: "examine";
+      readonly why: string;
+      readonly room: boolean;
+      readonly answers?: readonly number[];
+    }
   | { readonly move: "build"; readonly why: string }
   /** A comparison of `fresh` with `reference`, which is `promoted`, `starter` or a digest. `id`
    *  names one that began and goes on. `noise` reads the reference against itself beside it. */
@@ -85,7 +94,12 @@ export type Decided =
    *  where that is unlimited. */
   | { readonly move: "budget"; readonly why: string; readonly modelTurns: number | null }
   | { readonly move: "promote"; readonly why: string; readonly harness: string }
-  | { readonly move: "end"; readonly why: string; readonly ending: Ending };
+  | {
+      readonly move: "end";
+      readonly why: string;
+      readonly ending: Ending;
+      readonly answers?: readonly number[];
+    };
 
 /** What a campaign was set to run by: what move 7 reads beside the log. */
 export interface Plan {
@@ -359,6 +373,17 @@ function drafting(events: readonly LogEvent[]): Decided {
 }
 
 export function decide(events: readonly LogEvent[], plan: Plan): Decided {
+  const words = pendingWords(events);
+  const stop = words.find(({ word }) => word === "stop");
+  if (stop !== undefined) {
+    return {
+      move: "end",
+      ending: "operator",
+      why: `the operator's word${stop.why === "" ? "" : `: ${stop.why}`}`,
+      // Every word left before the stop is answered by it: the campaign has stopped.
+      answers: words.filter(({ at }) => at <= stop.at).map(({ at }) => at),
+    };
+  }
   if (plan.prompted === true && draftOf(events) === null) return drafting(events);
   const supply = supplyOf(events);
   if (supply.faults === null) {
@@ -404,6 +429,16 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
   }
   if (supply.released === 0 && supply.held >= 2) {
     return { move: "prepare", why: "no task is released for practice: the contract's draw releases some" };
+  }
+  // Other tasks on the operator's word, once the campaign has an exam to write them against.
+  const asked = words.find(({ word }) => word === "tasks");
+  if (asked !== undefined) {
+    return {
+      move: "examine",
+      room: true,
+      why: `the operator asked for other tasks${asked.why === "" ? "" : `: ${asked.why}`}`,
+      answers: [asked.at],
+    };
   }
   if (supply.stop.stop && plan.pastStop === undefined) {
     return end(

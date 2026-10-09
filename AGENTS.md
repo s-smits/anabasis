@@ -239,8 +239,8 @@ ends (`tools/d2/harness-builder.ts`, section 6). The setting, the reference and 
 stay the log's and one admission's. The skill `run-improvement-campaign` remains the procedure
 for a session that runs a campaign with the operator: it reads the same table.
 
-Two designed parts of it are absent: one Builder conversation across sessions, and a word the
-operator leaves between two moves. The plan holds each (`docs/plan.md`, rows F27 and F50).
+One designed part of it is absent: one Builder conversation across sessions (`docs/plan.md`,
+row F27).
 
 The design has two layers, as v1's had:
 
@@ -367,6 +367,14 @@ answer that passed was read by anyone.
 A move that solves waits for the host: a Builder session and a comparison start once the
 one-minute load is at or under the cores, and the command says once that it waits. `--loaded`
 starts them all the same, as it does for a launch.
+
+The operator steers a campaign that runs by leaving it a word (`tools/d2/word.ts`), which is one
+event in its log (`campaign.word`): `--stop "<why>"` ends it there with the ending `operator`,
+`--tasks "<why>"` has an Examiner session write other tasks before anything else is built or
+compared, and `--budget <dollars>` sets its total from there on. The controller reads a word at
+the next move's boundary and never inside a move (`pendingWords`, `src/builder/word.ts`), it
+waits for none, and the event that acts on a word names it (`answers`), so each takes effect once. A stop followed by the same command is a
+pause. A word reaches no seat: no Builder, Examiner, solver or reviewer reads it or its reason.
 
 It opens a campaign over a stored pack, or from a prompt (`--prompt "<text>"` or `--prompt-file`,
 with `--solver`): the opening then holds the prompt, and the first move is the draft of row 0.
@@ -1272,7 +1280,8 @@ src/kernel/     the log, tasks, conditions, the verifier's contract, the compari
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
 src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round;
                 whether a comparison may start (admission); the one reading of a campaign (handover);
-                the move that follows from a log (decide), and what a campaign runs by (opening)
+                the move that follows from a log (decide), what a campaign runs by (opening), and
+                the words the operator left it (word)
 src/examiner/   an Examiner session, its prompt, and the outcomes it is told; the session that drafts
                 an exam from a prompt (draft)
 src/review/     the Referee, the Diagnoser, the probe, agreement with hand labels
@@ -1283,7 +1292,8 @@ tools/c/        the check program: accept, carry, rejections, repaired
 tools/d1b/      examine, draft
 tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote; exam,
                 which stages a drafted exam as a pack; close, which writes what a campaign hands
-                over; and harness-builder, which runs a campaign move after move
+                over; harness-builder, which runs a campaign move after move; and word, which
+                leaves the operator's word for one that runs
 tools/runs/     launch, stop, rehearse, seed, pulse, view, compare, replay, zip
 tools/wri/      the whole-run investigation's reader of one log
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans

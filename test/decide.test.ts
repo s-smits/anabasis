@@ -4,6 +4,7 @@
 import { describe, expect, it } from "bun:test";
 import { type Decided, decide, type Plan, unpromoted } from "../src/builder/decide.ts";
 import { openingOf, planOf } from "../src/builder/opening.ts";
+import { pendingWords } from "../src/builder/word.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 
@@ -137,6 +138,44 @@ describe("the exam and the tasks, before anything is built", () => {
       move: "prepare",
       why: "no task is released for practice: the contract's draw releases some",
     });
+  });
+});
+
+describe("a word the operator left", () => {
+  const word = (data: JsonObject) => event("campaign.word", data);
+  const ready = [...SET_UP, built("b-1", "h1")];
+
+  it("ends the campaign on a stop, once: the event that acts on a word names it", () => {
+    const stopped = [...ready, word({ word: "stop", why: "the host is needed" })];
+    expect(move(stopped)).toEqual({
+      move: "end",
+      ending: "operator",
+      why: "the operator's word: the host is needed",
+      answers: [ready.length],
+    });
+    // Named by the ending it caused, the word is heard, and the campaign goes on when run again.
+    const ended = event("campaign.ended", { ending: "operator", answers: [ready.length] });
+    expect(move([...stopped, ended])).toMatchObject({ move: "compare" });
+    expect(pendingWords([...stopped, ended])).toEqual([]);
+    // A stop is read before anything else, whatever the log holds: here, no exam at all.
+    expect(move([word({ word: "stop" })])).toMatchObject({ ending: "operator", why: "the operator's word" });
+  });
+
+  it("has other tasks written before anything is built or compared, once the exam stands", () => {
+    const asked = [...ready, word({ word: "tasks", why: "three batches tied" })];
+    expect(move(asked)).toEqual({
+      move: "examine",
+      room: true,
+      why: "the operator asked for other tasks: three batches tied",
+      answers: [ready.length],
+    });
+    // Before the exam was read, the exam comes first, and the word waits.
+    expect(move([word({ word: "tasks" })])).toMatchObject({ move: "accept" });
+    // A word for another total is the command's to act on, and changes no move.
+    expect(move([...ready, word({ word: "budget", dollars: 50 })])).toMatchObject({ move: "compare" });
+    expect(pendingWords([...ready, word({ word: "budget", dollars: 50 })])).toMatchObject([
+      { at: ready.length, word: "budget", dollars: 50 },
+    ]);
   });
 });
 

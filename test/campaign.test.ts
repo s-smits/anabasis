@@ -201,14 +201,14 @@ describe("a campaign", () => {
 
   it("starts from the Starter Built Harness, and keeps it and the latest a session left, each by name", async () => {
     const campaign = await openCampaign(ARGS);
-    // The starter is a harness like any other: it opens, with a shell, an answer writer, no guide
-    // and no domain tool, and it is kept under its digest among the campaign's states.
+    // The starter is a harness like any other: it opens, with pi's four coding tools selected and
+    // no guide and no tool of its own, and it is kept under its digest among the campaign's states.
     const least = await starter(campaign);
     const opened = await openHarness(least.dir);
     expect(least).toEqual({ dir: join(campaign.states, opened.digest), digest: opened.digest });
     expect(opened.guide).toBeNull();
-    expect(opened.presets).toEqual(["shell"]);
-    expect([...opened.kinds.values()]).toEqual(["artifact-writer"]);
+    expect(opened.presets).toEqual(["read", "bash", "edit", "write"]);
+    expect(opened.kinds.size).toBe(0);
     expect(opened.toolTree).toBeNull();
     expect(await starter(campaign)).toEqual(least);
     expect(readdirSync(campaign.states)).toEqual([least.digest]);

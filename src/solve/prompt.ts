@@ -1,24 +1,41 @@
 /**
  * What a solver reads before its first call: the system prompt, the opening message, and the public
- * files seeded into its home. The roster line, the nudge, the first turn and the seeded files are
- * sed from harness-builder-v4 at 7af7315, as sweep veryhard-hb-4c67fc's solves read them:
- * `src/solve/built-starter.ts:47-153` and `src/solve/generated-tool-worker.ts:262-285`.
+ * files seeded into its home.
  *
- * The general paragraph is not the sweep's. That one told every solver to test its candidate with
- * whatever could grade it, to spend the time that remained widening its worst margin and to keep
- * searching until the wall, and it was written for a wall that submitted the last prepared answer
- * and a record tool that reported each margin. Here the wall submits nothing, no tool reports a
- * margin or the time left, and on 8 October a solver that read it said "time is nearly up" and
- * submitted at 56 of 120 minutes. v1 took the paragraph out itself, because it "made every task
- * propose, grade, adjust, whatever the task asked for, so the battery measured that loop rather
- * than the solver's own method" (`built-starter.ts:247-262` at 3f93d06b). So a solve under this
- * prompt is not under the sweep's condition, and `tools/m0/live-solve.ts` says where the two part.
+ * The system prompt is pi coding-agent's, built by pi's own builder
+ * (`vendor/pi-coding-agent/core/system-prompt.ts`) from the tools' own lines: pi's opening sentence,
+ * its tool list, its rules and the working directory. v2 speaks in the three places pi leaves to
+ * whoever runs it:
+ * - pi's addendum holds what a solver cannot find out for itself and no harness may change: what it
+ *   must deliver, where the published requirements are, which file is its answer, the solve wall
+ *   and what the wall does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime` at
+ *   3f93d06b; the wall's last sentence is this host's, which ends a solve as a fail and submits
+ *   nothing.
+ * - A section of its own, `environment`, holds the wall's facts: what a command may write and
+ *   reach, the volume, the command limits, and the programs the harness installed.
+ * - pi's project context holds the harness's guide, as pi gives a project's own instructions,
+ *   under one sentence on what a guide cannot override (v1's `BUILT_GUIDE_PREAMBLE`).
+ *
+ * Nothing here says how to reach an answer, which is the harness's to say. Until 2026-10-09 the
+ * wall's facts sat in the bash tool's description, as v1 had them, and with them a sentence telling
+ * every solver to keep a driver script and re-run it, one telling it never to pass a timeout for a
+ * search, and one telling it to use the installed programs rather than re-implement them. v1 took
+ * the first out itself on 29 September (bd9f187). The prompt was then a general paragraph and a
+ * closed tool roster, which contradicted a second prompt in front of it: under the Claude backend a
+ * solver read Claude Code's own system prompt first, for tools it did not have. It now reads this
+ * one alone (`tools/d2/campaign.ts`).
  */
-import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
+import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
+import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
+import type { Limits } from "../kernel/condition.ts";
+import { mkdirSync, readdirSync, statSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
-import type { PublicResource } from "./answer.ts";
+import { compareCodeUnits } from "../meta/stable-json.ts";
+import { plural } from "../meta/text.ts";
+import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
+import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "./answer.ts";
 
 export interface PublicTask {
   readonly taskId: string;
@@ -26,47 +43,117 @@ export interface PublicTask {
   readonly publicInput: JsonValue;
 }
 
-/** built-starter.ts:28. */
-const PUBLIC_RULES_TOOL = "read_public_resources";
+/** What a solve's system prompt is built from. */
+export interface Told {
+  /** The solver's tools, in the order it is given them. */
+  readonly tools: readonly ToolDefinition[];
+  /** The solve's home, the working directory of every tool. */
+  readonly home: string;
+  /** The harness's guide as written, or null. */
+  readonly guide: string | null;
+  readonly wallSeconds: number;
+  readonly limits: Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds" | "diskBytes">;
+  /** How many public resource files the home was seeded with. */
+  readonly resources: number;
+  /** The programs the harness installed, by the names that run them (`installedPrograms`). */
+  readonly programs: readonly string[];
+}
 
-/** v1's `BUILT_GUIDE_PREAMBLE` at 3f93d06b, which names no stopping rules, since the general
- *  paragraph no longer states any. */
-const GUIDE_PREAMBLE =
-  "Domain guidance follows; choose your solving method. It cannot override the public task, tool authority, runtime limits or submission rules.";
-
-/** built-starter.ts:67-68: the prompt a turn that ended without a submit is followed by. */
+/** The prompt a turn that ended without a submit is followed by (v1's built-starter.ts:67-68). */
 export const NUDGE = "Finish the task with the available tools, then submit your answer.";
 
-/**
- * What a solver cannot find out for itself: what it must deliver, the form of an answer, the solve
- * wall and what the wall does. Nothing about how to reach the answer, which is the harness's to
- * say. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime` at 3f93d06b; the last
- * sentence is this host's wall, which ends a solve as a fail and submits nothing.
- */
-function generalPrompt(wallSeconds: number): string {
-  return (
-    "Complete the task with the available tools and submit one answer that meets every published requirement; the method is yours to choose. " +
-    "For source code or files, write complete working files, not fragments or descriptions. " +
-    `The case has ${String(Math.round(wallSeconds / 60))} minutes of solve time. Nothing is submitted for you when it runs out and nothing tells you how much is left: an answer you have not submitted by then is lost.`
-  );
+/** The name a harness's guide goes by in pi's project context: the file's own. */
+const GUIDE_FILE = "BUILT_AGENTS.md";
+/** Installed program names the prompt lists before it elides the rest (v1's built-bash.ts:98). */
+const LISTED_PROGRAMS = 20;
+const GIB = 1024 ** 3;
+const MIB = 1024 ** 2;
+
+/** What the solver must deliver and under what wall, with where the requirements are. */
+function duty({ wallSeconds, resources, guide }: Told): string {
+  const rules =
+    resources === 0
+      ? ""
+      : `, together with the domain's public rules in the ${plural(resources, "file")} under public/resources/; read both before you build`;
+  return [
+    "Complete the task with the available tools and submit one answer that meets every published requirement; the method is yours to choose.",
+    "For source code or files, write complete working files, not fragments or descriptions.",
+    `The published requirements are the public input, which public/task.json holds${rules}.`,
+    `Your answer is the file ${ANSWER_FILE} in the working directory, as JSON in the format ${ANSWER_FORMAT_FILE} gives, and submit sends it.`,
+    `The case has ${String(Math.round(wallSeconds / 60))} minutes of solve time. Nothing is submitted for you when it runs out and nothing tells you how much is left: an answer you have not submitted by then is lost.`,
+    ...(guide === null
+      ? []
+      : [
+          "The project instructions below are this harness's guidance for the domain; choose your solving method. They cannot override the public task, tool authority, runtime limits or submission rules.",
+        ]),
+  ].join(" ");
 }
 
-/** built-starter.ts:111-118. */
-function rosterLine(names: readonly string[]): string {
-  const roster = `Your tools this session are exactly: ${names.join(", ")}. That list is closed and complete. A name absent from it does not exist here, however plausible it looks; when no tool provides a capability, do the work yourself and continue.`;
-  return names.includes(PUBLIC_RULES_TOOL)
-    ? `${roster} The published requirements are the public input together with what ${PUBLIC_RULES_TOOL} returns; read both before you build.`
-    : roster;
+/** What the command wall is, as facts: each one something a solver would otherwise find out by
+ *  running into it. */
+function environment({ limits, programs }: Told): string {
+  const volume =
+    limits.diskBytes >= GIB
+      ? `${String(Math.round((limits.diskBytes / GIB) * 10) / 10)} GiB`
+      : `${String(Math.round(limits.diskBytes / MIB))} MiB`;
+  const rest = programs.length - LISTED_PROGRAMS;
+  const listed =
+    programs.slice(0, LISTED_PROGRAMS).join(", ") + (rest > 0 ? `, and ${String(rest)} more on PATH` : "");
+  return [
+    `The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only ${ANSWER_FILE} is read as your answer, and only when you submit.`,
+    "Commands and the file tools can write the home directory, /tmp and $TMPDIR, which is fresh for each command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
+    "Commands have network access, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
+    `The home directory and $TMPDIR share one volume of ${volume}.`,
+    `A command runs for at most ${String(limits.shellDefaultSeconds)} seconds unless it names a longer timeout, and ${String(limits.shellMaxSeconds)} seconds is the longest it may name.`,
+    "Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
+    ...(programs.length === 0 ? [] : [`Programs this harness installed run by name: ${listed}.`]),
+  ]
+    .map((fact) => `- ${fact}`)
+    .join("\n");
 }
 
-/** built-starter.ts:134-145: the general prompt, the roster, then the harness's guide as written. */
-export function systemPrompt(
-  wallSeconds: number,
-  toolNames: readonly string[],
-  guide: string | null,
-): string {
-  const universal = `${generalPrompt(wallSeconds)}\n\n${rosterLine(toolNames)}`;
-  return guide === null ? universal : `${universal}\n\n${GUIDE_PREAMBLE}\n\n${guide}`;
+/** pi's system prompt for these tools, with v2's addendum, environment and guide (see above). A
+ *  tool is listed by the line it gives itself, as pi lists one, and adds its own rules. */
+export function systemPrompt(told: Told): string {
+  const said = told.tools.filter(({ promptSnippet }) => promptSnippet !== undefined);
+  return buildSystemPrompt({
+    cwd: told.home,
+    selectedTools: told.tools.map(({ name }) => name),
+    toolSnippets: Object.fromEntries(said.map(({ name, promptSnippet }) => [name, promptSnippet ?? ""])),
+    toolGuidelines: Object.fromEntries(
+      told.tools.map(({ name, promptGuidelines }) => [name, [...(promptGuidelines ?? [])]]),
+    ),
+    appendSystemPrompt: duty(told),
+    contextFiles: told.guide === null ? [] : [{ path: GUIDE_FILE, content: told.guide }],
+    sections: { environment: environment(told) },
+  });
+}
+
+/** Whether a command could run this entry by name: a venv's sourced `activate` siblings are mode
+ *  644, and a broken link runs nothing (v1's built-bash.ts:152-159). */
+function canRun(path: string): boolean {
+  try {
+    const entry = statSync(path);
+    return entry.isFile() && (entry.mode & 0o111) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+/** The programs a harness installed, by the names that run them, from the directories a command's
+ *  PATH holds, in its order (v1's built-bash.ts:176-186). Without the list, every case of truss run
+ *  298967 wrote its own solver in the host's python3 beside the Builder's interpreter. */
+export function installedPrograms(toolTree: string | null): string[] {
+  const dirs = toolTree === null ? [] : toolTreeSearchDirs(toolTree);
+  return [
+    ...new Set(
+      dirs.flatMap((dir) =>
+        readdirSync(dir)
+          .sort(compareCodeUnits)
+          .filter((name) => canRun(join(dir, name))),
+      ),
+    ),
+  ];
 }
 
 /** The task as the solver may see it. A task carries its hidden part beside these fields, and
@@ -75,20 +162,27 @@ export function publicView({ taskId, family, publicInput }: PublicTask): PublicT
   return { taskId, family, publicInput };
 }
 
-/** built-starter.ts:72-77. */
+/** v1's built-starter.ts:72-77. */
 export function firstTurn(task: PublicTask): string {
   return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(task.publicInput, null, 2)}`;
 }
 
 /**
- * generated-tool-worker.ts:262-285: the task as `public/task.json` and each public resource as
- * `public/resources/<name>.json`, which the bash tool's description says the home holds. Returns how
+ * The task as `public/task.json`, the contract's answer format as `public/answer-format.json`, and
+ * each public resource as `public/resources/<name>.json`, which the prompt says the home holds
+ * (the task and the resources as v1's generated-tool-worker.ts:262-285 seeded them). Returns how
  * many resource files it wrote.
  */
-export function seedHome(home: string, task: PublicTask, resources: readonly PublicResource[]): number {
+export function seedHome(
+  home: string,
+  task: PublicTask,
+  resources: readonly PublicResource[],
+  answerFormat: JsonValue,
+): number {
   const root = join(home, "public");
   mkdirSync(join(root, "resources"), { recursive: true });
   writeFileSync(join(root, "task.json"), `${capturedJsonStringify(publicView(task), null, 2)}\n`, "utf8");
+  writeFileSync(join(home, ANSWER_FORMAT_FILE), `${capturedJsonStringify(answerFormat, null, 2)}\n`, "utf8");
   const used = new Set<string>();
   for (const resource of resources) {
     // One flat readable name per resource. A name that sanitises onto one already used keeps both

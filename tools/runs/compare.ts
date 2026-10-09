@@ -139,9 +139,11 @@ function solvesOf(
 
 /**
  * The round of Builder session `session` in `events`, under `name`. `kinds` gives the tool kinds a
- * harness's spec declares, or null when the spec is not on disk: submit takes only an answer an
- * artifact-writer prepared, so a harness with none fails every solve at `no-answer` whatever its
- * solver.
+ * harness's spec declares, or null when the spec is not on disk, and the round says them as they
+ * are. Until 2026-10-09 submit took only an answer an artifact-writer had prepared, so a harness
+ * of that time that declares none failed every solve at `no-answer` whatever its solver. Since
+ * then the answer is a file the host reads (`src/solve/answer.ts`), and a harness declares no
+ * writer.
  */
 export function roundOf(
   name: string,
@@ -216,9 +218,11 @@ export function roundOf(
   const writer =
     declared === null
       ? "whose tool spec is not on disk"
-      : declared.includes("artifact-writer")
-        ? "which declares an artifact-writer"
-        : "which declares no artifact-writer, so no solve under it can prepare an answer to submit";
+      : declared.length === 0
+        ? "which declares no tool"
+        : `which declares ${Object.entries(countBy(declared, (kind) => kind))
+            .map(([kind, n]) => `${String(n)} ${kind}`)
+            .join(", ")}`;
   const score = asRecord(report?.scored);
   const against = asRecord(report?.against);
   const scored = tallied.length;

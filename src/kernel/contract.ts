@@ -39,12 +39,13 @@ export function contractHash(contract: Contract): string {
 }
 
 /**
- * Why an answer does not follow the contract's answer format, or null when it does. The validator is
- * pi-ai's own, the one a solver's record tool runs on its arguments, so the kernel and the tool agree
- * on every answer. That validator coerces: it reads `"1"` as `1` where the format wants a number and
- * drops a null the format does not allow. It coerces a clone, never the caller's value, and an
- * answer that follows only once coerced does not follow here, since what a check would read is the
- * answer as given. Coercion is idempotent, so what the record tool hands on always follows.
+ * Why an answer does not follow the contract's answer format, or null when it does. `submit` asks
+ * it of a solver's answer file and refuses the file with what this returns, and the runner asks it
+ * again of what was submitted (`src/solve/answer.ts`, `src/solve/run.ts`). The validator is pi-ai's
+ * own, the one pi runs on a tool's arguments. That validator coerces: it reads `"1"` as `1` where
+ * the format wants a number and drops a null the format does not allow. It coerces a clone, never
+ * the caller's value, and an answer that follows only once coerced does not follow here, since what
+ * a check would read is the answer as given.
  */
 export function answerFormatFault(contract: Contract, answer: JsonValue): string | null {
   const tool = { name: "answer", description: "", parameters: answerSchema(contract) };
@@ -61,7 +62,7 @@ export function answerFormatFault(contract: Contract, answer: JsonValue): string
 }
 
 /**
- * The answer format as the schema pi-ai's validator and a record tool's parameters take. A format
+ * The answer format as the schema pi-ai's validator takes. A format
  * that is not a JSON Schema object is refused: the validator reads one as no constraint at all, so
  * the M1 stand-in contract, which carried v1's prose `artifactSchema` rows, passed every answer.
  */

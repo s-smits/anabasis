@@ -386,7 +386,7 @@ describe("a Builder session", () => {
     const s = await setup([
       call(WRITE_FILE, { path: "agent/tools-spec.json", content: "{}" }),
       call("practice", { tasks: ["t-1"] }),
-      // A preset no v2 solve serves: every solve would end on it before its first turn.
+      // A preset no solve serves: every solve would end on it before its first turn.
       call(WRITE_FILE, {
         path: "agent/tools-spec.json",
         content: spec.replace('"shell"', '"shell", "python"'),
@@ -408,7 +408,7 @@ describe("a Builder session", () => {
       "the harness does not open: agent/tools-spec.json needs presets and tools lists",
     );
     expect(s.sent[4]).toContain(
-      "the harness does not open: a v2 solve serves the shell preset alone, not python",
+      "the harness does not open: a solve serves pi's coding tools as presets (read, bash, edit, write), not python",
     );
     const last = JSON.stringify(s.of(BUILD_CALL).at(-2));
     expect(last).toContain("agent/BUILT_AGENTS.md links outside the harness");
@@ -684,6 +684,8 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
         call("check_harness", {}),
         call("bash", { command: 'rm "$HOME/harness/.toolchain/bin/named"' }),
         call("check_harness", {}),
+        // A command starts in the home, where the account of a harness's files is.
+        call("bash", { command: "pwd -P; head -1 HARNESS.md" }),
         finish,
       ],
       [],
@@ -705,6 +707,7 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     expect(calls[5]).toContain("installed-greeting");
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
     expect(calls[8]).toContain("The harness opens. Tools: ");
+    expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
     expect(responses.join("\n")).not.toContain(CHECK);
     expect(built).toMatchObject({ changed: true, ended: "finished" });
     expect(readFileSync(join(built.dir ?? "", "agent", "BUILT_AGENTS.md"), "utf8")).toBe(GUIDE);

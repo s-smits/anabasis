@@ -16,10 +16,12 @@
  * directory and git state into its prompt. A nudge is a further user message into the same query, where v1 resumed the session in a
  * fresh one (`provider.ts:525-560`); the model reads the same history either way.
  *
- * Those are a solver's options. The Builder, the Examiner and the reviewers run through the same
- * query with tools that are all the host's, and are sent their own prompt without Claude Code's
- * before it (`ClaudeOptions.preset`); v1's Builder was a Claude Code session with Claude Code's
- * tools, which no session here is.
+ * One of the sweep's options is not kept. Its solver read Claude Code's own system prompt with the
+ * harness's appended (`provider.ts:439-442`), and so did a v2 solver until 2026-10-09. That prompt is
+ * a coding assistant's, about a repository and Claude Code's own tools, none of which a session
+ * here has: every tool is pi's, served through the MCP server. So every session, a solver's, a
+ * Builder's, an Examiner's and a reviewer's alike, is sent its own prompt and nothing before it. A
+ * solver's is pi coding-agent's (`src/solve/prompt.ts`).
  *
  * One difference is left, and it reaches no model: v1 spawned its worker with an empty environment
  * (`pi-built-process.ts:529-533`) and spread that into Claude Code's (`provider.ts:420`); here HOME, the
@@ -61,7 +63,7 @@ import {
 import { updateUsage } from "../../vendor/pi-claude-bridge/usage.ts";
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
-import { keyIfDefined, keyIfTruthy } from "../meta/optional-key.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { dirname, join } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -174,11 +176,8 @@ export interface ClaudeOptions {
   /** Claude Code's HOME, which holds its configuration and transcripts: one per solve, outside the
    *  command wall, so no command reads them and no host Claude state reaches the query. */
   readonly home: string;
-  /** Whether Claude Code's own prompt precedes the session's, and whether the CLI's WebSearch stands
-   *  beside the session's tools. Left out, both hold, as they did for the sweep's solver. A session
-   *  whose tools are all the host's turns the first off: Claude Code's prompt is a coding
-   *  assistant's, about a repository and tools such a session does not have. */
-  readonly preset?: boolean;
+  /** Whether the CLI's WebSearch stands beside the session's tools. Left out, it does, as it did for
+   *  the sweep's solver. */
   readonly webSearch?: boolean;
 }
 
@@ -332,13 +331,8 @@ function open(
       ...keyIfDefined("effort", effort),
       // Thinking arrives summarized rather than omitted whenever an effort is set (`provider.ts:405-408`).
       ...keyIfDefined("extraArgs", effort && { "thinking-display": "summarized" }),
-      // Claude Code's own prompt with the harness's appended, as the sweep ran (`provider.ts:439-442`):
-      // the solver reads the same preamble around the same Built prompt. With the preset off the
-      // session's prompt is the whole of it.
-      systemPrompt:
-        claude.preset === false
-          ? own
-          : { type: "preset", preset: "claude_code", ...keyIfTruthy("append", own) },
+      // The session's prompt is the whole of it: Claude Code's own is not sent before it.
+      systemPrompt: own,
       // The harness's pi tools and the CLI's WebSearch are the only tools: no other built-in, no setting
       // file, no skill, no other MCP server (`provider.ts:430-434,445`). With WebSearch off there is
       // no built-in at all.

@@ -1,11 +1,14 @@
 // A solve's commands, executed under the real command wall on a mounted cap: the home survives
 // between commands, each command's own folder does not, staged input reaches it, neither the
 // host-only folder, the repository nor a reviewer's Claude home can be read, and no command outlives
-// the shell limits.
+// the shell limits. And a command's own folders: fresh for each, and done without on a full volume,
+// where the command that starts is the one that can empty it.
 import { describe, expect, it } from "bun:test";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -14,7 +17,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CommandWall, runWalled, solveDirs } from "../src/solve/command.ts";
+import { commandDirs, type CommandWall, runWalled, solveDirs } from "../src/solve/command.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
@@ -33,7 +36,84 @@ async function run(wall: CommandWall, command: string, stage?: (work: string) =>
   return { exitCode: result.exitCode, output };
 }
 
+describe("a command's own folders", () => {
+  const full = () => {
+    throw Object.assign(new Error("ENOSPC: no space left on device, mkdtemp"), { code: "ENOSPC" });
+  };
+
+  it("are made fresh under the solve's runs, and are the home where the volume has no room for them", () => {
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-dirs-")));
+    const dirs = { root, home: join(root, "home"), runs: join(root, "runs"), host: join(root, "host") };
+    try {
+      mkdirSync(dirs.runs);
+      const made = commandDirs(dirs, "nothing");
+      expect(made.run).toStartWith(join(dirs.runs, "run-"));
+      expect([made.work, made.temp]).toEqual([join(made.run ?? "", "work"), join(made.run ?? "", "tmp")]);
+      expect(existsSync(made.work) && existsSync(made.temp)).toBe(true);
+      expect(commandDirs(dirs, "nothing").run).not.toBe(made.run);
+      // No room for the folders: a command that brings no files starts in the home without them.
+      expect(commandDirs(dirs, "nothing", full)).toEqual({ run: null, work: dirs.home, temp: dirs.home });
+      // One whose files have nowhere to go does not start, and says why.
+      expect(() => commandDirs(dirs, "files", full)).toThrow("ENOSPC");
+      // Room for the first folder and not for the two inside it: nothing half-made is left behind.
+      const half = join(dirs.runs, "run-half");
+      const first = () => {
+        mkdirSync(join(half, "work", "tmp"), { recursive: true });
+        return half;
+      };
+      expect(() => commandDirs(dirs, "nothing", first)).toThrow("EEXIST");
+      expect(existsSync(half)).toBe(false);
+      // Any other failure is the solve's own, not a full volume's.
+      rmSync(dirs.runs, { recursive: true });
+      expect(() => commandDirs(dirs, "nothing")).toThrow("ENOENT");
+      expect(readdirSync(root)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("a solve's walled commands", () => {
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "still start on a volume a solver has filled, so that it can empty it",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-full-")));
+      const dirs = solveDirs(`full-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      try {
+        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
+        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+        const wall: CommandWall = {
+          base,
+          dirs,
+          toolTree: null,
+          limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
+          cpu: { seconds: 0, unmeasured: 0 },
+        };
+        const inHome = async (command: string) => {
+          let output = "";
+          const onData = (data: Buffer) => {
+            output += data.toString("utf8");
+          };
+          await runWalled(wall, command, { onData, inHome: true });
+          return output;
+        };
+        // Four times the cap, so the volume is full whatever the filesystem keeps back.
+        const filled = await inHome("dd if=/dev/zero of=fill bs=1048576 count=64 2>&1; echo dd:$?");
+        expect(filled).not.toContain("dd:0");
+        // On 2026-10-09 a solve in this state was refused `rm -rf ~/w` fourteen times running.
+        expect(await inHome("rm -f fill && echo freed")).toContain("freed");
+        expect(await inHome("echo again > note && cat note")).toBe("again\n");
+      } finally {
+        await release();
+        rmSync(dirs.host, { recursive: true, force: true });
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
   it.skipIf(runtimeProcess.platform !== "darwin")(
     "keep the home, drop each command's folder, and read neither the host folder, the repository nor a reader's home",
     async () => {

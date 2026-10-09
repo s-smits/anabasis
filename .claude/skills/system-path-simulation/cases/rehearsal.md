@@ -44,10 +44,10 @@ size is the question.
   `finish`. The session forks the Starter Built Harness, as the plan's first round does, so the
   new harness is the starter with a one-line guide, and its digest is the same in every rehearsal
   from that parent.
-- A solve's script ends one of three ways. For `pass` it hands the harness's own artifact-writer
-  an answer on record that the checks accepted, and submits it. For `fail` it does the same with
-  one a check rejected. For `none` it submits with no answer prepared, as a solve that reached its
-  limits has none.
+- A solve's script ends one of three ways. For `pass` it writes an answer on record that the
+  checks accepted into `answer.json`, with the harness's `write` or its `bash`, and submits it. For
+  `fail` it does the same with one a check rejected. For `none` it submits with no answer written,
+  as a solve that reached its limits has none.
 - `--held old:new` says how a solve of a held-out task ends under the reference harness and the
   new. The reference harness is the starter unless `--reference` names another. The defaults are
   `none:pass`, which script a step. `--starter` says how a solve ends under the starter where it

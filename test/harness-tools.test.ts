@@ -17,7 +17,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import type { JsonValue } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonValue } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, relative } from "../src/meta/path.ts";
@@ -77,18 +77,28 @@ describe("a v1 harness state", () => {
     expect(harness.digest).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("refuses a spec with no artifact-writer, since submit takes only an answer one prepared", async () => {
+  it("opens with no artifact-writer, and with no tool at all: the answer is a file and no tool's", async () => {
     const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-writer-")));
     try {
       cpSync(FIXTURE, dir, { recursive: true });
       const spec = join(dir, "agent", "tools-spec.json");
       const { tools } = parseJsonAs<{ tools: { kind: string }[] }>(readFileSync(spec, "utf8"));
-      const readers = tools.map((row) => ({
-        ...row,
-        kind: row.kind === "artifact-writer" ? "reader" : row.kind,
-      }));
-      writeFileSync(spec, JSON.stringify({ presets: ["shell"], tools: readers }));
-      await expect(openHarness(dir)).rejects.toThrow("declares no artifact-writer");
+      const readers = tools.filter((row) => row.kind !== "artifact-writer");
+      writeFileSync(spec, JSON.stringify({ presets: ["read", "bash"], tools: readers }));
+      const opened = await openHarness(dir);
+      expect([...opened.kinds.values()]).not.toContain("artifact-writer");
+      expect(opened.presets).toEqual(["read", "bash"]);
+      writeFileSync(spec, JSON.stringify({ presets: [], tools: [] }));
+      expect((await openHarness(dir)).kinds.size).toBe(0);
+      // A solver has one tool under each name, and five names are pi's and the host's.
+      const named = [
+        { name: "edit", kind: "advisor", description: "Edits." },
+        { name: "submit", kind: "reader", description: "Submits." },
+      ];
+      writeFileSync(spec, JSON.stringify({ presets: ["bash"], tools: named }));
+      await expect(openHarness(dir)).rejects.toThrow(
+        "agent/tools-spec.json names a tool edit, submit: read, bash, edit, write, submit are the host's own",
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -241,12 +251,18 @@ describe("a v1 harness state", () => {
       await withWall(async (wall) => {
         writeFileSync(join(wall.dirs.host, "config"), "host-canary");
         const tools = await harnessTools(harness, TASK, wall);
-        expect(tools.map(({ kind, tool }) => [tool.name, kind, tool.executionMode])).toEqual([
-          ["scale_base", "reader", undefined],
-          ["read_path", "advisor", undefined],
-          ["record_answer", "artifact-writer", "sequential"],
+        // The fixture is a harness kept before the answer was a file: its factory lists a writer,
+        // its spec declares it, and no solve is given it.
+        expect([...harness.kinds]).toEqual([
+          ["scale_base", "reader"],
+          ["read_path", "advisor"],
+          ["record_answer", "artifact-writer"],
         ]);
-        const [scale, read, record] = tools.map(({ tool }) => tool);
+        expect(tools.map((tool) => [tool.name, tool.executionMode])).toEqual([
+          ["scale_base", undefined],
+          ["read_path", undefined],
+        ]);
+        const [scale, read] = tools;
         expect(scale?.parameters).toEqual({
           type: "object",
           required: ["factor"],
@@ -256,12 +272,6 @@ describe("a v1 harness state", () => {
         const scaled = await scale!.execute("c1", { factor: 3 });
         expect(textOf(scaled)).toBe("t-1 (fixture): 21");
         expect(scaled.details).toEqual({ value: 21 });
-        expect(await record!.execute("c2", { answer: "x" })).toEqual({
-          content: [{ type: "text", text: "recorded" }],
-          details: null,
-          terminate: false,
-        });
-
         await expect(read!.execute("c3", { path: "missing.txt" })).rejects.toThrow(
           "cannot read missing.txt: ENOENT",
         );
@@ -287,14 +297,20 @@ describe("a v1 harness state", () => {
       ).rows;
       await withWall(async (wall) => {
         const tools = await harnessTools(harness, { taskId: "c07", family: "truss", publicInput: {} }, wall);
-        const rows = tools.map(({ kind, tool }) => ({
+        // v1 led each description with the tool's kind, and gave its model the writer too.
+        const rows = tools.map((tool) => ({
           name: tool.name,
           label: tool.label,
-          description: `Role: ${kind}. ${tool.description}`,
-          ...keyIfDefined("parameters", kind === "artifact-writer" ? undefined : tool.parameters),
+          description: `Role: ${String(harness.kinds.get(tool.name))}. ${tool.description}`,
+          parameters: tool.parameters,
           ...keyIfDefined("executionMode", tool.executionMode),
         }));
-        expect<unknown>(rows).toEqual(recorded);
+        const served = recorded.filter((row) => {
+          const description = asRecord(row)?.description;
+          return !(isString(description) && description.startsWith("Role: artifact-writer."));
+        });
+        expect(served).toHaveLength(recorded.length - 1);
+        expect<unknown>(rows).toEqual(served);
       }, harness.toolTree);
     },
     120_000,

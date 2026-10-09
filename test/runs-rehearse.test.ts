@@ -1,6 +1,7 @@
 // A seed is a campaign's folder under another name with its log cut where a question starts. A
-// rehearsal's script takes each task's answers from what is on record, hands the harness's own
-// artifact-writer the one its side was scripted to, and names a solve that ended otherwise.
+// rehearsal's script takes each task's answers from what is on record, writes the one its side was
+// scripted to into the answer file with what the harness selects, and names a solve that ended
+// otherwise.
 import { afterAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
 import { type LogEvent, read } from "../src/kernel/log.ts";
@@ -254,7 +255,8 @@ describe("a rehearsal's seats", () => {
       strayed,
     )(campaign, { builder: undefined, reference: FIXTURE });
     expect(seats.builder?.model.id).toBe("script");
-    // The new harness is one a session kept: each solve is handed its own harness's answer writer.
+    // The new harness is one a session kept, and selects the shell alone, as the fixture it copies
+    // does: its answer is written through the shell. The starter selects pi's `write`.
     const fresh = { dir: join(root, "fresh"), digest: "f" };
     cpSync(FIXTURE, fresh.dir, { recursive: true });
     const old = { dir: FIXTURE, digest: "o" };
@@ -265,9 +267,9 @@ describe("a rehearsal's seats", () => {
     await seats.solve(held, old, undefined);
     await seats.solve(other, await starter(campaign), undefined);
     expect(calls).toMatchObject([
-      { name: "record_answer", arguments: { answer: "t-2 right" } },
-      { name: "record_answer", arguments: { answer: "t-2 wrong" } },
-      { name: "record_answer", arguments: { answer: "t-1 wrong" } },
+      { name: "bash", arguments: { command: `printf %s '{"answer":"t-2 right"}' > answer.json` } },
+      { name: "bash", arguments: { command: `printf %s '{"answer":"t-2 wrong"}' > answer.json` } },
+      { name: "write", arguments: { path: "answer.json", content: '{"answer":"t-1 wrong"}' } },
     ]);
     expect(strayed).toEqual([
       's-2: t-2 under the reference harness was scripted to fail and ended {"outcome":"pass"}',
@@ -277,7 +279,7 @@ describe("a rehearsal's seats", () => {
     await expect(seats.solve(pack("t-3"), old, undefined)).rejects.toThrow(
       "t-3 has no answer on record that the checks rejected",
     );
-    // Scripted to give no answer, a solve submits with none prepared, whatever is on record.
+    // Scripted to give no answer, a solve submits with none written, whatever is on record.
     const silent = scriptedSeats({ held: sidesOf("none:pass"), starter: "none" }, graded, strayed);
     await silent(campaign, { builder: undefined, reference: FIXTURE }).solve(pack("t-3"), old, undefined);
     expect(calls.at(-1)).toMatchObject({ name: "submit" });
@@ -290,7 +292,10 @@ describe("a rehearsal's seats", () => {
     const least = await starter(campaign);
     const under = scriptedSeats({ held: sidesOf("fail:pass"), starter: "pass" }, graded, strayed);
     await under(campaign, { builder: undefined, reference: least.dir }).solve(held, least, undefined, "g0");
-    expect(calls.at(-1)).toMatchObject({ name: "record_answer", arguments: { answer: "t-2 wrong" } });
+    expect(calls.at(-1)).toMatchObject({
+      name: "write",
+      arguments: { path: "answer.json", content: '{"answer":"t-2 wrong"}' },
+    });
     expect(strayed.at(-1)).toStartWith("s-5: t-2 under the reference harness was scripted to fail");
     expect(named).toEqual([undefined, undefined, undefined, undefined, "g0"]);
   });

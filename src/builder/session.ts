@@ -74,6 +74,7 @@ import { type CommandWall, type SolveDirs, solveDirs } from "../solve/command.ts
 import type { PublicResource } from "../solve/answer.ts";
 import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
+import { HARNESS_ACCOUNT } from "../solve/starter.ts";
 import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
 import { mountDiskCap } from "../verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../verify/solve-sandbox.ts";
@@ -221,6 +222,8 @@ export async function session(
   if (toolTree !== null) cpSync(toolTree, join(dirs.home, HOME_TOOL_TREE), copy);
   mkdirSync(join(dirs.home, "practice"), { recursive: true });
   writeFileSync(join(dirs.home, "resources.json"), `${capturedJsonStringify(request.resources, null, 2)}\n`);
+  // The account of a harness's files is this host's, whichever harness the session forks.
+  writeFileSync(join(dirs.home, "HARNESS.md"), HARNESS_ACCOUNT);
   for (const { task } of request.tasks) {
     writeFileSync(
       join(dirs.home, "practice", `${task.taskId.replace(/[^A-Za-z0-9._-]+/g, "-")}.json`),

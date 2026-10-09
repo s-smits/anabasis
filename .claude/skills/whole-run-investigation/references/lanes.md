@@ -590,10 +590,11 @@ Starts from `VALID BY HARNESS (lane 23)`, `BELOW THE STARTER (lane 23)` and
 `STARTER UNREAD (lane 23)`.
 
 The question is whether the tasks leave a harness room to add anything to the starter. The
-Starter Built Harness is the solver with a shell and the answer writer, with no guide and no
-domain tool (`src/solve/starter.ts`). The Builder forks it in its first session, and it is the
-reference harness until a step is promoted, so the plan's first round compares a built harness
-with it. `VALID BY HARNESS` gives each harness by itself, as the tasks by how many of their
+Starter Built Harness is pi's coding agent with nothing added: pi's four coding tools, no guide
+and no domain tool (`src/solve/starter.ts`). Before 2026-10-09 it was the solver with a shell and an
+answer writer, and a log of that time holds its solves under another digest. The Builder forks it
+in its first session, and it is the reference harness until a step is promoted, so the plan's first
+round compares a built harness with it. `VALID BY HARNESS` gives each harness by itself, as the tasks by how many of their
 solves were valid, none first, at the full limit and at each budget: for the reference harness
 of the first round that is the starter's own result, and the plan's first gate is read off it.
 A starter valid on nearly every solve even at the shortest budget has tasks too easy to show an

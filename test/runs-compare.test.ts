@@ -180,7 +180,7 @@ describe("the runs comparison", () => {
       "contract c1 · source host-1 · scored set of 4: a1 a2 a3 a4",
       "Builder p/opus, high (wall 1800s, turns 40, practice solves 1), ended at wall",
       "solver p/opus, medium, off",
-      "harness h-parent > h-a, which declares an artifact-writer, compared with h-parent",
+      "harness h-parent > h-a, which declares 1 reader, 1 artifact-writer, compared with h-parent",
       "not read against the starter",
       // Two tasks have a counted solve a side; a3 and a4 are short of theirs.
       "reported no-step, for 4 tasks asked for: scored 0 won, 1 lost, 1 tied on 2 tasks, p 1",
@@ -250,15 +250,20 @@ describe("the runs comparison", () => {
     );
   });
 
-  it("says a harness that declares no artifact-writer, and a report that tallied no task", () => {
+  it("says the tools a harness declares by kind, or none, and a report that tallied no task", () => {
     const log = round("a-1", OPUS).map((event) =>
       event.kind === "comparison.reported"
         ? { ...event, data: { ...event.data, reading: "not-scored", versions: [], aside: [...OPUS.tasks] } }
         : event,
     );
-    const said = roundOf("a", log, "a-1", () => ["reader"]).said;
+    // A harness kept before 2026-10-09 that declares no artifact-writer could not answer; one kept
+    // since declares none and needs none. The round says what is declared and leaves that reading.
+    const said = roundOf("a", log, "a-1", () => ["reader", "advisor", "reader"]).said;
     expect(said).toContain(
-      "harness h-parent > h-a, which declares no artifact-writer, so no solve under it can prepare an answer to submit, compared with h-parent",
+      "harness h-parent > h-a, which declares 2 reader, 1 advisor, compared with h-parent",
+    );
+    expect(roundOf("a", log, "a-1", () => []).said).toContain(
+      "harness h-parent > h-a, which declares no tool, compared with h-parent",
     );
     expect(said.find((line) => line.startsWith("reported"))).toBe(
       "reported not-scored, for 4 tasks asked for: scored 0 won, 1 lost, 3 tied on no task, so the round could not step",

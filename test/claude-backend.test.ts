@@ -148,7 +148,7 @@ describe("the Claude backend", () => {
     expect(asRecord(prompt?.message)?.content).toBe("Read the three files.");
   });
 
-  it("launches Claude Code as the sweep did, with the pi tools alone and nothing of the host's", async () => {
+  it("launches Claude Code as the sweep did but for its prompt, with the pi tools alone and nothing of the host's", async () => {
     replay("text.jsonl");
     await turn([opening], "high");
     const launch = launched();
@@ -165,12 +165,13 @@ describe("the Claude backend", () => {
     expect(realpathSync.native(launch.cwd)).toBe(realpathSync.native(home));
     expect(launch.argv).toContain("--strict-mcp-config");
     expect(launch.argv).toContain("--setting-sources=");
-    // The preset prompt is the CLI's own, so the SDK sends only what is appended to it.
+    // The session's prompt is the whole prompt: Claude Code's own, which the sweep's solver read
+    // first, describes tools no session here has.
     const init = asRecord(
       launch.stdin.find((line) => asRecord(line.request)?.subtype === "initialize")?.request,
     );
-    expect(init?.appendSystemPrompt).toBe("You are a solver.");
-    expect(init?.systemPrompt).toBeUndefined();
+    expect(init?.systemPrompt).toEqual(["You are a solver."]);
+    expect(init?.appendSystemPrompt).toBeUndefined();
     expect(init?.skills).toEqual([]);
     expect(init?.sdkMcpServers).toEqual(["custom-tools"]);
     const { env } = launch;
@@ -182,9 +183,9 @@ describe("the Claude backend", () => {
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
-  // A Builder, an Examiner and a reviewer run on the host's tools alone: Claude Code's coding prompt
-  // is not theirs, and only a Builder keeps the CLI's search.
-  it("sends a session its own prompt alone, and no built-in tool, when the options say so", async () => {
+  // An Examiner and a reviewer run on the host's tools alone; a solver and a Builder keep the CLI's
+  // search beside them.
+  it("sends a session no built-in tool when the options say so", async () => {
     const context = normalizeContext({
       systemPrompt: "You are the Examiner.",
       messages: [opening],
@@ -192,7 +193,7 @@ describe("the Claude backend", () => {
     });
     const started = async (webSearch: boolean) => {
       replay("text.jsonl");
-      const provider = claudeProvider({ executable, compaction: "off", home, preset: false, webSearch });
+      const provider = claudeProvider({ executable, compaction: "off", home, webSearch });
       const options = { ...solveOptions(), sessionId: `own-${String(solves)}-${String(webSearch)}` };
       await provider.streamSimple(recorded, context, options).result();
       const launch = launched();

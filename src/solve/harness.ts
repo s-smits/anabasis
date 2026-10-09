@@ -14,6 +14,11 @@
  * so stdout is the only channel back. A call names no timeout, so it runs for the condition's
  * shell default, where v1 gave a request 30 s (generated-tool-worker-process.ts:75). What the bundle sees in place of `@ana/agent-bundle` and
  * pi-ai, and the departures there, are in `harness-shim.ts`.
+ *
+ * Two more departures, of 2026-10-09. `presets` names pi's coding tools, any of `read`, `bash`,
+ * `edit` and `write`, where v1's named its own `files` and `shell` (`coding-tools.ts`). And the
+ * answer is no tool's: a state need declare no artifact-writer, and one that does has it listed
+ * and not served (`harnessTools`, `answer.ts`).
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
@@ -28,6 +33,7 @@ import { containsPath } from "../meta/path-containment.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
+import { CODING_TOOLS } from "./coding-tools.ts";
 import { type CommandWall, runWalled } from "./command.ts";
 import { DRAFT_TOOL } from "./harness-shim.ts";
 import { type PublicTask, publicView } from "./prompt.ts";
@@ -49,11 +55,6 @@ export interface Harness {
   readonly digest: string;
 }
 
-export interface DomainTool {
-  readonly kind: ToolKind;
-  readonly tool: AgentTool;
-}
-
 /** A tool's result as the shim's `call` returns it (v1's `Evidence`, define-tool.ts:13). */
 interface Evidence {
   text: string;
@@ -72,6 +73,8 @@ interface ToolRow {
 }
 
 const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-writer"]);
+/** The names a solver's tools already hold, whatever the harness: pi's coding tools and `submit`. */
+const HOST_TOOLS: readonly string[] = [...CODING_TOOLS, "submit"];
 const SHIM = Bun.fileURLToPath(new URL("./harness-shim.ts", import.meta.url));
 /** The host's own source and installed packages, which the shim imports from. */
 const HOST_ROOTS = [dirname(dirname(SHIM)), join(dirname(dirname(dirname(SHIM))), "node_modules")];
@@ -155,11 +158,11 @@ export async function openHarness(dir: string): Promise<Harness> {
     // SAFETY: KINDS just admitted the kind.
     kinds.set(row.name, row.kind as ToolKind);
   }
-  // v1's tools-artifact-writer-missing: three of four Sol Builders on 2026-10-08 froze a harness
-  // with no writer, and every solve under it ended with no answer.
-  if (![...kinds.values()].includes("artifact-writer")) {
+  // A solver is given one tool under each name, and these are pi's and the host's.
+  const taken = [...kinds.keys()].filter((name) => HOST_TOOLS.includes(name));
+  if (taken.length > 0) {
     throw new Error(
-      `${TOOLS_SPEC_FILE} declares no artifact-writer: submit takes only an answer one prepared`,
+      `${TOOLS_SPEC_FILE} names a tool ${taken.join(", ")}: ${HOST_TOOLS.join(", ")} are the host's own`,
     );
   }
   const module = await bundle(join(dir, GENERATED_TOOLS_FILE));
@@ -282,13 +285,19 @@ async function bundle(entry: string): Promise<string> {
 
 /**
  * The harness's domain tools for one task, in the factory's order, after one walled listing. The
- * name check and the artifact-writer's sequential rule are v1's (built-starter.ts:449-460).
+ * name check is v1's (built-starter.ts:449-460).
+ *
+ * An artifact-writer is listed and not served. Until 2026-10-09 a harness had to declare one, the
+ * host bound it to the answer format, and its arguments were the answer; three of four Sol Builders
+ * on 2026-10-08 froze a harness without one, and every solve under each ended with no answer. The
+ * answer is now a file the host reads at `submit` (`answer.ts`), so no harness carries the answer's
+ * path and none can break it. A harness kept before then still declares its writer, and opens.
  */
 export async function harnessTools(
   harness: Harness,
   task: PublicTask,
   wall: CommandWall,
-): Promise<DomainTool[]> {
+): Promise<AgentTool[]> {
   const view = publicView(task);
   const call = <T>(name: string | null, params: unknown, signal?: AbortSignal) =>
     callHarness<T>({ harness, wall, input: { task: view, name, params }, signal });
@@ -300,29 +309,25 @@ export async function harnessTools(
       `domain tool mismatch: generated [${actual.join(", ")}], recorded [${expected.join(", ")}]`,
     );
   }
-  return rows.map((row) => {
-    // SAFETY: the mismatch check above threw unless every listed name is a declared one.
-    const kind = harness.kinds.get(row.name) as ToolKind;
-    if (kind === "artifact-writer" && row.executionMode !== "sequential") {
-      throw new Error(`registered ${kind} tool "${row.name}" must use sequential execution`);
-    }
-    const tool: AgentTool = {
-      name: row.name,
-      label: row.label,
-      description: row.description,
-      parameters: row.parameters,
-      ...keyIfDefined("executionMode", row.executionMode),
-      execute: async (_toolCallId, params, signal) => {
-        const { result } = await call<{ result: Evidence }>(row.name, params, signal);
-        return {
-          content: [{ type: "text", text: result.text }],
-          details: result.details ?? null,
-          ...keyIfDefined("terminate", result.terminate),
-        } satisfies AgentToolResult<JsonValue>;
-      },
-    };
-    return { kind, tool };
-  });
+  return rows
+    .filter(({ name }) => harness.kinds.get(name) !== "artifact-writer")
+    .map(
+      (row): AgentTool => ({
+        name: row.name,
+        label: row.label,
+        description: row.description,
+        parameters: row.parameters,
+        ...keyIfDefined("executionMode", row.executionMode),
+        execute: async (_toolCallId, params, signal) => {
+          const { result } = await call<{ result: Evidence }>(row.name, params, signal);
+          return {
+            content: [{ type: "text", text: result.text }],
+            details: result.details ?? null,
+            ...keyIfDefined("terminate", result.terminate),
+          } satisfies AgentToolResult<JsonValue>;
+        },
+      }),
+    );
 }
 
 /** One walled run of the caller: the listing when `name` is null, otherwise one tool call. Returns

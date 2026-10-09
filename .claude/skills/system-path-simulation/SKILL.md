@@ -72,7 +72,7 @@ and why the next was not needed.
 - the campaign opened over the real pack, its sets read from the log;
 - the Builder session, which forks the Starter Built Harness as the plan's first round does: its
   tools on the command wall, its capped root, its freeze and digest;
-- each solve: its wall and disk cap, the harness's own artifact-writer, `submit`, the verifier on
+- each solve: its wall and disk cap, the answer file and `submit`, the verifier on
   the staged check program, its verdict;
 - the comparison: its terms written before its first solve, the reference harness, which is the
   starter unless `--reference` names another, and the new one solved in turn, the sign test, each

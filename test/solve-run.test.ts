@@ -1,8 +1,9 @@
 // A solve's ending, read from what an attempt left behind, in every order the runner settles it;
 // then the plan's kill tests end to end on the faux provider, under the real command wall and disk
 // cap: a pass whose trace and meter read back from the log and whose hidden value reaches nothing
-// the solver reads, the host's limits over the harness's, the wall, no answer, the reruns of a
-// provider's failed turn and of moved files, and the run stopping on the verifier's non-result.
+// the solver reads, a solve under the Starter with pi's own file tools, the host's limits over the
+// harness's, the wall, no answer, the reruns of a provider's failed turn and of moved files, and
+// the run stopping on the verifier's non-result.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
@@ -15,11 +16,13 @@ import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
 import type { Verdict } from "../src/kernel/verify.ts";
 import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { NUDGE } from "../src/solve/prompt.ts";
 import { judge, type Played, solve, type SolveRequest } from "../src/solve/run.ts";
+import { writeStarter } from "../src/solve/starter.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const CANARY = "hidden-canary-7f3a";
@@ -102,11 +105,17 @@ function setup(responses: FauxResponseStep[], overrides: Partial<SolveRequest> =
   return { scratch, sent, request, events, finished };
 }
 
+/** The answer written into its file through the shell, which is all the fixture harness selects:
+ *  it is one kept before pi's file tools were a solver's. */
+const written = fauxAssistantMessage(
+  fauxToolCall("bash", { command: `printf %s '{"answer":"42"}' > answer.json` }),
+  toolUse,
+);
 const answer = [
   fauxAssistantMessage(fauxToolCall("scale_base", { factor: 6 }), toolUse),
   // The harness's own process reads what the host handed it.
   fauxAssistantMessage(fauxToolCall("read_path", { path: "input.json" }), toolUse),
-  fauxAssistantMessage(fauxToolCall("record_answer", { answer: "42" }), toolUse),
+  written,
   fauxAssistantMessage(fauxToolCall("submit", {}), toolUse),
 ];
 /** Searches the solver's home for the canary, spelled so the command itself does not carry it. */
@@ -217,7 +226,7 @@ describe("an attempt's ending", () => {
 
 // Each of these mounts a disk image and runs the real wall, so they run side by side.
 describe.skipIf(!darwin)("a solve end to end", () => {
-  it.concurrent("passes on a recorded, submitted answer, its trace and meter read back from the log", async () => {
+  it.concurrent("passes on a written, submitted answer, its trace and meter read back from the log", async () => {
     const { sent, request, events, finished } = setup([searchHome, ...answer]);
     expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
     expect(events().map(({ kind }) => kind)).toEqual([
@@ -233,7 +242,7 @@ describe.skipIf(!darwin)("a solve end to end", () => {
       ["bash", false],
       ["scale_base", false],
       ["read_path", false],
-      ["record_answer", false],
+      ["bash", false],
       ["submit", false],
     ]);
     expect(calls[0]?.text).toContain("found:1");
@@ -257,9 +266,60 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     // Exit test 5: the hidden value reaches nothing the solver reads: the prompt, the tool rows,
     // the first turn and every tool result among them, the harness's process, and its home.
     expect(sent.join("\n")).not.toContain(CANARY);
-    expect(sent[0]).toContain("Role: reader. Returns the task's base");
-    expect(sent[0]).toContain("Role: artifact-writer. Records the answer.");
-    expect(sent[0]).toContain("Role: submission.");
+    // Each tool is described in its own words, and the fixture's writer, which took the answer
+    // before the answer was a file, is given to no solver.
+    expect(sent[0]).toContain('"description":"Returns the task\'s base multiplied by a factor."');
+    expect(sent[0]).not.toContain("Role: ");
+    expect(sent[0]).not.toContain("Records the answer.");
+    expect(sent[0]).toContain("Send answer.json from your working directory as your answer.");
+    // The fixture selects the shell alone, so pi's file tools and their rules are not in its prompt.
+    expect(sent[0]).toContain(
+      String.raw`<tools>\n- bash: Execute bash commands (ls, grep, find, etc.)\n- submit: `,
+    );
+  }, 120_000);
+
+  it.concurrent("solves under the Starter with pi's file tools, in one working directory", async () => {
+    const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
+    const { scratch, sent, request, events } = setup(
+      [
+        call("read", { path: "public/task.json" }),
+        call("read", { path: "public/answer-format.json" }),
+        call("write", { path: "work/answer.py", content: 'print(\'{"answer": "41"}\')\n' }),
+        call("edit", { path: "work/answer.py", edits: [{ oldText: "41", newText: "42" }] }),
+        // The file a tool wrote is the shell's by the same relative path.
+        call("bash", {
+          command:
+            'python3 work/answer.py > answer.json 2>/dev/null || printf %s \'{"answer":"42"}\' > answer.json; pwd',
+        }),
+        call("submit", {}),
+      ],
+      { resources: [{ name: "public rules", content: [{ id: "r1" }], digest: "d" }] },
+    );
+    rmSync(join(scratch, "harness"), { recursive: true });
+    writeStarter(join(scratch, "harness"));
+    expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
+    const calls = events()
+      .filter(({ kind }) => kind === "solve.call")
+      .map(({ data }) => data);
+    expect(calls.map(({ tool, isError }) => [tool, isError])).toEqual([
+      ["read", false],
+      ["read", false],
+      ["write", false],
+      ["edit", false],
+      ["bash", false],
+      ["submit", false],
+    ]);
+    expect(calls[0]?.text).toContain('"base": 7');
+    expect(calls[1]?.text).toContain('"additionalProperties": false');
+    expect(calls[4]?.text).toMatch(/\/home$/);
+    // The Starter adds nothing to pi: its four tools and submit, and pi's prompt with the host's part.
+    expect(sent[0]).toContain("You are an expert coding assistant operating inside pi");
+    expect(sent[0]).toContain("- submit: Send answer.json as your answer, which ends the task");
+    expect(sent[0]).toContain("in the 1 file under public/resources/; read both before you build.");
+    expect(sent[0]).toContain(
+      "- A command runs for at most 30 seconds unless it names a longer timeout, and 60 seconds is the longest it may name.",
+    );
+    expect(sent[0]).not.toContain("<project_context>");
   }, 120_000);
 
   it.concurrent("nudges a model that stops, up to the host's prompts whatever the harness asks", async () => {
@@ -342,12 +402,11 @@ describe.skipIf(!darwin)("a solve end to end", () => {
   it.concurrent("judges an answer held before the model process crashed", async () => {
     // Submit beside a call that does not end the batch, so the loop asks for one more turn, and the
     // model process dies on it.
-    const record = fauxAssistantMessage(fauxToolCall("record_answer", { answer: "42" }), toolUse);
     const submit = fauxAssistantMessage(
       [fauxToolCall("submit", {}), fauxToolCall("bash", { command: "true" })],
       toolUse,
     );
-    const { request, finished } = setup([record, submit]);
+    const { request, finished } = setup([written, submit]);
     const models = request.models("");
     const stream = models.streamSimple.bind(models);
     let requests = 0;

@@ -30,7 +30,7 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { createBashTool } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
+import { wrapToolDefinition } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { ended, passed, ranUnder, verdictsOf } from "../kernel/solves.ts";
@@ -58,10 +58,9 @@ import { plural } from "../meta/text.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import { callList, callsOf, callText, closingOf, solveOf } from "../review/trace.ts";
 import { text, tool } from "../solve/answer.ts";
+import { bashTool, selectedCodingTools } from "../solve/coding-tools.ts";
 import { type CommandWall, runWalled } from "../solve/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
-import { refuseOtherPresets } from "../solve/run.ts";
-import { SHELL_RULES, shellTool } from "../solve/shell.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
 import { SHELL_WALLS } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
@@ -210,7 +209,8 @@ async function frozen(bench: Bench): Promise<Snapshot> {
     // By the tree's name beside the state, so both go where the campaign's folder goes.
     if (tree !== null) symlinkSync(join("..", basename(tree)), join(dir, ".toolchain"));
     const harness = await openHarness(dir);
-    refuseOtherPresets(harness);
+    // A preset no solve serves fails every solve, and is refused here before one is spent on it.
+    selectedCodingTools(harness.presets);
     return { dir, harness, listed: (await bench.lists?.(harness)) ?? null };
   } catch (error) {
     rmSync(dir, { recursive: true, force: true });
@@ -484,12 +484,8 @@ function checkTool(bench: Bench): AgentTool {
 export function walledTools(bench: Bench, wall: CommandWall): AgentTool[] {
   const sample = bench.request.tasks[0];
   if (sample !== undefined) {
-    bench.lists = async (harness) =>
-      (await harnessTools(harness, sample.task, wall)).map(({ tool: listed }) => listed.name);
+    bench.lists = async (harness) => (await harnessTools(harness, sample.task, wall)).map(({ name }) => name);
   }
-  return [
-    { ...shellTool(wall, 0), description: `${createBashTool("/").description}${SHELL_WALLS} ${SHELL_RULES}` },
-    writeTool(wall),
-    checkTool(bench),
-  ];
+  const shell = wrapToolDefinition(bashTool(wall));
+  return [{ ...shell, description: `${shell.description}${SHELL_WALLS}` }, writeTool(wall), checkTool(bench)];
 }

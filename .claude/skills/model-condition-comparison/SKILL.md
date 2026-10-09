@@ -74,10 +74,12 @@ round's `comparison.started`.
 
 ## Read a round
 
-1. **`harness`.** A fresh harness that `declares no artifact-writer` fails every solve at
-   `no-answer`, since submit takes only an answer one prepared. That is a harness that cannot answer,
+1. **`harness`.** The line says the tools the fresh harness declares, by kind. In a round run
+   before 2026-10-09 a harness that declares no `artifact-writer` failed every solve at `no-answer`,
+   since submit then took only an answer one had prepared. That is a harness that could not answer,
    and it says nothing of its solver. Three of the four Sol Builders of 2026-10-08 kept one
-   (abl25-sa, abl20-sa, abl20-sb): abl25-sa's four solves ended `no-answer` and lost 0 to 4.
+   (abl25-sa, abl20-sa, abl20-sb): abl25-sa's four solves ended `no-answer` and lost 0 to 4. Since
+   that day the answer is a file the host reads at submit, and a harness declares no writer.
 2. **`reported`.** A report that tallied no task could not step, whatever its Builder made. Every
    one of that day's eight rounds was launched to score no task, so each `no-step` was the
    launch's. A comparison that tallies none now reads `not-scored`, and a launch that could read

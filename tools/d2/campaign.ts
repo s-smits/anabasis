@@ -333,14 +333,14 @@ export function awaitingLines(campaign: {
 }
 
 /**
- * The backends of a session whose tools are all this host's: a Builder, an Examiner or a reviewer.
- * It is sent its own prompt without Claude Code's before it, which only a solver reads, as the
- * sweep's did. A Builder keeps the CLI's WebSearch, since it researches the field and its shell
- * reaches the network anyway; an Examiner and a reviewer work from what they are shown, and a
- * search of theirs would be read by nobody, since the trace holds the host's tools alone.
+ * The backends of a Builder's, an Examiner's or a reviewer's session. A Builder keeps the CLI's
+ * WebSearch, since it researches the field and its shell reaches the network anyway; an Examiner
+ * and a reviewer work from what they are shown, and a search of theirs would be read by nobody,
+ * since the trace holds the host's tools alone. A solver's backends are the sweep's as they stand
+ * (`solveOnce`), with the search.
  */
 function hostSession(search: { readonly webSearch: boolean }) {
-  return (home: string) => backends({ claude: { ...sweepOptions(home).claude, preset: false, ...search } });
+  return (home: string) => backends({ claude: { ...sweepOptions(home).claude, ...search } });
 }
 
 /** The plan runs every solve under `caffeinate -s`, so the Mac cannot sleep inside a wall; it exits

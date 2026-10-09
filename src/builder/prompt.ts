@@ -5,8 +5,9 @@
  * v1's Builder wrote the exam beside the harness, and most of its prompt was about the exam. What is
  * taken here is what bore on the harness, from harness-builder-v4 at 7af7315: the role sentence
  * (`src/author/builder-start-prompt.ts`, `INTENT_CLAUSE`), the ceiling on what a solver's tools may
- * do (`NO_GRADER_IN_REACH`), and the three files' contracts
- * (`starters/pi-built-harness/starter-pack/contract.md`, the agent sections).
+ * do (`NO_GRADER_IN_REACH`), and the three files' contracts in brief
+ * (`starters/pi-built-harness/starter-pack/contract.md`, the agent sections). Their shapes in full,
+ * with a worked example, are `HARNESS.md` in the session's home (`src/solve/starter.ts`).
  *
  * The ceiling is one rule: no harness tool returns a finished answer for a task (`docs/plan.md`,
  * principle 6). v1's sentence had two routes, a verdict on a candidate and the answer to a case the
@@ -48,7 +49,7 @@ export interface Told {
 export const SYSTEM_PROMPT = [
   "You are the Builder. You improve a Built Harness: the guide and the tools with which a separate solving model answers each task of one domain, over the programs already installed for it. Useful computation belongs in the solver's tools; the host's verifier owns correctness and the host owns acceptance and scores.",
   "Your harness is measured against a reference harness, by that solver and under the same limits, on tasks you are never shown. Only a change that helps on tasks like the practice tasks, not on those tasks themselves, will show there. Build for the domain: a line that names a practice task or copies its text or its answer moves nothing that is measured.",
-  'The harness is harness/ in your home directory. agent/BUILT_AGENTS.md is the operating guide; it is appended to the solver\'s system prompt once per task, so keep it short. agent/tools-spec.json declares the domain tools, each with a name, a kind (reader, advisor or artifact-writer) and a description. agent/tools.ts implements exactly those tools and exports createDomainHarness; it is built from the files under harness/ and the packages installed there, and an import of any other file is refused. .toolchain holds the installed programs, which reach the solver, and your own shell, by name on PATH with .toolchain/bin first; install what the solver should run there. The harness is run from another place than your home, so an installed launcher finds its files from its own path, as "$(dirname "$0")" does, and a link names its target relatively: a harness in which a script or a link names your home is not frozen. agent/config.yaml is not read: the host sets every limit a solve runs under.',
+  'The harness is harness/ in your home directory, and HARNESS.md beside it gives the shape of each of its files, with a worked example. The solver is pi\'s coding agent: agent/tools-spec.json selects which of pi\'s coding tools it has (read, bash, edit, write) and declares the domain tools, each with a name, a kind (reader or advisor) and a description. The solver\'s answer is a file it writes, answer.json, which the host reads when the solver submits: no tool of yours takes the answer. agent/BUILT_AGENTS.md is the operating guide; the solver reads it in its system prompt once per task, so keep it short. agent/tools.ts implements exactly those tools and exports createDomainHarness; it is built from the files under harness/ and the packages installed there, and an import of any other file is refused. .toolchain holds the installed programs, which reach the solver, and your own shell, by name on PATH with .toolchain/bin first; install what the solver should run there. The harness is run from another place than your home, so an installed launcher finds its files from its own path, as "$(dirname "$0")" does, and a link names its target relatively: a harness in which a script or a link names your home is not frozen. agent/config.yaml is not read: the host sets every limit a solve runs under.',
   "The guide explains how tools combine and how results inform the next decision, for every task of the domain, and leaves the solving method to the solver. Reusable algorithms are allowed; task identifiers, copied task text and answers are not.",
   "Answers are judged by checks that neither you nor the solver is shown; what they enforce is the public rules. A tool may run the field's own compiler or simulator on the solver's candidate, test the candidate against a public rule and say what it does not meet: the solver would write such a test itself, and every solve of either harness runs under the same limits, so a search costs the turns and the time it takes. One limit stands. No tool, program or guide line returns a finished answer for a task, or for a case the solver names: the solver finds the answer, with what the harness gives it to compute, test and correct one.",
   "practice solves the practice tasks you name with the harness as it stands and reports each task's record. One solve is weak evidence: the same harness can fail a task and pass it the next time. Read the record, not the last result, and decide before you practise which tasks a change should move. A fail ruled a check defect does not count and is not yours to build around. A diagnosis is advice from a reader that saw one solve: weigh it against the trace, which read_trace pages.",
@@ -58,11 +59,11 @@ export const SYSTEM_PROMPT = [
 export const NUDGE =
   "You have not called finish. Go on with the harness, or call finish when harness/ holds what you want measured.";
 
-/** What the Builder's shell is told about its wall, after pi's own description and before the
- *  solver's rules (`SHELL_RULES`). The clauses are the solver's (`src/solve/shell.ts`, `WALLS`) with
- *  the answer left out: the command wall is the same one. */
+/** What the Builder's shell is told about its wall, after pi's own description. The command wall
+ *  is the solver's, and the facts are the ones a solver's prompt gives of it
+ *  (`src/solve/prompt.ts`, `environment`): the shell is the solver's `bash`, started in the home. */
 export const SHELL_WALLS =
-  " The command runs in a fresh private folder that is removed when it ends; what should last belongs in your home directory, where harness/, practice/ and resources.json are. It has network access, so a package your tools import, or a program the solver runs, can be installed under harness/. It can write your home directory, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data.";
+  " The command runs in your home directory, where harness/, practice/, resources.json and HARNESS.md are. It has network access, so a package your tools import, or a program the solver runs, can be installed under harness/. It can write your home directory, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.";
 
 /** The opening message: the domain's public contract, the practice tasks with their record under the
  *  harness the session starts from, and the session's limits. A task's public part is a file in

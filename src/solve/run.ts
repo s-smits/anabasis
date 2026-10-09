@@ -1,14 +1,14 @@
 /**
- * One solve, start to ending: a capped home seeded with the public task, the harness's tools beside
- * the host's answer tools and its bash, pi's agent loop under the host's wall and turn cap, then the
- * ending typed and logged with the trace and the meter. A non-result from the solve's side is run
+ * One solve, start to ending: a capped home seeded with the public task, pi's coding tools on the
+ * command wall with the harness's tools and `submit` beside them, pi's agent loop under the host's
+ * wall and turn cap, then the ending typed and logged with the trace and the meter. A non-result from the solve's side is run
  * again, up to three times with backoff; one from the task's own check is returned for the caller to
  * drop the task, and one from the verifier stops the run.
  *
  * The loop runs in this process and so does the model's own process: under the Claude backend,
  * Claude Code runs on the host with a home of its own outside the command wall. v1 confined the
- * model process too (`src/backends/pi-built-child.ts` at 7af7315); here only the commands are walled,
- * the solver's bash and every harness tool call alike (`command.ts`).
+ * model process too (`src/backends/pi-built-child.ts` at 7af7315); here only the commands are walled:
+ * the solver's bash, its file tools and every harness tool call alike (`command.ts`).
  *
  * The loop is v1's (`src/backends/pi-built-child.ts:476-498` at 7af7315): tools run one at a time, a
  * model that stops without submitting is nudged, and the turn cap counts the prompts, the opening one
@@ -20,7 +20,6 @@
 import {
   type AgentEvent,
   type AgentMessage,
-  type AgentTool,
   type AgentToolResult,
   type PrepareRequest,
   runAgentLoop,
@@ -57,17 +56,14 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import { mountDiskCap, type ReleaseDiskCap } from "../verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import {
-  type Desk,
-  deskTools,
-  openDesk,
-  type PublicResource,
-  publicResourcesTool,
-  recordTool,
-} from "./answer.ts";
+  createToolDefinitionFromAgentTool,
+  wrapToolDefinitions,
+} from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
+import { type Desk, openDesk, type PublicResource, submitTool } from "./answer.ts";
+import { codingTools, selectedCodingTools, type SolverTool, wallExec } from "./coding-tools.ts";
 import { type CommandWall, solveDirs } from "./command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
-import { firstTurn, NUDGE, seedHome, systemPrompt } from "./prompt.ts";
-import { shellTool } from "./shell.ts";
+import { firstTurn, installedPrograms, NUDGE, seedHome, systemPrompt } from "./prompt.ts";
 
 export interface SolveRequest {
   /** Names the solve in the log; each attempt is `<id>-<attempt>`. */
@@ -124,17 +120,6 @@ const RERUNS = 3;
  *  whoever read a fail afterwards, a person or the Diagnoser, read less than the solver had. v1 cut
  *  its traces the same way and its own investigation named that as a loss. */
 const TRACE_TEXT_BYTES = 64 * 1024;
-/** Each tool's authority, as v1's prompt named it (built-starter.ts:518-522, built-presets.ts:20-24). */
-const ROLES = new Map([
-  ["read_public_resources", "reader"],
-  ["bash", "writer"],
-  ["save_candidate", "reader"],
-  ["restore_candidate", "writer"],
-  ["inspect_draft", "reader"],
-  ["preview_artifact", "reader"],
-  ["submit", "submission"],
-]);
-
 const backoff = (rerun: number) => Bun.sleep(30_000 * 2 ** (rerun - 1));
 
 /** Solve until an ending that is not the solve side's non-result, or until the reruns run out. */
@@ -224,16 +209,21 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
       cap: { root: dirs.root, bytes: limits.diskBytes },
     });
     if ("unsupported" in base) throw new Error(`this host cannot wall a solve: ${base.unsupported}`);
-    const files = seedHome(dirs.home, request.task, request.resources);
+    const resources = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;
     const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, cpu };
-    const tools = await solverTools(request, harness, commandWall, desk, files).catch(brokenHarness);
-    const prompt = systemPrompt(
-      limits.wallSeconds,
-      tools.map(({ name }) => name),
-      harness.guide,
-    );
+    const defined = await solverTools(request, harness, commandWall, desk).catch(brokenHarness);
+    const prompt = systemPrompt({
+      tools: defined,
+      home: dirs.home,
+      guide: harness.guide,
+      wallSeconds: limits.wallSeconds,
+      limits,
+      resources,
+      programs: installedPrograms(harness.toolTree),
+    });
+    const tools = wrapToolDefinitions(defined);
     const system = createInitialSystemMessage(prompt, tools.map(toToolDeclaration));
     const models = request.models(join(dirs.host, "model"));
     const stream: StreamFn = (model, context, options) => models.streamSimple(model, context, options);
@@ -290,36 +280,22 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   };
 }
 
-/** A v2 solve serves the shell preset alone, so a harness that names another fails every solve. The
- *  Builder's freeze asks the same question, before a practice solve is spent on the answer. */
-export function refuseOtherPresets(harness: Pick<Harness, "presets">): void {
-  const other = harness.presets.filter((preset) => preset !== "shell");
-  if (other.length > 0) throw new Error(`a v2 solve serves the shell preset alone, not ${other.join(", ")}`);
-}
-
-/** The harness's domain tools, its artifact-writer bound to the contract, then the host's own, each
- *  description led by its authority as v1's prompt gave it (built-starter.ts:120-153). */
+/**
+ * What a solver is given, in the order pi gives a coding agent its tools: pi's own coding tools, as
+ * many as the harness's presets select; then the harness's domain tools, which are to pi what an
+ * extension's custom tools are; then `submit`. Every description is the tool's own. Until
+ * 2026-10-09 each was led by its authority, "Role: reader." and the like, as v1's prompt named a
+ * tool's kind; a solver is told what a tool does and by which name.
+ */
 export async function solverTools(
-  request: Pick<SolveRequest, "task" | "contract" | "resources">,
+  request: Pick<SolveRequest, "task" | "contract">,
   harness: Harness,
   wall: CommandWall,
   desk: Desk,
-  files: number,
-): Promise<AgentTool[]> {
-  refuseOtherPresets(harness);
-  const domain = (await harnessTools(harness, request.task, wall)).map(({ kind, tool }) => ({
-    role: kind,
-    tool: kind === "artifact-writer" ? recordTool(tool, request.contract, desk) : tool,
-  }));
-  const host = [
-    ...(request.resources.length > 0 ? [publicResourcesTool(request.resources)] : []),
-    ...(harness.presets.includes("shell") ? [shellTool(wall, files)] : []),
-    ...deskTools(desk),
-  ].map((tool) => ({ role: ROLES.get(tool.name), tool }));
-  return [...domain, ...host].map(({ role, tool }) => ({
-    ...tool,
-    description: `Role: ${String(role)}. ${tool.description}`,
-  }));
+): Promise<SolverTool[]> {
+  const coding = codingTools(wall, selectedCodingTools(harness.presets));
+  const domain = (await harnessTools(harness, request.task, wall)).map(createToolDefinitionFromAgentTool);
+  return [...coding, ...domain, submitTool(desk, request.contract, wall.dirs.home, wallExec(wall))];
 }
 
 /** What the provider said when it failed a session's last turn, or null. pi's loop ends there

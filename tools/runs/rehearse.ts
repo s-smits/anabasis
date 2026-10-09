@@ -7,16 +7,16 @@
  * starter. Flags that hold `--id` are a checkpoint's, as a launch reads them, and rehearse one
  * comparison with no Builder session (`tools/d2/checkpoint.ts`).
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
- * the command wall and its freeze, each solve's wall and disk cap, the harness's own
- * artifact-writer, the verifier, the comparison and the report. It is `roundCommand` with other
+ * the command wall and its freeze, each solve's wall and disk cap, the answer file and `submit`,
+ * the verifier, the comparison and the report. It is `roundCommand` with other
  * seats, so its flags and defaults are the round's, but that it needs no `--cap`: a script is paid
  * nothing. The three flags that name a model are refused.
  *
  * The Builder's script adds one line to the harness's guide through its walled shell and finishes.
- * A solve's script ends one of three ways. For `pass` it hands the harness's artifact-writer an
- * answer on record that the checks accepted, and submits it. For `fail` it does the same with one
- * a check rejected. For `none` it submits with no answer prepared, as a solve that reached its
- * limits has none: not valid, and nothing for anyone to rule on. `--held` says how a solve of a
+ * A solve's script ends one of three ways. For `pass` it writes an answer on record that the checks
+ * accepted into the answer file, through the harness's own `write` or its `bash`, and submits it.
+ * For `fail` it does the same with one a check rejected. For `none` it submits with no answer
+ * written, as a solve that reached its limits has none: not valid, and nothing for anyone to rule on. `--held` says how a solve of a
  * held-out task ends under the two harnesses of the comparison, the reference harness and the new
  * one, as `old:new`. The reference harness is the starter unless `--reference` names another. For
  * a round the defaults, `none:pass`, script a step. `--starter` says how a solve ends under the
@@ -41,7 +41,10 @@ import { existsSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { ANSWER_FILE } from "#src/solve/answer.ts";
+import { selectedCodingTools } from "#src/solve/coding-tools.ts";
 import { openHarness } from "#src/solve/harness.ts";
+import { shellQuote } from "#src/verify/solve-command-isolation.ts";
 import { starter } from "../d2/campaign.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
@@ -136,12 +139,11 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
     }
     const answers = answersOf(graded, read(campaign.log));
     const least = starter(campaign);
-    /** Each harness's artifact-writer by the harness's folder: a built harness may rename its own. */
-    const writers = new Map<string, Promise<string | undefined>>();
-    const writerOf = (dir: string) => {
-      const known =
-        writers.get(dir) ??
-        openHarness(dir).then(({ kinds }) => [...kinds].find(([, kind]) => kind === "artifact-writer")?.[0]);
+    /** How a script puts a file in the solver's home under each harness, by the harness's folder:
+     *  with pi's `write` where the harness selects it, and through its shell where it does not. */
+    const writers = new Map<string, Promise<readonly string[]>>();
+    const selectedOf = (dir: string) => {
+      const known = writers.get(dir) ?? openHarness(dir).then(({ presets }) => selectedCodingTools(presets));
       writers.set(dir, known);
       return known;
     };
@@ -162,17 +164,21 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       solve: async (task, harness, kill, comparison) => {
         const side = await sideOf(harness.dir);
         const wanted = { old: script.held.old, new: script.held.fresh, starter: script.starter }[side];
-        // A solve scripted to give no answer submits with none prepared, and needs none on record.
+        // A solve scripted to give no answer submits with none written, and needs none on record.
         const answer = wanted === "none" ? null : asRecord(answers.get(task.taskId)?.[wanted]);
-        const tool = await writerOf(harness.dir);
-        if (wanted !== "none" && (answer === null || tool === undefined)) {
+        if (wanted !== "none" && answer === null) {
           throw new Error(
             `${task.taskId} has no answer on record that the checks ${wanted === "pass" ? "accepted" : "rejected"}, so no script can ${wanted} it`,
           );
         }
-        const calls: (readonly [string, JsonObject])[] =
-          answer === null || tool === undefined ? [] : [[tool, answer]];
-        const by = scripted([...calls, ["submit", {}]], campaign.limits.turns + 1);
+        const content = JSON.stringify(answer);
+        const written: readonly [string, JsonObject] = (await selectedOf(harness.dir)).includes("write")
+          ? ["write", { path: ANSWER_FILE, content }]
+          : ["bash", { command: `printf %s ${shellQuote(content)} > ${ANSWER_FILE}` }];
+        const by = scripted(
+          [...(answer === null ? [] : [written]), ["submit", {}]],
+          campaign.limits.turns + 1,
+        );
         const done = await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill, comparison);
         const { ending } = done;
         const failed = { pass: null, fail: "rejected", none: "no-answer" }[wanted];

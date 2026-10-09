@@ -7,26 +7,33 @@
  * A solve owns two directories under the shared scratch parent, which the command wall closes to
  * every command but its own trees:
  * - `root`, the capped volume (`mountDiskCap`), holds `home`, which survives between commands and is
- *   never read back, and `runs`, where each command gets a fresh `run-*` with `work`, its working
- *   directory, and `tmp`, its `TMPDIR`, both removed when it ends. That is v1's shape
- *   (built-bash.ts:293-298), with the runs moved onto the cap.
+ *   never read back, and `runs`, where each command gets a fresh `run-*` with `work`, where its
+ *   caller stages what it reads, and `tmp`, its `TMPDIR`, both removed when it ends. That is v1's
+ *   shape (built-bash.ts:293-298), with the runs moved onto the cap.
  * - `host`, beside it and outside the cap, which no command can read: the staged profiles, the
  *   commands' CPU records, and the model backend's own state, such as Claude Code's configuration
  *   and transcripts.
+ *
+ * A command starts in `work` unless its caller asks for the home (`inHome`). A harness's tool call
+ * and a file tool's command read files staged for that one command, and start beside them. The
+ * solver's own commands start in the home, which is the one working directory pi's coding tools
+ * share: until 2026-10-09 they started in `work` too, and nine in ten of them began with `cd ~`
+ * (the Starter solves of six campaigns, `docs/transfer.md`).
  *
  * Each command's CPU time is its waited-for descendants' user and system time, as the host's shell
  * around the wall reads it with `times` once the walled launch exits. A command killed at its
  * timeout or by an abort takes that shell with it, so it is counted as unmeasured rather than as
  * zero, and a process that outlived its command is in neither. v1 read CPU per run, not per solve,
- * from `rusage.py`.
+ * from `rusage.py`. That is Darwin's reading, where the launch replaces itself with the command. On
+ * Linux the launch is bubblewrap, whose child's usage did not reach this shell: a loop that read
+ * 0.46 s without it read 0 under it (bubblewrap 0.11.0, 2026-10-09). Campaigns run on Darwin, and a
+ * CPU figure from a Linux host is not one.
  */
-import {
-  createLocalBashOperations,
-  type BashOperations,
-} from "../../vendor/pi-coding-agent/core/tools/bash.ts";
+import { createLocalBashOperations } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "../meta/filesystem.ts";
 import { basename, join } from "../meta/path.ts";
+import { errorCode } from "../meta/runtime-values.ts";
 import { endHolders } from "../verify/disk-cap.ts";
 import {
   BUILT_COMMAND_SCRATCH_ROOT,
@@ -72,7 +79,9 @@ export interface WalledOptions {
    *  `timeout:<seconds>` when the command runs past what it was given. */
   readonly timeout?: number | undefined;
   /** Writes what the command reads into its fresh directories before it starts. */
-  readonly stage?: (run: RunDirs) => void;
+  readonly stage?: ((run: RunDirs) => void) | undefined;
+  /** Start the command in the solve's home, not in its own `work`. */
+  readonly inHome?: boolean | undefined;
 }
 
 const SHELL = createLocalBashOperations({ shellPath: "/bin/sh" });
@@ -91,20 +100,47 @@ export function solveDirs(id: string): SolveDirs {
   return { root, home: join(root, "home"), runs: join(root, "runs"), host: `${root}.host` };
 }
 
+/**
+ * A command's own folders, made fresh under `runs`: `run` is what is removed when it ends.
+ *
+ * On a full volume there is no room to make them, and the command that would make room is the one
+ * being started. One solve filled its 2 GiB on 2026-10-09 and was then refused `rm -rf ~/w`
+ * fourteen times running, each before it started (`ENOSPC` here). So a command that brings nothing
+ * starts all the same, with the home as its `work` and its `TMPDIR`: a delete needs neither. One
+ * that brings files to stage has nowhere to put them, and fails as the full volume it is.
+ */
+export function commandDirs(
+  dirs: SolveDirs,
+  brings: "files" | "nothing",
+  make: (prefix: string) => string = mkdtempSync,
+): RunDirs & { readonly run: string | null } {
+  let run: string | null = null;
+  try {
+    run = make(join(dirs.runs, "run-"));
+    const [work, temp] = [join(run, "work"), join(run, "tmp")];
+    mkdirSync(work);
+    mkdirSync(temp);
+    return { run, work, temp };
+  } catch (error) {
+    if (run !== null) rmSync(run, { recursive: true, force: true });
+    if (brings === "files" || errorCode(error) !== "ENOSPC") throw error;
+    return { run: null, work: dirs.home, temp: dirs.home };
+  }
+}
+
 export async function runWalled(
   wall: CommandWall,
   command: string,
   options: WalledOptions,
 ): Promise<{ exitCode: number | null }> {
-  const run = mkdtempSync(join(wall.dirs.runs, "run-"));
-  const work = join(run, "work");
-  const temp = join(run, "tmp");
-  mkdirSync(work);
-  mkdirSync(temp);
-  const profile = join(wall.dirs.host, `${basename(run)}.sb`);
-  const times = join(wall.dirs.host, `${basename(run)}.times`);
+  const { run, work, temp } = commandDirs(wall.dirs, options.stage === undefined ? "nothing" : "files");
+  const name = run === null ? "run-on-a-full-volume" : basename(run);
+  const profile = join(wall.dirs.host, `${name}.sb`);
+  const times = join(wall.dirs.host, `${name}.times`);
   try {
     options.stage?.({ work, temp });
+    // A solver may remove its own home, and the next command still starts in one.
+    if (options.inHome === true) mkdirSync(wall.dirs.home, { recursive: true });
     const policy = commandIsolationPolicy(wall.base, {
       work,
       home: wall.dirs.home,
@@ -113,7 +149,8 @@ export async function runWalled(
     });
     // The shell pi starts leads the group and waits here for `times`, so the launch is its child.
     const staged = stageCommandIsolation(policy, profile, command, "$PPID");
-    return await SHELL.exec(`(\n${staged}\n)\ns=$?\ntimes > ${shellQuote(times)}\nexit $s`, work, {
+    const cwd = options.inHome === true ? wall.dirs.home : work;
+    return await SHELL.exec(`(\n${staged}\n)\ns=$?\ntimes > ${shellQuote(times)}\nexit $s`, cwd, {
       onData: options.onData,
       signal: options.signal,
       timeout: shellSeconds(options.timeout, wall.limits).seconds,
@@ -126,7 +163,7 @@ export async function runWalled(
     const seconds = childSeconds(times);
     if (seconds === null) wall.cpu.unmeasured++;
     else wall.cpu.seconds += seconds;
-    rmSync(run, { recursive: true, force: true });
+    if (run !== null) rmSync(run, { recursive: true, force: true });
     rmSync(profile, { force: true });
     rmSync(times, { force: true });
   }
@@ -143,13 +180,4 @@ function childSeconds(path: string): number | null {
   }
   const spans = [...text.matchAll(/(\d+)m([\d.]+)s/g)].map(([, m, s]) => Number(m) * 60 + Number(s));
   return spans.length === 4 ? (spans[2] ?? 0) + (spans[3] ?? 0) : null;
-}
-
-/** pi's bash tool on the wall. The tool's own working directory and environment are the host's, so
- *  both are dropped: the command runs in its fresh `work` with the wall's environment alone. */
-export function wallOperations(wall: CommandWall): BashOperations {
-  return {
-    exec: (command, _cwd, { onData, signal, timeout }) =>
-      runWalled(wall, command, { onData, signal, timeout }),
-  };
 }

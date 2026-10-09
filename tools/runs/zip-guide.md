@@ -46,8 +46,9 @@ prompted with, below verbose.
   scored task, and could not have stepped. Its `target` is how many it asked for: 0 is a round that
   was never going to score one, and a report without the field is from source that did not record
   it. A `launch-<session>.json` beside the log holds the flags a round was started with.
-- that a solver is weak because every solve under one harness ended `fail` with `no-answer`. Read
-  that harness's `tools-spec.json` first: submit takes only an answer an `artifact-writer` prepared.
+- that a solver is weak because every solve under one harness ended `fail` with `no-answer`. In a
+  run before 2026-10-09, read that harness's `tools-spec.json` first: submit then took only an answer
+  an `artifact-writer` had prepared. Since then the answer is the file `answer.json`.
 - anything from a `non-result`. It is no measurement: count passes, fails and non-results apart, and
   rates over passes and fails alone.
 - that two solves are alike in time. `solve.started.load` is the host's load when the solve began,

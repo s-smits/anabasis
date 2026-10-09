@@ -19,7 +19,7 @@
  *
  * The solve is the stored one's: its harness state is `hb-bundles/<sweep>-<cycle>`, its model and
  * effort are those it recorded, and its contract, task and resources are the bundle's, as
- * `admit-sweep.ts` reads them. `--harness` solves under another state instead, such as a Builder's
+ * `tools/d2/campaign.ts` reads them. `--harness` solves under another state instead, such as a Builder's
  * kept one, and the read-back sets its ending beside the stored solve's: the pilot's informal reading
  * of old against new until M2. `--solver` and `--solver-effort` solve on another model in its place. The limits are the sweep's `config.yaml` and `maxTurns`, but for the
  * disk cap, which the sweep did not have.

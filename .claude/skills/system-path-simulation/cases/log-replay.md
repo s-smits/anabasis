@@ -9,7 +9,7 @@ bun run runs replay [<name> ...]
 
 It reads each campaign log in the repository's worktrees with the kernel's own readers: the events
 and their kinds, the task states and a round's sets, what the sessions wrote, the conditions and the
-three-session rule. It writes nothing. A log this tree refuses is named in the reader's own words,
+stop rule. It writes nothing. A log this tree refuses is named in the reader's own words,
 and the command exits 1. On 2026-10-08 all 24 logs on the host read.
 
 A log being appended to at that instant can read torn. Run it again.

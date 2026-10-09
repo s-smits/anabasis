@@ -1,22 +1,26 @@
 /**
- * `bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held fail:pass] [--baseline fail]`
+ * `bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held none:pass] [--baseline none]`
  *
  * A round over a seeded campaign (`seed.ts`) with a script in each model seat and no model called.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's wall and disk cap, the harness's own
  * artifact-writer, the verifier, the comparison and the report. It is `roundCommand` with other
  * seats, so its flags and defaults are the round's, but that it needs no `--cap`: a script is paid
- * nothing. The three flags that name a model are refused. No reviewer reads a rehearsal, so every
- * scripted rejection waits for a person and sets its task aside, as a paid round's would with no
- * reviewer: the report's `counted` holds the tally were they to stand, and `tools/d2/settle.ts`
- * settles it on labels, which is the path a rehearsal of a step walks to its end.
+ * nothing. The three flags that name a model are refused.
  *
  * The Builder's script adds one line to the harness's guide through its walled shell and finishes.
- * A solve's script hands the harness's artifact-writer an answer on record for the task and submits
- * it: an answer the checks accepted for a pass, one a check rejected for a fail. `--held` says how
- * a solve of a held-out task ends under the reference harness and under the new one, as
- * `old:new`, and `--baseline` how one ends under the minimal baseline, which is solved only when
- * the comparison reads a step. The defaults script a step.
+ * A solve's script ends one of three ways. For `pass` it hands the harness's artifact-writer an
+ * answer on record that the checks accepted, and submits it. For `fail` it does the same with one
+ * a check rejected. For `none` it submits with no answer prepared, as a solve that reached its
+ * limits has none: not valid, and nothing for anyone to rule on. `--held` says how a solve of a
+ * held-out task ends under the reference harness and under the new one, as `old:new`, and
+ * `--baseline` how one ends under the minimal baseline, which is solved only when the comparison
+ * reads a step. The defaults, `none:pass` and `none`, script a step.
+ *
+ * No reviewer reads a rehearsal, so a scripted `fail` is a rejection nobody ruled on: it sets its
+ * task aside, as a paid comparison's would with no reviewer, the report's `counted` holds the
+ * tally were it to stand, and `tools/d2/settle.ts` settles it on labels. That is the path a
+ * rehearsal of rejections walks to its end.
  *
  * It proves the joins and nothing of a model: that each command takes what the one before it left,
  * and that the readings come out as the script was written to make them. A scripted solve that
@@ -38,7 +42,9 @@ import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { passedOn } from "./launch.ts";
 import { SEED_FILE } from "./pulse.ts";
 
-type End = "pass" | "fail";
+/** How a scripted solve ends: a valid answer, one a check rejects, or none at all. */
+const ENDS = ["pass", "fail", "none"] as const;
+type End = (typeof ENDS)[number];
 /** How a scripted solve ends under the reference harness and under the new one. */
 interface Sides {
   readonly old: End;
@@ -60,11 +66,18 @@ const GUIDE = "harness/agent/BUILT_AGENTS.md";
 
 /** `old:new` as a pair of endings. */
 export function sidesOf(flag: string): Sides {
-  const [old, fresh, ...more] = flag.split(":");
-  if ((old !== "pass" && old !== "fail") || (fresh !== "pass" && fresh !== "fail") || more.length > 0) {
-    throw new Error(`${flag}: say how a solve ends under the reference harness and the new, as pass:fail`);
+  const [old, fresh, ...more] = flag.split(":").map(endOf);
+  if (old === undefined || fresh === undefined || more.length > 0) {
+    throw new Error(
+      `${flag}: say how a solve ends under the reference harness and the new, each pass, fail or none, as none:pass`,
+    );
   }
   return { old, fresh };
+}
+
+/** An ending by its name, or undefined for a word that names none. */
+export function endOf(word: string): End | undefined {
+  return ENDS.find((end) => end === word);
 }
 
 /**
@@ -81,7 +94,7 @@ export function answersOf(graded: readonly Control[], events: readonly LogEvent[
       ? []
       : [{ taskId: task, answer, refusedBy: checker.kind === "pass" ? null : "a check" }],
   );
-  const known = new Map<string, Partial<Record<End, JsonValue>>>();
+  const known = new Map<string, Partial<Record<"pass" | "fail", JsonValue>>>();
   for (const { taskId, answer, refusedBy } of [...graded, ...solved]) {
     const end = refusedBy === null ? "pass" : "fail";
     known.set(taskId, { [end]: answer, ...known.get(taskId) });
@@ -140,29 +153,25 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       solve: async (task, harness, kill) => {
         const side = await sideOf(harness.dir);
         const wanted = { old: script.held.old, new: script.held.fresh, baseline: script.baseline }[side];
-        const answer = asRecord(answers.get(task.taskId)?.[wanted]);
+        // A solve scripted to give no answer submits with none prepared, and needs none on record.
+        const answer = wanted === "none" ? null : asRecord(answers.get(task.taskId)?.[wanted]);
         const tool = await writerOf(harness.dir);
-        if (answer === null || tool === undefined) {
+        if (wanted !== "none" && (answer === null || tool === undefined)) {
           throw new Error(
             `${task.taskId} has no answer on record that the checks ${wanted === "pass" ? "accepted" : "rejected"}, so no script can ${wanted} it`,
           );
         }
-        const by = scripted(
-          [
-            [tool, answer],
-            ["submit", {}],
-          ],
-          campaign.limits.turns + 1,
-        );
+        const calls: (readonly [string, JsonObject])[] =
+          answer === null || tool === undefined ? [] : [[tool, answer]];
+        const by = scripted([...calls, ["submit", {}]], campaign.limits.turns + 1);
         const done = await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill);
         const { ending } = done;
+        const failed = { pass: null, fail: "rejected", none: "no-answer" }[wanted];
         const held =
-          wanted === "pass"
-            ? ending.outcome === "pass"
-            : ending.outcome === "fail" && ending.kind === "rejected";
+          failed === null ? ending.outcome === "pass" : ending.outcome === "fail" && ending.kind === failed;
         if (!held) {
           strayed.push(
-            `${done.solve}: ${task.taskId} under the ${side === "baseline" ? "baseline" : `${side === "old" ? "reference" : "new"} harness`} was scripted to ${wanted} and ended ${JSON.stringify(ending)}`,
+            `${done.solve}: ${task.taskId} under the ${side === "baseline" ? "baseline" : `${side === "old" ? "reference" : "new"} harness`} was scripted to ${wanted === "none" ? "give no answer" : wanted} and ended ${JSON.stringify(ending)}`,
           );
         }
         return done;
@@ -178,8 +187,8 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     strict: false,
     tokens: true,
     options: {
-      held: { type: "string", default: "fail:pass" },
-      baseline: { type: "string", default: "fail" },
+      held: { type: "string", default: "none:pass" },
+      baseline: { type: "string", default: "none" },
       root: { type: "string" },
       sweep: { type: "string" },
       bundle: { type: "string" },
@@ -188,21 +197,16 @@ export async function rehearse(args: readonly string[]): Promise<void> {
       reviewer: { type: "string" },
     },
   });
-  const { held, baseline: least, root, sweep, bundle } = values;
+  const { held, root, sweep, bundle } = values;
+  const least = isString(values.baseline) ? endOf(values.baseline) : undefined;
   const seated = (["builder", "solver", "reviewer"] as const).filter((seat) => values[seat] !== undefined);
   if (seated.length > 0) {
     // A reviewer named here would be a live one, reading scripted fails for money.
     throw new Error(`a rehearsal seats no model: drop --${seated.join(", --")}`);
   }
-  if (
-    !isString(held) ||
-    (least !== "pass" && least !== "fail") ||
-    !isString(root) ||
-    !isString(sweep) ||
-    !isString(bundle)
-  ) {
+  if (!isString(held) || least === undefined || !isString(root) || !isString(sweep) || !isString(bundle)) {
     throw new Error(
-      "usage: bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held old:new] [--baseline pass|fail]",
+      "usage: bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held old:new] [--baseline pass|fail|none]",
     );
   }
   const passes = sweepRows(root, sweep).flatMap((row) => {

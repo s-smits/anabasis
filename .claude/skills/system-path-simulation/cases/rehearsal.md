@@ -18,22 +18,22 @@ so a campaign that is still running can be seeded. A torn last line is left behi
 - `--events <n>` keeps the first n events, for a position inside a session.
 - With neither, the whole log.
 
-It prints the sets the seed holds. Read them before going on: a seed with nothing held outside the
-anchor rehearses a round that scores nothing.
+It prints the sets the seed holds. Read them before going on: a seed with no held-out task
+rehearses a round that scores nothing.
 
 For a position no run stood in, cut before the event that fixed it and run the real command again.
-To rehearse a smaller anchor, cut before `anchor.drawn` and draw once more:
+To rehearse with other practice tasks, cut before the first release and release once more:
 
 ```sh
-bun tools/d2/prepare.ts <pack flags> --name sim-<what> --anchor 1 --practice 0
+bun tools/d2/prepare.ts <pack flags> --name sim-<what> --practice 2
 ```
 
 ## Rehearse
 
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --session r-1 \
-  --screen 1 --fails 1 --solves 1 --anchor-floor 1 --target 4 --minutes 10 --turns 10 \
-  [--held old:new] [--anchor old:new]
+  --solves 1 --target 4 --minutes 10 --turns 10 \
+  [--held old:new] [--baseline pass|fail|none]
 ```
 
 The flags are `tools/d2/round.ts`'s, less the three that name a model. The pack flags are the
@@ -43,20 +43,27 @@ size is the question.
 - The Builder's script appends one line to the harness's guide through its walled shell, then calls
   `finish`. So the new harness differs from its parent by one line, and its digest is the same in
   every rehearsal from that parent.
-- A solve's script hands the harness's own artifact-writer an answer on record and submits it: for
-  a pass an answer the checks accepted, for a fail the task's first reject control.
-- `--held old:new` says how a solve of a task outside the anchor ends under the old harness and
-  the new, each `pass` or `fail`. `--anchor old:new` says the same for the anchor. The defaults are
-  `fail:pass` and `pass:pass`.
+- A solve's script ends one of three ways. For `pass` it hands the harness's own artifact-writer
+  an answer on record that the checks accepted, and submits it. For `fail` it does the same with
+  one a check rejected. For `none` it submits with no answer prepared, as a solve that reached its
+  limits has none.
+- `--held old:new` says how a solve of a held-out task ends under the reference harness and the
+  new, and `--baseline` how one ends under the minimal baseline, which is solved only when the
+  comparison reads a step. The defaults are `none:pass` and `none`, which script a step.
+- A rehearsal needs no `--cap`: a script is paid nothing.
+
+No reviewer reads a rehearsal, so a scripted `fail` is a rejection nobody ruled on. It sets its
+task aside, the report's `counted` holds the tally were it to stand, and `tools/d2/settle.ts` on
+the seed settles it on labels, as a paid comparison with no reviewer is settled.
 
 The answers on record come from three places, in this order: a stored solve the sweep graded a
-pass, the pack's own controls, and for a task a session wrote the answer its stronger solve was
-accepted on and the controls gate 4 passed. A task with no answer for its scripted ending stops the
-rehearsal with its name.
+pass, the pack's own controls, and every answer a verdict in the seed's log accepted or rejected,
+which is where a task a session wrote gets one. A task with no answer for a `pass` or a `fail`
+stops the rehearsal with its name; `none` needs no answer.
 
 ## Read it
 
-It prints the round's report, then the three-session rule, then one of two last lines.
+It prints the round's report, then the stop rule, then one of two last lines.
 
 - `the rehearsal went as scripted`, exit 0. Every solve ended as its script said and the Builder
   changed the harness. Now read `reading` against the prediction you wrote.
@@ -73,11 +80,12 @@ bun tools/wri/wri.ts read --log .ana/d2/sim-<what>/log.jsonl
 
 ## More than one round
 
-A second round on the same seed takes another `--session`. To build on the first, name the harness
-it left and score what it admitted:
+A second round on the same seed takes another `--session`. Its Builder goes on from the harness
+the first left, and it is compared with the same reference harness, on fresh solves of both. To
+compare with the first round's harness instead, name it:
 
 ```sh
-bun run runs rehearse ... --session r-2 --parent <the report's fresh digest> --admitted
+bun run runs rehearse ... --session r-2 --reference <the report's fresh digest>
 ```
 
 ## Kill and resume
@@ -94,9 +102,10 @@ the seed wrote after its cut, so what its source still has open is never touched
 ## Plant a condition for a reader
 
 A script can put into a log exactly the thing a reader exists to notice, at no cost. Write what the
-reader should say, rehearse, and read. Two rounds whose scripts made one harness pass the anchor
-and then fail it drew `ANCHOR RATE BY ROUND` from the investigation's reader on 2026-10-08. A reader
-that stays silent on its own planted condition is a `blocking` finding against the reader.
+reader should say, rehearse, and read. `--held fail:pass` plants rejections under the reference
+harness alone, which the investigation's reader should name as `SET ASIDE BY SIDE` and
+`READING MOVES WITH THE SET-ASIDE`. A reader that stays silent on its own planted condition is a
+`blocking` finding against the reader.
 
 ## Afterwards
 

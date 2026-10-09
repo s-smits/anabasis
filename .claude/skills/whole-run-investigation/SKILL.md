@@ -21,10 +21,10 @@ Five narrower questions need no lanes. Start there when one of them is the whole
 | question | command |
 | --- | --- |
 | Is a run alive, and what did it last do? | `bun run runs pulse` |
-| Is there enough supply for a round? | `bun tools/d1b/supply.ts --log <log>` |
+| Is there enough supply for a comparison, and what can it show? | `bun run runs launch --dry-run <the comparison's flags>` |
 | Does the checker stand on its controls and the stored answers? | `bun tools/c/accept.ts --name <campaign>` |
 | What does a repaired checker move, and does the repair stand? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
-| A report reads `flags-decide`: which reading holds? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the fails it draws |
+| A report names tasks set aside on rejections: what does it read once they are labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the rejections it draws |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
 
 ## The procedure
@@ -149,15 +149,16 @@ decisions and predictions. The primary then treats the note as research.
 
 - **Start from the operator's decision.** Usually one of: believe this step, run another round,
   repair the checker, run the Examiner again. Order the synthesis by that.
-- **Read the instrument before the tally.** A reading whose refusals were ruled a check defect and
-  still counted is not a reading yet. In a simulated campaign a too-strict check gave 6 wins to 0
-  and a `step`; the same campaign under the repaired check gave 1 win and `no-step`. A round whose
-  reading differs with and without its flagged tasks now reads `flags-decide` and claims neither.
-  Only a person's labels settle it (`tools/d2/settle.ts`), and the settled report says what was
-  labelled and what it disputed. An investigation proposes that reading; it never makes it.
-- **Read `not-scored` and an empty `no-step` as no test.** A round that scored no task says
-  nothing of its harness. Row D's count of tasks held outside the anchor says whether the next
-  round can do better.
+- **Read the instrument before the tally.** A rejection counts only once it is ruled a true fail.
+  In a simulated campaign a too-strict check gave 6 wins to 0 and a `step`; the same campaign
+  under the repaired check gave 1 win and `no-step`. A comparison now sets a task aside on a
+  rejection ruled a check defect or unclear, or ruled by nobody, and its report holds the tally
+  were those rejections to stand (`counted`). Only a person's labels settle it
+  (`tools/d2/settle.ts`), and the settled report says what was labelled, disputed and restored.
+  An investigation proposes that reading; it never makes it.
+- **Read `not-scored` and an empty `no-step` as no test.** A comparison that tallied no task says
+  nothing of its harness. Row D's count of held-out tasks, and lane 8's of those waiting for a
+  label, say whether the next one can do better.
 - **Keep the observation apart from the cause.** "Forty of fifty-five refusals name one check" is an
   observation; "the check is too strict" and "the solver cannot do it" are two causes, and lane 5 is
   what separates them.

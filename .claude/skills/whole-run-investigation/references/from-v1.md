@@ -62,14 +62,14 @@ The question survives; what it reads and what it can conclude changed.
 | v1 | v2 | overhaul |
 | --- | --- | --- |
 | 1. Request-to-verdict chain | 1. Verdict chain: what a pass observes | No request to start from. The lane reads each check's row of `checker.read` beside its brief entry, and takes in v1's lane 35: a sample of passes, and what an answer could get wrong and still pass. Standing, because no reviewer of v2 reads a pass. |
-| 5. Limit slack against the reference | 10. Bracket and limit slack | No perfect-battery trigger. The words are too easy, scored and wall-bound, and the lane says which kind of easy a task is, with v1's three measurements of what lowers a pass rate. |
+| 5. Limit slack against the reference | 10. Ties and the budget | No perfect-battery trigger. The lane reads the share of tasks that tie, how many of them had no valid answer, and the same solves at each budget the comparison fixed, with v1's three measurements of what lowers a pass rate. |
 | 6. Check discrimination and binding | 3. Check discrimination and controls | Reads `accept.ts`'s faults, five kinds, and asks first whether a failing control is stale. |
 | 11. Submit decision against rehearsal evidence | 16. Finish decision against practice evidence | Practice runs the round's own verifier, so the lane no longer asks what rehearsal could grade. It reads the order of edits, checks and practice solves before `finish`. |
-| 14. Finding routing and recurrence | 30. Rulings, routing and what each role was told | Takes in v1's lane 13. A ruling's route is a flag or a dispute, and the lane reads what each role was told and may not be told. |
+| 14. Finding routing and recurrence | 30. Rulings, labels and what each role was told | Takes in v1's lane 13. A rejection not ruled a true fail sets its task aside until a person labels it, and the lane reads what each role was told and may not be told. |
 | 19. Semantic repair closure | 6. Checker identity, freeze and repair closure | Takes in v1's lane 28. A repair is another campaign, and `repaired.ts` and `carry.ts` give the regrade and the carried tasks. |
 | 20. Task movement and attribution | 13. Harness delta against its note | Tasks do not move between rounds; the harness does. The lane diffs two states and reads the note against the diff. |
-| 27. Gate rent and confidence | 7. Supply funnel and gate rent | v1's submit gate is gone. The five task gates are read with v1's test, 98% sure to refuse something wrong, and the funnel is `supply.ts`'s. |
-| 33. Reference provenance and witness strength | 8. Witness strength at gate 2 | The witness is one stronger solve, not the Builder's reference. The lane reads it both ways: what a pass proves and what a fail closes. |
+| 27. Gate rent and confidence | 7. Supply and the gate | v1's submit gate is gone. The one task gate is read with v1's test, 98% sure to refuse something wrong, and the lane counts what leaves the scored set after it. |
+| 33. Reference provenance and witness strength | 8. Tasks no harness answers | No witness is kept: no stronger solver proves a task possible. The lane reads a task with no valid answer three ways, hard, wrongly checked or infeasible, for the label a person gives it. |
 
 ## Merged (5)
 
@@ -128,16 +128,16 @@ archive alone.
 
 | v2 | reads | why v1 had no such lane |
 | --- | --- | --- |
-| 9. The Examiner's controls | gate 4's faults by kind, and the controls it kept | v1's controls were the Builder's, calibrated by the same pen as the checks. |
-| 12. Pressure on the Examiner | bracketing by session | v1 pressed the Builder, measured each lever and removed it. Here one word a task is all the Examiner is told. |
+| 9. Whether validity separates, and in which unit | ties between valid answers, and the spread of turns, CPU seconds and seconds between repeated solves | v1 had no compute budget that bound: six tasks passed in 2.5 to 26 minutes of a 120-minute limit. |
+| 12. Pressure on the Examiner | outcomes by session | v1 pressed the Builder, measured each lever and removed it. Here one outcome a task is all the Examiner is told. |
 | 17. Follow-up of earned fails | fail, diagnosis, change, same task again | v1's climb step, which v1 could count and not read: once in six chances. |
 | 18. Exposure: what the Builder could see | the sets, the session's shell, the child's content | v1's Builder wrote the tasks, so there was nothing to hide from it. |
 | 20. Pair identity and source reach | every field of the counted conditions but the harness | v1 retired the paired contest. |
-| 21. Selection and the symmetry of screening | who admitted each scored task, and when | the same |
-| 22. Sign test, ties and power | informative pairs and what the set could detect | the same |
-| 23. Anchor and drift | the anchor's tally, and the parent's rate across rounds | the same |
+| 21. The scored set and what left it | the tasks fixed at a comparison's start against the tasks it tallied | the same |
+| 22. Sign test, ties and power | untied tasks and what the set could detect | the same |
+| 23. The minimal baseline | a harness against the solver with a shell and nothing else | v1 never set its solver with a harness against the same solver without one. |
 | 24. Flips and solver variance | one harness passing and failing one task | v1 recorded flips and had no comparison for them to disturb. |
-| 25. The step chain across sessions | parent, child and reading, in order | v1's controller owned the chain. |
+| 25. The chain of comparisons | reference harness, new harness and reading, in order, and whether a step was repeated | v1's controller owned the chain. |
 
 ## Direction
 
@@ -181,9 +181,11 @@ and that cut is deliberate and should be said wherever v2 is described. Two deci
 the gap, and neither is made: who authors and repairs a pack, and whether an exam must ask more as a
 harness improves.
 
-**What is unproven.** The one live round so far was a plumbing run, a practice solve and an anchor
-pair, so no round has yet reported a step on a real campaign, and this catalogue has read two
-simulated logs. v1 found the signal too rare to settle a comparison at the size it ran, 11 of
-322 batteries with an uncontested fail. v2 answers that by screening for tasks the solver fails, and
-its first sessions yielded one feasible task in five. Whether that supply reaches a set large enough
-to show a gain is the open empirical question, and lanes 7, 12 and 22 are where it will be read.
+**What is unproven.** The one live round so far was a plumbing run, so no comparison has yet
+reported a step on a real campaign, and this catalogue has read two simulated logs. v1 found the
+signal too rare to settle a comparison at the size it ran, 11 of 322 batteries with an uncontested
+fail. v2's answer since 2026-10-09 is one compute budget for both harnesses, set where the
+reference harness is valid about half the time, and first of all a measurement of whether a
+harness changes anything: the solver with a shell alone against the existing harness
+(`docs/plan.md`, Phase 0). Whether a budget leaves enough tasks untied to show a gain is the open
+empirical question, and lanes 9, 10, 22 and 23 are where it will be read.

@@ -8,15 +8,15 @@ before building anything.
 | Can this campaign start a round, and what would stop it? | `bun run runs launch --dry-run <the round's flags>` | nothing |
 | Which sets does a log hold? | the dry run's first line, or `bun run runs replay <name>` | nothing |
 | Is a run alive, and what did it last do? | `bun run runs pulse --once <name>` | the pulse's own state file |
-| Is there supply for a round? | `bun tools/d1b/supply.ts --log <log>` | nothing |
+| Is there supply for a comparison, and what can it show? | `bun run runs launch --dry-run <the comparison's flags>` | nothing |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line | nothing |
 | Under what did two rounds run, and do they compare? | `bun run runs compare <name> ...` | nothing |
 | Does the checker stand on its controls? | `bun tools/c/accept.ts <pack flags> --name <campaign>` | its reading, as `checker.read` |
 | What would a solver of this task be shown? | `bun tools/m0/live-solve.ts <pack flags> --task <id>`, without `--live` | nothing |
 | What does the host still hold of a run? | `bun run runs stop <name>` without `--yes`, which names its process and the roots it left; `mount \| grep ana-built-bash` for every run's | nothing |
 
-Three commands look like readers and are not. `tools/d2/prepare.ts` draws the anchor and releases
-the practice tasks, once and for good. `tools/c/accept.ts` appends what it read, and with `--freeze`
+Three commands look like readers and are not. `tools/d2/prepare.ts` takes the pack's tasks in and
+releases the practice tasks, once and for good. `tools/c/accept.ts` appends what it read, and with `--freeze`
 writes `contract.frozen`. Run any of them on a seed when the fact you want is what it would do.
 
 ## A fact no reader gives

@@ -12,13 +12,13 @@ first one as a simulation of this case too: predict it, and write down what it f
 
 | the seat | the seed | the command | what is paid |
 | --- | --- | --- | --- |
-| An Examiner session | cut where the session should start | `bun run runs launch --env-file <file> <examine flags> --name sim-<what> --session x-<n>` | the Examiner, and each stronger solve |
-| A round's solves, without its Builder | cut by `--events` right after a recorded `build.finished` | the round again, with that session's `--session` | the screening and scoring solves |
+| An Examiner session | cut where the session should start | `bun run runs launch --env-file <file> <examine flags> --name sim-<what> --session x-<n>` | the Examiner's own turns |
+| A round's solves, without its Builder | cut by `--events` right after a recorded `build.finished` | the round again, with that session's `--session` | the comparison's solves, under its `--cap` |
 | A whole round | cut before the round's `build.started` | the round, with a `--session` the seed has not seen | a Builder session and every solve |
 | One solve | none: it reads the stored sweep | `bun tools/m0/live-solve.ts <pack flags> --task <id> --live` | one solve |
 
 The second row rests on a round keeping no state of its own: run again under a session whose
-Builder finished, it screens and scores from the log and does not build again. The kept harness is
+Builder finished, it compares from the log and does not build again. The kept harness is
 in the seed's `states/`.
 
 Start each through `bun run runs launch`, so the preflight reads the seed as it would the campaign
@@ -50,7 +50,7 @@ solve runs. The solve's folders are under the system temp folder's `ana-built-ba
 - **The env file is a path.** `--env-file <file>` is passed on and never opened. Do not print it,
   copy it or look for another.
 - **One live seat a login at a time.** A login at its session limit fails every solve in flight. On
-  2026-10-08 that took three stronger solves and $8.25 with it.
+  2026-10-08 that took three solves and $8.25 with it.
 - **A live seat's result is one sample.** One solve a side says the path works. It says nothing of
   a rate. Report it as a path proven, not as a model measured.
 

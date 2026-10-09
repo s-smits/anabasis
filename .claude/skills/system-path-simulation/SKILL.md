@@ -40,8 +40,8 @@ and why the next was not needed.
    before the session that made the campaign's only held task.
 2. **Seed late, and from a real run.** A log a run wrote beats a position you would author. Cut
    right before the thing in question, and say in one line how the seed differs from the nearest
-   real position: "exam-1 cut before its anchor draw, then prepared with an anchor of 1 where the
-   campaign drew 4".
+   real position: "exam-1 cut before its second Examiner session, then prepared with two practice
+   tasks where the campaign released one".
 3. **Build a position with the campaign's own commands.** Every event has one writer. Never append
    a line by hand, edit one, or put a harness state into `states/`. For a position no run stood in,
    cut earlier and run the real command with other flags.
@@ -52,7 +52,7 @@ and why the next was not needed.
    the production prompt, and nothing tells the model what the simulation hopes for. If a prompt is
    what you are testing, that edit is the one variable.
 7. **Your script's faults are not the product's.** When a rehearsal strays, ask first whether the
-   script could have held. Eight anchor solves "scripted to pass" were rejected on the first
+   script could have held. Eight solves "scripted to pass" were rejected on the first
    rehearsal: the pack's accept controls were stale, which `tools/c/accept.ts` already said. That
    was the script's choice of answer. The meter refusing a model with no list price was the
    product's, and right.
@@ -73,8 +73,9 @@ and why the next was not needed.
 - the Builder session: its tools on the command wall, its capped root, its freeze and digest;
 - each solve: its wall and disk cap, the harness's own artifact-writer, `submit`, the verifier on
   the staged check program, its verdict;
-- screening, admission, the interleaved scoring, the sign test, the anchor's test, the report and
-  the three-session rule;
+- the comparison: its terms written before its first solve, the reference harness and the new one
+  solved in turn, the sign test, the baseline's solves when a step is read, the report and the
+  stop rule;
 - going on from the log after a kill or a `bun run runs stop`, which finds a rehearsal as it finds
   a round and releases what its solves held.
 
@@ -82,7 +83,9 @@ Skipped, and so unproven by any rehearsal:
 
 - every model, and the backends that reach one (the Claude Agent SDK, Codex, pi's own providers);
 - practice solves, since the Builder's script calls none;
-- the Referee and the Diagnoser. A flag that names a model is refused, `--reviewer` among them;
+- the Referee and the Diagnoser. A flag that names a model is refused, `--reviewer` among them. So
+  a scripted `fail`, an answer a check rejects, is ruled by nobody and sets its task aside, as a
+  paid comparison's would with no reviewer; `tools/d2/settle.ts` on the seed walks the rest;
 - time and money. A scripted solve takes 3 to 4 seconds and reaches no wall.
 
 A rehearsal is told from a paid round by three marks: `seed.json` beside its log, `(a seed)` in the
@@ -90,50 +93,41 @@ pulse, and `faux/script` as its Builder and solver wherever a reader names a mod
 
 ## What scripts read as
 
-Measured on the truss campaign `exam-1` on 2026-10-08, at `--screen 1 --fails 1 --solves 1
---anchor-floor 1`. `--held` and `--anchor` say how a solve ends under the old harness and the new.
+`--held old:new` says how a solve of a held-out task ends under the reference harness and under
+the new one, and `--baseline` how one ends under the minimal baseline. Each is `pass`, a valid
+answer; `fail`, an answer a check rejects; or `none`, a solve that submits with no answer, as one
+that reached its limits has none. The table is what `src/builder/round.ts` reads, as its tests
+hold it on stand-ins (`test/round.test.ts`), at four scored tasks. It has not been rehearsed on
+the truss pack since the comparison was rewritten on 2026-10-09: the first rehearsal on a seed
+should write these as its predictions.
 
-| position | script | reading | why |
-| --- | --- | --- | --- |
-| 4 anchor, 1 held | `--held fail:pass` | `no-step` | one scored win is p 0.5 |
-| 1 anchor, 4 held | `--held fail:pass` | `anchor-not-tested` | four wins are p 0.0625, and an anchor task that passes under both harnesses informs nothing |
-| 1 anchor, 4 held | `--held fail:pass --anchor fail:pass` | `step` | the anchor task now tells the harnesses apart |
-| the same, a second round with `--parent <fresh> --admitted` | the same | `step` | the four admitted tasks are solved anew under both |
-| 1 anchor, 4 held | `--held fail:pass --anchor pass:fail` | `step` | one anchor loss is p 0.5, so a floor of 1 guards nothing |
-| 1 anchor, 4 held | `--held pass:pass` | `not-scored` | neither harness fails a candidate, and all four end `too-easy` |
-| 4 anchor, 1 held | `--anchor pass:fail --level 0.5` | `anchor-lost` | four unopposed losses are p 0.0625 |
-| any | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
+| script | reading | why |
+| --- | --- | --- |
+| `--held none:pass` (the default) | `step` | four wins are p 0.0625, and the baseline, solved because the test cleared, answers nothing |
+| `--held none:pass --baseline pass` | `step`, or `below-baseline` at two solves a side where the new harness is valid once | as many wins as losses against the baseline is enough, and fewer is not |
+| `--held pass:pass` | `no-step` | four ties between valid answers; the baseline is not solved |
+| `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; twice in a row and each task waits for a person's label |
+| `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
+| the same, then `settle.ts` with every label `earned` | `baseline-unread` | the labels restore the tasks; a settling makes no solve, so the baseline is compared in a checkpoint of its own |
+| fewer than four tasks held out | refused at launch; `no-step` at best if run | at 0.10 a step takes four untied tasks, all won |
+| a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
 
-`check-defects` has not been walked: a scripted fail is a clean rejection, and it takes a Referee or
-a check that cannot run to dispute a task. `flags-decide` is out of a rehearsal's reach for the same
-reason: it is a reading that differs with and without the tasks an advising Referee flagged, and a
-rehearsal seats no Referee.
+`check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
+ruling of a check defect to count one.
 
 ## What the first rehearsals settled
 
 About seventeen rounds run to their report, one kill and five stops on 2026-10-08, with no model
-call.
+call. They ran under the design before the plan after the v1 review, which screened candidates
+and read an anchor; what they found about that design went with it. What they found about a
+round's size still holds in the new arithmetic:
 
-What a round of this size can read:
-
-- **A step needs two things at once.** At level 0.1, four scored tasks all won, and an anchor with
-  at least `--anchor-floor` informative tasks. An anchor task informs only when its solves are
-  mixed, so at one solve a side it informs only when the two harnesses disagree on it. A proof
-  round at `--solves 1` over a parent that already passes its anchor reads `anchor-not-tested` at
-  best.
-- **A floor of 1 is no guard.** One anchor task that went from pass to fail still read `step`.
-- **Screening spends candidates.** A candidate both harnesses pass ends `too-easy` and is never
-  screened again. At `--screen 1 --fails 1` one pass a side does it. A campaign whose one candidate
-  the test side already passes will spend it and read `not-scored`.
-- **`anchor-lost` was out of reach.** With six feasible tasks no draw gives four scored and four
-  anchor tasks, and at level 0.1 each test needs four before it can say anything.
-- **A step does not move the parent.** The next round starts from the cycle's harness again unless
-  `--parent <digest>` names the stepped one, and scores the tasks already admitted only with
-  `--admitted`.
-- **An Examiner session's "too easy" retires nothing.** After its second session `exam-1` held two
-  candidates, the two that session was told were too easy. A seed of the final log, rehearsed at
-  the round's defaults: 36 solves, `not-scored` when both pass again, `no-step` when both are won.
-  The prediction had said one candidate, from a count taken while the session ran.
+- **A step takes four untied tasks, all won, at level 0.1.** A campaign that holds fewer cannot
+  read one, and the launcher now refuses it.
+- **A step does not move the reference harness.** The next comparison is against the harness the
+  campaign started with until the operator names another with `--reference`; the Builder goes on
+  from the latest harness a session left.
+- **A prediction made from a count taken while a session ran was wrong.** Seed from a log at rest.
 
 What the product did:
 
@@ -160,10 +154,9 @@ What the product did:
   and no folder left. A leftover nobody asked about was the lead.
 - **The pulse read a seed as a paid run**, with its source's dollars and its source's solves in
   flight. It now says `(a seed)`.
-- **A reader caught a planted contradiction.** Two rehearsed rounds made one harness pass the anchor
-  as the new side and fail it as the old. `bun tools/wri/wri.ts read` said so unasked:
-  `ANCHOR RATE BY ROUND: b59ac027: 1 of 1 in r-1, 0 of 1 in r-2`. Planting a condition and checking
-  that its reader names it is a use of a rehearsal in its own right.
+- **A reader caught a planted contradiction.** Two rehearsed rounds made one harness pass a task
+  as the new side and fail it as the old, and `bun tools/wri/wri.ts read` said so unasked. Planting
+  a condition and checking that its reader names it is a use of a rehearsal in its own right.
 
 ## Not here yet
 

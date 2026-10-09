@@ -1,78 +1,91 @@
 ---
 name: launch-run
-description: "Launch an authorised Anabasis v2 round or Examiner session through one command that first reads whether it can start and what it can report, or stop a named run. Use when the operator asks to launch, start, relaunch or stop a round, an Examiner session or a run, to check whether a campaign is ready for one, or why a launch was refused. Owns the preflight, the start and the stop; whole-run-investigation reads what a run did."
+description: "Launch an authorised Anabasis v2 round, checkpoint or Examiner session through one command that first reads whether it can start and what it can report, or stop a named run. Use when the operator asks to launch, start, relaunch or stop a round, a checkpoint, an Examiner session or a run, to check whether a campaign is ready for one, or why a launch was refused. Owns the preflight, the start and the stop; whole-run-investigation reads what a run did."
 ---
 
 # Launch a round
 
-One command reads the campaign and the host, and starts the round only when it can say something.
-A launch request authorises the command; it does not authorise a second round beside it.
+One command reads the campaign and the host, and starts the run only when it can say something.
+A launch request authorises the command; it does not authorise a second run beside it.
 
 ```sh
 bun run runs launch [--env-file <file>] [--loaded] [--dry-run] <the flags of tools/d2/round.ts>
+bun run runs launch [--env-file <file>] [--loaded] [--dry-run] <the flags of tools/d2/checkpoint.ts>
 ```
 
-Run it in the worktree whose source should run. Every flag but its own three goes to `round.ts`
-unchanged, so `tools/d2/round.ts` stays the one owner of a round's flags and defaults.
+Run it in the worktree whose source should run. Every flag but its own three goes to the command
+unchanged, so `tools/d2/round.ts` stays the one owner of a comparison's flags and defaults. Flags
+that hold `--id` are a checkpoint's: one comparison of two harnesses the campaign keeps, with no
+Builder session. Flags that hold `--examiner` are an Examiner session's and go to
+`tools/d1b/examine.ts`: see "An Examiner session" below.
 
-Flags that hold `--examiner` are an Examiner session's and go to `tools/d1b/examine.ts` the same
-way: see "An Examiner session" below.
+The plan's first experiment is a checkpoint (`docs/plan.md`, Phase 0): the minimal baseline set
+against the harness the campaign starts with, on eight tasks the operator names, read at the full
+limit and at budgets fixed beforehand.
 
-## What comes before a round
+```sh
+bun run runs launch <pack flags> --name <name> --id g0 --tasks <eight task ids> --cap 375 \
+  --budget turns=12 --budget turns=6
+```
 
-A round reads sets that four earlier commands put in the campaign's log (`tools/d2/campaign.ts`
-lists them). The launcher refuses a round whose sets are not there, and names the command that is
+## What comes before a comparison
+
+A comparison reads sets that earlier commands put in the campaign's log (`tools/d2/campaign.ts`
+lists them). The launcher refuses one whose sets are not there, and names the command that is
 missing.
 
 | the log needs | from |
 | --- | --- |
 | a checker the operator has said stands | `bun tools/c/accept.ts ... --name <name> --freeze` |
-| the pack's tasks through gates 1 to 4 | `bun tools/m1/admit-sweep.ts ... --log <log> --feasible` |
-| tasks held outside the anchor, to screen | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |
-| the anchor's draw and the practice releases | `bun tools/d2/prepare.ts ... --name <name>` |
+| the pack's tasks held out, and the practice tasks released | `bun tools/d2/prepare.ts ... --name <name>` |
+| further held-out tasks, where the pack's are too few | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |
+
+A task meets one gate, the shape of its package, and is a held-out task from then on. No stronger
+solver, no screening and no anchor stands between a task and a comparison.
 
 ## What it refuses, and why
 
 Most are refusals the 2026-10-08 truss rounds would have met. Eight rounds read `no-step` for over
 $220, and none could have read anything else.
 
-- **Nothing to screen.** A scoring round with no task held outside the anchor leaves its scored set
-  empty, and a step rests on the scored set alone. The pack gave 25 task versions: 14 stopped at
-  gate 2 as too hard, 6 at gate 4 for too few controls, 4 became the anchor and 1 was released.
-  Run an Examiner session first.
-- **No feasible task, or no anchor.** `admit-sweep.ts` or `prepare.ts` has not run on this log.
-- **Already running.** A process in this worktree is writing this round's log.
-- **A loaded host.** The one-minute load is over the core count. A round started into it slows
-  every other, and reaches walls an idle host would not: on that day a practice solve took 12
-  minutes of a Builder's 30. `--loaded` starts it anyway, for a round whose times will not be
+- **No held-out task.** `prepare.ts` has not run on this log.
+- **Too few tasks to read a step.** At `--level 0.1` a step takes four untied tasks, all won. A
+  comparison of fewer scored tasks is refused, and so is one the campaign's own tie share leaves
+  too few untied: the share is the last tallied comparison's, and before any comparison every
+  scored task is counted. Run an Examiner session for more tasks, or change the budget so that
+  fewer tie.
+- **No dollar cap.** `--cap` is required: the billed dollars the comparison may hold. No solve
+  starts that a reserve for it and for each one running (`--reserve`, $10) would take past the
+  cap, and a comparison the cap cuts short reads `not-scored` and is finished. The plan proposes
+  each phase's upper estimate plus a quarter.
+- **Already running.** A process in this worktree is writing this campaign's log.
+- **A loaded host.** The one-minute load is over the core count. A run started into it slows
+  every other, and reaches limits an idle host would not: on that day a practice solve took 12
+  minutes of a Builder's 30. `--loaded` starts it anyway, for a run whose times will not be
   compared, and the receipt keeps the load.
 - **An env file that is not there.** `--env-file` is Bun's own flag. The launcher passes the path
   on and never opens the file. Do not print it, copy it or search for another.
 - **A spent session id.** A `--session` whose Builder started and did not end whole: it never
   finished, was killed or crashed. The round refuses it (`spent` in `src/builder/round.ts`), since
   a second session under one id would be a second try, and the launcher says so in the round's
-  words before anything starts. Pass another `--session`.
-
-`--target 0` is let through with a line saying what it is: a round that scores no task, reads its
-anchor alone and cannot read `step`. Use it to prove plumbing and say so wherever its reading is
-repeated. The round's report holds its target, so a later reader can tell.
+  words before anything starts. Pass another `--session`. A checkpoint runs no session and has
+  no id to spend.
 
 `--dry-run` prints the preflight and the command, and starts nothing. Use it to answer "is this
-campaign ready for a round?".
+campaign ready for a comparison?".
 
-A round that can start may still be unable to read `step`, and the preflight says so in two notes
-where that is certain. Read them before spend.
+The preflight's notes say what a comparison of this size can show before it is paid for
+(`src/kernel/size.ts`): the smallest results that clear its level, the chance of a step in the
+plan's worked case with its ties counted, and the best case were no task to tie. They also say
+when held-out tasks wait for a person's label and are not scored (`prepare.ts --keep`,
+`--infeasible`), and when the solver or the limits named are not the ones the log's last solves
+ran under, since what the earlier comparisons measured was then another setting's.
 
-- **Too few tasks to score.** The scored set is at most the tasks held to screen, and at most
-  `--target`. At `--level 0.1` a step takes four, all won. Screening still retires each candidate
-  both harnesses pass as `too-easy`, so a round that cannot step can still spend its candidates.
-- **An anchor under its floor.** With fewer anchor tasks than `--anchor-floor` (8 unless given) the
-  anchor is never tested, and the round reads neither `step` nor `anchor-lost`.
-
-One thing it cannot say, since it depends on the solves: at `--solves 1` an anchor task informs the
-anchor only when the two harnesses disagree on it, so a parent that already passes its anchor
-leaves it untested. What a round of a given size reads is a free question: rehearse it on a seed
-first (system-path-simulation).
+A comparison that can start may still be read only after a person has labelled its rejections.
+With no `--reviewer`, every rejected answer sets its task aside until `tools/d2/settle.ts` has
+labels for it; with one, the Referee's ruling of a true fail counts. Say which was meant before
+spend. What a comparison of a given shape reads is a free question: rehearse it on a seed first
+(system-path-simulation).
 
 ## An Examiner session
 
@@ -80,32 +93,18 @@ first (system-path-simulation).
 bun run runs launch [--env-file <file>] [--loaded] [--dry-run] <the flags of tools/d1b/examine.ts>
 ```
 
-It needs the campaign's log and no set in it, since what it writes is what a round later screens.
+It needs the campaign's log and no set in it: what it writes is held out beside what is there.
 It is refused on a loaded host, beside another writer of the same log, for a missing env file, and
 under a `--session` the log already holds: an Examiner session's id names one session, and its
 tasks carry it.
 
-Its notes say three things worth reading before spend.
+A session makes no solve, so it takes no solver, no limits of a solve and no reviewer, and costs
+the Examiner's own turns: $2.01 of the $48.45 the second live session spent when it still paid
+for a stronger solver. At its opening it is told one outcome of every task the campaign holds:
+one harness won, a tie between valid answers, no valid answer yet, or disputed. It is told no
+count, no budget and no target.
 
-- **What it is handed.** A task an earlier session left past gate 3, with no controls written, goes
-  to this session with its accepted answer. Its stronger solve is paid, so do not propose it again.
-  The first session against a model (exam-1, 2026-10-08) left one this way when the provider's
-  session limit ended it one turn after a 15-minute solve passed.
-- **Where its tasks can go.** Before `prepare.ts` has drawn the anchor, they stand a chance of it.
-  After, they are a round's to screen. A round needs tasks outside the anchor to step, so either
-  order can be the right one: say which was meant.
-- **Whether anyone reads a too-hard task.** Gate 2 closes a task as too hard on one refusal of its
-  stronger solve. With `--reviewer <model>` the Referee reads that refusal, one call a task, and
-  the session counts those it rules a check's fault. Without it the word is all that is kept. The
-  second session on exam-1 was launched with no reviewer and closed five of six candidates so, for
-  $34.54 of stronger solves. A launch with none now says so.
-
-A task the session is told is too easy is not retired: it stays held, and a round screens it again
-under its own `--screen` and `--fails`. A task told too hard is closed.
-
-A session ended by its provider reads `crashed` in `exam.finished`, with what the provider said. A
-solve the provider failed leaves its task `undecided`, which says nothing of the task and is not
-taken up again: only a task past gate 3 is.
+A session ended by its provider reads `crashed` in `exam.finished`, with what the provider said.
 
 ## What a launch leaves
 
@@ -140,16 +139,16 @@ solve and Builder session its log started and never finished. Only the ended pro
 those go. A named run that is not running is released the same way, so a run that was killed or that
 crashed is cleaned up by stopping it. Without `--yes` the roots are counted and left.
 
-A stop is abrupt: the round writes no ending, and its log is as it was. What the stop cost depends
+A stop is abrupt: the run writes no ending, and its log is as it was. What the stop cost depends
 on where it fell, and the command says which.
 
-- **After the Builder session finished**, in the screening or the scoring solves: launched again
-  with the same `--session`, the round goes on from its log. A solve counted is not solved again.
+- **After the Builder session finished**, or in a checkpoint: launched again under the same id,
+  the comparison goes on from its log with the tasks and the terms it began with. A solve counted
+  is not solved again, and its cap counts what was billed before the stop.
 - **Inside the Builder session**: that session never finished, so its id is spent. The next launch
   needs another `--session` and pays for a Builder again.
-- **An Examiner session**, wherever the stop fell: its id is spent. The next takes another
-  `--session` and is handed the tasks this one left past gate 3. A stronger solve still running
-  when it was stopped is lost.
+- **An Examiner session**, wherever the stop fell: its id is spent. The tasks it had held out by
+  then stay held out.
 
 So when there is a choice, stop a round after its `build.finished`. Whether a run should be stopped
 at all is a reading (whole-run-investigation); this command only carries out an authorised one, and
@@ -165,8 +164,8 @@ reads `closed`.
   limits (`--minutes`, `--turns`).
 - No probe turn before spend: a session or usage limit shows at the first turn, in the pulse.
   What it costs is bounded. A session whose own turn the provider fails ends `crashed` with the
-  provider's words. A round stops once the provider has written nothing for the solves of three
-  tasks in a row, writes no report, and goes on from its log when launched again with the same
-  `--session`: wait for the reset the provider names, or pass another `--env-file`.
+  provider's words. A comparison stops once the provider has written nothing for the solves of
+  three tasks in a row, writes no report, and goes on from its log when launched again under the
+  same id: wait for the reset the provider names, or pass another `--env-file`.
 - One round a command. A model pair is two commands, and what makes two rounds a comparison is
   model-condition-comparison's to say.

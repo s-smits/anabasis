@@ -130,8 +130,10 @@ describe("a rehearsal's script", () => {
   it("reads how a solve ends under the old harness and the new", () => {
     expect(sidesOf("fail:pass")).toEqual({ old: "fail", fresh: "pass" });
     expect(sidesOf("pass:pass")).toEqual({ old: "pass", fresh: "pass" });
+    // A solve that reaches its limits has no answer, which is not valid and needs no ruling.
+    expect(sidesOf("none:pass")).toEqual({ old: "none", fresh: "pass" });
     for (const flag of ["pass", "pass:maybe", "pass:fail:pass", ""]) {
-      expect(() => sidesOf(flag)).toThrow("as pass:fail");
+      expect(() => sidesOf(flag)).toThrow("each pass, fail or none, as none:pass");
     }
   });
 
@@ -270,6 +272,13 @@ describe("a rehearsal's seats", () => {
     // A task with no answer on record for its scripted ending stops the rehearsal where it is.
     await expect(seats.solve(pack("t-3"), old, undefined)).rejects.toThrow(
       "t-3 has no answer on record that the checks rejected",
+    );
+    // Scripted to give no answer, a solve submits with none prepared, whatever is on record.
+    const silent = scriptedSeats({ held: sidesOf("none:pass"), baseline: "none" }, graded, strayed);
+    await silent(campaign, { builder: undefined, reference: FIXTURE }).solve(pack("t-3"), old, undefined);
+    expect(calls.at(-1)).toMatchObject({ name: "submit" });
+    expect(strayed.at(-1)).toBe(
+      's-4: t-3 under the reference harness was scripted to give no answer and ended {"outcome":"pass"}',
     );
   });
 });

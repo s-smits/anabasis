@@ -23,7 +23,10 @@
  * label. A task whose rejections are then all earned is restored to the tally. One labelled a check
  * defect disputes its task, which leaves this comparison and every later one. One labelled unclear
  * leaves its task out of this comparison. The report is written once more, as the comparison's
- * last, with the reading the labels leave and what was settled. Its own report stays in the log.
+ * last, with the reading the labels leave, what was settled and the labels themselves. Its own
+ * report stays in the log. An entry that is neither empty nor one of the three labels is refused
+ * by name, so a mistyped label is not read as no label. A comparison is settled once: run again
+ * with the same file it says what it said, and with other labels it is refused.
  *
  * A settling makes no solve. Where the labels leave a test that clears its level and the baseline
  * was not solved for it, the reading is `baseline-unread`: compare the new harness with the
@@ -43,6 +46,7 @@ import { stopRule } from "#src/kernel/reports.ts";
 import { refusedBy, verdictsOf } from "#src/kernel/solves.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { asRecord } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
@@ -78,7 +82,21 @@ async function main(): Promise<number> {
   const dir = join(dirname(campaign.log), `settle-${session}`);
   const labelFile = join(dir, "labels.json");
   if (existsSync(labelFile)) {
-    const { labels } = labelled(capturedJsonParse(readFileSync(labelFile, "utf8")));
+    const file = capturedJsonParse(readFileSync(labelFile, "utf8"));
+    const { labels, open } = labelled(file);
+    const entries = asRecord(file) ?? {};
+    const mistyped = open.filter((solve) => entries[solve] !== "");
+    if (mistyped.length > 0) {
+      throw new Error(
+        `${labelFile} holds what is no label (earned, check-defect or unclear) for ${plural(mistyped.length, "rejection")}: ${mistyped.map((solve) => `${solve}: ${JSON.stringify(entries[solve])}`).join(", ")}`,
+      );
+    }
+    const settled = events.findLast(
+      ({ kind, data }) => kind === "comparison.reported" && data.session === session,
+    );
+    if (asRecord(settled?.data.settled) !== null) {
+      console.log(`comparison ${session} is settled already, and this is the report it was settled as`);
+    }
     console.log(capturedJsonStringify(settleReading(campaign.log, session, labels), null, 2));
     console.log(capturedJsonStringify(stopRule(read(campaign.log)), null, 2));
     return 0;

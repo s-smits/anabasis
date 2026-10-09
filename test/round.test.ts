@@ -38,6 +38,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import type { RefereeFinding, Ruling } from "../src/review/referee.ts";
@@ -45,6 +46,9 @@ import { text, tool } from "../src/solve/answer.ts";
 import { openHarness } from "../src/solve/harness.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
+const TASK_STATE = "task.state";
+/** What a stand-in solve throws to stop a run part-way. */
+const STOPS = "the run stops";
 
 type Side = "old" | "fresh" | "baseline";
 /** How a solve ended, with what it used where a case reads that. */
@@ -116,7 +120,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     record("task.proposed", { version });
     record("task.gate", { version, gate: 1, outcome: "passed" });
   }
-  record("task.state", { version: "p1", state: "released" });
+  record(TASK_STATE, { version: "p1", state: "released" });
   /** The host's code as a condition names it, which an edit between two rounds moves. */
   const code = { value: "h1" };
   const old = (await openHarness(parent)).digest;
@@ -142,7 +146,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
   /** Every solve asked for, in order. */
   const asked: { version: string; side: Side }[] = [];
   const counts = new Map<string, number>();
-  const solve = async (version: string, _dir: string, digest: string): Promise<Practised> => {
+  const solve = async (version: string, digest: string, comparison?: string): Promise<Practised> => {
     const side = sideOf(digest);
     const key = `${version} ${digest}`;
     const nth = counts.get(key) ?? 0;
@@ -151,7 +155,11 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     const ended = table(version, side, nth, digest);
     const { ending, turns = 10 }: Used = "ending" in ended ? ended : { ending: ended };
     const id = `r-${String(asked.length)}-${String(read(log).length)}`;
-    record("solve.started", { solve: id, condition: recordCondition(log, condition(version, digest)) });
+    record("solve.started", {
+      solve: id,
+      condition: recordCondition(log, condition(version, digest)),
+      ...keyIfDefined("comparison", comparison),
+    });
     if (ending === PASS) {
       record("verdict", { solve: id, task: version, kind: "pass", answer: { answer: "42" } });
     }
@@ -189,7 +197,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     models: () => models,
     log,
     repoRoot: scratch,
-    practise: async (task, dir, digest) => solve(task.version, dir, digest),
+    practise: async (task, _dir, digest) => solve(task.version, digest),
   };
   /** The walled write, stood in for: the same tool name, writing as the host. */
   const walled = (bench: Bench) => [
@@ -229,7 +237,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     level: 0.1,
     defects: 3,
     concurrency: 1,
-    solve,
+    solve: (version, harness, comparison) => solve(version, harness.digest, comparison),
   };
   const of = (kind: EventKind) =>
     read(log)
@@ -252,6 +260,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     request,
     next,
     compare,
+    solve,
     log,
     old,
     parent,
@@ -301,7 +310,6 @@ describe("a round", () => {
         solves: 2,
         level: 0.1,
         setting: s.request.setting,
-        began,
         broken: null,
         reviewFaults: [],
         old: s.old,
@@ -311,6 +319,7 @@ describe("a round", () => {
         budgets: [],
         spread: {
           turns: { tasks: 8, median: 1, most: 1 },
+          prompts: null,
           cpu: null,
           seconds: { tasks: 8, median: 1, most: 1 },
         },
@@ -455,10 +464,10 @@ describe("a round", () => {
     let stop = 10;
     const s = await setup([edit, finish], (version, side, nth, digest) => {
       stop -= 1;
-      if (stop === 0) throw new Error("the run stops");
+      if (stop === 0) throw new Error(STOPS);
       return step(version, side, nth, digest);
     });
-    await expect(round(s.request)).rejects.toThrow("the run stops");
+    await expect(round(s.request)).rejects.toThrow(STOPS);
     // Its solves so far were made for two solves a side, no budget to be read at and no cap.
     await expect(round({ ...s.request, solves: 3 })).rejects.toThrow(
       "comparison b-1 began on other terms (solves), and its solves so far were made for those",
@@ -531,7 +540,7 @@ describe("a round", () => {
     // this comparison, and a person decides what becomes of it.
     const states = taskStates(read(s.log));
     expect([states.get("s1"), states.get("s2"), states.get("s3")]).toEqual(["held", "disputed", "held"]);
-    expect(s.of("task.state").filter(({ state }) => state === "disputed")).toMatchObject([
+    expect(s.of(TASK_STATE).filter(({ state }) => state === "disputed")).toMatchObject([
       { version: "s2", reason: "its own check could not run on an answer" },
     ]);
     // A disputed task is solved no further: s2 once, and never again.
@@ -628,14 +637,22 @@ describe("a round", () => {
     expect(defect.s.of(COMPARISON_REPORTED)).toHaveLength(2);
     expect(defect.s.of(COMPARISON_REPORTED)[1]).toMatchObject({ tasks: 4, solves: 2, level: 0.1 });
     expect(await round(defect.s.request)).toEqual(settled);
-    expect(settleReading(defect.s.log, "b-1", new Map())).toEqual(settled);
+    // The labels are on record with the report, and the same labels read it back. A comparison is
+    // settled once: other labels for it, or none, are refused and write nothing.
+    expect(settled.settled?.labels).toEqual(Object.fromEntries(labelled(defect.asked.aside, "check-defect")));
+    expect(settleReading(defect.s.log, "b-1", labelled(defect.asked.aside, "check-defect"))).toEqual(settled);
+    expect(() => settleReading(defect.s.log, "b-1", labelled(defect.asked.aside, "earned"))).toThrow(
+      "comparison b-1 is settled already, and these labels are not the ones it was settled on",
+    );
+    expect(() => settleReading(defect.s.log, "b-1", new Map())).toThrow("is settled already");
+    expect(defect.s.of(COMPARISON_REPORTED)).toHaveLength(2);
     expect(stopRule(read(defect.s.log))).toMatchObject({ checkpoints: 1, sinceStep: 1 });
 
     // Labelled earned, the rejections stand on a person's word and the task is restored: the same
     // whether the labels come at once or after a later round has solved the same tasks.
     const earned = await ruledOn();
     await round(earned.s.next("b-2"));
-    append(earned.s.log, "task.state", { version: "s4", state: "released" });
+    append(earned.s.log, TASK_STATE, { version: "s4", state: "released" });
     expect(settleReading(earned.s.log, "b-1", labelled(earned.asked.aside, "earned"))).toMatchObject({
       scored: { wins: 4, losses: 0 },
       versions: HELD,
@@ -669,17 +686,45 @@ describe("a round", () => {
       disputed: ["s2"],
       settled: { labelled: 3, defects: 1, disputed: ["s2"], restored: ["s1"] },
     });
+
+    // A task a person refused as infeasible after the comparison stays refused: a label that calls
+    // its rejection a check defect is kept, moves no state, and leaves the task set aside.
+    const refused = await ruledOn();
+    append(refused.s.log, TASK_STATE, { version: "s1", state: "refused" });
+    expect(settleReading(refused.s.log, "b-1", labelled(refused.asked.aside, "check-defect"))).toMatchObject({
+      versions: ["s2", "s3", "s4"],
+      aside: ["s1"],
+      disputed: [],
+      settled: { labelled: 2, defects: 2, disputed: [] },
+    });
+    expect(taskStates(read(refused.s.log)).get("s1")).toBe("refused");
+  });
+
+  it("settles nothing where no label is given: a comparison with no task set aside stays open to labels", async () => {
+    const s = await setup([edit, finish], rejecting);
+    await round({ ...s.request, referee: referee(s.log) });
+    expect(toLabel(read(s.log), "b-1").aside).toEqual([]);
+    expect(() => settleReading(s.log, "b-1", new Map())).toThrow(
+      "comparison b-1 has no rejection that set a task aside, and no label is given",
+    );
+    expect(s.of(COMPARISON_REPORTED)).toHaveLength(1);
+    // A label over a ruling can still settle it afterwards.
+    const [one = ""] = toLabel(read(s.log), "b-1").others;
+    expect(settleReading(s.log, "b-1", new Map([[one, "check-defect"]]))).toMatchObject({
+      disputed: ["s1"],
+      settled: { labelled: 1, defects: 1 },
+    });
   });
 
   it("keeps a ruling across a stop: the first run's is in the log and is read from there", async () => {
     let stop = 10;
     const s = await setup([edit, finish], (version, side, nth, digest) => {
       stop -= 1;
-      if (stop === 0) throw new Error("the run stops");
+      if (stop === 0) throw new Error(STOPS);
       return rejecting(version, side, nth, digest);
     });
     await expect(round({ ...s.request, referee: referee(s.log, { s1: "check-defect" }) })).rejects.toThrow(
-      "the run stops",
+      STOPS,
     );
     // Run again, with a Referee that rules every rejection earned: what the first run ruled stands.
     expect(await round({ ...s.request, referee: referee(s.log) })).toMatchObject({
@@ -688,16 +733,33 @@ describe("a round", () => {
     });
   });
 
-  it("reads a round that scored no task as not scored, which is not a test that found no gain", async () => {
-    const s = await setup([edit, finish], step);
-    const report = await round({ ...s.request, tasks: [] });
-    expect(report).toMatchObject({
-      scored: { wins: 0, losses: 0, ties: 0, p: 1 },
-      versions: [],
-      reading: NOT_SCORED,
+  it("puts to the Referee, when it goes on, the rejections an earlier run left unruled", async () => {
+    let stop = 10;
+    const s = await setup([edit, finish], (version, side, nth, digest) => {
+      stop -= 1;
+      if (stop === 0) throw new Error(STOPS);
+      return rejecting(version, side, nth, digest);
     });
-    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ tasks: 0, reading: NOT_SCORED });
-    expect(s.asked).toEqual([]);
+    // The first run's reader fails on every rejection, so each is left with no ruling.
+    const failing = async (): Promise<RefereeFinding> => {
+      throw new Error("the reader is down");
+    };
+    await expect(round({ ...s.request, referee: failing })).rejects.toThrow(STOPS);
+    const left = read(s.log).filter(({ kind }) => kind === "verdict").length;
+    expect(s.of("referee.finding")).toEqual([]);
+    // Run again with a reader that answers: the earlier rejections are ruled, and no task is set
+    // aside for want of a ruling the comparison could have had.
+    const report = await round({ ...s.request, referee: referee(s.log) });
+    expect(report).toMatchObject({ scored: { wins: 4, losses: 0 }, aside: [], versions: HELD });
+    expect(left).toBeGreaterThan(0);
+    expect(s.of("referee.finding")).toHaveLength(8);
+  });
+
+  it("reads a round whose tasks are all set aside as not scored, which is not a test that found no gain", async () => {
+    const s = await setup([edit, finish], rejecting);
+    const report = await round(s.request);
+    expect(report).toMatchObject({ scored: { wins: 0, losses: 0, ties: 0, p: 1 }, versions: [] });
+    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ tasks: 4, reading: NOT_SCORED });
     // It tallied nothing, and is no checkpoint of the stop rule.
     expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
   });
@@ -753,7 +815,7 @@ describe("a round", () => {
       // A person releases one task for practice and refuses another as infeasible, mid-run.
       const moved = { 6: ["s4", "released"], 7: ["s3", "refused"] }[solved];
       if (moved !== undefined) {
-        append(s.log, "task.state", { version: moved[0] ?? "", state: moved[1] ?? "" });
+        append(s.log, TASK_STATE, { version: moved[0] ?? "", state: moved[1] ?? "" });
       }
       return step(version, side, nth, digest);
     });
@@ -764,6 +826,34 @@ describe("a round", () => {
       short: [],
       reading: NO_STEP,
     });
+    // No solve of either task was started after it left the set.
+    const after = s.asked.slice(7).map(({ version }) => version);
+    expect(after.filter((version) => version === "s3" || version === "s4")).toEqual([]);
+  });
+
+  it("goes on after a task left the set while it was stopped, and disputes no task a person refused", async () => {
+    let solved = 0;
+    let refused = false;
+    const s = await setup([], (version, side, nth, digest) => {
+      solved += 1;
+      if (solved === 6) throw new Error(STOPS);
+      // The check of s3 cannot run on an answer, in a solve that ends after a person refused s3.
+      if (solved > 6 && version === "s3" && !refused) {
+        refused = true;
+        append(s.log, TASK_STATE, { version: "s3", state: "refused" });
+        return { outcome: "non-result", kind: "check", reason: "the check crashed" };
+      }
+      return step(version, side, nth, digest);
+    });
+    await expect(checkpoint(s.compare("g0"))).rejects.toThrow(STOPS);
+    append(s.log, TASK_STATE, { version: "s4", state: "released" });
+    // Asked for again as it began, with the task that is now practice among its tasks.
+    const report = await checkpoint(s.compare("g0"));
+    expect(report).toMatchObject({ versions: ["s1", "s2"], withdrawn: ["s3", "s4"], disputed: [] });
+    expect(taskStates(read(s.log)).get("s3")).toBe("refused");
+    expect(s.asked.slice(6).some(({ version }) => version === "s4")).toBe(false);
+    // Under another id the same tasks are refused, as any new comparison's would be.
+    await expect(checkpoint(s.compare("g1"))).rejects.toThrow("task s3 is refused");
   });
 
   it("stops on more check defects than it allows, and says so in place of a reading", async () => {
@@ -830,13 +920,17 @@ describe("a round", () => {
       "task p1 is a practice task, and a round scores no task its session saw",
     );
     await expect(round({ ...s.request, tasks: [...HELD, "s1"] })).rejects.toThrow("task s1 is listed twice");
-    append(s.log, "task.state", { version: "s5", state: "released" });
+    append(s.log, TASK_STATE, { version: "s5", state: "released" });
     await expect(round({ ...s.request, tasks: ["s5"] })).rejects.toThrow(
       "task s5 is released, and only a held-out task is scored",
     );
     await expect(round({ ...s.request, tasks: ["s9"] })).rejects.toThrow(
       "task s9 is not proposed, and only a held-out task is scored",
     );
+    // The eight truss rounds of 2026-10-08 asked for no task, ran their sessions and scored nothing.
+    await expect(round({ ...s.request, tasks: [] })).rejects.toThrow("no task to score");
+    await expect(checkpoint(s.compare("g0", { tasks: [] }))).rejects.toThrow("no task to score");
+    expect(s.of("comparison.started")).toEqual([]);
     // A flag misread on a command line is no number, and a round that ran no solve would say it had.
     await expect(round({ ...s.request, concurrency: Number("four") })).rejects.toThrow("whole numbers");
     await expect(round({ ...s.request, solves: 0 })).rejects.toThrow("whole numbers");
@@ -987,6 +1081,79 @@ describe("a checkpoint with no session", () => {
     expect(roomy.asked).toHaveLength(16);
   });
 
+  it("reports its test when the cap cuts the baseline's solves, as unread against the baseline", async () => {
+    const s = await setup([edit, finish], step);
+    const built = await round(s.next("b-0"));
+    const fresh = { dir: join(s.request.session.states, built.fresh ?? ""), digest: built.fresh ?? "" };
+    // Sixteen solves of the test at two dollars, and the cap holds one more with its reserve.
+    const capped = await checkpoint(s.compare("g1", { fresh, cap: { dollars: 35, reserve: 3 } }));
+    expect(capped).toMatchObject({
+      scored: { wins: 4, losses: 0 },
+      versions: HELD,
+      against: null,
+      capped: true,
+      reading: BASELINE_UNREAD,
+    });
+    expect(s.asked.filter(({ side }) => side === "baseline")).toHaveLength(8 + 1);
+    // It reported, and is finished: the harness is read against the baseline in its own comparison.
+    expect(await checkpoint(s.compare("g1", { fresh, cap: { dollars: 35, reserve: 3 } }))).toEqual(capped);
+  });
+
+  it("holds a step to the baseline's solves of every tallied task, also after a stop among them", async () => {
+    let solved = 0;
+    const s = await setup([edit, finish], (version, side, nth, digest) => {
+      solved += 1;
+      // The seventh of the baseline's eight solves stops the run.
+      if (solved === 16 + 7) throw new Error(STOPS);
+      // The baseline answers the last task, which a tally of the first three would not hold.
+      return side === "baseline" && version === "s4" ? PASS : step(version, side, nth, digest);
+    });
+    await expect(round(s.request)).rejects.toThrow(STOPS);
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
+    const report = await round(s.request);
+    expect(report).toMatchObject({ against: { wins: 3, losses: 0, ties: 1 }, reading: "step" });
+    // The six it had were not made again.
+    expect(s.asked.filter(({ side }) => side === "baseline")).toHaveLength(7 + 2);
+  });
+
+  it("counts its own solves and its own spend, whatever another comparison did while it was stopped", async () => {
+    let stop = 6;
+    const s = await setup([], () => {
+      stop -= 1;
+      if (stop === 0) throw new Error(STOPS);
+      return PASS;
+    });
+    const cap = { dollars: 35, reserve: 3 };
+    await expect(checkpoint(s.compare("g-a", { cap }))).rejects.toThrow(STOPS);
+    // Another comparison of the same two harnesses runs whole on the same tasks.
+    expect(await checkpoint(s.compare("g-b", { cap }))).toMatchObject({ scored: { ties: 4 } });
+    const between = s.asked.length;
+    // Gone on with, the first makes every solve it still lacks, and its cap holds them: the other
+    // comparison's solves are neither its solves nor its spend.
+    expect(await checkpoint(s.compare("g-a", { cap }))).toMatchObject({
+      scored: { ties: 4 },
+      capped: false,
+      short: [],
+    });
+    expect(s.asked.length - between).toBe(16 - 5);
+    const mine = read(s.log).filter(
+      ({ kind, data }) => kind === "solve.started" && data.comparison === "g-a",
+    );
+    expect(mine).toHaveLength(16);
+  });
+
+  it("stops on a solve that does not name it, which no reading would count", async () => {
+    const s = await setup([], () => PASS);
+    const unnamed = s.compare("g0");
+    // The caller's solve forgets to hand the comparison on.
+    const request = {
+      ...unnamed,
+      solve: (version: string, harness: { digest: string }) => s.solve(version, harness.digest),
+    };
+    await expect(checkpoint(request)).rejects.toThrow("does not name comparison g0 at its start");
+    expect(s.asked).toHaveLength(1);
+  });
+
   it("counts a round's cap from its session's first event, so the session's spend is under it", async () => {
     const s = await setup([edit, finish], step);
     const report = await round({ ...s.request, cap: { dollars: 3, reserve: 3 } });
@@ -1017,7 +1184,7 @@ describe("the scored set", () => {
     // A practice task is no held-out task.
     const released = [
       ...heldOut(held),
-      { at, kind: "task.state", data: { version: "v3", state: "released" } } as const,
+      { at, kind: TASK_STATE, data: { version: "v3", state: "released" } } as const,
     ];
     expect(scoredSet(released, 12, "contract-a")).not.toContain("v3");
   });
@@ -1035,7 +1202,7 @@ describe("the scored set", () => {
     await round(s.next("b-2"));
     expect(awaitingLabel(read(s.log))).toEqual(["s1"]);
     expect(scoredSet(read(s.log), 12, "c").toSorted()).toEqual(["s2", "s3", "s4", "s5"]);
-    append(s.log, "task.state", {
+    append(s.log, TASK_STATE, {
       version: "s1",
       state: "held",
       reason: "a person read the task as feasible",

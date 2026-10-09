@@ -7,6 +7,7 @@ import { signP } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { compared, roundOf } from "../tools/runs/compare.ts";
 
@@ -93,11 +94,17 @@ function round(
     host: "host-1",
     side: "test",
   });
+  /** The comparison a solve is made for: none in the session, the round's own after its start. */
+  let comparison: string | null = null;
   const solve = (task: string, harness: string, ending: string) => {
     const ran = under(task, harness);
     const id = `${session}-${String(events.length)}`;
     record("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-    record("solve.started", { solve: id, condition: conditionId(ran) });
+    record("solve.started", {
+      solve: id,
+      condition: conditionId(ran),
+      ...keyIfNotNull("comparison", comparison),
+    });
     const ended = ENDINGS.get(ending);
     if (ended !== undefined) record("solve.finished", { solve: id, ending: ended });
   };
@@ -116,7 +123,7 @@ function round(
   });
   solve("p1", "h-draft", "p");
   record("build.finished", { session, ended: "wall", harness: given.fresh, changed: true });
-  const began = events.length;
+  comparison = session;
   const terms = {
     session,
     old: given.reference,
@@ -151,7 +158,6 @@ function round(
   record("comparison.reported", {
     ...terms,
     tasks: given.tasks.length,
-    began,
     reading: "no-step",
     scored: tested("old"),
     against: given.base === undefined ? null : tested("base"),
@@ -159,6 +165,7 @@ function round(
     short: ends.flatMap((each) => (whole.includes(each) ? [] : [each.task])),
     aside: [],
   });
+  comparison = "a-later-comparison";
   later?.({ record, solve });
   return events;
 }
@@ -218,6 +225,25 @@ describe("the runs comparison", () => {
       "  fresh h-a against fresh h-b: comparable in parent harness, beside solve noise and what each Builder session made",
       "    tasks both scored: both pass 2, r:b-2 ahead 2",
     ]);
+  });
+
+  it("says when a log's solves name no comparison, as none did before 2026-10-10", () => {
+    const older = round("b-1", OPUS).map((event) => {
+      const { comparison: _comparison, ...data } = event.data;
+      return event.kind === "solve.started" ? { ...event, data } : event;
+    });
+    const said = roundOf("b", older, "b-1", writes).said;
+    expect(said).toContain(
+      "its solves name no comparison, as none did before 2026-10-10: its tasks cannot be read pair by pair, and each reads unresolved below",
+    );
+    // Its solves are still counted, from the round's own window of the log.
+    expect(said.slice(-2)).toEqual([
+      "scored reference: 3 pass, 1 fail rejected",
+      "scored fresh: 2 pass, 2 fail rejected",
+    ]);
+    expect(roundOf("b", round("b-1", OPUS), "b-1", writes).said.join("\n")).not.toContain(
+      "name no comparison",
+    );
   });
 
   it("says a harness that declares no artifact-writer, and a report that tallied no task", () => {

@@ -16,7 +16,9 @@
  * the number of released tasks the campaign is brought to. What is missing is released from the
  * held-out tasks by the contract's draw, and no solve chooses which. One release takes at most
  * half of what is held, so that a comparison is left tasks to score: on 2026-10-08 an anchor drawn
- * over nearly the whole pack left eight rounds no task to score.
+ * over nearly the whole pack left eight rounds no task to score. Each release is said by its task.
+ * A run that labels a task (below) releases none: a release cannot be taken back, and a person
+ * labelling one task has not asked for another to leave the held-out set.
  *
  * It is also where a person labels a task that went to them as possibly infeasible: one no harness
  * answered validly in two comparisons in a row, which is left out of the scored set until it is
@@ -39,7 +41,7 @@ import { sizeLines } from "#src/kernel/size.ts";
 import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { awaitingLines, openCampaign } from "./campaign.ts";
-import { ROUND_OPTIONS } from "./round.ts";
+import { ROUND_OPTIONS, targetNamed } from "./round.ts";
 
 const { values } = parseArgs({
   options: {
@@ -92,12 +94,23 @@ async function main(): Promise<void> {
     );
   }
 
+  const packages = campaign.packages();
+  const labels = [
+    ...(values.keep ?? []).map((taskId) => ({ taskId, state: "held" })),
+    ...(values.infeasible ?? []).map((taskId) => ({ taskId, state: "refused" })),
+  ];
+  const target = targetNamed(values.target);
+  const practice = Number(values.practice);
+  if (!Number.isInteger(practice) || practice < 0) {
+    throw new Error(`--practice ${values.practice}: the practice tasks are a whole number`);
+  }
   const before = taskSets(read(log));
-  const missing = Math.max(0, Number(values.practice) - before.released.length);
+  const missing = labels.length > 0 ? 0 : Math.max(0, practice - before.released.length);
   const released = Math.min(missing, Math.floor(before.held.length / 2));
   const seed = `${contractHash(contract)}:practice`;
   for (const version of draw(before.held, released, seed)) {
     append(log, "task.state", { version, state: "released" });
+    console.log(`${packages.get(version)?.taskId ?? version}: released for practice, and never scored`);
   }
   if (released < missing) {
     console.log(
@@ -107,11 +120,6 @@ async function main(): Promise<void> {
 
   // A person's labels of the tasks that went to them. Only a held-out task is labelled: a label
   // on any other would return to the set, or refuse, a task no comparison has left out.
-  const packages = campaign.packages();
-  const labels = [
-    ...(values.keep ?? []).map((taskId) => ({ taskId, state: "held" })),
-    ...(values.infeasible ?? []).map((taskId) => ({ taskId, state: "refused" })),
-  ];
   for (const { taskId, state } of labels) {
     const version = [...packages].find(([, task]) => task.taskId === taskId)?.[0];
     if (version === undefined || !taskSets(read(log)).held.includes(version)) {
@@ -129,7 +137,7 @@ async function main(): Promise<void> {
   const sets = taskSets(events);
   const awaiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
   console.log(`${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`);
-  const scored = Math.min(Number(values.target), sets.held.length - awaiting.length);
+  const scored = Math.min(target, sets.held.length - awaiting.length);
   const asked = { solves: Number(values.solves), level: Number(values.level) };
   for (const line of [...sizeLines(scored, asked), ...awaitingLines(campaign)]) console.log(line);
 }

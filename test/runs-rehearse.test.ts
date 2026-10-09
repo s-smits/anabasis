@@ -21,7 +21,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { parseArgs } from "../src/meta/process.ts";
-import { baseline, type Kept } from "../tools/d2/campaign.ts";
+import { baseline } from "../tools/d2/campaign.ts";
 import type { Campaign } from "../tools/d2/round.ts";
 import { passedOn } from "../tools/runs/launch.ts";
 import { answersOf, rehearse, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
@@ -205,6 +205,8 @@ describe("a rehearsal's seats", () => {
   function campaignOver(folder: string, ending: Ending) {
     const log = join(folder, "log.jsonl");
     const calls: unknown[] = [];
+    /** The comparison each solve was made for, as the seat handed it on. */
+    const named: unknown[] = [];
     // SAFETY: a rehearsal's seats read a campaign's log, its test solver and `solveOnce`, and no more.
     const campaign = {
       log,
@@ -212,14 +214,16 @@ describe("a rehearsal's seats", () => {
       test: { effort: "medium", side: "test" },
       limits: { turns: 24 },
       setting: () => "scripted",
-      solveOnce: async (_task: TaskPackage, _harness: Kept, by: Parameters<Campaign["solveOnce"]>[2]) => {
+      solveOnce: async (...asked: Parameters<Campaign["solveOnce"]>) => {
+        const by = asked[2];
+        named.push(asked[4]);
         const context = normalizeContext({ messages: [{ role: "user", content: "Solve.", timestamp: 0 }] });
         const turn = await by.models?.("").streamSimple(by.model, context).result();
         calls.push(turn?.content.find((part) => part.type === "toolCall"));
         return { solve: `s-${String(calls.length)}`, ending };
       },
     } as unknown as Campaign;
-    return { campaign, calls, log };
+    return { campaign, calls, named, log };
   }
 
   it("are refused on a campaign that is no seed, whose next round would count their solves", () => {
@@ -242,7 +246,7 @@ describe("a rehearsal's seats", () => {
   it("script each solve by its harness, and name the one that ended otherwise", async () => {
     const folder = campaignAt("rehearsed", []);
     writeFileSync(join(folder, SEED_FILE), "{}\n");
-    const { campaign, calls } = campaignOver(folder, { outcome: "pass" });
+    const { campaign, calls, named } = campaignOver(folder, { outcome: "pass" });
     const strayed: string[] = [];
     const seats = scriptedSeats(
       SCRIPT,
@@ -280,5 +284,13 @@ describe("a rehearsal's seats", () => {
     expect(strayed.at(-1)).toBe(
       's-4: t-3 under the reference harness was scripted to give no answer and ended {"outcome":"pass"}',
     );
+    // The baseline is scripted by `--baseline` wherever it sits, also as the reference harness:
+    // `--held`'s first word is then no harness's. And a seat hands on the comparison it solves for.
+    const least = await baseline(campaign);
+    const under = scriptedSeats({ held: sidesOf("pass:pass"), baseline: "fail" }, graded, strayed);
+    await under(campaign, { builder: undefined, reference: least.dir }).solve(held, least, undefined, "g0");
+    expect(calls.at(-1)).toMatchObject({ name: "record_answer", arguments: { answer: "t-2 wrong" } });
+    expect(strayed.at(-1)).toStartWith("s-5: t-2 under the baseline was scripted to fail");
+    expect(named).toEqual([undefined, undefined, undefined, undefined, "g0"]);
   });
 });

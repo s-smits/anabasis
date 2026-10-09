@@ -49,6 +49,7 @@ import type { Task, Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { lstatSync, mkdirSync, rmSync } from "../meta/filesystem.ts";
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -87,6 +88,10 @@ export interface SolveRequest {
   readonly log: string;
   /** The repository, closed to every command. */
   readonly repoRoot: string;
+  /** The comparison the solve is made for, by its id, which every attempt's start then names. A
+   *  comparison counts the solves that name it and no other (`src/kernel/compare.ts`); a practice
+   *  solve names none. */
+  readonly comparison?: string;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
 }
@@ -101,6 +106,10 @@ export interface Played {
   /** The CPU time of the solve's commands, the solver's and the harness's (`command.ts`). */
   readonly cpu: { readonly seconds: number; readonly unmeasured: number };
   readonly turns: readonly AssistantMessage[];
+  /** The prompts the solver was given: the opening one and each nudge. It is what the turn cap
+   *  counts (`Limits.turns`), where `turns` holds the model's own turns, of which one prompt may
+   *  take many. */
+  readonly prompts: number;
   /** What each compaction's summary spent (`pi-compaction.ts`). */
   readonly summaries: readonly Usage[];
   readonly submitted: JsonValue | undefined;
@@ -149,6 +158,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     effort: request.effort,
     limits: request.limits,
     load: loadavg(),
+    ...keyIfDefined("comparison", request.comparison),
   });
   const played = await play(request, id);
   const ending = await judge(request, id, played);
@@ -161,6 +171,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     solve: id,
     ending,
     turns: played.turns.length,
+    prompts: played.prompts,
     tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
     reportedCost: isNumber(reportedCost) ? reportedCost : null,
@@ -204,6 +215,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   let broken: string | null = null;
   let digest: string | null = null;
   const cpu = { seconds: 0, unmeasured: 0 };
+  let prompts = 0;
   try {
     release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
     for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
@@ -226,7 +238,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     const models = request.models(join(dirs.host, "model"));
     const stream: StreamFn = (model, context, options) => models.streamSimple(model, context, options);
     const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
-    let prompts = 1;
+    prompts = 1;
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
     timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
     await runAgentLoop(
@@ -241,8 +253,11 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
         },
-        getFollowUpMessages: async () =>
-          desk.submitted !== undefined || prompts++ >= limits.turns ? [] : [user(NUDGE)],
+        getFollowUpMessages: async () => {
+          if (desk.submitted !== undefined || prompts >= limits.turns) return [];
+          prompts += 1;
+          return [user(NUDGE)];
+        },
         prepareRequest: loopCompaction(request.log, "solve", id, stream, summaries),
       },
       traceSink(request.log, "solve", id, () => turns.length),
@@ -266,6 +281,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     harness: digest,
     cpu,
     turns,
+    prompts,
     summaries,
     submitted: desk.submitted,
     wallEnded: wall.signal.aborted,

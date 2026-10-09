@@ -30,9 +30,11 @@
  * comparison the Referee on every rejected answer. A rejection counts only once it is ruled a true
  * fail. One ruled a check defect or unclear, and with no reviewer every one, sets its task aside
  * until a person has labelled it (`tools/d2/settle.ts`). `--budget` reads the same solves at a
- * shorter budget as well, as `turns=12,cpu=600,seconds=1800` with any of the three, and may be
- * given more than once; the budgets are fixed with the comparison's other terms before its first
- * solve.
+ * shorter budget as well, as `turns=40,cpu=600` with any of four units, and may be given more than
+ * once; the budgets are fixed with the comparison's other terms before its first solve. The units
+ * are the model's `turns`, the `prompts` the solver was given, which is what `--solve-turns`
+ * limits, the `cpu` seconds of its commands and the `seconds` of the whole attempt
+ * (`src/kernel/compare.ts`).
  *
  * Every solve is the cycle's own model at its effort, unless `--solver` and `--solver-effort` name
  * another to solve in its place. Every solve is held to the sweep's wall and turns, unless
@@ -64,9 +66,14 @@ import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 
-/** The solver's seat: who solves a task under a harness. */
+/** The solver's seat: who solves a task under a harness, and for which comparison where one asks. */
 interface SolverSeat {
-  readonly solve: (task: TaskPackage, harness: Kept, kill: AbortSignal | undefined) => Promise<Practised>;
+  readonly solve: (
+    task: TaskPackage,
+    harness: Kept,
+    kill: AbortSignal | undefined,
+    comparison?: string,
+  ) => Promise<Practised>;
   /** The setting those solves record, which names whose solves on record a comparison counts. */
   readonly setting: string;
 }
@@ -118,7 +125,17 @@ export const ROUND_OPTIONS = {
   parent: { type: "string", default: "latest" },
 } as const;
 
-/** The budgets `--budget` names, each as `turns=12,cpu=600,seconds=1800` with any of the three. */
+/** The scored tasks `--target` asks for: a whole number of at least one. Anything else would draw
+ *  a set nobody asked for: no number draws none, and a negative one all but the last. */
+export function targetNamed(flag: string): number {
+  const target = Number(flag);
+  if (!Number.isInteger(target) || target < 1) {
+    throw new Error(`--target ${flag}: the tasks to score are a whole number of at least one`);
+  }
+  return target;
+}
+
+/** The budgets `--budget` names, each as `turns=40,cpu=600` with any of the four units. */
 export function budgetsNamed(flags: readonly string[] = []): Budget[] {
   return flags.map((flag): Budget => {
     const named = flag.split(",").map((part) => {
@@ -127,7 +144,7 @@ export function budgetsNamed(flags: readonly string[] = []): Budget[] {
     });
     if (named.some(({ unit, most }) => !UNITS.some((known) => known === unit) || !(most > 0))) {
       throw new Error(
-        `--budget ${flag}: a budget names turns, cpu or seconds, each with a number above nothing, as turns=12,cpu=600`,
+        `--budget ${flag}: a budget names turns, prompts, cpu or seconds, each with a number above nothing, as turns=40,cpu=600`,
       );
     }
     const budget: Record<string, number> = Object.fromEntries(named.map(({ unit, most }) => [unit, most]));
@@ -156,7 +173,8 @@ export function capNamed(
  *  where one is named. */
 export const solved: Seated = (campaign, { builder }) => ({
   builder: builder === undefined ? null : { model: modelNamed(builder), models: campaign.builder },
-  solve: (task, harness, kill) => campaign.solveOnce(task, harness, campaign.test, kill),
+  solve: (task, harness, kill, comparison) =>
+    campaign.solveOnce(task, harness, campaign.test, kill, comparison),
   setting: campaign.setting(campaign.test),
 });
 
@@ -179,6 +197,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   // Read before the campaign is opened: a paid round with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
   const budgets = budgetsNamed(values.budget);
+  const target = targetNamed(values.target);
   const setting = settingNamed(values);
   const { limits } = setting;
   const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting });
@@ -234,14 +253,14 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     },
     reference,
     baseline: await baseline(campaign),
-    tasks: scoredSet(read(campaign.log), Number(values.target), contractHash(campaign.contract)),
+    tasks: scoredSet(read(campaign.log), target, contractHash(campaign.contract)),
     solves: Number(values.solves),
     level: Number(values.level),
     defects: Number(values.defects),
     budgets,
     cap,
     concurrency: limits.concurrency,
-    solve: (version, dir, digest, kill) => seats.solve(packageOf(version), { dir, digest }, kill),
+    solve: (version, harness, comparison, kill) => seats.solve(packageOf(version), harness, kill, comparison),
     setting: seats.setting,
     referee:
       reviewers === null

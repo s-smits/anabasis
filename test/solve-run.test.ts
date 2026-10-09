@@ -122,6 +122,7 @@ describe("an attempt's ending", () => {
     harness: null,
     cpu: { seconds: 0, unmeasured: 0 },
     turns: [],
+    prompts: 1,
     submitted: undefined,
     wallEnded: false,
     moved: false,
@@ -239,13 +240,18 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(calls[1]?.text).toBe("t-1 (fixture): 42");
     expect(calls[2]?.text).toContain('"publicInput":{"base":7}');
     const [done] = finished();
+    // Five turns of the model answered one prompt: the two are counted apart, and a budget read
+    // in either is read from its own count (`src/kernel/compare.ts`).
     expect(done?.data.turns).toBe(5);
+    expect(done?.data.prompts).toBe(1);
     expect(done?.data.billed).toBeGreaterThan(0);
     expect(done?.data.metered).toBeGreaterThan(0);
     expect(done?.data.harness).toMatch(/^[0-9a-f]{64}$/);
     expect(done?.data.cpu).toMatchObject({ unmeasured: 0 });
     const record = (kind: string) => events().find((event) => event.kind === kind)?.data;
     expect(record("solve.started")?.condition).toBe("c-fixture");
+    // A solve nobody asked for a comparison names none.
+    expect(record("solve.started")).not.toHaveProperty("comparison");
     expect(record("verdict")?.answer).toEqual({ answer: "42" });
 
     // Exit test 5: the hidden value reaches nothing the solver reads: the prompt, the tool rows,
@@ -261,15 +267,19 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     // answered by a turn that calls a tool and then stops without submitting.
     const scale = fauxAssistantMessage(fauxToolCall("scale_base", { factor: 1 }), toolUse);
     const stop = fauxAssistantMessage("Done.");
-    const { scratch, sent, request, finished } = setup([scale, stop, scale, stop, scale, stop], {
+    const { scratch, sent, request, events, finished } = setup([scale, stop, scale, stop, scale, stop], {
       limits: { ...LIMITS, wallSeconds: 300, turns: 2 },
+      comparison: "g0",
     });
     writeFileSync(
       join(scratch, "harness", "agent", "config.yaml"),
       "solver:\n  solve_minutes: 999\n  max_turns: 9999\nshell:\n  default_seconds: 900\n  max_seconds: 9000\n",
     );
     expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
-    expect(finished()[0]?.data.turns).toBe(4);
+    // Two prompts, the cap, and four turns of the model in answer to them.
+    expect(finished()[0]?.data).toMatchObject({ turns: 4, prompts: 2 });
+    // Each attempt's start names the comparison the solve was made for.
+    expect(events().find(({ kind }) => kind === "solve.started")?.data.comparison).toBe("g0");
     expect(sent).toHaveLength(4);
     expect(sent[0]).toContain("The case has 5 minutes of solve time. Nothing is submitted for you");
     expect(sent[1]).not.toContain(NUDGE);

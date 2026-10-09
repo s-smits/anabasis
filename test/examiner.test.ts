@@ -279,7 +279,6 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     const packed = taskVersion(s.request.pack(EXAMPLE));
     append(s.log, "task.proposed", { version: packed, taskId: EXAMPLE.taskId });
     append(s.log, "task.gate", { version: packed, gate: 1, outcome: "passed" });
-    const began = read(s.log).length;
     let solves = 0;
     /** Two solves of a task under a harness, each valid or rejected. */
     const solved = (task: string | undefined, harness: string, valid: readonly boolean[]) => {
@@ -289,7 +288,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       for (const pass of valid) {
         solves += 1;
         const solve = `s-${String(solves)}`;
-        append(s.log, "solve.started", { solve, condition: id });
+        append(s.log, "solve.started", { solve, condition: id, comparison: "b-1" });
         append(s.log, "verdict", { solve, kind: pass ? "pass" : "fail", answer: { answer: SOLVER } });
         append(s.log, "solve.finished", { solve, ending: { outcome: pass ? "pass" : "fail" } });
       }
@@ -309,7 +308,6 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       fresh: "h2",
       solves: 2,
       setting: settingId(condition("any", "any")),
-      began,
       versions: [won ?? "", tied ?? "", unsolved ?? "", packed],
       aside: [aside ?? ""],
       scored: { wins: 2, losses: 0, ties: 2 },

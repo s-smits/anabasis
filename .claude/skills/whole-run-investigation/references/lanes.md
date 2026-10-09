@@ -502,12 +502,12 @@ task content in the harness.
 Starts from `WIN AT A SMALL WALL SHARE (lane 19)`, and only when lane 11, 15 or 18 suspects a
 shortcut. It runs alone.
 
-The question is where the deciding value came from. Take the wins, the tasks the parent failed
-and the child passed, and for each open the child's solve: `solve.turn` and `solve.call` in
+The question is where the deciding value came from. Take the wins, the tasks the reference
+harness failed and the child passed, and for each open the child's solve: `solve.turn` and `solve.call` in
 order. Show the step at which the answer's deciding value first appears and what produced it: a
 tool's computation from the task's public input, the solver's own working, a line of the guide,
 or nothing in the trace at all. A value that arrives whole in the first turn, on a task the
-parent's solver worked at and missed, came from somewhere the trace does not show. Freeze the
+solver worked at under the reference harness and missed, came from somewhere the trace does not show. Freeze the
 table, win by win with the step and the source's kind, before reading lanes 15 and 18. This lane
 reads traces of scored tasks, which no Builder and no Diagnoser may see: its report stays with
 the primary, names solves and steps, and quotes nothing. The decision it changes is whether a
@@ -679,7 +679,7 @@ harness that timed out more could look better. Here the wall, the context and a 
 are fails. Read each non-result's kind and reason: `provider` after its retries, `verifier`,
 `check`, `moved-files`, `killed`. Say whether reruns fell evenly on the two harnesses, since a
 side whose bad solves are rerun and whose good ones stand is favoured: `NON-RESULTS` gives each
-round's count under the parent and under the session's states. A solve that started and
+comparison's count under the reference harness and under the others. A solve that started and
 never finished was cut by a kill; its root may still be on disk. A fail of kind `broken-harness`
 fails every task alike. For a session that crashed, name the turn and whether
 its round was refused as the rule says. The decision it changes is whether a count is trusted as

@@ -136,7 +136,13 @@ describe("a campaign", () => {
     // answer. Two of the eight held out are then released for practice, by the contract's draw.
     const versions = TASKS.map((task) => taskVersion(campaign.pack(task)));
     const summary = ["6 held out, 2 released for practice", ...sizeLines(6, ASKED)].join("\n");
-    expect(prepare()).toBe(`7 of the pack's tasks proposed: 7 held out, 0 refused\n${summary}`);
+    // Each release is said by its task: a release cannot be taken back.
+    const [proposed, ...said] = prepare().split("\n");
+    expect(proposed).toBe("7 of the pack's tasks proposed: 7 held out, 0 refused");
+    expect(said.slice(0, 2).every((line) => line.endsWith(": released for practice, and never scored"))).toBe(
+      true,
+    );
+    expect(said.slice(2).join("\n")).toBe(summary);
     const sets = taskSets(read(campaign.log));
     expect([sets.held.length, sets.released.length]).toEqual([6, 2]);
     expect([...sets.held, ...sets.released].toSorted()).toEqual([...versions, extra].toSorted());
@@ -184,6 +190,10 @@ describe("a campaign", () => {
         },
       },
     ]);
+    // A run that labels releases nothing, whatever --practice it carries: a release cannot be
+    // taken back, and a person labelling one task has not asked for another to leave the set.
+    expect(prepare("--practice", "4", "--keep", idOf(kept))).toContain("5 held out, 2 released");
+    expect(taskSets(read(campaign.log)).released).toHaveLength(2);
     // Only a held-out task is labelled: not a refused one, a practice task or a name no task has.
     expect(prepare("--keep", idOf(gone))).toContain("is no held-out task of this campaign");
     expect(prepare("--infeasible", idOf(sets.released[0] ?? ""))).toContain("is no held-out task");
@@ -332,17 +342,40 @@ describe("a campaign", () => {
     // A simulation's seats are scripts, which are paid nothing, and may name none.
     expect(capNamed({ reserve: "10" }, "scripted")).toBeUndefined();
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
-    // A budget names any of the three units, and each flag is one budget to read the comparison at.
-    expect(budgetsNamed(["turns=12", "turns=8,cpu=600", "seconds=1800"])).toEqual([
-      { turns: 12 },
-      { turns: 8, cpu: 600 },
+    // A budget names any of the four units, and each flag is one budget to read the comparison at.
+    expect(budgetsNamed(["turns=40", "prompts=8,cpu=600", "seconds=1800"])).toEqual([
+      { turns: 40 },
+      { prompts: 8, cpu: 600 },
       { seconds: 1800 },
     ]);
     expect(budgetsNamed()).toEqual([]);
     for (const flag of ["turns", "turns=0", "tokens=5", "turns=4=5", ""]) {
-      expect(() => budgetsNamed([flag])).toThrow("a budget names turns, cpu or seconds");
+      expect(() => budgetsNamed([flag])).toThrow("a budget names turns, prompts, cpu or seconds");
     }
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
+  });
+  it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {
+    const campaign = await openCampaign(ARGS);
+    const flags = Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]);
+    const run = (...cmd: string[]) => Bun.spawnSync({ cmd: [capturedExecPath, ...cmd, ...flags], cwd: REPO });
+    // A mistyped label is not read as no label: the file is refused by the entry, before anything
+    // is settled. An empty entry is one still to be labelled.
+    const dir = join(campaign.log, "..", "settle-z-7");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "labels.json"), JSON.stringify({ "s-1": "earnd", "s-2": "", "s-3": "earned" }));
+    const settled = run("tools/d2/settle.ts", "--session", "z-7");
+    expect(settled.exitCode).not.toBe(0);
+    expect(settled.stderr.toString()).toContain(
+      'holds what is no label (earned, check-defect or unclear) for 1 rejection: s-1: "earnd"',
+    );
+    // No number would draw no task, and a negative one all but the last.
+    for (const target of ["twelve", "-1", "0", "2.5"]) {
+      const ran = run("tools/d2/checkpoint.ts", "--id", "z-6", "--cap", "40", `--target=${target}`);
+      expect(ran.stderr.toString()).toContain(
+        `--target ${target}: the tasks to score are a whole number of at least one`,
+      );
+    }
+    expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
   });
 });

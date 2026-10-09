@@ -361,19 +361,22 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
   });
 
   it("carries a session's tasks into the repaired checker's campaign on their shape alone, once", () => {
-    // An old campaign's log, written by hand: three tasks a session wrote. The first is held out
-    // there, the second names no inputs, which the gate here refuses, and the third was disputed.
+    // An old campaign's log, written by hand: four tasks a session wrote. The first is held out
+    // there, the second names no inputs, which the gate here refuses, the third was disputed, and
+    // the fourth was released to a Builder as practice.
     const old = join(root, "old.jsonl");
     for (const [id, version, publicInput] of [
       ["x-1-001", "o1", { base: 4 }],
       ["x-1-002", "o2", null],
       ["x-1-003", "o3", { base: 6 }],
+      ["x-1-004", "o5", { base: 8 }],
     ] as const) {
       const task = { taskId: id, family: "fixture", publicInput, hidden: null };
       append(old, "task.proposed", { version, taskId: id, session: "x-1", task });
       append(old, "task.gate", { version, gate: 1, outcome: "passed" });
     }
     append(old, "task.state", { version: "o3", state: "disputed" });
+    append(old, "task.state", { version: "o5", state: "released" });
     // A pack's own task is in the old log by its id alone, and enters a campaign through prepare.ts.
     append(old, "task.proposed", { version: "o4", taskId: "t-1" });
     const carry = () =>
@@ -386,21 +389,25 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
         name: CARRIED,
       });
     const first = carry();
-    expect(first.said).toContain("2 tasks a session wrote: 1 held out here, 1 refused, 0 already there");
+    expect(first.said).toContain(
+      "3 tasks a session wrote: 1 held out here, 1 released for practice as they were, 1 refused, 0 already there",
+    );
     expect(first.said).toContain("x-1-002\trefused: no inputs");
     expect(first.code).toBe(0);
     const events = read(join(carried, "log.jsonl"));
-    expect([...taskStates(events).values()].sort()).toEqual(["held", "refused"]);
+    // A task a Builder has practised on stays practice here: a harness it built may be compared.
+    expect([...taskStates(events).values()].sort()).toEqual(["held", "refused", "released"]);
     // Each is proposed whole under its own id, with the version it had, and put to the one gate.
     expect(events.filter(({ kind }) => kind === "task.proposed").map(({ data }) => data)).toMatchObject([
       { taskId: "x-1-001", carried: "o1", task: { taskId: "x-1-001", publicInput: { base: 4 } } },
       { taskId: "x-1-002", carried: "o2" },
+      { taskId: "x-1-004", carried: "o5" },
     ]);
-    expect(events.flatMap(({ kind, data }) => (kind === "task.gate" ? [data.gate] : []))).toEqual([1, 1]);
+    expect(events.flatMap(({ kind, data }) => (kind === "task.gate" ? [data.gate] : []))).toEqual([1, 1, 1]);
     // No solve and no verdict comes with a task: a new campaign's solves are its own.
     expect(events.filter(({ kind }) => kind === "verdict" || kind === "solve.started")).toEqual([]);
     // Run again, nothing is taken twice.
-    expect(carry().said).toContain("0 held out here, 0 refused, 2 already there");
+    expect(carry().said).toContain("0 refused, 3 already there");
     expect(read(join(carried, "log.jsonl"))).toHaveLength(events.length);
   });
 });

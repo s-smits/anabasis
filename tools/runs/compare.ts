@@ -104,6 +104,8 @@ function solvesOf(
     readonly practice: ReadonlySet<string>;
     readonly scored: ReadonlySet<string>;
     readonly harnesses: ReadonlySet<string>;
+    /** The round's id, which its comparison's solves name at their start. */
+    readonly session: string;
     /** The round's own window of the log, and where its report stands. */
     readonly from: number;
     readonly until: number;
@@ -117,11 +119,18 @@ function solvesOf(
       return kind === "solve.finished" ? [[word(data.solve), said] as const] : [];
     }),
   );
+  const started = "solve.started";
+  // A comparison's solves name it. In a log written before 2026-10-10 none does, and the round's
+  // window of the log stands in: the solves of its scored tasks under its harnesses.
+  const named = events.some((event) => event.kind === started && event.data.comparison === given.session);
   return events.flatMap(({ kind, data }, index) => {
     const under = conditions.get(word(data.condition));
-    if (kind !== "solve.started" || under?.side !== "test" || index >= given.until) return [];
-    const practised = given.practice.has(under.task) && index > given.from;
-    const scored = given.scored.has(under.task) && given.harnesses.has(under.harness) && index > given.from;
+    if (kind !== started || under?.side !== "test") return [];
+    const windowed = index > given.from && index < given.until;
+    const practised = given.practice.has(under.task) && windowed && data.comparison === undefined;
+    const scored = named
+      ? data.comparison === given.session
+      : given.scored.has(under.task) && given.harnesses.has(under.harness) && windowed;
     if (!practised && !scored) return [];
     const ending = endings.get(word(data.solve)) ?? "unfinished";
     return [{ under, set: practised ? "practice" : "scored", ending }];
@@ -175,6 +184,7 @@ export function roundOf(
     practice: new Set(strings(started.tasks)),
     scored: new Set(scoredSet),
     harnesses: new Set([reference, fresh, baseline]),
+    session,
     from,
     until,
   });
@@ -241,6 +251,13 @@ export function roundOf(
                 : `${plural(scored, "task")}, p ${word(score.p)}`
             }`
       }`,
+      // Until 2026-10-10 a solve's start named no comparison, and no reading can say which of an
+      // older log's solves a report counted.
+      ...(tallied.length > 0 && pairs.length === 0
+        ? [
+            "its solves name no comparison, as none did before 2026-10-10: its tasks cannot be read pair by pair, and each reads unresolved below",
+          ]
+        : []),
       ...counted,
     ],
   };

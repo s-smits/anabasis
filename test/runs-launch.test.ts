@@ -11,7 +11,9 @@ import {
 } from "../src/meta/subprocess.ts";
 import { spent } from "../src/builder/round.ts";
 import { claimed } from "../src/examiner/session.ts";
+import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { append, type LogEvent } from "../src/kernel/log.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import {
   type Asked,
@@ -20,6 +22,7 @@ import {
   launch,
   leftOpen,
   preflight,
+  reportedAs,
   start,
   type Supply,
   supplyOf,
@@ -33,7 +36,8 @@ const ASKED: Asked = {
   solves: 2,
   level: 0.1,
   builds: true,
-  capped: true,
+  cap: { dollars: 600, reserve: 10 },
+  reported: null,
   loaded: false,
   load: 3,
   cores: 12,
@@ -94,19 +98,86 @@ describe("a launch's preflight", () => {
       kind: "comparison.reported",
       data: { session, ...more },
     });
+    /** A test-side solve under `limits`, which makes theirs the setting of the log's last solves. */
+    const solvedUnder = (solve: string, limits: typeof LIMITS) => {
+      const condition: Condition = {
+        contract: "c1",
+        harness: "h1",
+        task: "v",
+        model: "p/m",
+        effort: "high",
+        prices: { "p/m": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+        runtime: {},
+        compaction: "off",
+        solverTools: "h1",
+        verifierTools: "t1",
+        sandbox: "p1",
+        limits,
+        host: "h",
+        side: "test",
+      };
+      const id = conditionId(condition);
+      const events: LogEvent[] = [
+        { at, kind: "condition.recorded", data: { id, condition: requireJsonValue(condition) } },
+        { at, kind: "solve.started", data: { solve, condition: id } },
+      ];
+      return { events, setting: settingId(condition) };
+    };
+    const [here, longer] = [solvedUnder("s-1", LIMITS), solvedUnder("s-2", { ...LIMITS, turns: 48 })];
+    const tallied = (wins: number, losses: number, setting: string) => ({
+      scored: { wins, losses, ties: 8 - wins - losses },
+      versions: Array(8).fill("v"),
+      setting,
+    });
     const log = [
-      reported("b-1", { scored: { wins: 6, losses: 0, ties: 2 }, versions: Array(8).fill("v") }),
-      reported("b-2", { scored: { wins: 1, losses: 1, ties: 6 }, versions: Array(8).fill("v") }),
+      ...here.events,
+      reported("b-1", tallied(6, 0, here.setting)),
+      reported("b-2", tallied(1, 1, here.setting)),
       // One the cap cut, and one with every task set aside, tallied nothing and say nothing of it.
-      reported("b-3", { scored: null, versions: [], capped: true }),
-      reported("b-4", { scored: { wins: 0, losses: 0, ties: 0 }, versions: [] }),
+      reported("b-3", { scored: null, versions: [], capped: true, setting: here.setting }),
+      reported("b-4", { scored: { wins: 0, losses: 0, ties: 0 }, versions: [], setting: here.setting }),
     ];
     expect(supplyOf(log)).toEqual({ held: 0, awaiting: 0, released: 0, untied: 0.25 });
     expect(supplyOf([]).untied).toBeNull();
+    // A comparison made under other limits says nothing of the solver the log's last solves were:
+    // its share is passed over, and with no comparison under this setting there is none.
+    const moved = [...log, ...longer.events];
+    expect(supplyOf(moved).untied).toBeNull();
+    expect(supplyOf([...moved, reported("b-5", tallied(4, 0, longer.setting))]).untied).toBe(0.5);
+    // And a launch that names other limits than the log's last solves ran under counts every
+    // task, since the share on record is another setting's.
+    const ran = { model: "p/m", effort: "high", limits: { ...LIMITS, turns: 48 } };
+    expect(preflight(tied, { ...ASKED, ran }).refusals).toEqual([]);
+    expect(preflight(tied, { ...ASKED, ran: { ...ran, limits: LIMITS } }).refusals).toHaveLength(1);
+  });
+
+  it("says when the cap holds a reserve for fewer solves than the comparison's test makes", () => {
+    // Four tasks, two harnesses, two solves: sixteen solves, and a cap of $120 reserves twelve.
+    const note = preflight(SETS, { ...ASKED, cap: { dollars: 120, reserve: 10 } }).notes.at(-1);
+    expect(note).toBe(
+      "the cap of $120 holds a reserve of $10 for 12 solves, and the comparison's test alone makes 16, after a session whose spend the same cap holds: it is cut short and reads not-scored unless its solves bill well under their reserve",
+    );
+    expect(preflight(SETS, { ...ASKED, cap: { dollars: 160, reserve: 10 } }).notes.join("\n")).not.toContain(
+      "holds a reserve",
+    );
+  });
+
+  it("refuses an id whose comparison has reported: a comparison that reported is finished", () => {
+    const at = "2026-10-10T00:00:00.000Z";
+    const log: LogEvent[] = [
+      { at, kind: "comparison.reported", data: { session: "g0", reading: "no-step" } },
+    ];
+    expect(reportedAs(log, "g1")).toBeNull();
+    expect(reportedAs(log, "g0")).toBe(
+      "comparison g0 has reported no-step, and a comparison that reported is finished",
+    );
+    expect(preflight(SETS, { ...ASKED, reported: reportedAs(log, "g0") }).refusals).toEqual([
+      "comparison g0 has reported no-step, and a comparison that reported is finished. Pass another id",
+    ]);
   });
 
   it("refuses a comparison that names no dollar cap", () => {
-    expect(preflight(SETS, { ...ASKED, capped: false }).refusals).toEqual([
+    expect(preflight(SETS, { ...ASKED, cap: null }).refusals).toEqual([
       "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
     ]);
   });

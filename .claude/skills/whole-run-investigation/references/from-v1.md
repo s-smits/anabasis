@@ -31,7 +31,7 @@ whose author is not the Builder.
 | C. workspace and Git | removed | A harness state is kept by digest under `states/`. No campaign has a Git workspace. Lane 13 diffs two states. |
 | D. static conformance | removed | A harness that does not open is refused when it is opened, and `build.finished` says `broken`. Lane 13 starts from it. |
 | E. fingerprint and gate census | B. checker identity | Two hashes, the contract's and the check program's, in place of the fingerprint. A control receipt is a row of `checker.read`. |
-| F. F2 solvability | D. task sets | Feasibility is one accepted stronger solve at gate 2. The row partitions tasks by origin and state. |
+| F. F2 solvability | D. task sets | No solve proves a task feasible: a task is held out on the shape of its package, and one no harness answers validly in two comparisons in a row goes to a person. The row partitions tasks by origin and state. |
 | G. case partition | E. case partition | The same partition, from `solve.finished`: passes, fails by kind, non-results by kind. |
 | H. runtime identity and isolation | C. conditions | A condition is a content address of everything a solve ran under. |
 | I. served-model attestation | a line of row C | The count of finished solves that name no response model. |

@@ -35,15 +35,23 @@
  * How many tasks, how many solves and the level are the caller's. Nothing here decides a step; it
  * reports the tally and its test.
  *
- * The pairs are a view over the log (`pairsOf`). A solve counts for a side when its condition
- * names the task, that side's harness, the test side and the setting the comparison is made under
- * (`condition.ts`), and it was started after the comparison began. So the two sides are solved
- * afresh, side by side, at every comparison. An earlier solve of the same harness is not counted:
+ * The pairs are a view over the log (`pairsOf`). A solve counts for a side when its start names
+ * the comparison, and its condition names the task, that side's harness, the test side and the
+ * setting the comparison is made under (`condition.ts`). A comparison's solves are the ones it
+ * started itself, so the two sides are solved afresh, side by side, at every comparison. No other
+ * solve of the same harness is counted, whether made before it or beside it by another comparison:
  * a condition names the host's code, which changes between comparisons, and one frozen draw of
  * the reference harness's solves would bias every later comparison read against it (the review of
  * 2026-10-09, findings 6 and 7). A side's solves are in the order they started. Where a side holds
  * more than a tally takes, the first started are taken, and the order solves ended in would take
  * the quick ones, which under a budget are the valid ones.
+ *
+ * A budget's units. `turns` are the model's own turns, as a trace counts them. `prompts` are the
+ * messages the solver was given, the opening one and each nudge, which is the unit a solve's turn
+ * cap is held in (`Limits.turns`, `--solve-turns`): one prompt may take the model many turns, so
+ * the two are not the same number. `cpu` is the CPU time of the solve's commands. `seconds` is the
+ * whole attempt as the host timed it, from before its sandbox was mounted until its verdict, which
+ * is some seconds more than the solver's own wall.
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber } from "../meta/json-shape.ts";
@@ -55,7 +63,10 @@ import { taskSets } from "./task.ts";
 
 /** What one counted solve used, as its `solve.finished` holds it: null where the log has none. */
 export interface Used {
+  /** The model's turns. */
   readonly turns: number | null;
+  /** The prompts the solver was given: null for a solve logged before 2026-10-10. */
+  readonly prompts: number | null;
   /** CPU seconds of the solve's commands. */
   readonly cpu: number | null;
   readonly seconds: number | null;
@@ -63,8 +74,8 @@ export interface Used {
   readonly billed: number | null;
 }
 
-/** The three units a compute budget can be given in. */
-export const UNITS = ["turns", "cpu", "seconds"] as const;
+/** The four units a compute budget can be given in. */
+export const UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
 
 /** How far repeated solves of one harness on one task differ in a unit: over the tasks and sides
  *  with two measured solves or more, the largest use divided by the smallest, as the median of
@@ -99,8 +110,8 @@ export interface Sides {
   readonly old: string;
   readonly fresh: string;
   readonly setting: string;
-  /** Where in the log the comparison began: a solve started before that place is no solve of it. */
-  readonly since: number;
+  /** The comparison's id: only a solve whose start names it is a solve of it. */
+  readonly comparison: string;
   /** The solves a side of a harness set against itself: its first so many solves of a task are the
    *  one side and the ones after them the other. It is how the noise of one harness is read, and
    *  the one case in which both sides may name the same harness. */
@@ -111,6 +122,7 @@ export interface Sides {
  *  unit than this counts as no answer. */
 export interface Budget {
   readonly turns?: number | undefined;
+  readonly prompts?: number | undefined;
   readonly cpu?: number | undefined;
   readonly seconds?: number | undefined;
 }
@@ -216,7 +228,7 @@ export function spread(pairs: readonly Paired[]): Record<(typeof UNITS)[number],
           most,
         };
   };
-  return { turns: of("turns"), cpu: of("cpu"), seconds: of("seconds") };
+  return { turns: of("turns"), prompts: of("prompts"), cpu: of("cpu"), seconds: of("seconds") };
 }
 
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of
@@ -237,14 +249,14 @@ export function draw(versions: readonly string[], count: number, seed: string): 
 
 /**
  * The pairs a comparison of two harnesses reads, for `versions`, from the log alone. A solve counts
- * for a side when its condition names the task, that side's harness, the test side and the
- * comparison's setting, it was started after the comparison began, and it ended in a pass or a
- * fail; a non-result was solved again. Each side's solves are in the order they started. A
+ * for a side when its start names the comparison, its condition names the task, that side's
+ * harness, the test side and the comparison's setting, and it ended in a pass or a fail; a
+ * non-result was solved again. Each side's solves are in the order they started. A
  * disputed version is left out on both sides and named in `disputed`, so a dispute can remove a
  * task from the test and cannot make a win. Any other version that is no held-out task is refused.
  */
 export function pairsOf(events: readonly LogEvent[], versions: readonly string[], sides: Sides) {
-  const { old, fresh, setting, since, halves } = sides;
+  const { old, fresh, setting, comparison, halves } = sides;
   if (old === fresh && halves === undefined) {
     throw new Error(`a comparison sets two harnesses against each other, and both sides are ${old}`);
   }
@@ -259,7 +271,7 @@ export function pairsOf(events: readonly LogEvent[], versions: readonly string[]
     .filter(
       (solve) =>
         solve.under.side === "test" &&
-        solve.started >= since &&
+        solve.start.comparison === comparison &&
         settings.get(solve.condition) === setting &&
         passed(solve) !== null,
     )
@@ -286,6 +298,7 @@ export function pairsOf(events: readonly LogEvent[], versions: readonly string[]
         const cpu = asRecord(end.cpu)?.seconds;
         return {
           turns: isNumber(end.turns) ? end.turns : null,
+          prompts: isNumber(end.prompts) ? end.prompts : null,
           cpu: isNumber(cpu) ? cpu : null,
           seconds: isNumber(end.seconds) ? end.seconds : null,
           billed: isNumber(end.billed) ? end.billed : null,

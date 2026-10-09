@@ -94,6 +94,12 @@ describe("the runs pulse", () => {
     expect(says({ reading: "not-scored", capped: true, aside: [] })).toEqual([
       "⚠ reported not-scored: its dollar cap cut it short",
     ]);
+    // A cap that cut the baseline's solves left the test standing.
+    expect(
+      says({ reading: "baseline-unread", capped: true, scored: { wins: 4, losses: 0, ties: 0 }, aside: [] }),
+    ).toEqual([
+      "⚠ reported baseline-unread: its dollar cap cut the baseline's solves short, and its test stands",
+    ]);
     expect(says({ reading: "step", aside: [] })).toEqual(["◆ reported step"]);
     expect(says({ reading: "no-step", settled: { labelled: 2, defects: 2 } })).toEqual([
       "◆ settled by hand as no-step: 2 labelled, 2 a check defect",
@@ -125,6 +131,30 @@ describe("the runs pulse", () => {
     const done = pulse(round, ended, false, { ...seen, lines: 10 }, START + 10 * 60_000);
     expect(done.status).toStartWith("r1  reported not-scored");
     expect(done.said).toEqual([]);
+  });
+
+  it("reads a comparison gone on from its log as solving, after another's report", () => {
+    // g0 was stopped, g1 ran whole, and g0 goes on: it writes no second start, so its solves after
+    // g1's report are what says the run has not reported.
+    const resumed = [
+      event(0, "comparison.started", { session: "g0" }),
+      event(1, "comparison.started", { session: "g1" }),
+      event(2, "comparison.reported", { session: "g1", reading: "no-step" }),
+      event(3, "solve.started", { solve: "s7", task: "mass-05", model: "claude/claude-opus-5" }),
+    ];
+    const seen = { lines: 4, open: true, quiet: false };
+    expect(pulse(round, resumed, true, seen, START + 4 * 60_000).status).toStartWith("r1  solving");
+    expect(pulse(round, resumed, false, seen, START + 4 * 60_000).said).toEqual([
+      "⚠ the process is gone before comparison.reported",
+    ]);
+    const ended = [
+      ...resumed,
+      event(4, "solve.finished", { solve: "s7", ending: { outcome: "pass" } }),
+      event(5, "comparison.reported", { session: "g0", reading: "step" }),
+    ];
+    expect(pulse(round, ended, false, { ...seen, lines: 6 }, START + 6 * 60_000).status).toStartWith(
+      "r1  reported step",
+    );
   });
 
   it("folds the same line twice into one, as a comparison's two harnesses start a task", () => {

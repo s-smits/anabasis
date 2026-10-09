@@ -144,7 +144,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
     };
     /** Which of the three a solve's harness is, as a strayed solve is named. */
     const sideOf = async (dir: string) =>
-      dir === reference ? "old" : dir === (await least).dir ? "baseline" : "new";
+      dir === (await least).dir ? "baseline" : dir === reference ? "old" : "new";
     return {
       builder: scripted(
         [
@@ -155,7 +155,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       ),
       // Every scripted solver is the same model at the same price, so one names the setting of all.
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
-      solve: async (task, harness, kill) => {
+      solve: async (task, harness, kill, comparison) => {
         const side = await sideOf(harness.dir);
         const wanted = { old: script.held.old, new: script.held.fresh, baseline: script.baseline }[side];
         // A solve scripted to give no answer submits with none prepared, and needs none on record.
@@ -169,7 +169,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         const calls: (readonly [string, JsonObject])[] =
           answer === null || tool === undefined ? [] : [[tool, answer]];
         const by = scripted([...calls, ["submit", {}]], campaign.limits.turns + 1);
-        const done = await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill);
+        const done = await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill, comparison);
         const { ending } = done;
         const failed = { pass: null, fail: "rejected", none: "no-answer" }[wanted];
         const held =

@@ -1,6 +1,6 @@
 ---
 name: whole-run-investigation
-description: "Investigate one Anabasis v2 campaign from its log and turn what it shows into findings with one owner each. Answers whether a round's reading (step, no-step, not-tested) may be believed, whether a fail was the solver's or the exam's, whether the harness could know the exam, whether the tasks bracket the solver, whether the campaign is climbing, and where the hours and dollars went. Reads evidence; starts no solve, session or round, and changes no verdict."
+description: "Investigate one Anabasis v2 campaign from its log and turn what it shows into findings with one owner each. Answers whether a comparison's reading (step, no-step, not-scored) may be believed, whether a fail was the solver's or the exam's, whether the harness could know the exam, whether the tasks bracket the solver, whether the campaign is climbing, and where the hours and dollars went. Reads evidence; starts no solve, session or round, and changes no verdict."
 ---
 
 # Whole-Run Investigation

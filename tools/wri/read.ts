@@ -14,7 +14,7 @@
  * that the property is absent. No trigger carries an answer, a task's text or a hidden value.
  */
 import { signP, UNITS } from "#src/kernel/compare.ts";
-import { type Condition, conditionsOf, settingId } from "#src/kernel/condition.ts";
+import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { awaitingLabel, lastReports, outcomesOf } from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -48,6 +48,9 @@ interface Solve {
   readonly harness: string;
   readonly condition: string;
   readonly side: string;
+  /** The comparison its start names, or null for a practice solve and for one made before a
+   *  start named any (2026-10-10). */
+  readonly comparison: string | null;
   readonly wallSeconds: number;
   outcome: string | null;
   kind: string | null;
@@ -244,6 +247,7 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
         harness: condition?.harness ?? "",
         condition: text(data.condition),
         side: condition?.side ?? "",
+        comparison: isString(data.comparison) ? data.comparison : null,
         wallSeconds: count(asRecord(data.limits)?.wallSeconds),
         outcome: null,
         kind: null,
@@ -321,7 +325,7 @@ function indexOf(events: readonly LogEvent[]): Index {
     diagnoses: last("diagnosis.recorded"),
     states,
     builds,
-    compared: comparedOf(events, { solves, conditions, builds }),
+    compared: comparedOf(events, { solves, builds }),
     held,
     released,
     of,
@@ -329,15 +333,11 @@ function indexOf(events: readonly LogEvent[]): Index {
 }
 
 /**
- * Every comparison a log reported, with the solves it could count. A comparison counts a solve by
- * its condition: under one of its three harnesses and its setting, and made since it began
+ * Every comparison a log reported, with the solves it could count: the ones whose start names it
  * (`src/builder/round.ts`). A report written before 2026-10-09 names no setting; its solves are
  * read from its round's own window of the log, as that round counted them.
  */
-function comparedOf(
-  events: readonly LogEvent[],
-  log: Pick<Index, "solves" | "conditions" | "builds">,
-): Compared[] {
+function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "builds">): Compared[] {
   return lastReports(events).map(({ session, data: last }) => {
     const at = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === session);
     const own = events[at]?.data ?? last;
@@ -345,18 +345,8 @@ function comparedOf(
     const scoredSet = new Set(
       ["versions", "short", "aside", "withdrawn"].flatMap((left) => strings(own[left])),
     );
-    const sides = new Set([text(own.old), text(own.fresh), text(own.baseline)]);
-    const began = isNumber(own.began) ? own.began : 0;
-    const counted = (solve: Solve) => {
-      if (!isString(own.setting)) return build !== null && solve.index > build.from;
-      const ran = log.conditions.get(solve.condition);
-      return (
-        sides.has(solve.harness) &&
-        ran !== undefined &&
-        settingId(ran) === own.setting &&
-        solve.index >= began
-      );
-    };
+    const counted = (solve: Solve) =>
+      isString(own.setting) ? solve.comparison === session : build !== null && solve.index > build.from;
     const scoring = log.solves.filter(
       (solve) => solve.side === TEST && solve.index < at && scoredSet.has(solve.version) && counted(solve),
     );
@@ -639,14 +629,17 @@ function harnessTriggers(log: Index): Trigger[] {
     const flipped = failed.filter((fail) => laterPass(fail, true)).length;
     const exposed = [...round.scoredSet].filter((version) => build.practice.has(version)).length;
     const shell = calls.filter(({ tool }) => tool === "bash").length;
+    // The comparison is made against the reference harness, which need not be the one the session
+    // started from. A report written before 2026-10-09 names none: it compared with its parent.
+    const reference = text(compared?.own.old) || parent;
     const lostBefore = new Set(
       round.scoring
-        .filter((solve) => solve.harness === parent && solve.outcome === "fail")
+        .filter((solve) => solve.harness === reference && solve.outcome === "fail")
         .map((solve) => solve.version),
     );
     const quickWins = round.scoring.filter(
       (solve) =>
-        solve.harness !== parent &&
+        solve.harness === child &&
         solve.outcome === "pass" &&
         lostBefore.has(solve.version) &&
         solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE &&
@@ -727,7 +720,7 @@ function harnessTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "WIN AT A SMALL WALL SHARE",
-              `${session}: ${String(quickWins)} passed solves of tasks the parent failed, in few calls`,
+              `${session}: ${String(quickWins)} passed solves of tasks the reference harness failed, in few calls`,
             ),
           ]
         : []),
@@ -799,7 +792,14 @@ function comparisonTriggers(log: Index): Trigger[] {
           ]
         : []),
       ...(last.capped === true
-        ? [fired("CUT BY ITS CAP", `${session}: the dollar cap ended it before it was read`)]
+        ? [
+            fired(
+              "CUT BY ITS CAP",
+              scored === null
+                ? `${session}: the dollar cap ended it before it was read`
+                : `${session}: the dollar cap ended the baseline's solves; its test stands, unread against the baseline`,
+            ),
+          ]
         : []),
       ...(scored !== null && tasks > 0 && level > 0 && fragile
         ? [
@@ -822,7 +822,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "BASELINE UNREAD",
-              `${session}: its test clears its level and the baseline was not solved for it`,
+              `${session}: its test clears its level and the baseline has not its solves on every tallied task`,
             ),
           ]
         : []),
@@ -839,7 +839,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${count(noise.p) <= level ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${Math.min(signP(count(noise.wins), count(noise.losses)), signP(count(noise.losses), count(noise.wins))) <= level ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];
@@ -917,14 +917,14 @@ function solveTriggers(log: Index): Trigger[] {
     at - (times[index - 1] ?? at) > SILENCE_MINUTES * 60_000 ? [index] : [],
   );
   const spend = spendOf(log);
-  // Non-results by harness in each round: a side whose bad solves are run again is favoured.
-  const rerun = log.builds.flatMap((build) => {
-    const window = non.filter((solve) => solve.index > build.from && solve.index < build.until);
-    const under = window.filter((solve) => solve.harness === build.parent).length;
-    return window.length === 0
+  // Non-results by harness in each comparison: a side whose bad solves are run again is favoured.
+  const rerun = log.compared.flatMap(({ session, own, scoring }) => {
+    const mine = scoring.filter((solve) => solve.outcome === "non-result");
+    const under = mine.filter((solve) => solve.harness === own.old).length;
+    return mine.length === 0
       ? []
       : [
-          `${build.session}: ${String(under)} under the parent, ${String(window.length - under)} under the session's states`,
+          `${session}: ${String(under)} under the reference harness, ${String(mine.length - under)} under the others`,
         ];
   });
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);

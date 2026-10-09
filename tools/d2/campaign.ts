@@ -185,12 +185,14 @@ export async function openCampaign(args: CampaignArgs) {
     solverTools: harness.digest,
   });
   let solves = 0;
-  /** One live solve of a task under a harness, by a solver, its condition recorded first. */
+  /** One live solve of a task under a harness, by a solver, its condition recorded first. A solve
+   *  made for a comparison names it, and is counted by that comparison alone. */
   const solveOnce = (
     task: TaskPackage,
     harness: Kept,
     by: Solver,
     kill: AbortSignal | undefined,
+    comparison?: string,
   ): Promise<Practised> => {
     solves += 1;
     return practised({
@@ -209,6 +211,7 @@ export async function openCampaign(args: CampaignArgs) {
       log,
       repoRoot: REPO,
       ...keyIfDefined("kill", kill),
+      ...keyIfDefined("comparison", comparison),
     });
   };
   /** The two reviewers on one reader. */

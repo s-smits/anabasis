@@ -138,7 +138,9 @@ const SAID: Partial<
     if (settled !== null) {
       return `◆ settled by hand as ${word(data.reading)}: ${word(settled.labelled)} labelled, ${word(settled.defects)} a check defect`;
     }
-    if (data.capped === true) return "⚠ reported not-scored: its dollar cap cut it short";
+    if (data.capped === true) {
+      return `⚠ reported ${word(data.reading)}: its dollar cap cut ${asRecord(data.scored) === null ? "it short" : "the baseline's solves short, and its test stands"}`;
+    }
     const aside = Array.isArray(data.aside) ? data.aside.length : 0;
     if (aside > 0) {
       return `⚠ reported ${word(data.reading)}, with ${String(aside)} task(s) set aside on rejections no person has settled`;
@@ -153,13 +155,23 @@ function lastStart(log: readonly LogEvent[]): number {
   return log.findLastIndex(({ kind }) => STARTS.has(kind));
 }
 
+/** Where the last work of a log begins: the last thing it started, or its last solve where that
+ *  is later. A comparison gone on from its log writes no second start, so the solves it makes
+ *  after another comparison's report are what says it has not reported. */
+function lastWork(log: readonly LogEvent[]): number {
+  return Math.max(
+    lastStart(log),
+    log.findLastIndex(({ kind }) => kind === "solve.started"),
+  );
+}
+
 /** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A
- *  report counts when it follows the last start: a checkpoint solving after an earlier
+ *  report counts when it follows the last work: a checkpoint solving after an earlier
  *  comparison's report has not reported. */
 function stage(log: readonly LogEvent[], solving: boolean, open: boolean): string {
   const from = Math.max(lastStart(log), 0);
   const since = log.slice(from);
-  const report = since.findLast(({ kind }) => kind === REPORTED);
+  const report = log.slice(Math.max(lastWork(log), 0)).findLast(({ kind }) => kind === REPORTED);
   if (report !== undefined) return `reported ${word(report.data.reading)}`;
   if (!open) return "closed";
   // Inside a session when the last thing started is one, and it has not finished.
@@ -224,10 +236,10 @@ export function pulse(
   // A run's end is that of the last thing it started: an Examiner session writes no report, and
   // the second on exam-1 (2026-10-08) ended whole and was said to be gone before one. A checkpoint
   // starts no session, so its own start is where its report is looked for.
-  const from = lastStart(log);
-  const end = log[from]?.kind === "exam.started" ? "exam.finished" : run.end;
+  const end = log[lastStart(log)]?.kind === "exam.started" ? "exam.finished" : run.end;
   const ended =
-    count(log.slice(Math.max(from, 0)), end) > 0 && solves.every(({ finished }) => finished !== null);
+    count(log.slice(Math.max(lastWork(log), 0)), end) > 0 &&
+    solves.every(({ finished }) => finished !== null);
   if (before?.open === true && !open && !ended) lines.push(`⚠ the process is gone before ${end}`);
   // A comparison starts each task under two harnesses, so a line may come twice.
   const told = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>

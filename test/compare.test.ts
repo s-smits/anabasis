@@ -17,6 +17,7 @@ const pairs = (wins: number, losses: number, ties: number) => [
 /** What a solve used, where a case names only some of it. */
 const used = (turns: number | null, cpu: number | null = null, seconds: number | null = null) => ({
   turns,
+  prompts: null,
   cpu,
   seconds,
   billed: null,
@@ -94,6 +95,27 @@ describe("the same solves at a shorter budget", () => {
     expect(within(timed, { turns: 30, cpu: 320 })[0]).toMatchObject({ old: [F, F], fresh: [P, F] });
     expect(within(timed, { seconds: 1 })[0]).toMatchObject({ old: [P, P], fresh: [P, P] });
     expect(within([{ task: "c", old: [P], fresh: [P] }], { turns: 1 })[0]).toMatchObject({ old: [P] });
+    // The prompts a solver was given are a unit of their own: one prompt may take many turns.
+    const prompted = [
+      {
+        task: "p",
+        old: [P, P],
+        fresh: [P, P],
+        used: {
+          old: [
+            { ...used(40), prompts: 1 },
+            { ...used(9), prompts: 6 },
+          ],
+          fresh: [
+            { ...used(30), prompts: 2 },
+            { ...used(8), prompts: 3 },
+          ],
+        },
+      },
+    ];
+    expect(within(prompted, { prompts: 3 })[0]).toMatchObject({ old: [P, F], fresh: [P, P] });
+    expect(within(prompted, { turns: 12 })[0]).toMatchObject({ old: [F, P], fresh: [F, P] });
+    expect(spread(prompted).prompts).toEqual({ tasks: 2, median: (1.5 + 6) / 2, most: 6 });
   });
 
   it("says how far the use of a unit moved between repeated solves of one harness on one task", () => {
@@ -150,18 +172,20 @@ describe("the pairs a comparison reads from the log", () => {
     event("task.gate", { version, gate: 1, outcome: "passed" }),
   ];
   let solves = 0;
-  /** One solve of `condition`'s task, recorded as the runner records one. */
+  /** One solve of `condition`'s task, recorded as the runner records one, for comparison `c-1`
+   *  unless `spent` names another. */
   const solve = (condition: Condition, outcome: "pass" | "fail" | "non-result", spent: JsonObject = {}) => {
     solves += 1;
     const [id, name] = [conditionId(condition), `s-${String(solves)}`];
+    const { comparison = "c-1", ...end } = spent;
     return [
       event("condition.recorded", { id, condition: requireJsonValue(condition) }),
-      event("solve.started", { solve: name, condition: id, task: "t" }),
-      event("solve.finished", { solve: name, ending: { outcome }, ...spent }),
+      event("solve.started", { solve: name, condition: id, task: "t", comparison }),
+      event("solve.finished", { solve: name, ending: { outcome }, ...end }),
     ];
   };
   const fresh: Condition = { ...base, harness: "new", solverTools: "new" };
-  const sides = { old: "old", fresh: "new", setting: settingId(base), since: 0 };
+  const sides = { old: "old", fresh: "new", setting: settingId(base), comparison: "c-1" };
   const held = [...heldOut("v0"), ...heldOut("v1")];
 
   it("names the fields two conditions differ in", () => {
@@ -172,7 +196,13 @@ describe("the pairs a comparison reads from the log", () => {
   it("counts every pass and fail of a held-out task under either harness, with what each used", () => {
     const log = [
       ...held,
-      ...solve(base, "pass", { turns: 20, seconds: 600, cpu: { seconds: 90, unmeasured: 0 }, billed: 6.5 }),
+      ...solve(base, "pass", {
+        turns: 20,
+        prompts: 2,
+        seconds: 600,
+        cpu: { seconds: 90, unmeasured: 0 },
+        billed: 6.5,
+      }),
       ...solve(fresh, "non-result", { seconds: 60 }),
       ...solve(fresh, "pass", { turns: 9, seconds: 300 }),
       ...solve({ ...fresh, side: "strong" }, "pass"),
@@ -183,7 +213,7 @@ describe("the pairs a comparison reads from the log", () => {
       // A third harness's solve of the task is no side of this comparison.
       ...solve({ ...base, harness: "baseline", solverTools: "baseline" }, "fail"),
     ];
-    const none = { turns: null, cpu: null, seconds: null, billed: null };
+    const none = { turns: null, prompts: null, cpu: null, seconds: null, billed: null };
     const counted = pairsOf(log, ["v1", "v0"], sides);
     // Each counted solve is named: the non-result and the stronger side's solve, s-2 and s-4, are
     // not among them, and neither is the baseline's.
@@ -203,7 +233,7 @@ describe("the pairs a comparison reads from the log", () => {
           solves: { old: ["s-1", "s-5"], fresh: ["s-3", "s-6"] },
           used: {
             old: [
-              { turns: 20, cpu: 90, seconds: 600, billed: 6.5 },
+              { turns: 20, prompts: 2, cpu: 90, seconds: 600, billed: 6.5 },
               { ...none, seconds: 900 },
             ],
             fresh: [{ ...none, turns: 9, seconds: 300 }, none],
@@ -237,13 +267,26 @@ describe("the pairs a comparison reads from the log", () => {
     expect(settingId(elsewhere)).toBe(settingId(base));
   });
 
-  it("counts no solve started before the comparison began: both sides are solved afresh", () => {
-    const earlier = [...held, ...solve(base, "fail"), ...solve(fresh, "pass")];
-    const log = [...earlier, ...solve(base, "pass"), ...solve(fresh, "fail")];
-    expect(pairsOf(log, ["v1"], sides).pairs[0]).toMatchObject({ old: [F, P], fresh: [P, F] });
-    expect(pairsOf(log, ["v1"], { ...sides, since: earlier.length }).pairs[0]).toMatchObject({
-      old: [P],
-      fresh: [F],
+  it("counts the solves that name the comparison and no other: both sides are solved afresh", () => {
+    // An earlier comparison, a practice solve that names none, and a later comparison's solves
+    // made while this one was stopped: none of them is a solve of `c-1`.
+    const log = [
+      ...held,
+      ...solve(base, "fail", { comparison: "c-0" }),
+      ...solve(fresh, "pass", { comparison: "c-0" }),
+      ...solve(base, "pass"),
+      ...solve(fresh, "pass", { comparison: null }),
+      ...solve(base, "fail", { comparison: "c-2" }),
+      ...solve(fresh, "fail"),
+    ];
+    expect(pairsOf(log, ["v1"], sides).pairs[0]).toMatchObject({ old: [P], fresh: [F] });
+    expect(pairsOf(log, ["v1"], { ...sides, comparison: "c-0" }).pairs[0]).toMatchObject({
+      old: [F],
+      fresh: [P],
+    });
+    expect(pairsOf(log, ["v1"], { ...sides, comparison: "c-2" }).pairs[0]).toMatchObject({
+      old: [F],
+      fresh: [],
     });
   });
 

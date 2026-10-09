@@ -33,8 +33,8 @@ the event kinds, solve ids and counts the report cites: a report is a lead and n
 1. **Whether the reading may be believed.** One row per `comparison.reported`, four links, each
    `holds`, `does not hold` or `undeterminable`, with the event kind and the count it rests on:
    (a) the exam measured: the checker was frozen and read, and the refusals that entered the tally
-   read sound (lanes 1 to 6); (b) the tasks bracketed: the scored set and the anchor were drawn,
-   screened and admitted as the rules say (lanes 7 to 12 and 21); (c) the pair differed in the
+   read sound (lanes 1 to 6); (b) the tasks bracketed: the scored set was held out, fixed before
+   the comparison's first solve and chosen by no result (lanes 7 to 12 and 21); (c) the pair differed in the
    harness alone, and the harness could not know the exam (lanes 13, 18 and 20); (d) the reading
    follows from the pairs at their number (lanes 22 to 24). Then one sentence a row: believed as
    written, believed with a named limit, or not believed.

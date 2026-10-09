@@ -47,7 +47,15 @@ import type { TaskPackage } from "#src/kernel/task.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { awaitingLines, baseline, keptAs, openCampaign, stayAwake } from "./campaign.ts";
-import { budgetsNamed, capNamed, COMPARISON_OPTIONS, ROUND_OPTIONS, type Seated, solved } from "./round.ts";
+import {
+  budgetsNamed,
+  capNamed,
+  COMPARISON_OPTIONS,
+  ROUND_OPTIONS,
+  type Seated,
+  solved,
+  targetNamed,
+} from "./round.ts";
 import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 const OPTIONS = {
@@ -82,6 +90,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   // Read before the campaign is opened: a paid comparison with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
   const budgets = budgetsNamed(values.budget);
+  const target = targetNamed(values.target);
   const setting = settingNamed(values);
   const campaign = await openCampaign({ root, sweep, cycle, bundle, name, ...setting });
   const packages = campaign.packages();
@@ -120,7 +129,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     baseline: await baseline(campaign),
     tasks:
       values.tasks === undefined
-        ? scoredSet(events, Number(values.target), contractHash(campaign.contract))
+        ? scoredSet(events, target, contractHash(campaign.contract))
         : named(values.tasks),
     solves: Number(values.solves),
     level: Number(values.level),
@@ -129,7 +138,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     budgets,
     cap,
     concurrency: setting.limits.concurrency,
-    solve: (version, dir, digest, kill) => seats.solve(packageOf(version), { dir, digest }, kill),
+    solve: (version, harness, comparison, kill) => seats.solve(packageOf(version), harness, kill, comparison),
     setting: seats.setting,
     referee:
       reviewers === null

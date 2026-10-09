@@ -12,7 +12,9 @@
  *
  * Each task a session wrote that the old log does not hold as refused or disputed is proposed
  * here under its own id and put to the gate, the shape of its package under this campaign's
- * contract and checks (`src/kernel/task.ts`). A task that passes is a held-out task here. Until
+ * contract and checks (`src/kernel/task.ts`). A task that passes is a held-out task here, unless
+ * the old campaign had released it for practice: a Builder has seen it, and a harness it built may
+ * be compared here, so it is released here as well and never scored. Until
  * 2026-10-09 a carried task also needed the answer its stronger solve was accepted on and its
  * three controls, both from the old log; neither exists now, so a task carries on its shape alone.
  *
@@ -69,14 +71,18 @@ async function main(): Promise<void> {
     known.set(carried, "held");
     const gated = packageGate(contract, packaged);
     append(log, "task.gate", { version: carried, gate: 1, ...gated });
-    if (gated.outcome === "passed") return ["held out"];
+    if (gated.outcome === "passed") {
+      if (state !== "released") return ["held out"];
+      append(log, "task.state", { version: carried, state: "released" });
+      return ["released"];
+    }
     append(log, "task.state", { version: carried, state: "refused" });
     console.log(`  ${taskId}\trefused: ${gated.reason}`);
     return ["refused"];
   });
   const counts = countBy(words, (word) => word);
   console.log(
-    `${String(words.length)} tasks a session wrote: ${String(counts["held out"] ?? 0)} held out here, ${String(counts.refused ?? 0)} refused, ${String(counts["already there"] ?? 0)} already there`,
+    `${String(words.length)} tasks a session wrote: ${String(counts["held out"] ?? 0)} held out here, ${String(counts.released ?? 0)} released for practice as they were, ${String(counts.refused ?? 0)} refused, ${String(counts["already there"] ?? 0)} already there`,
   );
 }
 

@@ -274,7 +274,15 @@ function draftTool(desk: Desk): AgentTool {
       "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
     parameters: Type.Object({
       domain: Type.String({ minLength: 1, description: "The domain, in a few words." }),
-      scope: Type.String({ minLength: 1, description: "What a task of this domain may ask." }),
+      // What a size fixed here costs is said where the scope is written. The second exam drafted
+      // from a prompt (2026-10-09) held every task to six rows and six columns, which its field
+      // does not: the starter then answered 24 of 24 solves at the full limit whatever was
+      // written, and the harness that read a step listed every candidate of a task that small.
+      scope: Type.String({
+        minLength: 1,
+        description:
+          "What a task of this domain may ask. It bounds every task written later, so a size it fixes for a task is the ceiling on how hard one can be made.",
+      }),
       conventions: Type.String({
         description: "What a practitioner takes as given: units, rounding, notation.",
       }),

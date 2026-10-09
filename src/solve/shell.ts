@@ -5,6 +5,10 @@
  *
  * One departure: v2 has no destructive-command guard, so the four rule sentences that described its
  * refusals are left out. In the sweep it refused 83 calls; here those commands run.
+ *
+ * One sentence is new. Every command here ends what it started (`runWalled`), and until the shell
+ * said so, a solver that left three searches in the background slept ten minutes on their empty
+ * output; a third of one round's solves left a job behind that way (2026-10-09).
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -46,10 +50,11 @@ const WALLS =
 /** dcg-rules.ts:53-60 less its four guard sentences ("Refused: rm -r outside…", "Delete a tree
  *  with rm -rf…", "Write with > to $HOME/<name>…", "A refused command runs nothing…"): with no
  *  guard here they would tell the solver about refusals that never happen. */
-const SHELL_RULES = [
+export const SHELL_RULES = [
   "Keep scripts and results in $HOME; do not scan the filesystem.",
   "A command has a default time limit; pass timeout for a long build, never for a search.",
-];
+  "Nothing a command starts runs on after it returns: wait for a background job in the command that started it.",
+].join(" ");
 
 /** What the host would have allowed, appended to a command its own wall cut: time left to ask
  *  for, an ask above the maximum, or the maximum already in hand (built-bash.ts:82-96). v1's text
@@ -112,7 +117,7 @@ export function shellDescription(toolTree: string | null, publicResourceFiles: n
       ? ""
       : ` and this domain's public rules under public/resources/ (${plural(publicResourceFiles, "file")})`;
   const publicFolder = ` Your home directory already holds this task as public/task.json${resources}.`;
-  return `${BASE_DESCRIPTION}${SCRATCH_FOLDER}${WALLS}${publicFolder}${installedPrograms(toolTree)} ${SHELL_RULES.join(" ")}`;
+  return `${BASE_DESCRIPTION}${SCRATCH_FOLDER}${WALLS}${publicFolder}${installedPrograms(toolTree)} ${SHELL_RULES}`;
 }
 
 /**

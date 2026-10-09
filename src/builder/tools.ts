@@ -61,7 +61,7 @@ import { text, tool } from "../solve/answer.ts";
 import { type CommandWall, runWalled } from "../solve/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
 import { refuseOtherPresets } from "../solve/run.ts";
-import { shellTool } from "../solve/shell.ts";
+import { SHELL_RULES, shellTool } from "../solve/shell.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
 import { SHELL_WALLS } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
@@ -487,7 +487,7 @@ export function walledTools(bench: Bench, wall: CommandWall): AgentTool[] {
       (await harnessTools(harness, sample.task, wall)).map(({ tool: listed }) => listed.name);
   }
   return [
-    { ...shellTool(wall, 0), description: `${createBashTool("/").description}${SHELL_WALLS}` },
+    { ...shellTool(wall, 0), description: `${createBashTool("/").description}${SHELL_WALLS} ${SHELL_RULES}` },
     writeTool(wall),
     checkTool(bench),
   ];

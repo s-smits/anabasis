@@ -26,6 +26,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -496,6 +497,13 @@ describe("a Builder session", () => {
     // not copied again.
     const trees = readdirSync(s.request.states).filter((name) => name.startsWith("tree-"));
     expect(trees).toHaveLength(2);
+    // A state goes where its campaign's folder goes, its tree beside it. Linked by the tree's whole
+    // path, one moved with its campaign opened with no tree and under another digest, and a
+    // comparison paid for two solves of that harness before it stopped (2026-10-09).
+    const moved = `${s.request.states}-moved`;
+    renameSync(s.request.states, moved);
+    const reopened = await openHarness(join(moved, s.ran[1]?.digest ?? ""));
+    expect(reopened.digest).toBe(s.ran[1]?.digest ?? "");
   });
 
   it("ends when a practice solve could not be run, and does not show the Builder why", async () => {

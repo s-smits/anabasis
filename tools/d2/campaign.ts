@@ -290,7 +290,8 @@ export async function starter(campaign: { readonly states: string }): Promise<Ke
  * the starter while none has; or the whole digest of one a session froze, which is the name of its
  * folder under the campaign's `states/`. Any other name is answered with the ones there are: on
  * 2026-10-08 a digest cut to its first eight characters, as every reader prints one, ended a
- * simulated round in a bare `ENOENT`.
+ * simulated round in a bare `ENOENT`. A state that opens as another harness is refused here: one
+ * that lost its tool tree when its campaign was moved had two solves paid for under its name.
  */
 export async function keptAs(campaign: Keeping, flag: string, asked: string): Promise<Kept> {
   const built = asked === "latest" ? latestBuilt(read(campaign.log)) : null;
@@ -307,7 +308,9 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
         : `${flag} ${asked} is no harness this campaign keeps. It takes one of the digests under ${campaign.states}, whole: ${kept.join(", ")}.${begun.length === 1 ? ` ${asked} begins ${String(begun[0])}.` : ""} ${named}`,
     );
   }
-  return { dir: join(campaign.states, digest), digest };
+  const dir = join(campaign.states, digest);
+  if ((await openHarness(dir)).digest === digest) return { dir, digest };
+  throw new Error(`${dir} no longer opens as the harness it is kept as`);
 }
 
 /**

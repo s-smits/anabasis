@@ -244,6 +244,12 @@ describe("a campaign", () => {
     expect(await keptAs(campaign, "--reference", digest)).toEqual(built);
     // The starter is named by its digest too, as any kept harness is.
     expect(await keptAs(campaign, "--parent", least.digest)).toEqual(least);
+    // A kept state that has changed is no longer the harness its name says, and is refused before
+    // a solve is paid for under that name.
+    writeFileSync(join(built.dir, "agent", "BUILT_AGENTS.md"), "Add first.\n");
+    await expect(keptAs(campaign, "--parent", "latest")).rejects.toThrow(
+      `${built.dir} no longer opens as the harness it is kept as`,
+    );
   });
 
   it("says which harnesses a campaign keeps when --parent names none of them", async () => {

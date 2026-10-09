@@ -51,7 +51,7 @@ import {
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
-import { dirname, join, resolve } from "../meta/path.ts";
+import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
@@ -207,7 +207,8 @@ async function frozen(bench: Bench): Promise<Snapshot> {
     if (!lstatSync(dir).isDirectory()) throw new Error("harness/ is not a directory");
     refuseNamingHome(dir, bench.home, "harness");
     const tree = keptTree(bench);
-    if (tree !== null) symlinkSync(tree, join(dir, ".toolchain"));
+    // By the tree's name beside the state, so both go where the campaign's folder goes.
+    if (tree !== null) symlinkSync(join("..", basename(tree)), join(dir, ".toolchain"));
     const harness = await openHarness(dir);
     refuseOtherPresets(harness);
     return { dir, harness, listed: (await bench.lists?.(harness)) ?? null };

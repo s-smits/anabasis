@@ -278,7 +278,7 @@ describe("a campaign run by its log", () => {
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, strayed),
     };
-    const next = await harnessBuilder([...flags, "--moves", "6"], seats);
+    const next = await harnessBuilder([...flags, "--moves", "8"], seats);
     expect(
       of(name, "campaign.move").map(({ move, session, modelTurns }) => [move, session ?? modelTurns ?? null]),
     ).toEqual([
@@ -288,10 +288,12 @@ describe("a campaign run by its log", () => {
       ["compare", "g-1"],
       ["budget", 1],
       ["compare", "g-2"],
+      ["budget", 4],
+      ["compare", "g-3"],
     ]);
     // The first comparison ran at the full limit and was read at each shorter budget of the ladder:
     // the reference answered every task at eight turns and at four, and none at one.
-    const [first, second] = of(name, "comparison.reported");
+    const [first, second, third] = of(name, "comparison.reported");
     expect(first).toMatchObject({
       reading: "no-step",
       valid: { old: [0, 5] },
@@ -301,9 +303,12 @@ describe("a campaign run by its log", () => {
       ],
     });
     // The rule took one turn, the setting was recorded again, and the second comparison ran under it.
-    expect(of(name, "campaign.setting").map(({ modelTurns }) => modelTurns)).toEqual([8, 1]);
     expect(second).toMatchObject({ reading: "no-step", valid: { old: [5, 0], fresh: [5, 0] }, budgets: [] });
-    // At one turn nobody answers, and at four the first reading left no room: the tasks have to change.
+    // At one turn nobody answers, and at four the first reading left no room: no budget of the
+    // ladder leaves room. The campaign stands at four turns, where a solver can answer, and its
+    // comparison there shows the same: the tasks have to change.
+    expect(of(name, "campaign.setting").map(({ modelTurns }) => modelTurns)).toEqual([8, 1, 4]);
+    expect(third).toMatchObject({ reading: "no-step", valid: { old: [0, 5], fresh: [0, 5] } });
     expect(next).toMatchObject({ move: "examine", room: true });
     // What strayed from its script is the second comparison alone: each of its solves, scripted to
     // answer in two turns, was ended by the budget of one.

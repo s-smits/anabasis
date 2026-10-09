@@ -494,9 +494,16 @@ harness is the one to promote (`unpromoted` says why another is not). No step wi
 Builder to build again. A comparison without room changes the budget before the tasks: the budget
 rule takes the longest budget, of the one the comparison ran under and the shorter ones it was
 read at (the ladder: by default a half, a quarter and an eighth of the full limit), at which the
-reference harness was valid on at most half its solves. Where no budget leaves room, the Examiner
-is asked for other tasks, and after three such sessions in a row the campaign ends `no-room`.
-The half, and the two shares of `roomOf`, are the plan's proposal and the operator's to set.
+reference harness was valid on at most half its solves. A reading at a shorter budget is of a
+solver that was told the longer one, and understates a solver told the shorter: on 9 October the
+starter answered 0 of 10 solves read at two turns, and 10 of 10 once it was told two. So the
+rule's budget is a place to look, and the comparison made under it is what counts. Where that
+one leaves neither harness an answer, the campaign goes to the next longer budget, and where no
+budget leaves room it stands at the shortest that leaves the reference its answers and has the
+Examiner write other tasks. A campaign returns to a budget, and what it read there still stands
+(`under`): no comparison is made twice for one answer. It ends `no-room` after more than three
+comparisons of one harness without room, or three Examiner sessions in a row that held out no
+task. The half, and the two shares of `roomOf`, are the plan's proposal and the operator's to set.
 
 ## 8. Rules
 

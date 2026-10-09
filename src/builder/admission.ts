@@ -55,7 +55,7 @@ import { awaitingLabel, type Cap, lastReports, latestBuilt, promoted, stopRule }
 import { sizeLines } from "../kernel/size.ts";
 import { ranUnder } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
-import { asRecord, isNumber } from "../meta/json-shape.ts";
+import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
@@ -139,19 +139,29 @@ const said = (rows: readonly (readonly [boolean, string])[]) =>
   rows.flatMap(([holds, text]) => (holds ? [text] : []));
 
 /** A log's supply for a comparison made against the harness `reference` names: `starter`,
- *  `promoted` for the campaign's reference harness, `latest`, or a digest. */
-export function supplyOf(events: readonly LogEvent[], reference = "promoted"): Supply {
+ *  `promoted` for the campaign's reference harness, `latest`, or a digest. `stood` names the
+ *  report the untied share is read from, where the caller knows which comparison stood under the
+ *  setting the next will run under, and null says none did (`decide.ts`): a campaign returns to a
+ *  budget, and the log's last solves are then another's. */
+export function supplyOf(
+  events: readonly LogEvent[],
+  reference = "promoted",
+  stood?: JsonObject | null,
+): Supply {
   const sets = taskSets(events);
   const waiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
   const solved = ranUnder(events).findLast(({ under }) => under.side === "test")?.under;
   const setting = solved === undefined ? null : settingId(solved);
-  const last = lastReports(events).findLast(
-    ({ data }) =>
-      Array.isArray(data.versions) &&
-      data.versions.length > 0 &&
-      asRecord(data.scored) !== null &&
-      data.setting === setting,
-  )?.data;
+  const last =
+    stood === undefined
+      ? lastReports(events).findLast(
+          ({ data }) =>
+            Array.isArray(data.versions) &&
+            data.versions.length > 0 &&
+            asRecord(data.scored) !== null &&
+            data.setting === setting,
+        )?.data
+      : (stood ?? undefined);
   const tally = asRecord(last?.scored);
   const versions = Array.isArray(last?.versions) ? last.versions : [];
   // A task the harness to be compared with was valid on in every solve there can only tie again.

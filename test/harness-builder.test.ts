@@ -3,7 +3,7 @@
 // reading, the task sets, each Builder session's wall and freeze, each solve's wall and the
 // comparison are the real ones; the seats are scripts, which are paid nothing.
 
-import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { draftExam } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
@@ -239,6 +239,27 @@ describe("a campaign run by its log", () => {
     // is logged: here the session runs, and the log holds its move.
     expect(of(name, "campaign.move").at(-1)).toMatchObject({ move: "build", session: "b-4" });
     expect(strayed).toEqual([]);
+  });
+
+  it("ends on an exam whose checks wait for the operator's word, and prints the command that gives it with the pack's flags", async () => {
+    const name = `${STEM}-admit`;
+    const flags = seeded(name).slice(0, -2);
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+    };
+    const said = spyOn(console, "log");
+    const ending = await harnessBuilder(flags, seats);
+    const lines = said.mock.calls.map(([line]) => (isString(line) ? line : ""));
+    said.mockRestore();
+    expect(ending).toMatchObject({ move: "end", ending: "exam" });
+    // Run as printed, the command opens the campaign's pack: on 9 October the line named the
+    // campaign alone, and over a stored pack that run threw for want of the four flags.
+    const printed = lines
+      .find((line) => line.startsWith("to admit"))
+      ?.split(": bun tools/d2/harness-builder.ts ")[1];
+    expect(printed).toBe(`${flags.join(" ")} --admit check-product`);
+    const next = await harnessBuilder([...(printed ?? "").split(" "), "--dry-run"], seats);
+    expect(next).toMatchObject({ move: "accept" });
   });
 
   it("compares a step again, waits for the operator's word to promote it, and then has tasks written", async () => {

@@ -566,7 +566,7 @@ function admitsOf(values: Values): string[] {
  * exam drafted from a prompt always holds such checks, since no engine of the field is installed
  * for it, so a campaign from a prompt waits here once, for that word.
  */
-function examLines(events: readonly LogEvent[], name: string, ending: string): string[] {
+function examLines(events: readonly LogEvent[], values: Values, ending: string): string[] {
   if (ending !== "exam") return [];
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data;
   const faults = Array.isArray(reading?.faults) ? reading.faults.filter(isString) : [];
@@ -580,7 +580,9 @@ function examLines(events: readonly LogEvent[], name: string, ending: string): s
     ...(authored.length === 0
       ? []
       : [
-          `to admit the checks their author's own computation decides, which is the operator's word for each: bun tools/d2/harness-builder.ts --name ${name} --admit ${authored.join(",")}`,
+          // With the flags that name the campaign's pack, where it has one: until 2026-10-09 the
+          // line named the campaign alone, and run so over a stored pack the command threw.
+          `to admit the checks their author's own computation decides, which is the operator's word for each: bun tools/d2/harness-builder.ts ${packOf(values).join(" ")} --admit ${authored.join(",")}`,
         ]),
   ];
 }
@@ -667,7 +669,7 @@ export async function harnessBuilder(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
     if (decided.move === "end") {
-      for (const line of examLines(events, name, decided.ending)) console.log(line);
+      for (const line of examLines(events, values, decided.ending)) console.log(line);
       if (!values["dry-run"]) ended(log, events, decided);
       // What the campaign hands over, once it has an exam to open over (`close.ts`).
       if (!values["dry-run"] && values.handover !== undefined && campaign !== null) {

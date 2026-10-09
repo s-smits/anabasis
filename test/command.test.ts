@@ -17,7 +17,14 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { commandDirs, type CommandWall, runWalled, solveDirs } from "../src/solve/command.ts";
+import {
+  commandDirs,
+  type CommandWall,
+  heldSeconds,
+  reserveSeconds,
+  runWalled,
+  solveDirs,
+} from "../src/solve/command.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
@@ -35,6 +42,36 @@ async function run(wall: CommandWall, command: string, stage?: (work: string) =>
   });
   return { exitCode: result.exitCode, output };
 }
+
+describe("how long a command may run", () => {
+  const limits = { shellDefaultSeconds: 300, shellMaxSeconds: 900 };
+  /** A solve of `seconds` that has used `used` of them, read at time 1,000,000. */
+  const at = (seconds: number, used: number) =>
+    [{ limits, clock: { started: 1_000_000 - used * 1000, seconds } }, 1_000_000] as const;
+
+  it("is its own limit, and near the solve's end what is left before the reserve", () => {
+    // The reserve: a minute, and an eighth of a solve shorter than eight.
+    expect([7200, 480, 300, 60].map(reserveSeconds)).toEqual([60, 60, 37, 7]);
+    // Early in a solve a command has its own limits, as on a wall with no clock.
+    expect(heldSeconds(undefined, ...at(7200, 100))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
+    expect(heldSeconds(900, { limits })).toEqual({ asked: 900, seconds: 900, nearEnd: false });
+    expect(heldSeconds(900, { limits, clock: { started: null, seconds: 480 } })).toEqual({
+      asked: 900,
+      seconds: 900,
+      nearEnd: false,
+    });
+    // Eight minutes, three used: 300 left, 60 kept back, so 240 for a command that asked for more.
+    expect(heldSeconds(undefined, ...at(480, 180))).toEqual({ asked: 300, seconds: 240, nearEnd: true });
+    expect(heldSeconds(900, ...at(480, 180))).toEqual({ asked: 900, seconds: 240, nearEnd: true });
+    expect(heldSeconds(100, ...at(480, 180))).toEqual({ asked: 100, seconds: 240, nearEnd: true });
+    // A named timeout below the default is raised to it, and the solve's end still comes first.
+    expect(heldSeconds(undefined, ...at(480, 400))).toEqual({ asked: 300, seconds: 20, nearEnd: true });
+    // Inside the reserve, or with under five seconds before it, the limits stand: the wall cuts.
+    expect(heldSeconds(undefined, ...at(480, 417))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
+    expect(heldSeconds(undefined, ...at(480, 470))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
+    expect(heldSeconds(undefined, ...at(3, 0))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
+  });
+});
 
 describe("a command's own folders", () => {
   const full = () => {

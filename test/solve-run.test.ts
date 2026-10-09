@@ -246,7 +246,8 @@ describe.skipIf(!darwin)("a solve end to end", () => {
       ["submit", false],
     ]);
     expect(calls[0]?.text).toContain("found:1");
-    expect(calls[1]?.text).toBe("t-1 (fixture): 42");
+    // Every result ends with the solve time used, which is all the clock a solver has.
+    expect(calls[1]?.text).toMatch(/^t-1 \(fixture\): 42\n\[Solve time used: 0:\d\d of 10:00\]$/);
     expect(calls[2]?.text).toContain('"publicInput":{"base":7}');
     const [done] = finished();
     // Five turns of the model answered one prompt: the two are counted apart, and a budget read
@@ -311,7 +312,7 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     ]);
     expect(calls[0]?.text).toContain('"base": 7');
     expect(calls[1]?.text).toContain('"additionalProperties": false');
-    expect(calls[4]?.text).toMatch(/\/home$/);
+    expect(calls[4]?.text).toMatch(/\/home\n+\[Solve time used: 0:\d\d of 10:00\]$/);
     // The Starter adds nothing to pi: its four tools and submit, and pi's prompt with the host's part.
     expect(sent[0]).toContain("You are an expert coding assistant operating inside pi");
     expect(sent[0]).toContain("- submit: Send answer.json as your answer, which ends the task");
@@ -341,7 +342,7 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     // Each attempt's start names the comparison the solve was made for.
     expect(events().find(({ kind }) => kind === "solve.started")?.data.comparison).toBe("g0");
     expect(sent).toHaveLength(4);
-    expect(sent[0]).toContain("The case has 5 minutes of solve time. Nothing is submitted for you");
+    expect(sent[0]).toContain("The case has 5 minutes of solve time, and every tool result ends with");
     expect(sent[1]).not.toContain(NUDGE);
     expect(sent[2]).toContain(JSON.stringify(NUDGE));
   }, 120_000);
@@ -354,6 +355,23 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     const call = events().find(({ kind }) => kind === "solve.call");
     expect(call?.data).toMatchObject({ tool: "bash", isError: true });
     expect(call?.data.ms).toBeLessThan(15_000);
+  }, 120_000);
+
+  it.concurrent("cuts a command before the solve's end, so the solver can still answer", async () => {
+    // Forty seconds of solve, of which the last five are kept back: a command that asked for a
+    // minute is handed back with them in hand, and the answer written after it is judged.
+    const long = fauxAssistantMessage(
+      fauxToolCall("bash", { command: "echo began; sleep 50", timeout: 60 }),
+      toolUse,
+    );
+    const submit = fauxAssistantMessage(fauxToolCall("submit", {}), toolUse);
+    const { request, events } = setup([long, written, submit], { limits: { ...LIMITS, wallSeconds: 40 } });
+    expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
+    const [cut] = events().flatMap(({ kind, data }) => (kind === "solve.call" ? [data] : []));
+    expect(cut).toMatchObject({ tool: "bash", isError: true });
+    expect(cut?.text).toMatch(
+      /^began\n\n\nCommand timed out after 3\d seconds\n\nThe command was cut because the solve's time is nearly up, so that its result reaches you while you can still act on it\.\n\n\[Solve time used: 0:3\d of 0:40\]$/,
+    );
   }, 120_000);
 
   it.concurrent("ends no-answer when the model stops without submitting", async () => {

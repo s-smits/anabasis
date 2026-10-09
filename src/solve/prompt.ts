@@ -36,6 +36,7 @@ import { compareCodeUnits } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
 import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "./answer.ts";
+import { reserveSeconds } from "./command.ts";
 
 export interface PublicTask {
   readonly taskId: string;
@@ -80,7 +81,7 @@ function duty({ wallSeconds, resources, guide }: Told): string {
     "For source code or files, write complete working files, not fragments or descriptions.",
     `The published requirements are the public input, which public/task.json holds${rules}.`,
     `Your answer is the file ${ANSWER_FILE} in the working directory, as JSON in the format ${ANSWER_FORMAT_FILE} gives, and submit sends it.`,
-    `The case has ${String(Math.round(wallSeconds / 60))} minutes of solve time. Nothing is submitted for you when it runs out and nothing tells you how much is left: an answer you have not submitted by then is lost.`,
+    `The case has ${String(Math.round(wallSeconds / 60))} minutes of solve time, and every tool result ends with how much of it is used. Nothing is submitted for you when it runs out: an answer you have not submitted by then is lost.`,
     ...(guide === null
       ? []
       : [
@@ -91,7 +92,7 @@ function duty({ wallSeconds, resources, guide }: Told): string {
 
 /** What the command wall is, as facts: each one something a solver would otherwise find out by
  *  running into it. */
-function environment({ limits, programs }: Told): string {
+function environment({ limits, programs, wallSeconds }: Told): string {
   const volume =
     limits.diskBytes >= GIB
       ? `${String(Math.round((limits.diskBytes / GIB) * 10) / 10)} GiB`
@@ -104,7 +105,7 @@ function environment({ limits, programs }: Told): string {
     "Commands and the file tools can write the home directory, /tmp and $TMPDIR, which is fresh for each command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
     "Commands have network access, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
     `The home directory and $TMPDIR share one volume of ${volume}.`,
-    `A command runs for at most ${String(limits.shellDefaultSeconds)} seconds unless it names a longer timeout, and ${String(limits.shellMaxSeconds)} seconds is the longest it may name.`,
+    `A command runs for at most ${String(limits.shellDefaultSeconds)} seconds unless it names a longer timeout, and ${String(limits.shellMaxSeconds)} seconds is the longest it may name. One that would run into the last ${String(reserveSeconds(wallSeconds))} seconds of the solve time is cut there, so that its result still reaches you.`,
     "Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
     ...(programs.length === 0 ? [] : [`Programs this harness installed run by name: ${listed}.`]),
   ]

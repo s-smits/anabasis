@@ -36,7 +36,7 @@ import { existsSync, readdirSync, renameSync, rmSync, writeFileSync } from "../m
 import { join } from "../meta/path.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
-import { type CommandWall, type RunDirs, runWalled, shellSeconds } from "./command.ts";
+import { type CommandWall, heldSeconds, type RunDirs, runWalled } from "./command.ts";
 
 /** pi's coding tools, in the order pi lists them. */
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
@@ -57,6 +57,9 @@ const READ_MAX_BYTES = 16 * 1024 * 1024;
 const SNIFF_BYTES = 4100;
 const MISSING = 44;
 const DENIED = 45;
+/** What a command cut for the solve's end is told, in place of what its own limit would allow. */
+const NEAR_END =
+  "\n\nThe command was cut because the solve's time is nearly up, so that its result reaches you while you can still act on it.";
 /** The folder in the home a long output is handed into. */
 const LONG_OUTPUT = ".shell-output";
 
@@ -263,7 +266,8 @@ export function bashTool(wall: CommandWall): SolverTool {
           command: string;
           timeout?: number;
         };
-      const { asked, seconds } = shellSeconds(timeout, limits);
+      // The limits, and the solve's own end where that comes first (`heldSeconds`).
+      const { asked, seconds, nearEnd } = heldSeconds(timeout, wall);
       let cut = false;
       const shell = createBashToolDefinition(home, {
         ...options,
@@ -290,7 +294,8 @@ export function bashTool(wall: CommandWall): SolverTool {
           : result;
       } catch (error) {
         const said = await inHome(asError(error).message);
-        throw new Error(cut ? said + timeoutClause(asked, seconds, limits) : said, { cause: error });
+        const why = nearEnd ? NEAR_END : timeoutClause(asked, seconds, limits);
+        throw new Error(cut ? said + why : said, { cause: error });
       }
     },
   };

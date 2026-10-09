@@ -59,13 +59,13 @@ const DUTY =
 const ANSWER =
   "Your answer is the file answer.json in the working directory, as JSON in the format public/answer-format.json gives, and submit sends it.";
 const TIME =
-  "The case has 120 minutes of solve time. Nothing is submitted for you when it runs out and nothing tells you how much is left: an answer you have not submitted by then is lost.";
+  "The case has 120 minutes of solve time, and every tool result ends with how much of it is used. Nothing is submitted for you when it runs out: an answer you have not submitted by then is lost.";
 const ENVIRONMENT = [
   "- The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only answer.json is read as your answer, and only when you submit.",
   "- Commands and the file tools can write the home directory, /tmp and $TMPDIR, which is fresh for each command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
   "- Commands have network access, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
   "- The home directory and $TMPDIR share one volume of 2 GiB.",
-  "- A command runs for at most 300 seconds unless it names a longer timeout, and 900 seconds is the longest it may name.",
+  "- A command runs for at most 300 seconds unless it names a longer timeout, and 900 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there, so that its result still reaches you.",
   "- Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
 ];
 
@@ -153,7 +153,10 @@ describe("the solver's system prompt", () => {
     });
     expect(prompt).toContain("- The home directory and $TMPDIR share one volume of 64 MiB.");
     expect(prompt).toContain(
-      "- A command runs for at most 30 seconds unless it names a longer timeout, and 60 seconds is the longest it may name.",
+      "- A command runs for at most 30 seconds unless it names a longer timeout, and 60 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there,",
+    );
+    expect(systemPrompt({ ...TOLD, wallSeconds: 300 })).toContain(
+      "into the last 37 seconds of the solve time",
     );
     expect(prompt).toEndWith(
       "- Programs this harness installed run by name: pynite-python, python3, f2py.\n</environment>",

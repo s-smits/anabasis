@@ -61,7 +61,7 @@ import {
 } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "./answer.ts";
 import { codingTools, selectedCodingTools, type SolverTool, wallExec } from "./coding-tools.ts";
-import { type CommandWall, solveDirs } from "./command.ts";
+import { type CommandWall, type SolveClock, solveDirs, usedSeconds } from "./command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
 import { firstTurn, installedPrograms, NUDGE, seedHome, systemPrompt } from "./prompt.ts";
 
@@ -212,7 +212,8 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     const resources = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;
-    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, cpu };
+    const clock: SolveClock = { started: null, seconds: limits.wallSeconds };
+    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, cpu, clock };
     const defined = await solverTools(request, harness, commandWall, desk).catch(brokenHarness);
     const prompt = systemPrompt({
       tools: defined,
@@ -223,13 +224,14 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
       resources,
       programs: installedPrograms(harness.toolTree),
     });
-    const tools = wrapToolDefinitions(defined);
+    const tools = wrapToolDefinitions(defined.map((tool) => timed(tool, clock)));
     const system = createInitialSystemMessage(prompt, tools.map(toToolDeclaration));
     const models = request.models(join(dirs.host, "model"));
     const stream: StreamFn = (model, context, options) => models.streamSimple(model, context, options);
     const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
     prompts = 1;
     // The wall is the solver's time, so it starts with the first turn rather than the setup.
+    clock.started = performance.now();
     timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
     await runAgentLoop(
       [user(firstTurn(request.task))],
@@ -277,6 +279,36 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     wallEnded: wall.signal.aborted,
     moved: treeStamp(request.harness) !== before,
     homeBytes,
+  };
+}
+
+/** `m:ss`, as the solve's clock is told. */
+function clockText(seconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds));
+  return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+/**
+ * A solver's tool with the solve time used as the last line of whatever it returns, a result or an
+ * error. Until 2026-10-09 a solver had no clock and was told so. In the two live rounds of that
+ * day, five of the six practice solves that failed had submitted an answer the solver's own check
+ * had refused, stopping early or out of time, by the operator's account of them
+ * (`docs/transfer.md`). What a solver does with its time is its own to decide; this says what the
+ * time is.
+ */
+export function timed(tool: SolverTool, clock: SolveClock): SolverTool {
+  const line = () =>
+    `[Solve time used: ${clockText(usedSeconds(clock) ?? 0)} of ${clockText(clock.seconds)}]`;
+  return {
+    ...tool,
+    execute: async (...call) => {
+      try {
+        const result = await tool.execute(...call);
+        return { ...result, content: [...result.content, { type: "text", text: line() }] };
+      } catch (error) {
+        throw new Error(`${errorMessage(error)}\n\n${line()}`, { cause: error });
+      }
+    },
   };
 }
 

@@ -64,6 +64,15 @@ export interface CommandWall {
   readonly limits: ShellLimits;
   /** The CPU seconds of the solve's commands so far, and how many ended unmeasured. */
   readonly cpu: { seconds: number; unmeasured: number };
+  /** The solve's own time, which its commands are held to near its end (`heldSeconds`). A Builder's
+   *  wall has none: its session ends when its model's turn does. */
+  readonly clock?: SolveClock | undefined;
+}
+
+/** A solve's time: when its first turn started, null until it has, and how long the solve may be. */
+export interface SolveClock {
+  started: number | null;
+  readonly seconds: number;
 }
 
 /** A command's own two directories, for a caller that stages input files before it runs. */
@@ -92,6 +101,42 @@ const SHELL = createLocalBashOperations({ shellPath: "/bin/sh" });
 export function shellSeconds(timeout: number | undefined, limits: ShellLimits) {
   const asked = Math.max(1, Math.floor(timeout ?? limits.shellDefaultSeconds));
   return { asked, seconds: Math.min(Math.max(asked, limits.shellDefaultSeconds), limits.shellMaxSeconds) };
+}
+
+/** How long before a solve's end its commands are cut, so that a result still reaches the solver:
+ *  a minute, and an eighth of a solve shorter than eight. */
+export function reserveSeconds(wallSeconds: number): number {
+  return Math.min(60, Math.floor(wallSeconds / 8));
+}
+
+/** The seconds of its time a solve has used, or null where it has no clock or has not started. */
+export function usedSeconds(clock: SolveClock | undefined, now = performance.now()): number | null {
+  const started = clock?.started ?? null;
+  return started === null ? null : (now - started) / 1000;
+}
+
+/**
+ * How long a command that starts now may run: the condition's limits (`shellSeconds`), and no
+ * longer than the solve has left before its reserve. `nearEnd` says the solve's end set it.
+ *
+ * Until 2026-10-09 a command was held to its own limits alone, and one the solve's wall fell in
+ * took the solve with it: at a five-minute wall 12 of 46 Starter solves ended at it, 11 of them
+ * inside a command, with nothing sent. A command now returns while there is time to act on it. One started inside
+ * the reserve, or with under five seconds before it, is left to its own limits: the solver is told
+ * the time used with every result, and what it starts then is its own to judge.
+ */
+export function heldSeconds(
+  timeout: number | undefined,
+  { limits, clock }: Pick<CommandWall, "limits" | "clock">,
+  now = performance.now(),
+): { asked: number; seconds: number; nearEnd: boolean } {
+  const held = shellSeconds(timeout, limits);
+  const used = usedSeconds(clock, now);
+  if (clock === undefined || used === null) return { ...held, nearEnd: false };
+  const left = Math.floor(clock.seconds - used - reserveSeconds(clock.seconds));
+  return left >= 5 && left < held.seconds
+    ? { asked: held.asked, seconds: left, nearEnd: true }
+    : { ...held, nearEnd: false };
 }
 
 /** The directories of solve `id`, named, not yet made: the runner mounts the cap at `root`. */
@@ -153,7 +198,7 @@ export async function runWalled(
     return await SHELL.exec(`(\n${staged}\n)\ns=$?\ntimes > ${shellQuote(times)}\nexit $s`, cwd, {
       onData: options.onData,
       signal: options.signal,
-      timeout: shellSeconds(options.timeout, wall.limits).seconds,
+      timeout: heldSeconds(options.timeout, wall).seconds,
       env: policy.environment,
     });
   } finally {

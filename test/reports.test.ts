@@ -50,8 +50,8 @@ const SETTING = settingId(condition("any", "any"));
 
 let solves = 0;
 /** Solves of `task` under `harness` made for `comparison`, one an entry: true for a valid answer,
- *  false for a rejected one. */
-function solved(comparison: string, task: string, harness: string, valid: readonly boolean[]) {
+ *  false for a rejected one, and a fail's kind for a solve that ended so. */
+function solved(comparison: string, task: string, harness: string, valid: readonly (boolean | string)[]) {
   const ran = condition(task, harness);
   const id = conditionId(ran);
   return [
@@ -61,7 +61,14 @@ function solved(comparison: string, task: string, harness: string, valid: readon
       const solve = `s-${String(solves)}`;
       return [
         event("solve.started", { solve, condition: id, comparison }),
-        event("solve.finished", { solve, ending: { outcome: each ? "pass" : "fail" }, billed: 2 }),
+        event("solve.finished", {
+          solve,
+          ending:
+            each === true
+              ? { outcome: "pass" }
+              : { outcome: "fail", kind: each === false ? "rejected" : each },
+          billed: 2,
+        }),
       ];
     }),
   ];
@@ -334,8 +341,9 @@ describe("the outcome an Examiner hears of a task", () => {
 
 describe("the tasks that go to a person as possibly infeasible", () => {
   const terms = { old: "h1", solves: 2, setting: SETTING };
-  /** One more comparison of the two tasks: `hard` answered validly or not, `easy` always. */
-  const compared = (log: readonly LogEvent[], session: string, fresh: string, hard: boolean) => [
+  /** One more comparison of the two tasks: `hard` answered validly, rejected or ended as named,
+   *  `easy` always answered. */
+  const compared = (log: readonly LogEvent[], session: string, fresh: string, hard: boolean | string) => [
     ...log,
     ...solved(session, "hard", "h1", [F, F]),
     ...solved(session, "hard", fresh, [hard, F]),
@@ -347,14 +355,39 @@ describe("the tasks that go to a person as possibly infeasible", () => {
   const once = compared(start, "b-1", "h2", F);
   const twice = compared(once, "b-2", "h3", F);
 
-  it("are the ones no harness answered validly in two comparisons in a row", () => {
+  it("are the ones with no valid answer on record after two comparisons", () => {
     expect(awaitingLabel(once)).toEqual([]);
     expect(awaitingLabel(twice)).toEqual(["hard"]);
-    // A valid answer in the second comparison ends the run, and it starts again after it.
+  });
+
+  it("are never the ones some solve answered validly, in whatever comparison", () => {
+    // A valid answer in the second comparison shows the task feasible, for every comparison after.
     const valid = compared(once, "b-2", "h3", P);
     expect(awaitingLabel(valid)).toEqual([]);
-    expect(awaitingLabel(compared(valid, "b-3", "h4", F))).toEqual([]);
-    expect(awaitingLabel(compared(compared(valid, "b-3", "h4", F), "b-4", "h5", F))).toEqual(["hard"]);
+    expect(awaitingLabel(compared(compared(valid, "b-3", "h4", F), "b-4", "h5", F))).toEqual([]);
+    // And so does one made before, as at a longer limit, or after the two that gave none.
+    const before = compared(compared(compared(start, "b-0", "h0", P), "b-1", "h2", F), "b-2", "h3", F);
+    expect(awaitingLabel(before)).toEqual([]);
+    expect(awaitingLabel(compared(twice, "b-3", "h4", P))).toEqual([]);
+    // And one no reported comparison counts, as a solve made for a comparison that never reported.
+    expect(awaitingLabel([...twice, ...solved("g-9", "hard", "h9", [P])])).toEqual([]);
+  });
+
+  it("do not count a comparison that cut a solve of the task at a limit", () => {
+    for (const kind of ["wall-ended", "turns-ended", "context-ended"]) {
+      const cut = compared(compared(start, "b-1", "h2", kind), "b-2", "h3", kind);
+      expect(awaitingLabel(cut)).toEqual([]);
+      // One comparison that cut none is one, and the second such sends the task to a person.
+      expect(awaitingLabel(compared(cut, "b-3", "h4", F))).toEqual([]);
+      expect(awaitingLabel(compared(compared(cut, "b-3", "h4", F), "b-4", "h5", F))).toEqual(["hard"]);
+      // A cut comparison between the two takes nothing from the count.
+      const between = compared(compared(compared(start, "b-1", "h2", F), "b-2", "h3", kind), "b-3", "h4", F);
+      expect(awaitingLabel(between)).toEqual(["hard"]);
+    }
+    // A solve that gave up without an answer, or whose answer was rejected, was not cut.
+    expect(
+      awaitingLabel(compared(compared(start, "b-1", "h2", "no-answer"), "b-2", "h3", "no-answer")),
+    ).toEqual(["hard"]);
   });
 
   it("wait until a person keeps the task, which counts its comparisons anew, or refuses it", () => {

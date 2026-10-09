@@ -32,9 +32,9 @@
  * operator names other tasks, or has the check program read (`tools/c/accept.ts`). The verifier
  * runs behind its wall, so this part needs the host's sandbox.
  *
- * It is also where a person labels a task that went to them as possibly infeasible: one no harness
- * answered validly in two comparisons in a row, which is left out of the scored set until it is
- * labelled (`src/kernel/reports.ts`, `awaitingLabel`). `--keep <task id>` returns it to the set,
+ * It is also where a person labels a task that went to them as possibly infeasible: one with no
+ * valid answer on record after two comparisons that cut no solve of it at a limit, which is left
+ * out of the scored set until it is labelled (`src/kernel/reports.ts`, `awaitingLabel`). `--keep <task id>` returns it to the set,
  * and it is read again after two more comparisons without a valid answer. `--infeasible <task id>`
  * refuses it for good. Each may be given more than once, and each label is logged with the person's
  * `--note`.

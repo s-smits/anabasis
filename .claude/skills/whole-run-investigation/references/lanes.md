@@ -28,8 +28,9 @@ the pen apart, and each part has its own way of going wrong.
   comparison. The Referee and the Diagnoser advise it. It decides nothing about promotion: the
   reference harness is the one the campaign started with until the operator names another.
 - **A person** rules where no reviewer has: a rejection the Referee did not rule a true fail sets
-  its task aside until someone has labelled it, and a task no harness answered validly in two
-  comparisons in a row leaves the scored set until someone has read it.
+  its task aside until someone has labelled it, and a task with no valid answer on record, after
+  two comparisons that cut no solve of it at a limit, leaves the scored set until someone has
+  read it.
 
 No stronger solver holds a witness any more, and nothing selects a task by pass or fail. Until
 2026-10-09 a task met four more gates, was screened by two harnesses and scored beside an anchor
@@ -119,8 +120,9 @@ served model is the provider's word and nothing attests it.
 checker's campaign. Then by state: held out, released for practice, disputed, refused. The sets a
 round uses must be disjoint: a version both practised and measured is lane 18's finding and is
 settled here first. The row's last line counts the held-out tasks, which every comparison may
-score, and the practice tasks. A task no harness answered validly in two comparisons in a row is
-held out still and is left out of the scored set until a person labels it; lane 8 names those.
+score, and the practice tasks. A task with no valid answer on record after two comparisons that
+cut no solve of it at a limit is held out still and is left out of the scored set until a person
+labels it; lane 8 names those.
 
 **E. case partition.** For each side, count passes, fails by kind and non-results by kind from
 `solve.finished`, and the solves that started and never finished. A fail of kind `rejected` has a
@@ -280,8 +282,9 @@ Starts from `NO VALID ANSWER (lane 8)` and `AWAITING A LABEL (lane 8)`.
 The question is why a task has no valid answer under either harness: it is hard, it is wrongly
 checked, or it has no valid answer at all. No stronger solver proves a task possible now, so the
 exam can hold a task nobody can do, and it ties whatever the harnesses are. `NO VALID ANSWER`
-counts the scored tasks whose last comparison held none. `AWAITING A LABEL` names the ones two
-comparisons in a row left so: they are out of the scored set until a person labels each with
+counts the scored tasks whose last comparison held none. `AWAITING A LABEL` names the ones with
+no valid answer anywhere on record after two comparisons that cut no solve of them at a limit:
+they are out of the scored set until a person labels each with
 `tools/d2/prepare.ts`, `--keep` or `--infeasible`. Read each by how its solves ended. Solves that
 reached their limits measured the budget: compare what they used with what the valid solves of
 other tasks used. Rejected answers are the case with two readings, and the rulings on them say

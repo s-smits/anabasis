@@ -582,7 +582,7 @@ function taskTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "AWAITING A LABEL",
-            `${plural(awaiting.length, "task")} with no valid answer in two comparisons in a row, left out of the scored set until a person labels each: ${awaiting.map(short).join(" ")}`,
+            `${plural(awaiting.length, "task")} with no valid answer on record after two comparisons that cut no solve of it at a limit, left out of the scored set until a person labels each: ${awaiting.map(short).join(" ")}`,
           ),
         ]
       : []),

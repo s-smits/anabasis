@@ -356,8 +356,9 @@ async function programsOf(campaign: Keeping, source: Kept): Promise<Kept> {
 }
 
 /**
- * The held-out tasks a person has to read before they are scored again, in lines: the ones no
- * harness answered validly in two comparisons in a row (`awaitingLabel`). They are left out of the
+ * The held-out tasks a person has to read before they are scored again, in lines: the ones with no
+ * valid answer on record after two comparisons that cut no solve of them at a limit
+ * (`awaitingLabel`). They are left out of the
  * scored set until labelled. A command that compares prints them after its report, and
  * `prepare.ts` before one, which is also where they are labelled. None when there is none.
  */
@@ -370,7 +371,7 @@ export function awaitingLines(campaign: {
   const packages = campaign.packages();
   const named = awaiting.map((version) => packages.get(version)?.taskId ?? version.slice(0, 8));
   return [
-    `${plural(awaiting.length, "held-out task")} had no valid answer under either harness in two comparisons in a row, and ${awaiting.length === 1 ? "is" : "are"} left out of the scored set until a person has read ${awaiting.length === 1 ? "it" : "them"}: ${named.join(", ")}. A task may be hard, wrongly checked, or have no valid answer at all. Label each with tools/d2/prepare.ts: --keep <task id> returns it to the set, --infeasible <task id> refuses it`,
+    `${plural(awaiting.length, "held-out task")} ${awaiting.length === 1 ? "has" : "have"} no valid answer on record after two comparisons that cut no solve of ${awaiting.length === 1 ? "it" : "them"} at a limit, and ${awaiting.length === 1 ? "is" : "are"} left out of the scored set until a person has read ${awaiting.length === 1 ? "it" : "them"}: ${named.join(", ")}. A task may be hard, wrongly checked, or have no valid answer at all. Label each with tools/d2/prepare.ts: --keep <task id> returns it to the set, --infeasible <task id> refuses it`,
   ];
 }
 

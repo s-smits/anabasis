@@ -397,8 +397,8 @@ const NOTHING = {
  * The tasks a comparison scores: `target` of the held-out tasks a log holds, or all of them where
  * it holds fewer, drawn by the contract's hash and nothing else (`draw`). The hash is fixed before
  * any task exists, so no result chooses the set, and a task written since takes a place by its own
- * rank and moves no other's. A task no harness answered validly in two comparisons in a row is
- * left out until a person has labelled it (`awaitingLabel`).
+ * rank and moves no other's. A task with no valid answer on record, after two comparisons that cut
+ * no solve of it at a limit, is left out until a person has labelled it (`awaitingLabel`).
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string): string[] {
   const awaiting = new Set(awaitingLabel(events));

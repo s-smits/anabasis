@@ -39,8 +39,11 @@ export type Outcome = "won" | "tie" | "no-valid-answer" | "disputed";
 
 /** Checkpoints without a step at which the plan stops the campaign. */
 const STOP_AFTER = 3;
-/** Comparisons in a row without a valid answer after which a task goes to a person. */
+/** Comparisons without a valid answer after which a task with none on record goes to a person. */
 const UNSOLVED_RUN = 2;
+/** The ways a solve ends at a limit of its own: its time, its model turns or its context. Such an
+ *  ending says the budget was short, and nothing of whether the task has a valid answer. */
+const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
 const STEP = "step";
 const REPORTED = "comparison.reported";
 const BUILD_FINISHED = "build.finished";
@@ -172,16 +175,33 @@ export function unsolved({ old, fresh }: Paired): boolean {
 }
 
 /**
- * The tasks that go to a person as possibly infeasible: no harness gave a valid answer to them in
- * two comparisons in a row, by version (`docs/plan.md`, Phase 2). Any valid answer of a comparison
- * ends the run, also one outside its test: a task the starter answered as a third harness is no
- * infeasible task. A task with no valid answer ties whatever the harnesses are and costs its
- * solves at every comparison. It may be hard, it may be wrongly checked, or it may have no valid
- * answer at all, and only a person can tell the third: on an infeasible task every rejection is a
- * true fail, correctly, every time (the review of 2026-10-09, finding 10). So it leaves the scored
- * set until it is labelled (`tools/d2/prepare.ts`). A label that keeps it is a `task.state` event
- * that holds it once more, and the two comparisons are then counted from that label on; a label
- * that calls it infeasible refuses it, and a refused task is no held-out task.
+ * The tasks that go to a person as possibly infeasible, by version: no solve on record gave a valid
+ * answer to them, and two comparisons that gave their solves room gave none either
+ * (`docs/plan.md`, Phase 2). A task with no valid answer ties whatever the harnesses are and costs
+ * its solves at every comparison. It may be hard, it may be wrongly checked, or it may have no
+ * valid answer at all, and only a person can tell the third: on an infeasible task every rejection
+ * is a true fail, correctly, every time (the review of 2026-10-09, finding 10). So it leaves the
+ * scored set until it is labelled (`tools/d2/prepare.ts`).
+ *
+ * Two things keep a budget from sending a feasible task there, which the rule did until
+ * 2026-10-09. Under a five-minute wall three of buffer's tasks had no valid answer from either
+ * harness, and every solve of the same three had been valid at two hours; a second comparison at
+ * that wall would have taken them out of the scored set as possibly infeasible.
+ *
+ * - A valid answer anywhere on record settles the question for good: under any harness, in any
+ *   comparison or outside one, at any limits. Such a task is feasible, stays in the set and ties
+ *   where a budget is too short for it, which costs solves and biases nothing.
+ * - A comparison in which a solve of the task ended at a limit (`AT_A_LIMIT`) is not counted for
+ *   it. That solve was cut, and what it would have answered is not known. A task that is cut at
+ *   every comparison so never goes to a person on this rule, and stays a tie the reports show.
+ *
+ * What neither covers is an answer rushed under a told budget and rejected: with no valid answer
+ * on record such a comparison counts, since nothing in the log tells a rushed answer from a
+ * finished one.
+ *
+ * A label that keeps a task is a `task.state` event that holds it once more, and the two
+ * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
+ * and a refused task is no held-out task.
  */
 export function awaitingLabel(events: readonly LogEvent[]): string[] {
   const kept = new Map<string, number>();
@@ -190,12 +210,23 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
       kept.set(data.version, index);
     }
   }
+  const ran = ranUnder(events);
+  const feasible = new Set(ran.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])));
+  const made = (comparison: string, task: string) => `${comparison} ${task}`;
+  const cut = new Set(
+    ran.flatMap((solve) => {
+      const { comparison } = solve.start;
+      return isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)
+        ? [made(comparison, solve.under.task)]
+        : [];
+    }),
+  );
   const runs = new Map<string, number>();
   for (const report of lastReports(events)) {
-    const valid = answered(events, report.session);
     for (const { task } of pairsReported(events, report)) {
-      if (report.index < (kept.get(task) ?? -1)) continue;
-      runs.set(task, valid.has(task) ? 0 : (runs.get(task) ?? 0) + 1);
+      const counted =
+        !feasible.has(task) && report.index >= (kept.get(task) ?? -1) && !cut.has(made(report.session, task));
+      if (counted) runs.set(task, (runs.get(task) ?? 0) + 1);
     }
   }
   return [...runs].flatMap(([task, run]) => (run >= UNSOLVED_RUN ? [task] : []));

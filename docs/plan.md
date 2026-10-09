@@ -141,16 +141,17 @@ The Starter Built Harness was rewritten the same day, after the first live round
 - **An instrument an agent wrote, listed as a fault** (Phase 1) until the operator admits the check by name.
 - **A prediction written before launch** (Phase 4), with the comparison's terms.
 
-Three more things were built that the plan does not list:
+Four more things were built that the plan does not list:
 
 - **The time a solve has used, told on every tool result**, with a command that would run into the solve's last minute cut there and handed back. Five of the six failed practice solves had submitted an answer the solver's own check had refused, stopping early or out of time.
 - **The checker read before a comparison is paid for**: the launcher refuses one while the log holds no reading.
 - **A Builder's own tools**: pi's four, a preview of what a solver reads, and a reset, with each part of a harness given one purpose in `HARNESS.md`: a computation is a program, the guide is words about the programs, and a tool of the harness's own is for a harness without the shell.
+- **A rule for the tasks nobody answers that reads the budget** (Phase 2). The plan sends a task to a person after two comparisons without a valid answer. Under a five-minute wall three of buffer's tasks had none from either harness, and every solve of the same three had been valid at two hours: a second comparison at that wall would have taken three feasible tasks out of the scored set. A task with a valid answer anywhere on record now never goes to a person, and a comparison that cut a solve of a task at a limit is not counted for that task (`awaitingLabel`, `src/kernel/reports.ts`).
 
 Two items of the plan read otherwise on this stack, and are the operator's to settle:
 
 - **CPU seconds as a budget.** They are read with the shell's `times`, which counts waited-for children only. A background job ended with its command, and a command cut at its limit, are in no sum, and under bubblewrap the reading is zero. A cap on that meter would bind one style of command and not another, so the model's turns were built as the binding unit and CPU stays a reported figure until a meter counts a solve's whole process tree.
-- **The closed network for harness tools.** A harness's computation is now a program the solver runs from its own shell, and that shell keeps the network by the decision of 9 October. Closed for harness tools, the network would be closed only for a harness without a shell. What would close both holes and keep installs is a proxy that every command of a solve goes through and that allows the package registries alone.
+- **The closed network for harness tools.** A harness's computation is now a program the solver runs from its own shell, and that shell keeps the network by the decision of 9 October. Closed for harness tools, the network would be closed only for a harness without a shell. What would close both holes and keep installs is a proxy that every command of a solve goes through and that allows the package registries alone. On record, though, every two-hour solve of buffer under the old starter fetched the chemistry engine's source from its publisher, which is no registry, and that fetch was the starter's whole route to a valid answer. Such a proxy would decide the comparison for any harness that carries the engine, so it is a choice about what the starter may do before it is a guard.
 
 Still not built, each behind its gate: the Judge and the Examiner as author of the correctness model (Phase 1), the objective (Phase 3), and one Builder conversation with the process that holds it (Phase 5). `docs/transfer.md` holds the component-by-component account.
 

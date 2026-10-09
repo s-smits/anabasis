@@ -83,6 +83,8 @@ const PASS: Ending = { outcome: "pass" };
 const REJECTED: Ending = { outcome: "fail", kind: "rejected" };
 /** A solve that reached its limits with no answer: not valid, and nothing for anyone to rule on. */
 const LATE: Ending = { outcome: "fail", kind: "wall-ended" };
+/** A solve that ended by itself with no answer, its limits not reached. */
+const UNANSWERED: Ending = { outcome: "fail", kind: "no-answer" };
 /** What the stand-in bills a solve. */
 const BILLED = 2;
 const STARTER_UNREAD = "starter-unread";
@@ -1245,8 +1247,16 @@ describe("the scored set", () => {
     expect(scoredSet([], 12, "contract-a")).toEqual([]);
   });
 
-  it("leaves out a task no harness answered validly in two comparisons in a row, until a person keeps it", async () => {
+  it("keeps a task whose solves were cut at their limits, which says the budget was short", async () => {
     const s = await setup([edit, finish, again, finish], (version) => (version === "s1" ? LATE : PASS));
+    await round(s.request);
+    await round(s.next("b-2"));
+    expect(awaitingLabel(read(s.log))).toEqual([]);
+    expect(scoredSet(read(s.log), 12, "c")).toContain("s1");
+  });
+
+  it("leaves out a task with no valid answer on record after two comparisons, until a person keeps it", async () => {
+    const s = await setup([edit, finish, again, finish], (version) => (version === "s1" ? UNANSWERED : PASS));
     await round(s.request);
     expect(awaitingLabel(read(s.log))).toEqual([]);
     expect(scoredSet(read(s.log), 12, "c")).toContain("s1");

@@ -65,8 +65,8 @@ let solves = 0;
 /** The comparison the next solves are made for: none until one starts. */
 let comparison: string | null = null;
 /** One finished solve of `task` under `harness`: a valid answer, one a check rejected, with the
- *  verdict a rejection carries, or none within its limits. */
-function solve(task: string, harness: string, outcome: "pass" | "rejected" | "late"): string {
+ *  verdict a rejection carries, none within its limits, or none though its limits left it room. */
+function solve(task: string, harness: string, outcome: "pass" | "rejected" | "late" | "silent"): string {
   const ran = condition(task, harness);
   const id = `s${String((solves += 1))}`;
   record("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
@@ -82,7 +82,10 @@ function solve(task: string, harness: string, outcome: "pass" | "rejected" | "la
     ending:
       outcome === "pass"
         ? { outcome }
-        : { outcome: "fail", kind: outcome === "late" ? "wall-ended" : "rejected" },
+        : {
+            outcome: "fail",
+            kind: { late: "wall-ended", silent: "no-answer", rejected: "rejected" }[outcome],
+          },
     seconds: 50,
     responseModels: ["m-1"],
     metered: 1,
@@ -259,26 +262,30 @@ describe("the whole-run investigation's reader", () => {
     expect(rendered(seen)).toContain("CHECK DEFECT RULED (lane 4): 1 of 3; by check: check-a 1");
   });
 
-  it("names the ties between valid answers, and a task no harness answered in two comparisons in a row", () => {
-    // Two comparisons of the reference harness with the starter. Both answer v2 to v4 validly
-    // every time, and neither answers v1 within its limits.
+  it("names the ties between valid answers, and a task with no valid answer on record after two comparisons", () => {
+    // A fifth held-out task, which no solve on record has answered: the round's new harness
+    // answered the other four, and a task with a valid answer on record is feasible for good.
+    record("task.proposed", { version: "v5" });
+    record("task.gate", { version: "v5", gate: 1, outcome: "passed" });
+    // Two comparisons of the reference harness with the starter. Both answer v1 to v4 validly
+    // every time, and neither gives v5 an answer, though no solve of it is cut at a limit.
     for (const session of ["g-1", "g-2"]) {
       const terms = started(session, "hp", "hbase");
       for (const harness of ["hp", "hbase"]) {
-        solve("v1", harness, "late");
-        for (const version of ["v2", "v3", "v4"]) solve(version, harness, "pass");
+        solve("v5", harness, "silent");
+        for (const version of HELD) solve(version, harness, "pass");
       }
-      const scored = { ...TESTED, ties: 4, unsolved: 1 };
-      record(REPORTED, { ...REPORT, ...terms, scored, versions: HELD, reading: "no-step" });
+      const scored = { ...TESTED, ties: 5, unsolved: 1 };
+      record(REPORTED, { ...REPORT, ...terms, scored, versions: [...HELD, "v5"], reading: "no-step" });
       const said = later();
-      expect(said("TIED TASKS")).toEndWith(`${session}: 4 of 4, 1 of them with no valid answer`);
-      // Three of four tasks tie with valid answers on both sides: the plan's condition for an objective.
-      expect(said("TIES BETWEEN VALID ANSWERS")).toEndWith(`${session}: 3 of 4 tasks`);
-      expect(said("NO VALID ANSWER")).toBe("1 of 4 scored tasks have no valid answer from any harness");
+      expect(said("TIED TASKS")).toEndWith(`${session}: 5 of 5, 1 of them with no valid answer`);
+      // Four of five tasks tie with valid answers on both sides: the plan's condition for an objective.
+      expect(said("TIES BETWEEN VALID ANSWERS")).toEndWith(`${session}: 4 of 5 tasks`);
+      expect(said("NO VALID ANSWER")).toBe("1 of 5 scored tasks have no valid answer from any harness");
       expect(said("AWAITING A LABEL")).toBe(
         session === "g-1"
           ? undefined
-          : "1 task with no valid answer in two comparisons in a row, left out of the scored set until a person labels each: v1",
+          : "1 task with no valid answer on record after two comparisons that cut no solve of it at a limit, left out of the scored set until a person labels each: v5",
       );
     }
     expect(later()("CHAIN")).toBe("b-1 hp>hc no-step; g-1 hp>hbase no-step; g-2 hp>hbase no-step");

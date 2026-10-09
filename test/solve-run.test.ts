@@ -16,7 +16,7 @@ import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
 import type { Verdict } from "../src/kernel/verify.ts";
 import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -134,6 +134,7 @@ describe("an attempt's ending", () => {
     prompts: 1,
     submitted: undefined,
     wallEnded: false,
+    turnsEnded: false,
     moved: false,
     homeBytes: 0,
     summaries: [],
@@ -198,9 +199,19 @@ describe("an attempt's ending", () => {
     });
   });
 
-  it("without an answer: the wall, then the context, then a provider failure, else no answer", async () => {
+  it("without an answer: the wall, the model's turns, the context, a provider failure, else no answer", async () => {
     const overflow = stop("", "prompt is too long: 213462 tokens > 200000 maximum");
     expect(await ending({ wallEnded: true, turns: [overflow] }).ending).toMatchObject({ kind: "wall-ended" });
+    // A solve given a number of model turns that used them all ended there, whatever its last turn
+    // was; one that submitted in its last turn is judged on the answer.
+    expect(await ending({ turnsEnded: true, turns: [stop("I am done.")] }).ending).toEqual({
+      outcome: "fail",
+      kind: "turns-ended",
+    });
+    expect(await ending({ turnsEnded: true, wallEnded: true }).ending).toMatchObject({ kind: "wall-ended" });
+    expect(await ending({ turnsEnded: true, submitted: { answer: "42" } }).ending).toEqual({
+      outcome: "pass",
+    });
     expect(await ending({ turns: [overflow] }).ending).toEqual({ outcome: "fail", kind: "context-ended" });
     const length = fauxAssistantMessage("", { stopReason: "length" });
     expect(await ending({ turns: [length] }).ending).toMatchObject({ kind: "context-ended" });
@@ -345,6 +356,40 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(sent[0]).toContain("The case has 5 minutes of solve time, and every tool result ends with");
     expect(sent[1]).not.toContain(NUDGE);
     expect(sent[2]).toContain(JSON.stringify(NUDGE));
+  }, 120_000);
+
+  it.concurrent("ends at the model's turns where it is given a number of them, and says each turn", async () => {
+    const scale = fauxAssistantMessage(fauxToolCall("scale_base", { factor: 1 }), toolUse);
+    const limits = { ...LIMITS, modelTurns: 3 };
+    const spent = setup([scale, scale, scale, scale, scale], { limits });
+    expect(await solve(spent.request, noWait)).toEqual({ outcome: "fail", kind: "turns-ended" });
+    // Three turns and no fourth, though the model went on calling: the opening prompt was enough.
+    expect(spent.finished()[0]?.data).toMatchObject({ turns: 3, prompts: 1 });
+    expect(spent.sent).toHaveLength(3);
+    expect(spent.sent[0]).toContain(
+      "The case has 10 minutes of solve time and 3 turns of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. Nothing is submitted for you when either runs out: an answer you have not submitted by then is lost.",
+    );
+    const said = spent
+      .events()
+      .flatMap(({ kind, data }) => (kind === "solve.call" && isString(data.text) ? [data.text] : []));
+    expect(
+      said.map((text) =>
+        text
+          .split("\n")
+          .at(-1)
+          ?.replace(/0:\d\d/, "0:00"),
+      ),
+    ).toEqual([
+      "[Solve time used: 0:00 of 10:00. Turn 1 of 3]",
+      "[Solve time used: 0:00 of 10:00. Turn 2 of 3]",
+      "[Solve time used: 0:00 of 10:00. Turn 3 of 3]",
+    ]);
+    // An answer submitted in the last turn is held and judged: the turn's calls run before it ends.
+    const last = setup([written, scale, fauxAssistantMessage(fauxToolCall("submit", {}), toolUse)], {
+      limits,
+    });
+    expect(await solve(last.request, noWait)).toEqual({ outcome: "pass" });
+    expect(last.finished()[0]?.data).toMatchObject({ turns: 3 });
   }, 120_000);
 
   it.concurrent("ends wall-ended when the wall falls mid-command", async () => {

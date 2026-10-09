@@ -107,6 +107,12 @@ describe("the solver's system prompt", () => {
     );
   });
 
+  it("tells the model's turns where the solve is given a number of them", () => {
+    expect(systemPrompt({ ...TOLD, limits: { ...TOLD.limits, modelTurns: 40 } })).toContain(
+      `${ANSWER} The case has 120 minutes of solve time and 40 turns of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. Nothing is submitted for you when either runs out: an answer you have not submitted by then is lost.\n</addendum>`,
+    );
+  });
+
   it("names no rules where the domain publishes none, and one file as one", () => {
     expect(systemPrompt({ ...TOLD, resources: 0 })).toContain(
       `${DUTY} The published requirements are the public input, which public/task.json holds. ${ANSWER} ${TIME}`,

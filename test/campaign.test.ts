@@ -338,6 +338,18 @@ describe("a campaign", () => {
     // A longer wall or more turns is another setting.
     const named = settingNamed({ ...defaults, "solve-minutes": "240", "solve-turns": "48" }).limits;
     expect(named).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
+    // The model's own turns are limited only where a command names a number: without the flag the
+    // limits hold no such key, and the setting is the one it was before the flag existed.
+    expect(named).not.toHaveProperty("modelTurns");
+    const counted = settingNamed({ ...defaults, "solve-model-turns": "40" });
+    expect(counted.limits).toEqual({ ...LIMITS, modelTurns: 40 });
+    const turned = await openCampaign({ ...ARGS, ...counted });
+    expect(turned.setting(turned.test)).not.toBe(plain.setting(plain.test));
+    for (const turns of ["0", "2.5", "many"]) {
+      expect(() => settingNamed({ ...defaults, "solve-model-turns": turns })).toThrow(
+        "a solve's model turns are a whole number of at least one",
+      );
+    }
     // A command's two limits are the sweep's where the wall leaves room, and a share of the wall
     // where it does not: under five minutes a command the sweep allowed 300 s would never return.
     const walled = (minutes: string) => {
@@ -375,7 +387,13 @@ describe("a campaign", () => {
     }
 
     // A round takes the owner's four flags as they are, and a rehearsal is a round with other seats.
-    for (const flag of ["solver", "solver-effort", "solve-minutes", "solve-turns"] as const) {
+    for (const flag of [
+      "solver",
+      "solver-effort",
+      "solve-minutes",
+      "solve-turns",
+      "solve-model-turns",
+    ] as const) {
       expect(ROUND_OPTIONS[flag]).toBe(SETTING_OPTIONS[flag]);
     }
     // Every command reads them through the owner: a wall it refuses is refused by each of them

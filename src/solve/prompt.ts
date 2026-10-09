@@ -53,7 +53,7 @@ export interface Told {
   /** The harness's guide as written, or null. */
   readonly guide: string | null;
   readonly wallSeconds: number;
-  readonly limits: Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds" | "diskBytes">;
+  readonly limits: Pick<Limits, "shellDefaultSeconds" | "shellMaxSeconds" | "diskBytes" | "modelTurns">;
   /** How many public resource files the home was seeded with. */
   readonly resources: number;
   /** The programs the harness installed, by the names that run them (`installedPrograms`). */
@@ -71,7 +71,12 @@ const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
 
 /** What the solver must deliver and under what wall, with where the requirements are. */
-function duty({ wallSeconds, resources, guide }: Told): string {
+function duty({ wallSeconds, limits, resources, guide }: Told): string {
+  const minutes = `${String(Math.round(wallSeconds / 60))} minutes of solve time`;
+  const given =
+    limits.modelTurns === undefined
+      ? `The case has ${minutes}, and every tool result ends with how much of it is used. Nothing is submitted for you when it runs out`
+      : `The case has ${minutes} and ${plural(limits.modelTurns, "turn")} of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. Nothing is submitted for you when either runs out`;
   const rules =
     resources === 0
       ? ""
@@ -81,7 +86,7 @@ function duty({ wallSeconds, resources, guide }: Told): string {
     "For source code or files, write complete working files, not fragments or descriptions.",
     `The published requirements are the public input, which public/task.json holds${rules}.`,
     `Your answer is the file ${ANSWER_FILE} in the working directory, as JSON in the format ${ANSWER_FORMAT_FILE} gives, and submit sends it.`,
-    `The case has ${String(Math.round(wallSeconds / 60))} minutes of solve time, and every tool result ends with how much of it is used. Nothing is submitted for you when it runs out: an answer you have not submitted by then is lost.`,
+    `${given}: an answer you have not submitted by then is lost.`,
     ...(guide === null
       ? []
       : [

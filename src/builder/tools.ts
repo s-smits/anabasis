@@ -265,9 +265,10 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
  *  comparison is read at budgets shorter than the limit (`docs/plan.md`, Phase 2). */
 export function usedText(events: readonly LogEvent[], solve: string): string {
   const { start, end } = solvesIn(events).find(({ id }) => id === solve) ?? {};
-  const limit = limitsIn(start?.limits)?.wallSeconds;
-  if (!isNumber(end?.seconds) || !isNumber(end.turns) || limit === undefined) return "";
-  return ` It took ${clockText(end.seconds)} of ${clockText(limit)} and ${plural(end.turns, "model turn")}.`;
+  const limits = limitsIn(start?.limits);
+  if (!isNumber(end?.seconds) || !isNumber(end.turns) || limits === null) return "";
+  const given = limits.modelTurns === undefined ? "" : ` of ${String(limits.modelTurns)}`;
+  return ` It took ${clockText(end.seconds)} of ${clockText(limits.wallSeconds)} and ${plural(end.turns, "model turn")}${given}.`;
 }
 
 /** The first call of a solve whose arguments or result hold `quote`, by its number in the trace;

@@ -398,6 +398,7 @@ export async function launch(args: readonly string[]): Promise<void> {
       "solver-effort": String(values["solver-effort"]),
       "solve-minutes": String(values["solve-minutes"]),
       "solve-turns": String(values["solve-turns"]),
+      "solve-model-turns": isString(values["solve-model-turns"]) ? values["solve-model-turns"] : undefined,
     }),
     ran: solverLast(events ?? []),
   };

@@ -7,7 +7,17 @@
  *   --solve-minutes 120                 the wall of one solve
  *   --solve-turns 24                    the prompts a solver is given before a solve stops without an answer
  *
- * A round, a checkpoint, a rehearsal and the launcher all read these four here, and nothing else
+ * A fifth has no default, and a setting that does not name it is the setting it was before the
+ * flag existed:
+ *
+ *   --solve-model-turns 40              the model's own turns a solve is given, told to the solver
+ *
+ * `--solve-turns` counts prompts, of which every finished solve of the first rounds was given one,
+ * so it bound no solve; it is v1's cap on nudges and stays that. The model's own turns are what a
+ * budget reads after the fact (`--budget turns:N`), and this flag is that budget told to the solver
+ * and enforced, which seconds cannot be on a loaded host.
+ *
+ * A round, a checkpoint, a rehearsal and the launcher all read these here, and nothing else
  * names who solves a campaign's tasks or what a solve is held to. So every command of a campaign
  * reads the same setting when it is given the same flags, and no two can measure different solvers
  * by accident. The defaults are the stored cycle's own model and effort and the stored sweep's
@@ -34,6 +44,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { Limits } from "#src/kernel/condition.ts";
 import type { solverLast } from "#src/kernel/solves.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { LIMITS } from "./campaign.ts";
 
 /** What the four flags name, as `openCampaign` takes it: the solver in the stored cycle's place,
@@ -54,6 +65,7 @@ export const SETTING_OPTIONS = {
   "solver-effort": { type: "string", default: "high" },
   "solve-minutes": { type: "string", default: "120" },
   "solve-turns": { type: "string", default: "24" },
+  "solve-model-turns": { type: "string" },
 } as const;
 
 /**
@@ -66,6 +78,7 @@ export function settingNamed(values: {
   readonly "solver-effort": string;
   readonly "solve-minutes": string;
   readonly "solve-turns": string;
+  readonly "solve-model-turns"?: string | undefined;
 }): NamedSetting {
   const [minutes, turns] = [Number(values["solve-minutes"]), Number(values["solve-turns"])];
   if (!Number.isInteger(minutes) || minutes < 1 || !Number.isInteger(turns) || turns < 1) {
@@ -73,12 +86,25 @@ export function settingNamed(values: {
       `--solve-minutes ${values["solve-minutes"]} --solve-turns ${values["solve-turns"]}: a solve's wall and its turns are whole numbers of at least one`,
     );
   }
+  const named = values["solve-model-turns"];
+  const modelTurns = named === undefined ? undefined : Number(named);
+  if (modelTurns !== undefined && (!Number.isInteger(modelTurns) || modelTurns < 1)) {
+    throw new Error(
+      `--solve-model-turns ${String(named)}: a solve's model turns are a whole number of at least one`,
+    );
+  }
   // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
   const effort = values["solver-effort"] as ThinkingLevel;
   const wallSeconds = minutes * 60;
   return {
     solver: values.solver === undefined ? undefined : { model: values.solver, effort },
-    limits: { ...LIMITS, wallSeconds, turns, ...commandSeconds(wallSeconds) },
+    limits: {
+      ...LIMITS,
+      wallSeconds,
+      turns,
+      ...commandSeconds(wallSeconds),
+      ...keyIfDefined("modelTurns", modelTurns),
+    },
   };
 }
 
@@ -114,7 +140,10 @@ export function restarts(
 ): string[] {
   if (ran === null) return [];
   const { solver, limits } = named;
-  const held = (to: Limits) => `${String(to.wallSeconds / 60)} minutes and ${String(to.turns)} turns`;
+  const held = (to: Limits) =>
+    `${String(to.wallSeconds / 60)} minutes and ${String(to.turns)} turns${
+      to.modelTurns === undefined ? "" : `, with ${String(to.modelTurns)} model turns`
+    }`;
   const costs = `the tallies, the tie share and the cost of a solve on record are another setting's, and say little of this comparison (${DOCUMENTED})`;
   return [
     ...(solver !== undefined && (solver.model !== ran.model || solver.effort !== ran.effort)
@@ -122,7 +151,9 @@ export function restarts(
           `solves here are ${solver.model} at ${solver.effort}, and the log's last test-side solves were ${ran.model} at ${ran.effort}: ${costs}`,
         ]
       : []),
-    ...(limits.wallSeconds !== ran.limits.wallSeconds || limits.turns !== ran.limits.turns
+    ...(limits.wallSeconds !== ran.limits.wallSeconds ||
+    limits.turns !== ran.limits.turns ||
+    limits.modelTurns !== ran.limits.modelTurns
       ? [
           `a solve here is held to ${held(limits)}, and the log's last test-side solves ran under ${held(ran.limits)}: ${costs}`,
         ]

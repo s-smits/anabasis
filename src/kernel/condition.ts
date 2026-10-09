@@ -7,6 +7,7 @@
  * its own `config.yaml` naming its wall, turn cap, shell timeouts and concurrency.
  */
 import { asRecord, isNumber, type JsonValue, type OpenRecord } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue, requireJsonValue, sameJsonValue } from "../meta/stable-json.ts";
 import { append, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
@@ -20,6 +21,15 @@ export type Limits = {
   /** The prompts a solver is given, the opening one and each nudge after a turn that ended without a
    *  submit, before the solve stops without an answer of its own: v1's `maxTurns`. */
   readonly turns: number;
+  /**
+   * The model's own turns a solve is given, a turn being one reply of the model with the tool calls
+   * in it; absent, they are not limited. The solver is told the number and how many it has used, and
+   * a solve that reaches it without an answer ends there (`turns-ended`). It is the unit of a
+   * budget that does not move with the host's load: the one step on record was read under a time
+   * limit on a host loaded at ten times its cores, and `turns` above bound no solve, since every
+   * finished solve was given one prompt (`docs/plan.md`, Phase 2).
+   */
+  readonly modelTurns?: number;
   /** How long one shell command runs when the solver names no timeout. A timeout it names only
    *  raises this, up to `shellMaxSeconds`, as v1's Built shell clamped it (built-bash.ts:316-321). */
   readonly shellDefaultSeconds: number;
@@ -82,13 +92,22 @@ export function limitsIn(value: JsonValue | undefined): Limits | null {
   const held = asRecord(value);
   if (held === null) return null;
   const { wallSeconds, turns, shellDefaultSeconds, shellMaxSeconds, concurrency, diskBytes } = held;
+  const { modelTurns } = held;
   return isNumber(wallSeconds) &&
     isNumber(turns) &&
     isNumber(shellDefaultSeconds) &&
     isNumber(shellMaxSeconds) &&
     isNumber(concurrency) &&
     isNumber(diskBytes)
-    ? { wallSeconds, turns, shellDefaultSeconds, shellMaxSeconds, concurrency, diskBytes }
+    ? {
+        wallSeconds,
+        turns,
+        shellDefaultSeconds,
+        shellMaxSeconds,
+        concurrency,
+        diskBytes,
+        ...keyIfDefined("modelTurns", isNumber(modelTurns) ? modelTurns : undefined),
+      }
     : null;
 }
 

@@ -14,6 +14,8 @@
  * model that stops without submitting is nudged, and the turn cap counts the prompts, the opening one
  * and each nudge. Departures, beside those named in the tools and the prompt:
  * - No submit at the wall: a solve the wall ends is a wall-ended fail.
+ * - A limit on the model's own turns, where the condition names one (`Limits.modelTurns`): the
+ *   solver is told it and how many it has used, and the loop ends after the last one.
  * - A failed model turn ends the attempt as the provider's non-result, which `solve` runs again whole;
  *   v1 nudged once more into the same session unless the failure repeated (`pi-built-child.ts:344-363`).
  */
@@ -92,6 +94,15 @@ export interface SolveRequest {
   readonly kill?: AbortSignal;
 }
 
+/** What a solve has used of its limits, as its tools are told to say it. */
+export interface Used {
+  readonly clock: SolveClock;
+  /** The model's turns that have ended. A tool call runs inside the turn after them. */
+  readonly turns: () => number;
+  /** The turns the solve is given; undefined where they are not limited. */
+  readonly modelTurns: number | undefined;
+}
+
 /** What one attempt left behind for its ending to be read from. */
 export interface Played {
   readonly crash: string | null;
@@ -110,6 +121,8 @@ export interface Played {
   readonly summaries: readonly Usage[];
   readonly submitted: JsonValue | undefined;
   readonly wallEnded: boolean;
+  /** Whether the model used every turn it was given, where it was given a number of them. */
+  readonly turnsEnded: boolean;
   readonly moved: boolean;
   readonly homeBytes: number | null;
 }
@@ -224,7 +237,8 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
       resources,
       programs: installedPrograms(harness.toolTree),
     });
-    const tools = wrapToolDefinitions(defined.map((tool) => timed(tool, clock)));
+    const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
+    const tools = wrapToolDefinitions(defined.map((tool) => timed(tool, used)));
     const system = createInitialSystemMessage(prompt, tools.map(toToolDeclaration));
     const models = request.models(join(dirs.host, "model"));
     const stream: StreamFn = (model, context, options) => models.streamSimple(model, context, options);
@@ -242,8 +256,10 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
         sessionId: id,
         convertToLlm: (messages) => messages,
         toolExecution: "sequential",
+        // After a turn's tool calls have run, so an answer submitted in the last turn is held.
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
+          return spent(turns, limits) ? { action: "end" } : undefined;
         },
         getFollowUpMessages: async () => {
           if (desk.submitted !== undefined || prompts >= limits.turns) return [];
@@ -277,6 +293,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     summaries,
     submitted: desk.submitted,
     wallEnded: wall.signal.aborted,
+    turnsEnded: spent(turns, limits),
     moved: treeStamp(request.harness) !== before,
     homeBytes,
   };
@@ -288,17 +305,24 @@ export function clockText(seconds: number): string {
   return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}`;
 }
 
+/** Whether the model has used every turn the condition gives it; never, where it names no number. */
+function spent(turns: readonly AssistantMessage[], { modelTurns }: Pick<Limits, "modelTurns">): boolean {
+  return modelTurns !== undefined && turns.length >= modelTurns;
+}
+
 /**
  * A solver's tool with the solve time used as the last line of whatever it returns, a result or an
- * error. Until 2026-10-09 a solver had no clock and was told so. In the two live rounds of that
+ * error, and the turn it is in where its turns are limited. Until 2026-10-09 a solver had no clock and was told so. In the two live rounds of that
  * day, five of the six practice solves that failed had submitted an answer the solver's own check
  * had refused, stopping early or out of time, by the operator's account of them
  * (`docs/transfer.md`). What a solver does with its time is its own to decide; this says what the
  * time is.
  */
-export function timed(tool: SolverTool, clock: SolveClock): SolverTool {
+export function timed(tool: SolverTool, { clock, turns, modelTurns }: Used): SolverTool {
   const line = () =>
-    `[Solve time used: ${clockText(usedSeconds(clock) ?? 0)} of ${clockText(clock.seconds)}]`;
+    `[Solve time used: ${clockText(usedSeconds(clock) ?? 0)} of ${clockText(clock.seconds)}${
+      modelTurns === undefined ? "" : `. Turn ${String(turns() + 1)} of ${String(modelTurns)}`
+    }]`;
   return {
     ...tool,
     execute: async (...call) => {
@@ -445,6 +469,7 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   if (played.crash !== null) return { outcome: "non-result", kind: "sandbox-crash", reason: played.crash };
   if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
   if (played.wallEnded) return { outcome: "fail", kind: "wall-ended" };
+  if (played.turnsEnded) return { outcome: "fail", kind: "turns-ended" };
   const last = played.turns.at(-1);
   if (last !== undefined && (last.stopReason === "length" || isContextOverflow(last))) {
     return { outcome: "fail", kind: "context-ended" };

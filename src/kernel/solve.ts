@@ -3,8 +3,9 @@
  *
  * A pass is an answer the verifier accepted. A fail is any other ending the solver owns, by kind:
  * the verifier rejected the submitted answer, the host's wall ended the solve, the model's context
- * ran out, the solve stopped without submitting one, at the turn cap or by giving up, or the
- * harness's tools could not be bundled or listed, so it never began. A broken harness is the
+ * ran out, the model's own turns ran out where the solve is given a number of them, the solve
+ * stopped without submitting one, at the prompt cap or by giving up, or the harness's tools could
+ * not be bundled or listed, so it never began. A broken harness is the
  * harness's own fail: a non-result would be rerun into the same break and then dropped, and the
  * harness would leave the score with it. A context
  * that outgrows the model is the solver's own ending, never the provider's, though the provider
@@ -23,7 +24,10 @@
  */
 export type Ending =
   | { readonly outcome: "pass" }
-  | { readonly outcome: "fail"; readonly kind: "rejected" | "wall-ended" | "context-ended" | "no-answer" }
+  | {
+      readonly outcome: "fail";
+      readonly kind: "rejected" | "wall-ended" | "turns-ended" | "context-ended" | "no-answer";
+    }
   | { readonly outcome: "fail"; readonly kind: "broken-harness"; readonly reason: string }
   | {
       readonly outcome: "non-result";

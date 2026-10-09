@@ -50,7 +50,7 @@ const TASK_STATE = "task.state";
 /** What a stand-in solve throws to stop a run part-way. */
 const STOPS = "the run stops";
 
-type Side = "old" | "fresh" | "baseline";
+type Side = "old" | "fresh" | "starter";
 /** How a solve ended, with what it used where a case reads that. */
 interface Used {
   readonly ending: Ending;
@@ -84,7 +84,7 @@ const REJECTED: Ending = { outcome: "fail", kind: "rejected" };
 const LATE: Ending = { outcome: "fail", kind: "wall-ended" };
 /** What the stand-in bills a solve. */
 const BILLED = 2;
-const BASELINE_UNREAD = "baseline-unread";
+const STARTER_UNREAD = "starter-unread";
 const NOT_SCORED = "not-scored";
 const NO_STEP = "no-step";
 /** A solve a login at its session limit turned away, after its reruns. */
@@ -102,15 +102,16 @@ afterAll(() => {
 });
 
 /**
- * A scratch with the fixture harness as the reference harness and the Builder's parent, the same
- * harness under another guide as the baseline, and a log in which p1 is released for practice and
- * s1 to s5 are held out. `responses` are the Builder's turns; `table` ends the solves.
+ * A scratch with the fixture harness as the reference harness and the Builder's parent, as a
+ * campaign stands after a promotion, the same harness under another guide as the starter, and a
+ * log in which p1 is released for practice and s1 to s5 are held out. A case of the plan's first
+ * round names the starter as both. `responses` are the Builder's turns; `table` ends the solves.
  */
 async function setup(responses: FauxResponseStep[], table: Table) {
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-round-")));
   scratches.push(scratch);
   const parent = join(scratch, "parent");
-  const lesser = join(scratch, "baseline");
+  const lesser = join(scratch, "starter");
   const log = join(scratch, "log.jsonl");
   cpSync(FIXTURE, parent, { recursive: true });
   cpSync(FIXTURE, lesser, { recursive: true });
@@ -124,7 +125,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
   /** The host's code as a condition names it, which an edit between two rounds moves. */
   const code = { value: "h1" };
   const old = (await openHarness(parent)).digest;
-  const baseline = { dir: lesser, digest: (await openHarness(lesser)).digest };
+  const starter = { dir: lesser, digest: (await openHarness(lesser)).digest };
   const condition = (task: string, harness: string): Condition => ({
     contract: "c1",
     harness,
@@ -142,7 +143,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     side: "test",
   });
   const sideOf = (digest: string): Side =>
-    digest === old ? "old" : digest === baseline.digest ? "baseline" : "fresh";
+    digest === old ? "old" : digest === starter.digest ? "starter" : "fresh";
   /** Every solve asked for, in order. */
   const asked: { version: string; side: Side }[] = [];
   const counts = new Map<string, number>();
@@ -227,7 +228,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     session: build,
     builder,
     reference: { dir: parent, digest: old },
-    baseline,
+    starter,
     tasks: HELD,
     // Read when a round is asked for, so that a test that moves the host's code moves this too.
     get setting() {
@@ -251,10 +252,10 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     setting: request.setting,
     session: { ...build, id, parent: from },
   });
-  /** A comparison with no session, of the baseline against the reference harness unless told. */
+  /** A comparison with no session, of the starter against the reference harness unless told. */
   const compare = (id: string, more: Partial<CheckpointRequest> = {}): CheckpointRequest => {
     const { session: _session, builder: _builder, reference, ...terms } = request;
-    return { ...terms, setting: request.setting, log, id, old: reference, fresh: baseline, ...more };
+    return { ...terms, setting: request.setting, log, id, old: reference, fresh: starter, ...more };
   };
   return {
     request,
@@ -264,7 +265,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     log,
     old,
     parent,
-    baseline,
+    starter,
     asked,
     of,
     solved,
@@ -274,7 +275,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
 }
 
 /** The new harness answers every task within its limits, and the reference harness and the
- *  baseline none: the plan's own case, a valid answer against no answer, which needs no ruling. */
+ *  starter none: the plan's own case, a valid answer against no answer, which needs no ruling. */
 const step: Table = (_version, side) => (side === "fresh" ? PASS : LATE);
 /** The same with an answer a check rejects where there was none, which someone has to rule on. */
 const rejecting: Table = (_version, side) => (side === "fresh" ? PASS : side === "old" ? REJECTED : LATE);
@@ -297,7 +298,7 @@ const referee =
   };
 
 describe("a round", () => {
-  it("runs the session, solves the reference and the new harness in turn, and holds a step to the baseline", async () => {
+  it("runs the session, solves the reference and the new harness in turn, and holds a step to the starter", async () => {
     const s = await setup([edit, finish], step);
     const report = await round(s.request);
     expect(report.fresh).not.toBe(s.old);
@@ -314,8 +315,10 @@ describe("a round", () => {
         reviewFaults: [],
         old: s.old,
         fresh: report.fresh,
-        baseline: s.baseline.digest,
+        starter: s.starter.digest,
         scored: { ...tested, unsolved: 0 },
+        // Each harness by itself: the reference answered no task validly, the new one all, twice.
+        valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
         budgets: [],
         spread: {
           turns: { tasks: 8, median: 1, most: 1 },
@@ -337,7 +340,7 @@ describe("a round", () => {
         settled: null,
       },
     ]);
-    // Four tasks, two harnesses, two solves, neither harness first throughout. The baseline is
+    // Four tasks, two harnesses, two solves, neither harness first throughout. The starter is
     // solved after them, since the test cleared its level and a step is held to it.
     expect(s.asked).toHaveLength(24);
     expect(s.asked.slice(0, 6)).toEqual([
@@ -348,8 +351,8 @@ describe("a round", () => {
       { version: "s3", side: "old" },
       { version: "s3", side: "fresh" },
     ]);
-    expect(s.asked.slice(0, 16).some(({ side }) => side === "baseline")).toBe(false);
-    expect(s.asked.slice(16).every(({ side }) => side === "baseline")).toBe(true);
+    expect(s.asked.slice(0, 16).some(({ side }) => side === "starter")).toBe(false);
+    expect(s.asked.slice(16).every(({ side }) => side === "starter")).toBe(true);
     expect(s.of("build.started")[0]).toMatchObject({ tasks: ["p1"] });
     // What it compares was on record before its first solve: the harnesses, the terms and the tasks.
     expect(s.of("comparison.started")).toEqual([
@@ -357,7 +360,7 @@ describe("a round", () => {
         session: "b-1",
         old: s.old,
         fresh: report.fresh,
-        baseline: s.baseline.digest,
+        starter: s.starter.digest,
         setting: s.request.setting,
         solves: 2,
         level: 0.1,
@@ -382,7 +385,7 @@ describe("a round", () => {
     expect(s.of(COMPARISON_REPORTED)).toHaveLength(1);
   });
 
-  it("calls two valid answers even, and leaves the baseline unsolved where no step is read", async () => {
+  it("calls two valid answers even, and leaves the starter unsolved where no step is read", async () => {
     // v1's batteries mostly passed whole. Nothing here weighs one valid answer against another: no
     // objective is built until validity is seen to leave too many ties.
     const s = await setup([edit, finish], (version) => (version === "s1" ? LATE : PASS));
@@ -393,22 +396,22 @@ describe("a round", () => {
       reading: NO_STEP,
     });
     expect(s.asked).toHaveLength(16);
-    expect(s.asked.some(({ side }) => side === "baseline")).toBe(false);
+    expect(s.asked.some(({ side }) => side === "starter")).toBe(false);
   });
 
-  it("reads a win over the reference that loses to the baseline as below the baseline, and no step", async () => {
-    // The reference harness answers nothing, the new one once in two solves, the baseline always.
+  it("reads a win over the reference that loses to the starter as below the starter, and no step", async () => {
+    // The reference harness answers nothing, the new one once in two solves, the starter always.
     const below: Table = (_version, side, nth) => {
       if (side === "old") return LATE;
-      return side === "baseline" || nth === 0 ? PASS : LATE;
+      return side === "starter" || nth === 0 ? PASS : LATE;
     };
     const s = await setup([edit, finish], below);
     expect(await round(s.request)).toMatchObject({
       scored: { wins: 4, losses: 0, p: 0.0625 },
       against: { wins: 0, losses: 4 },
-      reading: "below-baseline",
+      reading: "below-starter",
     });
-    // As many wins as losses against the baseline is enough: the gate asks for no fewer.
+    // As many wins as losses against the starter is enough: the gate asks for no fewer.
     const even = await setup([edit, finish], (version, side, nth) => {
       if (side === "old") return LATE;
       const ahead = version === "s1" || version === "s2";
@@ -417,12 +420,12 @@ describe("a round", () => {
     expect(await round(even.request)).toMatchObject({ against: { wins: 2, losses: 2 }, reading: "step" });
   });
 
-  it("has no second test to make where the reference harness is the baseline", async () => {
+  it("has no second test to make where the reference harness is the starter", async () => {
     const s = await setup([edit, finish], step);
-    const report = await round({ ...s.request, baseline: { dir: s.parent, digest: s.old } });
+    const report = await round({ ...s.request, starter: { dir: s.parent, digest: s.old } });
     expect(report).toMatchObject({ scored: { wins: 4, losses: 0 }, against: null, reading: "step" });
     expect(s.asked).toHaveLength(16);
-    expect(s.asked.some(({ side }) => side === "baseline")).toBe(false);
+    expect(s.asked.some(({ side }) => side === "starter")).toBe(false);
   });
 
   it("compares with the reference harness, whatever harness the session started from", async () => {
@@ -504,7 +507,7 @@ describe("a round", () => {
     expect(report).toMatchObject({ scored: { wins: 4, losses: 0 }, against: { wins: 4 }, reading: "step" });
     expect(s.sessions()).toBe(1);
     expect(s.of("build.started")).toHaveLength(1);
-    // Nine solves were counted before the stop: seven of the sixteen were left, and the baseline's.
+    // Nine solves were counted before the stop: seven of the sixteen were left, and the starter's.
     expect(s.asked.slice(before)).toHaveLength(7 + 8);
   });
 
@@ -551,7 +554,7 @@ describe("a round", () => {
   });
 
   it("sets every rejection aside where no reviewer is seated, and reads it once a person has labelled them", async () => {
-    // The plan's first experiment is read this way: hand labels stand in for the Judge.
+    // The plan's first round is read this way: hand labels stand in for the Judge.
     const s = await setup([edit, finish], rejecting);
     const report = await round(s.request);
     expect(report).toMatchObject({
@@ -562,7 +565,7 @@ describe("a round", () => {
       against: null,
       reading: NOT_SCORED,
     });
-    // No test cleared its level, so the baseline was not solved.
+    // No test cleared its level, so the starter was not solved.
     expect(s.asked).toHaveLength(16);
     const asked = toLabel(read(s.log), "b-1");
     expect(asked.aside).toHaveLength(8);
@@ -572,7 +575,7 @@ describe("a round", () => {
       "b-1",
       new Map(asked.aside.map((solve) => [solve, "earned"] as const)),
     );
-    // The labels restore every task, and the test clears its level with no baseline solve to hold
+    // The labels restore every task, and the test clears its level with no starter solve to hold
     // it to: a settling makes no solve.
     expect(settled).toMatchObject({
       scored: { wins: 4, losses: 0 },
@@ -580,13 +583,13 @@ describe("a round", () => {
       versions: HELD,
       aside: [],
       against: null,
-      reading: BASELINE_UNREAD,
+      reading: STARTER_UNREAD,
       settled: { labelled: 8, defects: 0, disputed: [], restored: HELD },
     });
     expect(s.asked).toHaveLength(16);
-    // The new harness is then compared with the baseline in a comparison of its own.
+    // The new harness is then compared with the starter in a comparison of its own.
     const fresh = { dir: join(s.request.session.states, settled.fresh ?? ""), digest: settled.fresh ?? "" };
-    expect(await checkpoint(s.compare("g5", { old: s.baseline, fresh }))).toMatchObject({
+    expect(await checkpoint(s.compare("g5", { old: s.starter, fresh }))).toMatchObject({
       scored: { wins: 4, losses: 0 },
       reading: "step",
     });
@@ -658,7 +661,7 @@ describe("a round", () => {
       versions: HELD,
       disputed: [],
       aside: [],
-      reading: BASELINE_UNREAD,
+      reading: STARTER_UNREAD,
       settled: { labelled: 2, defects: 0, disputed: [], restored: ["s1"] },
     });
     expect(taskStates(read(earned.s.log)).get("s1")).toBe("held");
@@ -888,7 +891,7 @@ describe("a round", () => {
         stop: id === "b-3",
       });
     }
-    // Sixteen solves a comparison, and no baseline solve where none read a step.
+    // Sixteen solves a comparison, and no starter solve where none read a step.
     expect(s.asked).toHaveLength(48);
   });
 
@@ -978,24 +981,45 @@ describe("a round", () => {
 });
 
 describe("a checkpoint with no session", () => {
-  it("sets the minimal baseline against the harness the campaign starts with, the plan's first experiment", async () => {
-    // The bare solver answers one task of four within its limits, and the existing harness all.
-    const s = await setup([], (version, side) => (side === "baseline" && version !== "s4" ? LATE : PASS));
-    const report = await checkpoint(s.compare("g0"));
+  it("runs the plan's first round: the Builder forks the starter, and its harness is compared with the starter", async () => {
+    // The starter answers s4 in both solves, the second late, and s3 in one; the new harness
+    // answers everything early.
+    const s = await setup([edit, finish], (version, side, nth) => {
+      if (side !== "starter") return { ending: PASS, turns: 5 };
+      if (version === "s4") return { ending: PASS, turns: nth === 0 ? 5 : 11 };
+      return version === "s3" && nth === 0 ? { ending: PASS, turns: 11 } : LATE;
+    });
+    const budgets = [{ turns: 12 }, { turns: 6 }];
+    const first: RoundRequest = {
+      ...s.request,
+      setting: s.request.setting,
+      session: { ...s.request.session, parent: s.starter.dir },
+      reference: s.starter,
+      budgets,
+    };
+    const report = await round(first);
     expect(report).toMatchObject({
-      old: s.old,
-      fresh: s.baseline.digest,
-      // The gate reads the untied tasks: three of four here, all of them the existing harness's.
-      scored: { wins: 0, losses: 3, ties: 1, p: 1, unsolved: 0 },
+      old: s.starter.digest,
+      starter: s.starter.digest,
+      scored: { wins: 3, losses: 0, ties: 1, p: 0.125 },
+      // How the starter does by itself is read from the same comparison: no valid answer on two
+      // tasks, one on a third, two on the fourth. That is the plan's first gate.
+      valid: { old: [2, 1, 1], fresh: [0, 0, 4] },
+      budgets: [
+        { turns: 12, wins: 3, valid: { old: [2, 1, 1], fresh: [0, 0, 4] } },
+        // At six turns the starter has one valid answer left, and every task is the new harness's.
+        { turns: 6, wins: 4, p: 0.0625, valid: { old: [3, 1, 0], fresh: [0, 0, 4] } },
+      ],
+      // The starter is a side of the test, so there is no third harness to hold a step to.
       against: null,
       reading: NO_STEP,
     });
-    // Two harnesses, four tasks, two solves, and no Builder session in the log.
+    expect(s.of("build.started")[0]).toMatchObject({ parent: s.starter.digest });
+    // Four tasks, two harnesses, two solves: no solve under any other harness.
     expect(s.asked).toHaveLength(16);
-    expect(s.of("build.started")).toEqual([]);
-    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ session: "g0", tasks: 4 });
-    expect(await checkpoint(s.compare("g0"))).toEqual(report);
-    expect(s.asked).toHaveLength(16);
+    expect(s.asked.every(({ side }) => side !== "old")).toBe(true);
+    // The first round is a checkpoint of the stop rule: its harness is one a session built.
+    expect(stopRule(read(s.log))).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
     // One harness on both sides is no comparison.
     await expect(checkpoint(s.compare("aa", { fresh: { dir: s.parent, digest: s.old } }))).rejects.toThrow(
       "a comparison sets two harnesses against each other, and both sides are",
@@ -1032,7 +1056,7 @@ describe("a checkpoint with no session", () => {
   it("reads the reference harness against itself beside the test, on solves of its own", async () => {
     // The plan's A/A comparison. The harness answers s1 in its first two solves and not after.
     const s = await setup([], (version, side, nth) => {
-      if (side === "baseline") return LATE;
+      if (side === "starter") return LATE;
       return version === "s1" && nth >= 2 ? LATE : PASS;
     });
     const report = await checkpoint(s.compare("g2", { noise: true }));
@@ -1043,9 +1067,9 @@ describe("a checkpoint with no session", () => {
       noise: { wins: 0, losses: 1, ties: 3, p: 1 },
       reading: NO_STEP,
     });
-    // Four tasks: four solves under the reference harness and two under the baseline, as G2 costs.
+    // Four tasks: four solves under the reference harness and two under the starter, as G2 costs.
     expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(16);
-    expect(s.asked.filter(({ side }) => side === "baseline")).toHaveLength(8);
+    expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(8);
   });
 
   it("stops at its dollar cap, reads not scored, and is finished", async () => {
@@ -1081,7 +1105,7 @@ describe("a checkpoint with no session", () => {
     expect(roomy.asked).toHaveLength(16);
   });
 
-  it("reports its test when the cap cuts the baseline's solves, as unread against the baseline", async () => {
+  it("reports its test when the cap cuts the starter's solves, as unread against the starter", async () => {
     const s = await setup([edit, finish], step);
     const built = await round(s.next("b-0"));
     const fresh = { dir: join(s.request.session.states, built.fresh ?? ""), digest: built.fresh ?? "" };
@@ -1092,28 +1116,28 @@ describe("a checkpoint with no session", () => {
       versions: HELD,
       against: null,
       capped: true,
-      reading: BASELINE_UNREAD,
+      reading: STARTER_UNREAD,
     });
-    expect(s.asked.filter(({ side }) => side === "baseline")).toHaveLength(8 + 1);
-    // It reported, and is finished: the harness is read against the baseline in its own comparison.
+    expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(8 + 1);
+    // It reported, and is finished: the harness is read against the starter in its own comparison.
     expect(await checkpoint(s.compare("g1", { fresh, cap: { dollars: 35, reserve: 3 } }))).toEqual(capped);
   });
 
-  it("holds a step to the baseline's solves of every tallied task, also after a stop among them", async () => {
+  it("holds a step to the starter's solves of every tallied task, also after a stop among them", async () => {
     let solved = 0;
     const s = await setup([edit, finish], (version, side, nth, digest) => {
       solved += 1;
-      // The seventh of the baseline's eight solves stops the run.
+      // The seventh of the starter's eight solves stops the run.
       if (solved === 16 + 7) throw new Error(STOPS);
-      // The baseline answers the last task, which a tally of the first three would not hold.
-      return side === "baseline" && version === "s4" ? PASS : step(version, side, nth, digest);
+      // The starter answers the last task, which a tally of the first three would not hold.
+      return side === "starter" && version === "s4" ? PASS : step(version, side, nth, digest);
     });
     await expect(round(s.request)).rejects.toThrow(STOPS);
     expect(s.of(COMPARISON_REPORTED)).toEqual([]);
     const report = await round(s.request);
     expect(report).toMatchObject({ against: { wins: 3, losses: 0, ties: 1 }, reading: "step" });
     // The six it had were not made again.
-    expect(s.asked.filter(({ side }) => side === "baseline")).toHaveLength(7 + 2);
+    expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(7 + 2);
   });
 
   it("counts its own solves and its own spend, whatever another comparison did while it was stopped", async () => {

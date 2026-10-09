@@ -211,12 +211,12 @@ describe("the pairs a comparison reads from the log", () => {
       ...solve({ ...base, task: "v0" }, "pass"),
       ...solve({ ...fresh, task: "v0" }, "fail"),
       // A third harness's solve of the task is no side of this comparison.
-      ...solve({ ...base, harness: "baseline", solverTools: "baseline" }, "fail"),
+      ...solve({ ...base, harness: "starter", solverTools: "starter" }, "fail"),
     ];
     const none = { turns: null, prompts: null, cpu: null, seconds: null, billed: null };
     const counted = pairsOf(log, ["v1", "v0"], sides);
     // Each counted solve is named: the non-result and the stronger side's solve, s-2 and s-4, are
-    // not among them, and neither is the baseline's.
+    // not among them, and neither is the starter's.
     const other = {
       task: "v0",
       old: [P],
@@ -243,8 +243,8 @@ describe("the pairs a comparison reads from the log", () => {
       ],
       disputed: [],
     });
-    // The same log read against the baseline pairs the same new solves with that harness's.
-    expect(pairsOf(log, ["v1"], { ...sides, old: "baseline" }).pairs[0]).toMatchObject({
+    // The same log read against the starter pairs the same new solves with that harness's.
+    expect(pairsOf(log, ["v1"], { ...sides, old: "starter" }).pairs[0]).toMatchObject({
       old: [F],
       fresh: [P, P],
     });

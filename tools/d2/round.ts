@@ -1,30 +1,43 @@
 /**
  * One round over a campaign: a Builder session from the latest harness the campaign keeps, then the
- * comparison of the harness it left with the reference harness, on the held-out tasks.
+ * comparison of the harness it left with the reference harness, on held-out tasks.
  *
  *   bun tools/d2/round.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
- *     --builder claude/claude-opus-5-5 --reviewer claude/claude-opus-5-5 --cap 600
+ *     --builder claude/claude-opus-5-5 --tasks <eight task ids> --cap 625 \
+ *     --budget prompts=12 --budget prompts=6
  *
- * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice, and the
- * scored set is `--target` of the held-out tasks, drawn by the contract's hash alone, so that no
- * harness's results choose it (`src/builder/round.ts`, `scoredSet`).
+ * That is the plan's first round and its gate G0 (`docs/plan.md`, Phase 0). The Builder forks the
+ * Starter Built Harness and builds on it, and the harness it leaves is compared with the starter
+ * on the eight tasks named, two solves a harness, under today's limits and a dollar cap. The same
+ * comparison shows how the starter does by itself: the report holds, for each harness at the full
+ * limit and at each `--budget`, on how many tasks it was valid in every solve, in some and in
+ * none (`valid`), which the command also prints in words. The plan continues at the budget where
+ * the starter is valid on about half its solves. With no `--reviewer`, every rejection waits for a
+ * person's label (`tools/d2/settle.ts`), which is how the first round is read before there is a
+ * Judge.
  *
- * The defaults are the plan's after the v1 review (`docs/plan.md`, Tuning): 12 scored tasks, two
- * solves a harness, the sign test at 0.10, and a stop past three check defects. At those a round's
- * comparison is 48 solves, all of them fresh and side by side, and 24 more under the minimal
- * baseline when it reads a step. Until 2026-10-09 a round was about 430.
+ * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice. The scored
+ * set is the tasks `--tasks` names by id, where the operator chooses them, as the first round has
+ * it. Without it the set is `--target` of the held-out tasks, drawn by the contract's hash alone.
+ * Either way it is fixed before any solve, so that no harness's results choose it
+ * (`src/builder/round.ts`, `scoredSet`).
+ *
+ * The defaults are the plan's (`docs/plan.md`, Tuning): 12 scored tasks, two solves a harness, the
+ * sign test at 0.10, and a stop past three check defects. At those a round's comparison is 48
+ * solves, all of them fresh and side by side. Until 2026-10-09 a round was about 430.
  *
  * `--cap` is the round's dollar cap and is required: no solve starts that a reserve for it and for
- * each one running (`--reserve`, $10) would take past it, counted from the session's first event.
- * A comparison the cap cuts short reads `not-scored`. On 2026-10-08 eight rounds cost over $220
- * and scored no task, under no cap.
+ * each one running (`--reserve`, $10) would take past it, and the session's spend counts against
+ * the same cap. A comparison the cap cuts short reads `not-scored`. On 2026-10-08 eight rounds
+ * cost over $220 and scored no task, under no cap.
  *
- * `--reference` names the harness the new one is compared with: `start`, the stored cycle's, until
- * the operator promotes another by naming its digest (`campaign.ts`, `keptAs`). `--parent` names
- * the harness the session starts from, and is `latest`, the one the last whole session left: after
- * a comparison without a step the Builder continues from its latest harness, and the operator may
- * send it back to an earlier one.
+ * `--reference` names the harness the new one is compared with: `starter`, until the operator
+ * promotes another by naming its digest (`campaign.ts`, `keptAs`). Once the reference is no longer
+ * the starter, a step is also held to the starter, which is then solved on the tallied tasks.
+ * `--parent` names the harness the session starts from, and is `latest`: the one the last whole
+ * session left, and the starter while none has. After a comparison without a step the Builder
+ * continues from its latest harness, and the operator may send it back to an earlier one.
  *
  * `--reviewer` gives the Builder the Referee and the Diagnoser on its practice fails, and the
  * comparison the Referee on every rejected answer. A rejection counts only once it is ruled a true
@@ -51,7 +64,7 @@
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { type Cap, type Report, round, scoredSet } from "#src/builder/round.ts";
+import { type Cap, type Report, round, scoredSet, type Valid } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type Budget, UNITS } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
@@ -61,7 +74,7 @@ import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
-import { awaitingLines, baseline, type Kept, keptAs, openCampaign, stayAwake } from "./campaign.ts";
+import { awaitingLines, starter, type Kept, keptAs, openCampaign, stayAwake } from "./campaign.ts";
 import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
@@ -94,7 +107,8 @@ export type Seated = (
 /** The flags of every command that compares, and their defaults: the plan's (`docs/plan.md`,
  *  Tuning). */
 export const COMPARISON_OPTIONS = {
-  reference: { type: "string", default: "start" },
+  reference: { type: "string", default: "starter" },
+  tasks: { type: "string" },
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string", default: "12" },
@@ -135,6 +149,21 @@ export function targetNamed(flag: string): number {
   return target;
 }
 
+/**
+ * The scored set a command's flags name, by task version: the tasks `--tasks` lists by id, each a
+ * task of the pack or of a session, or `--target` of the held-out tasks by the contract's draw
+ * (`scoredSet`). Whether each is a held-out task is the comparison's to refuse.
+ */
+export function scoredNamed(campaign: Campaign, tasks: string | undefined, target: number): string[] {
+  if (tasks === undefined) return scoredSet(read(campaign.log), target, contractHash(campaign.contract));
+  const packages = [...campaign.packages()];
+  return tasks.split(",").map((taskId) => {
+    const found = packages.find(([, task]) => task.taskId === taskId);
+    if (found === undefined) throw new Error(`--tasks ${taskId}: the campaign holds no task of that id`);
+    return found[0];
+  });
+}
+
 /** The budgets `--budget` names, each as `turns=40,cpu=600` with any of the four units. */
 export function budgetsNamed(flags: readonly string[] = []): Budget[] {
   return flags.map((flag): Budget => {
@@ -167,6 +196,29 @@ export function capNamed(
     );
   }
   return { dollars: Number(values.cap), reserve: Number(values.reserve) };
+}
+
+/**
+ * A report's `valid` in lines: each harness by itself, at the full limit and at each budget, as
+ * the tasks by how many of their solves were valid. It is what the plan's first gate reads of the
+ * starter, which is the reference harness of the first round (`docs/plan.md`, G0). None for a
+ * report that compared nothing.
+ */
+export function validLines({ valid, budgets }: Pick<Report, "valid" | "budgets">): string[] {
+  if (valid === null) return [];
+  const row = (at: string, each: Valid) =>
+    `  ${at}: reference ${each.old.join("/")}, new ${each.fresh.join("/")}`;
+  const named = (budget: Budget) =>
+    UNITS.flatMap((unit) => (budget[unit] === undefined ? [] : [`${unit}=${String(budget[unit])}`])).join(
+      ",",
+    );
+  return [
+    `each harness by itself, as the tasks with ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves:`,
+    row("at its limits", valid),
+    ...budgets.flatMap((budget) =>
+      budget.valid === undefined ? [] : [row(`at ${named(budget)}`, budget.valid)],
+    ),
+  ];
 }
 
 /** This host's backends in the seats: the campaign's solver, and the Builder `--builder` names
@@ -252,8 +304,8 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
           }),
     },
     reference,
-    baseline: await baseline(campaign),
-    tasks: scoredSet(read(campaign.log), target, contractHash(campaign.contract)),
+    starter: await starter(campaign),
+    tasks: scoredNamed(campaign, values.tasks, target),
     solves: Number(values.solves),
     level: Number(values.level),
     defects: Number(values.defects),
@@ -269,7 +321,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   });
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
-  for (const line of awaitingLines(campaign)) console.log(line);
+  for (const line of [...validLines(report), ...awaitingLines(campaign)]) console.log(line);
   return report;
 }
 

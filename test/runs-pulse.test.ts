@@ -94,11 +94,11 @@ describe("the runs pulse", () => {
     expect(says({ reading: "not-scored", capped: true, aside: [] })).toEqual([
       "⚠ reported not-scored: its dollar cap cut it short",
     ]);
-    // A cap that cut the baseline's solves left the test standing.
+    // A cap that cut the starter's solves left the test standing.
     expect(
-      says({ reading: "baseline-unread", capped: true, scored: { wins: 4, losses: 0, ties: 0 }, aside: [] }),
+      says({ reading: "starter-unread", capped: true, scored: { wins: 4, losses: 0, ties: 0 }, aside: [] }),
     ).toEqual([
-      "⚠ reported baseline-unread: its dollar cap cut the baseline's solves short, and its test stands",
+      "⚠ reported starter-unread: its dollar cap cut the starter's solves short, and its test stands",
     ]);
     expect(says({ reading: "step", aside: [] })).toEqual(["◆ reported step"]);
     expect(says({ reading: "no-step", settled: { labelled: 2, defects: 2 } })).toEqual([

@@ -9,7 +9,10 @@
  * every tally of the comparison (`src/builder/round.ts`). This command is how a person decides
  * those. `--session` is the comparison's id: a round's session, or a checkpoint's `--id`. A
  * comparison run with no reviewer is read this way throughout, which is how the plan's first
- * experiment is read before there is a Judge (`docs/plan.md`, Phase 0).
+ * round is read before there is a Judge (`docs/plan.md`, Phase 0). A hand label is one person's
+ * verdict on one rejected answer, written before any ruling of it is seen, and it stands over a
+ * ruling. Where the task itself looks infeasible, say so with `prepare.ts --infeasible <task id>
+ * --note`, which refuses the task and logs the note.
  *
  * Run once, it writes `labels.json` under `.ana/d2/<name>/settle-<session>/`, one empty entry a
  * rejection, and one packet a rejection beside it: the task with its hidden values, the public
@@ -28,9 +31,11 @@
  * by name, so a mistyped label is not read as no label. A comparison is settled once: run again
  * with the same file it says what it said, and with other labels it is refused.
  *
- * A settling makes no solve. Where the labels leave a test that clears its level and the baseline
- * was not solved for it, the reading is `baseline-unread`: compare the new harness with the
- * baseline in a comparison of its own (`checkpoint.ts --reference baseline --new <digest>`).
+ * A settling makes no solve. Where the reference harness is a promoted one and the labels leave a
+ * test that clears its level, the starter was not solved for it and the reading is
+ * `starter-unread`: compare the new harness with the starter in a comparison of its own
+ * (`checkpoint.ts --reference starter --new <digest>`). A comparison against the starter itself,
+ * as the first round is, has nothing more to solve.
  *
  * Labels made beside a log that holds the Referee's rulings are not blind and measure nothing of
  * the Referee: its bar is cleared on labels drawn before it reads (`tools/c/rejections.ts`). A task
@@ -52,6 +57,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { labelled } from "#src/review/rejections.ts";
 import { openCampaign } from "./campaign.ts";
+import { validLines } from "./round.ts";
 
 const { values } = parseArgs({
   options: {
@@ -97,8 +103,10 @@ async function main(): Promise<number> {
     if (asRecord(settled?.data.settled) !== null) {
       console.log(`comparison ${session} is settled already, and this is the report it was settled as`);
     }
-    console.log(capturedJsonStringify(settleReading(campaign.log, session, labels), null, 2));
+    const report = settleReading(campaign.log, session, labels);
+    console.log(capturedJsonStringify(report, null, 2));
     console.log(capturedJsonStringify(stopRule(read(campaign.log)), null, 2));
+    for (const line of validLines(report)) console.log(line);
     return 0;
   }
   const { aside, others } = toLabel(events, session);

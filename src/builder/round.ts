@@ -22,12 +22,19 @@
  * between comparisons, and one frozen draw of the reference harness's solves would bias every
  * later comparison read against it (`docs/plan.md`, What we will not do).
  *
- * The minimal baseline is a fixed lower reference and no side of the sign test. It is solved only
- * when the comparison reads a step, to test that the step also holds against it: a step then needs
- * at least as many wins as losses against the baseline, and one with fewer reads
- * `below-baseline`. The test is held to the baseline only once every tallied task has its solves
- * under it; until then the reading is `baseline-unread`, whether a kill, the cap or a settling
- * left it so. Where the baseline is itself one of the two sides there is nothing to add.
+ * The Starter Built Harness is the reference harness until a step is promoted
+ * (`src/solve/starter.ts`), and a comparison with it has nothing more to solve. Once the operator
+ * has promoted another reference, the starter is a fixed lower reference and no side of the sign
+ * test. It is then solved only when the comparison reads a step, to test that the step also holds
+ * against it: a step needs at least as many wins as losses against the starter, and one with fewer
+ * reads `below-starter`. The test is held to the starter only once every tallied task has its
+ * solves under it; until then the reading is `starter-unread`, whether a kill, the cap or a
+ * settling left it so.
+ *
+ * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
+ * gave a valid answer in every solve, in some and in none, at the full limit and at each budget.
+ * For the starter this is what the plan's first gate reads: where it is valid on nearly every
+ * solve even at a short budget, the tasks leave a harness nothing to add (`docs/plan.md`, G0).
  *
  * `noise` reads the reference harness against itself beside the test (the plan's A/A comparison).
  * The reference harness is then solved twice as often. Its first solves of a task, in the order
@@ -47,8 +54,8 @@
  * flight steps aside, since what they bill may be under their reserve; when none is in flight and
  * the next solve still cannot start, the cap is reached. A comparison the cap cuts short of its
  * test reads `not-scored` and is finished: its tally would be of the tasks that happened to come
- * first. One the cap cuts in the baseline's solves has its test whole, and reports it as
- * `baseline-unread`. A session is stopped by its own limits and not by the cap.
+ * first. One the cap cuts in the starter's solves has its test whole, and reports it as
+ * `starter-unread`. A session is stopped by its own limits and not by the cap.
  *
  * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
  * (`earned`), by the Referee where the caller seats one. One ruled a check defect or unclear, and
@@ -127,8 +134,9 @@ export interface Cap {
 
 /** What a comparison is made on, whoever asks for it. */
 interface Terms {
-  /** The minimal baseline: the fixed lower reference a step is also read against. */
-  readonly baseline: Kept;
+  /** The Starter Built Harness: the fixed lower reference a step is also read against, once it is
+   *  no longer the reference harness itself. */
+  readonly starter: Kept;
   /** The scored set: held-out task versions, fixed before any solve (`scoredSet`). */
   readonly tasks: readonly string[];
   /** Counted solves of each task under each harness. */
@@ -187,11 +195,11 @@ export interface RoundRequest extends Terms {
 
 /**
  * How the plan's rules read a comparison. A step is the new harness's test against the reference
- * one clearing its level, with at least as many wins as losses against the baseline; the same test
+ * one clearing its level, with at least as many wins as losses against the starter; the same test
  * with fewer wins than losses there is named apart, since the new harness then beat the reference
- * and is still worse than no harness. `baseline-unread` is a test that clears its level with a
- * tallied task the baseline has not its solves on, which a settling, a kill or the cap can leave:
- * the new harness is then compared with the baseline in a comparison of its own. A comparison
+ * and is still worse than no harness. `starter-unread` is a test that clears its level with a
+ * tallied task the starter has not its solves on, which a settling, a kill or the cap can leave:
+ * the new harness is then compared with the starter in a comparison of its own. A comparison
  * that tallied no task is named apart too: it tested nothing, and `no-step` would say a test was
  * made and found no gain. The eight truss rounds of 2026-10-08 scored no task and read `no-step`
  * eight times. `check-defects` is the comparison stopped on its check defects, and `no-change` a
@@ -200,8 +208,8 @@ export interface RoundRequest extends Terms {
 export type Reading =
   | "step"
   | "no-step"
-  | "below-baseline"
-  | "baseline-unread"
+  | "below-starter"
+  | "starter-unread"
   | "not-scored"
   | "check-defects"
   | "no-change";
@@ -209,27 +217,43 @@ export type Reading =
 /** One test's tally and its p. */
 type Tested = ReturnType<typeof scored>;
 
+/**
+ * How each harness did by itself over the tallied tasks: entry k counts the tasks on which k of its
+ * counted solves gave a valid answer, so with two solves a side the three entries are the tasks
+ * valid in none, in one and in both. No test is read off it. It says where a budget leaves a
+ * harness: valid nearly everywhere, the tasks cannot tell two harnesses apart; valid on about half
+ * its solves, the fewest tasks tie by chance (`docs/plan.md`, Phase 0 and Statistical power).
+ */
+export interface Valid {
+  readonly old: readonly number[];
+  readonly fresh: readonly number[];
+}
+
 export interface Report {
   /** The reference harness. */
   readonly old: string;
   /** The digest of the new harness; null when a session left none to compare. Beside a `broken`
    *  in the logged report, it is the last state the session practised with. */
   readonly fresh: string | null;
-  readonly baseline: string;
+  readonly starter: string;
   /** The new harness against the reference one, over `versions`: the tally and its test. `unsolved`
    *  counts the tied tasks no counted solve of either harness answered validly. The other ties are
    *  between valid answers, which is the share the plan's Phase 3 turns on. Null when nothing was
    *  compared. */
   readonly scored: (Tested & { readonly unsolved: number }) | null;
-  /** The same test at each budget the comparison fixed, in the order it named them. */
-  readonly budgets: readonly (Budget & Tested)[];
+  /** Each harness by itself at the full limit, over `versions`. Null when nothing was compared, and
+   *  in a report written before 2026-10-09. */
+  readonly valid: Valid | null;
+  /** The same test at each budget the comparison fixed, in the order it named them, with each
+   *  harness by itself at that budget. */
+  readonly budgets: readonly (Budget & Tested & { readonly valid?: Valid })[];
   /** How far the use of turns, CPU seconds and seconds moved between repeated solves of one harness
    *  on one task. Null when nothing was compared. */
   readonly spread: ReturnType<typeof spread> | null;
   /** The mean billed dollars of a counted solve under each harness; null where the log holds none. */
   readonly billed: { readonly old: number | null; readonly fresh: number | null } | null;
-  /** The new harness against the baseline, over the tallied tasks the baseline has its solves on.
-   *  Null until a step is read against the reference harness, where the baseline is one of the two
+  /** The new harness against the starter, over the tallied tasks the starter has its solves on.
+   *  Null until a step is read against the reference harness, where the starter is one of the two
    *  sides, and when nothing was compared. */
   readonly against: Tested | null;
   /** The reference harness against itself, where the comparison asked for it. */
@@ -249,7 +273,7 @@ export interface Report {
    *  refused by a person as infeasible. */
   readonly withdrawn: readonly string[];
   /** Whether the dollar cap cut the comparison short: of its test, where nothing is tallied, or of
-   *  the baseline's solves, where the test stands and the reading is `baseline-unread`. */
+   *  the starter's solves, where the test stands and the reading is `starter-unread`. */
   readonly capped: boolean;
   readonly reading: Reading;
   /** What a person's labels settled, in the report `settleReading` writes after the comparison's
@@ -261,7 +285,7 @@ export interface Report {
     readonly disputed: readonly string[];
     readonly restored: readonly string[];
     /** The labels themselves, by solve: the log's record of what a person said of each answer.
-     *  A settling logged before 2026-10-10 holds none. */
+     *  A settling logged before 2026-10-09 holds none. */
     readonly labels?: Readonly<Record<string, Ruling>>;
   } | null;
 }
@@ -279,7 +303,7 @@ interface Fixed {
   readonly id: string;
   readonly old: string;
   readonly fresh: string;
-  readonly baseline: string;
+  readonly starter: string;
   readonly setting: string;
   readonly solves: number;
   readonly level: number;
@@ -314,8 +338,9 @@ const BUILD_STARTED = "build.started";
 const REPORT_KEYS = [
   "old",
   "fresh",
-  "baseline",
+  "starter",
   "scored",
+  "valid",
   "budgets",
   "spread",
   "billed",
@@ -338,6 +363,7 @@ const EARNED = "earned";
 const NO_LABELS: ReadonlyMap<string, Ruling> = new Map();
 const NOTHING = {
   scored: null,
+  valid: null,
   budgets: [],
   spread: null,
   billed: null,
@@ -436,6 +462,19 @@ function unsolvedJobs(
   return jobs;
 }
 
+/** Each harness by itself over `pairs`: the tasks by how many of its solves were valid. */
+function validOf(pairs: readonly Paired[], solves: number): Valid {
+  const census = (side: "old" | "fresh") => {
+    const tasks = Array.from({ length: solves + 1 }, () => 0);
+    for (const pair of pairs) {
+      const valid = pair[side].filter(Boolean).length;
+      tasks[valid] = (tasks[valid] ?? 0) + 1;
+    }
+    return tasks;
+  };
+  return { old: census("old"), fresh: census("fresh") };
+}
+
 /** The last report the log holds for comparison `id`, its own or its settling, or null: a
  *  comparison that reported is finished. */
 function reported(events: readonly LogEvent[], id: string): Report | null {
@@ -511,7 +550,7 @@ function solvesUnder(events: readonly LogEvent[], fixed: Fixed) {
   const settings = new Map(
     [...conditionsOf(events)].map(([condition, ran]) => [condition, settingId(ran)] as const),
   );
-  const harnesses = new Set([fixed.old, fixed.fresh, fixed.baseline]);
+  const harnesses = new Set([fixed.old, fixed.fresh, fixed.starter]);
   return ranUnder(events).flatMap((solve) =>
     solve.under.side === "test" &&
     harnesses.has(solve.under.harness) &&
@@ -545,7 +584,7 @@ function rejections(events: readonly LogEvent[], fixed: Fixed, labels: ReadonlyM
 /**
  * The comparison of `fixed.tasks`, read from the log as comparison `id` found it: the new harness
  * against the reference one over the tasks that have their solves under both and no rejection that
- * sets them aside, the same tasks at each budget, against the baseline where it was solved, and
+ * sets them aside, the same tasks at each budget, against the starter where it was solved, and
  * the reference harness against itself where that was asked for, with how the plan reads them.
  */
 function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
@@ -567,11 +606,11 @@ function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, Ruling>
   const kept = (pairs: readonly Paired[]) => pairs.filter(({ task }) => !open.has(task));
   const pairs = kept(first.pairs);
   const tallied = new Set(pairs.map(({ task }) => task));
-  // The baseline is a second opponent only where it is neither side of the test, and the reference
+  // The starter is a second opponent only where it is neither side of the test, and the reference
   // harness's later solves a second sample only where the comparison asked for them.
-  const guarded = fixed.baseline !== fixed.old && fixed.baseline !== fixed.fresh;
+  const guarded = fixed.starter !== fixed.old && fixed.starter !== fixed.fresh;
   const base = guarded
-    ? pairsUnder({ ...sides, old: fixed.baseline }).pairs.filter(({ task }) => tallied.has(task))
+    ? pairsUnder({ ...sides, old: fixed.starter }).pairs.filter(({ task }) => tallied.has(task))
     : [];
   const tested = scored(pairs);
   const against = base.length === 0 ? null : scored(base);
@@ -579,10 +618,10 @@ function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, Ruling>
   const reading = (): Reading => {
     if (pairs.length === 0) return "not-scored";
     if (tested.p > fixed.level) return "no-step";
-    // The baseline holds the test only once it has its solves on every tallied task: a tally of
+    // The starter holds the test only once it has its solves on every tallied task: a tally of
     // the tasks it happened to reach first would be a fraction's.
-    if (guarded && base.length < pairs.length) return "baseline-unread";
-    return against !== null && against.wins < against.losses ? "below-baseline" : "step";
+    if (guarded && base.length < pairs.length) return "starter-unread";
+    return against !== null && against.wins < against.losses ? "below-starter" : "step";
   };
   const mean = (side: "old" | "fresh") => {
     const billed = pairs.flatMap((pair) => (pair.used?.[side] ?? []).flatMap((used) => used.billed ?? []));
@@ -590,7 +629,11 @@ function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, Ruling>
   };
   return {
     scored: { ...tested, unsolved: pairs.filter(unsolved).length },
-    budgets: fixed.budgets.map((budget) => ({ ...budget, ...scored(within(pairs, budget)) })),
+    valid: validOf(pairs, fixed.solves),
+    budgets: fixed.budgets.map((budget) => {
+      const cut = within(pairs, budget);
+      return { ...budget, ...scored(cut), valid: validOf(cut, fixed.solves) };
+    }),
     spread: spread(pairs),
     billed: { old: mean("old"), fresh: mean("fresh") },
     against,
@@ -752,7 +795,7 @@ function begin(request: CheckpointRequest): Fixed {
   const terms = {
     old: request.old.digest,
     fresh: request.fresh.digest,
-    baseline: request.baseline.digest,
+    starter: request.starter.digest,
     setting: request.setting,
     solves: request.solves,
     level: request.level,
@@ -782,10 +825,10 @@ function startOf(events: readonly LogEvent[], id: string): JsonObject | undefine
 
 /** What comparison `id` fixed at its start, read back from the log; null where it never began. */
 function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
-  const { old, fresh, baseline, setting, solves, level, noise, budgets, tasks } = startOf(events, id) ?? {};
+  const { old, fresh, starter, setting, solves, level, noise, budgets, tasks } = startOf(events, id) ?? {};
   return isString(old) &&
     isString(fresh) &&
-    isString(baseline) &&
+    isString(starter) &&
     isString(setting) &&
     isNumber(solves) &&
     isNumber(level)
@@ -793,7 +836,7 @@ function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         id,
         old,
         fresh,
-        baseline,
+        starter,
         setting,
         solves,
         level,
@@ -837,11 +880,11 @@ function write(
 }
 
 /**
- * One comparison of `fresh` with the reference harness `old`, with no session. The plan's gates G0
- * and G2 are each one: the existing harness and the minimal baseline, either as the reference.
+ * One comparison of `fresh` with the reference harness `old`, with no session: the plan's
+ * checkpoint after several sessions, and with `noise` its gate G2.
  */
 export async function checkpoint(request: CheckpointRequest): Promise<Report> {
-  const { log, id, old, fresh, baseline, solves } = request;
+  const { log, id, old, fresh, starter, solves } = request;
   // A comparison that reported is finished, and run again it says what it said.
   const before = reported(read(log), id);
   if (before !== null) return before;
@@ -854,7 +897,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   if (startOf(read(log), id) === undefined) refuseUnscorable(request, log, new Set());
   const fixed = begin(request);
   const work = floor(request, fixed);
-  const head = { old: fixed.old, fresh: fixed.fresh, baseline: fixed.baseline };
+  const head = { old: fixed.old, fresh: fixed.fresh, starter: fixed.starter };
   const asked = { ...request, tasks: fixed.tasks };
   const beside = () => ({ broken: null, reviewFaults: work.faults });
   const disputed = () => fixed.tasks.filter((task) => taskStates(read(log)).get(task) === "disputed");
@@ -883,17 +926,21 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   await work.ruleLeft();
   if (!(await work.solveAll(fixed.tasks, arms))) return stopped();
   let found = compared(log, fixed, NO_LABELS);
-  if (found.reading === "baseline-unread") {
-    // The test cleared its level, so the baseline is solved on the tallied tasks to hold it to.
-    // Whatever stops those solves, the test stands and is reported: a cap that cut the baseline
-    // short leaves the reading where it was, unread against the baseline.
-    await work.solveAll(found.versions, [{ under: baseline, needed: solves }]);
+  if (found.reading === "starter-unread") {
+    // The test cleared its level, so the starter is solved on the tallied tasks to hold it to.
+    // Whatever stops those solves, the test stands and is reported: a cap that cut the starter
+    // short leaves the reading where it was, unread against the starter.
+    await work.solveAll(found.versions, [{ under: starter, needed: solves }]);
     found = compared(log, fixed, NO_LABELS);
   }
   const told = { ...head, ...found, disputed: disputed(), capped: work.capped(), settled: null };
   return write(asked, told, beside());
 }
 
+/**
+ * A Builder session, then the comparison of the harness it left with the reference harness. The
+ * plan's first round is one, from the Starter Built Harness and against it.
+ */
 export async function round(request: RoundRequest): Promise<Report> {
   const { session, builder, reference, ...terms } = request;
   const { log, id } = session;
@@ -916,7 +963,7 @@ export async function round(request: RoundRequest): Promise<Report> {
     const unchanged: Report = {
       old: reference.digest,
       fresh: null,
-      baseline: terms.baseline.digest,
+      starter: terms.starter.digest,
       ...NOTHING,
       reading: "no-change",
     };
@@ -953,9 +1000,9 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
  * refused, and so is a settling with no label at all, which would close the comparison to the
  * labels still to come.
  *
- * A settling makes no solve. Where the labels leave a test that clears its level and the baseline
- * was never solved for it, the reading is `baseline-unread`, and the new harness is compared with
- * the baseline in a comparison of its own.
+ * A settling makes no solve. Where the labels leave a test that clears its level and the starter
+ * was never solved for it, the reading is `starter-unread`, and the new harness is compared with
+ * the starter in a comparison of its own.
  *
  * The comparison is read as its own report found it (`asReported`), so the labels settle the same
  * reading whether they come at once or after later comparisons have solved the same tasks.
@@ -1011,7 +1058,7 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
   const settled: Report = {
     old: report.old,
     fresh: report.fresh,
-    baseline: report.baseline,
+    starter: report.starter,
     ...found,
     disputed: [...new Set([...report.disputed, ...disputed])],
     capped: report.capped,

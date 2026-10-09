@@ -49,7 +49,7 @@ interface Solve {
   readonly condition: string;
   readonly side: string;
   /** The comparison its start names, or null for a practice solve and for one made before a
-   *  start named any (2026-10-10). */
+   *  start named any (2026-10-09). */
   readonly comparison: string | null;
   readonly wallSeconds: number;
   outcome: string | null;
@@ -182,8 +182,9 @@ export const TRIGGERS = {
   "CUT BY ITS CAP": 22,
   "FEW INFORMATIVE PAIRS": 22,
   "SET SHORT": 22,
-  "BELOW THE BASELINE": 23,
-  "BASELINE UNREAD": 23,
+  "VALID BY HARNESS": 23,
+  "BELOW THE STARTER": 23,
+  "STARTER UNREAD": 23,
   "FLIPS": 24,
   "REFERENCE AGAINST ITSELF": 24,
   "HOST CODE MOVED": 20,
@@ -505,17 +506,39 @@ function taskTriggers(log: Index): Trigger[] {
     });
     return units.length === 0 ? [] : [`${session}: ${units.join(", ")}`];
   });
+  /** A budget as a report names it: its units, each with its most. */
+  const budgetOf = (row: JsonObject) =>
+    UNITS.flatMap((unit) => (isNumber(row[unit]) ? [`${unit} ${String(row[unit])}`] : [])).join(", ");
   const byBudget = decided.flatMap(({ session, last, wins, losses, ties }) => {
     const read = items(last.budgets).flatMap((budget) => {
       const row = asRecord(budget) ?? {};
-      const named = UNITS.flatMap((unit) => (isNumber(row[unit]) ? [`${unit} ${String(row[unit])}`] : []));
       return [
-        `${named.join(", ")}: ${String(count(row.wins))}-${String(count(row.losses))}-${String(count(row.ties))}`,
+        `${budgetOf(row)}: ${String(count(row.wins))}-${String(count(row.losses))}-${String(count(row.ties))}`,
       ];
     });
     return read.length === 0
       ? []
       : [`${session}: ${String(wins)}-${String(losses)}-${String(ties)} at its limits; ${read.join("; ")}`];
+  });
+  // Each harness by itself: the tasks by how many of their solves were valid, none first. For the
+  // plan's first round the reference harness is the starter, and this is what its gate reads.
+  const byHarness = decided.flatMap(({ session, last }) => {
+    const census = (found: JsonValue | undefined, at: string) => {
+      const valid = asRecord(found);
+      const tasks = (side: JsonValue | undefined) =>
+        items(side)
+          .map((each) => String(count(each)))
+          .join("/");
+      return valid === null ? [] : [`reference ${tasks(valid.old)}, new ${tasks(valid.fresh)} ${at}`];
+    };
+    const read = [
+      ...census(last.valid, "at its limits"),
+      ...items(last.budgets).flatMap((budget) => {
+        const row = asRecord(budget) ?? {};
+        return census(row.valid, `at ${budgetOf(row)}`);
+      }),
+    ];
+    return read.length === 0 ? [] : [`${session}: ${read.join("; ")}`];
   });
   const done = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
   const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE);
@@ -577,6 +600,7 @@ function taskTriggers(log: Index): Trigger[] {
         ]
       : []),
     ...(byBudget.length > 0 ? [fired("TALLY BY BUDGET", byBudget.join("; "))] : []),
+    ...(byHarness.length > 0 ? [fired("VALID BY HARNESS", byHarness.join(" · "))] : []),
     ...(done.length > 0 && quick.length * 2 > done.length
       ? [
           fired(
@@ -797,7 +821,7 @@ function comparisonTriggers(log: Index): Trigger[] {
               "CUT BY ITS CAP",
               scored === null
                 ? `${session}: the dollar cap ended it before it was read`
-                : `${session}: the dollar cap ended the baseline's solves; its test stands, unread against the baseline`,
+                : `${session}: the dollar cap ended the starter's solves; its test stands, unread against the starter`,
             ),
           ]
         : []),
@@ -813,16 +837,16 @@ function comparisonTriggers(log: Index): Trigger[] {
       ...(against !== null && count(against.wins) < count(against.losses)
         ? [
             fired(
-              "BELOW THE BASELINE",
-              `${session}: ${String(count(against.wins))} won and ${String(count(against.losses))} lost against the baseline; the report reads ${text(last.reading)}`,
+              "BELOW THE STARTER",
+              `${session}: ${String(count(against.wins))} won and ${String(count(against.losses))} lost against the starter; the report reads ${text(last.reading)}`,
             ),
           ]
         : []),
-      ...(last.reading === "baseline-unread"
+      ...(last.reading === "starter-unread"
         ? [
             fired(
-              "BASELINE UNREAD",
-              `${session}: its test clears its level and the baseline has not its solves on every tallied task`,
+              "STARTER UNREAD",
+              `${session}: its test clears its level and the starter has not its solves on every tallied task`,
             ),
           ]
         : []),

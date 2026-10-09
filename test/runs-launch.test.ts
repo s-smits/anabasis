@@ -163,7 +163,7 @@ describe("a launch's preflight", () => {
   });
 
   it("refuses an id whose comparison has reported: a comparison that reported is finished", () => {
-    const at = "2026-10-10T00:00:00.000Z";
+    const at = "2026-10-09T00:00:00.000Z";
     const log: LogEvent[] = [
       { at, kind: "comparison.reported", data: { session: "g0", reading: "no-step" } },
     ];

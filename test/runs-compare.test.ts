@@ -17,7 +17,7 @@ const ENDINGS = new Map<string, JsonObject>([
   ["f", { outcome: "fail", kind: "rejected" }],
   ["n", { outcome: "non-result", kind: "killed", reason: "the host ended it" }],
 ]);
-const BASELINE = "h-base";
+const STARTER = "h-base";
 const COUNTED = "pf";
 
 interface Given {
@@ -34,7 +34,7 @@ interface Given {
   readonly old: string;
   /** The same under the fresh harness. */
   readonly made: string;
-  /** The same under the baseline, where the comparison read a step and solved it. */
+  /** The same under the starter, where the comparison read a step and solved it. */
   readonly base?: string;
 }
 
@@ -128,7 +128,7 @@ function round(
     session,
     old: given.reference,
     fresh: given.fresh,
-    baseline: BASELINE,
+    starter: STARTER,
     setting: settingId(under("any", "any")),
     solves: 1,
     level: 0.1,
@@ -139,7 +139,7 @@ function round(
     solve(task, given.fresh, given.made.charAt(index));
   }
   for (const [index, task] of (given.base === undefined ? [] : given.tasks).entries()) {
-    solve(task, BASELINE, given.base?.charAt(index) ?? "");
+    solve(task, STARTER, given.base?.charAt(index) ?? "");
   }
   // The comparison's own arithmetic, by hand: a task with a counted solve a side is tallied, and
   // won by the side whose answer alone was valid.
@@ -181,7 +181,7 @@ describe("the runs comparison", () => {
       "Builder p/opus, high (wall 1800s, turns 40, practice solves 1), ended at wall",
       "solver p/opus, medium, off",
       "harness h-parent > h-a, which declares an artifact-writer, compared with h-parent",
-      "not read against the baseline",
+      "not read against the starter",
       // Two tasks have a counted solve a side; a3 and a4 are short of theirs.
       "reported no-step, for 4 tasks asked for: scored 0 won, 1 lost, 1 tied on 2 tasks, p 1",
       "practice h-draft: 1 pass",
@@ -190,18 +190,22 @@ describe("the runs comparison", () => {
     ]);
   });
 
-  it("says the baseline's test and its solves where the comparison solved it", () => {
+  it("says the starter's test and its solves where the comparison solved it", () => {
     const said = roundOf(
       "b",
       round("b-1", { ...OPUS, old: "ffff", made: "pppp", base: "ffpp" }),
       "b-1",
       writes,
     ).said;
-    expect(said).toContain("against the baseline h-base: 2 won, 0 lost, 2 tied");
+    expect(said).toContain("against the starter h-base: 2 won, 0 lost, 2 tied");
+    // A round compared with the starter itself, as every round is until a promotion.
+    expect(roundOf("b", round("b-1", { ...OPUS, reference: STARTER }), "b-1", writes).said).toContain(
+      "the reference harness is the starter",
+    );
     expect(said.slice(-3)).toEqual([
       "scored reference: 4 fail rejected",
       "scored fresh: 4 pass",
-      "scored baseline: 2 pass, 2 fail rejected",
+      "scored starter: 2 pass, 2 fail rejected",
     ]);
   });
 
@@ -227,14 +231,14 @@ describe("the runs comparison", () => {
     ]);
   });
 
-  it("says when a log's solves name no comparison, as none did before 2026-10-10", () => {
+  it("says when a log's solves name no comparison, as none did before 2026-10-09", () => {
     const older = round("b-1", OPUS).map((event) => {
       const { comparison: _comparison, ...data } = event.data;
       return event.kind === "solve.started" ? { ...event, data } : event;
     });
     const said = roundOf("b", older, "b-1", writes).said;
     expect(said).toContain(
-      "its solves name no comparison, as none did before 2026-10-10: its tasks cannot be read pair by pair, and each reads unresolved below",
+      "its solves name no comparison, as none did before 2026-10-09: its tasks cannot be read pair by pair, and each reads unresolved below",
     );
     // Its solves are still counted, from the round's own window of the log.
     expect(said.slice(-2)).toEqual([
@@ -276,7 +280,7 @@ describe("the runs comparison", () => {
       "Builder p/opus, high (wall 1800s, turns 40, practice solves 1), still building",
       "solver p/opus, medium, off",
       "harness h-parent > none kept, compared with h-parent",
-      "not read against the baseline",
+      "not read against the starter",
       "not reported yet",
       "practice h-draft: 1 pass",
     ]);

@@ -4,18 +4,21 @@
  * its conditions, its solves and its reviewers the same way:
  *
  *   bun tools/c/accept.ts      ... --name <name> [--freeze]          what the check program has been seen to do; the operator's word that it stands
- *   bun tools/d2/prepare.ts    ... --name <name>                     the pack's tasks, held out; the practice tasks, released
- *   bun tools/d1b/examine.ts   ... --name <name> --session x-1       an Examiner session, which writes further tasks
- *   bun tools/d2/checkpoint.ts ... --name <name> --id g2             one comparison of two kept harnesses
+ *   bun tools/d2/prepare.ts    ... --name <name>                     the pack's tasks, held out; the practice tasks, released; the scored tasks, confirmed
  *   bun tools/d2/round.ts      ... --name <name> --session b-1       a Builder session and its comparison
+ *   bun tools/d2/settle.ts     ... --name <name> --session b-1       a comparison's rejections, labelled by a person
+ *   bun tools/d2/checkpoint.ts ... --name <name> --id g2             one comparison of two kept harnesses
+ *   bun tools/d1b/examine.ts   ... --name <name> --session x-1       an Examiner session, which writes further tasks
  *
  * The campaign folder is inside the repository, which every solve's and every Builder's wall denies,
  * as `live-solve.ts` keeps its check program: the log holds hidden values and the checks' verdicts.
  *
  * What is stood in for is what `live-solve.ts` stands in: the contract is the check program's brief
  * with the answer format the sweep's record tool took, and the limits are the sweep's `config.yaml`
- * with a disk cap. The test condition's model and effort are the stored cycle's, and its harness
- * state is the cycle's `hb-bundles` folder, which is the harness the campaign starts from.
+ * with a disk cap. The test condition's model and effort are the stored cycle's. The cycle's own
+ * harness is not used: it comes from v1's runs, and a campaign starts from the Starter Built
+ * Harness, which is also its first reference harness (`src/solve/starter.ts`, `docs/plan.md`,
+ * Phase 0). Until 2026-10-09 the stored harness was both.
  *
  * It first ran against a model on 8 October, in a round with a Claude Builder (issue #1). It needs
  * the Mac's command wall, the pack and the sweep on disk, and a model login.
@@ -57,7 +60,7 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { diagnose } from "#src/review/diagnoser.ts";
 import type { Reader } from "#src/review/reader.ts";
 import { referee } from "#src/review/referee.ts";
-import { writeBaseline } from "#src/solve/baseline.ts";
+import { writeStarter } from "#src/solve/starter.ts";
 import { openHarness, treeContent } from "#src/solve/harness.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
 import {
@@ -77,7 +80,7 @@ import {
 export interface CampaignArgs {
   readonly root: string;
   readonly sweep: string;
-  /** The cycle whose harness state, model and effort the test condition takes. */
+  /** The cycle whose model and effort the test condition takes. */
   readonly cycle: string;
   readonly bundle: string;
   readonly name: string;
@@ -95,12 +98,11 @@ export interface Kept {
   readonly digest: string;
 }
 
-/** What a command hands over to have a kept harness named: where the campaign's log, its kept
- *  states and its starting harness are. */
+/** What a command hands over to have a kept harness named: where the campaign's log and its kept
+ *  states are. */
 interface Keeping {
   readonly log: string;
   readonly states: string;
-  readonly parent: string;
 }
 
 /** Who solves: the model and effort, on the test side. */
@@ -233,7 +235,6 @@ export async function openCampaign(args: CampaignArgs) {
     resources,
     /** What every solve of this campaign's command is held to, which its settings hold. */
     limits,
-    parent: join(args.root, "hb-bundles", `${args.sweep}-${args.cycle}`),
     test: {
       ...(args.solver === undefined
         ? { model: rowModel(row), effort: runtime.modelWorker.modelSelection.effort }
@@ -262,13 +263,14 @@ export async function openCampaign(args: CampaignArgs) {
 }
 
 /**
- * The campaign's minimal baseline, as a solve is handed it (`src/solve/baseline.ts`): written once
- * and kept under its digest among the campaign's states, like a harness a session froze.
+ * The Starter Built Harness, as a solve and a Builder session are handed it
+ * (`src/solve/starter.ts`): written once and kept under its digest among the campaign's states,
+ * like a harness a session froze.
  */
-export async function baseline(campaign: { readonly states: string }): Promise<Kept> {
-  const scratch = mkdtempSync(join(tmpdir(), "ana-baseline-"));
+export async function starter(campaign: { readonly states: string }): Promise<Kept> {
+  const scratch = mkdtempSync(join(tmpdir(), "ana-starter-"));
   try {
-    writeBaseline(scratch);
+    writeStarter(scratch);
     const { digest } = await openHarness(scratch);
     const dir = join(campaign.states, digest);
     if (!existsSync(dir)) {
@@ -282,25 +284,23 @@ export async function baseline(campaign: { readonly states: string }): Promise<K
 }
 
 /**
- * A harness the campaign keeps, by the name a flag gives it: `start` for the stored cycle's, which
- * is the reference harness until the operator names another; `baseline` for the minimal baseline;
- * `latest` for the one the last whole Builder session left, which is `start` while none has; or the
- * whole digest of one a session froze, which is the name of its folder under the campaign's
- * `states/`. Any other name is answered with the ones there are: on 2026-10-08 a digest cut to its
- * first eight characters, as every reader prints one, ended a simulated round in a bare `ENOENT`.
+ * A harness the campaign keeps, by the name a flag gives it: `starter` for the Starter Built
+ * Harness, which the first Builder session forks and which is the reference harness until the
+ * operator promotes another; `latest` for the one the last whole Builder session left, which is
+ * the starter while none has; or the whole digest of one a session froze, which is the name of its
+ * folder under the campaign's `states/`. Any other name is answered with the ones there are: on
+ * 2026-10-08 a digest cut to its first eight characters, as every reader prints one, ended a
+ * simulated round in a bare `ENOENT`.
  */
 export async function keptAs(campaign: Keeping, flag: string, asked: string): Promise<Kept> {
-  if (asked === "baseline") return await baseline(campaign);
   const built = asked === "latest" ? latestBuilt(read(campaign.log)) : null;
-  const start = { dir: campaign.parent, digest: (await openHarness(campaign.parent)).digest };
+  if (asked === "starter" || (asked === "latest" && built === null)) return await starter(campaign);
   const digest = built ?? asked;
-  // The stored cycle's harness is kept where the campaign found it, and is named by its digest too.
-  if (asked === "start" || (asked === "latest" && built === null) || digest === start.digest) return start;
   const kept = existsSync(campaign.states) ? readdirSync(campaign.states).sort() : [];
   if (!kept.includes(digest)) {
     const begun = kept.filter((each) => digest !== "" && each.startsWith(digest));
     const named =
-      "It also takes start, for the stored cycle's harness, latest, for the last a session left, and baseline";
+      "It also takes starter, for the harness every campaign starts from, and latest, for the last a session left";
     throw new Error(
       kept.length === 0
         ? `${flag} ${asked} is no harness this campaign keeps: no session has kept one under ${campaign.states} yet. ${named}`

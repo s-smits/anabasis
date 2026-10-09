@@ -5,7 +5,7 @@
 // read, and the last regrades what the third logged.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { append, read } from "../src/kernel/log.ts";
-import { taskStates } from "../src/kernel/task.ts";
+import { taskSets, taskStates } from "../src/kernel/task.ts";
 import {
   cpSync,
   existsSync,
@@ -24,6 +24,8 @@ import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 
 const REPO = resolve(import.meta.dir, "..");
+/** A campaign's log, by its name in the campaign's folder. */
+const LOG = "log.jsonl";
 const NAME = `test-check-${String(runtimeProcess.pid)}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-checker-")));
 const bundle = join(root, "bundle");
@@ -36,6 +38,9 @@ const accepted = join(REPO, ".ana", "d2", ACCEPTED);
 /** The campaign of the repaired checker, which the old one's written tasks are carried into. */
 const CARRIED = `${NAME}-carried`;
 const carried = join(REPO, ".ana", "d2", CARRIED);
+/** The campaign whose tasks are set up for a first round. */
+const PREPARED = `${NAME}-prepared`;
+const prepared = join(REPO, ".ana", "d2", PREPARED);
 /** Two campaigns over a pack with something wrong: a tool no path holds, and controls gone stale. */
 const LOST = `${NAME}-lost`;
 const STALE = `${NAME}-stale`;
@@ -60,6 +65,7 @@ afterAll(() => {
   rmSync(campaign, { recursive: true, force: true });
   rmSync(accepted, { recursive: true, force: true });
   rmSync(carried, { recursive: true, force: true });
+  rmSync(prepared, { recursive: true, force: true });
   for (const name of [LOST, STALE]) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
 });
 
@@ -164,7 +170,7 @@ const run = (file: string, flags: Record<string, string>, ...bare: string[]) =>
 const accept = (...bare: string[]) => run("tools/c/accept.ts", { name: ACCEPTED }, ...bare);
 /** What the accepted campaign's log holds of one kind. */
 const held = (kind: string) =>
-  read(join(accepted, "log.jsonl")).flatMap((event) => (event.kind === kind ? [event.data] : []));
+  read(join(accepted, LOG)).flatMap((event) => (event.kind === kind ? [event.data] : []));
 
 // Laid out at load, as `verify.test.ts` writes its tree.
 layOut();
@@ -236,7 +242,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     // A pack whose accept control of t-2 has gone stale, while its check is as sound as before.
     const stale = (...bare: string[]) => run("tools/c/accept.ts", { name: STALE }, ...bare);
     const frozen = () =>
-      read(join(REPO, ".ana", "d2", STALE, "log.jsonl")).flatMap((event) =>
+      read(join(REPO, ".ana", "d2", STALE, LOG)).flatMap((event) =>
         event.kind === "contract.frozen" ? [event.data] : [],
       );
     controls("13", model, "19");
@@ -269,7 +275,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
       } finally {
         writeFileSync(grades, recorded);
       }
-      const solves = read(join(REPO, ".ana", "d2", STALE, "log.jsonl")).flatMap(({ kind, data }) =>
+      const solves = read(join(REPO, ".ana", "d2", STALE, LOG)).flatMap(({ kind, data }) =>
         kind === "verdict" && isString(data.solve) ? [data.solve] : [],
       );
       expect(solves.sort((a, b) => a.localeCompare(b))).toEqual(["s-c01-t-1", "s-c02-t-1", "s-c02-t-2"]);
@@ -281,7 +287,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
   it("logs the stored rejections, draws the fails to label, and holds the Referee until they are", () => {
     const logged = run("tools/c/rejections.ts", { name: NAME });
     expect(logged.code).toBe(0);
-    const verdicts = read(join(campaign, "log.jsonl")).filter((event) => event.kind === "verdict");
+    const verdicts = read(join(campaign, LOG)).filter((event) => event.kind === "verdict");
     // Both rejections as this verifier grades them, t-1's stored pass, and t-2's accept control,
     // since no stored solve of t-2 passed.
     expect(Object.fromEntries(verdicts.map(({ data }) => [data.solve, data.kind]))).toEqual({
@@ -294,7 +300,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
 
     // Run again, nothing is logged twice.
     expect(run("tools/c/rejections.ts", { name: NAME }).code).toBe(0);
-    expect(read(join(campaign, "log.jsonl")).filter((event) => event.kind === "verdict")).toHaveLength(4);
+    expect(read(join(campaign, LOG)).filter((event) => event.kind === "verdict")).toHaveLength(4);
 
     expect(run("tools/c/rejections.ts", { name: NAME, draw: "1" }).code).toBe(0);
     const labels = parseJsonAs<Record<string, string>>(readFileSync(join(campaign, "labels.json"), "utf8"));
@@ -307,14 +313,14 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     const early = run("tools/c/rejections.ts", { name: NAME, referee: "claude/claude-opus-5" });
     expect(early.said).toContain("the Referee reads nothing before the drawn fails are labelled");
     expect(early.code).not.toBe(0);
-    expect(read(join(campaign, "log.jsonl")).some((event) => event.kind === "referee.finding")).toBe(false);
+    expect(read(join(campaign, LOG)).some((event) => event.kind === "referee.finding")).toBe(false);
   });
 
   it("shows which of the logged verdicts a repaired checker moves, and writes nothing", () => {
     const repaired = join(root, "repaired");
     cpSync(bundle, repaired, { recursive: true });
     writeFileSync(join(repaired, "correctness-model", "evaluator.ts"), REPAIRED);
-    const log = join(campaign, "log.jsonl");
+    const log = join(campaign, LOG);
     // A task an Examiner session wrote is in the log and in no pack, and its verdicts are read too.
     const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 4 }, hidden: null };
     append(log, "task.proposed", { version: "vx", taskId: "x-1-001", session: "x-1", task: written });
@@ -394,7 +400,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     );
     expect(first.said).toContain("x-1-002\trefused: no inputs");
     expect(first.code).toBe(0);
-    const events = read(join(carried, "log.jsonl"));
+    const events = read(join(carried, LOG));
     // A task a Builder has practised on stays practice here: a harness it built may be compared.
     expect([...taskStates(events).values()].sort()).toEqual(["held", "refused", "released"]);
     // Each is proposed whole under its own id, with the version it had, and put to the one gate.
@@ -408,6 +414,36 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(events.filter(({ kind }) => kind === "verdict" || kind === "solve.started")).toEqual([]);
     // Run again, nothing is taken twice.
     expect(carry().said).toContain("0 refused, 3 already there");
-    expect(read(join(carried, "log.jsonl"))).toHaveLength(events.length);
+    expect(read(join(carried, LOG))).toHaveLength(events.length);
+  });
+  it("confirms the tasks named to score against today's verifier, and releases none of them", () => {
+    const prepare = (tasks: string) =>
+      run("tools/d2/prepare.ts", { cycle: "c01", name: PREPARED, practice: "1", tasks });
+    // The plan's set-up of its first round. Both tasks are named, so neither is practice. The
+    // stored sweep accepted an answer to t-1, which still passes, and none to t-2.
+    const both = prepare("t-1,t-2");
+    expect(both.said).toContain(
+      "practice is 1 short of 1: a release takes at most half of the 0 held out and not named to score",
+    );
+    expect(both.said).toContain("t-1: a stored accepted answer passes today's verifier");
+    expect(both.said).toContain(
+      "t-2: the stored sweep accepted no answer to it, so nothing confirms its checks",
+    );
+    expect(both.said).toContain(
+      "1 of the 2 tasks named to score have no stored accepted answer that passes today's verifier",
+    );
+    expect(both.code).toBe(1);
+    const sets = taskSets(read(join(prepared, LOG)));
+    expect([sets.held.length, sets.released.length]).toEqual([2, 0]);
+    // Named alone, the confirmed task is a set a comparison can be asked for.
+    const one = prepare("t-1");
+    expect(one.said).toContain(
+      "each of the 1 tasks named to score has a stored accepted answer that passes today's verifier",
+    );
+    expect(one.code).toBe(0);
+    // The reading writes nothing: the log holds the tasks' proposals and gates, and no verdict.
+    const kinds = new Set(read(join(prepared, LOG)).map(({ kind }) => kind));
+    expect([...kinds].sort()).toEqual(["task.gate", "task.proposed"]);
+    expect(prepare("t-9").said).toContain("--tasks t-9: the campaign holds no task of that id");
   });
 });

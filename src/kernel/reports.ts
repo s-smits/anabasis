@@ -10,7 +10,7 @@
  * starts from those. A comparison's solves are the ones whose start names it (`compare.ts`).
  *
  * No fold here names the harness a comparison is made against. That is the reference harness, the
- * one the campaign started with until a step is promoted, and promotion is the operator's
+ * Starter Built Harness until a step is promoted, and promotion is the operator's
  * (`docs/plan.md`, Phase 6). A Builder goes on from the harness its last session left
  * (`latestBuilt`), step or none.
  *
@@ -86,12 +86,12 @@ export function latestBuilt(events: readonly LogEvent[]): string | null {
 /**
  * The plan's stop rule over the comparisons a log holds: how many checkpoints tallied a task, how
  * many of them have passed since the last step, and whether that is three. A checkpoint is a
- * comparison of a harness a Builder session changed. A comparison of two harnesses no session made
- * is none: counted, two of them would leave a campaign one Builder session before its stop. Nor is
- * a session that left its harness unchanged, a comparison stopped on its check defects, one its
- * dollar cap cut, or one with every task set aside or short, which tested nothing. And a harness
- * set against the baseline after it was compared with another reference is that comparison's
- * reading against the baseline (`baseline-unread`), and no checkpoint of its own.
+ * comparison of a harness a Builder session changed, the plan's first round among them. A
+ * comparison of two harnesses no session made is none. Nor is a session that left its harness
+ * unchanged, a comparison stopped on its check defects, one its dollar cap cut, or one with every
+ * task set aside or short, which tested nothing. And a harness set against the starter after it
+ * was compared with another reference is that comparison's reading against the starter
+ * (`starter-unread`), and no checkpoint of its own.
  */
 export function stopRule(events: readonly LogEvent[]) {
   const built = new Set(
@@ -99,15 +99,15 @@ export function stopRule(events: readonly LogEvent[]) {
       kind === BUILD_FINISHED && data.changed === true && isString(data.harness) ? [data.harness] : [],
     ),
   );
-  /** The harnesses already compared with a reference that is not the baseline. */
+  /** The harnesses already compared with a reference that is not the starter. */
   const referenced = new Set<string>();
   const readings: unknown[] = [];
   for (const { data } of lastReports(events)) {
-    const { old, fresh, baseline } = data;
+    const { old, fresh, starter } = data;
     const tallied =
       asRecord(data.scored) !== null && Array.isArray(data.versions) && data.versions.length > 0;
     if (!tallied || !isString(fresh) || !built.has(fresh)) continue;
-    if (old !== baseline) referenced.add(fresh);
+    if (old !== starter) referenced.add(fresh);
     else if (referenced.has(fresh)) continue;
     readings.push(data.reading);
   }
@@ -120,7 +120,7 @@ export function stopRule(events: readonly LogEvent[]) {
  * to its first report, so a task released, refused or disputed since is still the scored task it
  * was, under the report's own two harnesses and setting, counting the comparison's own solves, and
  * each side cut to the solves a side it asked for. None for a report that compared nothing, and
- * none for a comparison made before a solve's start named its comparison (2026-10-10).
+ * none for a comparison made before a solve's start named its comparison (2026-10-09).
  */
 export function pairsReported(events: readonly LogEvent[], report: Reported): Paired[] {
   const { session, index, data } = report;
@@ -133,7 +133,7 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
 
 /** The task versions comparison `id` got a valid answer to, under any of its harnesses: the two of
  *  its test, the reference harness's further solves where it was read against itself, and the
- *  baseline's. */
+ *  starter's. */
 export function answered(events: readonly LogEvent[], id: string): Set<string> {
   return new Set(
     ranUnder(events).flatMap((solve) =>
@@ -174,14 +174,14 @@ export function unsolved({ old, fresh }: Paired): boolean {
 /**
  * The tasks that go to a person as possibly infeasible: no harness gave a valid answer to them in
  * two comparisons in a row, by version (`docs/plan.md`, Phase 2). Any valid answer of a comparison
- * ends the run, also one outside its test: a task the baseline answered is no infeasible task. Such a task ties whatever the
- * harnesses are and costs its solves at every comparison. It may be hard, it may be wrongly
- * checked, or it may have no valid answer at all, and only a person can tell the third: on an
- * infeasible task every rejection is a true fail, correctly, every time (the review of 2026-10-09,
- * finding 10). So it leaves the scored set until it is labelled (`tools/d2/prepare.ts`). A label
- * that keeps it is a `task.state` event that holds it once more, and the two comparisons are then
- * counted from that label on; a label that calls it infeasible refuses it, and a refused task is
- * no held-out task.
+ * ends the run, also one outside its test: a task the starter answered as a third harness is no
+ * infeasible task. A task with no valid answer ties whatever the harnesses are and costs its
+ * solves at every comparison. It may be hard, it may be wrongly checked, or it may have no valid
+ * answer at all, and only a person can tell the third: on an infeasible task every rejection is a
+ * true fail, correctly, every time (the review of 2026-10-09, finding 10). So it leaves the scored
+ * set until it is labelled (`tools/d2/prepare.ts`). A label that keeps it is a `task.state` event
+ * that holds it once more, and the two comparisons are then counted from that label on; a label
+ * that calls it infeasible refuses it, and a refused task is no held-out task.
  */
 export function awaitingLabel(events: readonly LogEvent[]): string[] {
   const kept = new Map<string, number>();

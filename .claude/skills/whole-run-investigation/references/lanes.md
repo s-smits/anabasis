@@ -584,25 +584,31 @@ whether leaving them out could have moved the tally. The decision it changes is 
 operator repeats the comparison, enlarges the set or reads the result as it stands; it routes
 to `operator`, and to `host` (`src/kernel/compare.ts`) only for an arithmetic fault.
 
-**23. The minimal baseline.**
+**23. The starter.**
 
-Starts from `BELOW THE BASELINE (lane 23)` and `BASELINE UNREAD (lane 23)`.
+Starts from `VALID BY HARNESS (lane 23)`, `BELOW THE STARTER (lane 23)` and
+`STARTER UNREAD (lane 23)`.
 
-The question is whether a harness does better than no harness. The minimal baseline is the
-solver with a shell and the answer writer, with no guide and no domain tool
-(`src/solve/baseline.ts`). It is a fixed lower reference and no side of the sign test. The
-plan's first experiment sets it against the harness the campaign starts with, and stops the
-plan if that comparison leaves too few tasks untied at every budget: v1's solver wrote its own
-search and passed, and twelve firmware tasks passed faster with the simulator withheld. Later a
-step is held to it: a comparison that clears its level solves the baseline on the same tasks,
-and reads a step only with at least as many wins as losses against it. `BELOW THE BASELINE`
-names a harness that beat the reference and lost to no harness at all. `BASELINE UNREAD` names
-a test that cleared its level with no baseline solve to hold it to, which a person's settling
-can leave: the new harness is then compared with the baseline in a comparison of its own.
-Read which tasks the baseline answers that a harness does not, by the solves' endings and
-never their text. The decision it changes is whether a step is believed, and at the first gate
-whether anything else is built; it routes to `operator`, and to `harness/guide` or
-`harness/tools` where a harness loses to its absence.
+The question is whether the tasks leave a harness room to add anything to the starter. The
+Starter Built Harness is the solver with a shell and the answer writer, with no guide and no
+domain tool (`src/solve/starter.ts`). The Builder forks it in its first session, and it is the
+reference harness until a step is promoted, so the plan's first round compares a built harness
+with it. `VALID BY HARNESS` gives each harness by itself, as the tasks by how many of their
+solves were valid, none first, at the full limit and at each budget: for the reference harness
+of the first round that is the starter's own result, and the plan's first gate is read off it.
+A starter valid on nearly every solve even at the shortest budget has tasks too easy to show an
+improvement, and they are replaced before another session is paid for: v1's solver wrote its own
+search and passed, and twelve firmware tasks passed faster with the simulator withheld. The plan
+goes on at the budget where the starter is valid on about half its solves. After a promotion the
+starter is a fixed lower reference and no side of the sign test: a comparison that clears its
+level solves the starter on the same tasks, and reads a step only with at least as many wins as
+losses against it. `BELOW THE STARTER` names a harness that beat the reference and lost to the
+starter. `STARTER UNREAD` names a test that cleared its level with a tallied task the starter has
+not its solves on, which a settling, a stop or the cap can leave: the new harness is then
+compared with the starter in a comparison of its own. Read which tasks the starter answers that
+a harness does not, by the solves' endings and never their text. The decision it changes is
+whether a step is believed, and at the first gate whether the tasks are replaced; it routes to
+`operator`, and to `harness/guide` or `harness/tools` where a harness loses to the starter.
 
 **24. Flips and solver variance.**
 
@@ -737,7 +743,7 @@ The question is what became of each rejection, and whether each role was told en
 no more than it may know. A rejected answer counts as not valid only once it is ruled a true
 fail. One ruled a check defect or unclear, and one nobody ruled on, sets its task aside: out of
 every tally of that comparison, for both harnesses. A comparison run with no reviewer sets every
-rejection aside, which is how the plan's first experiment is read before there is a Judge. So
+rejection aside, which is how the plan's first round is read before there is a Judge. So
 read the tasks set aside. `SET ASIDE BY SIDE` counts their rejections under the reference
 harness and under the others: a rejection under one harness removes a task that harness would
 have lost, so rejections that fall on one side move the tally toward it.

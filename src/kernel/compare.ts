@@ -29,8 +29,9 @@
  *
  * Every held-out task is compared (`task.ts`). Until 2026-10-09 a screening chose the scored tasks
  * by which harness failed them, and an anchor of unscreened tasks guarded that choice. With no
- * choice by pass or fail there is nothing to guard. The controls are the minimal baseline and the
- * reference harness set against itself (`pairsOf`, `halves`).
+ * choice by pass or fail there is nothing to guard. The controls are the Starter Built Harness,
+ * which is the first reference and the fixed lower one after a promotion, and the reference
+ * harness set against itself (`pairsOf`, `halves`).
  *
  * How many tasks, how many solves and the level are the caller's. Nothing here decides a step; it
  * reports the tally and its test.
@@ -65,7 +66,7 @@ import { taskSets } from "./task.ts";
 export interface Used {
   /** The model's turns. */
   readonly turns: number | null;
-  /** The prompts the solver was given: null for a solve logged before 2026-10-10. */
+  /** The prompts the solver was given: null for a solve logged before 2026-10-09. */
   readonly prompts: number | null;
   /** CPU seconds of the solve's commands. */
   readonly cpu: number | null;

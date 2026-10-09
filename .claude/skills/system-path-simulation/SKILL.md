@@ -70,12 +70,13 @@ and why the next was not needed.
 (`roundCommand(args, seated)`). Under the seats everything is a paid round's:
 
 - the campaign opened over the real pack, its sets read from the log;
-- the Builder session: its tools on the command wall, its capped root, its freeze and digest;
+- the Builder session, which forks the Starter Built Harness as the plan's first round does: its
+  tools on the command wall, its capped root, its freeze and digest;
 - each solve: its wall and disk cap, the harness's own artifact-writer, `submit`, the verifier on
   the staged check program, its verdict;
-- the comparison: its terms written before its first solve, the reference harness and the new one
-  solved in turn, the sign test, the baseline's solves when a step is read, the report and the
-  stop rule;
+- the comparison: its terms written before its first solve, the reference harness, which is the
+  starter unless `--reference` names another, and the new one solved in turn, the sign test, each
+  harness by itself at every budget (`valid`), the report and the stop rule;
 - going on from the log after a kill or a `bun run runs stop`, which finds a rehearsal as it finds
   a round and releases what its solves held.
 
@@ -93,28 +94,31 @@ pulse, and `faux/script` as its Builder and solver wherever a reader names a mod
 
 ## What scripts read as
 
-`--held old:new` says how a solve of a held-out task ends under the reference harness and under
-the new one, and `--baseline` how one ends under the minimal baseline. Each is `pass`, a valid
-answer; `fail`, an answer a check rejects; or `none`, a solve that submits with no answer, as one
-that reached its limits has none. The table is what `src/builder/round.ts` reads, as its tests
-hold it on stand-ins (`test/round.test.ts`), at four scored tasks. It has not been rehearsed on
-the truss pack since the comparison was rewritten on 2026-10-09: the first rehearsal on a seed
-should write these as its predictions.
+`--held old:new` says how a solve of a held-out task ends under the two harnesses of the
+comparison: the reference harness, which is the starter unless `--reference` names another, and
+the new one. Each is `pass`, a valid answer; `fail`, an answer a check rejects; or `none`, a solve
+that submits with no answer, as one that reached its limits has none. `--starter` says how a solve
+ends under the starter where it is neither of the two, which is after a promotion only. The table
+is what `src/builder/round.ts` reads, as its tests hold it on stand-ins (`test/round.test.ts`), at
+four scored tasks. It has not been rehearsed on the truss pack since the comparison was rewritten
+on 2026-10-09: the first rehearsal on a seed should write these as its predictions.
 
 | script | reading | why |
 | --- | --- | --- |
-| `--held none:pass` (the default) | `step` | four wins are p 0.0625, and the baseline, solved because the test cleared, answers nothing |
-| `--held none:pass --baseline pass` | `step` | against the baseline every task ties between valid answers, and as many wins as losses is enough |
-| `--held pass:pass` | `no-step` | four ties between valid answers; the baseline is not solved |
+| `--held none:pass` (the default) | `step`, `valid` 4/0/0 and 0/0/4 | four wins are p 0.0625; the starter is a side of the test, so nothing more is solved |
+| `--held pass:pass` | `no-step`, `valid` 0/0/4 twice | four ties between valid answers: the tasks leave a harness nothing to add |
 | `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; twice in a row and each task waits for a person's label |
 | `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
-| the same, then `settle.ts` with every label `earned` | `baseline-unread` | the labels restore the tasks; a settling makes no solve, so the baseline is compared in a checkpoint of its own |
+| the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and against the starter there is nothing more to solve |
+| `--reference <a built digest> --held none:pass` | `step`, with `against` 4-0 | after a promotion a step is held to the starter, which is solved because the test cleared and answers nothing |
+| the same with `--starter pass` | `step`, with `against` 0-0-4 | against the starter every task ties between valid answers, and as many wins as losses is enough |
+| the same with `--held fail:pass`, then `settle.ts` with every label `earned` | `starter-unread` | a settling makes no solve, so the new harness is compared with the starter in a checkpoint of its own |
 | fewer than four tasks held out | refused at launch; `no-step` at best if run | at 0.10 a step takes four untied tasks, all won |
 | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
 
 `check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
-ruling of a check defect to count one. So is `below-baseline`: a script ends every solve of a side
-alike, and losing to the baseline while beating the reference harness takes a side that is valid
+ruling of a check defect to count one. So is `below-starter`: a script ends every solve of a side
+alike, and losing to the starter while beating the reference harness takes a side that is valid
 only some of the time.
 
 ## What the first rehearsals settled

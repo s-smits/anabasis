@@ -19,14 +19,22 @@ that hold `--id` are a checkpoint's: one comparison of two harnesses the campaig
 Builder session. Flags that hold `--examiner` are an Examiner session's and go to
 `tools/d1b/examine.ts`: see "An Examiner session" below.
 
-The plan's first experiment is a checkpoint (`docs/plan.md`, Phase 0): the minimal baseline set
-against the harness the campaign starts with, on eight tasks the operator names, read at the full
-limit and at budgets fixed beforehand.
+The plan's first experiment is its first round (`docs/plan.md`, Phase 0). The Builder forks the
+Starter Built Harness and builds on it, and the harness it leaves is compared with the starter on
+eight tasks the operator names, read at the full limit and at budgets fixed beforehand. A round
+starts from the starter and compares with it by default (`--parent latest`, `--reference
+starter`), so the round needs neither flag.
 
 ```sh
-bun run runs launch <pack flags> --name <name> --id g0 --tasks <eight task ids> --cap 437 \
-  --budget turns=12 --budget turns=6
+bun run runs launch <pack flags> --name <name> --session b-1 --builder <model> \
+  --tasks <eight task ids> --cap 625 --budget prompts=12 --budget prompts=6
 ```
+
+A budget names any of four units: `prompts`, which is what `--solve-turns` limits, the model's
+`turns`, `cpu` seconds and `seconds`. The report holds each harness by itself at the full limit
+and at each budget, as the tasks by how many of their solves were valid, and the command prints
+it. For the first round the reference harness is the starter, so that line is what gate G0 reads:
+the plan continues at the budget where the starter is valid on about half its solves.
 
 ## What comes before a comparison
 
@@ -38,10 +46,14 @@ missing.
 | --- | --- |
 | a checker the operator has said stands | `bun tools/c/accept.ts ... --name <name> --freeze` |
 | the pack's tasks held out, and the practice tasks released | `bun tools/d2/prepare.ts ... --name <name>` |
+| the tasks named to score, each confirmed against today's verifier | `bun tools/d2/prepare.ts ... --name <name> --tasks <task ids>` |
 | further held-out tasks, where the pack's are too few | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |
 
 A task meets one gate, the shape of its package, and is a held-out task from then on. No stronger
-solver, no screening and no anchor stands between a task and a comparison.
+solver, no screening and no anchor stands between a task and a comparison. So a task named to
+score is first confirmed: `prepare.ts --tasks` says of each whether an answer the stored sweep
+accepted still passes today's verifier, and exits 1 unless every one does. A rejection of a task
+that fails this says nothing of the answer.
 
 ## What it refuses, and why
 
@@ -51,13 +63,16 @@ $220, and none could have read anything else.
 - **No held-out task.** `prepare.ts` has not run on this log.
 - **Too few tasks to read a step.** At `--level 0.1` a step takes four untied tasks, all won. A
   comparison of fewer scored tasks is refused, and so is one the campaign's own tie share leaves
-  too few untied: the share is the last tallied comparison's, and before any comparison every
-  scored task is counted. Run an Examiner session for more tasks, or change the budget so that
-  fewer tie.
+  too few untied: the share is that of the last tallied comparison made under the same solver
+  and limits, and before any such comparison every scored task is counted. Run an Examiner
+  session for more tasks, or change the budget so that fewer tie.
 - **No dollar cap.** `--cap` is required: the billed dollars the comparison may hold. No solve
   starts that a reserve for it and for each one running (`--reserve`, $10) would take past the
   cap, and a comparison the cap cuts short reads `not-scored` and is finished. The plan proposes
-  each phase's upper estimate plus a quarter.
+  each phase's upper estimate plus a quarter. A note says when the cap holds a reserve for fewer
+  solves than the comparison's test makes.
+- **An id that has reported.** A comparison that reported is finished, and run again it only
+  says what it said. Pass another `--session` or `--id`.
 - **Already running.** A process in this worktree is writing this campaign's log.
 - **A loaded host.** The one-minute load is over the core count. A run started into it slows
   every other, and reaches limits an idle host would not: on that day a practice solve took 12

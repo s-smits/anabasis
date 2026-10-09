@@ -33,7 +33,7 @@ bun tools/d2/prepare.ts <pack flags> --name sim-<what> --practice 2
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --session r-1 \
   --solves 1 --target 4 --minutes 10 --turns 10 \
-  [--held old:new] [--baseline pass|fail|none]
+  [--tasks <task ids>] [--budget prompts=12] [--held old:new] [--starter pass|fail|none]
 ```
 
 The flags are `tools/d2/round.ts`'s, less the three that name a model. The pack flags are the
@@ -41,15 +41,18 @@ campaign's `--root`, `--sweep`, `--cycle` and `--bundle`. Keep the round small a
 size is the question.
 
 - The Builder's script appends one line to the harness's guide through its walled shell, then calls
-  `finish`. So the new harness differs from its parent by one line, and its digest is the same in
-  every rehearsal from that parent.
+  `finish`. The session forks the Starter Built Harness, as the plan's first round does, so the
+  new harness is the starter with a one-line guide, and its digest is the same in every rehearsal
+  from that parent.
 - A solve's script ends one of three ways. For `pass` it hands the harness's own artifact-writer
   an answer on record that the checks accepted, and submits it. For `fail` it does the same with
   one a check rejected. For `none` it submits with no answer prepared, as a solve that reached its
   limits has none.
 - `--held old:new` says how a solve of a held-out task ends under the reference harness and the
-  new, and `--baseline` how one ends under the minimal baseline, which is solved only when the
-  comparison reads a step. The defaults are `none:pass` and `none`, which script a step.
+  new. The reference harness is the starter unless `--reference` names another. The defaults are
+  `none:pass`, which script a step. `--starter` says how a solve ends under the starter where it
+  is neither of the two: after a promotion it is solved only when the comparison reads a step.
+- `--tasks` names the scored tasks by id, as the first round does, in place of `--target`'s draw.
 - A rehearsal needs no `--cap`: a script is paid nothing.
 
 No reviewer reads a rehearsal, so a scripted `fail` is a rejection nobody ruled on. It sets its
@@ -64,21 +67,23 @@ stops the rehearsal with its name; `none` needs no answer.
 ## Rehearse a checkpoint
 
 Flags that hold `--id` are a checkpoint's (`tools/d2/checkpoint.ts`): one comparison of two kept
-harnesses, with no Builder session. The plan's first experiment is one, and can be walked on a
-seed before it is paid for:
+harnesses, with no Builder session. It compares the latest harness a session left with the
+starter, so the seed has to hold one: rehearse a round on it first. The plan's gate G2 is a
+checkpoint with the starter read against itself beside it:
 
 ```sh
-bun run runs rehearse <pack flags> --name sim-<what> --id g0 --tasks <task ids> \
-  --budget turns=12 --budget turns=6 --noise --held pass:pass --baseline none
+bun run runs rehearse <pack flags> --name sim-<what> --id g2 --tasks <task ids> \
+  --budget prompts=12 --noise --held pass:pass
 ```
 
-`--held`'s first word scripts the reference harness, here the stored cycle's, and `--baseline`
-the minimal baseline, which is the new side here. Every scripted solve uses the same turns, so a
-rehearsal shows that the budgets are read and nothing of where they bind.
+Every scripted solve uses the same turns and one prompt, so a rehearsal shows that the budgets are
+read and nothing of where they bind.
 
 ## Read it
 
-It prints the round's report, then the stop rule, then one of two last lines.
+It prints the round's report, then the stop rule, then each harness by itself as the tasks by how
+many of their solves were valid, at the full limit and at each budget, then one of two last
+lines.
 
 - `the rehearsal went as scripted`, exit 0. Every solve ended as its script said and the Builder
   changed the harness. Now read `reading` against the prediction you wrote.
@@ -96,8 +101,8 @@ bun tools/wri/wri.ts read --log .ana/d2/sim-<what>/log.jsonl
 ## More than one round
 
 A second round on the same seed takes another `--session`. Its Builder goes on from the harness
-the first left, and it is compared with the same reference harness, on fresh solves of both. To
-compare with the first round's harness instead, name it:
+the first left, and it is compared with the same reference harness, the starter, on fresh solves
+of both. To compare with the first round's harness instead, as after a promotion, name it:
 
 ```sh
 bun run runs rehearse ... --session r-2 --reference <the report's fresh digest>

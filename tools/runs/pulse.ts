@@ -139,7 +139,7 @@ const SAID: Partial<
       return `◆ settled by hand as ${word(data.reading)}: ${word(settled.labelled)} labelled, ${word(settled.defects)} a check defect`;
     }
     if (data.capped === true) {
-      return `⚠ reported ${word(data.reading)}: its dollar cap cut ${asRecord(data.scored) === null ? "it short" : "the baseline's solves short, and its test stands"}`;
+      return `⚠ reported ${word(data.reading)}: its dollar cap cut ${asRecord(data.scored) === null ? "it short" : "the starter's solves short, and its test stands"}`;
     }
     const aside = Array.isArray(data.aside) ? data.aside.length : 0;
     if (aside > 0) {

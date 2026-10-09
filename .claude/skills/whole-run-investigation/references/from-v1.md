@@ -135,7 +135,7 @@ archive alone.
 | 20. Pair identity and source reach | every field of the counted conditions but the harness | v1 retired the paired contest. |
 | 21. The scored set and what left it | the tasks fixed at a comparison's start against the tasks it tallied | the same |
 | 22. Sign test, ties and power | untied tasks and what the set could detect | the same |
-| 23. The minimal baseline | a harness against the solver with a shell and nothing else | v1 never set its solver with a harness against the same solver without one. |
+| 23. The starter | a built harness against the Starter Built Harness, the solver with a shell and nothing else, and the starter by itself at each budget | v1 never set its solver with a harness against the same solver without one. |
 | 24. Flips and solver variance | one harness passing and failing one task | v1 recorded flips and had no comparison for them to disturb. |
 | 25. The chain of comparisons | reference harness, new harness and reading, in order, and whether a step was repeated | v1's controller owned the chain. |
 
@@ -185,7 +185,7 @@ harness improves.
 reported a step on a real campaign, and this catalogue has read two simulated logs. v1 found the
 signal too rare to settle a comparison at the size it ran, 11 of 322 batteries with an uncontested
 fail. v2's answer since 2026-10-09 is one compute budget for both harnesses, set where the
-reference harness is valid about half the time, and first of all a measurement of whether a
-harness changes anything: the solver with a shell alone against the existing harness
-(`docs/plan.md`, Phase 0). Whether a budget leaves enough tasks untied to show a gain is the open
+reference harness is valid about half the time, and first of all a measurement of how the
+Starter Built Harness does by itself, read from the first round, in which a built harness is
+compared with it (`docs/plan.md`, Phase 0). Whether a budget leaves enough tasks untied to show a gain is the open
 empirical question, and lanes 9, 10, 22 and 23 are where it will be read.

@@ -283,6 +283,11 @@ describe("a Builder session", () => {
     );
     expect(s.sent[0]).toContain("t-2 (family fixture): not yet solved under the harness you start from.");
     expect(s.sent[0]).toContain("3 practice solves, 10 minutes and 12 turns");
+    // The one limit on a harness, as the operator settled it on 9 October: a tool may test a
+    // candidate against a public rule, and none returns a finished answer.
+    expect(s.sent[0]).toContain("No tool, program or guide line returns a finished answer for a task");
+    expect(s.sent[0]).toContain("test the candidate against a public rule and say what it does not meet");
+    expect(s.sent[0]).not.toContain("says whether a candidate meets a rule");
     expect(readFileSync(join(s.home, "practice", "t-1.json"), "utf8")).toContain('"base": 7');
     // The solver's public resources, in the home as one file, which the opening message names.
     expect(readFileSync(join(s.home, "resources.json"), "utf8")).toContain('"maxSpan": 12');

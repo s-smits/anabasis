@@ -120,7 +120,7 @@ function solvesOf(
     }),
   );
   const started = "solve.started";
-  // A comparison's solves name it. In a log written before 2026-10-10 none does, and the round's
+  // A comparison's solves name it. In a log written before 2026-10-09 none does, and the round's
   // window of the log stands in: the solves of its scored tasks under its harnesses.
   const named = events.some((event) => event.kind === started && event.data.comparison === given.session);
   return events.flatMap(({ kind, data }, index) => {
@@ -177,13 +177,13 @@ export function roundOf(
     ...strings(report?.aside),
     ...strings(report?.withdrawn),
   ];
-  const baseline = isString(report?.baseline) ? report.baseline : "";
+  const starter = isString(report?.starter) ? report.starter : "";
   const reference = isString(report?.old) ? report.old : parent;
 
   const solves = solvesOf(events, {
     practice: new Set(strings(started.tasks)),
     scored: new Set(scoredSet),
-    harnesses: new Set([reference, fresh, baseline]),
+    harnesses: new Set([reference, fresh, starter]),
     session,
     from,
     until,
@@ -194,7 +194,7 @@ export function roundOf(
   // non-result is no measurement, so no rate is taken here for one to fall into.
   // The later name stands where two of the three are one harness.
   const sides = new Map([
-    [baseline, "baseline"],
+    [starter, "starter"],
     [fresh, "fresh"],
     [reference, "reference"],
   ]);
@@ -239,9 +239,11 @@ export function roundOf(
       `Builder ${builder}${built === undefined ? ", still building" : `, ended at ${word(built.ended)}`}`,
       `solver ${condition.model}, ${condition.effort}, ${condition.compaction}`,
       `harness ${brief(parent)} > ${fresh === "" ? "none kept" : `${brief(fresh)}, ${writer}`}, compared with ${brief(reference)}`,
-      against === null
-        ? "not read against the baseline"
-        : `against the baseline ${brief(baseline)}: ${word(against.wins)} won, ${word(against.losses)} lost, ${word(against.ties)} tied`,
+      reference === starter
+        ? "the reference harness is the starter"
+        : against === null
+          ? "not read against the starter"
+          : `against the starter ${brief(starter)}: ${word(against.wins)} won, ${word(against.losses)} lost, ${word(against.ties)} tied`,
       `${report === undefined ? "not reported yet" : `reported ${word(report.reading)}, for ${target}`}${
         score === null
           ? ""
@@ -251,11 +253,11 @@ export function roundOf(
                 : `${plural(scored, "task")}, p ${word(score.p)}`
             }`
       }`,
-      // Until 2026-10-10 a solve's start named no comparison, and no reading can say which of an
+      // Until 2026-10-09 a solve's start named no comparison, and no reading can say which of an
       // older log's solves a report counted.
       ...(tallied.length > 0 && pairs.length === 0
         ? [
-            "its solves name no comparison, as none did before 2026-10-10: its tasks cannot be read pair by pair, and each reads unresolved below",
+            "its solves name no comparison, as none did before 2026-10-09: its tasks cannot be read pair by pair, and each reads unresolved below",
           ]
         : []),
       ...counted,

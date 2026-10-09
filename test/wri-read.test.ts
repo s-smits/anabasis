@@ -93,7 +93,7 @@ function solve(task: string, harness: string, outcome: "pass" | "rejected" | "la
 
 /** A comparison's start and where it stands, as `src/builder/round.ts` writes one. */
 function started(session: string, old: string, fresh: string) {
-  const terms = { old, fresh, baseline: "hbase", setting: SETTING, solves: 1, level: 0.1 };
+  const terms = { old, fresh, starter: "hbase", setting: SETTING, solves: 1, level: 0.1 };
   comparison = session;
   record("comparison.started", { session, ...terms, noise: false, budgets: [], cap: null, tasks: HELD });
   return { session, ...terms, tasks: 4 };
@@ -246,8 +246,9 @@ describe("the whole-run investigation's reader", () => {
       "NO VALID ANSWER",
       "AWAITING A LABEL",
       "CUT BY ITS CAP",
-      "BASELINE UNREAD",
-      "BELOW THE BASELINE",
+      "STARTER UNREAD",
+      "BELOW THE STARTER",
+      "VALID BY HARNESS",
       "STEP NOT REPEATED",
       "SETTLED BY HAND",
     ] as const) {
@@ -257,7 +258,7 @@ describe("the whole-run investigation's reader", () => {
   });
 
   it("names the ties between valid answers, and a task no harness answered in two comparisons in a row", () => {
-    // Two comparisons of the reference harness with the baseline. Both answer v2 to v4 validly
+    // Two comparisons of the reference harness with the starter. Both answer v2 to v4 validly
     // every time, and neither answers v1 within its limits.
     for (const session of ["g-1", "g-2"]) {
       const terms = started(session, "hp", "hbase");
@@ -281,7 +282,7 @@ describe("the whole-run investigation's reader", () => {
     expect(later()("CHAIN")).toBe("b-1 hp>hc no-step; g-1 hp>hbase no-step; g-2 hp>hbase no-step");
   });
 
-  it("names a comparison its cap cut, one that tallied nothing, and one below the baseline", () => {
+  it("names a comparison its cap cut, one that tallied nothing, and one below the starter", () => {
     record(REPORTED, {
       ...REPORT,
       ...started("g-3", "hp", "hbase"),
@@ -300,10 +301,10 @@ describe("the whole-run investigation's reader", () => {
       scored: { ...TESTED, wins: 4, p: 0.0625, unsolved: 0 },
       against: { ...TESTED, wins: 1, losses: 3 },
       versions: HELD,
-      reading: "below-baseline",
+      reading: "below-starter",
     });
-    expect(later()("BELOW THE BASELINE")).toBe(
-      "g-5: 1 won and 3 lost against the baseline; the report reads below-baseline",
+    expect(later()("BELOW THE STARTER")).toBe(
+      "g-5: 1 won and 3 lost against the starter; the report reads below-starter",
     );
   });
 
@@ -324,7 +325,7 @@ describe("the whole-run investigation's reader", () => {
 
   it("says what a person's labels settled, beside what the comparison's own report read", () => {
     // The first round's report, written again as the labels left it: v1's rejection a check defect,
-    // v2's earned. The test now clears its level, and the baseline was never solved for it.
+    // v2's earned. The test now clears its level, and the starter was never solved for it.
     record("task.state", { version: "v1", state: "disputed", session: "b-1" });
     record(REPORTED, {
       ...OWN,
@@ -333,15 +334,15 @@ describe("the whole-run investigation's reader", () => {
       versions: ["v2", "v3", "v4"],
       disputed: ["v1"],
       aside: [],
-      reading: "baseline-unread",
+      reading: "starter-unread",
       settled: { labelled: 2, defects: 1, disputed: ["v1"], restored: ["v2"] },
     });
     const said = later();
     expect(overview(events).triggers.find(({ name }) => name === "SETTLED BY HAND")?.detail).toBe(
-      "b-1: 2 rejections labelled, 1 a check defect, 1 task disputed and 1 restored; the comparison's own report read no-step, the settled one reads baseline-unread",
+      "b-1: 2 rejections labelled, 1 a check defect, 1 task disputed and 1 restored; the comparison's own report read no-step, the settled one reads starter-unread",
     );
-    expect(overview(events).triggers.find(({ name }) => name === "BASELINE UNREAD")?.detail).toBe(
-      "b-1: its test clears its level and the baseline has not its solves on every tallied task",
+    expect(overview(events).triggers.find(({ name }) => name === "STARTER UNREAD")?.detail).toBe(
+      "b-1: its test clears its level and the starter has not its solves on every tallied task",
     );
     // The comparison's own report still says what its set-aside tasks could move, and nothing of
     // it waits for a person any more.
@@ -350,7 +351,7 @@ describe("the whole-run investigation's reader", () => {
     ).toBeDefined();
     expect(said("SET ASIDE AND UNSETTLED")).toBeUndefined();
     // A settled comparison stands where it first reported: the first of the chain still.
-    expect(said("CHAIN")).toStartWith("b-1 hp>hc baseline-unread; g-1 hp>hbase no-step");
+    expect(said("CHAIN")).toStartWith("b-1 hp>hc starter-unread; g-1 hp>hbase no-step");
   });
 
   it("says of an empty log only that it has no checker on record", () => {
@@ -429,7 +430,7 @@ describe("the reader of a round compared with another harness than its session s
   // the reference harness, href.
   put("build.started", { session: "r-1", parent: "hx", tasks: [] });
   put("build.finished", { session: "r-1", ended: "finished", harness: "hy", changed: true });
-  const terms = { session: "r-1", old: "href", fresh: "hy", baseline: "hbase", setting: SETTING };
+  const terms = { session: "r-1", old: "href", fresh: "hy", starter: "hbase", setting: SETTING };
   put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
   made("q1", "href", { outcome: "non-result", kind: "provider", reason: "cut" }, 50);
   made("q2", "href", { outcome: "fail", kind: "wall-ended" }, 100);
@@ -442,6 +443,8 @@ describe("the reader of a round compared with another harness than its session s
     level: 0.1,
     tasks: 1,
     scored: { ...TESTED, wins: 1, p: 0.5, unsolved: 0 },
+    valid: { old: [1, 0], fresh: [0, 1] },
+    budgets: [{ prompts: 1, ...TESTED, ties: 1, valid: { old: [1, 0], fresh: [1, 0] } }],
     noise: { wins: 0, losses: 4, ties: 0, p: 1 },
     versions: ["v1"],
     reading: "no-step",
@@ -452,6 +455,12 @@ describe("the reader of a round compared with another harness than its session s
   it("reads a quick win against the reference harness, which is what the task was lost under", () => {
     expect(said("WIN AT A SMALL WALL SHARE")).toBe(
       "r-1: 1 passed solves of tasks the reference harness failed, in few calls",
+    );
+  });
+
+  it("gives each harness by itself, at the full limit and at each budget, which the first gate reads", () => {
+    expect(said("VALID BY HARNESS")).toBe(
+      "r-1: reference 1/0, new 0/1 at its limits; reference 1/0, new 1/0 at prompts 1",
     );
   });
 

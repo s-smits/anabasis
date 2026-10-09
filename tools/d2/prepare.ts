@@ -1,11 +1,13 @@
 /**
- * Set a campaign's tasks apart for its next comparison: hold the pack's tasks out, and release the
- * practice tasks.
+ * Set a campaign's tasks apart for its next comparison: hold the pack's tasks out, release the
+ * practice tasks, and confirm the tasks the operator means to score.
  *
  *   bun tools/d2/prepare.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
- *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --practice 6
+ *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --practice 6 \
+ *     --tasks <eight task ids>
  *
- * Run it before a comparison. What it finds already in place it leaves.
+ * Run it before a comparison. What it finds already in place it leaves. It is the plan's set-up of
+ * the first round (`docs/plan.md`, Phase 0).
  *
  * Each task of the pack that the log does not hold is proposed and put to its one gate, the shape
  * of its package (`src/kernel/task.ts`). A task that passes is a held-out task. No solve and no
@@ -19,6 +21,16 @@
  * over nearly the whole pack left eight rounds no task to score. Each release is said by its task.
  * A run that labels a task (below) releases none: a release cannot be taken back, and a person
  * labelling one task has not asked for another to leave the held-out set.
+ *
+ * `--tasks` names the tasks the next comparison is to score, by id, as `round.ts --tasks` then
+ * takes them. A named task is never released here. A task is held out on the shape of its package
+ * alone, so each named task is first confirmed against today's verifier: an answer the stored
+ * sweep accepted for it must still pass, so that a rejection of it means something. On 2026-10-08
+ * all 35 accept controls of the truss pack failed (`docs/transfer.md`). It says of each task
+ * whether a stored accepted answer passes, is rejected and by which checks, or does not exist, and
+ * exits 1 unless every one passes. It writes none of this to the log and decides nothing: the
+ * operator names other tasks, or has the check program read (`tools/c/accept.ts`). The verifier
+ * runs behind its wall, so this part needs the host's sandbox.
  *
  * It is also where a person labels a task that went to them as possibly infeasible: one no harness
  * answered validly in two comparisons in a row, which is left out of the scored set until it is
@@ -39,9 +51,11 @@ import { append, read } from "#src/kernel/log.ts";
 import { awaitingLabel } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
-import { parseArgs } from "#src/meta/process.ts";
+import type { JsonValue } from "#src/meta/json-shape.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { awaitingLines, openCampaign } from "./campaign.ts";
-import { ROUND_OPTIONS, targetNamed } from "./round.ts";
+import { type Campaign, ROUND_OPTIONS, scoredNamed, targetNamed } from "./round.ts";
 
 const { values } = parseArgs({
   options: {
@@ -54,11 +68,43 @@ const { values } = parseArgs({
     level: ROUND_OPTIONS.level,
     target: ROUND_OPTIONS.target,
     solves: ROUND_OPTIONS.solves,
+    tasks: ROUND_OPTIONS.tasks,
     keep: { type: "string", multiple: true },
     infeasible: { type: "string", multiple: true },
     note: { type: "string" },
   },
 });
+
+/**
+ * What today's verifier says of the answers the stored sweep accepted for task `version`, in one
+ * line, and whether one of them still passes. The first that passes confirms the task.
+ */
+async function confirmed(campaign: Campaign, version: string, accepted: ReadonlyMap<string, JsonValue[]>) {
+  const task = campaign.packages().get(version);
+  const answers = accepted.get(task?.taskId ?? "") ?? [];
+  if (task === undefined || answers.length === 0) {
+    return {
+      passes: false,
+      line: `${task?.taskId ?? version}: the stored sweep accepted no answer to it, so nothing confirms its checks`,
+    };
+  }
+  const said: string[] = [];
+  for (const answer of answers) {
+    const verdict = await campaign.verify(task, answer);
+    if (verdict.kind === "pass") {
+      return { passes: true, line: `${task.taskId}: a stored accepted answer passes today's verifier` };
+    }
+    said.push(
+      verdict.kind === "fail"
+        ? `rejected by ${verdict.blocking.join(", ")}`
+        : `not decided: ${verdict.kind === "faulty" ? `${verdict.check} is faulty, ${verdict.reason}` : verdict.reason}`,
+    );
+  }
+  return {
+    passes: false,
+    line: `${task.taskId}: no stored accepted answer passes today's verifier (${[...new Set(said)].join("; ")}): a rejection of an answer to it would say nothing of the answer`,
+  };
+}
 
 async function main(): Promise<void> {
   const { root, sweep, cycle, bundle, name } = values;
@@ -105,16 +151,25 @@ async function main(): Promise<void> {
     throw new Error(`--practice ${values.practice}: the practice tasks are a whole number`);
   }
   const before = taskSets(read(log));
+  // The tasks the operator names to score, each a held-out task, are no practice.
+  const named = values.tasks === undefined ? [] : scoredNamed(campaign, values.tasks, target);
+  const stray = named.find((version) => !before.held.includes(version));
+  if (stray !== undefined) {
+    throw new Error(
+      `--tasks ${packages.get(stray)?.taskId ?? stray}: the task is ${before.states.get(stray) ?? "not proposed"}, and only a held-out task is scored`,
+    );
+  }
+  const pool = before.held.filter((version) => !named.includes(version));
   const missing = labels.length > 0 ? 0 : Math.max(0, practice - before.released.length);
-  const released = Math.min(missing, Math.floor(before.held.length / 2));
+  const released = Math.min(missing, Math.floor(pool.length / 2));
   const seed = `${contractHash(contract)}:practice`;
-  for (const version of draw(before.held, released, seed)) {
+  for (const version of draw(pool, released, seed)) {
     append(log, "task.state", { version, state: "released" });
     console.log(`${packages.get(version)?.taskId ?? version}: released for practice, and never scored`);
   }
   if (released < missing) {
     console.log(
-      `practice is ${String(missing - released)} short of ${values.practice}: a release takes at most half of the ${String(before.held.length)} held out, so that a comparison has tasks to score`,
+      `practice is ${String(missing - released)} short of ${values.practice}: a release takes at most half of the ${String(pool.length)} held out${named.length === 0 ? "" : " and not named to score"}, so that a comparison has tasks to score`,
     );
   }
 
@@ -137,9 +192,29 @@ async function main(): Promise<void> {
   const sets = taskSets(events);
   const awaiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
   console.log(`${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`);
-  const scored = Math.min(target, sets.held.length - awaiting.length);
+  const scored = named.length > 0 ? named.length : Math.min(target, sets.held.length - awaiting.length);
   const asked = { solves: Number(values.solves), level: Number(values.level) };
   for (const line of [...sizeLines(scored, asked), ...awaitingLines(campaign)]) console.log(line);
+  if (named.length === 0) return;
+
+  // Each named task against today's verifier, on the answers the stored sweep accepted for it.
+  const accepted = new Map<string, JsonValue[]>();
+  for (const row of sweepRows(root, sweep)) {
+    const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
+    if (answer !== undefined) accepted.set(row.taskId, [...(accepted.get(row.taskId) ?? []), answer]);
+  }
+  let open = 0;
+  for (const version of named) {
+    const { passes, line } = await confirmed(campaign, version, accepted);
+    console.log(line);
+    open += passes ? 0 : 1;
+  }
+  console.log(
+    open === 0
+      ? `each of the ${String(named.length)} tasks named to score has a stored accepted answer that passes today's verifier`
+      : `${String(open)} of the ${String(named.length)} tasks named to score have no stored accepted answer that passes today's verifier: name others, or have the check program read (tools/c/accept.ts)`,
+  );
+  if (open > 0) runtimeProcess.exitCode = 1;
 }
 
 await main();

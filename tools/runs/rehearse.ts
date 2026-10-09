@@ -1,11 +1,11 @@
 /**
- * `bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held none:pass] [--baseline none]`
+ * `bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held none:pass] [--starter none]`
  *
  * A round over a seeded campaign (`seed.ts`) with a script in each model seat and no model called.
- * Flags that hold `--id` are a checkpoint's, as a launch reads them, and rehearse one comparison
- * with no Builder session (`tools/d2/checkpoint.ts`): the plan's first experiment can be walked on
- * a seed this way before it is paid for, with `--held` scripting the reference harness and the
- * new one and `--baseline` the minimal baseline wherever it sits.
+ * The plan's first round is walked this way before it is paid for (`docs/plan.md`, Phase 0): the
+ * scripted Builder forks the Starter Built Harness, and the harness it leaves is compared with the
+ * starter. Flags that hold `--id` are a checkpoint's, as a launch reads them, and rehearse one
+ * comparison with no Builder session (`tools/d2/checkpoint.ts`).
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's wall and disk cap, the harness's own
  * artifact-writer, the verifier, the comparison and the report. It is `roundCommand` with other
@@ -17,9 +17,11 @@
  * answer on record that the checks accepted, and submits it. For `fail` it does the same with one
  * a check rejected. For `none` it submits with no answer prepared, as a solve that reached its
  * limits has none: not valid, and nothing for anyone to rule on. `--held` says how a solve of a
- * held-out task ends under the reference harness and under the new one, as `old:new`, and
- * `--baseline` how one ends under the minimal baseline, which is solved only when the comparison
- * reads a step. The defaults, `none:pass` and `none`, script a step.
+ * held-out task ends under the two harnesses of the comparison, the reference harness and the new
+ * one, as `old:new`. The reference harness is the starter unless `--reference` names another. For
+ * a round the defaults, `none:pass`, script a step. `--starter` says how a solve ends under the
+ * starter where it is neither of the two: after a promotion it is solved only when the comparison
+ * reads a step, to hold the step to it.
  *
  * No reviewer reads a rehearsal, so a scripted `fail` is a rejection nobody ruled on: it sets its
  * task aside, as a paid comparison's would with no reviewer, the report's `counted` holds the
@@ -40,7 +42,7 @@ import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/j
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { openHarness } from "#src/solve/harness.ts";
-import { baseline } from "../d2/campaign.ts";
+import { starter } from "../d2/campaign.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
@@ -55,13 +57,14 @@ interface Sides {
   readonly old: End;
   readonly fresh: End;
 }
-/** The script of a rehearsal's solves: under the reference harness and the new, and under the baseline. */
+/** The script of a rehearsal's solves: under the reference harness and the new, and under the
+ *  starter where it is neither. */
 interface Script {
   readonly held: Sides;
-  readonly baseline: End;
+  readonly starter: End;
 }
 
-const OWN = new Set(["held", "baseline"]);
+const OWN = new Set(["held", "starter"]);
 const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A list price for the scripted model, which the meter refuses to run without: what a rehearsal
  *  meters is the script's own words at this price, and is no cost. */
@@ -132,8 +135,8 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       );
     }
     const answers = answersOf(graded, read(campaign.log));
-    const least = baseline(campaign);
-    /** Each harness's artifact-writer by the harness's folder: the baseline's is not the cycle's. */
+    const least = starter(campaign);
+    /** Each harness's artifact-writer by the harness's folder: a built harness may rename its own. */
     const writers = new Map<string, Promise<string | undefined>>();
     const writerOf = (dir: string) => {
       const known =
@@ -142,9 +145,10 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       writers.set(dir, known);
       return known;
     };
-    /** Which of the three a solve's harness is, as a strayed solve is named. */
+    /** Which of the three a solve's harness is, as a strayed solve is named: a side of the
+     *  comparison first, so the starter is scripted as the reference harness where it is that. */
     const sideOf = async (dir: string) =>
-      dir === (await least).dir ? "baseline" : dir === reference ? "old" : "new";
+      dir === reference ? "old" : dir === (await least).dir ? "starter" : "new";
     return {
       builder: scripted(
         [
@@ -157,7 +161,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill, comparison) => {
         const side = await sideOf(harness.dir);
-        const wanted = { old: script.held.old, new: script.held.fresh, baseline: script.baseline }[side];
+        const wanted = { old: script.held.old, new: script.held.fresh, starter: script.starter }[side];
         // A solve scripted to give no answer submits with none prepared, and needs none on record.
         const answer = wanted === "none" ? null : asRecord(answers.get(task.taskId)?.[wanted]);
         const tool = await writerOf(harness.dir);
@@ -176,7 +180,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
           failed === null ? ending.outcome === "pass" : ending.outcome === "fail" && ending.kind === failed;
         if (!held) {
           strayed.push(
-            `${done.solve}: ${task.taskId} under the ${side === "baseline" ? "baseline" : `${side === "old" ? "reference" : "new"} harness`} was scripted to ${wanted === "none" ? "give no answer" : wanted} and ended ${JSON.stringify(ending)}`,
+            `${done.solve}: ${task.taskId} under the ${side === "starter" ? "starter" : `${side === "old" ? "reference" : "new"} harness`} was scripted to ${wanted === "none" ? "give no answer" : wanted} and ended ${JSON.stringify(ending)}`,
           );
         }
         return done;
@@ -193,7 +197,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     tokens: true,
     options: {
       held: { type: "string", default: "none:pass" },
-      baseline: { type: "string", default: "none" },
+      starter: { type: "string", default: "none" },
       id: { type: "string" },
       root: { type: "string" },
       sweep: { type: "string" },
@@ -204,7 +208,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     },
   });
   const { held, root, sweep, bundle } = values;
-  const least = isString(values.baseline) ? endOf(values.baseline) : undefined;
+  const least = isString(values.starter) ? endOf(values.starter) : undefined;
   const seated = (["builder", "solver", "reviewer"] as const).filter((seat) => values[seat] !== undefined);
   if (seated.length > 0) {
     // A reviewer named here would be a live one, reading scripted fails for money.
@@ -212,7 +216,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   }
   if (!isString(held) || least === undefined || !isString(root) || !isString(sweep) || !isString(bundle)) {
     throw new Error(
-      "usage: bun run runs rehearse <the flags of tools/d2/round.ts or of tools/d2/checkpoint.ts that name no model> [--held old:new] [--baseline pass|fail|none]",
+      "usage: bun run runs rehearse <the flags of tools/d2/round.ts or of tools/d2/checkpoint.ts that name no model> [--held old:new] [--starter pass|fail|none]",
     );
   }
   const passes = sweepRows(root, sweep).flatMap((row) => {
@@ -221,7 +225,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   });
   const strayed: string[] = [];
   const seats = scriptedSeats(
-    { held: sidesOf(held), baseline: least },
+    { held: sidesOf(held), starter: least },
     [...passes, ...packControls(bundle)],
     strayed,
   );

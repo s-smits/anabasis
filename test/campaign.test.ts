@@ -1,7 +1,7 @@
 // A campaign over a sweep laid out as v1's left one, as far as it goes without a model or a wall: it
 // opens, `prepare.ts`, run as the operator runs it, takes the pack's tasks in, releases the practice
 // tasks once and takes a person's label of a task, a task a session wrote stands beside the pack's
-// own, and the campaign keeps its harnesses by name: the one it started with, the minimal baseline
+// own, and the campaign keeps its harnesses by name: the one it started with, the starter
 // and the latest a session left.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { append, read } from "../src/kernel/log.ts";
@@ -20,9 +20,9 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { openHarness } from "../src/solve/harness.ts";
-import { baseline, keptAs, LIMITS, openCampaign } from "../tools/d2/campaign.ts";
+import { starter, keptAs, LIMITS, openCampaign } from "../tools/d2/campaign.ts";
 import { SETTING_OPTIONS, settingNamed } from "../tools/d2/setting.ts";
-import { budgetsNamed, capNamed, ROUND_OPTIONS, roundCommand } from "../tools/d2/round.ts";
+import { budgetsNamed, capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
@@ -116,7 +116,6 @@ describe("a campaign", () => {
     ]);
     expect(campaign.test).toMatchObject({ effort: "medium", side: "test" });
     expect(campaign.test.model.id).toBe("claude-opus-5-5");
-    expect(campaign.parent).toBe(join(root, "hb-bundles", "s-c01"));
     // The log, the staged check program and the states are inside the repository, which every wall denies.
     expect(campaign.log.startsWith(join(REPO, ".ana", "d2", NAME))).toBe(true);
     expect(read(campaign.log)).toEqual([]);
@@ -200,31 +199,35 @@ describe("a campaign", () => {
     expect(prepare("--keep", "t-99")).toContain("t-99 is no held-out task of this campaign");
   });
 
-  it("keeps the harness it started with, the minimal baseline, and the latest a session left, each by name", async () => {
+  it("starts from the Starter Built Harness, and keeps it and the latest a session left, each by name", async () => {
     const campaign = await openCampaign(ARGS);
-    const start = await keptAs(campaign, "--reference", "start");
-    expect(start.dir).toBe(campaign.parent);
-    // Until a session has left a harness, the latest is the one the campaign started with.
-    expect(await keptAs(campaign, "--parent", "latest")).toEqual(start);
-    // The baseline is a harness like any other: it opens, with a shell, an answer writer, no guide
+    // The starter is a harness like any other: it opens, with a shell, an answer writer, no guide
     // and no domain tool, and it is kept under its digest among the campaign's states.
-    const least = await baseline(campaign);
+    const least = await starter(campaign);
     const opened = await openHarness(least.dir);
     expect(least).toEqual({ dir: join(campaign.states, opened.digest), digest: opened.digest });
     expect(opened.guide).toBeNull();
     expect(opened.presets).toEqual(["shell"]);
     expect([...opened.kinds.values()]).toEqual(["artifact-writer"]);
     expect(opened.toolTree).toBeNull();
-    expect(least.digest).not.toBe(start.digest);
-    expect(await baseline(campaign)).toEqual(least);
-    expect(await keptAs(campaign, "--new", "baseline")).toEqual(least);
+    expect(await starter(campaign)).toEqual(least);
     expect(readdirSync(campaign.states)).toEqual([least.digest]);
+    // It is the reference harness, and until a session has left a harness it is the latest too:
+    // the first Builder session forks it.
+    expect(await keptAs(campaign, "--reference", "starter")).toEqual(least);
+    expect(await keptAs(campaign, "--parent", "latest")).toEqual(least);
+    expect(ROUND_OPTIONS.reference.default).toBe("starter");
+    expect(ROUND_OPTIONS.parent.default).toBe("latest");
+    // The stored cycle's own harness is none the campaign keeps: it comes from v1's runs.
+    await expect(keptAs(campaign, "--reference", "start")).rejects.toThrow(
+      "--reference start is no harness this campaign keeps",
+    );
 
     // A session leaves a harness under its digest, and the Builder goes on from it whether or not
-    // its comparison read a step. The reference harness stays the one the campaign started with:
-    // no reading moves it, and promotion is the operator's, by naming another.
+    // its comparison read a step. The reference harness stays the starter: no reading moves it,
+    // and promotion is the operator's, by naming another.
     const child = join(root, "child");
-    cpSync(campaign.parent, child, { recursive: true });
+    cpSync(least.dir, child, { recursive: true });
     writeFileSync(join(child, "agent", "BUILT_AGENTS.md"), "Multiply first.\n");
     const { digest } = await openHarness(child);
     cpSync(child, join(campaign.states, digest), { recursive: true });
@@ -237,10 +240,10 @@ describe("a campaign", () => {
     append(campaign.log, "comparison.reported", { session: "b-1", reading: "step", fresh: digest });
     const built = { dir: join(campaign.states, digest), digest };
     expect(await keptAs(campaign, "--parent", "latest")).toEqual(built);
-    expect(await keptAs(campaign, "--reference", "start")).toEqual(start);
+    expect(await keptAs(campaign, "--reference", "starter")).toEqual(least);
     expect(await keptAs(campaign, "--reference", digest)).toEqual(built);
-    // The harness the campaign started with is named by its digest too, though no state holds it.
-    expect(await keptAs(campaign, "--parent", start.digest)).toEqual(start);
+    // The starter is named by its digest too, as any kept harness is.
+    expect(await keptAs(campaign, "--parent", least.digest)).toEqual(least);
   });
 
   it("says which harnesses a campaign keeps when --parent names none of them", async () => {
@@ -349,6 +352,25 @@ describe("a campaign", () => {
       { seconds: 1800 },
     ]);
     expect(budgetsNamed()).toEqual([]);
+    // What a report says of each harness by itself is printed in words: the tasks by how many of
+    // their solves were valid, at the full limit and at each budget. For the first round the
+    // reference harness is the starter, and these lines are what its gate reads.
+    const tested = { wins: 0, losses: 0, ties: 0, p: 1 };
+    expect(
+      validLines({
+        valid: { old: [2, 1, 5], fresh: [0, 1, 7] },
+        budgets: [
+          { prompts: 12, ...tested, valid: { old: [4, 2, 2], fresh: [1, 3, 4] } },
+          { turns: 40, cpu: 600, ...tested, valid: { old: [6, 2, 0], fresh: [3, 3, 2] } },
+        ],
+      }),
+    ).toEqual([
+      "each harness by itself, as the tasks with 0, 1, 2 valid answers in 2 solves:",
+      "  at its limits: reference 2/1/5, new 0/1/7",
+      "  at prompts=12: reference 4/2/2, new 1/3/4",
+      "  at turns=40,cpu=600: reference 6/2/0, new 3/3/2",
+    ]);
+    expect(validLines({ valid: null, budgets: [] })).toEqual([]);
     for (const flag of ["turns", "turns=0", "tokens=5", "turns=4=5", ""]) {
       expect(() => budgetsNamed([flag])).toThrow("a budget names turns, prompts, cpu or seconds");
     }

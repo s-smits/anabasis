@@ -21,7 +21,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { parseArgs } from "../src/meta/process.ts";
-import { baseline } from "../tools/d2/campaign.ts";
+import { starter } from "../tools/d2/campaign.ts";
 import type { Campaign } from "../tools/d2/round.ts";
 import { passedOn } from "../tools/runs/launch.ts";
 import { answersOf, rehearse, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
@@ -168,14 +168,14 @@ describe("a rehearsal's script", () => {
   });
 
   it("hands on another command's flags without its own", () => {
-    const args = ["--held", "pass:pass", "--name", "sim", "--baseline=fail", "--session", "r-1", "--yes"];
+    const args = ["--held", "pass:pass", "--name", "sim", "--starter=fail", "--session", "r-1", "--yes"];
     const { tokens } = parseArgs({
       args,
       strict: false,
       tokens: true,
-      options: { held: { type: "string" }, baseline: { type: "string" } },
+      options: { held: { type: "string" }, starter: { type: "string" } },
     });
-    expect(passedOn(args, tokens, new Set(["held", "baseline"]))).toEqual([
+    expect(passedOn(args, tokens, new Set(["held", "starter"]))).toEqual([
       "--name",
       "sim",
       "--session",
@@ -199,7 +199,7 @@ describe("a rehearsal's seats", () => {
     { taskId, answer: { answer: `${taskId} right` }, refusedBy: null },
     { taskId, answer: { answer: `${taskId} wrong` }, refusedBy: "check-product" },
   ]);
-  const SCRIPT = { held: sidesOf("fail:pass"), baseline: "fail" } as const;
+  const SCRIPT = { held: sidesOf("fail:pass"), starter: "fail" } as const;
 
   /** A campaign over `folder` whose solves end as `ending`, and each solve's first scripted call. */
   function campaignOver(folder: string, ending: Ending) {
@@ -260,10 +260,10 @@ describe("a rehearsal's seats", () => {
     const old = { dir: FIXTURE, digest: "o" };
     await seats.solve(held, fresh, undefined);
     expect(strayed).toEqual([]);
-    // Under the reference harness and under the baseline a task is scripted to fail, and this
+    // Under the reference harness and under the starter a task is scripted to fail, and this
     // campaign's solves all pass.
     await seats.solve(held, old, undefined);
-    await seats.solve(other, await baseline(campaign), undefined);
+    await seats.solve(other, await starter(campaign), undefined);
     expect(calls).toMatchObject([
       { name: "record_answer", arguments: { answer: "t-2 right" } },
       { name: "record_answer", arguments: { answer: "t-2 wrong" } },
@@ -271,26 +271,27 @@ describe("a rehearsal's seats", () => {
     ]);
     expect(strayed).toEqual([
       's-2: t-2 under the reference harness was scripted to fail and ended {"outcome":"pass"}',
-      's-3: t-1 under the baseline was scripted to fail and ended {"outcome":"pass"}',
+      's-3: t-1 under the starter was scripted to fail and ended {"outcome":"pass"}',
     ]);
     // A task with no answer on record for its scripted ending stops the rehearsal where it is.
     await expect(seats.solve(pack("t-3"), old, undefined)).rejects.toThrow(
       "t-3 has no answer on record that the checks rejected",
     );
     // Scripted to give no answer, a solve submits with none prepared, whatever is on record.
-    const silent = scriptedSeats({ held: sidesOf("none:pass"), baseline: "none" }, graded, strayed);
+    const silent = scriptedSeats({ held: sidesOf("none:pass"), starter: "none" }, graded, strayed);
     await silent(campaign, { builder: undefined, reference: FIXTURE }).solve(pack("t-3"), old, undefined);
     expect(calls.at(-1)).toMatchObject({ name: "submit" });
     expect(strayed.at(-1)).toBe(
       's-4: t-3 under the reference harness was scripted to give no answer and ended {"outcome":"pass"}',
     );
-    // The baseline is scripted by `--baseline` wherever it sits, also as the reference harness:
-    // `--held`'s first word is then no harness's. And a seat hands on the comparison it solves for.
-    const least = await baseline(campaign);
-    const under = scriptedSeats({ held: sidesOf("pass:pass"), baseline: "fail" }, graded, strayed);
+    // Where the starter is the reference harness, as it is until a promotion, it is scripted as
+    // that side of the comparison, by `--held`'s first word; `--starter` scripts it only as a
+    // third harness. And a seat hands on the comparison it solves for.
+    const least = await starter(campaign);
+    const under = scriptedSeats({ held: sidesOf("fail:pass"), starter: "pass" }, graded, strayed);
     await under(campaign, { builder: undefined, reference: least.dir }).solve(held, least, undefined, "g0");
     expect(calls.at(-1)).toMatchObject({ name: "record_answer", arguments: { answer: "t-2 wrong" } });
-    expect(strayed.at(-1)).toStartWith("s-5: t-2 under the baseline was scripted to fail");
+    expect(strayed.at(-1)).toStartWith("s-5: t-2 under the reference harness was scripted to fail");
     expect(named).toEqual([undefined, undefined, undefined, undefined, "g0"]);
   });
 });

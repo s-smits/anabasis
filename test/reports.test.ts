@@ -119,7 +119,7 @@ describe("the stop rule", () => {
     // A step starts the count again, and a result short of one for another reason counts.
     const after = [...sessions, flat("b-1"), flat("b-2"), reported("b-3", "step", "h3"), flat("b-4")];
     expect(stopRule(after)).toEqual({ checkpoints: 4, sinceStep: 1, stop: false });
-    const lower = (session: string) => reported(session, "below-baseline", "h4");
+    const lower = (session: string) => reported(session, "below-starter", "h4");
     expect(stopRule([...after, lower("b-5"), lower("b-6")])).toMatchObject({ sinceStep: 3, stop: true });
   });
 
@@ -166,14 +166,14 @@ describe("the stop rule", () => {
     expect(stopRule([idle, ...gates])).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
   });
 
-  it("counts a harness set against the baseline once: as the reference, and not as the guard after another", () => {
+  it("counts a harness set against the starter once: as the reference, and not as the guard after another", () => {
     const versus = (session: string, old: string, reading: string) =>
-      reported(session, reading, "h2", { old, baseline: "base" });
-    // While the baseline is the reference, a comparison with it is the checkpoint.
+      reported(session, reading, "h2", { old, starter: "base" });
+    // While the starter is the reference, a comparison with it is the checkpoint.
     expect(stopRule([...sessions, versus("b-1", "base", "no-step")])).toMatchObject({ checkpoints: 1 });
-    // After a comparison with another reference left the baseline unread, the comparison with the
-    // baseline is that one's reading against it, and no second checkpoint.
-    const guarded = [...sessions, versus("b-1", "h1", "baseline-unread"), versus("g-1", "base", "no-step")];
+    // After a comparison with another reference left the starter unread, the comparison with the
+    // starter is that one's reading against it, and no second checkpoint.
+    const guarded = [...sessions, versus("b-1", "h1", "starter-unread"), versus("g-1", "base", "no-step")];
     expect(stopRule(guarded)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
   });
 });
@@ -314,9 +314,9 @@ describe("the outcome an Examiner hears of a task", () => {
     );
   });
 
-  it("is no 'no valid answer' where a solve outside the test answered: the baseline, or the reference again", () => {
+  it("is no 'no valid answer' where a solve outside the test answered: the starter, or the reference again", () => {
     // The test's own four solves of the task were all rejected. The reference harness's third
-    // solve, made to read it against itself, was valid, and on another task the baseline's was.
+    // solve, made to read it against itself, was valid, and on another task the starter's was.
     const beside = [
       ...heldOut("again"),
       ...heldOut("lower"),
@@ -370,10 +370,10 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(awaitingLabel(compared(settled, "b-3", "h4", F))).toEqual([]);
   });
 
-  it("are not the ones the baseline answered, though the test's two harnesses did not", () => {
+  it("are not the ones the starter answered, though the test's two harnesses did not", () => {
     const lower = (log: readonly LogEvent[], session: string) => {
       const whole = compared(log, session, "h2", F);
-      // The baseline's solves are made before the comparison reports.
+      // The starter's solves are made before the comparison reports.
       return [...whole.slice(0, -1), ...solved(session, "hard", "base", [P, F]), ...whole.slice(-1)];
     };
     expect(awaitingLabel(lower(lower(start, "b-1"), "b-2"))).toEqual([]);

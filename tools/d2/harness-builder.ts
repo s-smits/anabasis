@@ -77,12 +77,13 @@ import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS } from "#sr
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { taskStates, taskVersion } from "#src/kernel/task.ts";
-import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { dirname } from "#src/meta/path.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
@@ -273,6 +274,10 @@ function opened(log: string, values: Values, seats: "paid" | "scripted"): Openin
   };
   const kept = events.findLast(({ kind }) => kind === OPENED)?.data;
   if (!values["dry-run"] && (kept === undefined || !sameJsonValue(kept, record))) {
+    // A campaign that opens from a prompt has no folder until now: one over a stored pack got
+    // its own when the pack was opened. The first live campaign from a prompt stopped here
+    // (2026-10-09), since the test that covered it had made the folder for another reason.
+    mkdirSync(dirname(log), { recursive: true });
     append(log, OPENED, record);
   }
   return named;

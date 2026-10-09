@@ -375,6 +375,23 @@ describe("a campaign run by its log", () => {
     });
     expect(existsSync(join(folder, "log.jsonl"))).toBe(false);
 
+    // A campaign that opens from a prompt has no folder before its opening, which makes one.
+    const fresh = `${STEM}-fresh`;
+    names.push(fresh);
+    expect(existsSync(join(REPO, ".ana", "d2", fresh))).toBe(false);
+    const opened = [
+      "--name",
+      fresh,
+      "--solver",
+      "claude/claude-opus-5-5",
+      "--prompt",
+      prompt,
+      "--moves",
+      "0",
+    ];
+    expect(await harnessBuilder(opened, seats)).toMatchObject({ move: "draft" });
+    expect(of(fresh, "campaign.opened")).toMatchObject([{ prompt }]);
+
     // The Examiner drafts, the host reads each draft without a model, and the second stands. Its
     // one check is its author's own computation, so the campaign waits for the operator's word.
     const waits = await harnessBuilder([...flags, "--prompt", prompt], seats);

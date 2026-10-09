@@ -94,6 +94,10 @@ interface Compared {
   readonly level: number;
   readonly budgets: number;
   readonly cap: number | null;
+  /** The model's turns each of its solves was told and held to, by the setting on record when it
+   *  began, or by its first solve where the log holds no record of the setting; null where the
+   *  turns were not limited. A changed limit is another setting, and no tally is read across two. */
+  readonly modelTurns: number | null;
   readonly reading: string | null;
   readonly tally: Tally | null;
   /** Each harness by itself: the tasks with no, one, two... valid answers among its solves. */
@@ -214,7 +218,11 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     {};
   const scored = asRecord(report?.scored);
   const valid = asRecord(report?.valid);
-  const own = new Set(solvesIn(events).flatMap((solve) => (solve.start.comparison === id ? [solve.id] : [])));
+  const solves = solvesIn(events).filter((solve) => solve.start.comparison === id);
+  const own = new Set(solves.map((solve) => solve.id));
+  const began = events.findIndex(({ kind, data }) => kind === "comparison.started" && data.session === id);
+  const setting = events.findLast(({ kind }, index) => kind === "campaign.setting" && index < began)?.data;
+  const told = setting === undefined ? asRecord(solves[0]?.start.limits)?.modelTurns : setting.modelTurns;
   const ruled = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "referee.finding" && isString(data.solve) && own.has(data.solve)
@@ -233,6 +241,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     level: count(start.level),
     budgets: listed(start.budgets),
     cap: isNumber(asRecord(start.cap)?.dollars) ? count(asRecord(start.cap)?.dollars) : null,
+    modelTurns: isNumber(told) ? told : null,
     reading: text(report?.reading),
     tally:
       scored === null

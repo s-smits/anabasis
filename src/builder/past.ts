@@ -22,7 +22,13 @@
  *   names no task, no share of valid answers, no ruling and no cost: a held-out task is never
  *   shown, and which of them were won is a way to it. That is a few bits a comparison, which the
  *   plan accepts while comparisons are few. The line says how many tasks the tally is over, which
- *   is the tally's own sum. Until 2026-10-09 it gave the three counts with no unit, and the first
+ *   is the tally's own sum. It names the two harnesses, and the turns each solve was held to
+ *   where they were limited: since 2026-10-09 a campaign's reference changes at a promotion and
+ *   its budget by a rule, and a list that said "the reference harness" of each line set tallies
+ *   against two references and under two limits side by side as if they were one series. On
+ *   that day one campaign's five comparisons were two against the starter and three against its
+ *   first harness, the last of them under five turns. Both are the build side's own facts: a
+ *   harness the Builder made or started from, and a limit its practice solves are told too. Until 2026-10-09 it gave the three counts with no unit, and the first
  *   live Builder to be told one (Sonnet 5.5 at high, told "0 won, 0 lost, 5 tied") wrote in its
  *   note that its harness had tied "on all 5 comparisons so far", of which the log held one.
  */
@@ -80,8 +86,12 @@ export function comparisonsTold(steps: readonly Handover[]): string[] {
     const reading = step.step === "comparison" ? READ.get(step.reading ?? "") : undefined;
     if (step.step !== "comparison" || step.tally === null || reading === undefined) return [];
     const { wins, losses, ties } = step.tally;
+    const held =
+      step.modelTurns === null
+        ? ""
+        : `, each solve held to ${plural(step.modelTurns, "turn")} of the solver's`;
     return [
-      `- Harness ${shortDigest(step.fresh)} against the reference harness, one comparison over ${plural(wins + losses + ties, "task")}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
+      `- Harness ${shortDigest(step.fresh)} against harness ${shortDigest(step.old)}, one comparison over ${plural(wins + losses + ties, "task")}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
     ];
   });
 }

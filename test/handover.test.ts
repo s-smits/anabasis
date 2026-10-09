@@ -174,6 +174,7 @@ describe("a campaign's reading", () => {
         level: 0.1,
         budgets: 1,
         cap: 100,
+        modelTurns: null,
         reading: "step",
         tally: { wins: 4, losses: 0, ties: 0 },
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
@@ -193,6 +194,7 @@ describe("a campaign's reading", () => {
         level: 0.1,
         budgets: 1,
         cap: 100,
+        modelTurns: null,
         reading: null,
         tally: null,
         valid: null,
@@ -348,11 +350,25 @@ describe("the Builder's filter over that reading", () => {
     c.compared("g-5", { old: HA, fresh: HB }, null);
     const told = comparisonsTold(campaignOf(c.events()).steps);
     expect(told).toEqual([
-      "- Harness aaaaaaaa against the reference harness, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads a step.",
-      "- Harness bbbbbbbb against the reference harness, one comparison over 4 tasks: 1 won, 0 lost, 3 tied, which reads no step.",
-      "- Harness bbbbbbbb against the reference harness, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads no step: it did not hold against the starting harness of the campaign.",
-      "- Harness bbbbbbbb against the reference harness, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads a step, not yet read against the starting harness of the campaign.",
+      "- Harness aaaaaaaa against harness 00000000, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads a step.",
+      "- Harness bbbbbbbb against harness 00000000, one comparison over 4 tasks: 1 won, 0 lost, 3 tied, which reads no step.",
+      "- Harness bbbbbbbb against harness aaaaaaaa, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads no step: it did not hold against the starting harness of the campaign.",
+      "- Harness bbbbbbbb against harness aaaaaaaa, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads a step, not yet read against the starting harness of the campaign.",
     ]);
+    // A comparison made after the budget was set again says the turns its solves were held to:
+    // its tally is another setting's, and is not one series with the lines above it.
+    c.record("campaign.setting", {
+      solver: null,
+      minutes: 120,
+      turns: 24,
+      modelTurns: 5,
+      tasks: null,
+      target: 12,
+    });
+    c.compared("g-6", { old: HA, fresh: HB }, tallied("no-step", 2, 2));
+    expect(comparisonsTold(campaignOf(c.events()).steps).at(-1)).toBe(
+      "- Harness bbbbbbbb against harness aaaaaaaa, one comparison over 4 tasks, each solve held to 5 turns of the solver's: 2 won, 0 lost, 2 tied, which reads no step.",
+    );
     // No held-out task, no share of valid answers, no ruling and no cost.
     expect(told.join("\n")).not.toMatch(/s[1-4]\b|0\.0625|valid|earned|\$/);
   });

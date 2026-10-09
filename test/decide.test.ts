@@ -225,6 +225,40 @@ describe("a step", () => {
     expect(move(refuted)).toMatchObject({ move: "build" });
   });
 
+  it("is named for promotion though later sessions left another harness, and one read once is not", () => {
+    // A campaign of 9 October: two steps against the starter, then sessions and comparisons went
+    // on by hand against that harness, which nobody had promoted.
+    const later = [built("b-2", "h2"), ...compared("b-2", "h2", "no-step", { old: "h1", tally: [1, 1, 6] })];
+    const twice = [...stepped, ...compared("g1", "h1", "step", { tally: [4, 0, 3] }), ...later];
+    expect(move(twice)).toEqual({
+      move: "promote",
+      harness: "h1",
+      why: "harness h1 read a step twice at the full limit, and was not promoted: what later sessions left is read against it once it is the reference",
+    });
+    // Promoted, the comparison made against it is the campaign's, and the table reads it.
+    const promoted = event("harness.promoted", { harness: "h1" });
+    expect(move([...twice, promoted])).toEqual({
+      move: "build",
+      why: "comparison b-2 read no step with room to gain: harness h2 did not help",
+    });
+    // The budget follows the promoted harness's own solves in the last comparison that holds any,
+    // which is the one it was compared with by name: there it answered nearly everything, and at
+    // five turns half.
+    const named = compared("b-3", "h2", "no-step", {
+      old: "h1",
+      tally: [0, 0, 6],
+      valid: { old: ALL, fresh: ALL },
+      budgets: [row(5, HALF, HALF)],
+    });
+    expect(move([...twice, ...named, promoted], { ...PLAN, ladder: [5] })).toEqual({
+      move: "budget",
+      modelTurns: 5,
+      why: "harness h1 was promoted, and it was valid on at most half its solves at 5 turns: the budget follows the reference",
+    });
+    // One step is one draw, whatever came after it.
+    expect(move([...stepped, ...later])).toMatchObject({ move: "build" });
+  });
+
   it("is read once at the full limit before a promotion, where it was read under a shorter budget", () => {
     const plan = { ...PLAN, limit: 40, ladder: [20, 10] };
     const short = [

@@ -423,7 +423,33 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
       why: `comparison ${open.id} began and has not reported: it goes on from its log`,
     };
   }
-  return afterPromotion(ground) ?? onStep(ground) ?? onLatest(ground);
+  return afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
+}
+
+/**
+ * A promotion the campaign owes: a harness that read a step twice against the reference harness,
+ * and is to be promoted by the rule, while later sessions left another. The table follows the
+ * latest harness, so it passed such a step by. On 9 October one campaign read a step twice
+ * against the starter, promoted nothing, and went on by hand for three rounds against that
+ * harness named as the reference: the table then read none of those rounds, since they were made
+ * against no reference of the campaign's, and named a Builder session. The newest such harness is
+ * named, and what later sessions left is read against it once it is the reference.
+ */
+function owed(ground: Ground): Decided | null {
+  const { all, reference, latest } = ground;
+  const earlier = new Set(
+    all.toReversed().flatMap(({ old, fresh }) => (old === reference && fresh !== latest ? [fresh] : [])),
+  );
+  for (const harness of earlier) {
+    const step = onStep({ ...ground, latest: harness });
+    if (step?.move === "promote") {
+      return {
+        ...step,
+        why: `${step.why}, and was not promoted: what later sessions left is read against it once it is the reference`,
+      };
+    }
+  }
+  return null;
 }
 
 /** What the rows on the comparisons are read from, for a log and its plan. */
@@ -470,11 +496,15 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
 function afterPromotion({ events, all, settings, turns, reference }: Ground): Decided | null {
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   if (reference === null || promotedAt <= events.findLastIndex(({ kind }) => kind === SETTING)) return null;
-  const read = all.findLast(({ fresh, report }) => fresh === reference && report !== null);
+  // Its own solves in the last comparison that holds any: as the new harness there, or as the one
+  // a later harness was compared with by name before it was promoted.
+  const read = all.findLast(
+    ({ fresh, old, report }) => (fresh === reference || old === reference) && report !== null,
+  );
   const report = read?.report ?? null;
   if (read === undefined || report === null) return null;
   const ran = settings.findLast(({ comparisons }) => comparisons.includes(read))?.turns ?? null;
-  const rung = budgetBy(report, "fresh", ran);
+  const rung = budgetBy(report, read.fresh === reference ? "fresh" : "old", ran);
   if (rung !== undefined) {
     return rung === turns
       ? null

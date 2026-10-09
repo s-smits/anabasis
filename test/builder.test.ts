@@ -406,8 +406,9 @@ describe("a Builder session", () => {
     expect(opening.indexOf("The base is always odd.")).toBeLessThan(
       opening.indexOf("Public rules of the domain:"),
     );
+    // The line names both harnesses: the one that was measured, and the one it was measured against.
     expect(s.sent[0]).toContain(
-      String.raw`Comparisons so far, on tasks you are not shown:\n- Harness ffffffff against the reference harness, one comparison over 7 tasks: 1 won, 0 lost, 6 tied, which reads no step.`,
+      `Comparisons so far, on tasks you are not shown:\\n- Harness ffffffff against harness ${s.digest.slice(0, 8)}, one comparison over 7 tasks: 1 won, 0 lost, 6 tied, which reads no step.`,
     );
     // The held-out task's own fail is on record, and no line of the message is of it.
     expect(s.sent[0]).not.toContain(s.exam);

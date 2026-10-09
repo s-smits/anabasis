@@ -521,8 +521,10 @@ function taskTriggers(log: Index): Trigger[] {
   const byBudget = decided.flatMap(({ session, last, wins, losses, ties }) => {
     const read = items(last.budgets).flatMap((budget) => {
       const row = asRecord(budget) ?? {};
+      // A report says how many scored tasks a CPU budget could not be read on, and so left out.
+      const unread = count(row.unread);
       return [
-        `${budgetOf(row)}: ${String(count(row.wins))}-${String(count(row.losses))}-${String(count(row.ties))}`,
+        `${budgetOf(row)}: ${String(count(row.wins))}-${String(count(row.losses))}-${String(count(row.ties))}${unread === 0 ? "" : `, ${String(unread)} unread`}`,
       ];
     });
     return read.length === 0

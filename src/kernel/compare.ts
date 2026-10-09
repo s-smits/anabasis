@@ -50,12 +50,14 @@
  * A budget's units. `turns` are the model's own turns, as a trace counts them. `prompts` are the
  * messages the solver was given, the opening one and each nudge, which is the unit a solve's turn
  * cap is held in (`Limits.turns`, `--solve-turns`): one prompt may take the model many turns, so
- * the two are not the same number. `cpu` is the CPU time of the solve's commands. `seconds` is the
+ * the two are not the same number. `cpu` is the CPU time of the solve's commands, known only from
+ * below for a solve one of whose commands was cut (`unreadAt`). `seconds` is the
  * whole attempt as the host timed it, from before its sandbox was mounted until its verdict, which
  * is some seconds more than the solver's own wall.
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { conditionsOf, settingId } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
@@ -68,8 +70,12 @@ export interface Used {
   readonly turns: number | null;
   /** The prompts the solver was given: null for a solve logged before 2026-10-09. */
   readonly prompts: number | null;
-  /** CPU seconds of the solve's commands. */
+  /** CPU seconds of the solve's commands that ended measured. */
   readonly cpu: number | null;
+  /** How many of its commands ended with their CPU unmeasured: one cut at its limit or by the wall
+   *  takes its record with it (`src/solve/command.ts`). With any, `cpu` is a lower bound of what the
+   *  solve used and not the amount. Left out where there was none. */
+  readonly unmeasured?: number;
   readonly seconds: number | null;
   /** Billed dollars. */
   readonly billed: number | null;
@@ -179,26 +185,49 @@ export function scored(pairs: readonly Paired[]): Tally & { readonly p: number }
   return { ...counts, p: signP(counts.wins, counts.losses) };
 }
 
+/** Whether a solve used more of a unit `budget` names than it allows. */
+function over(budget: Budget, used: Used | undefined): boolean {
+  return UNITS.some((unit) => {
+    const [most, spent] = [budget[unit], used?.[unit] ?? null];
+    return most !== undefined && spent !== null && spent > most;
+  });
+}
+
+/**
+ * The tasks `budget` cannot be read on: those with a valid solve whose CPU is only known from below
+ * and is not yet over a CPU budget. One command cut at its limit leaves the solve's CPU a sum
+ * without that command (`Used.unmeasured`). Above the budget such a solve is past it for certain;
+ * below it nothing is known, and until 2026-10-09 it was counted as within. The command limit is
+ * the limit solvers meet most: in the first truss campaign half the starter's solves had a command
+ * at or past its default.
+ */
+export function unreadAt(pairs: readonly Paired[], budget: Budget): string[] {
+  const untold = (valid: readonly boolean[], used: readonly Used[] | undefined) =>
+    valid.some((each, index) => each && (used?.[index]?.unmeasured ?? 0) > 0 && !over(budget, used?.[index]));
+  return budget.cpu === undefined
+    ? []
+    : pairs.flatMap(({ task, old, fresh, used }) =>
+        untold(old, used?.old) || untold(fresh, used?.fresh) ? [task] : [],
+      );
+}
+
 /**
  * The same pairs read at a shorter budget: a solve that used more of a unit the budget names than
  * the budget allows counts as no answer, valid or not. One set of solves so gives the comparison
  * at every shorter budget. It is an approximation: the solver was told the long limit only, and
  * one told a short one may spend its turns otherwise (`docs/plan.md`, Phase 0). A solve whose use
- * of a named unit the log does not hold is counted as within it.
+ * of a named unit the log does not hold at all is counted as within it. A task the budget cannot
+ * be read on is left out (`unreadAt`).
  */
 export function within(pairs: readonly Paired[], budget: Budget): Paired[] {
-  const over = (used: Used | undefined) =>
-    UNITS.some((unit) => {
-      const [most, spent] = [budget[unit], used?.[unit] ?? null];
-      return most !== undefined && spent !== null && spent > most;
-    });
+  const unread = new Set(unreadAt(pairs, budget));
   const cut = (valid: readonly boolean[], used: readonly Used[] | undefined) =>
-    valid.map((each, index) => each && !over(used?.[index]));
-  return pairs.map((pair) => ({
-    ...pair,
-    old: cut(pair.old, pair.used?.old),
-    fresh: cut(pair.fresh, pair.used?.fresh),
-  }));
+    valid.map((each, index) => each && !over(budget, used?.[index]));
+  return pairs.flatMap((pair) =>
+    unread.has(pair.task)
+      ? []
+      : [{ ...pair, old: cut(pair.old, pair.used?.old), fresh: cut(pair.fresh, pair.used?.fresh) }],
+  );
 }
 
 /**
@@ -296,11 +325,12 @@ export function pairsOf(events: readonly LogEvent[], versions: readonly string[]
     const [before, after] = old === fresh ? [own.slice(0, halves), own.slice(halves)] : [own, under(fresh)];
     const used = (solves: typeof counted) =>
       solves.map(({ end }): Used => {
-        const cpu = asRecord(end.cpu)?.seconds;
+        const { seconds: cpu, unmeasured } = asRecord(end.cpu) ?? {};
         return {
           turns: isNumber(end.turns) ? end.turns : null,
           prompts: isNumber(end.prompts) ? end.prompts : null,
           cpu: isNumber(cpu) ? cpu : null,
+          ...keyIfDefined("unmeasured", isNumber(unmeasured) && unmeasured > 0 ? unmeasured : undefined),
           seconds: isNumber(end.seconds) ? end.seconds : null,
           billed: isNumber(end.billed) ? end.billed : null,
         };

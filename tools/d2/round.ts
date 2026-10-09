@@ -74,6 +74,7 @@ import { stopRule } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
+import { plural } from "#src/meta/text.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { awaitingLines, starter, type Kept, keptAs, openCampaign, stayAwake } from "./campaign.ts";
 import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
@@ -216,9 +217,15 @@ export function validLines({ valid, budgets }: Pick<Report, "valid" | "budgets">
   return [
     `each harness by itself, as the tasks with ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves:`,
     row("at its limits", valid),
-    ...budgets.flatMap((budget) =>
-      budget.valid === undefined ? [] : [row(`at ${named(budget)}`, budget.valid)],
-    ),
+    ...budgets.flatMap((budget) => {
+      // A task with a valid solve whose CPU a cut command hid is left out of a CPU budget's reading.
+      const unread = budget.unread ?? 0;
+      const left =
+        unread === 0
+          ? ""
+          : `, ${plural(unread, "task")} unread: a cut command left a valid solve's CPU unknown`;
+      return budget.valid === undefined ? [] : [`${row(`at ${named(budget)}`, budget.valid)}${left}`];
+    }),
   ];
 }
 

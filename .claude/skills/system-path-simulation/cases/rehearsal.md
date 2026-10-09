@@ -61,6 +61,21 @@ pass, the pack's own controls, and every answer a verdict in the seed's log acce
 which is where a task a session wrote gets one. A task with no answer for a `pass` or a `fail`
 stops the rehearsal with its name; `none` needs no answer.
 
+## Rehearse a checkpoint
+
+Flags that hold `--id` are a checkpoint's (`tools/d2/checkpoint.ts`): one comparison of two kept
+harnesses, with no Builder session. The plan's first experiment is one, and can be walked on a
+seed before it is paid for:
+
+```sh
+bun run runs rehearse <pack flags> --name sim-<what> --id g0 --tasks <task ids> \
+  --budget turns=12 --budget turns=6 --noise --held pass:pass --baseline none
+```
+
+`--held`'s first word scripts the reference harness, here the stored cycle's, and `--baseline`
+the minimal baseline, which is the new side here. Every scripted solve uses the same turns, so a
+rehearsal shows that the budgets are read and nothing of where they bind.
+
 ## Read it
 
 It prints the round's report, then the stop rule, then one of two last lines.

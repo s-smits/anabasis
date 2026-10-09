@@ -2,6 +2,10 @@
  * `bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held none:pass] [--baseline none]`
  *
  * A round over a seeded campaign (`seed.ts`) with a script in each model seat and no model called.
+ * Flags that hold `--id` are a checkpoint's, as a launch reads them, and rehearse one comparison
+ * with no Builder session (`tools/d2/checkpoint.ts`): the plan's first experiment can be walked on
+ * a seed this way before it is paid for, with `--held` scripting the reference harness and the
+ * new one and `--baseline` the minimal baseline wherever it sits.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's wall and disk cap, the harness's own
  * artifact-writer, the verifier, the comparison and the report. It is `roundCommand` with other
@@ -37,6 +41,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { openHarness } from "#src/solve/harness.ts";
 import { baseline } from "../d2/campaign.ts";
+import { checkpointCommand } from "../d2/checkpoint.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { passedOn } from "./launch.ts";
@@ -189,6 +194,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     options: {
       held: { type: "string", default: "none:pass" },
       baseline: { type: "string", default: "none" },
+      id: { type: "string" },
       root: { type: "string" },
       sweep: { type: "string" },
       bundle: { type: "string" },
@@ -206,7 +212,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   }
   if (!isString(held) || least === undefined || !isString(root) || !isString(sweep) || !isString(bundle)) {
     throw new Error(
-      "usage: bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held old:new] [--baseline pass|fail|none]",
+      "usage: bun run runs rehearse <the flags of tools/d2/round.ts or of tools/d2/checkpoint.ts that name no model> [--held old:new] [--baseline pass|fail|none]",
     );
   }
   const passes = sweepRows(root, sweep).flatMap((row) => {
@@ -214,11 +220,17 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     return answer === undefined ? [] : [{ taskId: row.taskId, answer, refusedBy: null }];
   });
   const strayed: string[] = [];
-  const report = await roundCommand(
-    passedOn(args, tokens, OWN),
-    scriptedSeats({ held: sidesOf(held), baseline: least }, [...passes, ...packControls(bundle)], strayed),
+  const seats = scriptedSeats(
+    { held: sidesOf(held), baseline: least },
+    [...passes, ...packControls(bundle)],
+    strayed,
   );
-  if (report.fresh === null) strayed.push("the Builder's script left the harness as it was");
+  const flags = passedOn(args, tokens, OWN);
+  // A checkpoint is named by its `--id` and runs no session, so no Builder's script can stray.
+  if (isString(values.id)) await checkpointCommand(flags, seats);
+  else if ((await roundCommand(flags, seats)).fresh === null) {
+    strayed.push("the Builder's script left the harness as it was");
+  }
   if (strayed.length === 0) {
     console.log("the rehearsal went as scripted");
     return;

@@ -308,6 +308,11 @@ describe("a Builder session", () => {
     expect(s.sent[0]).toContain("Leave its list empty while the solver has the shell");
     expect(s.sent[0]).toContain("test the candidate against a public rule and say what it does not meet");
     expect(s.sent[0]).not.toContain("says whether a candidate meets a rule");
+    // What the rounds of 9 October showed of a guide and of the practice solves: four of the six
+    // harnesses that went to a comparison told the solver that time was short, and both truss
+    // sessions spent their last solve before their last change.
+    expect(s.sent[0]).toContain("so the guide says nothing of time or turns");
+    expect(s.sent[0]).toContain("keep a solve for the harness you mean to finish with");
     expect(readFileSync(join(s.home, "practice", "t-1.json"), "utf8")).toContain('"base": 7');
     // The solver's public resources, in the home as one file, which the opening message names.
     expect(readFileSync(join(s.home, "resources.json"), "utf8")).toContain('"maxSpan": 12');
@@ -509,8 +514,14 @@ describe("a Builder session", () => {
       call("practice", { tasks: ["t-1"] }),
       call(WRITE_FILE, { path: "harness/agent/tools-spec.json", content: "{}" }),
       finish,
+      finish,
     ]);
     const built = await session(s.request, s, s.walled);
+    // The first finish says so, once, and what is measured in its place; the second ends the session.
+    expect(s.sent[4]).toContain("Not finished. the harness does not open: ");
+    expect(s.sent[4]).toContain(
+      "Left so, the harness your last practice solve ran is measured in its place. Mend it and call finish again, or call finish again to end the session as it is.",
+    );
     // The edited guide is the state the practice ran with, and the spec written after it opens for
     // no solve: the first is kept and compared, and the record says why the last was not.
     expect(built).toMatchObject({ changed: true, ended: "finished" });
@@ -523,6 +534,38 @@ describe("a Builder session", () => {
       harness: built.harness,
     });
     expect(JSON.stringify(s.of(BUILD_FINISHED)[0]?.broken)).toContain("needs presets and tools lists");
+  });
+
+  it("is told once, at finish, of a harness changed since its last practice solve", async () => {
+    const later = call(WRITE_FILE, {
+      path: "harness/agent/BUILT_AGENTS.md",
+      content: `${GUIDE}Check the product.\n`,
+    });
+    const s = await setup([edit, call("practice", { tasks: ["t-1"] }), later, finish, finish]);
+    const built = await session(s.request, s, s.walled);
+    expect(s.sent[4]).toContain(
+      "Not finished. harness/ has changed since your last practice solve, so no solve has run it as it stands. 2 practice solves are left. Practise it, or call finish again to end the session as it is and have it measured untried.",
+    );
+    // The second finish is taken at its word, and the changed harness is the one frozen.
+    expect(built).toMatchObject({ changed: true, ended: "finished" });
+    expect(readFileSync(join(built.dir ?? "", "agent", "BUILT_AGENTS.md"), "utf8")).toContain(
+      "Check the product.",
+    );
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ turns: 5, practiceSolves: 1 });
+  });
+
+  it("is told nothing at finish of the harness its last practice solve ran, or with no solve left", async () => {
+    const tried = await setup([edit, call("practice", { tasks: ["t-1"] }), finish]);
+    await session(tried.request, tried, tried.walled);
+    expect(tried.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "finished", turns: 3 });
+    // With its last solve spent the Builder is told so there, where it can still plan around it.
+    const later = call(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: `${GUIDE}More.\n` });
+    const spent = await setup([edit, call("practice", { tasks: ["t-1", "t-2", "t-1"] }), later, finish]);
+    await session(spent.request, spent, spent.walled);
+    expect(spent.sent[2]).toContain(
+      "No practice solve is left: what you change from here on is measured without a solve having run it.",
+    );
+    expect(spent.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "finished", turns: 4, practiceSolves: 3 });
   });
 
   it("is not given the correctness model a v1 state carries, whose battery holds hidden values", async () => {

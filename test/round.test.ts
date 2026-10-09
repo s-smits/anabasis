@@ -981,7 +981,8 @@ describe("a round", () => {
 
   it("reports a session that left a harness no solve could open, and compares nothing", async () => {
     const s = await setup(
-      [call("write", { path: "harness/agent/tools-spec.json", content: "{}" }), finish],
+      // The first finish says the harness does not open, once; the second ends the session so.
+      [call("write", { path: "harness/agent/tools-spec.json", content: "{}" }), finish, finish],
       step,
     );
     expect(await round(s.request)).toMatchObject({ fresh: null, reading: "no-change" });

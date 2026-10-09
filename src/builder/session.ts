@@ -257,6 +257,7 @@ export async function session(
     parent: parent.digest,
     tree: null,
     opened: null,
+    told: new Set(),
     spent: 0,
     disputed: new Set(),
     faulty: new Set(),

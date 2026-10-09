@@ -112,6 +112,7 @@ describe("the account of a harness a Builder is handed", () => {
         expect(HARNESS_ACCOUNT).toContain(row);
       }
       expect(HARNESS_ACCOUNT).toContain("Put a computation in one place.");
+      expect(HARNESS_ACCOUNT).toContain("It says nothing of\ntime or turns");
       for (const part of ["answer.json", "public/answer-format.json", ...CODING_TOOLS]) {
         expect(HARNESS_ACCOUNT).toContain(part);
       }

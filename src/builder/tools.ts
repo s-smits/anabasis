@@ -114,6 +114,8 @@ export interface Bench {
   fatal: Error | null;
   /** `finish`'s note; null until it is called. */
   note: string | null;
+  /** What `finish` has told the Builder of the harness as it stood, each once (`standing`). */
+  readonly told: Set<"broken" | "untried">;
 }
 
 /** What a submitted answer or a closing text shows of itself in a trace's head. */
@@ -398,7 +400,14 @@ export function practiceTool(bench: Bench): AgentTool {
           ...lines,
         ].join("\n");
       });
-      return text(`${said.join("\n\n")}\n\n${plural(left - chosen.length, "practice solve")} left.`);
+      const after = left - chosen.length;
+      return text(
+        `${said.join("\n\n")}\n\n${
+          after > 0
+            ? `${plural(after, "practice solve")} left.`
+            : "No practice solve is left: what you change from here on is measured without a solve having run it."
+        }`,
+      );
     },
   });
 }
@@ -449,12 +458,48 @@ export function traceTool(bench: Bench): AgentTool {
   });
 }
 
+/**
+ * What a Builder about to finish is told of `harness/` as it stands, once each: that it does not
+ * open, or that it has changed since the session's last practice solve while solves are left. Null
+ * where there is nothing to say, and where it has been said.
+ *
+ * Neither is a gate. v1's submit refused a round that then measured nothing, 13 firmware rounds by
+ * its own count, and a session here is frozen whatever it holds (`session.ts`). But a Builder that
+ * finishes is the one reader who can still act. In both truss sessions of 2026-10-09 the harness
+ * that went to the comparison was one no practice solve had run: the six solves were spent on
+ * earlier versions, which is why `practice` says when the last one is gone. A session that never
+ * practised chose so and is told nothing here. A second `finish` ends the session as it is.
+ */
+async function standing(bench: Bench): Promise<string | null> {
+  const { request, told } = bench;
+  const again = "or call finish again to end the session as it is";
+  let digest: string;
+  try {
+    const { dir, harness } = await frozen(bench);
+    rmSync(dir, { recursive: true, force: true });
+    ({ digest } = harness);
+  } catch (error) {
+    if (told.has("broken")) return null;
+    told.add("broken");
+    const measured =
+      bench.opened === null
+        ? "no harness of this session is measured"
+        : "the harness your last practice solve ran is measured in its place";
+    return `${errorMessage(error)}. Left so, ${measured}. Mend it and call finish again, ${again}.`;
+  }
+  const left = request.limits.practiceSolves - bench.spent;
+  const tried = bench.opened === null || digest === bench.opened.harness.digest || digest === bench.parent;
+  if (tried || left <= 0 || told.has("untried")) return null;
+  told.add("untried");
+  return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} and have it measured untried.`;
+}
+
 export function finishTool(bench: Bench): AgentTool {
   return tool({
     name: "finish",
     label: "Finish",
     description:
-      "End the session. What harness/ holds now is frozen and measured. Say in one or two sentences what you changed and what you expect it to move.",
+      "End the session. What harness/ holds now is frozen and measured. Say in one or two sentences what you changed and what you expect it to move. A harness that does not open, or that has changed since your last practice solve while solves are left, is said once and not refused: call finish again to end the session so.",
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
     execute: async (_id, args) => {
@@ -462,6 +507,8 @@ export function finishTool(bench: Bench): AgentTool {
       // the call itself carries it, as v1's submit did (`src/gate/submit-tool.ts` at 3f93d06).
       const notes = memoryOverCapNotice(bench.home);
       if (notes !== null) throw new Error(`Not finished. ${notes} Then call finish again.`);
+      const stands = await standing(bench);
+      if (stands !== null) throw new Error(`Not finished. ${stands}`);
       bench.note = args.note.trim();
       return { ...text("Finished."), terminate: true };
     },

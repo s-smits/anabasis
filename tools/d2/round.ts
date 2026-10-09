@@ -5,7 +5,7 @@
  *   bun tools/d2/round.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
  *     --builder claude/claude-opus-5-5 --tasks <eight task ids> --cap 625 \
- *     --budget prompts=12 --budget prompts=6
+ *     --budget turns=40 --budget turns=20
  *
  * That is the plan's first round and its gate G0 (`docs/plan.md`, Phase 0). The Builder forks the
  * Starter Built Harness and builds on it, and the harness it leaves is compared with the starter
@@ -47,7 +47,8 @@
  * once; the budgets are fixed with the comparison's other terms before its first solve. The units
  * are the model's `turns`, the `prompts` the solver was given, which is what `--solve-turns`
  * limits, the `cpu` seconds of its commands and the `seconds` of the whole attempt
- * (`src/kernel/compare.ts`).
+ * (`src/kernel/compare.ts`). A budget in `prompts` has read nothing so far: every solve of the
+ * first three rounds was given one prompt (2026-10-09), so name one in `turns`, `cpu` or `seconds`.
  *
  * Every solve is the cycle's own model at its effort, unless `--solver` and `--solver-effort` name
  * another to solve in its place. Every solve is held to the sweep's wall and turns, unless

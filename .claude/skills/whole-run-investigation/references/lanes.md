@@ -653,8 +653,8 @@ an Examiner session, or a stop; it routes to `operator`.
 
 **26. Solver process and walls.**
 
-Starts from `WALL-BOUND MISSES (lane 26)`, `WALL SHARE (lane 26)` and
-`LONG SOLVE, LITTLE CPU (lane 26)`.
+Starts from `WALL-BOUND MISSES (lane 26)`, `WALL SHARE (lane 26)`,
+`LONG SOLVE, LITTLE CPU (lane 26)` and `CPU UNMEASURED (lane 26)`.
 
 The question is how the solver spent its walls, and whether a miss measured the task or the
 wall. The limits are the host's, in the condition: the solve's wall, the turn cap, the shell's
@@ -666,8 +666,14 @@ fails at 1.5% of the wall were not the solver's. So read the median share under 
 the child on the scored set, and say whether the child's solves got shorter, longer or the same
 on the tasks both passed. Read `cpu.seconds` against `seconds` and the load at start and end: a
 long solve with little CPU waited on the machine or the provider, and on 7 October wall time ran
-2.3 times CPU time under load. A turn is one outer prompt over an unbounded tool loop, so the
-turn count is a runaway guard and the calls are the work. The decision it changes is whether a
+2.3 times CPU time under load. A command cut at its timeout or by an abort ends with its CPU
+time unmeasured, and the solve's `cpu.seconds` is then the sum of the others: a floor and no
+reading. `CPU UNMEASURED` counts those solves, and for each comparison the share of its solves
+among them, since its report sums what was measured and so reads a budget or a spread in `cpu`
+low on exactly the solves that ran longest. A turn is one outer prompt over an unbounded tool
+loop, so the turn cap is a runaway guard and the calls are the work: every finished solve of
+the first three rounds on 9 October was given one prompt, and a budget in `prompts` read what
+the full limit read. The decision it changes is whether a
 wall-bound miss is the task's or the wall's, and whether a gain shows first in time; it routes
 to `environment` for load, `harness/guide` when the guide sends the solver into work the wall
 cannot hold, and `operator` for the wall itself.
@@ -675,7 +681,8 @@ cannot hold, and `operator` for the wall itself.
 **27. Failure mechanism and non-result honesty.**
 
 Starts from `NON-RESULTS (lane 27)`, `SOLVE NEVER FINISHED (lane 27)`,
-`MISSES WITHOUT A VERDICT (lane 27)` and `SESSION CRASHED (lane 27)`.
+`EXAMINER NEVER FINISHED (lane 27)`, `MISSES WITHOUT A VERDICT (lane 27)` and
+`SESSION CRASHED (lane 27)`.
 
 The question is, for every ending that is not a pass or a refused answer, which link broke first
 and whether its kind is honest. A non-result is never counted and a solve-side one is run again,
@@ -686,8 +693,9 @@ are fails. Read each non-result's kind and reason: `provider` after its retries,
 `check`, `moved-files`, `killed`. Say whether reruns fell evenly on the two harnesses, since a
 side whose bad solves are rerun and whose good ones stand is favoured: `NON-RESULTS` gives each
 comparison's count under the reference harness and under the others. A solve that started and
-never finished was cut by a kill; its root may still be on disk. A fail of kind `broken-harness`
-fails every task alike. For a session that crashed, name the turn and whether
+never finished was cut by a kill; its root may still be on disk. So was an Examiner session with
+a start and no ending, unless it is still running: its id is spent, and what it proposed before
+the cut is in the log and held out. A fail of kind `broken-harness` fails every task alike. For a session that crashed, name the turn and whether
 its round was refused as the rule says. The decision it changes is whether a count is trusted as
 written; it routes to `host` (`src/solve/run.ts`, `src/kernel/solve.ts`) for a kind that hides a
 cause, `environment` for a provider or the machine, and `harness/tools` for a harness that does

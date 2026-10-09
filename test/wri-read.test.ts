@@ -7,7 +7,7 @@ import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { keyIfNotNull } from "../src/meta/optional-key.ts";
+import { keyIfDefined, keyIfNotNull } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { overview, rendered, TRIGGERS } from "../tools/wri/read.ts";
 
@@ -249,6 +249,8 @@ describe("the whole-run investigation's reader", () => {
       "STARTER UNREAD",
       "BELOW THE STARTER",
       "VALID BY HARNESS",
+      "CPU UNMEASURED",
+      "EXAMINER NEVER FINISHED",
       "STEP NOT REPEATED",
       "SETTLED BY HAND",
     ] as const) {
@@ -412,7 +414,7 @@ describe("the reader of a round compared with another harness than its session s
     log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
   };
   /** One solve of v1 under `harness` for the round's comparison, ended as `ending` says. */
-  const made = (id: string, harness: string, ending: JsonObject, seconds: number) => {
+  const made = (id: string, harness: string, ending: JsonObject, seconds: number, cpu?: JsonObject) => {
     const ran = condition("v1", harness);
     put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
     put("solve.started", {
@@ -422,7 +424,13 @@ describe("the reader of a round compared with another harness than its session s
       comparison: "r-1",
     });
     put("solve.call", { solve: id, turn: 1, tool: "submit", isError: false });
-    put("solve.finished", { solve: id, ending, seconds, responseModels: ["m-1"] });
+    put("solve.finished", {
+      solve: id,
+      ending,
+      seconds,
+      responseModels: ["m-1"],
+      ...keyIfDefined("cpu", cpu),
+    });
   };
   put("task.proposed", { version: "v1" });
   put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
@@ -433,9 +441,14 @@ describe("the reader of a round compared with another harness than its session s
   const terms = { session: "r-1", old: "href", fresh: "hy", starter: "hbase", setting: SETTING };
   put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
   made("q1", "href", { outcome: "non-result", kind: "provider", reason: "cut" }, 50);
-  made("q2", "href", { outcome: "fail", kind: "wall-ended" }, 100);
+  // A command of this solve was cut at its timeout, so one second is the CPU of the others alone.
+  made("q2", "href", { outcome: "fail", kind: "wall-ended" }, 100, { seconds: 1, unmeasured: 1 });
   // The new harness's valid answer came in two seconds of a hundred, with one call.
-  made("q3", "hy", { outcome: "pass" }, 2);
+  made("q3", "hy", { outcome: "pass" }, 2, { seconds: 1, unmeasured: 0 });
+  // Two Examiner sessions: one ended, and one was cut.
+  put("exam.started", { session: "x-8" });
+  put("exam.finished", { session: "x-8", ended: "finished" });
+  put("exam.started", { session: "x-9" });
   put(REPORTED, {
     ...REPORT,
     ...terms,
@@ -466,6 +479,18 @@ describe("the reader of a round compared with another harness than its session s
 
   it("says each comparison's non-results by the harness they fell under", () => {
     expect(said("NON-RESULTS")).toEndWith("r-1: 1 under the reference harness, 0 under the others");
+  });
+
+  it("counts the solves whose CPU is a floor, and reads no starved solve off one", () => {
+    expect(said("CPU UNMEASURED")).toBe(
+      "1 of 3 finished solves cut a command before its CPU time was read; r-1: 1 of 3 of its solves",
+    );
+    // One CPU second in a hundred would read as a solve that waited, were the floor a reading.
+    expect(said("LONG SOLVE, LITTLE CPU")).toBeUndefined();
+  });
+
+  it("names an Examiner session that started and never finished", () => {
+    expect(said("EXAMINER NEVER FINISHED")).toBe("x-9");
   });
 
   it("names a reference harness that loses to itself as it names one that wins: a step either way", () => {

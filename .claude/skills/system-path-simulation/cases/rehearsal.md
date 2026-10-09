@@ -33,7 +33,7 @@ bun tools/d2/prepare.ts <pack flags> --name sim-<what> --practice 2
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --session r-1 \
   --solves 1 --target 4 --minutes 10 --turns 10 \
-  [--tasks <task ids>] [--budget prompts=12] [--held old:new] [--starter pass|fail|none]
+  [--tasks <task ids>] [--budget turns=40] [--held old:new] [--starter pass|fail|none]
 ```
 
 The flags are `tools/d2/round.ts`'s, less the three that name a model. The pack flags are the
@@ -73,11 +73,11 @@ checkpoint with the starter read against itself beside it:
 
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --id g2 --tasks <task ids> \
-  --budget prompts=12 --noise --held pass:pass
+  --budget turns=40 --noise --held pass:pass
 ```
 
-Every scripted solve uses the same turns and one prompt, so a rehearsal shows that the budgets are
-read and nothing of where they bind.
+Every scripted solve uses the same few turns, so a rehearsal shows that the budgets are read and
+nothing of where they bind.
 
 ## Read it
 

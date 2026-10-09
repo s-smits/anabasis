@@ -55,7 +55,12 @@ interface Solve {
   outcome: string | null;
   kind: string | null;
   seconds: number;
+  /** The CPU seconds of its commands, or null where the log holds none whole: a command cut at its
+   *  timeout or by an abort ends unmeasured (`src/solve/command.ts`), and the sum of the others is
+   *  then a floor and no reading. */
   cpu: number | null;
+  /** How many of its commands ended with their CPU time unmeasured. */
+  unmeasured: number;
   readonly calls: string[];
   errors: number;
   /** Whether the provider named the model that served it. */
@@ -194,8 +199,10 @@ export const TRIGGERS = {
   "WALL SHARE": 26,
   "WALL-BOUND MISSES": 26,
   "LONG SOLVE, LITTLE CPU": 26,
+  "CPU UNMEASURED": 26,
   "NON-RESULTS": 27,
   "SOLVE NEVER FINISHED": 27,
+  "EXAMINER NEVER FINISHED": 27,
   "MISSES WITHOUT A VERDICT": 27,
   "SESSION CRASHED": 27,
   "SILENCE": 28,
@@ -254,6 +261,7 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
         kind: null,
         seconds: 0,
         cpu: null,
+        unmeasured: 0,
         calls: [],
         errors: 0,
         attested: false,
@@ -266,11 +274,12 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
     }
     if (solve !== undefined && kind === "solve.finished") {
       const ending = asRecord(data.ending);
-      const cpu = asRecord(data.cpu)?.seconds;
+      const cpu = asRecord(data.cpu);
       solve.outcome = text(ending?.outcome);
       solve.kind = isString(ending?.kind) ? ending.kind : null;
       solve.seconds = count(data.seconds);
-      solve.cpu = isNumber(cpu) ? cpu : null;
+      solve.unmeasured = count(cpu?.unmeasured);
+      solve.cpu = isNumber(cpu?.seconds) && solve.unmeasured === 0 ? cpu.seconds : null;
       solve.attested = items(data.responseModels).length > 0;
     }
   }
@@ -929,6 +938,21 @@ function solveTriggers(log: Index): Trigger[] {
   const starved = done.filter(
     (solve) => solve.cpu !== null && solve.seconds > 60 && solve.cpu < solve.seconds * 0.02,
   );
+  // A solve with a command cut before its CPU time was read has a floor for its CPU and no
+  // reading. A comparison's report sums what was measured, so a budget or a spread in `cpu` is
+  // read low on these solves.
+  const cut = done.filter((solve) => solve.unmeasured > 0);
+  const cutBy = log.compared.flatMap(({ session, scoring }) => {
+    const mine = scoring.filter((solve) => solve.unmeasured > 0).length;
+    return mine === 0 ? [] : [`${session}: ${share(mine, scoring.length)} of its solves`];
+  });
+  // An Examiner session writes its ending as a Builder's does; one with a start and no ending
+  // was cut, or is still running.
+  const examined = new Set(log.of(EXAM_END).map((data) => text(data.session)));
+  const unended = log.of(EXAM_START).flatMap((data) => {
+    const session = text(data.session);
+    return examined.has(session) ? [] : [session];
+  });
   const non = done.filter((solve) => solve.outcome === "non-result");
   const unjudged = countBy(
     missed.filter((solve) => solve.kind !== "rejected"),
@@ -957,6 +981,17 @@ function solveTriggers(log: Index): Trigger[] {
     ...(walled > 0 ? [fired("WALL-BOUND MISSES", share(walled, missed.length))] : []),
     ...wallShares,
     ...(starved.length > 0 ? [fired("LONG SOLVE, LITTLE CPU", plural(starved.length, "solve"))] : []),
+    ...(cut.length > 0
+      ? [
+          fired(
+            "CPU UNMEASURED",
+            [
+              `${share(cut.length, done.length)} finished solves cut a command before its CPU time was read`,
+              ...cutBy,
+            ].join("; "),
+          ),
+        ]
+      : []),
     ...(non.length > 0
       ? [
           fired(
@@ -971,6 +1006,7 @@ function solveTriggers(log: Index): Trigger[] {
     ...(log.solves.length > done.length
       ? [fired("SOLVE NEVER FINISHED", plural(log.solves.length - done.length, "solve"))]
       : []),
+    ...(unended.length > 0 ? [fired("EXAMINER NEVER FINISHED", unended.join(", "))] : []),
     ...(Object.keys(unjudged).length > 0 ? [fired("MISSES WITHOUT A VERDICT", tally(unjudged))] : []),
     ...(crashed.length > 0
       ? [fired("SESSION CRASHED", crashed.map((data) => text(data.session)).join(", "))]

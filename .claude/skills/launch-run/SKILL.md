@@ -27,11 +27,14 @@ starter`), so the round needs neither flag.
 
 ```sh
 bun run runs launch <pack flags> --name <name> --session b-1 --builder <model> \
-  --tasks <eight task ids> --cap 625 --budget prompts=12 --budget prompts=6
+  --tasks <eight task ids> --cap 625 --budget turns=40 --budget turns=20
 ```
 
-A budget names any of four units: `prompts`, which is what `--solve-turns` limits, the model's
-`turns`, `cpu` seconds and `seconds`. The report holds each harness by itself at the full limit
+A budget names the model's `turns`, `cpu` seconds or `seconds`. Name none in `prompts`: every
+finished solve of the first three rounds on 9 October was given one prompt, so that unit read
+what the full limit read, and `--solve-turns`, which caps prompts, bound nothing. A budget in
+`cpu` is read low on a solve that cut a command, whose CPU time is then unmeasured; the
+investigation's reader counts those solves (`CPU UNMEASURED`). The report holds each harness by itself at the full limit
 and at each budget, as the tasks by how many of their solves were valid, and the command prints
 it. For the first round the reference harness is the starter, so that line is what gate G0 reads:
 the plan continues at the budget where the starter is valid on about half its solves.

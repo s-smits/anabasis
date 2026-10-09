@@ -49,6 +49,8 @@ import { modelNamed } from "../m0/stored-sweep.ts";
 import { awaitingLines, starter, keptAs, openCampaign, stayAwake } from "./campaign.ts";
 import {
   budgetsNamed,
+  predictionLines,
+  predictionNamed,
   capNamed,
   COMPARISON_OPTIONS,
   ROUND_OPTIONS,
@@ -132,6 +134,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     noise: values.noise,
     budgets,
     cap,
+    prediction: predictionNamed(values.predict),
     concurrency: setting.limits.concurrency,
     solve: (version, harness, comparison, kill) => seats.solve(packageOf(version), harness, kill, comparison),
     setting: seats.setting,
@@ -142,7 +145,13 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   });
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
-  for (const line of [...validLines(report), ...awaitingLines(campaign)]) console.log(line);
+  for (const line of [
+    ...validLines(report),
+    ...predictionLines(read(campaign.log), id, report),
+    ...awaitingLines(campaign),
+  ]) {
+    console.log(line);
+  }
   return report;
 }
 

@@ -51,10 +51,22 @@ missing.
 
 | the log needs | from |
 | --- | --- |
-| a checker the operator has said stands | `bun tools/c/accept.ts ... --name <name> --freeze` |
+| a checker that has been read, and that the operator has said stands | `bun tools/c/accept.ts ... --name <name> [--admit <checks>] --freeze` |
 | the pack's tasks held out, and the practice tasks released | `bun tools/d2/prepare.ts ... --name <name>` |
 | the tasks named to score, each confirmed against today's verifier | `bun tools/d2/prepare.ts ... --name <name> --tasks <task ids>` |
 | further held-out tasks, where the pack's are too few | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |
+
+The reading puts every control to the checks twice, and the do-nothing answer, the smallest the
+answer format allows, to every task: a task on which that answer is not rejected is a fault. A
+check its author's own computation decides, with no installed instrument, is a fault too, until
+`--admit` names it, which is the operator's word for that check. A comparison is refused while the
+log holds no reading at all. One whose last reading holds faults and is not frozen starts, and the
+launcher says so.
+
+Name `--predict "<a sentence>"` on a round or a checkpoint to put on record what you expect it to
+read. It is written with the comparison's terms before its first solve, decides nothing, and is
+printed beside the reading when the comparison ends. A comparison gone on from its log keeps the
+prediction it began with.
 
 A task meets one gate, the shape of its package, and is a held-out task from then on. No stronger
 solver, no screening and no anchor stands between a task and a comparison. So a task named to
@@ -68,6 +80,9 @@ Most are refusals the 2026-10-08 truss rounds would have met. Eight rounds read 
 $220, and none could have read anything else.
 
 - **No held-out task.** `prepare.ts` has not run on this log.
+- **A checker nobody has read.** `accept.ts` has not run on this log. In the first live rounds the
+  reading was made after the solves, by hand, and on truss 22 of 32 solves had by then been
+  rejected, 14 on one check.
 - **Too few tasks to read a step.** At `--level 0.1` a step takes four untied tasks, all won. A
   comparison of fewer scored tasks is refused, and so is one the campaign's own tie share leaves
   too few untied: the share is that of the last tallied comparison made under the same solver

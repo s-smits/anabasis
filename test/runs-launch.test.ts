@@ -30,7 +30,8 @@ import {
 import { LIMITS } from "../tools/d2/campaign.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
 
-const SETS: Supply = { held: 4, awaiting: 0, released: 1, untied: null, since: 0 };
+/** A campaign whose checker was read with no fault and is not frozen. */
+const SETS: Supply = { held: 4, awaiting: 0, released: 1, untied: null, since: 0, faults: 0, frozen: false };
 const ASKED: Asked = {
   target: 12,
   solves: 2,
@@ -79,6 +80,29 @@ describe("a launch's preflight", () => {
     expect(preflight(SETS, { ...ASKED, level: 0.05 }).refusals).toEqual([
       expect.stringContaining("a step takes 5"),
     ]);
+  });
+
+  it("refuses a comparison on a checker nobody has read, and says so of one read with faults", () => {
+    // The reading was made late and by hand in the first live rounds, after the solves were paid.
+    expect(preflight({ ...SETS, faults: null }, ASKED).refusals).toEqual([
+      expect.stringContaining("the campaign's checker has never been read: run tools/c/accept.ts"),
+    ]);
+    // Faults are the operator's to weigh: said, and frozen over them it is their word.
+    const faulty = preflight({ ...SETS, faults: 35 }, ASKED);
+    expect(faulty.refusals).toEqual([]);
+    expect(faulty.notes).toContain(
+      "the checker's last reading holds 35 fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/c/accept.ts)",
+    );
+    expect(preflight({ ...SETS, faults: 35, frozen: true }, ASKED).notes.join("\n")).not.toContain("fault");
+    // Both are read from the log: the last reading's faults, and the last freeze.
+    const at = "2026-10-09T00:00:00.000Z";
+    const checker = { contract: "c", checks: "k" };
+    const read = (faults: string[]): LogEvent => ({ at, kind: "checker.read", data: { ...checker, faults } });
+    expect(supplyOf([read(["one", "two"]), read(["one"])])).toMatchObject({ faults: 1, frozen: false });
+    expect(supplyOf([read([]), { at, kind: "contract.frozen", data: checker }])).toMatchObject({
+      faults: 0,
+      frozen: true,
+    });
   });
 
   it("counts untied tasks: it refuses a comparison the campaign's own tie share leaves too few of", () => {
@@ -137,7 +161,15 @@ describe("a launch's preflight", () => {
       reported("b-3", { scored: null, versions: [], capped: true, setting: here.setting }),
       reported("b-4", { scored: { wins: 0, losses: 0, ties: 0 }, versions: [], setting: here.setting }),
     ];
-    expect(supplyOf(log)).toEqual({ held: 0, awaiting: 0, released: 0, untied: 0.25, since: 0 });
+    expect(supplyOf(log)).toEqual({
+      held: 0,
+      awaiting: 0,
+      released: 0,
+      untied: 0.25,
+      since: 0,
+      faults: null,
+      frozen: false,
+    });
     expect(supplyOf([]).untied).toBeNull();
     // A comparison made under other limits says nothing of the solver the log's last solves were:
     // its share is passed over, and with no comparison under this setting there is none.

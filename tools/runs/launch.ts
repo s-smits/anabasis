@@ -67,6 +67,7 @@ import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { sweepOf } from "#src/kernel/compare.ts";
 import { settingId } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { awaitingLabel, lastReports, latestBuilt } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { ranUnder, solverLast } from "#src/kernel/solves.ts";
@@ -142,6 +143,10 @@ export interface Supply {
   readonly released: number;
   readonly untied: number | null;
   readonly since: number;
+  /** The faults of the checker's last reading (`tools/c/accept.ts`), null where the log holds no
+   *  reading, and whether the operator has frozen the checker. */
+  readonly faults: number | null;
+  readonly frozen: boolean;
 }
 
 /** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
@@ -232,7 +237,16 @@ export function supplyOf(events: readonly LogEvent[], reference = "starter"): Su
       : null;
   const since = sets.held.filter((version) => ![...versions, ...waiting].includes(version)).length;
   const [held, awaiting] = [sets.held.length - waiting.length, waiting.length];
-  return { held, awaiting, released: sets.released.length, untied, since };
+  const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
+  return {
+    held,
+    awaiting,
+    released: sets.released.length,
+    untied,
+    since,
+    faults: Array.isArray(reading) ? reading.length : null,
+    frozen: frozenChecker(events) !== null,
+  };
 }
 
 /** Why a round or a checkpoint should not start, and what its reader should know when it does. */
@@ -269,6 +283,12 @@ export function preflight(supply: Supply, asked: Asked) {
         asked.cap === null,
         "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
       ],
+      // The reading was a step done late and by hand in the first live rounds (2026-10-09), and on
+      // truss 22 of 32 solves were then rejected, 14 on one check, with nothing to say whose fault.
+      [
+        supply.held > 0 && supply.faults === null,
+        "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do. A comparison on an unread checker pays for rejections nobody can attribute",
+      ],
       [asked.reported !== null, `${String(asked.reported)}. Pass another id`],
     ]),
     ...refused(asked),
@@ -282,6 +302,10 @@ export function preflight(supply: Supply, asked: Asked) {
         `${String(supply.awaiting)} held-out task(s) wait for a person's label and are not scored (tools/d2/prepare.ts)`,
       ],
       [asked.builds && supply.released === 0, "no task is released: the Builder has nothing to practise on"],
+      [
+        (supply.faults ?? 0) > 0 && !supply.frozen,
+        `the checker's last reading holds ${String(supply.faults)} fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/c/accept.ts)`,
+      ],
       [
         asked.cap !== null && afforded < test,
         `the cap of $${String(asked.cap?.dollars)} holds a reserve of $${String(asked.cap?.reserve)} for ${String(afforded)} solves, and the comparison's test alone makes ${String(test)}${asked.builds ? ", after a session whose spend the same cap holds" : ""}: it is cut short and reads not-scored unless its solves bill well under their reserve`,

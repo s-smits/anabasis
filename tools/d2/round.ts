@@ -65,11 +65,11 @@
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { type Cap, type Report, round, scoredSet, type Valid } from "#src/builder/round.ts";
+import { type Cap, predicted, type Report, round, scoredSet, type Valid } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type Budget, UNITS } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { read } from "#src/kernel/log.ts";
+import { type LogEvent, read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -120,6 +120,7 @@ export const COMPARISON_OPTIONS = {
   budget: { type: "string", multiple: true },
   cap: { type: "string" },
   reserve: { type: "string", default: "10" },
+  predict: { type: "string" },
 } as const;
 
 /** A round's flags and their defaults. A launch reads the same ones (`tools/runs/launch.ts`), so
@@ -164,6 +165,19 @@ export function scoredNamed(campaign: Campaign, tasks: string | undefined, targe
     if (found === undefined) throw new Error(`--tasks ${taskId}: the campaign holds no task of that id`);
     return found[0];
   });
+}
+
+/** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
+export function predictionNamed(flag: string | undefined): string | undefined {
+  const said = flag?.trim() ?? "";
+  return said === "" ? undefined : said;
+}
+
+/** A comparison's prediction beside what it read, as a command prints the two; no line where the
+ *  operator predicted nothing. The prediction is the one the comparison began with. */
+export function predictionLines(events: readonly LogEvent[], id: string, report: Report): string[] {
+  const said = predicted(events, id);
+  return said === null ? [] : [`predicted before the first solve: ${said}`, `read: ${report.reading}`];
 }
 
 /** The budgets `--budget` names, each as `turns=40,cpu=600` with any of the four units. */
@@ -324,6 +338,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     defects: Number(values.defects),
     budgets,
     cap,
+    prediction: predictionNamed(values.predict),
     concurrency: limits.concurrency,
     solve: (version, harness, comparison, kill) => seats.solve(packageOf(version), harness, kill, comparison),
     setting: seats.setting,
@@ -334,7 +349,13 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   });
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
-  for (const line of [...validLines(report), ...awaitingLines(campaign)]) console.log(line);
+  for (const line of [
+    ...validLines(report),
+    ...predictionLines(read(campaign.log), session, report),
+    ...awaitingLines(campaign),
+  ]) {
+    console.log(line);
+  }
   return report;
 }
 

@@ -13,6 +13,7 @@ import { Type } from "typebox";
 import {
   type CheckpointRequest,
   checkpoint,
+  predicted,
   type RoundRequest,
   round,
   scoredSet,
@@ -486,6 +487,10 @@ describe("a round", () => {
     );
     await expect(round({ ...s.request, noise: true, level: 0.05 })).rejects.toThrow(
       "other terms (level, noise)",
+    );
+    // It began with no prediction, and takes none now that some of its solves can be seen.
+    await expect(round({ ...s.request, prediction: "a step, 4 to 0" })).rejects.toThrow(
+      "other terms (prediction)",
     );
     // Asked again with a longer list, it scores the tasks it began with: the set was fixed before
     // any result could be seen.
@@ -1056,6 +1061,23 @@ describe("a checkpoint with no session", () => {
       reading: NO_STEP,
     });
     expect(s.of("comparison.started")[0]).toMatchObject({ budgets });
+  });
+
+  it("writes the operator's prediction with the terms, before the first solve, and keeps it", async () => {
+    const s = await setup([], step);
+    const prediction = "no step: the starter is valid on most of these at this budget";
+    const report = await checkpoint(s.compare("g0", { prediction }));
+    const events = read(s.log);
+    const began = events.findIndex(({ kind }) => kind === "comparison.started");
+    expect(events[began]?.data.prediction).toBe(prediction);
+    expect(began).toBeLessThan(events.findIndex(({ kind }) => kind === "solve.started"));
+    expect(predicted(events, "g0")).toBe(prediction);
+    // A comparison that predicted nothing has none, and its start holds no such key. The prediction
+    // decides nothing: both read what their tallies read.
+    const plain = await checkpoint(s.compare("g1"));
+    expect(report.reading).toBe(plain.reading);
+    expect(predicted(read(s.log), "g1")).toBeNull();
+    expect(s.of("comparison.started")[1]).not.toHaveProperty("prediction");
   });
 
   it("reads the reference harness against itself beside the test, on solves of its own", async () => {

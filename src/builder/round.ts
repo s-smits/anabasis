@@ -113,6 +113,7 @@ import { awaitingLabel, billedFor, unsolved, whole } from "../kernel/reports.ts"
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
@@ -167,6 +168,11 @@ interface Terms {
   readonly budgets?: readonly Budget[] | undefined;
   /** The dollar cap, where the solves are paid for. */
   readonly cap?: Cap | undefined;
+  /** What the operator expects the comparison to read, in their own words, written with its terms
+   *  before the first solve (`docs/plan.md`, Phase 4). It decides nothing. A comparison gone on
+   *  from its log keeps the one it began with: begun on another, or on none, it is refused with
+   *  one, as it is on any other term that moved. */
+  readonly prediction?: string | undefined;
   /** The Referee, when the caller has a reader for it. */
   readonly referee?:
     | ((solve: string, version: string, kill: AbortSignal) => Promise<RefereeFinding>)
@@ -811,6 +817,7 @@ function begin(request: CheckpointRequest): Fixed {
     noise: request.noise === true,
     budgets: (request.budgets ?? []).map(asBudget),
     cap: request.cap === undefined ? null : { ...request.cap },
+    ...keyIfDefined("prediction", request.prediction),
   };
   const was = startOf(read(log), id);
   if (was === undefined) append(log, STARTED, { session: id, ...terms, tasks: [...request.tasks] });
@@ -825,6 +832,13 @@ function begin(request: CheckpointRequest): Fixed {
     );
   }
   return fixed;
+}
+
+/** What the operator predicted of comparison `id` before its first solve, or null where they
+ *  predicted nothing. */
+export function predicted(events: readonly LogEvent[], id: string): string | null {
+  const said = startOf(events, id)?.prediction;
+  return isString(said) ? said : null;
 }
 
 /** The start of comparison `id` as the log holds it. */

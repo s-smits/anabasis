@@ -74,6 +74,36 @@ describe("the disk cap", () => {
     },
   );
 
+  // A command the host killed left its child running on the volume. The forced detach let it live,
+  // it wrote its home again, and the release threw on the mountpoint: a round and three more solves
+  // went with it (2026-10-09).
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "ends a process a solve left working on the volume, and is released though one wrote on",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      const cache = join(root, "home", "cache");
+      const left = Bun.spawn(["/bin/sh", "-c", `while :; do mkdir -p ${cache}; echo x > ${cache}/f; done`], {
+        cwd: root,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+      await Bun.sleep(300);
+      await releaseDiskCap(root);
+      await left.exited;
+      expect(left.signalCode).toBe("SIGKILL");
+      expect(spawnSync("/sbin/mount", []).stdout).not.toContain(root);
+      expect(existsSync(root)).toBe(false);
+      // What a holder wrote between its listing and the detach is debris in the bare mountpoint.
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      expect(spawnSync("/usr/bin/hdiutil", ["detach", root, "-quiet"]).status).toBe(0);
+      mkdirSync(cache, { recursive: true });
+      await releaseDiskCap(root);
+      expect(existsSync(root)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
   // Two rounds once ran a Builder session under one id: the second claim failed to mount, and its
   // cleanup removed the first's command profiles under it.
   it("refuses a root another solve already holds, before touching it", async () => {

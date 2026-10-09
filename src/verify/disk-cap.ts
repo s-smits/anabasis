@@ -21,7 +21,7 @@
  * remaining paths a solve's commands can fill. The worker itself, host code under an allow-default
  * wall, writes outside the root as well.
  */
-import { mkdirSync, rmdirSync, statSync } from "../meta/filesystem.ts";
+import { mkdirSync, rmSync, statSync } from "../meta/filesystem.ts";
 import { dirname, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
@@ -110,20 +110,51 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
  * release leaves the folder and the image and nothing attached, and a detach of that exits 1 with
  * "No such file or directory". Three of four solves stopped two seconds after they started were
  * left so, and the stop gave up at the first (2026-10-08).
+ *
+ * A process the solve left behind is ended here, where the root it works in goes. A command's own
+ * exit reaps what it started (`stageCommandIsolation`), and a command the host kills never runs
+ * that: its children live on under launchd with the volume as their working directory. The forced
+ * detach closed their files and left them running, and one that then wrote its home made the bare
+ * mountpoint again, so the release threw on a folder that was not empty and took a round and its
+ * three other solves with it; the process ran on at 80 forks a second (2026-10-09). So whatever
+ * holds a file on a volume that will not detach is killed first, and what a process wrote into the
+ * mountpoint after the volume went is removed with it.
  */
 export async function releaseDiskCap(root: string): Promise<void> {
   if (runtimeProcess.platform === "darwin") {
     // A mountpoint is on another device than its parent.
     if (statSync(root).dev !== statSync(dirname(root)).dev) {
-      // A process the worker left behind can hold a file open on the volume, which refuses a plain
-      // detach with "resource busy"; the forced one closes those files under it.
+      // "resource busy" is a file open on the volume, a working directory among them.
       const detached = await hdiutil(["detach", root, "-quiet"]);
       if (detached !== null) {
+        await endHolders(root);
         const forced = await hdiutil(["detach", root, "-force", "-quiet"]);
         if (forced !== null) throw new Error(forced);
       }
     }
     await trash(`${root}.sparseimage`);
   }
-  rmdirSync(root);
+  rmSync(root, { recursive: true, force: true });
+}
+
+/** Kill every process with a file open on the volume at `root`, and again while one that forks
+ *  leaves another: a few passes, since the forced detach takes whatever outlasts them. */
+async function endHolders(root: string): Promise<void> {
+  for (let pass = 0; pass < 5; pass++) {
+    const listed = Bun.spawn(["/usr/sbin/lsof", "-t", "+f", "--", root], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const holders = (await new Response(listed.stdout).text()).split("\n").map(Number);
+    const others = holders.filter((pid) => pid > 1 && pid !== runtimeProcess.pid);
+    if (others.length === 0) return;
+    for (const pid of others) {
+      try {
+        runtimeProcess.kill(pid, "SIGKILL");
+      } catch {
+        // Gone between the listing and the kill.
+      }
+    }
+  }
 }

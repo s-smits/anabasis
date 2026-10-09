@@ -333,8 +333,15 @@ bun run runs pulse | stop <name> | compare | replay | seed | zip
 
 The launcher refuses, among others: a log with no held-out task; a comparison that would leave
 fewer untied tasks than a step takes at its level; a comparison with no `--cap`; an id whose
-comparison has reported; a checker that nobody has read; a host whose load is over its cores,
+comparison has reported; a checker that nobody has read; a campaign the stop rule has stopped,
+unless `--past-stop "<why>"` gives the operator's reason; a host whose load is over its cores,
 unless `--loaded` says that its times will not be compared.
+
+Whether a comparison may start is one function's to say (`admission`, `src/builder/admission.ts`).
+The launcher asks it before it spawns anything, and a round or a checkpoint asks it again before
+its first event, so a command started by hand is refused where a launch of it would be. What only
+a host or an id can refuse stays with the launcher. A rehearsal is exempt by name: its seats are
+scripts, which are paid nothing.
 
 The setting of a campaign's solves is five flags, named the same on every command that solves: a
 round, a checkpoint, a rehearsal and the launcher (`tools/d2/setting.ts`). They are `--solver`,
@@ -416,8 +423,9 @@ are summed from the log, and the solve does not start when a reserve for it and 
 in flight would pass the cap.
 
 **After the test.** A comparison that wrote its report is finished: run again, it returns that
-report. Three checkpoints without a step is the stop rule (`stopRule`, `src/kernel/reports.ts`),
-which the commands print. A task with no valid answer in two comparisons goes to a person as
+report. Three checkpoints without a step is the stop rule (`stopRule`, `src/kernel/reports.ts`).
+The next comparison is then refused, unless the operator gives a reason to go on (`--past-stop`),
+which is logged as `stop.overridden`. A task with no valid answer in two comparisons goes to a person as
 possibly infeasible, unless a valid answer for it stands anywhere on record or a limit cut its
 solves (`awaitingLabel`). Promotion is the operator naming a harness as `--reference`.
 
@@ -1156,7 +1164,8 @@ the operator.
 ```text
 src/kernel/     the log, tasks, conditions, the verifier's contract, the comparison, the reports
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
-src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round
+src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round;
+                whether a comparison may start (admission)
 src/examiner/   an Examiner session, its prompt, and the outcomes it is told
 src/review/     the Referee, the Diagnoser, the probe, agreement with hand labels
 src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read

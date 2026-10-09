@@ -461,6 +461,46 @@ describe("a campaign", () => {
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });
+  it("refuses a paid comparison started by hand where a launch of it would be refused", async () => {
+    const campaign = await openCampaign(ARGS);
+    const flags = [
+      ...Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]),
+      // From the starter: an earlier case left the latest kept state one that no longer opens.
+      "--cap",
+      "100",
+      "--parent",
+      "starter",
+    ];
+    // The campaign's checker has never been read, which only the launcher refused until 2026-10-09.
+    const unread = "the campaign's checker has never been read: run tools/c/accept.ts";
+    await expect(roundCommand([...flags, "--session", "z-5", "--builder", "faux/none"])).rejects.toThrow(
+      unread,
+    );
+    const ran = Bun.spawnSync({
+      cmd: [
+        capturedExecPath,
+        "tools/d2/checkpoint.ts",
+        "--id",
+        "z-5",
+        "--new",
+        "starter",
+        ...flags.slice(0, -2),
+      ],
+      cwd: REPO,
+    });
+    expect(ran.exitCode).not.toBe(0);
+    expect(ran.stderr.toString()).toContain(unread);
+    // A rehearsal's seats are scripts, and it is exempt: it gets as far as its Builder's seat.
+    await expect(
+      roundCommand([...flags, "--session", "z-5"], () => ({
+        builder: null,
+        setting: "s",
+        solve: () => Promise.reject(new Error("no solve is asked for")),
+      })),
+    ).rejects.toThrow("name --builder");
+    expect(read(campaign.log).some(({ data }) => data.session === "z-5")).toBe(false);
+  });
+
   it("refuses a labels file with an entry that is no label, and a --target that is no count", async () => {
     const campaign = await openCampaign(ARGS);
     const flags = Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]);

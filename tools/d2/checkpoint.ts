@@ -34,12 +34,17 @@
  * defaults (`round.ts`), and `--cap` is required as it is there. With no `--reviewer`, every
  * rejection waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
+ * Before its first event it asks whether the comparison may start, as a round does and as a
+ * launch of it does (`src/builder/admission.ts`). `--past-stop "<why>"` goes on past the plan's
+ * stop rule, and the reason is logged.
+ *
  * Run again with the same `--id`, it goes on from its log, and once it has reported it says what
  * it said.
  *
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import { admitComparison } from "#src/builder/admission.ts";
 import { checkpoint, type Report } from "#src/builder/round.ts";
 import { read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
@@ -59,6 +64,7 @@ import {
   solved,
   targetNamed,
   validLines,
+  wantedNamed,
 } from "./round.ts";
 import { SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
@@ -106,6 +112,14 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   };
   const old = await keptAs(campaign, "--reference", values.reference);
   const fresh = await keptAs(campaign, "--new", values.new);
+  // Asked before anything of this comparison is written, as a launch of it asks.
+  const notes = admitComparison(campaign.log, {
+    id,
+    reference: values.reference,
+    wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
+    seats: seated === solved ? "paid" : "scripted",
+  });
+  for (const note of notes) console.log(`· ${note}`);
   if (old.digest === fresh.digest) {
     throw new Error(
       `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness (tools/d2/round.ts)" : ""}. A harness is read against itself beside a comparison, with --noise`,

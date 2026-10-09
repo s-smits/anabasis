@@ -79,6 +79,11 @@ that fails this says nothing of the answer.
 Most are refusals the 2026-10-08 truss rounds would have met. Eight rounds read `no-step` for over
 $220, and none could have read anything else.
 
+The first five below, and the stop rule, are the comparison's own admission
+(`src/builder/admission.ts`). The launcher asks it before it spawns, and the round or the checkpoint
+asks it again before its first event, so a command started by hand is refused the same way. A
+rehearsal is exempt from them: its seats are scripts, which are paid nothing.
+
 - **No held-out task.** `prepare.ts` has not run on this log.
 - **A checker nobody has read.** `accept.ts` has not run on this log. In the first live rounds the
   reading was made after the solves, by hand, and on truss 22 of 32 solves had by then been
@@ -93,6 +98,9 @@ $220, and none could have read anything else.
   cap, and a comparison the cap cuts short reads `not-scored` and is finished. The plan proposes
   each phase's upper estimate plus a quarter. A note says when the cap holds a reserve for fewer
   solves than the comparison's test makes.
+- **A campaign the stop rule has stopped.** Three checkpoints have passed without a step, which is
+  where the plan stops a campaign. `--past-stop "<why>"` goes on all the same, and the reason is
+  logged under the comparison's id (`stop.overridden`). Each further launch needs its own.
 - **An id that has reported.** A comparison that reported is finished, and run again it only
   says what it said. Pass another `--session` or `--id`.
 - **Already running.** A process in this worktree is writing this campaign's log.

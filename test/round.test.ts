@@ -1264,6 +1264,11 @@ describe("the scored set", () => {
     await round(s.next("b-2"));
     expect(awaitingLabel(read(s.log))).toEqual(["s1"]);
     expect(scoredSet(read(s.log), 12, "c").toSorted()).toEqual(["s2", "s3", "s4", "s5"]);
+    // Named for a comparison all the same, it is refused: the draw leaves it out, and a name
+    // was the one way past that (2026-10-09).
+    await expect(round(s.next("b-3"))).rejects.toThrow(
+      "task s1 waits for a person's label, and is not scored until it has one: tools/d2/prepare.ts --keep or --infeasible",
+    );
     append(s.log, TASK_STATE, {
       version: "s1",
       state: "held",

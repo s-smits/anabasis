@@ -27,7 +27,7 @@ import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.t
 import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/json-shape.ts";
 import { foldsEvent, taskStates } from "./task.ts";
 
-/** The plan's events, and eighteen that are not among them. `comparison.started` fixes a
+/** The plan's events, and nineteen that are not among them. `comparison.started` fixes a
  *  comparison's terms before its first solve: the harnesses, the setting and the scored tasks
  *  (`src/builder/round.ts`). `anchor.drawn`, `anchor.scored` and `exam.word` are written by no
  *  command since 2026-10-09 and are kinds still, so that a log written before then reads: the
@@ -40,7 +40,9 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  in pi's own loop, and what its summary spent (`src/backends/pi-compaction.ts`). The `exam.*` kinds are an Examiner session's: the same four
  *  (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to do, by
  *  the version it was read at (`acceptance.ts`); `contract.frozen` is the operator's word that the
- *  contract and that version stand, and a campaign whose own differ from it does not open. */
+ *  contract and that version stand, and a campaign whose own differ from it does not open.
+ *  `stop.overridden` is the operator's reason for a comparison begun after the plan's stop rule
+ *  had stopped the campaign (`src/builder/admission.ts`). */
 export const EVENT_KINDS = [
   "world.accepted",
   "checker.read",
@@ -72,6 +74,7 @@ export const EVENT_KINDS = [
   "diagnosis.recorded",
   "comparison.started",
   "comparison.reported",
+  "stop.overridden",
   "anchor.drawn",
   "anchor.scored",
   "task.released",

@@ -56,6 +56,11 @@
  * command that solves takes them from one owner (`setting.ts`). `--minutes` and `--turns` are the
  * Builder session's own.
  *
+ * Before its first event a round asks whether its comparison may start, as a launch of it does
+ * (`src/builder/admission.ts`): on a checker nobody has read, with too few tasks left to untie, or
+ * after the plan's stop rule has stopped the campaign, it starts nothing. `--past-stop "<why>"`
+ * goes on past the stop rule, and the reason is logged.
+ *
  * Run again with the same `--session`, a round goes on from its log. Its report and the plan's
  * stop rule are printed from the log.
  *
@@ -65,19 +70,21 @@
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
+import { admitComparison, type Wanted } from "#src/builder/admission.ts";
 import { type Cap, predicted, type Report, round, scoredSet, type Valid } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type Budget, UNITS } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
+import { solverLast } from "#src/kernel/solves.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { awaitingLines, starter, type Kept, keptAs, openCampaign, stayAwake } from "./campaign.ts";
-import { commandSeconds, SETTING_OPTIONS, settingNamed } from "./setting.ts";
+import { commandSeconds, type NamedSetting, restarts, SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
 export type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 
@@ -121,6 +128,7 @@ export const COMPARISON_OPTIONS = {
   cap: { type: "string" },
   reserve: { type: "string", default: "10" },
   predict: { type: "string" },
+  "past-stop": { type: "string" },
 } as const;
 
 /** A round's flags and their defaults. A launch reads the same ones (`tools/runs/launch.ts`), so
@@ -165,6 +173,34 @@ export function scoredNamed(campaign: Campaign, tasks: string | undefined, targe
     if (found === undefined) throw new Error(`--tasks ${taskId}: the campaign holds no task of that id`);
     return found[0];
   });
+}
+
+/**
+ * What a command's flags ask of a comparison, as its admission takes it (`admitComparison`): the
+ * size, the cap, the reason to go on past the stop rule where one is given, and what the setting
+ * named here is against the one the log's last test-side solves ran under.
+ */
+export function wantedNamed(
+  campaign: Campaign,
+  values: {
+    readonly tasks?: string | undefined;
+    readonly target: string;
+    readonly solves: string;
+    readonly level: string;
+    readonly "past-stop"?: string | undefined;
+  },
+  given: { readonly setting: NamedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
+): Wanted {
+  return {
+    // A comparison that names its tasks scores those, however many the log holds beside them.
+    target: values.tasks === undefined ? targetNamed(values.target) : values.tasks.split(",").length,
+    solves: Number(values.solves),
+    level: Number(values.level),
+    builds: given.builds,
+    cap: given.cap ?? null,
+    restarted: restarts(given.setting, solverLast(read(campaign.log))),
+    pastStop: predictionNamed(values["past-stop"]),
+  };
 }
 
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
@@ -296,6 +332,13 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   )?.data.parent;
   const parent = (await keptAs(campaign, "--parent", isString(began) ? began : values.parent)).dir;
   const reference = await keptAs(campaign, "--reference", values.reference);
+  const notes = admitComparison(campaign.log, {
+    id: session,
+    reference: values.reference,
+    wanted: wantedNamed(campaign, values, { setting, cap, builds: true }),
+    seats: seated === solved ? "paid" : "scripted",
+  });
+  for (const note of notes) console.log(`· ${note}`);
   const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
   if (seats.builder === null) throw new Error("name --builder");
   stayAwake();

@@ -11,21 +11,14 @@
  * and any others a round's.
  *
  * `launch` runs in the worktree whose source should run. Before it starts anything it reads the
- * campaign's sets from the log and the host, and refuses:
+ * campaign's log and the host, and refuses:
  *
- *   - a log with no held-out task (`prepare.ts`);
- *   - a comparison that would leave fewer untied tasks than a step takes at its level. It could not
- *     read a step whatever the harnesses did, and the plan blocks a launch that cannot give a
- *     result (`docs/plan.md`, Phase 2). The untied tasks are counted from the share the campaign's
- *     last comparison left untied, where that comparison was made under the setting this one
- *     would run under: another solver or other limits tie other tasks. A task the harness this
- *     one is made with was valid on in every solve there can only tie again, so no more are
- *     counted than it left to win: after buffer's first step the harness that won was valid in
- *     every solve on 8 of 11 tasks (2026-10-09). Before any such comparison every scored task
- *     is counted whole, and so is one held out since it. Until
- *     2026-10-09 this was a note, and the eight truss rounds of 2026-10-08 scored no task and
- *     read `no-step` eight times for over $220;
- *   - a comparison with no `--cap`: the plan requires a dollar cap at launch for each comparison;
+ *   - whatever the comparison's own admission refuses (`src/builder/admission.ts`): no held-out
+ *     task, too few to read a step or too few left untied, no `--cap`, a checker nobody has read,
+ *     and a campaign the plan's stop rule has stopped, unless `--past-stop` says why it goes on.
+ *     The command asks the same function again before its first event, so a round started by hand
+ *     is refused where this launch would be. The eight truss rounds of 2026-10-08 scored no task
+ *     and read `no-step` eight times for over $220, when the first of these was a note;
  *   - an id whose comparison has reported: a comparison that reported is finished;
  *   - the same run already running here;
  *   - a host whose load is over its cores, unless `--loaded` says its times will not be compared;
@@ -64,20 +57,16 @@
  */
 import { existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { sweepOf } from "#src/kernel/compare.ts";
-import { settingId } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { frozenChecker } from "#src/kernel/acceptance.ts";
-import { awaitingLabel, lastReports, latestBuilt } from "#src/kernel/reports.ts";
-import { sizeLines } from "#src/kernel/size.ts";
-import { ranUnder, solverLast } from "#src/kernel/solves.ts";
+import { solverLast } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
-import { type Cap, spent } from "#src/builder/round.ts";
+import { admission, type Supply, supplyOf, type Wanted } from "#src/builder/admission.ts";
+import { spent } from "#src/builder/round.ts";
 import { sessionDirs } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
@@ -118,35 +107,11 @@ export interface Host {
   readonly ran: ReturnType<typeof solverLast>;
 }
 
-/** What a comparison's launch is asked for beside it. */
-export interface Asked extends Host {
-  /** `--target`, `--solves` and `--level`, as given or as the round defaults them. */
-  readonly target: number;
-  readonly solves: number;
-  readonly level: number;
-  /** Whether the command runs a Builder session before it compares. */
-  readonly builds: boolean;
-  /** The dollar cap `--cap` and `--reserve` name, or null where no cap is named. */
-  readonly cap: Cap | null;
+/** What a comparison's launch is asked for beside it: what the comparison wants, as its flags name
+ *  it, and whether its id is free. */
+export interface Asked extends Host, Omit<Wanted, "restarted"> {
   /** Why the comparison's id is taken (`reportedAs`), or null. */
   readonly reported: string | null;
-}
-
-/** What a launch reads of a log's tasks: how many are held out and may be scored, how many wait
- *  for a person's label and are left out, how many are released for practice, and the share of
- *  its tallied tasks left untied by the last comparison made under the setting of the log's last
- *  test-side solve, and by the harness the next would be made with, null before any, with how
- *  many tasks were held out since it tallied. */
-export interface Supply {
-  readonly held: number;
-  readonly awaiting: number;
-  readonly released: number;
-  readonly untied: number | null;
-  readonly since: number;
-  /** The faults of the checker's last reading (`tools/c/accept.ts`), null where the log holds no
-   *  reading, and whether the operator has frozen the checker. */
-  readonly faults: number | null;
-  readonly frozen: boolean;
 }
 
 /** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
@@ -208,112 +173,18 @@ function flagOf(args: readonly string[], name: string): string | undefined {
   return at === -1 ? undefined : args[at + 1];
 }
 
-/** A log's supply of tasks, as `preflight` takes it, for a comparison made with the harness
- *  `--reference` names. */
-export function supplyOf(events: readonly LogEvent[], reference = "starter"): Supply {
-  const sets = taskSets(events);
-  const waiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
-  const solved = ranUnder(events).findLast(({ under }) => under.side === "test")?.under;
-  const setting = solved === undefined ? null : settingId(solved);
-  const last = lastReports(events).findLast(
-    ({ data }) =>
-      Array.isArray(data.versions) &&
-      data.versions.length > 0 &&
-      asRecord(data.scored) !== null &&
-      data.setting === setting,
-  )?.data;
-  const tally = asRecord(last?.scored);
-  const versions = Array.isArray(last?.versions) ? last.versions : [];
-  const tallied = versions.length;
-  // A task the harness to be compared with was valid on in every solve there can only tie again.
-  const named =
-    reference === "latest" ? latestBuilt(events) : reference === "starter" ? last?.starter : reference;
-  const side = last?.old === named ? "old" : "fresh";
-  const full = last?.[side] === named ? asRecord(last?.valid)?.[side] : null;
-  const closed = Array.isArray(full) && isNumber(full.at(-1)) ? Number(full.at(-1)) : 0;
-  const untied =
-    tally !== null && isNumber(tally.wins) && isNumber(tally.losses) && tallied > 0
-      ? Math.min(tally.wins + tally.losses, tallied - closed) / tallied
-      : null;
-  const since = sets.held.filter((version) => ![...versions, ...waiting].includes(version)).length;
-  const [held, awaiting] = [sets.held.length - waiting.length, waiting.length];
-  const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
-  return {
-    held,
-    awaiting,
-    released: sets.released.length,
-    untied,
-    since,
-    faults: Array.isArray(reading) ? reading.length : null,
-    frozen: frozenChecker(events) !== null,
-  };
-}
-
-/** Why a round or a checkpoint should not start, and what its reader should know when it does. */
+/** Why a round or a checkpoint should not be launched, and what its reader should know when it is:
+ *  the comparison's own admission on this log, then what only its id and this host can refuse. */
 export function preflight(supply: Supply, asked: Asked) {
-  const scored = Math.min(asked.target, supply.held);
-  const [size = "", ...power] = sizeLines(scored, asked);
-  // What a comparison's test can say at this size is arithmetic, and rehearsals found it before a
-  // round paid to (2026-10-08): exam-1 held one task to score.
-  const least = sweepOf(asked.level);
-  // A share measured of another solver, or under other limits, says little of this comparison.
-  const restarted = restarts(asked.named, asked.ran);
-  const share = restarted.length === 0 ? (supply.untied ?? 1) : 1;
-  // A task held out since that comparison has no share on record, and is counted whole.
-  const untied = scored * (share + ((1 - share) * supply.since) / Math.max(1, supply.held));
-  // The comparison's test alone: both harnesses, on every scored task.
-  const test = 2 * scored * asked.solves;
-  const afforded = asked.cap === null ? test : Math.floor(asked.cap.dollars / asked.cap.reserve);
-  const more = `Run an Examiner session (${EXAMINE}) for more held-out tasks`;
-  const refusals = [
-    ...said([
-      [
-        supply.held === 0,
-        "the log holds no held-out task to score: run tools/d2/prepare.ts, which takes the pack's tasks in",
-      ],
-      [
-        supply.held > 0 && scored < least,
-        `${size}. ${more}${asked.target < least ? `, and ask for a --target of ${String(least)} or more` : ""}`,
-      ],
-      [
-        scored >= least && untied < least,
-        `the campaign's last comparison left ${String(Math.round(100 * share))}% of its tasks for this one to untie: the rest tied there, or this one's reference harness was valid on them in every solve. At that share ${String(scored)} scored tasks${supply.since > 0 ? `, the ${String(supply.since)} held out since counted whole,` : ""} leave about ${untied.toFixed(1)} untied, where at --level ${String(asked.level)} a step takes ${String(least)}, all won: this comparison could hardly read a step. ${more}, or change the budget so that fewer tasks tie`,
-      ],
-      [
-        asked.cap === null,
-        "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
-      ],
-      // The reading was a step done late and by hand in the first live rounds (2026-10-09), and on
-      // truss 22 of 32 solves were then rejected, 14 on one check, with nothing to say whose fault.
-      [
-        supply.held > 0 && supply.faults === null,
-        "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do. A comparison on an unread checker pays for rejections nobody can attribute",
-      ],
-      [asked.reported !== null, `${String(asked.reported)}. Pass another id`],
-    ]),
-    ...refused(asked),
-  ];
-  const notes = [
-    `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(scored)} to score`,
-    ...(scored < least ? [] : [size, ...power]),
-    ...said([
-      [
-        supply.awaiting > 0,
-        `${String(supply.awaiting)} held-out task(s) wait for a person's label and are not scored (tools/d2/prepare.ts)`,
-      ],
-      [asked.builds && supply.released === 0, "no task is released: the Builder has nothing to practise on"],
-      [
-        (supply.faults ?? 0) > 0 && !supply.frozen,
-        `the checker's last reading holds ${String(supply.faults)} fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/c/accept.ts)`,
-      ],
-      [
-        asked.cap !== null && afforded < test,
-        `the cap of $${String(asked.cap?.dollars)} holds a reserve of $${String(asked.cap?.reserve)} for ${String(afforded)} solves, and the comparison's test alone makes ${String(test)}${asked.builds ? ", after a session whose spend the same cap holds" : ""}: it is cut short and reads not-scored unless its solves bill well under their reserve`,
-      ],
-    ]),
-    ...restarted,
-  ];
-  return { refusals, notes };
+  const { refusals, notes } = admission(supply, { ...asked, restarted: restarts(asked.named, asked.ran) });
+  return {
+    refusals: [
+      ...refusals,
+      ...said([[asked.reported !== null, `${String(asked.reported)}. Pass another id`]]),
+      ...refused(asked),
+    ],
+    notes,
+  };
 }
 
 /** The same for an Examiner session on a campaign whose log is `events`, or null where the
@@ -386,6 +257,7 @@ export async function launch(args: readonly string[]): Promise<void> {
       reserve: ROUND_OPTIONS.reserve,
       tasks: { type: "string" },
       reference: ROUND_OPTIONS.reference,
+      "past-stop": ROUND_OPTIONS["past-stop"],
       ...SETTING_OPTIONS,
       examiner: { type: "string" },
     },
@@ -436,6 +308,7 @@ export async function launch(args: readonly string[]): Promise<void> {
         level: Number(values.level),
         builds: !checking,
         cap: isString(values.cap) ? { dollars: Number(values.cap), reserve: Number(values.reserve) } : null,
+        pastStop: isString(values["past-stop"]) ? values["past-stop"] : undefined,
         reported: reportedAs(events ?? [], session),
       });
   for (const note of notes) console.log(`· ${note}`);

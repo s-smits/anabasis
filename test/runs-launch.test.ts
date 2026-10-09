@@ -9,12 +9,10 @@ import {
   runTextSyncOrThrow,
   terminateAndReapProcessGroupId,
 } from "../src/meta/subprocess.ts";
+import { admission, type Supply } from "../src/builder/admission.ts";
 import { spent } from "../src/builder/round.ts";
 import { claimed } from "../src/examiner/session.ts";
-import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { append, type LogEvent } from "../src/kernel/log.ts";
-import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { sizeLines } from "../src/kernel/size.ts";
 import {
   type Asked,
   examPreflight,
@@ -24,14 +22,21 @@ import {
   preflight,
   reportedAs,
   start,
-  type Supply,
-  supplyOf,
 } from "../tools/runs/launch.ts";
 import { LIMITS } from "../tools/d2/campaign.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
 
 /** A campaign whose checker was read with no fault and is not frozen. */
-const SETS: Supply = { held: 4, awaiting: 0, released: 1, untied: null, since: 0, faults: 0, frozen: false };
+const SETS: Supply = {
+  held: 4,
+  awaiting: 0,
+  released: 1,
+  untied: null,
+  since: 0,
+  faults: 0,
+  frozen: false,
+  stop: { checkpoints: 0, sinceStep: 0, stop: false },
+};
 const ASKED: Asked = {
   target: 12,
   solves: 2,
@@ -50,188 +55,29 @@ const ASKED: Asked = {
 };
 
 describe("a launch's preflight", () => {
-  it("lets a comparison start that can read a step, and says its sets and its size", () => {
-    const { refusals, notes } = preflight(SETS, ASKED);
-    expect(refusals).toEqual([]);
-    expect(notes).toEqual([
-      "4 held out · 1 released for practice · 4 to score",
-      ...sizeLines(4, { solves: 2, level: 0.1 }),
+  it("is the comparison's own admission, with what only the host and the id can refuse", () => {
+    const wanted = { target: 12, solves: 2, level: 0.1, builds: true, cap: ASKED.cap, restarted: [] };
+    expect(preflight(SETS, ASKED)).toEqual(admission(SETS, wanted));
+    // Both are said at once: what the log refuses, then what the host does.
+    const unread = { ...SETS, faults: null };
+    expect(preflight(unread, { ...ASKED, load: 14.2 }).refusals).toEqual([
+      ...admission(unread, wanted).refusals,
+      expect.stringContaining("load is 14.2 on 12 cores"),
     ]);
-    expect(notes[1]).toBe(
-      "4 held-out tasks can be scored; at --level 0.1 the smallest results that clear are 4-0",
-    );
-    // A target caps the scored set as few held-out tasks do.
-    expect(preflight({ ...SETS, held: 20 }, ASKED).notes[0]).toBe(
-      "20 held out · 1 released for practice · 12 to score",
-    );
+    // The operator's reason to go on past the stop rule reaches the admission as it was given.
+    const stopped = { ...SETS, stop: { checkpoints: 3, sinceStep: 3, stop: true } };
+    expect(preflight(stopped, ASKED).refusals).toHaveLength(1);
+    expect(preflight(stopped, { ...ASKED, pastStop: "new tasks since" }).refusals).toEqual([]);
   });
 
-  // As exam-1 stood on 2026-10-08, with one task to score. It was a note then, and eight rounds ran.
-  it("refuses a comparison of fewer tasks than a step takes: it could not read one", () => {
-    const small = preflight({ ...SETS, held: 3 }, ASKED);
-    expect(small.refusals).toEqual([
-      "3 held-out tasks can be scored, and at --level 0.1 a step takes 4, all won: this comparison cannot read a step. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks",
+  it("refuses a loaded host, a second start and a missing env file", () => {
+    const loaded = { ...ASKED, load: 14.2 };
+    expect(preflight(SETS, loaded).refusals).toEqual([expect.stringContaining("load is 14.2 on 12 cores")]);
+    expect(preflight(SETS, { ...loaded, loaded: true }).refusals).toEqual([]);
+    expect(preflight(SETS, { ...ASKED, running: [41] }).refusals).toEqual([
+      "this campaign's log is already being written here, by pid 41",
     ]);
-    expect(small.notes).toEqual(["3 held out · 1 released for practice · 3 to score"]);
-    // A target under the least sweep is refused as few tasks are, and says which it is.
-    expect(preflight(SETS, { ...ASKED, target: 3 }).refusals).toEqual([
-      expect.stringContaining("and ask for a --target of 4 or more"),
-    ]);
-    expect(preflight(SETS, { ...ASKED, level: 0.05 }).refusals).toEqual([
-      expect.stringContaining("a step takes 5"),
-    ]);
-  });
-
-  it("refuses a comparison on a checker nobody has read, and says so of one read with faults", () => {
-    // The reading was made late and by hand in the first live rounds, after the solves were paid.
-    expect(preflight({ ...SETS, faults: null }, ASKED).refusals).toEqual([
-      expect.stringContaining("the campaign's checker has never been read: run tools/c/accept.ts"),
-    ]);
-    // Faults are the operator's to weigh: said, and frozen over them it is their word.
-    const faulty = preflight({ ...SETS, faults: 35 }, ASKED);
-    expect(faulty.refusals).toEqual([]);
-    expect(faulty.notes).toContain(
-      "the checker's last reading holds 35 fault(s) and the operator has not frozen it: a rejection here may be the check's own (tools/c/accept.ts)",
-    );
-    expect(preflight({ ...SETS, faults: 35, frozen: true }, ASKED).notes.join("\n")).not.toContain("fault");
-    // Both are read from the log: the last reading's faults, and the last freeze.
-    const at = "2026-10-09T00:00:00.000Z";
-    const checker = { contract: "c", checks: "k" };
-    const read = (faults: string[]): LogEvent => ({ at, kind: "checker.read", data: { ...checker, faults } });
-    expect(supplyOf([read(["one", "two"]), read(["one"])])).toMatchObject({ faults: 1, frozen: false });
-    expect(supplyOf([read([]), { at, kind: "contract.frozen", data: checker }])).toMatchObject({
-      faults: 0,
-      frozen: true,
-    });
-  });
-
-  it("counts untied tasks: it refuses a comparison the campaign's own tie share leaves too few of", () => {
-    // The last comparison left a quarter of its tasks untied. Twelve tasks then leave about
-    // three, and a step takes four.
-    const tied = { ...SETS, held: 12, untied: 0.25 };
-    expect(preflight(tied, ASKED).refusals).toEqual([
-      "the campaign's last comparison left 25% of its tasks for this one to untie: the rest tied there, or this one's reference harness was valid on them in every solve. At that share 12 scored tasks leave about 3.0 untied, where at --level 0.1 a step takes 4, all won: this comparison could hardly read a step. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks, or change the budget so that fewer tasks tie",
-    ]);
-    // At a half, twelve leave six, and it starts. Before any comparison every task is counted.
-    expect(preflight({ ...tied, untied: 0.5 }, ASKED).refusals).toEqual([]);
-    expect(preflight({ ...tied, untied: null }, ASKED).refusals).toEqual([]);
-    // The share is the last tallied comparison's: its wins and losses over the tasks it tallied.
-    const at = "2026-10-09T00:00:00.000Z";
-    const reported = (session: string, more: LogEvent["data"]): LogEvent => ({
-      at,
-      kind: "comparison.reported",
-      data: { session, ...more },
-    });
-    /** A test-side solve under `limits`, which makes theirs the setting of the log's last solves. */
-    const solvedUnder = (solve: string, limits: typeof LIMITS) => {
-      const condition: Condition = {
-        contract: "c1",
-        harness: "h1",
-        task: "v",
-        model: "p/m",
-        effort: "high",
-        prices: { "p/m": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-        runtime: {},
-        compaction: "off",
-        solverTools: "h1",
-        verifierTools: "t1",
-        sandbox: "p1",
-        limits,
-        host: "h",
-        side: "test",
-      };
-      const id = conditionId(condition);
-      const events: LogEvent[] = [
-        { at, kind: "condition.recorded", data: { id, condition: requireJsonValue(condition) } },
-        { at, kind: "solve.started", data: { solve, condition: id } },
-      ];
-      return { events, setting: settingId(condition) };
-    };
-    const [here, longer] = [solvedUnder("s-1", LIMITS), solvedUnder("s-2", { ...LIMITS, turns: 48 })];
-    const tallied = (wins: number, losses: number, setting: string) => ({
-      scored: { wins, losses, ties: 8 - wins - losses },
-      versions: Array(8).fill("v"),
-      setting,
-    });
-    const log = [
-      ...here.events,
-      reported("b-1", tallied(6, 0, here.setting)),
-      reported("b-2", tallied(1, 1, here.setting)),
-      // One the cap cut, and one with every task set aside, tallied nothing and say nothing of it.
-      reported("b-3", { scored: null, versions: [], capped: true, setting: here.setting }),
-      reported("b-4", { scored: { wins: 0, losses: 0, ties: 0 }, versions: [], setting: here.setting }),
-    ];
-    expect(supplyOf(log)).toEqual({
-      held: 0,
-      awaiting: 0,
-      released: 0,
-      untied: 0.25,
-      since: 0,
-      faults: null,
-      frozen: false,
-    });
-    expect(supplyOf([]).untied).toBeNull();
-    // A comparison made under other limits says nothing of the solver the log's last solves were:
-    // its share is passed over, and with no comparison under this setting there is none.
-    const moved = [...log, ...longer.events];
-    expect(supplyOf(moved).untied).toBeNull();
-    expect(supplyOf([...moved, reported("b-5", tallied(4, 0, longer.setting))]).untied).toBe(0.5);
-    // A task the harness to be compared with was valid on in every solve can only tie again. After
-    // a step read 7-0-4 the harness that won was valid in every solve on 8 of the 11 tasks, so a
-    // round made against it had 3 to win where the share on record said 7 (2026-10-09).
-    const stepped = [
-      ...here.events,
-      reported("g-1", {
-        ...tallied(6, 0, here.setting),
-        old: "h0",
-        fresh: "h1",
-        starter: "h0",
-        valid: { old: [6, 1, 1], fresh: [1, 1, 6] },
-      }),
-    ];
-    expect(supplyOf(stepped).untied).toBe(0.75);
-    expect(supplyOf(stepped, "h1").untied).toBe(0.25);
-    // `latest` is the harness the last whole session left. One that comparison did not solve has
-    // no record in it.
-    const built: LogEvent = {
-      at,
-      kind: "build.finished",
-      data: { session: "b-1", changed: true, harness: "h1", ended: "finished" },
-    };
-    expect(supplyOf([built, ...stepped], "latest").untied).toBe(0.25);
-    expect(supplyOf(stepped, "h9").untied).toBe(0.75);
-    // And a launch that names other limits than the log's last solves ran under counts every
-    // task, since the share on record is another setting's.
-    const ran = { model: "p/m", effort: "high", limits: { ...LIMITS, turns: 48 } };
-    expect(preflight(tied, { ...ASKED, ran }).refusals).toEqual([]);
-    expect(preflight(tied, { ...ASKED, ran: { ...ran, limits: LIMITS } }).refusals).toHaveLength(1);
-    // A task held out since that comparison has no share on record and is counted whole. A round
-    // that tied nine of nine left no later one able to start, whatever an Examiner session then
-    // added, though more held-out tasks is the remedy the refusal names (2026-10-09).
-    const allTied = { ...tied, untied: 0 };
-    expect(preflight({ ...allTied, since: 3 }, ASKED).refusals).toEqual([
-      expect.stringContaining("12 scored tasks, the 3 held out since counted whole, leave about 3.0 untied"),
-    ]);
-    expect(preflight({ ...allTied, since: 4 }, ASKED).refusals).toEqual([]);
-    // They are the held-out tasks the comparison did not tally.
-    const heldOut = (version: string): LogEvent[] => [
-      { at, kind: "task.proposed", data: { version } },
-      { at, kind: "task.gate", data: { version, gate: 1, outcome: "passed" } },
-    ];
-    const before = [...heldOut("v"), ...here.events, reported("b-1", tallied(0, 0, here.setting))];
-    expect(supplyOf(before)).toMatchObject({ held: 1, untied: 0, since: 0 });
-    expect(supplyOf([...before, ...heldOut("w"), ...heldOut("x")])).toMatchObject({ held: 3, since: 2 });
-  });
-
-  it("says when the cap holds a reserve for fewer solves than the comparison's test makes", () => {
-    // Four tasks, two harnesses, two solves: sixteen solves, and a cap of $120 reserves twelve.
-    const note = preflight(SETS, { ...ASKED, cap: { dollars: 120, reserve: 10 } }).notes.at(-1);
-    expect(note).toBe(
-      "the cap of $120 holds a reserve of $10 for 12 solves, and the comparison's test alone makes 16, after a session whose spend the same cap holds: it is cut short and reads not-scored unless its solves bill well under their reserve",
-    );
-    expect(preflight(SETS, { ...ASKED, cap: { dollars: 160, reserve: 10 } }).notes.join("\n")).not.toContain(
-      "holds a reserve",
-    );
+    expect(preflight(SETS, { ...ASKED, missing: "gone.env" }).refusals).toEqual(["gone.env is not there"]);
   });
 
   it("refuses an id whose comparison has reported: a comparison that reported is finished", () => {
@@ -246,32 +92,6 @@ describe("a launch's preflight", () => {
     expect(preflight(SETS, { ...ASKED, reported: reportedAs(log, "g0") }).refusals).toEqual([
       "comparison g0 has reported no-step, and a comparison that reported is finished. Pass another id",
     ]);
-  });
-
-  it("refuses a comparison that names no dollar cap", () => {
-    expect(preflight(SETS, { ...ASKED, cap: null }).refusals).toEqual([
-      "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
-    ]);
-  });
-
-  it("refuses an empty log, a loaded host, a second start and a missing env file", () => {
-    const none = { ...SETS, held: 0, released: 0 };
-    expect(preflight(none, ASKED).refusals).toEqual([expect.stringContaining("holds no held-out task")]);
-    const loaded = { ...ASKED, load: 14.2 };
-    expect(preflight(SETS, loaded).refusals).toEqual([expect.stringContaining("load is 14.2 on 12 cores")]);
-    expect(preflight(SETS, { ...loaded, loaded: true }).refusals).toEqual([]);
-    expect(preflight(SETS, { ...ASKED, running: [41] }).refusals).toEqual([
-      "this campaign's log is already being written here, by pid 41",
-    ]);
-    expect(preflight(SETS, { ...ASKED, missing: "gone.env" }).refusals).toEqual(["gone.env is not there"]);
-    // A round's Builder needs practice, and a checkpoint has no Builder.
-    const unreleased = { ...SETS, released: 0 };
-    expect(preflight(unreleased, ASKED).notes.at(-1)).toContain("nothing to practise on");
-    expect(preflight(unreleased, { ...ASKED, builds: false }).notes.join("\n")).not.toContain("practise");
-    // A task that waits for a person's label is said, and is not among the tasks to score.
-    expect(preflight({ ...SETS, awaiting: 2 }, ASKED).notes).toContain(
-      "2 held-out task(s) wait for a person's label and are not scored (tools/d2/prepare.ts)",
-    );
   });
 
   it("refuses a session whose Builder started and did not end whole, in the round's own words", () => {
@@ -295,17 +115,17 @@ describe("a launch's preflight", () => {
 
 describe("a launch under limits the log's last solves did not run under", () => {
   const longer = { ...LIMITS, wallSeconds: 4 * 3600 };
+  const under = (limits: typeof LIMITS) => ({ solver: undefined, limits });
+  const ran = { model: "p/m", effort: "high", limits: LIMITS };
 
   it("says that what the log measured so far was another setting's, for a round and a checkpoint", () => {
     const told = "are another setting's";
     // No solve on record, or the same limits: nothing moved, and nothing is said.
     expect(preflight(SETS, ASKED).notes.join("\n")).not.toContain(told);
-    const ran = { model: "p/m", effort: "high", limits: LIMITS };
     expect(preflight(SETS, { ...ASKED, ran }).notes.join("\n")).not.toContain(told);
-    const note =
-      "a solve here is held to 240 minutes and 24 turns, and the log's last test-side solves ran under 120 minutes and 24 turns: the tallies, the tie share and the cost of a solve on record are another setting's, and say little of this comparison (tools/d2/setting.ts)";
-    const under = (limits: typeof LIMITS) => ({ solver: undefined, limits });
-    expect(preflight(SETS, { ...ASKED, named: under(longer), ran }).notes.at(-1)).toBe(note);
+    expect(preflight(SETS, { ...ASKED, named: under(longer), ran }).notes.at(-1)).toBe(
+      "a solve here is held to 240 minutes and 24 turns, and the log's last test-side solves ran under 120 minutes and 24 turns: the tallies, the tie share and the cost of a solve on record are another setting's, and say little of this comparison (tools/d2/setting.ts)",
+    );
     // An Examiner session solves nothing, so nothing of the kind is said of it.
     expect(examPreflight([], { ...ASKED, named: under(longer), ran }).notes.join("\n")).not.toContain(told);
     // More turns are other limits too.
@@ -319,6 +139,12 @@ describe("a launch under limits the log's last solves did not run under", () => 
     );
     const same = { solver: { model: "p/m", effort: "high" as const }, limits: LIMITS };
     expect(preflight(SETS, { ...ASKED, named: same, ran }).notes.join("\n")).not.toContain(told);
+  });
+
+  it("counts every task where the share on record is another setting's", () => {
+    const tied = { ...SETS, held: 12, untied: 0.25 };
+    expect(preflight(tied, { ...ASKED, ran }).refusals).toHaveLength(1);
+    expect(preflight(tied, { ...ASKED, named: under({ ...LIMITS, turns: 48 }), ran }).refusals).toEqual([]);
   });
 
   it("refuses a wall the command itself would refuse, before anything starts", async () => {

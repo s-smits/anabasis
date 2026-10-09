@@ -521,6 +521,13 @@ function refuseUnscorable(terms: Terms, log: string, practised: ReadonlySet<stri
   if (seen !== undefined) {
     throw new Error(`task ${seen} is a practice task, and a round scores no task its session saw`);
   }
+  // The draw leaves such a task out (`scoredSet`), and a name was the one way past that.
+  const waiting = awaitingLabel(read(log)).find((version) => terms.tasks.includes(version));
+  if (waiting !== undefined) {
+    throw new Error(
+      `task ${waiting} waits for a person's label, and is not scored until it has one: tools/d2/prepare.ts --keep or --infeasible`,
+    );
+  }
   const { states, held } = taskSets(read(log));
   // A task this comparison disputed in an earlier run of it is where that run left it.
   const unfit = terms.tasks.find((version) => !held.includes(version) && states.get(version) !== "disputed");

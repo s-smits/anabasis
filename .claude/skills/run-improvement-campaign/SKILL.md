@@ -25,6 +25,7 @@ what is true now, since a handover is a few hours old the moment it is written:
 
 ```sh
 bun run runs pulse --once                      # every open run, in every worktree
+bun run runs view <name> --cap <dollars>       # one campaign: each step's handover, and the next moves
 bun .claude/skills/stack-pr/scripts/stack.ts   # the open stack and its top
 bun tools/wri/wri.ts read --log <worktree>/.ana/d2/<name>/log.jsonl
 ```

@@ -517,5 +517,21 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     const again = rehearse("--no-comparison", "--session", "b-2");
     expect(again.said).toContain(`session b-2 left harness ${isString(two?.harness) ? two.harness : ""}:`);
     expect(of("build.started")).toHaveLength(2);
+
+    // Fix row F13: the campaign's view prints each step's handover, and names the next move in
+    // the words a launch from this log is given, since both ask the one admission.
+    const viewed = cli("view", SEED, "--cap", "100").said;
+    expect(
+      viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),
+    ).toHaveLength(2);
+    expect(viewed).toContain("on 1 task, 2 solves a side at 0.1: 1 won, 0 lost, 0 tied, which reads no-step");
+    const launched = cli("launch", ...flags, "--session", "b-9", "--cap", "100", "--loaded", "--dry-run");
+    const told = launched.said.split("\n").filter((line) => line.startsWith("⚠ ") || line.startsWith("· "));
+    // The pack's one held-out task cannot read a step, and its checker was never read here.
+    expect(told.filter((line) => line.startsWith("⚠ "))).toHaveLength(2);
+    const round = viewed.slice(viewed.indexOf("  a round"), viewed.indexOf("  a checkpoint"));
+    expect(round).toContain("a round         refused");
+    for (const line of told) expect(round).toContain(line);
+    expect(launched.said).toContain(`${SEED} is not launched`);
   });
 });

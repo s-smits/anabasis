@@ -12,7 +12,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
-import { type Bench, endingText, record } from "../src/builder/tools.ts";
+import { type Bench, endingText, record, usedText } from "../src/builder/tools.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -796,6 +796,42 @@ describe("what a Builder is shown of a solve", () => {
     expect(endingText({ outcome: "non-result", kind: "check", reason: `${CHECK}: threw` })).toBe(
       "no result (check)",
     );
+  });
+});
+
+describe("what a practice solve used", () => {
+  it("is its time of its limit and the model's turns, and nothing for a solve the log has no end of", async () => {
+    const s = await setup([finish]);
+    const condition: Condition = {
+      contract: "c1",
+      harness: s.digest,
+      task: "v1",
+      model: "faux/faux-solver",
+      effort: "medium",
+      prices: { "faux/faux-solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+      runtime: {},
+      compaction: "off",
+      solverTools: s.digest,
+      verifierTools: "t1",
+      sandbox: "p1",
+      limits: { ...LIMITS, wallSeconds: 480 },
+      host: "h1",
+      side: "test",
+    };
+    append(s.request.log, "solve.started", {
+      solve: "s-used",
+      condition: recordCondition(s.request.log, condition),
+      limits: condition.limits,
+    });
+    expect(usedText(read(s.request.log), "s-used")).toBe("");
+    append(s.request.log, "solve.finished", {
+      solve: "s-used",
+      ending: { outcome: "pass" },
+      turns: 14,
+      seconds: 222.4,
+    });
+    expect(usedText(read(s.request.log), "s-used")).toBe(" It took 3:42 of 8:00 and 14 model turns.");
+    expect(usedText(read(s.request.log), "s-none")).toBe("");
   });
 });
 

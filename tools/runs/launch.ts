@@ -78,7 +78,6 @@ import {
   supplyOf,
   type Wanted,
   type WantedPractice,
-  type WantedSession,
 } from "#src/builder/admission.ts";
 import { sessionDirs, spent } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
@@ -313,7 +312,7 @@ function commandOf(holds: {
 
 /** The flags a launch reads for itself: its own, and those of the command that its preflight
  *  needs, with the command's defaults. Every other flag is passed on unread. */
-const LAUNCH_OPTIONS = {
+export const LAUNCH_OPTIONS = {
   "env-file": { type: "string" },
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
@@ -333,6 +332,34 @@ const LAUNCH_OPTIONS = {
   ...SETTING_OPTIONS,
   examiner: { type: "string" },
 } as const;
+
+/**
+ * What a launch's flags ask of a comparison and of a session by itself, as their admissions take
+ * them, with the setting they would run under. It is what the launcher's preflight reads and what
+ * the campaign view asks the next moves with (`tools/runs/view.ts`), so that the two say the same
+ * of one log. The launcher opens no campaign, so it knows the solver only where a flag names it:
+ * the command asks again with the campaign open.
+ */
+export function askedFlagged(values: Readonly<Record<string, Loose>>, events: readonly LogEvent[]) {
+  const setting = settingFlagged(values, events);
+  const ran = solverLast(events);
+  const session: WantedPractice = {
+    cap: isString(values.cap) ? { dollars: Number(values.cap), reserve: Number(values.reserve) } : null,
+    pastStop: isString(values["past-stop"]) ? values["past-stop"] : undefined,
+    unrecorded: firstRecord(setting, setting.named, ran),
+    practiceSolves: Number(values["practice-solves"]),
+  };
+  const comparison: Wanted = {
+    ...session,
+    // A comparison that names its tasks scores those, however many the log holds beside them.
+    target: setting.tasks === undefined ? setting.target : setting.tasks.split(",").length,
+    solves: Number(values.solves),
+    level: Number(values.level),
+    builds: true,
+    restarted: restarts(setting.named, ran),
+  };
+  return { setting, ran, reference: String(values.reference), comparison, session };
+}
 
 /** `bun run runs launch`. */
 export async function launch(args: readonly string[]): Promise<void> {
@@ -366,7 +393,7 @@ export async function launch(args: readonly string[]): Promise<void> {
   const load = loadavg()[0] ?? 0;
   const cores = availableParallelism();
   const events = run === undefined ? null : logEvents(run.path);
-  const setting = settingFlagged(values, events ?? []);
+  const asked = askedFlagged(values, events ?? []);
   const host: Host = {
     loaded: values.loaded === true,
     load,
@@ -375,31 +402,16 @@ export async function launch(args: readonly string[]): Promise<void> {
     missing: isString(envFile) && !existsSync(envFile) ? envFile : null,
     // A checkpoint runs no session, so no id of one can be spent on it.
     spent: checking ? null : (examining ? claimed : alone ? sessionTaken : spent)(events ?? [], session),
-    named: setting.named,
-    ran: solverLast(events ?? []),
-  };
-  const wanted: WantedSession = {
-    cap: isString(values.cap) ? { dollars: Number(values.cap), reserve: Number(values.reserve) } : null,
-    pastStop: isString(values["past-stop"]) ? values["past-stop"] : undefined,
-    // The launcher opens no campaign, so it knows the solver only where a flag names it: the
-    // command asks again with the campaign open.
-    unrecorded: firstRecord(setting, setting.named, host.ran),
+    named: asked.setting.named,
+    ran: asked.ran,
   };
   const { refusals, notes } = examining
     ? examPreflight(events, host)
     : alone
-      ? sessionPreflight(supplyOf(events ?? []), {
+      ? sessionPreflight(supplyOf(events ?? []), { ...host, ...asked.session })
+      : preflight(supplyOf(events ?? [], asked.reference), {
           ...host,
-          ...wanted,
-          practiceSolves: Number(values["practice-solves"]),
-        })
-      : preflight(supplyOf(events ?? [], String(values.reference)), {
-          ...host,
-          ...wanted,
-          // A comparison that names its tasks scores those, however many the log holds beside them.
-          target: setting.tasks === undefined ? setting.target : setting.tasks.split(",").length,
-          solves: Number(values.solves),
-          level: Number(values.level),
+          ...asked.comparison,
           builds: !checking,
           reported: reportedAs(events ?? [], session),
         });

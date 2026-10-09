@@ -298,15 +298,22 @@ export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
  * (`src/builder/round.ts`).
  */
 export function billedFor(events: readonly LogEvent[], id: string): number {
+  const { session, comparison } = billedParts(events, id);
+  return session + comparison;
+}
+
+/** The same sum in its two parts: what the Builder session under `id` billed, and what the
+ *  comparison under it did. A reader of a round tells them apart (`src/builder/handover.ts`). */
+export function billedParts(events: readonly LogEvent[], id: string) {
   const own = new Set(solvesIn(events).flatMap((solve) => (solve.start.comparison === id ? [solve.id] : [])));
-  const session = (kind: string) =>
-    events.findIndex((event) => event.kind === kind && event.data.session === id);
-  const [opened, closed] = [session("build.started"), session(BUILD_FINISHED)];
-  let billed = 0;
+  const at = (kind: string) => events.findIndex((event) => event.kind === kind && event.data.session === id);
+  const [opened, closed] = [at("build.started"), at(BUILD_FINISHED)];
+  const billed = { session: 0, comparison: 0 };
   for (const [index, { kind, data }] of events.entries()) {
     if (!BILLED.has(kind) || !isNumber(data.billed)) continue;
     const inSession = opened !== -1 && index >= opened && (closed === -1 || index <= closed);
-    if (inSession || (isString(data.solve) && own.has(data.solve))) billed += data.billed;
+    if (inSession) billed.session += data.billed;
+    else if (isString(data.solve) && own.has(data.solve)) billed.comparison += data.billed;
   }
   return billed;
 }

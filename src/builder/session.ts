@@ -79,6 +79,7 @@ import { HARNESS_ACCOUNT } from "../solve/starter.ts";
 import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
 import { mountDiskCap } from "../verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../verify/solve-sandbox.ts";
+import { campaignOf } from "./handover.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, shortDigest } from "./past.ts";
 import { firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
@@ -278,6 +279,8 @@ export async function session(
   };
   const tools = [...walled(bench), practiceTool(bench), traceTool(bench), finishTool(bench)];
   const recorded = read(log);
+  // The campaign as its log reads, once: the same rows the operator's view prints (`handover.ts`).
+  const campaign = campaignOf(recorded);
   const opening = firstMessage(
     request.contract,
     request.tasks.map(({ version, task }) => ({
@@ -289,8 +292,11 @@ export async function session(
     { ...limits, practiceSolves: practiceLeft(bench, recorded) },
     {
       start: shortDigest(parent.digest),
-      fails: failsTold(recorded, new Map(request.tasks.map(({ version, task }) => [version, task.taskId]))),
-      comparisons: comparisonsTold(recorded),
+      fails: failsTold(
+        campaign.fails,
+        new Map(request.tasks.map(({ version, task }) => [version, task.taskId])),
+      ),
+      comparisons: comparisonsTold(campaign.steps),
       memory: builderMemoryBlock(dirs.home),
     },
   );

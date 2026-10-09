@@ -5,7 +5,8 @@
  * `compare` reads named rounds against one another (`compare.ts`). `replay` puts every campaign log
  * through this tree's readers (`replay.ts`), `seed` copies a campaign under another name, cut where
  * a question starts (`seed.ts`), and `rehearse` runs a round over a seed with a script in each
- * model seat (`rehearse.ts`).
+ * model seat (`rehearse.ts`). `view` prints one campaign as its log reads: what each step handed
+ * over, and the moves that may start next (`view.ts`).
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { compareRuns } from "./compare.ts";
@@ -14,6 +15,7 @@ import { watch } from "./pulse.ts";
 import { rehearse } from "./rehearse.ts";
 import { replay } from "./replay.ts";
 import { seed } from "./seed.ts";
+import { view } from "./view.ts";
 import { zipRuns } from "./zip.ts";
 
 const VERBS = {
@@ -25,6 +27,7 @@ const VERBS = {
   replay,
   seed,
   rehearse,
+  view,
 };
 const [verb, ...args] = Bun.argv.slice(2);
 const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];

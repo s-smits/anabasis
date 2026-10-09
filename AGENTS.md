@@ -224,12 +224,15 @@ Two names are easy to confuse, and new text keeps them apart:
 Older comments and `docs/plan.md`'s list of terms use "Harness Builder" for the inner agent. Do not
 copy that use.
 
-The Harness Builder is designed, and at PR #80 half of it is in the repository. Its loop exists
-as a procedure: the skill `run-improvement-campaign` (walk, choose, prove, predict, launch, watch,
+The Harness Builder is designed, and part of it is in the repository. Its loop exists as a
+procedure: the skill `run-improvement-campaign` (walk, choose, prove, predict, launch, watch,
 read, decide), which a coding session follows with the operator through the commands of
-section 6. Its controller does not exist: no code holds a campaign's state between commands, so
-the session carries each step's result to the next by reading the log. The design has two layers,
-as v1's had:
+section 6. Of its controller two parts exist. The campaign's state is one reading of its log
+(`campaignOf`, `src/builder/handover.ts`): each step's handover and the moves that may start
+next, which `bun run runs view <name>` prints. And the setting, the reference and every refusal
+are the log's and one admission's (section 6). What does not exist is the process that makes the
+move: nothing in code launches the next step, so the session reads the view and starts one. The
+design has two layers, as v1's had:
 
 - **A controller in code.** It holds the campaign's state and admits the next move: set-up, an
   Examiner session, a Builder session, a comparison, settling, or stop. It owns the setting, the
@@ -333,6 +336,7 @@ launcher, which reads the log and the host first and refuses a run that cannot r
 ```text
 bun run runs launch [--env-file FILE] [--loaded] [--dry-run] [--no-comparison] <the command's own flags>
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
+bun run runs view <name> [the flags of a launch]
 bun run runs pulse | stop <name> | compare | replay | seed | zip
 ```
 
@@ -548,7 +552,8 @@ code comment.
 Read at PR #80 (`d878c1b`), four designed parts are absent from the source. Check the plan and the
 head before relying on this list, and delete a line here in the change that makes it false:
 
-- the Harness Builder's controller (section 4): no code holds a campaign's state between commands;
+- the process of the Harness Builder's controller (section 4): the campaign's state is read in
+  one place and the next move is named, and no code makes the move;
 - the Judge: the Referee has a probe and no shell, reads the check program, and is unmeasured
   against hand labels. No seat reads an answer that passed;
 - an author for the check program: no seat writes or repairs a check;
@@ -1180,7 +1185,7 @@ the operator.
 src/kernel/     the log, tasks, conditions, the verifier's contract, the comparison, the reports
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
 src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round;
-                whether a comparison may start (admission)
+                whether a comparison may start (admission); the one reading of a campaign (handover)
 src/examiner/   an Examiner session, its prompt, and the outcomes it is told
 src/review/     the Referee, the Diagnoser, the probe, agreement with hand labels
 src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read
@@ -1189,7 +1194,7 @@ src/meta/       the owners of every runtime surface (section 12.8)
 tools/c/        the check program: accept, carry, rejections, repaired
 tools/d1b/      examine
 tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote
-tools/runs/     launch, stop, rehearse, seed, pulse, compare, replay, zip
+tools/runs/     launch, stop, rehearse, seed, pulse, view, compare, replay, zip
 tools/wri/      the whole-run investigation's reader of one log
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans
 tools/runtime/  the lint and test wrappers, the commit check

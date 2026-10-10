@@ -106,7 +106,7 @@ export interface StoredRuntime {
 }
 
 /** One tool as v1 sent it to the model (`BuiltAgentInterfaceTool`, built-starter.ts:83-86). */
-export interface StoredTool {
+interface StoredTool {
   readonly name: string;
   readonly label: string;
   readonly description: string;

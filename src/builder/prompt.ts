@@ -43,7 +43,7 @@ import { plural } from "../meta/text.ts";
 import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
 
 /** A practice task as the opening message lists it. */
-export interface Listed {
+interface Listed {
   readonly taskId: string;
   readonly family: string;
   /** Its counted solves under the harness the session starts from, from the log. */

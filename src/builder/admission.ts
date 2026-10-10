@@ -98,7 +98,7 @@ export interface Wanted {
 }
 
 /** What a Builder session with no comparison after it asks for. */
-export type WantedSession = Pick<Wanted, "cap" | "pastStop" | "unrecorded">;
+type WantedSession = Pick<Wanted, "cap" | "pastStop" | "unrecorded">;
 
 /** A comparison a command is about to start. */
 export interface Starting {

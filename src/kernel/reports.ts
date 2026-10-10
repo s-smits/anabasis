@@ -28,7 +28,7 @@ import type { LogEvent } from "./log.ts";
 import { passed, ranUnder, solvesIn } from "./solves.ts";
 
 /** A comparison's last report, with where the comparison stands in the log: at its first report. */
-export interface Reported {
+interface Reported {
   readonly session: string;
   readonly index: number;
   readonly data: JsonObject;

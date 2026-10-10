@@ -73,7 +73,7 @@ interface Folded {
 
 /** What a log holds of its tasks, from the one fold: each version's state, and the two sets every
  *  command of a campaign asks for, in the order their tasks were proposed. */
-export interface TaskSets {
+interface TaskSets {
   readonly states: Map<string, TaskState>;
   /** The held-out tasks: gated, and neither released, disputed nor refused. */
   readonly held: readonly string[];
@@ -81,9 +81,9 @@ export interface TaskSets {
   readonly released: readonly string[];
 }
 
-export const TASK_STATES = ["held", "refused", "released", "disputed"] as const;
+const TASK_STATES = ["held", "refused", "released", "disputed"] as const;
 
-export type TaskState = (typeof TASK_STATES)[number];
+type TaskState = (typeof TASK_STATES)[number];
 
 /**
  * Where each state may go. A held-out task may be released for practice, and a check defect shows

@@ -62,7 +62,7 @@ import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 import { heard } from "./record.ts";
 
-export interface ExamLimits {
+interface ExamLimits {
   readonly wallSeconds: number;
   /** The model's turns, each reply one, with or without a tool call. */
   readonly turns: number;

@@ -28,7 +28,6 @@ import { homedir, tmpdir } from "../meta/os.ts";
 import { join, resolve } from "../meta/path.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
 import {
   LINUX_BWRAP_ID,
   bwrapEnvironmentArgs,
@@ -254,34 +253,6 @@ export function isolationArgv(
     ];
   }
   return ["-p", policy.profile, command, ...args];
-}
-
-/** Spawn a transport's own process under the isolation with native Bun pipes. Draining stderr is
- *  left to the caller: `startPiBuiltWorker` forwards it to the host's stderr and waits on that drain
- *  before it settles the worker, so nothing in the launch here may consume it first. */
-export function spawnUnderSolveIsolation(
-  policy: SolveIsolationPolicy,
-  options: {
-    command: string;
-    args: string[];
-    cwd?: string;
-    env: OptionalEnvValues;
-    signal?: AbortSignal;
-  },
-): Bun.Subprocess<"pipe", "pipe", "pipe"> {
-  return Bun.spawn({
-    cmd: [policy.mechanismPath, ...isolationArgv(policy, options.command, options.args, options.env)],
-    cwd: options.cwd ?? runtimeProcess.cwd(),
-    env: options.env,
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-    // The wrapper becomes its own process group, which is what settlement reaps. Under Bubblewrap
-    // the worker reports a different pid, and settlement reaps that group by its id as well, so both
-    // paths reap by process-group id rather than by matching process names.
-    detached: true,
-    ...keyIfDefined("signal", options.signal),
-  });
 }
 
 /**

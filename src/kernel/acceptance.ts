@@ -49,7 +49,7 @@ export interface Control {
 }
 
 /** A control with the checks run on it twice. */
-export interface ControlRun extends Control {
+interface ControlRun extends Control {
   readonly verdicts: readonly [Verdict, Verdict];
 }
 
@@ -60,13 +60,13 @@ export interface Graded {
 }
 
 /** The do-nothing answer's verdict on one task. */
-export interface Idle {
+interface Idle {
   readonly taskId: string;
   readonly verdict: Verdict;
 }
 
 /** What one check has been seen to do. */
-export interface CheckReading {
+interface CheckReading {
   readonly id: string;
   /** Whether an installed tool decides it or the author's own computation does. */
   readonly instrument: "authored" | "external";
@@ -80,14 +80,14 @@ export interface CheckReading {
   readonly caught: number;
 }
 
-export interface Acceptance {
+interface Acceptance {
   readonly checks: readonly CheckReading[];
   /** What stands between the checker and its acceptance, one sentence each. */
   readonly faults: readonly string[];
 }
 
 /** A checker by what it is: its contract's hash, and the digest of its program's files. */
-export interface Checker {
+interface Checker {
   readonly contract: string;
   readonly checks: string;
 }

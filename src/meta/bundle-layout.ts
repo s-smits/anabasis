@@ -35,9 +35,6 @@ export const TASKS_FILE = "correctness-model/tasks.json";
 /** The task-bound accept and reject artifacts that calibrate the checks. */
 export const CONTROLS_FILE = "correctness-model/controls.json";
 
-/** The named Boolean checks the host runs; the one owner of every pass. */
-export const EVALUATOR_FILE = "correctness-model/evaluator.ts";
-
 /** The declared tool contract the solver's roster is derived from. */
 export const TOOLS_SPEC_FILE = "agent/tools-spec.json";
 

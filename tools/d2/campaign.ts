@@ -82,7 +82,7 @@ import {
   sweepRows,
 } from "../m0/stored-sweep.ts";
 
-export interface CampaignArgs {
+interface CampaignArgs {
   /** The stored pack a campaign opens over, which the four name together. A campaign that
    *  opened from a prompt names none: its exam is the one its own log drafted (`exam.ts`). */
   readonly root?: string | undefined;

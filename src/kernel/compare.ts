@@ -94,7 +94,7 @@ export const MEASURED = ["turns", "cpu", "seconds"] as const;
 /** How far repeated solves of one harness on one task differ in a unit: over the tasks and sides
  *  with two measured solves or more, the largest use divided by the smallest, as the median of
  *  those ratios and the largest. Null where no task has two. */
-export interface Spread {
+interface Spread {
   readonly tasks: number;
   readonly median: number;
   readonly most: number;

@@ -15,7 +15,7 @@ import type { Task } from "./verify.ts";
 
 /** A `task.proposed` event. A pack's task is proposed by its id alone. A task an Examiner session
  *  wrote, or one carried from another checker's campaign, is logged whole, since no pack holds it. */
-export interface Proposal {
+interface Proposal {
   readonly version: string;
   readonly taskId: string | null;
   /** The Examiner session that wrote it; null for a pack's task and for a carried one. */

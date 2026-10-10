@@ -71,24 +71,6 @@ export const SYSTEM_SERVICE_RULES = `(allow mach-lookup)
   (global-name "com.apple.pasteboard.1"))`;
 
 /**
- * The one directory inside a candidate workspace that holds tools rather than candidate content:
- * the controller links its own Bun runtime here, and a Builder that installs a compiler, a board
- * package tree or a prepared cache puts it here too, so the verifier can reopen this one tree
- * read-only for installed tools. The name is shared rather than spelled per caller because a
- * mismatch costs the product real tools: admission asking for a directory nothing creates refuses
- * every workspace-installed tool for sitting outside a directory that does not exist.
- */
-export const WORKSPACE_TOOL_TREE = ".toolchain";
-
-/** Disposable host locations a Builder cell may write outside its own workspace. What lands there
- *  remains Builder-influenceable even when the controller has pinned one exact executable for
- *  candidate measurement, which is why a path from this list is never independent operator
- *  authority and never a permitted broad read root. */
-export const BUILDER_SCRATCH_ROOTS: readonly string[] = ["/tmp", "/var/tmp", "/var/folders"].flatMap(
-  canonicalForms,
-);
-
-/**
  * The read-only platform baseline the Darwin walls grant.
  *
  * These are deliberately broad because they are meant for platform software — `sh`, `node`,
@@ -120,7 +102,7 @@ export const DARWIN_SYSTEM_READ_ROOTS: readonly string[] = [
  * may write Darwin's shared temporary directory, where a staged copy would sit readable beneath an
  * allowed path.
  */
-export const HIDDEN_TASKS_DENY_PATTERN = String.raw`/hidden-tasks\.json$`;
+const HIDDEN_TASKS_DENY_PATTERN = String.raw`/hidden-tasks\.json$`;
 
 /** The directory names that mark a checkout as one of these, carrying run data of its own. */
 const RUN_DATA_NAMES = ["domains", "campaigns", "correctness-model"];
@@ -155,7 +137,7 @@ export const BUILT_COMMAND_SCRATCH_DENY = "/ana-built-bash";
 
 /** The directory beside the verifier's cells where the host keeps each tool's cache between runs
  *  (`engine-cell-env.ts`). Every wall below closes it by this name. */
-export const VERIFIER_CACHE_STORE = "ana-verifier-cache";
+const VERIFIER_CACHE_STORE = "ana-verifier-cache";
 
 /** Both path forms of a root: a rule that names only the symlink form misses the access Seatbelt
  *  actually evaluates, which on Darwin is the difference between `/var` and `/private/var`. Every
@@ -217,19 +199,6 @@ export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.H
  *  move the policy hash and discard exit-0 verdicts for a wall that never changed. */
 export function darwinPlatformReadRoots(): string[] {
   return [...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)), ...darwinToolchainInstallRoots()];
-}
-
-/**
- * The controller's own checkout, derived from this file rather than from a caller.
- *
- * A Builder's workspace is a campaign directory, not this tree. Once the account's home opens, this
- * tree sits inside it holding the verifier source, the hidden expectations and every other run's
- * recorded evidence. Closing it by path is what keeps the home grant from letting a confined
- * command read a sibling worktree's `tasks.json` and `evaluator.ts`, which repeated slugs make
- * reachable.
- */
-export function controllerCheckoutRoot(): string {
-  return resolve(Bun.fileURLToPath(new URL("../../", import.meta.url)));
 }
 
 /**
@@ -320,7 +289,7 @@ export function runDataDenyPaths(deniedRoots: readonly string[]): string[] {
  */
 let confstrTempRoot: string | undefined | null = null;
 
-export function darwinUserTempRoot(): string | undefined {
+function darwinUserTempRoot(): string | undefined {
   if (runtimeProcess.platform !== "darwin") return undefined;
   if (confstrTempRoot === null) {
     const probe = Bun.spawnSync(["/usr/bin/getconf", "DARWIN_USER_TEMP_DIR"], {
@@ -352,12 +321,6 @@ export const VERIFIER_TEMP_SIBLING_DENY_PATTERNS = [
   `/${VERIFIER_CACHE_STORE}`,
 ] as const;
 
-export function verifierTempSiblingDenyRules(
-  patterns: readonly string[] = VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
-): string[] {
-  return patterns.map((pattern) => `(deny file-read* file-read-metadata file-write* (regex #"${pattern}"))`);
-}
-
 /**
  * The confstr temp root and `extraRoots` in both path forms, which each wall records in its policy
  * identity, and the rules granting a toolchain every direct child of them and what lies beneath it.
@@ -379,7 +342,10 @@ export function userTempRules(
     (root) =>
       `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" (regex-quote ${capturedJsonStringify(root)}) #"/[^/]+(/.*)?$")))`,
   );
-  return { roots, rules: [...childTrees, ...verifierTempSiblingDenyRules(siblingPatterns)] };
+  const siblingDenies = siblingPatterns.map(
+    (pattern) => `(deny file-read* file-read-metadata file-write* (regex #"${pattern}"))`,
+  );
+  return { roots, rules: [...childTrees, ...siblingDenies] };
 }
 
 /**

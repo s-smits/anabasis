@@ -36,7 +36,7 @@ const VALUE_MAX_CHARS = 4_000;
 
 /** One change to an answer, as a tool is sent it: a field replaced whole by `value`, JSON text, or
  *  one passage of a text field rewritten by `find` and `replace`. */
-export interface Change {
+interface Change {
   readonly path: string;
   readonly value?: string | undefined;
   readonly find?: string | undefined;
@@ -44,7 +44,7 @@ export interface Change {
 }
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
-export type ProbeEdit = {
+type ProbeEdit = {
   readonly find: string;
   readonly replace: string;
 };
@@ -145,7 +145,7 @@ function rowText(row: ProbeRow): string {
  * passage that is not there exactly once, or a change that changes nothing. A probe and a reject
  * control are both an answer with one fact moved, and this is what holds each to one.
  */
-export function changedAnswer(answer: JsonValue, change: Change): JsonValue {
+function changedAnswer(answer: JsonValue, change: Change): JsonValue {
   const edit =
     change.find === undefined || change.replace === undefined
       ? null

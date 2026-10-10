@@ -56,7 +56,7 @@ import { type Reader, readOnce } from "./reader.ts";
 import { callList, callsOf, callText, closingOf, solveOf, stringOf, turnsOf } from "./trace.ts";
 
 /** One earned fail to diagnose. */
-export interface DiagnosisCase {
+interface DiagnosisCase {
   readonly solve: string;
   readonly task: Task;
   readonly contract: Contract;

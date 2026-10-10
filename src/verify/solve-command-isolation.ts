@@ -242,7 +242,7 @@ export function commandSearchPath(toolTree: string | null): string {
   return [...new Set([...own, ...runtime, ...toolchainPathDirs()])].join(":");
 }
 
-export function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolationEnvironment {
+function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolationEnvironment {
   return {
     ...hostToolchainEnv(),
     PATH: commandSearchPath(dirs.toolTree ?? null),

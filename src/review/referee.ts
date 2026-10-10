@@ -50,7 +50,7 @@ import { type Reader, readOnce } from "./reader.ts";
 export type Ruling = "earned" | "check-defect" | "unclear";
 
 /** One fail to referee: the solve that failed, as its log names it, and the verifier's side of it. */
-export interface RefereeCase {
+interface RefereeCase {
   readonly solve: string;
   readonly task: Task;
   readonly contract: Contract;

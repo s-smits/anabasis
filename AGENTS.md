@@ -1157,7 +1157,7 @@ Each runtime surface has one owner. Import from it; add a missing member beside 
 | Need | Owner | Names |
 | --- | --- | --- |
 | Files | `filesystem.ts` | the `node:fs` surface; `mkdir`, `mkdtemp`, `readdir` and `rm` are the promise versions |
-| Paths | `path.ts`, `path-containment.ts`, `path-segment.ts` | `join`, `resolve`…; `containsPath`; `assertPathSegment` |
+| Paths | `path.ts`, `path-containment.ts`, `path-segment.ts` | `join`, `resolve`…; `containsPath`; `isSafePathSegment` |
 | The OS | `os.ts` | `tmpdir`, `homedir`, `loadavg`, `availableParallelism` |
 | The process | `process.ts` | `runtimeProcess` in place of `process`, `parseArgs`, `capturedSpawn` |
 | Subprocesses | `subprocess.ts` | `runSync`, `runTextSyncOrThrow`, `killProcessGroup`, `terminateAndReapProcessGroupId` |
@@ -1165,7 +1165,7 @@ Each runtime surface has one owner. Import from it; add a missing member beside 
 | JSON in and out | `json-runtime.ts` | `capturedJsonParse`, `parseJsonAs<T>`, `capturedJsonStringify`, `capturedStructuredClone` |
 | JSON types and predicates | `json-shape.ts` | `JsonValue`, `JsonObject`, `OpenRecord`, `isString`, `isNumber`, `isBoolean`, `isRecord`, `asRecord`, `isFunction` |
 | Canonical JSON and hashes | `stable-json.ts`, `digest.ts` | `stableJson`, `canonicalJson`, `sameJsonValue`, `hashJsonValue`, `compareCodeUnits`; `sha256`, `sha256OfFile` |
-| Atomic files | `completed-json.ts` | `writeAtomic`, `writeJsonFile`, `readJsonFile`, `readJsonFileOrNull` |
+| Atomic files | `completed-json.ts` | `writeCompleted`, `readCompleted` |
 | Caught values | `runtime-values.ts` | `errorMessage`, `asError`, `errorCode` |
 | Optional keys | `optional-key.ts` | `keyIfDefined`, `keyIfNotNull`, `keyIfTruthy`, `keysIf` |
 | Text | `text.ts`, `bounded-text.ts` | `hasText`, `textOr`, `plural`; `boundText` |

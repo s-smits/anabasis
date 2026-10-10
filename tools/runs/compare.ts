@@ -43,7 +43,7 @@ import { receiptOf } from "./launch.ts";
 import { logEvents, runs, standing, word } from "./pulse.ts";
 
 /** One round as its log tells it: what it was given, what its Builder kept, and its lines. */
-export interface Round {
+interface Round {
   readonly name: string;
   /** One test-side solve's condition: the pattern of them all, but for the harness and the task. */
   readonly condition: Condition;

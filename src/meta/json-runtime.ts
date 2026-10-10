@@ -1,5 +1,4 @@
 import { sha256 } from "./digest.ts";
-import { types } from "node:util";
 import type { JsonValue } from "./json-shape.ts";
 
 const freeze = Object.freeze.bind(Object);
@@ -25,8 +24,6 @@ export const capturedJsonStringify: <T>(
   space?: string | number,
 ) => undefined extends T ? string | undefined : string = JSON.stringify.bind(JSON);
 export const capturedStructuredClone = globalThis.structuredClone;
-/** Detect a generated proxy without invoking its traps at a JSON transport boundary. */
-export const capturedIsProxy = types.isProxy;
 
 /**
  * Read JSON bytes as a declared contract.

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "./filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "./json-runtime.ts";
+import { capturedJsonStringify, parseJsonAs } from "./json-runtime.ts";
 import type { JsonValue } from "./json-shape.ts";
 import { runtimeProcess } from "./process.ts";
 import { errorMessage } from "./runtime-values.ts";
@@ -18,7 +18,7 @@ import { errorMessage } from "./runtime-values.ts";
  * JSONL, which is why the atomic part lives here on its own. `mode` is the published file's, since
  * the rename carries the temporary's permissions over.
  */
-export function writeAtomic(path: string, bytes: string, mode = 0o666): void {
+function writeAtomic(path: string, bytes: string, mode = 0o666): void {
   const temporary = `${path}.tmp-${runtimeProcess.pid}-${Date.now()}`;
   try {
     writeFileSync(temporary, bytes, { flag: "wx", mode });
@@ -31,48 +31,6 @@ export function writeAtomic(path: string, bytes: string, mode = 0o666): void {
     }
     throw error;
   }
-}
-
-/**
- * The JSON in `path`. A missing or damaged file throws. It is the one owner of the
- * `capturedJsonParse(readFileSync(path, "utf8"))` that call sites and skill scripts otherwise each
- * write out for themselves.
- *
- * A missing file's error already names the path, and a parse error does not: `JSON.parse` reports a
- * position in text it never says the origin of. So the parse error is rethrown with the path in
- * front, which is what every skill script that wrapped this call in its own `readJson(path, label)`
- * was adding by hand.
- */
-export function readJsonFile(path: string): JsonValue {
-  const text = readFileSync(path, "utf8");
-  try {
-    return capturedJsonParse(text);
-  } catch (error) {
-    throw new Error(`${path}: ${errorMessage(error)}`, { cause: error });
-  }
-}
-
-/**
- * The JSON in `path`, or null when it is missing, unreadable or not JSON. It is for evidence that
- * may legitimately be absent, where a damaged file may be read the same way as an absent one. A
- * caller that must tell damage from absence uses `readJsonFile` behind its own `existsSync`, or
- * `readCompleted` below.
- */
-export function readJsonFileOrNull(path: string): JsonValue | null {
-  try {
-    return readJsonFile(path);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Indented JSON with a trailing newline: the form a person reads and a diff shows cleanly. It takes
- * any `T` because the evidence records written this way are interfaces, and TypeScript does not
- * treat an interface as `JsonValue` even when every one of its fields is JSON.
- */
-export function writeJsonFile<T>(path: string, value: T): void {
-  writeFileSync(path, `${capturedJsonStringify(value, null, 2)}\n`);
 }
 
 /** Atomic publication for controller-owned JSON state. */

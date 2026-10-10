@@ -66,7 +66,7 @@ export function answerFormatFault(contract: Contract, answer: JsonValue): string
  * that is not a JSON Schema object is refused: the validator reads one as no constraint at all, so
  * the M1 stand-in contract, which carried v1's prose `artifactSchema` rows, passed every answer.
  */
-export function answerSchema(contract: Contract): TSchema {
+function answerSchema(contract: Contract): TSchema {
   if (!isString(asRecord(contract.answerFormat)?.type)) {
     throw new Error("the contract's answer format is not a JSON Schema with a type");
   }

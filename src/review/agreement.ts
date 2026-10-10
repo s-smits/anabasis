@@ -18,7 +18,7 @@ import type { Ruling } from "./referee.ts";
 export const RULINGS = ["earned", "check-defect", "unclear"] as const;
 
 /** The bar, frozen before the Referee reads a labelled fail. */
-export interface Bar {
+interface Bar {
   /** The fewest labelled fails that measure anything. */
   readonly fails: number;
   /** Of the fails a person labelled a check defect, the least share the Referee must void. */
@@ -27,7 +27,7 @@ export interface Bar {
   readonly voided: number;
 }
 
-export interface Agreement {
+interface Agreement {
   /** `table[label][ruling]`: fails a person labelled `label` that the Referee ruled `ruling`. */
   readonly table: Readonly<Record<Ruling, Readonly<Record<Ruling, number>>>>;
   /** Labelled fails the log holds no ruling for. */

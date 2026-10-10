@@ -40,7 +40,7 @@ import { type CommandWall, heldSeconds, type RunDirs, runWalled } from "./comman
 
 /** pi's coding tools, in the order pi lists them. */
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
-export type CodingTool = (typeof CODING_TOOLS)[number];
+type CodingTool = (typeof CODING_TOOLS)[number];
 
 /** A tool as pi defines one: an agent tool with the lines it adds to the system prompt. */
 export type SolverTool = ToolDefinition;

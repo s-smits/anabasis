@@ -81,7 +81,7 @@ export interface RunDirs {
   readonly temp: string;
 }
 
-export interface WalledOptions {
+interface WalledOptions {
   readonly onData: (data: Buffer) => void;
   readonly signal?: AbortSignal | undefined;
   /** Seconds asked for, held to the limits by `shellSeconds`; pi's backend throws

@@ -33,7 +33,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 
 /** What the last look saw of one log. */
-export interface Seen {
+interface Seen {
   readonly lines: number;
   readonly open: boolean;
   readonly quiet: boolean;
@@ -54,7 +54,7 @@ export interface Run {
 
 /** One look at one run: its status line, what it says of the events since the last look, and what
  *  to remember of it. */
-export interface Look {
+interface Look {
   readonly status: string;
   readonly said: readonly string[];
   readonly seen: Seen;

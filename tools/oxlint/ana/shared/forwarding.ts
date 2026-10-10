@@ -21,7 +21,7 @@ type CallSite = {
   within: readonly Callable[];
 };
 
-export function isCallable(node: ESTree.Node): node is Callable {
+function isCallable(node: ESTree.Node): node is Callable {
   return (
     node.type === "FunctionDeclaration" ||
     node.type === "FunctionExpression" ||

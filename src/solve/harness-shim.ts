@@ -60,7 +60,7 @@ interface DefineDraftToolSpec<P extends TSchema, D> {
   run: (params: Static<P>, draft: never, signal?: AbortSignal) => Evidence<D> | Promise<Evidence<D>>;
 }
 
-export interface DraftTool {
+interface DraftTool {
   readonly [DRAFT_TOOL]: true;
   name: string;
   label: string;
@@ -72,7 +72,7 @@ export interface DraftTool {
 }
 
 /** built-starter.ts:155-159, with the task's own type inlined. */
-export interface DomainHarness {
+interface DomainHarness {
   tools: DraftTool[];
 }
 export type DomainHarnessFactory = (task: {

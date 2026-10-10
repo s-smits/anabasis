@@ -151,7 +151,7 @@ const HELPER_NAMES_SHOWN = 5;
  *  question "has this been authored", because `authoredBody` decides that by comparing against
  *  these same strings: a second copy of the starter text would make an untouched file look
  *  written. */
-export const STARTER_MEMORY_FILES: ReadonlyArray<readonly [string, string]> = FILES.map(
+const STARTER_MEMORY_FILES: ReadonlyArray<readonly [string, string]> = FILES.map(
   ([name, starter]) => [name, starter] as const,
 );
 

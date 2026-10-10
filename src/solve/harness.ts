@@ -45,7 +45,7 @@ import { type CommandWall, runWalled } from "./command.ts";
 import { DRAFT_TOOL } from "./harness-shim.ts";
 import { type PublicTask, publicView } from "./prompt.ts";
 
-export type ToolKind = "reader" | "advisor" | "artifact-writer";
+type ToolKind = "reader" | "advisor" | "artifact-writer";
 
 export interface Harness {
   /** `agent/BUILT_AGENTS.md` as written, untrimmed; null when the state has none. */

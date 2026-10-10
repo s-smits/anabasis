@@ -118,7 +118,7 @@ export interface Practised {
 /** The host's limits on a session: a solve's, read for the Builder's own wall, turns and shell, and
  *  the practice solves it may spend. `turns` caps the model's turns, where a solve's caps its
  *  prompts. `concurrency` is how many practice solves run at once. */
-export interface BuildLimits extends Limits {
+interface BuildLimits extends Limits {
   readonly practiceSolves: number;
 }
 

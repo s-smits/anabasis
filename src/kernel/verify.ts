@@ -89,7 +89,7 @@ export const CHECK_PROGRAM_CONTRACT = "check-program/v1";
 export type Task = PublicTask<JsonValue> & { readonly hidden: JsonValue };
 
 /** The verifier's side of a contract: the checks, and the tools only they run. */
-export interface VerifierTree {
+interface VerifierTree {
   /** The check program's directory: `brief.json`, `evaluator.ts` and whatever they read. */
   readonly checks: string;
   /** The verifier's tool tree, the only place a check's tools are found. */

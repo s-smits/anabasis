@@ -288,7 +288,7 @@ export interface Report {
 }
 
 /** What a person is asked to label before a comparison's reading is settled. */
-export interface ToLabel {
+interface ToLabel {
   /** Rejections that set a task aside: ruled a check defect or unclear, or not ruled. */
   readonly aside: readonly string[];
   /** Every other rejected answer of the comparison: the ones ruled a true fail. */

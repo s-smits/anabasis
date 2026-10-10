@@ -38,7 +38,7 @@ export interface Rejections {
 }
 
 /** A repaired checker as the readings of the old one's verdicts judge it. */
-export interface RepairReading {
+interface RepairReading {
   /** Refusals the repair withdraws, by what was read of each answer: ruled a check defect, ruled
    *  earned, or not read, an unclear ruling among them. */
   readonly withdrawn: Readonly<Record<"check-defect" | "earned" | "unread", readonly string[]>>;

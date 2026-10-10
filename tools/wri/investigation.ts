@@ -13,7 +13,7 @@ import { plural } from "#src/meta/text.ts";
 import { type Lane, section } from "./catalogue.ts";
 import type { Overview, Trigger } from "./read.ts";
 
-export interface Selection {
+interface Selection {
   /** Lanes that open together, each with the shared instructions. */
   readonly open: readonly Lane[];
   /** Lanes that run alone. */
@@ -30,7 +30,7 @@ export interface Report {
   readonly findings: number;
 }
 
-export interface PromptParts {
+interface PromptParts {
   readonly lane: Lane;
   /** The shared instructions as the primary edited them. */
   readonly shared: string;
@@ -42,8 +42,8 @@ export interface PromptParts {
   readonly report: string;
 }
 
-export const CAMPAIGN_HEADING = "Campaign under review";
-export const RULES_HEADING = "Hard rules";
+const CAMPAIGN_HEADING = "Campaign under review";
+const RULES_HEADING = "Hard rules";
 export const VERDICTS = ["finding", "no finding", "could not read"] as const;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
 

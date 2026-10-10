@@ -95,7 +95,7 @@ export function sidesOf(flag: string): Sides {
 }
 
 /** An ending by its name, or undefined for a word that names none. */
-export function endOf(word: string): End | undefined {
+function endOf(word: string): End | undefined {
   return ENDS.find((end) => end === word);
 }
 

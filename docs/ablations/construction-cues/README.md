@@ -45,8 +45,12 @@ prompt digest.
 | Arm | Owner | What it comments out | Other places that say it | Start |
 |---|---|---|---|---|
 | `competing-margin` | `src/author/builder-start-prompt.ts`: the last `INTENT_CLAUSE` line | "make several of the request's requirements act together on a single answer, so that meeting one spends the margin another needs" | the same qualifier in `starter-pack/examples.md` and the reviewer's `requirements-one-at-a-time` finding; "act together" in the round prompt's raise line and the no-limit readout | fresh |
-| `trial-forecast` | `src/builder/harness-trial.ts`: `trialNextAction` and the tool description | "so a battery of tasks like it scores near its size" and "near zero"; "A task your solver passes on its first attempt will most likely pass in the battery too" | none | seeded |
+| `trial-forecast` | `src/builder/harness-trial.ts`: `trialNextAction` and the tool description | "so a battery of tasks like it scores near its size" and "near zero"; "A task your solver passes on its first attempt will most likely pass in the battery too" | none | seeded; folded |
 | `examples-reminder` | `src/builder/harness-trial.ts`: `roundClause` at the first graded rehearsal | the once-per-session pointer to `starter-pack/examples.md`; the file, STARTER.md's link and the session bookkeeping stay | none | seeded |
+
+**Folded.** `trial-forecast` landed on 2026-10-07 in the climb bundle rather than alone (AGENTS.md
+"Ablated components"): its three carriers are gone from source, and a graded miss now says the checks
+rejected the answer and names three readings, none first. Its prediction below stays as first written.
 
 **Start.** Two arms fire in any round, one at every rehearsal and one at each session's first graded
 rehearsal, so they run from one recorded product. `competing-margin` is about a product's first
@@ -91,7 +95,7 @@ Checked on this tree; nothing is run live.
   switches off one of five model-visible carriers of the idea, so a null means that sentence alone did
   not move construction. If it is null, the next arm is the same change on the three margin-qualifier
   surfaces, in a later batch.
-- **`trial-forecast`: agree.** Its three carriers are the only ones in source and the arm switches off all
+- **`trial-forecast`: agree; folded.** Its three carriers are the only ones in source and the arm switches off all
   three. The doc comment above `notePassEffort` still describes the forecast and carries an `ADDED` note
   saying so.
 - **`examples-reminder`: agree.** The control's two runs each received the pointer once, and neither

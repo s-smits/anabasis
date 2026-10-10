@@ -5,7 +5,7 @@ import { asRecord } from "../meta/json-shape.ts";
 import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderExecutionRecorder } from "./builder-execution.ts";
 import { hasText } from "../meta/text.ts";
-import { MOVE_TO_AUTHORING, NO_SUBMIT_REMINDER_MS } from "./builder-continuation.ts";
+import { MOVE_TO_AUTHORING, NO_SUBMIT_REMINDER_MS, stopFact } from "./builder-continuation.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
 
 /** The session the receipts are written against: who records, which turn is open, how a checkpoint
@@ -14,12 +14,15 @@ type BuilderToolReceiptSession = {
   readonly recorder: BuilderExecutionRecorder;
   readonly activeTurn: () => number;
   readonly checkpoint: () => void;
-  readonly closed: () => "accepted" | "terminal-refusal" | null;
+  readonly closed: () => Closure | null;
   readonly afterTool?: (() => Promise<string | null>) | undefined;
   readonly clock?: ((clearPreview: boolean) => string | null) | undefined;
 };
 
-function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<unknown> {
+/** Why a session's tools now refuse: its build settled, or an answer agent's wall passed. */
+type Closure = "accepted" | "terminal-refusal" | "wall";
+
+function closedResult(reason: Closure): AgentToolResult<unknown> {
   return {
     content: [
       {
@@ -27,7 +30,10 @@ function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<
         text: capturedJsonStringify({
           status: "terminal-closed",
           reason,
-          nextAction: "No further tool action belongs to the accepted or finally refused build.",
+          nextAction:
+            reason === "wall"
+              ? "Your wall has passed: end your turn now, and the controller takes the correctness model as it stands."
+              : "No further tool action belongs to the accepted or finally refused build.",
         }),
       },
     ],
@@ -49,11 +55,19 @@ function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<
  *  So the clock remembers the last clear `correctness_check` and states how long ago it was, while
  *  no submit has followed, in place of the authoring ask. `submits` is the round's submit count
  *  rather than whether it has submitted at all, so a refused submit made before that clear preview
- *  does not silence it. */
+ *  does not silence it.
+ *
+ *  A run with a hard stop states it beside each mark (`stopFact`): the minutes since the round
+ *  opened are not the minutes left, and a Builder told only the first read them as the second. The
+ *  minutes so far and the marks run on the monotonic clock (`now`), which a host clock step cannot
+ *  move; the stop is an epoch instant, so the minutes left to it are read off the wall clock
+ *  (`wall`) at the mark. */
 export function sessionClock(
   submits: () => number = () => 0,
+  stopAt: number | null = null,
   now: () => number = () => performance.now(),
   load: () => string = hostLoad,
+  wall: () => number = () => Date.now(),
 ): (clearPreview: boolean) => string | null {
   const opened = now();
   let marks = 0;
@@ -72,6 +86,7 @@ export function sessionClock(
     if (Math.floor(minutes / 30) > marks) {
       marks = Math.floor(minutes / 30);
       lines.push(`Round clock: ${String(minutes)} min since this round opened; ${load()}.`);
+      if (stopAt !== null) lines.push(stopFact(stopAt, wall()));
       if (since !== null) lines.push(since);
     }
     if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && submits() === 0) {

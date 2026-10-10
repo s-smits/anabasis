@@ -19,7 +19,10 @@ import { BUILDER_EXECUTION_EVIDENCE_FILE } from "#src/author/builder-execution.t
 import { BUILDER_PROSE_FILE } from "#src/author/builder-prose.ts";
 import { campaignEpochs, campaignIterations } from "#src/author/campaign-epoch.ts";
 import { PATH_RECORD_FILE } from "#src/builder/path-record.ts";
-import { BUILDER_SESSION_EVIDENCE_FILE } from "#src/builder/session-evidence.ts";
+import {
+  ANSWER_SESSION_EVIDENCE_FILE,
+  BUILDER_SESSION_EVIDENCE_FILE,
+} from "#src/builder/session-evidence.ts";
 import { WORKSHOP_ACTION_FILE } from "#src/builder/verifier-workshop-evidence.ts";
 import { BUNDLE_SNAPSHOT_DIRECTORY } from "#src/claim/bundle-snapshot.ts";
 import { CASE_RECORD_FILE } from "#src/claim/case-record.ts";
@@ -86,6 +89,7 @@ const EPOCH_LIGHT = [
   BUILDER_PROSE_FILE,
   BUILDER_EXECUTION_EVIDENCE_FILE,
   BUILDER_SESSION_EVIDENCE_FILE,
+  ANSWER_SESSION_EVIDENCE_FILE,
   "backends.json",
   "campaign.json",
 ];

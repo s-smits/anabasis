@@ -47,6 +47,7 @@ function measured(admitted: number, excluded = 0): ClimbReadout {
       claimRefused: true,
     })),
     rows: [],
+    fails: [],
   };
 }
 

@@ -26,10 +26,16 @@ export interface FullRunArgs {
   /** Operator interruption after N completed rounds, separate from a difficulty decision.
    *  When absent, there is no round cap; typed terminal reasons still record each stop. */
   maxIterations?: number;
+  /** Operator interruption once this run has measured N new batteries of its own and no remeasure of
+   *  the last one is pending, so paired runs stop at one count. A remeasure never counts. */
+  maxBatteries?: number;
   /** Operator interruption once the loop has run this long: no new round opens after it, and the
    *  round in flight still records its battery, so nothing is killed. The alternative is a manual
    *  kill, which discards every accepted artifact the round has not yet verified. */
   stopAfterMs?: number;
+  /** The launcher's hard stop, epoch ms (`--kill-after-ms` arms it): the Builder is told when it
+   *  falls. An instant rather than a remainder, so it is the run's own and left out of the digest. */
+  stopAt?: number;
   /** Builder session turns per iteration; absent, a round has no turn cap. A staged rehearsal sets a
    *  small value so the session settles at the ceiling instead of running to a submit. */
   maxBuilderTurns?: number;
@@ -50,12 +56,15 @@ export interface FullRunArgs {
   dcg?: boolean;
   /** The withheld-instruments launch condition; absent or false leaves the Built shell unchanged. */
   withholdInstruments?: boolean;
+  /** The split-build condition: an answer agent writes the correctness model and a Harness Builder
+   *  writes agent/. Absent or false leaves the whole Builder. */
+  answerAgent?: boolean;
   /** Absolute controller-owned engine profile captured before the Builder opens. */
   backendSelections?: Partial<Record<BackendSlot, ProjectBackendSelection>>;
 }
 
 const FULL_RUN_USAGE =
-  'usage: fullrun --prompt "<request>" --provider-turn-budget N [--project <id>] [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>] [--max-iterations N] [--stop-after-ms N] [--max-builder-turns N] [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false] [--withhold-instruments true|false] [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]';
+  'usage: fullrun --prompt "<request>" --provider-turn-budget N [--project <id>] [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>] [--max-iterations N] [--max-batteries N] [--stop-after-ms N] [--stop-at <epoch ms>] [--max-builder-turns N] [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false] [--withhold-instruments true|false] [--answer-agent true|false] [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]';
 
 /** What one flag does to the arguments. The flag name is passed back in so the appliers below
  *  can stay one line each and still name themselves in their refusals. */
@@ -82,6 +91,16 @@ function count(flag: string, value: string): number {
   return parsed;
 }
 
+/** `--stop-at`: an instant still ahead. One already past would be restated to the Builder at every
+ *  turn boundary and half-hour mark as a stop zero minutes away, for as long as the run went on. */
+function instant(flag: string, value: string): number {
+  const parsed = count(flag, value);
+  if (parsed <= Date.now()) {
+    throw new Error(`${flag}: expected an instant after now, in epoch ms, got "${value}"`);
+  }
+  return parsed;
+}
+
 function truth(flag: string, value: string): boolean {
   if (value === "true") return true;
   if (value === "false") return false;
@@ -99,9 +118,15 @@ function sourceIdentity(value: string): NonNullable<FullRunArgs["expectedSource"
   return { commit: value.slice(0, 40), sourceDigest: value.slice(41) };
 }
 
-/** The five flags that are a plain count. */
+/** The six flags that are a plain count. */
 function counted(
-  field: "maxIterations" | "stopAfterMs" | "maxBuilderTurns" | "expectedTasks" | "providerTurnBudget",
+  field:
+    | "maxIterations"
+    | "maxBatteries"
+    | "stopAfterMs"
+    | "maxBuilderTurns"
+    | "expectedTasks"
+    | "providerTurnBudget",
 ): Apply {
   return (args, value, flag) => {
     args[field] = count(flag, value);
@@ -129,7 +154,14 @@ const FLAGS = new Map<string, Apply>([
   ["--project", text("project")],
   ["--run", text("runId")],
   ["--max-iterations", counted("maxIterations")],
+  ["--max-batteries", counted("maxBatteries")],
   ["--stop-after-ms", counted("stopAfterMs")],
+  [
+    "--stop-at",
+    (args, value, flag) => {
+      args.stopAt = instant(flag, value);
+    },
+  ],
   ["--max-builder-turns", counted("maxBuilderTurns")],
   ["--expected-tasks", counted("expectedTasks")],
   ["--provider-turn-budget", counted("providerTurnBudget")],
@@ -173,6 +205,12 @@ const FLAGS = new Map<string, Apply>([
       args.withholdInstruments = truth(flag, value);
     },
   ],
+  [
+    "--answer-agent",
+    (args, value, flag) => {
+      args.answerAgent = truth(flag, value);
+    },
+  ],
 ]);
 
 export function parseFullRunArgs(argv: string[]): FullRunArgs {
@@ -207,9 +245,9 @@ export function parseFullRunArgs(argv: string[]): FullRunArgs {
 
 /** The condition's digest, which the opening records as `command.digest` and the launcher's probe
  *  predicts. It leaves out the request text, which `requestDigest` stands for, and the run's own
- *  identity (its id, source and project), which the opening records beside it, so two runs of one
- *  condition share it and a pair that differs in it moved a flag. */
-export function commandDigest(args: FullRunArgs, requestDigest: string): string {
+ *  identity (its id, source, project and stop instant), which the opening records beside it, so
+ *  two runs of one condition share it and a pair that differs in it moved a flag. */
+export function commandDigest({ stopAt: _instant, ...args }: FullRunArgs, requestDigest: string): string {
   return hashJsonValue({
     ...args,
     prompt: null,

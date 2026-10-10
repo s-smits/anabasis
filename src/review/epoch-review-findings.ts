@@ -599,7 +599,7 @@ function findingParameters(disputable: readonly string[]) {
         type: "string",
         enum: ["advisory", "blocking"],
         description:
-          "Choose blocking for a demonstrated violation of the request or a declared requirement with a repairable owner, supported by demonstration and citations; advisory for uncertainty, scope observations or hardness. A partial repair does not close a remaining required-property gap. The host returns the admitted severity after applying its evidence rules; neither how often a check was named before nor the order you record findings in changes it.",
+          "Choose blocking for a demonstrated violation of the request or a declared requirement with a repairable owner, supported by demonstration and citations; advisory for uncertainty or scope observations. A partial repair does not close a remaining required-property gap. The host returns the admitted severity after applying its evidence rules; neither how often a check was named before nor the order you record findings in changes it.",
       },
       demonstration: {
         type: "string",
@@ -694,7 +694,7 @@ export function recordFindingTool(
   return {
     name: "record_finding",
     label: "Record a finding",
-    description: `Record one finding supported by evidence about the measured harness; a review records at most ${MAX_FINDINGS}. Record defect true with the bundle file at fault when opened source shows it violates the request or a declared requirement — correctness-model/tasks.json when the task set is what is wrong. Record defect false for an observation the next pass would act differently for knowing: tasks that are harder than the harness, or evidence you could not decide. Name no owner when no file holds it. Set disputesIssue when this finding argues that a standing issue comes from the evaluation rather than the harness, which suspends that issue for the next authoring pass. Fill checkId, artifactSchemaPath and publicInputPath whenever you know them so the next authoring pass can locate the affected contract. Write the claim about the family or contract and never name a task.`,
+    description: `Record one finding supported by evidence about the measured harness; a review records at most ${MAX_FINDINGS}. Record defect true with the bundle file at fault when opened source shows it violates the request or a declared requirement — correctness-model/tasks.json when the task set is what is wrong. Record defect false for an observation the next pass would act differently for knowing, such as evidence you could not decide. Name no owner when no file holds it. Set disputesIssue when this finding argues that a standing issue comes from the evaluation rather than the harness, which suspends that issue for the next authoring pass. Fill checkId, artifactSchemaPath and publicInputPath whenever you know them so the next authoring pass can locate the affected contract. Write the claim about the family or contract and never name a task.`,
     parameters: readerParameters(findingParameters([...byPrefix.keys()])),
     execute: (_id: string, args: Record<string, JsonValue>) => {
       const parsed = findingArgs(args);

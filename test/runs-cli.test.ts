@@ -33,6 +33,8 @@ import { required } from "./helpers/doubles.ts";
 
 /** The one opening time every closed fixture records. */
 const OPENED_AT = "2026-09-19T00:00:00.000Z";
+/** The request the fixture launches record. */
+const TRUSS_PROMPT = "designs steel roof trusses to Eurocode 3";
 
 /** What one recorded launch may differ in; `extra` is the argv only some launches set. */
 interface LaunchOptions {
@@ -185,7 +187,7 @@ describe("runs list", () => {
     ]);
     writeOpening(root, "slug-bbbbbbbb-2", "orphan-run", "2026-09-18T00:00:00.000Z");
     writeOpening(root, "slug-cccccccc-3", "live-run", "2026-09-20T00:00:00.000Z");
-    const liveDir = writeLaunch(root, "live-run", "designs steel roof trusses to Eurocode 3", {
+    const liveDir = writeLaunch(root, "live-run", TRUSS_PROMPT, {
       project: "slug-cccccccc-3",
     });
 
@@ -357,11 +359,11 @@ describe("runs list", () => {
     const runId = "truss-opus-20260920T081500000Z-4ac221";
     writeOpening(root, "truss-aaaaaaaa-1", runId, "2026-09-20T00:00:00.000Z");
     writeOpening(root, "truss-bbbbbbbb-2", runId, "2026-09-20T01:00:00.000Z");
-    writeLaunch(root, runId, "designs steel roof trusses to Eurocode 3", {
+    writeLaunch(root, runId, TRUSS_PROMPT, {
       project: "truss-aaaaaaaa-1",
       tag: "-first",
     });
-    writeLaunch(root, runId, "designs steel roof trusses to Eurocode 3", {
+    writeLaunch(root, runId, TRUSS_PROMPT, {
       project: "truss-bbbbbbbb-2",
       tag: "-second",
     });
@@ -381,7 +383,7 @@ describe("runs list", () => {
 
 describe("the receipt a stop may act on", () => {
   const runId = "truss-opus-20260920T081500000Z-4ac221";
-  const prompt = "designs steel roof trusses to Eurocode 3";
+  const prompt = TRUSS_PROMPT;
   const options = OFFLINE;
 
   it("never lends one campaign's receipt to another, even when it is the only one left", () => {
@@ -502,7 +504,7 @@ describe("resume", () => {
   it("rebuilds the continuation from the run's own opening and launcher receipt", () => {
     const root = checkout();
     writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
-    const dir = writeLaunch(root, "run-1", "designs steel roof trusses to Eurocode 3", {
+    const dir = writeLaunch(root, "run-1", TRUSS_PROMPT, {
       project: "slug-aaaaaaaa-1",
     });
     const evidence = readRunEvidence(onlyRun(root));
@@ -521,7 +523,7 @@ describe("resume", () => {
       "--source",
       "a".repeat(40),
       "--prompt",
-      "designs steel roof trusses to Eurocode 3",
+      TRUSS_PROMPT,
       "--tasks",
       "25",
     ]);
@@ -535,7 +537,7 @@ describe("resume", () => {
     // changed condition the printed command did not show (a16848, 2026-09-30).
     const root = checkout();
     writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
-    const dir = writeLaunch(root, "run-1", "designs steel roof trusses to Eurocode 3", {
+    const dir = writeLaunch(root, "run-1", TRUSS_PROMPT, {
       project: "slug-aaaaaaaa-1",
     });
     const opening = readRunEvidence(onlyRun(root)).opening;
@@ -559,7 +561,7 @@ describe("resume", () => {
     expect(missing.missing.join(" ")).toContain("launch.json");
     expect(resumePlan(null, null).ok).toBe(false);
 
-    const dir = writeLaunch(root, "run-1", "designs steel roof trusses to Eurocode 3", {
+    const dir = writeLaunch(root, "run-1", TRUSS_PROMPT, {
       budget: "40",
       project: "slug-aaaaaaaa-1",
     });
@@ -603,9 +605,9 @@ describe("resume", () => {
     // The launcher defaults `--tasks` to 25 and neither boundary at all, so a continuation of a
     // 60-task run stopped at a soft wall used to launch an unbounded 25-task one under the word
     // "resume" — a changed measurement condition the printed command did not show.
-    const dir = writeLaunch(root, "run-1", "designs steel roof trusses to Eurocode 3", {
+    const dir = writeLaunch(root, "run-1", TRUSS_PROMPT, {
       project: "slug-aaaaaaaa-1",
-      extra: ["--max-iterations", "6", "--stop-after-ms", "43200000"],
+      extra: ["--max-iterations", "6", "--max-batteries", "8", "--stop-after-ms", "43200000"],
     });
     const bounded = readLaunchRecord(dir);
     if (bounded === null) throw new Error("the fixture wrote no launcher receipt");
@@ -613,17 +615,34 @@ describe("resume", () => {
     const plan = resumePlan(readRunEvidence(onlyRun(root)).opening, bounded);
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
-    expect(plan.plan.command.slice(-6)).toEqual([
+    expect(plan.plan.command.slice(-8)).toEqual([
       "--tasks",
       "60",
       "--max-iterations",
       "6",
+      "--max-batteries",
+      "8",
       "--stop-after-ms",
       "43200000",
     ]);
     expect(plan.plan.provenance.at(-1)).toBe(
-      "battery and boundary: --tasks 60, --max-iterations 6, --stop-after-ms 43200000",
+      "carried flags: --tasks 60, --max-iterations 6, --max-batteries 8, --stop-after-ms 43200000",
     );
+  });
+
+  it("resumes a split run as a split run", () => {
+    const root = checkout();
+    writeOpening(root, "slug-aaaaaaaa-1", "run-1", OPENED_AT);
+    // A receipt dropping `--answer-agent` resumed a split arm as a whole Builder (sim136 F3).
+    const dir = writeLaunch(root, "run-1", TRUSS_PROMPT, {
+      project: "slug-aaaaaaaa-1",
+      extra: ["--max-batteries", "8", "--answer-agent", "true"],
+    });
+    const plan = resumePlan(readRunEvidence(onlyRun(root)).opening, readLaunchRecord(dir));
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.plan.command.slice(-4)).toEqual(["--max-batteries", "8", "--answer-agent", "true"]);
+    expect(plan.plan.provenance.at(-1)).toContain("--answer-agent true");
   });
 });
 

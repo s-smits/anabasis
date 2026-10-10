@@ -494,7 +494,7 @@ function recordedProducts(root: string, slug: string) {
     return dir;
   };
   const selected = ledger.selectedProduct();
-  const ids = new Set([...ledger.recordedProducts(), ...(selected === null ? [] : [selected])]);
+  const ids = new Set([...ledger.historyProducts(), ...(selected === null ? [] : [selected])]);
   return {
     selected: selected === null ? fallback : registered(selected),
     history: [fallback, ...[...ids].map(registered)],

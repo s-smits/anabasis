@@ -21,6 +21,7 @@
 import { POLICY } from "../critic/policy.ts";
 import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderAuthorFeedback } from "../builder/author-feedback.ts";
+import type { BuilderRole } from "../builder/builder-tool-interface.ts";
 import { authoringIdentity, PRIMARY_AUTHOR_PATHS } from "./author-first.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
@@ -29,6 +30,7 @@ import { BuildAgentTurnNonResult, openBuildSession } from "./build-agent.ts";
 import { CampaignBudgetExhausted } from "../run/controller-ledger.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
+import { ControllerSignalAbort } from "../run/controller-abort-clause.ts";
 import { type BuilderExecutionEvidence, BuilderExecutionRecorder } from "./builder-execution.ts";
 import { sessionClock, withCustomToolReceipts } from "./builder-tool-receipts.ts";
 import {
@@ -39,6 +41,7 @@ import {
   builderMemoryBlock,
 } from "./builder-memory.ts";
 import { builderSystemPrompt } from "./builder-start-prompt.ts";
+import { ANSWER_NOTES_FILE, answerSystemPrompt, harnessSystemPrompt, wallHours } from "./split-prompts.ts";
 import {
   BuilderConversation,
   type ConversationRound,
@@ -80,6 +83,10 @@ interface BuilderSessionInput {
   /** How this round's workspace was prepared, which a resumed conversation is told when the round
    *  works in a different workspace from the last one. */
   seed?: WorkspaceSeed;
+  /** Which half of a split build this session authors; absent, the whole bundle. An answer session
+   *  has no submit: its pass is one turn, which it ends when the correctness model is ready or its
+   *  wall has passed. */
+  split?: { role: "harness" } | { role: "answer"; wallMs: number };
 }
 
 /** A new workspace from the adopted product or from the starter, or one an earlier pass created. */
@@ -91,6 +98,7 @@ export type WorkspaceSeed = "adopted" | "starter" | "resumed";
 const ENDED: Record<RoundEnding, string> = {
   accepted: "Your last submit was accepted.",
   "terminal-refusal": "The last round ended on a final submit refusal.",
+  "handed-back": "The last pass ended when its submit handed the correctness model back to the answer agent.",
   "turn-bound": "The last round reached its turn limit without an accepted submit.",
   "no-progress": `The last round ended after ${POLICY.loop.stalledTurns} turns in a row without a successful tool call.`,
   "budget-limited": "The last round ended when the run's model budget ran out.",
@@ -105,6 +113,35 @@ const SEEDED: Record<WorkspaceSeed, string> = {
   starter: "a new workspace from the starter",
   resumed: "a workspace an earlier pass worked in, with its in-flight edits kept",
 };
+
+/** The rehearsal sentence says that a battery whose every rehearsal passed is on course to pass
+ *  every case, because saying what a pass is did not by itself stop a Builder submitting on one
+ *  first-turn pass. What a pass is, the battery contract's witness line already says, and the
+ *  sentence that named the task expected to be hardest as the one to rehearse is gone: Builders'
+ *  predicted pass probability averaged 0.41 against an observed 0.94, and the rehearsed task sat at
+ *  chance in its battery's solve-time order (mean rank 0.48 against 0.50). The demand changes once,
+ *  and not until a rehearsal fails: a condition a rehearsal has to meet held rounds back without
+ *  moving where the battery landed. What a full pass finds and where a battery lands are the
+ *  battery contract's (`LIMIT`, `WITNESS` in climb-readout.ts), stated once there. The measurements
+ *  behind each clause are in AGENTS.md "Goals and the climb".
+ *
+ *  The raise names its route, depth as the intent clause defines it, because a round's raise
+ *  otherwise takes the widening route the no-limit line rules out: firmware 7a97af-i02 raised by
+ *  five new device families, then stopped at what its simulator could model, and every solve of its
+ *  five tasks still passed. */
+const PACE =
+  "Build, check and rehearse the candidate, and submit once a clear preview says it works. A battery" +
+  " whose every rehearsal passed is on course to pass every case, so before you submit it, raise what" +
+  " its hardest tasks demand by making more of the request's requirements act together, not by adding" +
+  " tasks, families or inputs at the same demand, and rehearse one of them again, then submit: further" +
+  " polish belongs to the next round.";
+
+/** The Harness Builder's pace. The raise is gone because the tasks are the answer agent's: a
+ *  Harness Builder asked to raise demand has nothing it may edit to do so. */
+const HARNESS_PACE =
+  "Build, check and rehearse the harness, and submit once a clear preview says it works. A failing rehearsal" +
+  " says something about the harness only where the solver lacked what a practitioner would use; the tasks and" +
+  " what they demand are the answer agent's. Further polish belongs to the next round.";
 
 /** What the next round receives from this one. Every measured round reopens in a new workspace, and
  *  the Builder's own notes cross only through these files; acceptance ends the round at the
@@ -127,14 +164,15 @@ export interface BuilderSessionDeps {
   /** Opens the Builder slot's host session; a continued conversation reconfigures its own instead. */
   open: OpenSession;
   /** Record what this round's session exposes, every round and before it begins, whether the round
-   *  opens a session or continues the conversation. */
-  recordSession?(tools: readonly PiTool[], systemPrompt: string): void;
+   *  opens a session or continues the conversation, against the catalogue of the role it opens in. */
+  recordSession?: (tools: readonly PiTool[], systemPrompt: string, role: BuilderRole) => void;
   /** The run's one Builder conversation. Absent, the round opens its own session and closes it. */
   conversation?: BuilderConversation;
   /** The composed candidate-isolated toolkit; the launch framing tells the Builder how to begin. */
   tools: readonly PiTool[];
-  /** The controller-owned submit path, pre-bound over candidate validation and adoption gates. */
-  submit: (input: { turn: number }) => BuilderSubmitOutcome | Promise<BuilderSubmitOutcome>;
+  /** The controller-owned submit path, pre-bound over candidate validation and adoption gates.
+   *  Absent for an answer session, which the controller checks when its turn ends. */
+  submit?: (input: { turn: number }) => BuilderSubmitOutcome | Promise<BuilderSubmitOutcome>;
   turnTimeoutMs?: number;
   observer?: RunObserver;
   /** Settle the session's execution record. Called once, on every exit including a thrown turn,
@@ -190,6 +228,8 @@ interface SessionState {
   lastRefusal: ContractFinding[];
   activeTurn: number;
   terminal: boolean;
+  /** The terminal was a split build's hand-back: this pass ended, the submits did not. */
+  handedBack: boolean;
   terminalClause: "no-progress" | "budget-limited" | null;
   submitBound: boolean;
   idleTurns: number;
@@ -201,8 +241,6 @@ interface RoundContext {
   readonly state: SessionState;
   readonly recorder: BuilderExecutionRecorder;
   readonly checkpoint: () => void;
-  /** The operator's turn cap; absent, the round has none. */
-  readonly maxTurns: number | undefined;
 }
 
 /** Session cleanup failed after the model path had already settled. The evidence row names that
@@ -270,33 +308,54 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // The cap counts replies, not tool calls, and says so: read as a count of steps, fifteen turns
     // looked nearly spent a dozen calls into the first, and a Builder dropped a change it had
     // judged right for want of turns it still had.
-    // The rehearsal sentences say what a passing rehearsal is, a blind solve the solver finished;
-    // which task's pass says most, since a pass speaks only for its own task and the task a Builder
-    // happens to rehearse is an ordinary one; and that a battery whose every rehearsal passed is on
-    // course to find no limit, because saying what a pass is did not by itself stop a Builder
-    // submitting on one first-turn pass. The demand changes once, and not until a rehearsal fails:
-    // a condition a rehearsal has to meet held rounds back without moving where the battery landed.
-    // What a full pass finds and where a battery lands are the battery contract's (`LIMIT`, `WITNESS`
-    // in climb-readout.ts), stated once there. The measurements behind each clause are in AGENTS.md
-    // "Goals and the climb".
-    // The raise names its route, depth as the intent clause defines it, because a round's raise
-    // otherwise takes the widening route the no-limit line rules out: firmware 7a97af-i02 raised by
-    // five new device families, then stopped at what its simulator could model, and every solve of its
-    // five tasks still passed.
-    `${roundLimit(input.maxTurns)}Build, check and rehearse the candidate, and submit` +
-      ` once a clear preview says it works. A passing rehearsal is a blind solve of its task, so it shows that task` +
-      ` is within the solver's reach, and the task you expect to be hardest is the one whose rehearsal says most about` +
-      ` the battery. A battery whose every rehearsal passed is on course to pass every case, so before you submit` +
-      ` it, raise what its hardest tasks demand by making more of the request's requirements act together, not by` +
-      ` adding tasks, families or inputs at the same demand, and rehearse one of them again, then submit: further` +
-      ` polish belongs to the next round.`,
+    `${roundLimit(input.maxTurns)}${input.split?.role === "harness" ? HARNESS_PACE : PACE}`,
     HANDOVER,
   ];
+  return withAuthoringContext(rows, input, previous);
+}
+
+/** The advice closes the opening, and a fresh session also reads the campaign's standing refusals. */
+function withAuthoringContext(rows: string[], input: BuilderSessionInput, previous: PreviousRound | null) {
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]
     .filter((part) => part.trim() !== "")
     .join("\n\n");
-  if (context !== "") rows.push(`Authoring context:\n${context}`);
-  return rows.join("\n\n");
+  return [...rows, ...(context === "" ? [] : [`Authoring context:\n${context}`])].join("\n\n");
+}
+
+/** An answer pass's opening. A continued conversation heard the pass it last ended, so it is told
+ *  why it is back; the findings that brought it back close the opening as its authoring context. */
+function answerPassPrompt(
+  input: BuilderSessionInput,
+  wallMs: number,
+  previous: PreviousRound | null,
+): string {
+  const back =
+    "A new pass opens in this conversation: the correctness model you handed off came back with the findings below.";
+  return withAuthoringContext(
+    [
+      ...(previous === null ? [] : [back]),
+      `The user's request, unchanged:\n${input.kickoff}`,
+      workspaceSentence(input, previous),
+      `This pass ends when you reply without a tool call, or once your wall of ${wallHours(wallMs)} has passed. Leave the correctness model complete and valid when you end it, with ${ANSWER_NOTES_FILE} brought up to date first.`,
+    ],
+    input,
+    previous,
+  );
+}
+
+function sessionPrompts(input: BuilderSessionInput) {
+  const webSearch = input.webSearch === true;
+  const { split } = input;
+  if (split?.role === "answer") {
+    return {
+      system: answerSystemPrompt({ webSearch, wallMs: split.wallMs }),
+      opening: (previous: PreviousRound | null) => answerPassPrompt(input, split.wallMs, previous),
+    };
+  }
+  return {
+    system: split?.role === "harness" ? harnessSystemPrompt({ webSearch }) : builderSystemPrompt(webSearch),
+    opening: (previous: PreviousRound | null) => roundPrompt(input, previous),
+  };
 }
 
 function freshSessionState(): SessionState {
@@ -306,6 +365,7 @@ function freshSessionState(): SessionState {
     lastRefusal: [],
     activeTurn: 0,
     terminal: false,
+    handedBack: false,
     terminalClause: null,
     submitBound: false,
     idleTurns: 0,
@@ -326,6 +386,7 @@ function settledClosure(state: SessionState): "accepted" | "terminal-refusal" | 
 function settledEnding(state: SessionState): Exclude<RoundEnding, "turn-non-result"> {
   if (state.accepted !== null) return "accepted";
   if (state.terminalClause !== null) return state.terminalClause;
+  if (state.handedBack) return "handed-back";
   return state.terminal && !state.submitBound ? "terminal-refusal" : "turn-bound";
 }
 
@@ -340,15 +401,35 @@ function conversationEnding(state: SessionState, failure: { error: unknown } | n
   return error instanceof BuildAgentTurnNonResult && error.status === "failed" ? "turn-non-result" : null;
 }
 
-/** The exit class written on the settled execution record. */
+/** Whether the controller's closing signal (the operator's stop, SIGTERM or SIGINT) cut the turn
+ *  that threw, rather than the turn failing on its own. The signal has to be among the budget's
+ *  cancellations, and what the turn threw has to be a cancellation cause (the retry's admission
+ *  check rethrows the budget's stop, which is the signal, or the provider denial that preceded it)
+ *  or the turn's own aborted non-result. The budget's abort reason alone cannot say: it keeps the
+ *  first stop cause, and the signal may arrive after a turn failed on the provider's side. */
+function cutByClosingSignal(error: unknown, budget: ProviderResourceBudget | undefined): boolean {
+  const cancellations = budget?.cancellations ?? [];
+  if (!cancellations.some((cause) => cause instanceof ControllerSignalAbort)) return false;
+  return (
+    cancellations.some((cause) => cause === error) ||
+    (error instanceof BuildAgentTurnNonResult && error.status === "aborted")
+  );
+}
+
+/** The exit class written on the settled execution record. A session the closing signal cut is
+ *  labelled from that cause: its prose is the model's own, which `turn-non-result` says it is not. */
 function classifyExit(
   state: SessionState,
-  failure: SessionClosing["failure"],
-): "recorded" | "turn-non-result" | Exclude<RoundEnding, "accepted" | "turn-non-result"> {
+  closing: Pick<SessionClosing, "deps" | "failure">,
+): BuilderExecutionEvidence["outcome"] {
   if (state.accepted !== null) return "recorded";
-  if (failure !== null) return "turn-non-result";
-  const ending = settledEnding(state);
-  return ending === "accepted" ? "recorded" : ending;
+  if (closing.failure === null) {
+    const ending = settledEnding(state);
+    return ending === "accepted" ? "recorded" : ending;
+  }
+  return cutByClosingSignal(closing.failure.error, closing.deps.providerBudget)
+    ? "signal-terminated"
+    : "turn-non-result";
 }
 
 async function finishBuilderSession(
@@ -364,7 +445,7 @@ async function finishBuilderSession(
     );
     return new BuilderSessionLifecycleError();
   }
-  deps.onExecution?.(recorder.finish(classifyExit(state, failure)));
+  deps.onExecution?.(recorder.finish(classifyExit(state, closing)));
   return undefined;
 }
 
@@ -396,26 +477,37 @@ function sessionOutcome(state: SessionState, turns: number): BuilderSessionOutco
 
 /** The round's hosted tools: the toolkit and the submit tool, every call receipted, and the round
  *  clock riding the open results. */
-function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback, workspace: string): PiTool[] {
-  const { deps, state, recorder, checkpoint, maxTurns } = context;
+function roundRoster(
+  context: RoundContext,
+  feedback: BuilderAuthorFeedback,
+  input: BuilderSessionInput,
+): PiTool[] {
+  const { deps, state, recorder, checkpoint } = context;
   // A settled round gets no review: acceptance froze its bytes and the round ends with this turn,
   // so advice from the reviewer would reach nobody who could still act on it.
   const { afterTool } = deps;
-  const submit = makeSubmitTool({
-    submit: deps.submit,
-    ...keyIfDefined("hold", deps.beforeSubmit),
-    state,
-    recorder,
-    workspace,
-    feedback,
-    ...keyIfDefined("maxTurns", maxTurns),
-  });
-  return withCustomToolReceipts([...deps.tools, submit], {
+  const submit =
+    deps.submit === undefined
+      ? []
+      : [
+          makeSubmitTool({
+            submit: deps.submit,
+            ...keyIfDefined("hold", deps.beforeSubmit),
+            state,
+            recorder,
+            workspace: input.workspace,
+            feedback,
+            ...keyIfDefined("maxTurns", input.maxTurns),
+          }),
+        ];
+  const wall = input.split?.role === "answer" ? performance.now() + input.split.wallMs : null;
+  return withCustomToolReceipts([...deps.tools, ...submit], {
     recorder,
     activeTurn: () => state.activeTurn,
     checkpoint,
-    closed: () => settledClosure(state),
-    clock: sessionClock(() => state.attempts),
+    closed: () => settledClosure(state) ?? (wall !== null && performance.now() >= wall ? "wall" : null),
+    // A session with no submit is never asked to submit, so the clock counts it as one that has.
+    clock: sessionClock(() => (deps.submit === undefined ? 1 : state.attempts), deps.conversation?.stopAt),
     afterTool:
       afterTool === undefined
         ? undefined
@@ -431,10 +523,16 @@ async function runRoundTurns(
   input: BuilderSessionInput,
   firstPrompt: string,
 ): Promise<number> {
-  const { deps, state, recorder, checkpoint, maxTurns } = context;
+  const { deps, state, recorder, checkpoint } = context;
+  const { maxTurns } = input;
   // The session's own start, read once. The continuation states elapsed time because a turn count
   // measures none: a session that reads and installs for a night crosses no turn count at all.
-  const openedAtMs = Date.now();
+  const round = {
+    kickoff: input.kickoff,
+    maxTurns,
+    openedAtMs: Date.now(),
+    stopAt: deps.conversation?.stopAt ?? null,
+  };
   const deadline = deps.turnTimeoutMs === undefined ? null : performance.now() + deps.turnTimeoutMs;
   const onTurnEvent = turnEventRecorder(recorder, checkpoint);
   // Captured once at open, because the next-turn note compares the owned paths against this
@@ -455,9 +553,7 @@ async function runRoundTurns(
       turn: turns + 1,
       onTurnEvent,
       checkpoint,
-      kickoff: input.kickoff,
-      ...keyIfDefined("maxTurns", maxTurns),
-      openedAtMs,
+      round,
       ...keyIfDefined("observer", deps.observer),
       // The operator's cap applies across the whole session, so each new turn receives only what
       // is left of it rather than a fresh copy.
@@ -478,6 +574,27 @@ async function runRoundTurns(
   return turns;
 }
 
+function roundContext(deps: BuilderSessionDeps): RoundContext {
+  const recorder = new BuilderExecutionRecorder();
+  const checkpoint = (): void => deps.onCheckpoint?.(recorder.finish("in-flight"));
+  return { deps, state: freshSessionState(), recorder, checkpoint };
+}
+
+/** The round's entry: its roster composed and recorded, through the entry gate, before any
+ *  session sees a tool. */
+function enterRound(context: RoundContext, input: BuilderSessionInput) {
+  const roster = roundRoster(context, context.deps.feedback ?? new BuilderAuthorFeedback(), input);
+  const prompts = sessionPrompts(input);
+  context.deps.recordSession?.(roster, prompts.system, input.split?.role ?? "whole");
+  return { roster, prompts };
+}
+
+/** A round's entry gate alone, with no session opened, so a split build checks both sides' rosters
+ *  before its first answer pass rather than after it. */
+export function checkRoundEntry(input: BuilderSessionInput, deps: BuilderSessionDeps): void {
+  enterRound(roundContext(deps), input);
+}
+
 /** Run one Builder round until it settles. Like a Codex goal, a round has no turn ceiling of its
  *  own: it ends on an accepted submit, a final refusal, `POLICY.loop.stalledTurns` turns in a row without a
  *  successful tool call, the budget, a thrown turn, or the operator's `maxTurns` when one is set. */
@@ -485,13 +602,10 @@ export async function runBuilderSession(
   input: BuilderSessionInput,
   deps: BuilderSessionDeps,
 ): Promise<BuilderSessionOutcome> {
-  const state = freshSessionState();
-  const recorder = new BuilderExecutionRecorder();
-  const checkpoint = (): void => deps.onCheckpoint?.(recorder.finish("in-flight"));
-  const context = { deps, state, recorder, checkpoint, maxTurns: input.maxTurns };
-  const roster = roundRoster(context, deps.feedback ?? new BuilderAuthorFeedback(), input.workspace);
-  const systemPrompt = builderSystemPrompt(input.webSearch === true);
-  deps.recordSession?.(roster, systemPrompt);
+  const context = roundContext(deps);
+  const { state, recorder, checkpoint } = context;
+  const { roster, prompts } = enterRound(context, input);
+  const systemPrompt = prompts.system;
   const conversation = deps.conversation ?? new BuilderConversation();
   const round = await openBuildSession(() =>
     conversation.begin(roster, systemPrompt, input.workspace, deps.open),
@@ -503,7 +617,7 @@ export async function runBuilderSession(
   let failure: { error: unknown } | null = null;
   let lifecycleError: BuilderSessionLifecycleError | undefined;
   try {
-    const prompt = roundPrompt(input, round.previous);
+    const prompt = prompts.opening(round.previous);
     recorder.prompt(prompt);
     // Checkpointed as the session opens, so a host killed inside the first turn still leaves the
     // execution record and the prompt that turn was sent.

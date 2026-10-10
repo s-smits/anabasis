@@ -83,7 +83,7 @@ inside its wall, because the search that found that answer is one the solver can
 does not reliably meet is demand: several published requirements acting together on one answer under
 one shared limit, so that meeting one spends the margin another needs, with the way to meet them
 together withheld. A first battery can already hold a family that only a real search over its
-interacting requirements meets. Four constructions may help; none is required, and another method is
+interacting requirements meets. Five constructions may help; none is required, and another method is
 as welcome.
 
 - **A demand the battery does not yet make.** Change what a task asks the solver to reason about,
@@ -107,10 +107,15 @@ as welcome.
   when many simpler answers meet them too, or when they are requirements the field would not hold.
 - **A search past the solver's wall.** Run an offline search far longer than one solve may take,
   keep its best incumbents, and store the best as the answer `reference/` replays, which F2 admits
-  as it admits any stored answer. The limit then sits between what the long search found and what a
-  short one finds. It fails when the long search finds nothing a short one does not.
+  as it admits any stored answer. Use this to propose the next task; fresh solver attempts establish
+  its difficulty. It fails when the long search finds nothing a short one does not.
+- **An answer the field already recorded.** Take a task whose answer the field has recorded, such as
+  a merged fix or a published result, and store that answer as the one `reference/` replays. You need
+  not find it yourself, and the solver cannot reach it by rerunning your search. It fails when the
+  public task does not decide the recorded answer, so a different valid answer would be refused, or
+  when the solver can find the recorded answer where the field published it.
 
-The last two set where a limit or a stored answer sits, and each combines with the first two.
+The last three set where a limit or a stored answer sits, and each combines with the first two.
 
 Some changes look harder and are not. Moving a limit or a magnitude while the method that passed
 still meets it, adding tasks, families or conditions that method also settles, a rule the task does
@@ -147,7 +152,7 @@ guaranteed-hours  Contract minimums join the other three. Ward-only staff with a
                   staff first meets a task here.
 ```
 
-What makes the last family very hard is a property of its tasks: minimum hours force named staff
+The last family is built to be the hardest, by a property of its tasks: minimum hours force named staff
 onto shifts while rest and the scarce charge qualification decide which shifts they can pair, and
 the budget sits less than one cheapest shift above the best roster the reference finds, so no rule
 can be settled on its own and only a search over whole rosters meets the budget.

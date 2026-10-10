@@ -2,7 +2,8 @@
  * One Builder bash call and the shell environment it runs in. `runBuilderBash` is all the bash tool
  * calls; the timeout, TMPDIR, environment and notices below are its own.
  *
- * HOME points into the workspace's `.toolchain` directory, the tree tool admission reads later, so
+ * HOME points into the workspace's `.toolchain` directory (a split build's answer agent: its
+ * `.toolchain/answer`, behind the wall), the tree tool admission reads later, so
  * HOME-based installers and tools — Arduino's `~/Library/Arduino15`, Cargo, Go, PlatformIO, pip —
  * write inside the workspace and leave files admission can reuse. `.toolchain/bin`, which the
  * candidate's checks and the solver's shell search first, leads PATH, so a tool installed there
@@ -25,6 +26,7 @@ import { availableParallelism, loadavg, tmpdir } from "../meta/os.ts";
 import { dirname, join } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { type OptionalEnvValues, scrubSecretEnv } from "../backends/scrub-env.ts";
+import { WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
 import { ISOLATED_TIMEOUT_MS, runIsolated } from "./candidate-isolation-runtime.ts";
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 import type { BuilderIsolation } from "./tools.ts";
@@ -46,9 +48,10 @@ interface BuilderBashCall {
  *  builds rather than offering it as the usual wall. */
 const BASH_TIMEOUT_MAX_MS = 120 * 60_000;
 
-/** The workspace-local environment for the host-dispatched Builder shell tool. */
-function builderHomeEnvironment(workDir: string, inheritedPath = Bun.env.PATH) {
-  const home = join(workDir, ".toolchain", "home");
+/** The workspace-local environment for the host-dispatched Builder shell tool. HOME sits in the
+ *  tree this side installs into, whose own bin leads PATH ahead of the workspace's. */
+function builderHomeEnvironment(workDir: string, installTree: string, inheritedPath = Bun.env.PATH) {
+  const home = join(workDir, installTree, "home");
   const localBin = join(home, ".local", "bin");
   const cargoBin = join(home, ".cargo", "bin");
   mkdirSync(localBin, { recursive: true });
@@ -67,7 +70,7 @@ function builderHomeEnvironment(workDir: string, inheritedPath = Bun.env.PATH) {
     // Use this run's admitted Bun before ambient wrappers (the operator's ~/.local/bin/bun
     // may sit outside the authoring wall). Workspace tool installs retain their usual precedence.
     PATH: [
-      join(workDir, ".toolchain", "bin"),
+      ...new Set([join(workDir, installTree, "bin"), join(workDir, WORKSPACE_TOOL_TREE, "bin")]),
       localBin,
       cargoBin,
       dirname(runtimeProcess.execPath),
@@ -93,21 +96,22 @@ function bashTimeoutMs(seconds: number | undefined): number {
  * `solver.shell_command_seconds` per command, `gate.check_seconds` per correctness check and
  * `solver.solve_seconds` for a whole solve — all three from the `agent/config.yaml` in this same
  * workspace, which the Builder wrote and can read. Nothing else in the loop states the exchange rate
- * between the two, so a Builder will happily spend an hour of wall clock settling a limit for a
- * solver it has given fifteen minutes a command, and carry that mismatch into the battery
- * unexamined.
+ * between the two, so a Builder can spend an hour of wall clock on a search without seeing what that
+ * is against the solver's fifteen minutes a command.
  *
- * This is a nudge, not a wall: the call already ran, and every number in it is the Builder's own.
- * Both levers are the Builder's too — the settings, and the installed tools whose accuracy-for-time
- * settings decide what those seconds buy. Silent at or below the smallest budget, because a call
- * the solver could itself have made needs no note.
+ * It states the measurements and asks for nothing: the call already ran, and every number in it is
+ * the Builder's own. Until 2026-10-07 it went on to say the solver might not repeat the work inside
+ * those numbers and to trade the installed tools' accuracy for time, which reads as advice to shorten
+ * the search to the solver's wall, while a search far past that wall is how examples.md stores an
+ * answer the solver cannot reach by rerunning it. Silent at or below the smallest budget, because a
+ * call the solver could itself have made needs no note.
  */
 function solverBudgetNotice(elapsedMs: number, settings: HarnessSettings): string | null {
   const commandMs = settings.shellCommandSeconds * 1000;
   if (elapsedMs <= Math.min(commandMs, settings.checkWallMs, settings.solveMs)) return null;
   const s = (ms: number) => String(Math.round(ms / 1000));
   const against = (budgetMs: number) => `${s(budgetMs)} s (${(elapsedMs / budgetMs).toFixed(1)}x)`;
-  return `This call ran ${s(elapsedMs)} s. ${HARNESS_CONFIG_FILE} gives one solver command ${against(commandMs)} (solver.shell_command_seconds), one correctness check ${against(settings.checkWallMs)} (gate.check_seconds) and a whole solve ${against(settings.solveMs)} (solver.solve_seconds). Work you calibrate with a call this long may be work your own solver cannot repeat inside those numbers. Both sides of that are yours to move: edit those settings, or tune what you installed under .toolchain, where a tolerance, iteration or resolution setting usually trades a little accuracy for a lot of time.`;
+  return `This call ran ${s(elapsedMs)} s. ${HARNESS_CONFIG_FILE} gives one solver command ${against(commandMs)} (solver.shell_command_seconds), one correctness check ${against(settings.checkWallMs)} (gate.check_seconds) and a whole solve ${against(settings.solveMs)} (solver.solve_seconds).`;
 }
 
 /** The same notice for a workspace, silent while its config is unreadable. The submit gate owns
@@ -132,13 +136,18 @@ export function workspaceSolverBudgetNotice(workDir: string, elapsedMs: number):
  * cannot observe (rule 5), so it now states what the wall actually closes and leaves the workspace
  * as the instruction it is, rather than describing a confinement that is not there.
  */
-export function bashDescription(policy: CandidateAccessPolicy, pathCard: string): string {
+export function bashDescription(
+  policy: CandidateAccessPolicy,
+  pathCard: string,
+  installTree: string,
+): string {
+  const home = `${installTree}/home`;
   const closed =
     "The wall closes the verified repository, this campaign's run evidence and the host's credential and key files; keep your own work inside the workspace.";
   const deadline = `One call runs for up to ${String(ISOLATED_TIMEOUT_MS / 1000)} s; set timeout (seconds, at most ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a long build such as a toolchain or a batch of compiles. The session waits on every call, and a job it starts in the background ends with the call, so keep a long search in the foreground of one call and raise its timeout. This host has ${String(availableParallelism())} cores and nothing bounds a command to one of them, so a search that would take most of an hour on one core can be split across them.`;
   return policy.network === "allow"
-    ? `Run a shell command. Work in the workspace: HOME is .toolchain/home inside it and its .local/bin and .cargo/bin directories are on PATH, so pip, uv, cargo, bun install and similar installers work without extra flags, and installs land where both the candidate's checks and the solver's shell find them: each searches .toolchain/bin first, then every bin, shims or sbin directory below .toolchain. The candidate runs under Bun, the measured interpreter; write checkers and tests for bun. Network access is available. ${deadline} ${closed}${pathCard}`
-    : `Run a shell command. Work in the workspace: HOME is .toolchain/home inside it, so a tool that keeps a cache, data or config directory writes there instead of being refused. Network access is unavailable, so dependency installs cannot work; the repository's node_modules toolchain is already readable, and this cell is for building and testing what it was handed. ${deadline} ${closed}${pathCard}`;
+    ? `Run a shell command. Work in the workspace: HOME is ${home} inside it and its .local/bin and .cargo/bin directories are on PATH, so pip, uv, cargo, bun install and similar installers work without extra flags, and installs land where both the candidate's checks and the solver's shell find them: each searches .toolchain/bin first, then every bin, shims or sbin directory below .toolchain. The candidate runs under Bun, the measured interpreter; write checkers and tests for bun. Network access is available. ${deadline} ${closed}${pathCard}`
+    : `Run a shell command. Work in the workspace: HOME is ${home} inside it, so a tool that keeps a cache, data or config directory writes there instead of being refused. Network access is unavailable, so dependency installs cannot work; the repository's node_modules toolchain is already readable, and this cell is for building and testing what it was handed. ${deadline} ${closed}${pathCard}`;
 }
 
 /** One bash call's TMPDIR, and whether the call made it on the host and so removes it once it
@@ -158,14 +167,14 @@ export function bashCallTmpdir(platform: typeof runtimeProcess.platform = runtim
 
 /** The child environment for one bash call: the scrubbed base plus the workspace HOME redirect.
  *  Creates both conventional user bin directories. */
-export function bashEnv(workDir: string): OptionalEnvValues {
+export function bashEnv(workDir: string, installTree: string): OptionalEnvValues {
   const scrubbed =
     /* SAFETY: `scrubSecretEnv` returns the same environment record with the secret-bearing keys removed. */ scrubSecretEnv(
       Bun.env,
     );
   return {
     ...scrubbed,
-    ...builderHomeEnvironment(workDir, scrubbed.PATH),
+    ...builderHomeEnvironment(workDir, installTree, scrubbed.PATH),
   };
 }
 
@@ -183,7 +192,7 @@ export async function runBuilderBash(isolation: BuilderIsolation, call: BuilderB
     args: ["-lc", call.command],
     cwd: call.cwd,
     paths: [call.cwd],
-    env: { ...bashEnv(isolation.workDir), TMPDIR: temp.path },
+    env: { ...bashEnv(isolation.workDir, isolation.installTree), TMPDIR: temp.path },
     osRefusalIsOutcome: true,
     timeoutMs,
     signal: call.signal, // An aborted prompt waits for running tools, so abort kills the command.
@@ -200,9 +209,9 @@ export async function runBuilderBash(isolation: BuilderIsolation, call: BuilderB
     // half: it is a runtime fact the Builder cannot observe and cannot tell apart from a command that
     // is simply slow. A search killed at its deadline may have been running on a host loaded to
     // several times its core count, with a tenth of a core to itself, and no reading of the command
-    // explains that.
+    // explains that. It suggests no smaller search, for the reason `solverBudgetNotice` gives.
     killedNotice: outcome.timedOut
-      ? `Command killed after ${String(timeoutMs / 1000)} s while the host load average was ${(loadavg()[0] ?? 0).toFixed(1)} on ${String(availableParallelism())} cores; a CPU-bound command gets less than a core when load exceeds cores. Pass timeout (seconds, up to ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a longer build, or split it; give a search fewer iterations`
+      ? `Command killed after ${String(timeoutMs / 1000)} s while the host load average was ${(loadavg()[0] ?? 0).toFixed(1)} on ${String(availableParallelism())} cores; a CPU-bound command gets less than a core when load exceeds cores. Pass timeout (seconds, up to ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a longer build, or split it.`
       : null,
   };
 }

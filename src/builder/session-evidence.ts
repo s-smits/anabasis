@@ -2,6 +2,7 @@
 import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
 import {
+  type BuilderRole,
   type BuilderSessionInterfaceEvidence,
   type BuilderToolInterfaceInput,
   reconcileBuilderInterface,
@@ -14,7 +15,10 @@ import { writeJsonFile } from "../meta/completed-json.ts";
 import type { BackendKind } from "../backends/resolve.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
+/** The session that submits writes here: the whole Builder, or a split build's Harness Builder. */
 export const BUILDER_SESSION_EVIDENCE_FILE = "builder-session.json";
+/** A split build's answer agent, which holds the answers, leaves the same record beside it. */
+export const ANSWER_SESSION_EVIDENCE_FILE = "builder-session-answer.json";
 export const BUILDER_SESSION_EVIDENCE_SCHEMA = "builder-session-evidence/v4";
 
 export interface BuilderSessionIsolationEvidence {
@@ -50,6 +54,7 @@ export interface BuilderSessionEvidence {
 
 export function writeBuilderSessionEvidence(input: {
   epochDir: string;
+  role: BuilderRole;
   tools: readonly BuilderToolInterfaceInput[];
   policy: CandidateAccessPolicy;
   /** A capability with a distinct policy names every one it may use. */
@@ -80,6 +85,7 @@ export function writeBuilderSessionEvidence(input: {
       ? undefined
       : reconcileBuilderInterface({
           backend: requested.backend,
+          role: input.role,
           registered: input.tools,
           backendExposed: requested.backendExposed,
         });
@@ -100,6 +106,7 @@ export function writeBuilderSessionEvidence(input: {
     ...keyIfDefined("contract", contract),
     writtenAt: new Date().toISOString(),
   };
-  writeJsonFile(join(input.epochDir, BUILDER_SESSION_EVIDENCE_FILE), evidence);
+  const file = input.role === "answer" ? ANSWER_SESSION_EVIDENCE_FILE : BUILDER_SESSION_EVIDENCE_FILE;
+  writeJsonFile(join(input.epochDir, file), evidence);
   return evidence;
 }

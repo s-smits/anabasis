@@ -14,6 +14,7 @@ import type { AgentTurnEvent, AgentTurnResult } from "../../src/backends/backend
 import type { HostSession, PiTool } from "../../src/backends/pi-session.ts";
 import type { JsonValue } from "../../src/meta/json-shape.ts";
 import { join } from "../../src/meta/path.ts";
+import { keyIfDefined } from "../../src/meta/optional-key.ts";
 import type { BuilderRuntimeFactory } from "../../src/run/builder-runtime.ts";
 import { double, scriptedSession } from "./doubles.ts";
 
@@ -57,10 +58,16 @@ export function scriptedBuilderRuntime(
   // The factory runs once per round. The run's Builder conversation may keep one session across
   // rounds, so a turn reads the round open now: its campaign directory and its own turn count.
   let round = { repoRoot: "", campaignDir: "", turn: 0 };
-  return async (_manifest, _options, repoRoot, campaignDir) => {
+  return async (_manifest, _options, repoRoot, campaignDir, { builder }) => {
     round = { repoRoot, campaignDir, turn: 0 };
     return {
       tools: options.tools ?? [],
+      // A split condition gets its answer agent as production composes it, with no file tools: the
+      // script reads the role from the system prompt each session opens with.
+      ...keyIfDefined(
+        "answer",
+        builder.answerWallMs === undefined ? undefined : { tools: [], wallMs: builder.answerWallMs },
+      ),
       webSearch: options.webSearch ?? false,
       open: async (tools, systemPrompt): Promise<HostSession> => {
         // A continued conversation configures the next round's roster and framing on this session.

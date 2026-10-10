@@ -59,8 +59,9 @@ comparison that signal cannot:
 - **The share of the solve wall** (`wri.ts walls`). Truss batteries that went on to fail a case used
   a median of 18.6% of the wall against 6.6% for full passes. A change that raises demand shows here
   first. The scoreboard prints it per run (median and latest battery) and per source and Builder,
-  beside the earned fails (`wri.ts climb`'s follow-up), how many the next battery carried unchanged,
-  and how many of those passed there after the agent changed.
+  beside the earned fails (`wri.ts climb`'s follow-up), how many the controller's further solves
+  confirmed, how many the next battery carried unchanged, how many confirmed fails then passed there
+  after the agent changed (answered), and, apart, the verified fails the Judge contested.
 - **One fixed pack.** Solve the same recorded hard tasks with both products through `harness-query`,
   but only for rounds of one campaign or a seeded continuation: a pack task is graded by its
   authoring product's correctness bundle, so it cannot compare two fresh campaigns (AGENTS.md "Open
@@ -490,6 +491,20 @@ cases give an operational result and no capability rate. Run `bun run outcome --
 <campaignDir>` once per run and record which ids fired and which stayed silent. The reader
 reports firings only; separating a silent sensor from one no run reached, and any removal,
 belong to the weekly review, not to this step.
+
+A comparison of main against a pull request's head, both arms republished from one seed round, is
+decided by the rule frozen in `climb-outcome.ts` before its launch, and nothing else: per cell (one
+request under one Builder model and effort) the first k measured task sets of each arm, k the fewer
+reached; fresh failures M2 labelled `limit`, a fresh failure being a verified fail on bytes that
+never failed in the arm by a task that did not fail at its previous measurement, the seed's failures
+included; the seed's batteries left out of both arms; censored below 12 pooled rounds, then margins
+of 5, 6 and 7; a health guard on the head's fresh failures. The reader prints the verdict and the
+counts beside it, read-only:
+
+```sh
+bun .claude/skills/run-improvement-campaign/scripts/climb-outcome-cli.ts \
+  --control <main sha> --treatment <head sha> [--labels <M2 labels.jsonl>] [--json]
+```
 
 Evidence precedence:
 

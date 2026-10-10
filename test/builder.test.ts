@@ -25,6 +25,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -1191,7 +1192,15 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     expect(existsSync(join(s.parent, ".toolchain", "bin", "greet"))).toBe(false);
     // A check keeps no state: the one kept is the session's last, beside the one copy of its tree.
     const kept = readdirSync(request.states);
-    expect(kept.filter((name) => !name.startsWith("tree-"))).toEqual([built.harness ?? ""]);
+    const states = kept.filter((name) => !name.startsWith("tree-"));
+    expect(states).toEqual([built.harness ?? ""]);
     expect(kept).toHaveLength(2);
+    // And no copy of the tree is left that no state links. A check keeps nothing and copies the
+    // tree all the same, and buffer's first session left a 6.4 MB copy linked by none of its four
+    // states (2026-10-10); a truss tree is 316 MB.
+    const linked = states.map((state) => readlinkSync(join(request.states, state, ".toolchain")));
+    for (const name of kept.filter((each) => each.startsWith("tree-"))) {
+      expect(linked).toContain(join("..", name));
+    }
   }, 120_000);
 });

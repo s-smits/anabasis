@@ -53,6 +53,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
@@ -173,6 +174,18 @@ function refuseNamingHome(dir: string, home: string, under: string): void {
   }
 }
 
+/** Remove a tree copy no kept state's `.toolchain` names, which is what the last copy becomes once
+ *  the tree has changed and nothing was frozen under it. A `check_harness` call keeps nothing and
+ *  makes one all the same: buffer's first session left a 6.4 MB copy linked by no state
+ *  (2026-10-10), and a truss tree is 316 MB, so a check after each tree edit would leave one each. */
+function dropUnlinked(states: string, dir: string): void {
+  const named = join("..", basename(dir));
+  const links = readdirSync(states).map((name) => join(states, name, ".toolchain"));
+  if (!links.some((link) => lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() === true && readlinkSync(link) === named)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** A copy of `harness/.toolchain` beside the states, for a frozen harness to link to; the last one
  *  kept while the tree's stamp holds. A truss tree is 316 MB, which a copy at every freeze spent
  *  again on each check and practice. Null when the harness has no tree. */
@@ -182,6 +195,7 @@ function keptTree(bench: Bench): string | null {
   const real = realpathSync(own);
   const stamp = toolTreeStamp(real);
   if (bench.tree?.stamp === stamp) return bench.tree.dir;
+  if (bench.tree !== undefined && bench.tree !== null) dropUnlinked(bench.request.states, bench.tree.dir);
   const dir = realpathSync(mkdtempSync(join(bench.request.states, "tree-")));
   try {
     cpSync(real, dir, { recursive: true, verbatimSymlinks: true });

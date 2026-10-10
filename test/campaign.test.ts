@@ -400,7 +400,7 @@ describe("a campaign", () => {
         ],
       }),
     ).toEqual([
-      "each harness by itself, as the tasks with 0, 1, 2 valid answers in 2 solves:",
+      "each harness by itself, as how many tasks had 0, 1, 2 valid answers in 2 solves (a count of tasks a column, not a share):",
       "  at its limits: reference 2/1/5, new 0/1/7",
       "  at seconds=1800: reference 4/2/2, new 1/3/4",
       "  at turns=40,seconds=600: reference 6/2/0, new 3/3/2",

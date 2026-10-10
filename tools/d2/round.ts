@@ -414,7 +414,7 @@ export function validLines({ valid, budgets }: Pick<Report, "valid" | "budgets">
       ",",
     );
   return [
-    `each harness by itself, as the tasks with ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves:`,
+    `each harness by itself, as how many tasks had ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves (a count of tasks a column, not a share):`,
     row("at its limits", valid),
     ...budgets.flatMap((budget) =>
       budget.valid === undefined ? [] : [row(`at ${named(budget)}`, budget.valid)],

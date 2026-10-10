@@ -399,9 +399,12 @@ on every rule, one check a rule, every control through the checks twice, and the
 the format allows refused on every example (`draftReading`, `tools/d2/exam.ts`). What the reading
 cannot say is whether a rule is the field's and its source real. Every check of a drafted exam is
 its author's own computation, since nothing installs an engine of the field for a campaign, so
-its acceptance reading holds one fault a check and the campaign ends on its exam there, once. It
-goes on when the operator admits the checks by name: the command run again with
-`--admit <checks>`, which is rule 10's word and the operator's.
+its acceptance reading holds one fault a check and the campaign ends on its exam there, once:
+the log then holds `campaign.ended` with the ending `exam`, and the command prints the `--admit`
+line to run. It goes on when the operator admits the checks by name: the command run again with
+`--admit <checks>`, which is rule 10's word and the operator's, reads the exam again and goes
+past that ending. `--prompt-file <path>` takes the prompt from a file, for a shell that cannot
+carry it whole.
 
 Start a round, a checkpoint, a Builder session by itself or an Examiner session through the
 launcher, which reads the log and the host first and refuses a run that cannot report anything
@@ -448,6 +451,17 @@ Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves
 the starter until one is; a Builder session of 240 minutes, 300
 turns and 24 practice solves; a solve of 120 minutes and 24 prompts, with the model's own turns
 unlimited until `--solve-model-turns` names a number.
+
+Two of them need a word for a small campaign. The reserve is what one solve is held at before it
+starts, and a campaign ends where less of its total is left than that: set `--reserve` to about
+what one solve of the solver bills, which the log of any earlier campaign under the same solver
+says (`solve.finished.billed`). With `claude-api/claude-sonnet-5-5` at high on tasks a program
+answers, 10 October: a solve 0.01 to 0.05 dollars, a Builder session 0.02 to 0.25, an Examiner
+session 0.12, a draft 0.15 to 0.19, and a campaign of two comparisons of 5 or 6 tasks at 2 or 3
+solves a side 2 to 5 dollars in all. And the ladder of shorter budgets is cut from the full
+limit (`--ladder`, by default a half, a quarter and an eighth of `--solve-model-turns`): with no
+limit named the ladder is empty, and the budget rule has no rung to set, so a campaign that is to
+move its budget names the limit.
 
 ## 7. How a comparison is read
 

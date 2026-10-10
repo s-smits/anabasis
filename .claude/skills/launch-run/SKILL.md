@@ -89,7 +89,7 @@ missing.
 
 | the log needs | from |
 | --- | --- |
-| a checker that has been read, and that the operator has said stands | `bun tools/c/accept.ts ... --name <name> [--admit <checks>] --freeze` |
+| a checker that has been read, with no fault left in its last reading, or frozen by the operator over its faults | `bun tools/c/accept.ts ... --name <name> [--admit <checks>] [--freeze]`: a reading with no fault stands by itself, and `--freeze` is the operator's word over one that has faults (`admission`, `src/builder/admission.ts`) |
 | the pack's tasks held out, and the practice tasks released | `bun tools/d2/prepare.ts ... --name <name>` |
 | the tasks named to score, each confirmed against today's verifier | `bun tools/d2/prepare.ts ... --name <name> --tasks <task ids>` |
 | further held-out tasks, where the pack's are too few | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |

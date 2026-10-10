@@ -232,6 +232,52 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
+  it.skipIf(runtimeProcess.platform !== "linux")(
+    "give each command a temporary directory of its own under the solve's volume, and show it nothing another left in the host's",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-private-tmp-")));
+      const dirs = solveDirs(`tmp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      // A canary another solve, a verification cell or the host itself might have left in /tmp.
+      const canary = join("/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
+      writeFileSync(canary, "left by the host");
+      try {
+        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
+        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+        const wall: CommandWall = {
+          base,
+          dirs,
+          toolTree: null,
+          limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
+          cpu: { seconds: 0, unmeasured: 0 },
+        };
+        // The command's TMPDIR is its own folder under the solve's runs, where the cap counts it,
+        // and the host's /tmp with the canary in it is hidden behind an empty private one.
+        const first = await run(
+          wall,
+          `echo "$TMPDIR"; ls /tmp; cat ${canary} 2>&1 || echo unseen; echo first > /tmp/left; echo second > "$TMPDIR/left"`,
+        );
+        expect(first.output).toContain(join(basename(dirs.root), "runs", "run-"));
+        expect(first.output).not.toContain("left by the host");
+        expect(first.output).toContain("unseen");
+        // What the first command wrote under /tmp and its TMPDIR is gone with it: the next command
+        // starts in a fresh private /tmp and a fresh folder, and the host's /tmp never saw either.
+        const second = await run(wall, 'ls /tmp; ls "$TMPDIR"; cat /tmp/left 2>/dev/null || echo gone');
+        expect(second.output).toContain("gone");
+        expect(second.output).not.toMatch(/^left$/m);
+        expect(existsSync("/tmp/left")).toBe(false);
+        expect(readFileSync(canary, "utf8")).toBe("left by the host");
+      } finally {
+        await release();
+        rmSync(canary, { force: true });
+        rmSync(dirs.host, { recursive: true, force: true });
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
   it.skipIf(runtimeProcess.platform !== "darwin")(
     "keep what Python and make write as temporary in the command's own folder, which goes with it",
     async () => {

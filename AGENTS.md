@@ -328,8 +328,10 @@ Four habits follow:
    the log is the one exception, because a log is evidence: `EVENT_KINDS` still lists kinds that
    no command writes, so that an earlier log reads.
 
-`.ana/` is ignored by Git and lies inside the repository, which every solve's and every Builder's
-wall denies. The log holds hidden values and the checks' verdicts, so it never leaves the exam
+`.ana/` is ignored by Git and lies inside the repository, which every solve's, every Builder's and
+every Examiner's wall denies, with the repository's other worktrees (`worktreesOf`,
+`tools/d2/campaign.ts`): a campaign runs from a worktree kept for it, and until 10 October a
+shell in a sibling worktree could read its log. The log holds hidden values and the checks' verdicts, so it never leaves the exam
 side: not into a prompt, not into a pull request, not into a paste.
 
 ## 6. A campaign's commands

@@ -274,6 +274,7 @@ export function sessionNamed(
     solve: limits,
     log: campaign.log,
     repoRoot: campaign.repo,
+    otherTrees: campaign.trees,
     practise: (task, dir, digest, kill) => seats.solve(packageOf(task.version), { dir, digest }, kill),
     ...(reviewers === null
       ? {}

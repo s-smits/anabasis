@@ -133,6 +133,10 @@ function hostSolveIsolationFixture(mechanismId: string): HostSolveIsolationFixtu
  */
 export function solveIsolationPolicy(input: {
   repoRoot: string;
+  /** The repository's other worktrees, denied with it. Until 10 October only the worktree a
+   *  command ran in was denied, and a shell in one worktree read a sibling's `.ana` log, every
+   *  hidden value of that campaign in it, on the Linux container (an Examiner's shell, by hand). */
+  otherTrees?: readonly string[];
   cap: DiskCap;
   runtime?: OsIsolationRuntime;
   liftDeniesCovering?: string;
@@ -149,7 +153,7 @@ export function solveIsolationPolicy(input: {
   // mechanism is broken" when the mechanism is fine.
   const lifted = input.liftDeniesCovering === undefined ? [] : canonicalForms(input.liftDeniesCovering);
   const keep = (root: string): boolean => !lifted.some((target) => covers(root, target));
-  const reads = canonicalRoots([input.repoRoot, home]).filter(keep);
+  const reads = canonicalRoots([input.repoRoot, ...(input.otherTrees ?? []), home]).filter(keep);
   const writes = [...reads];
   const cap = { root: resolve(input.cap.root), bytes: input.cap.bytes };
   // A root inside the repository or the home would sit under a denied tree: Seatbelt would refuse

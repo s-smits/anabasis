@@ -83,8 +83,9 @@ export interface SolveRequest {
   readonly models: (home: string) => Models;
   readonly verify: Verifier;
   readonly log: string;
-  /** The repository, closed to every command. */
+  /** The repository, closed to every command, and its other worktrees, closed with it. */
   readonly repoRoot: string;
+  readonly otherTrees?: readonly string[] | undefined;
   /** The comparison the solve is made for, by its id, which every attempt's start then names. A
    *  comparison counts the solves that name it and no other (`src/kernel/compare.ts`); a practice
    *  solve names none. */
@@ -222,7 +223,11 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   let prompts = 0;
   try {
     release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
-    const base = walledBase(dirs, { repoRoot: request.repoRoot, diskBytes: limits.diskBytes }, "a solve");
+    const base = walledBase(
+      dirs,
+      { repoRoot: request.repoRoot, otherTrees: request.otherTrees, diskBytes: limits.diskBytes },
+      "a solve",
+    );
     const resources = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;

@@ -63,6 +63,7 @@ export async function examineCommand(args: readonly string[], session = examineW
   const examined = await session({
     id,
     repoRoot: REPO,
+    otherTrees: campaign.trees,
     diskBytes: campaign.limits.diskBytes,
     verify: campaign.verify,
     contract: campaign.contract,

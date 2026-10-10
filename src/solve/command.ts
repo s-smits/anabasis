@@ -69,6 +69,16 @@ export interface CommandWall {
   readonly clock?: SolveClock | undefined;
 }
 
+/** What a wall denies and caps: the repository the command runs in, its other worktrees, and
+ *  the disk a solve, a session or an Examiner may fill. */
+export interface Walled {
+  readonly repoRoot: string;
+  /** The repository's other worktrees (`worktreesOf`, `tools/d2/campaign.ts`); none where the
+   *  caller knows of none, as a test does. */
+  readonly otherTrees?: readonly string[] | undefined;
+  readonly diskBytes: number;
+}
+
 /** A solve's time: when its first turn started, null until it has, and how long the solve may be. */
 export interface SolveClock {
   started: number | null;
@@ -150,14 +160,11 @@ export function solveDirs(id: string): SolveDirs {
  * Examiner's are built the same way, and until 10 October each spelled it. `who` names the actor
  * in the refusal of a host that cannot wall one.
  */
-export function walledBase(
-  dirs: SolveDirs,
-  wall: { readonly repoRoot: string; readonly diskBytes: number },
-  who: string,
-): SolveIsolationPolicy {
+export function walledBase(dirs: SolveDirs, wall: Walled, who: string): SolveIsolationPolicy {
   for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
   const base = solveIsolationPolicy({
     repoRoot: wall.repoRoot,
+    otherTrees: wall.otherTrees ?? [],
     cap: { root: dirs.root, bytes: wall.diskBytes },
   });
   if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);

@@ -58,7 +58,7 @@ import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
-import { type CommandWall, type SolveDirs, solveDirs, walledBase } from "../solve/command.ts";
+import { type CommandWall, type SolveDirs, solveDirs, type Walled, walledBase } from "../solve/command.ts";
 import { codingTools } from "../solve/coding-tools.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { mountDiskCap } from "../verify/disk-cap.ts";
@@ -453,9 +453,7 @@ export const examinerDirs = (log: string, id: string): SolveDirs =>
  * feasibility rested on hand estimates; with a shell it computes an instance, and with
  * `try_answer` it knows the instance has a valid answer before it proposes it.
  */
-export async function examineWalled(
-  request: Omit<ExamRequest, "shell"> & { readonly repoRoot: string; readonly diskBytes: number },
-): Promise<Examined> {
+export async function examineWalled(request: Omit<ExamRequest, "shell"> & Walled): Promise<Examined> {
   const dirs = examinerDirs(request.log, request.id);
   const release = await mountDiskCap({ root: dirs.root, bytes: request.diskBytes });
   try {

@@ -55,6 +55,23 @@ afterEach(() => {
 });
 
 describe("the solve isolation's policy", () => {
+  it("denies the repository's other worktrees with it, and names them in its identity", () => {
+    // A campaign runs from a worktree kept for it, and its log, every hidden value in it, lies
+    // under `.ana` there. Until 10 October a shell in a sibling worktree could read it.
+    const repoRoot = workRepo();
+    const sibling = workRepo();
+    const alone = solveIsolationPolicy({ repoRoot, cap });
+    const closed = solveIsolationPolicy({ repoRoot, otherTrees: [sibling], cap });
+    if ("unsupported" in alone || "unsupported" in closed) {
+      throw new Error("this host cannot run the isolation");
+    }
+    expect(alone.deniedReadRoots).not.toContain(sibling);
+    expect(closed.deniedReadRoots).toContain(sibling);
+    expect(closed.deniedReadRoots).toContain(realpathSync.native(sibling));
+    expect(closed.deniedWriteRoots).toContain(sibling);
+    expect(closed.policyHash).not.toBe(alone.policyHash);
+  });
+
   it("denies the repository and whole operator home, reopening only explicit runtimes", () => {
     const repoRoot = workRepo();
     const policy = solveIsolationPolicy({ repoRoot, cap });

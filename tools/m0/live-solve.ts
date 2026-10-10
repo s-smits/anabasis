@@ -43,12 +43,13 @@ import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { openDesk } from "#src/solve/answer.ts";
-import { solveDirs } from "#src/solve/command.ts";
+import { solveDirs, walledBase } from "#src/solve/command.ts";
 import { type Harness, openHarness, treeContent } from "#src/solve/harness.ts";
 import { firstTurn, installedPrograms, NUDGE, seedHome, systemPrompt } from "#src/solve/prompt.ts";
 import { type SolveRequest, solve, solverTools } from "#src/solve/run.ts";
 import { mountDiskCap } from "#src/verify/disk-cap.ts";
-import { HOST_SOLVE_ISOLATION_PROFILE_ID, solveIsolationPolicy } from "#src/verify/solve-sandbox.ts";
+import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
+import { worktreesOf } from "../d2/campaign.ts";
 import {
   checkProgram,
   contractOf,
@@ -183,6 +184,7 @@ async function main(): Promise<number> {
       verify: openVerifier({ checks, tools: join(bundle, ".toolchain") }),
       log,
       repoRoot: REPO,
+      otherTrees: worktreesOf(REPO),
     });
     return readBack(log, ending.outcome, row.ending.outcome);
   } finally {
@@ -203,9 +205,11 @@ async function shown(
   const cap = { root: dirs.root, bytes: LIMITS.diskBytes };
   const release = await mountDiskCap(cap);
   try {
-    for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-    const base = solveIsolationPolicy({ repoRoot: REPO, cap });
-    if ("unsupported" in base) throw new Error(`this host cannot wall a solve: ${base.unsupported}`);
+    const base = walledBase(
+      dirs,
+      { repoRoot: REPO, otherTrees: worktreesOf(REPO), diskBytes: cap.bytes },
+      "a solve",
+    );
     const files = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const cpu = { seconds: 0, unmeasured: 0 };
     const wall = { base, dirs, toolTree: harness.toolTree, limits: LIMITS, cpu };

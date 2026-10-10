@@ -60,6 +60,8 @@ import { tmpdir } from "#src/meta/os.ts";
 import { plural } from "#src/meta/text.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { hostTool } from "#src/meta/host-tool.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { diagnose } from "#src/review/diagnoser.ts";
 import type { Reader } from "#src/review/reader.ts";
@@ -156,6 +158,21 @@ export const REPO = resolve(import.meta.dir, "..", "..");
 const PACK_FLAGS = 4;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
+
+/**
+ * The repository's other worktrees, which every wall of this command denies with the one it runs
+ * in. A campaign is run from a worktree kept for it, and its log, every hidden value in it, lies
+ * under `.ana` there; a shell in a sibling worktree read it on 10 October. A worktree that is
+ * gone is left out, since a denied root has to exist for the wall to mount over it.
+ */
+export function worktreesOf(repo: string): string[] {
+  const listed = runTextSyncOrThrow([hostTool("git"), "-C", repo, "worktree", "list", "--porcelain"]);
+  const own = resolve(repo);
+  return listed
+    .split("\n")
+    .flatMap((line) => (line.startsWith("worktree ") ? [resolve(line.slice("worktree ".length))] : []))
+    .filter((tree) => tree !== own && existsSync(tree));
+}
 
 /** Where campaign `name` keeps its log: what a command reads before it opens the campaign, for the
  *  setting the campaign recorded (`setting.ts`). */
@@ -280,6 +297,7 @@ export async function openCampaign(args: CampaignArgs) {
   const resources = sweepResources(brief);
   const tools = join(bundle, ".toolchain");
   const verify = openVerifier({ checks, tools });
+  const trees = worktreesOf(REPO);
   const limits = args.limits ?? LIMITS;
   const { conditionOf, setting } = recordedUnder({ contract, tools, limits });
   const pack = (task: Task): TaskPackage => packageOf(checks, task);
@@ -314,6 +332,7 @@ export async function openCampaign(args: CampaignArgs) {
       verify,
       log: written,
       repoRoot: REPO,
+      otherTrees: trees,
       ...keyIfDefined("kill", kill),
       ...keyIfDefined("comparison", comparison),
     });
@@ -340,6 +359,7 @@ export async function openCampaign(args: CampaignArgs) {
   });
   return {
     repo: REPO,
+    trees,
     log,
     states: join(dir, "states"),
     memory: join(dir, "memory"),

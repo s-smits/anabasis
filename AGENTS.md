@@ -125,7 +125,7 @@ the subject of the decision, or because the value must stay identical between th
 comparison. Models keep the second because nothing in code can reason about a domain it has not
 seen.
 
-Five consequences guide a change:
+Six consequences guide a change:
 
 1. **Give a model facts and never a course.** The host tells an agent what happened: a tally, an
    ending, a limit and how much of it is used. It does not tell the agent what to write. A v1
@@ -147,6 +147,21 @@ Five consequences guide a change:
 5. **Do not let a model hold a condition.** A model's reply never sets a score, a limit, an
    identity or a route. Where a model's output enters a decision (a ruling), code states what
    evidence the output must carry, and refuses it otherwise.
+6. **Where in doubt, allow, and allow the whole.** A wall keeps three things: the exam side's
+   hidden values, the operator's credentials, and one seat's files from another seat's. Whatever
+   is none of the three is allowed, by the simplest rule that says so: reads open by default with
+   the protected roots closed by name, and one root a seat, readable and writable whole. Do not
+   grant a seat a list of subfolders inside its root, a path a command, or a file where the folder
+   would do: each narrower grant is one more policy to keep true on two operating systems. On the
+   record of 9 and 10 October a grant that was too narrow ended solves by the dozen, and no
+   recorded solve or session read a hidden value through one that was too wide: a denial that
+   named each worktree ended 12 solves in a row as `sandbox-crash` once two of them were removed,
+   and a probe's folder under a shared parent ended 56 (`docs/plan.md`, rows B10, B12 and B17).
+   Narrow a grant only where two would collide, as two solves writing one path in a shared `/tmp`
+   did, or where the wider one opens one of the three. A wall is probed by one command run
+   through the launch a seat's commands use, and need not prove its own identity. At #185 the
+   source is short of this: three writable folders a command, and a probe through a launch no
+   seat uses (`docs/simplify.md`, phase 4).
 
 ## 3. The seats
 
@@ -707,7 +722,12 @@ Cite a rule by its number in a pull request or a review.
     live round had run. A gate earns its place by changing a decision correctly; given the choice,
     remove or widen a gate before adding a wall. Map each new concept as
     `owner → live reader → decision it changes → evidence → hostile test`, and drop it when a link
-    is missing.
+    is missing. The change that supersedes a mechanism retires it: a pull request that gives a
+    decision a new owner, makes one rule the fallback of another, or answers a failed run with a
+    row, a threshold or a sentence deletes what it replaces in the same change, or names under
+    "Not done" what still reads the old path. Of the 122 pull requests measured on the stack
+    from #57 to #185, 3 left `src` smaller (#88, #90, #127), and each generation of a mechanism
+    stood beside the one before it (`docs/simplify.md`).
 
 14. **Stop when nothing can be learned.** A launch that cannot give a result is refused before it
     is paid for. A comparison that tested nothing says `not-scored`. A comparison of non-results
@@ -840,8 +860,11 @@ What holds in all of them:
 A solve and a Builder session run on either host, behind Seatbelt on macOS and Bubblewrap on Linux:
 nine Builder sessions and 308 solves finished on a Linux test host on 9 October. The disk cap holds
 on macOS, where a sparse image is mounted at the root of each solve and each Builder session. On
-Linux a solve's worker launch mounts a tmpfs of the cap's size, and nothing caps a Builder session,
-whose home lies on the host's disk (`src/verify/disk-cap.ts`). When the required wall is unavailable
+Linux nothing caps a solve, a Builder session or an Examiner session: each runs its commands
+under the command wall, which binds its root from the host's disk, and the sized tmpfs is in a
+launch (`isolationArgv`, `src/verify/solve-sandbox.ts`) that only the wall's probe makes. The
+head comment of `src/verify/disk-cap.ts` still says a solve is capped there, and is to be
+corrected with the wall (`docs/simplify.md`, F6). When the required wall is unavailable
 the result is a typed non-result, never an unconfined run. Each wall is probed once a process
 before its first use, with a canary read in the repository and a read of its first other
 worktree's `package.json`, which the probe never writes, and a read that gets through refuses the start with the probe's lines (`walledBase`,

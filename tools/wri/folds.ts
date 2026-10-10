@@ -75,7 +75,7 @@ interface Call {
   readonly args: JsonObject | null;
 }
 
-/** A Builder session, the window of the log that is its round, and the round's report. */
+/** A Builder session and the window of the log that is its round. */
 export interface Build {
   readonly session: string;
   readonly from: number;
@@ -83,10 +83,6 @@ export interface Build {
   readonly parent: string;
   readonly practice: ReadonlySet<string>;
   finished: JsonObject | null;
-  /** The round's last report: its own, or the one a person's labels settled. */
-  report: JsonObject | null;
-  /** The round's own report, which a settling leaves in the log. */
-  own: JsonObject | null;
   readonly calls: Call[];
 }
 
@@ -99,7 +95,7 @@ export interface Compared {
   readonly at: number;
   /** Its last report: its own, or the one a person's labels settled. */
   readonly last: JsonObject;
-  /** The Builder session it followed, or null for a comparison with none. */
+  /** The Builder session whose harness it measured, or null for a comparison of none. */
   readonly build: Build | null;
   readonly scoredSet: ReadonlySet<string>;
   /** The test-side solves of its scored tasks under one of its harnesses that it could count. */
@@ -134,6 +130,7 @@ export const REPORTED = "comparison.reported";
 export const TRIGGERS = {
   "INSTRUMENT AUTHORED": 1,
   "PASSES UNREAD": 1,
+  "REFUSALS BY CHECK": 1,
   "VERIFIER TOOLS MOVED": 2,
   "TOOL MISSING": 2,
   "NO CHECKER READING": 3,
@@ -170,6 +167,7 @@ export const TRIGGERS = {
   "PRACTISED TASK MEASURED": 18,
   "SHELL COMMANDS": 18,
   "WIN AT A SMALL WALL SHARE": 19,
+  WINS: 19,
   "SCORED SET MOVED": 21,
   "NOTHING SCORED": 22,
   "CUT BY ITS CAP": 22,
@@ -286,8 +284,6 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
         parent: text(data.parent),
         practice: new Set(strings(data.tasks)),
         finished: null,
-        report: null,
-        own: null,
         calls: [],
       });
     }
@@ -296,10 +292,6 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
       build.calls.push({ index, tool: text(data.tool), args: asRecord(data.args) });
     }
     if (build !== undefined && kind === BUILD_END) build.finished = data;
-    if (build !== undefined && kind === REPORTED) {
-      build.own ??= data;
-      build.report = data;
-    }
   }
   return builds;
 }
@@ -336,7 +328,16 @@ function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "bu
   return lastReports(events).map(({ session, data: last }) => {
     const at = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === session);
     const own = events[at]?.data ?? last;
-    const build = log.builds.find((each) => each.session === session) ?? null;
+    // A comparison the campaign command runs is a session of its own (`g-N`), and the round it
+    // measured is the Builder session that left its new harness. Read by name alone, none of the
+    // six comparisons of the #107 buffer and recode campaigns had a round, and every trigger of a
+    // session's comparison read nothing (2026-10-10).
+    const makers = log.builds.filter((each) => each.from < at && each.finished?.harness === own.fresh);
+    const build =
+      log.builds.find((each) => each.session === session) ??
+      makers.find((each) => each.finished?.changed === true) ??
+      makers.at(-1) ??
+      null;
     const scoredSet = new Set(
       ["versions", "short", "aside", "withdrawn"].flatMap((left) => strings(own[left])),
     );
@@ -409,16 +410,21 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));
   const blocking = refused.flatMap((solve) => strings(log.verdicts.get(solve.id)?.blocking));
+  const byCheck = countBy(blocking, (check) => check);
   // One check refusing most answers, and no other refusing as many: t-10's one refusal on 10
   // October was blocked by all four checks, and the first of four equal counts read as a fault
   // of one check's.
-  const [top, next] = Object.entries(countBy(blocking, (check) => check)).sort(([, a], [, b]) => b - a);
+  const [top, next] = Object.entries(byCheck).sort(([, a], [, b]) => b - a);
   const lopsided =
     top !== undefined &&
     new Set(blocking).size > 1 &&
     top[1] > refused.length / 2 &&
     (next?.[1] ?? 0) < top[1];
   const carried = log.of("task.proposed").filter((data) => isString(data.carried)).length;
+  // A reading's row counts the check's controls, not the campaign's answers, so a check that caught
+  // its controls and refused no answer reads well there and is where a pass may show only the shape
+  // it checked: 3 of buffer's 7 checks and 5 of recode's 11 on 10 October.
+  const neverRefused = rows.map((row) => text(row.id)).filter((id) => byCheck[id] === undefined);
   return [
     ...(authored > 0
       ? [
@@ -433,6 +439,14 @@ export function instrumentTriggers(log: Index): Trigger[] {
       ? [fired("VERIFIER TOOLS MOVED", `${String(trees)} tool trees decided verdicts in one log`)]
       : []),
     ...(lost > 0 ? [fired("TOOL MISSING", plural(lost, "check tool"))] : []),
+    ...(neverRefused.length > 0 && passes > 0
+      ? [
+          fired(
+            "REFUSALS BY CHECK",
+            `${share(neverRefused.length, rows.length)} checks refused none of ${plural(log.verdicts.size, "answer")}: ${neverRefused.join(", ")}; the rest: ${tally(byCheck)}`,
+          ),
+        ]
+      : []),
     ...(reading === undefined
       ? [fired("NO CHECKER READING", "accept.ts has not read this campaign's checker")]
       : []),

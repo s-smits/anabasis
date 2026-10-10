@@ -19,9 +19,10 @@
  * overview; the lanes that read the clock (26 and 28) and row A's hours are `time.ts`, split from
  * here on the same day for the same ceiling.
  */
-import { signP } from "#src/kernel/compare.ts";
+import { pairings, signP } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -113,16 +114,16 @@ function practiceTriggers(
   const flipped = failed.filter((fail) => laterPass(fail, true)).length;
   const exposed = [...round.scoredSet].filter((version) => build.practice.has(version)).length;
   const shell = calls.filter(({ tool }) => tool === "bash").length;
+  // A task lost in one comparison is no loss of another's: recode's b-1 was measured twice.
+  const lost = (solve: Solve) => `${String(solve.comparison)} ${solve.version}`;
   const lostBefore = new Set(
-    round.scoring
-      .filter((solve) => solve.harness === reference && solve.outcome === "fail")
-      .map((solve) => solve.version),
+    round.scoring.filter((solve) => solve.harness === reference && solve.outcome === "fail").map(lost),
   );
   const quickWins = round.scoring.filter(
     (solve) =>
       solve.harness === child &&
       solve.outcome === "pass" &&
-      lostBefore.has(solve.version) &&
+      lostBefore.has(lost(solve)) &&
       solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE &&
       solve.calls.length <= FEW_CALLS,
   ).length;
@@ -167,15 +168,43 @@ function practiceTriggers(
   ];
 }
 
+/**
+ * Lane 19's wins, by solve: each comparison's tasks the new harness won, read as the comparison
+ * paired them, with the solves under the new harness that passed them and under the reference that
+ * failed them. The lane opens those solves' turns and calls, and until this it rebuilt the pairing
+ * by hand from a log of thousands of events: the #107 buffer campaign won 11 tasks over 3
+ * comparisons in 5,531 (2026-10-10).
+ */
+function winTriggers(log: Index): Trigger[] {
+  return log.compared.flatMap(({ session, at, last }) => {
+    const pairs = pairsReported(log.events, { session, index: at, data: last });
+    const won = pairs.filter((pair) => {
+      const { fresh, old } = pairings(pair);
+      return fresh > old;
+    });
+    const named = (side: "old" | "fresh", valid: boolean) =>
+      won.flatMap((pair) => pair.solves?.[side].filter((_, index) => pair[side][index] === valid) ?? []);
+    return won.length === 0
+      ? []
+      : [
+          fired(
+            "WINS",
+            `${session}: ${share(won.length, pairs.length)} tasks won; passed under the new harness: ${named("fresh", true).join(" ")}; failed under the reference: ${named("old", false).join(" ")}`,
+          ),
+        ];
+  });
+}
+
 /** Lanes 13 to 19: the harness, which is the Builder's. */
 function harnessTriggers(log: Index): Trigger[] {
   return log.builds.flatMap((build) => {
     const { session, finished, parent, calls } = build;
-    const compared = log.compared.find((each) => each.build === build);
+    // Every comparison of the harness this session left: recode measured b-1's twice (2026-10-10).
+    const compared = log.compared.filter((each) => each.build === build);
     const round = {
       practice: practiceOf(log, build),
-      scoring: compared?.scoring ?? [],
-      scoredSet: compared?.scoredSet ?? new Set<string>(),
+      scoring: compared.flatMap((each) => each.scoring),
+      scoredSet: new Set(compared.flatMap((each) => [...each.scoredSet])),
     };
     const child = text(finished?.harness);
     // pi's `write` and `edit` since 2026-10-09, and `write_file` in the sessions before it.
@@ -236,7 +265,7 @@ function harnessTriggers(log: Index): Trigger[] {
         build,
         changed: edited,
         child,
-        reference: text(compared?.own.old) || parent,
+        reference: text(compared[0]?.own.old) || parent,
         round,
       }),
     ];
@@ -496,6 +525,27 @@ function reviewTriggers(log: Index): Trigger[] {
   ];
 }
 
+/**
+ * The campaign command's own record, for lane 25's "what runs next": its moves, how it ended, and
+ * its billed dollars against the budget it opened with. Lane 25 read the stop rule from the
+ * command's output, which the log outlives. An ending before the last event is one the campaign went
+ * on from: both #107 campaigns ended `exam` at their fourth event and ran on under the same opening.
+ * None for a log no campaign command wrote.
+ */
+function campaignOf(log: Index): string[] {
+  const endings = log.events.flatMap(({ kind, data }, index) =>
+    kind === "campaign.ended" ? [`${text(data.ending)} at event ${String(index)}`] : [],
+  );
+  const opened = asRecord(log.of("campaign.opened").at(-1)?.budget);
+  if (endings.length === 0 && opened === null) return [];
+  const moves = countBy(log.of("campaign.move"), (data) => text(data.move));
+  const billed = spendOf(log).reduce((sum, [, dollars]) => sum + dollars, 0);
+  const budget = isNumber(opened?.dollars) ? ` of ${String(opened.dollars)}` : "";
+  return [
+    `campaign: moves ${tally(moves)}; ended ${endings.join(", then ") || "never"}; billed ${billed.toFixed(2)}${budget} dollars`,
+  ];
+}
+
 /** Rows A to F: the identities every finding binds to. */
 function rowsOf(log: Index): Row[] {
   const conditions = [...log.conditions.values()];
@@ -514,7 +564,10 @@ function rowsOf(log: Index): Row[] {
   const sessions = log.builds.map((build) => {
     const child = isString(build.finished?.harness) ? short(build.finished.harness) : "none";
     const ended = text(build.finished?.ended) || "never";
-    return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${String(count(build.finished?.practiceSolves))} practice solves, reading ${text(build.report?.reading) || "none"}`;
+    const readings = log.compared
+      .filter((each) => each.build === build)
+      .map((each) => `${each.session} ${text(each.last.reading)}`);
+    return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${String(count(build.finished?.practiceSolves))} practice solves, reading ${readings.join(", ") || "none"}`;
   });
   return [
     {
@@ -567,7 +620,7 @@ function rowsOf(log: Index): Row[] {
         `${plural(log.solves.length - done.length, "solve")} never finished`,
       ],
     },
-    { id: "F", title: "sessions and the harness chain", lines: sessions },
+    { id: "F", title: "sessions and the harness chain", lines: [...campaignOf(log), ...sessions] },
   ];
 }
 
@@ -582,6 +635,7 @@ export function overview(events: readonly LogEvent[]): Overview {
       ...harnessTriggers(log),
       ...comparisonTriggers(log),
       ...solveTriggers(log),
+      ...winTriggers(log),
       ...reviewTriggers(log),
     ],
   };

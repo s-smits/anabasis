@@ -58,9 +58,12 @@ export function lanesOf(markdown: string): Lane[] {
     if (!HEADING.test(heading)) return [];
     const [, number = "", title = ""] = HEADING.exec(heading) ?? [];
     const body = rest.join("\n").trim();
-    const startsFrom = body.split("\n\n").find((paragraph) => paragraph.startsWith("Starts from"));
-    if (startsFrom === undefined) throw new Error(`lane ${number} has no paragraph beginning "Starts from"`);
-    const named = [...startsFrom.replaceAll("\n", " ").matchAll(TRIGGER)];
+    const paragraph = body.split("\n\n").find((each) => each.startsWith("Starts from"));
+    if (paragraph === undefined) throw new Error(`lane ${number} has no paragraph beginning "Starts from"`);
+    // Read as one line, so a reflow cannot move a lane's standing: one split "It runs alone" over
+    // two lines and lane 19 read as not isolated (2026-10-10).
+    const startsFrom = paragraph.replaceAll("\n", " ");
+    const named = [...startsFrom.matchAll(TRIGGER)];
     return {
       number: Number(number),
       title,

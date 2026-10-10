@@ -14,6 +14,8 @@ import { overview, rendered } from "../tools/wri/read.ts";
 
 const START = Date.parse("2026-10-09T12:00:00Z");
 const REPORTED = "comparison.reported";
+const PROPOSED = "task.proposed";
+const BUILD_STARTED = "build.started";
 const HELD = ["v1", "v2", "v3", "v4"];
 const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
 /** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
@@ -31,9 +33,11 @@ const REPORT = {
   settled: null,
 };
 const events: LogEvent[] = [];
-const record = (kind: EventKind, data: JsonObject) => {
-  events.push({ at: new Date(START + events.length * 1_000).toISOString(), kind, data });
+/** A writer of events onto `log`, a second apart from the start. */
+const appendTo = (log: LogEvent[]) => (kind: EventKind, data: JsonObject) => {
+  log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
 };
+const record = appendTo(events);
 
 const condition = (task: string, harness: string): Condition => ({
   contract: "c1",
@@ -109,11 +113,11 @@ record("checker.read", {
   rows: [{ id: "check-a", instrument: "authored", passed: 3, refused: 1, caught: 1, named: 1 }],
 });
 for (const version of ["t1", ...HELD]) {
-  record("task.proposed", { version });
+  record(PROPOSED, { version });
   record("task.gate", { version, gate: 1, outcome: "passed" });
 }
 record("task.state", { version: "t1", state: "released" });
-record("build.started", { session: "b-1", parent: "hp", tasks: ["t1"] });
+record(BUILD_STARTED, { session: "b-1", parent: "hp", tasks: ["t1"] });
 record("build.call", { session: "b-1", tool: "write_file", args: { path: "agent/tools.mjs" } });
 record("build.call", { session: "b-1", tool: "practice", args: { task: "t1" } });
 // The practice solve runs under the state as it then stood, hb; the edit after it makes hc.
@@ -176,7 +180,7 @@ describe("the whole-run investigation's reader", () => {
     expect(lines).toContain(
       "billed dollars: solver 9.00, builder 2.00, examiner 0.00, referee 0.00, diagnoser 0.00",
     );
-    expect(lines).toContain("b-1: hp > hc, ended finished, 0 practice solves, reading no-step");
+    expect(lines).toContain("b-1: hp > hc, ended finished, 0 practice solves, reading b-1 no-step");
   });
 
   it("gives every trigger the lane its table names", () => {
@@ -290,7 +294,7 @@ describe("the whole-run investigation's reader", () => {
   it("names the ties between valid answers, and a task with no valid answer on record after two comparisons", () => {
     // A fifth held-out task, which no solve on record has answered: the round's new harness
     // answered the other four, and a task with a valid answer on record is feasible for good.
-    record("task.proposed", { version: "v5" });
+    record(PROPOSED, { version: "v5" });
     record("task.gate", { version: "v5", gate: 1, outcome: "passed" });
     // Two comparisons of the reference harness with the starter. Both answer v1 to v4 validly
     // every time, and neither gives v5 an answer, though no solve of it is cut at a limit.
@@ -400,11 +404,9 @@ describe("the reader on a log written before the plan after the v1 review", () =
   // draw, a stronger side's solves and reports that name no setting. The reader reads it as
   // history: its tasks are held out, and none of its old kinds starts a lane.
   const log: LogEvent[] = [];
-  const put = (kind: EventKind, data: JsonObject) => {
-    log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
-  };
+  const put = appendTo(log);
   for (const version of ["t2", "a1"]) {
-    put("task.proposed", { version });
+    put(PROPOSED, { version });
     for (const gate of [1, 2, 3, 4]) put("task.gate", { version, gate, outcome: "passed", controls: "d" });
   }
   put("anchor.drawn", { tasks: ["a1"] });
@@ -412,7 +414,7 @@ describe("the reader on a log written before the plan after the v1 review", () =
   put("condition.recorded", { id: conditionId(strong), condition: requireJsonValue(strong) });
   put("solve.started", { solve: "w1", condition: conditionId(strong), limits: { wallSeconds: 100 } });
   put("solve.finished", { solve: "w1", ending: { outcome: "pass" }, seconds: 50 });
-  put("build.started", { session: "b-1", parent: "hp", tasks: [] });
+  put(BUILD_STARTED, { session: "b-1", parent: "hp", tasks: [] });
   put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
   put("task.state", { version: "t2", state: "admitted", session: "b-1" });
   put("anchor.scored", { session: "b-1", reading: "held", wins: 0, losses: 0, ties: 1 });
@@ -441,9 +443,7 @@ describe("the reader on a log written before the plan after the v1 review", () =
 
 describe("the reader of a round compared with another harness than its session started from", () => {
   const log: LogEvent[] = [];
-  const put = (kind: EventKind, data: JsonObject) => {
-    log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
-  };
+  const put = appendTo(log);
   /** One solve of v1 under `harness` for the round's comparison, ended as `ending` says. */
   const made = (id: string, harness: string, ending: JsonObject, seconds: number, cpu?: JsonObject) => {
     const ran = condition("v1", harness);
@@ -463,11 +463,11 @@ describe("the reader of a round compared with another harness than its session s
       ...keyIfDefined("cpu", cpu),
     });
   };
-  put("task.proposed", { version: "v1" });
+  put(PROPOSED, { version: "v1" });
   put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
   // The session goes on from the harness an earlier one left, hx. Its comparison is made against
   // the reference harness, href.
-  put("build.started", { session: "r-1", parent: "hx", tasks: [] });
+  put(BUILD_STARTED, { session: "r-1", parent: "hx", tasks: [] });
   put("build.finished", { session: "r-1", ended: "finished", harness: "hy", changed: true });
   const terms = { session: "r-1", old: "href", fresh: "hy", starter: "hbase", setting: SETTING };
   put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
@@ -542,9 +542,7 @@ describe("the reader of the load a comparison's solves started under", () => {
    *  and the host's cores where the log holds them. */
   const read = (rows: readonly (readonly [string, readonly number[], number?])[]) => {
     const log: LogEvent[] = [];
-    const put = (kind: EventKind, data: JsonObject) => {
-      log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
-    };
+    const put = appendTo(log);
     put("task.proposed", { version: "v1" });
     put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
     for (const [session, loads, cores] of rows) {
@@ -618,9 +616,7 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
   // t-10 on 10 October: every solve told 3 of the model's turns, every finished solve's CPU 0, and
   // one rejection blocked by all four checks.
   const log: LogEvent[] = [];
-  const put = (kind: EventKind, data: JsonObject) => {
-    log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
-  };
+  const put = appendTo(log);
   const made = (id: string, harness: string, ending: JsonObject) => {
     const ran = condition("v1", harness);
     put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
@@ -641,9 +637,9 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
   };
   put("contract.frozen", { contract: "c1", checks: "k1" });
   put("checker.read", { contract: "c1", checks: "k1", faults: [], rows: [] });
-  put("task.proposed", { version: "v1" });
+  put(PROPOSED, { version: "v1" });
   put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
-  put("build.started", { session: "t-1", parent: "hp", tasks: [] });
+  put(BUILD_STARTED, { session: "t-1", parent: "hp", tasks: [] });
   put("build.finished", { session: "t-1", ended: "finished", harness: "hc", changed: true });
   const terms = { session: "t-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
   put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
@@ -678,9 +674,7 @@ describe("the reader of misses at a limit, by comparison and side", () => {
   /** A log of one comparison, g-1 of hp against hc, whose solves each end as a row says. */
   const read = (endings: readonly (readonly [string, JsonObject, number])[]) => {
     const log: LogEvent[] = [];
-    const put = (kind: EventKind, data: JsonObject) => {
-      log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
-    };
+    const put = appendTo(log);
     put("task.proposed", { version: "v1" });
     put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
     const terms = { session: "g-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
@@ -742,7 +736,7 @@ describe("the reader of the campaign's clock", () => {
       [0, "solve.finished", { solve: `p${String(index)}`, ending: { outcome: "pass" }, seconds }],
     ]);
     const log = timed([
-      [0, "build.started", { session: "b-1", parent: "hp", tasks: [] }],
+      [0, BUILD_STARTED, { session: "b-1", parent: "hp", tasks: [] }],
       ...practice,
       [
         30 * stretch,
@@ -753,7 +747,7 @@ describe("the reader of the campaign's clock", () => {
       [31 * stretch, "build.finished", { session: "b-1", ended: "finished", harness: "hc" }],
       [51 * stretch, "exam.started", { session: "x-1" }],
       [52 * stretch, "exam.turn", { session: "x-1", turn: 1, usage: { output: 300 } }],
-      [80 * stretch, "task.proposed", { version: "v1", session: "x-1" }],
+      [80 * stretch, PROPOSED, { version: "v1", session: "x-1" }],
       [80 * stretch, "exam.turn", { session: "x-1", turn: 2, usage: { output: 118_906 } }],
       [81 * stretch, "exam.finished", { session: "x-1", ended: "finished" }],
     ]);
@@ -779,10 +773,10 @@ describe("the reader of the campaign's clock", () => {
 
   it("puts the hours by role beside the dollars, a cut session to its stop and a session beside a comparison once", () => {
     const log = timed([
-      [0, "build.started", { session: "b-1", parent: "hp", tasks: [] }],
+      [0, BUILD_STARTED, { session: "b-1", parent: "hp", tasks: [] }],
       // A stop cut b-1, and the campaign resumed half an hour later.
       [60, "campaign.ended", {}],
-      [90, "build.started", { session: "b-2", parent: "hp", tasks: [] }],
+      [90, BUILD_STARTED, { session: "b-2", parent: "hp", tasks: [] }],
       [150, "build.finished", { session: "b-2", ended: "finished", harness: "hc" }],
       [150, "comparison.started", { session: "g-1", old: "hp", fresh: "hc", tasks: [] }],
       [160, "exam.started", { session: "x-1" }],
@@ -791,6 +785,120 @@ describe("the reader of the campaign's clock", () => {
     ]);
     expect(overview(log).rows[0]?.lines).toContain(
       "hours: builder 2.0 (57%), comparisons 1.0 (29%), examiner 0.5 (14%), between moves 0.5 (14%), of 3.5",
+    );
+  });
+});
+
+describe("the reader of comparisons the campaign command named apart from its Builder sessions", () => {
+  // The shape of the #107 campaigns: a comparison is a session of its own (`g-N`), one session's
+  // harness is measured twice, and a later session leaves the same harness unchanged.
+  const log: LogEvent[] = [];
+  const put = appendTo(log);
+  /** One solve of `task` under `harness` for comparison `measuredIn`, in `seconds` of a hundred. */
+  const made = (task: string, harness: string, passed: boolean, measuredIn: string, seconds = 2) => {
+    const ran = condition(task, harness);
+    const id = `${measuredIn}-${task}-${harness}`;
+    put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+    put("solve.started", {
+      solve: id,
+      condition: conditionId(ran),
+      limits: { wallSeconds: 100 },
+      comparison: measuredIn,
+    });
+    put("solve.call", { solve: id, turn: 1, tool: "submit", isError: false });
+    put("solve.finished", {
+      solve: id,
+      ending: passed ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+      seconds,
+      responseModels: ["m-1"],
+    });
+    put("verdict", {
+      solve: id,
+      task,
+      ...(passed ? { kind: "pass" } : { kind: "fail", blocking: ["check-a"] }),
+    });
+  };
+  /** A comparison of `hc` against `hp` on `tasks`, each row a task and whether each side passed it. */
+  const compared = (session: string, rows: readonly (readonly [string, boolean, boolean])[]) => {
+    const terms = { session, old: "hp", fresh: "hc", starter: "hbase", setting: SETTING };
+    const tasks = rows.map(([task]) => task);
+    put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks });
+    for (const [task, old, fresh] of rows) {
+      made(task, "hp", old, session, 50);
+      made(task, "hc", fresh, session);
+    }
+    put("campaign.move", { move: "compare" });
+    put(REPORTED, {
+      ...REPORT,
+      ...terms,
+      solves: 1,
+      level: 0.1,
+      tasks: rows.length,
+      versions: tasks,
+      reading: "no-step",
+    });
+  };
+  put("campaign.opened", { budget: { dollars: 50, reserve: 1 } });
+  put("campaign.ended", { ending: "exam" });
+  put("checker.read", {
+    contract: "c1",
+    checks: "k1",
+    faults: [],
+    rows: [
+      { id: "check-a", instrument: "computed", passed: 3, refused: 1, caught: 1, named: 1 },
+      { id: "check-b", instrument: "computed", passed: 3, refused: 1, caught: 1, named: 1 },
+    ],
+  });
+  for (const version of ["t1", "v1", "v2"]) {
+    put(PROPOSED, { version });
+    put("task.gate", { version, gate: 1, outcome: "passed" });
+  }
+  put(BUILD_STARTED, { session: "b-1", parent: "hp", tasks: ["t1"] });
+  put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
+  put("campaign.move", { move: "build" });
+  // g-1: the reference fails v1 and the new harness passes it. g-2: both pass v1, which no
+  // comparison of g-2's lost, and the reference fails v2 where the new harness fails it too.
+  compared("g-1", [["v1", false, true]]);
+  compared("g-2", [
+    ["v1", true, true],
+    ["v2", false, false],
+  ]);
+  put(BUILD_STARTED, { session: "b-2", parent: "hc", tasks: ["t1"] });
+  put("build.finished", { session: "b-2", ended: "finished", harness: "hc", changed: false });
+  put("campaign.move", { move: "build" });
+  put("campaign.ended", { ending: "stop" });
+  const { rows, triggers } = overview(log);
+  const said = (name: keyof typeof TRIGGERS) => triggers.find((trigger) => trigger.name === name)?.detail;
+  const lines = rows.flatMap((row) => row.lines);
+
+  it("gives a session the readings of every comparison of the harness it left, and none to one that left it as it was", () => {
+    expect(lines).toContain(
+      "b-1: hp > hc, ended finished, 0 practice solves, reading g-1 no-step, g-2 no-step",
+    );
+    expect(lines).toContain("b-2: hc > hc, ended finished, 0 practice solves, reading none");
+  });
+
+  it("reads a quick win only against a task its own comparison lost under the reference", () => {
+    expect(said("WIN AT A SMALL WALL SHARE")).toBe(
+      "b-1: 1 passed solves of tasks the reference harness failed, in few calls",
+    );
+  });
+
+  it("names each comparison's won tasks by solve, and says nothing of a comparison that won none", () => {
+    expect(triggers.filter((trigger) => trigger.name === "WINS").map((trigger) => trigger.detail)).toEqual([
+      "g-1: 1 of 1 tasks won; passed under the new harness: g-1-v1-hc; failed under the reference: g-1-v1-hp",
+    ]);
+  });
+
+  it("names a check that refused no answer, beside the answers the others refused", () => {
+    expect(said("REFUSALS BY CHECK")).toBe(
+      "1 of 2 checks refused none of 6 answers: check-b; the rest: check-a 3",
+    );
+  });
+
+  it("gives the campaign's moves, its endings and its billed dollars against its budget", () => {
+    expect(lines).toContain(
+      "campaign: moves build 2, compare 2; ended exam at event 1, then stop at event 51; billed 0.00 of 50 dollars",
     );
   });
 });

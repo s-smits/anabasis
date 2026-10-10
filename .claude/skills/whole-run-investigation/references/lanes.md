@@ -130,9 +130,10 @@ labels it; lane 8 names those.
 verdict with the refusing checks; `wall-ended`, `context-ended` and `no-answer` have none. Recount
 any figure a report quotes from these rows before a rate is read.
 
-**F. sessions and the harness chain.** For each Builder session: its parent, the digest it left,
-how it ended, whether it changed anything, whether what it left opens, its practice solves and its
-round's reading. For each Examiner session: how it ended, what it proposed and what stood
+**F. sessions and the harness chain.** The campaign command's moves, its endings and its billed
+dollars against its budget. For each Builder session: its parent, the digest it left, how it ended,
+whether it changed anything, whether what it left opens, its practice solves and the reading of each
+comparison of the harness it left, which a comparison names by its own session (`g-N`). For each Examiner session: how it ended, what it proposed and what stood
 feasible. A session that started and never finished is refused by its round and is named here.
 
 ## Lanes 1–30
@@ -141,16 +142,19 @@ feasible. A session that started and never finished is refused by its round and 
 
 **1. Verdict chain: what a pass observes.**
 
-Starts from `INSTRUMENT AUTHORED (lane 1)` and from `PASSES UNREAD (lane 1)`, which is standing:
-no reviewer reads a pass, so every campaign with a pass leaves this open.
+Starts from `INSTRUMENT AUTHORED (lane 1)`, `REFUSALS BY CHECK (lane 1)` and from
+`PASSES UNREAD (lane 1)`, which is standing: no reviewer reads a pass, so every campaign with a pass
+leaves this open.
 
 The question is what a pass establishes. The Referee reads refusals only, so a check that observes
 too little is seen by nobody: v1's passes held up, 5 vetoes in 1,411, but v1 had a Judge reading
-them and v2 has none. For each check in the last `checker.read`, read its row (instrument, answers
-passed and refused, reject controls caught) beside the brief's entry for it in the campaign's
+them and v2 has none. For each check in the last `checker.read`, read its row (instrument, the
+controls it passed and refused, the reject controls naming it that it caught: counts of controls,
+not of the campaign's answers) and the campaign's answers it refused, which `REFUSALS BY CHECK`
+counts and which names the checks that refused none, beside the brief's entry for it in the campaign's
 staged `checks/brief.json`: which fields of the answer it declares, which public inputs, which
 rules it cites, and which tool it names. Then take a sample of passes, spread over families and
-over both harnesses, and for each say from the published rules alone what the answer would have to
+over both harnesses and weighted to the checks that refused none, and for each say from the published rules alone what the answer would have to
 get wrong to still pass: a field no check reads, a rule no check cites, a tolerance wider than the
 rule's. An `authored` instrument computes with its author's own code, and what its pass means is
 that the author's computation agreed. With no pass in the log — a campaign stopped before its first
@@ -504,10 +508,12 @@ task content in the harness.
 **19. Trace challenge.**
 
 Starts from `WIN AT A SMALL WALL SHARE (lane 19)`, and only when lane 11, 15 or 18 suspects a
-shortcut. It runs alone.
+shortcut.
+`WINS (lane 19)` lists each comparison's won tasks by solve, as the comparison paired them, and
+starts nothing by itself. It runs alone.
 
 The question is where the deciding value came from. Take the wins, the tasks the reference
-harness failed and the child passed, and for each open the child's solve: `solve.turn` and `solve.call` in
+harness failed and the child passed, which `WINS` names by solve, and for each open the child's solve: `solve.turn` and `solve.call` in
 order. Show the step at which the answer's deciding value first appears and what produced it: a
 tool's computation from the task's public input, the solver's own working, a line of the guide,
 or nothing in the trace at all. A value that arrives whole in the first turn, on a task the
@@ -645,8 +651,9 @@ none, and the operator may send it back to an earlier one. So a chain of session
 from the last, all compared with the same reference, is the plan's design and no fault. A step
 is repeated once on fresh solves before anything is promoted: `STEP NOT REPEATED` names a step
 no second comparison of the same two harnesses has followed. A second step of another child
-against the same reference is another harness, not a repeat. Read the stop rule from the
-command's output: three moves in a row that could have shown a gain, with none, stop the
+against the same reference is another harness, not a repeat. Row F's `campaign` line gives the
+moves the command made, how it ended and its billed dollars against its budget; the stop rule is
+that three moves in a row that could have shown a gain, with none, stop the
 campaign. A changed harness counts once against one reference, by the last comparison of the two
 under the campaign's setting, where it left room; a repeat does not count again. A campaign with no held-out task measures nothing at all: eight rounds on the
 truss pack ran so on 8 October, for over $220, and each could only read that no task was

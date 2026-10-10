@@ -178,6 +178,7 @@ const OPTIONS = {
   target: COMPARISON_OPTIONS.target,
   solves: { type: "string" },
   level: { type: "string" },
+  trigger: { type: "string" },
   defects: { type: "string" },
   minutes: { type: "string" },
   turns: { type: "string" },
@@ -306,7 +307,8 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
     // counted no-steps of two levels in one row. A campaign whose comparisons already ran at a
     // level is held to that one, as the setting is held to its first solves (`firstRecord`).
     terms: {
-      level: levelOf(events, was),
+      level: values.level ?? pinned(events, was, "level"),
+      trigger: values.trigger ?? pinned(events, was, "trigger"),
       ...was?.terms,
       ...Object.fromEntries(
         TERMS.flatMap((term) => (values[term] === undefined ? [] : [[term, values[term]]])),
@@ -364,15 +366,26 @@ function nextId(events: readonly LogEvent[], prefix: string): string {
   return `${prefix}-${String(Math.max(0, ...taken) + 1)}`;
 }
 
-/** The level a campaign's comparisons are read at where no command names one: the record's, else
- *  the one its comparisons on record began under, else this tree's default, as a string, since a
- *  term is a flag's value. */
-function levelOf(events: readonly LogEvent[], was: Opening | null): string {
-  const recorded = was?.terms.level;
+/**
+ * The level, or the trigger, a campaign reads its comparisons by where no command names one: the
+ * record's, else the one its comparisons on record began under (the level only), else this tree's
+ * default, as a string, since a term is a flag's value. A campaign whose comparisons began before
+ * the two-stage rule, with no trigger on record, is refused the default: until 10 October each
+ * reading cleared the level by itself, and read on under this tree's rule its pinned level would
+ * be the summed one (0.20 summed is a false promotion of equal harnesses 6.4% an attempt, where
+ * 0.10 is 3.4%). The operator names both terms once, and the campaign keeps them.
+ */
+function pinned(events: readonly LogEvent[], was: Opening | null, term: "level" | "trigger"): string {
+  const recorded = was?.terms[term];
   if (isString(recorded)) return recorded;
   const began = events.findLast(({ kind, data }) => kind === "comparison.started" && isNumber(data.level))
     ?.data.level;
-  return isNumber(began) ? String(began) : COMPARISON_OPTIONS.level.default;
+  if (term === "trigger" && isNumber(began)) {
+    throw new Error(
+      `the campaign's comparisons began at --level ${String(began)} under the rule of one reading at a time, and the step and its repeat are read together since 10 October: name --level and --trigger once for it (the plan's are --level ${COMPARISON_OPTIONS.level.default} --trigger ${COMPARISON_OPTIONS.trigger.default}), and the opening keeps them`,
+    );
+  }
+  return isNumber(began) ? String(began) : COMPARISON_OPTIONS[term].default;
 }
 
 /** The flags of a comparison that began, as its start holds them: it goes on under its own terms. */
@@ -729,6 +742,7 @@ export async function harnessBuilder(
       {
         unprepared: pack?.tasks.some((task) => !states.has(taskVersion(pack.pack(task)))) ?? false,
         level: Number(values.level ?? COMPARISON_OPTIONS.level.default),
+        trigger: Number(values.trigger ?? COMPARISON_OPTIONS.trigger.default),
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],
         admits: admitsOf(values),

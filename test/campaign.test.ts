@@ -43,7 +43,7 @@ const EARLIER = `${NAME}-earlier`;
 const SERVED = "claude/claude-opus-5-5";
 /** A campaign whose recorded setting names the tasks to score. */
 const RECORDED = `${NAME}-recorded`;
-const ASKED = { solves: 2, level: 0.2 };
+const ASKED = { solves: 2, level: 0.1, trigger: 0.25 };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
   family: "fixture",
@@ -536,7 +536,7 @@ describe("a campaign", () => {
     // limit, and a harness no comparison measured is refused the word alone.
     const refused = promote("--harness", digest, "--yes");
     expect(refused).toContain(
-      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not read a step twice against the reference harness under the campaign's setting`,
+      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not read a step and its repeat against the reference harness under the campaign's setting`,
     );
     expect(refused).toContain("not promoted: a step is promoted once it was read again");
     expect(promotions()).toEqual([]);

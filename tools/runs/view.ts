@@ -147,6 +147,7 @@ export function view(args: readonly string[]): void {
     planOf(events, {
       unprepared: !events.some(({ kind }) => kind === "task.proposed"),
       level: asked.comparison.level,
+      trigger: asked.comparison.trigger,
       target: asked.comparison.target,
       pastStop: asked.comparison.pastStop,
     }),

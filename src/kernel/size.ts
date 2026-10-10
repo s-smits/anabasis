@@ -48,7 +48,10 @@ export interface Result {
 /** How a comparison is sized: the solves of a task under each harness, and the sign test's level. */
 export interface Asked {
   readonly solves: number;
+  /** The level the step and its repeat clear together, and the one a first reading clears to buy
+   *  the repeat (`src/builder/move.ts`). */
   readonly level: number;
+  readonly trigger: number;
 }
 
 /** The true shares of untied tasks won that a size's power is stated for: the plan's three. */
@@ -96,6 +99,45 @@ export function chanceOfStep(tasks: number, each: Each, level: number): number {
   return Math.min(1, chance);
 }
 
+/** The chance of each tally, wins and losses, that one comparison of `tasks` reads in the model. */
+function tallies(tasks: number, each: Each): Map<string, { wins: number; losses: number; chance: number }> {
+  const untied = each.win + each.loss;
+  const found = new Map<string, { wins: number; losses: number; chance: number }>();
+  if (tasks < 1 || untied <= 0) return found;
+  const share = each.win / untied;
+  binomial(tasks, Math.min(1, untied)).forEach((ofCount, count) => {
+    binomial(count, share).forEach((ofWins, wins) => {
+      const chance = ofCount * ofWins;
+      if (chance > 0) {
+        found.set(`${String(wins)}-${String(count - wins)}`, { wins, losses: count - wins, chance });
+      }
+    });
+  });
+  return found;
+}
+
+/**
+ * The chance that a harness is promoted on two comparisons of `tasks` in the model: the first
+ * reads a tally at or under `trigger` with more wins than losses, which buys the repeat, and the
+ * two read together clear `level` (`src/builder/move.ts`, `readTwice`). The two draws are
+ * independent, as fresh solves are. At sixteen tasks of which three in four tie, a harness that
+ * wins 96% of the tasks it unties is promoted 83% of the time at 0.25 and 0.10, where two readings
+ * at 0.20 each gave 55%; two equal harnesses 3.4% where it was 0.9% (10 October).
+ */
+export function chanceOfPromotion(tasks: number, each: Each, trigger: number, level: number): number {
+  const once = tallies(tasks, each);
+  let chance = 0;
+  for (const first of once.values()) {
+    if (first.wins + first.losses === 0 || first.wins <= first.losses) continue;
+    if (signP(first.wins, first.losses) > trigger) continue;
+    for (const second of once.values()) {
+      const [wins, losses] = [first.wins + second.wins, first.losses + second.losses];
+      if (wins > 0 && signP(wins, losses) <= level) chance += first.chance * second.chance;
+    }
+  }
+  return Math.min(1, chance);
+}
+
 /**
  * The plan's power: the chance that a comparison of `untied` tasks, none of them tied, reads a step
  * at `level` when the new harness truly wins `share` of them. At a share of one half the two
@@ -122,7 +164,7 @@ export function taskChances(rates: { readonly old: number; readonly fresh: numbe
   };
 }
 
-/** The smallest results that clear `level` on at most `tasks` scored tasks: at 0.20, 3-0, 4-1, 6-2
+/** The smallest results that clear `level` on at most `tasks` scored tasks: at 0.25, 2-0, 4-1, 5-2
  *  and 7-3 as far as they fit; at 0.10, 4-0, 6-1, 7-2 and 9-3. */
 export function clearing(tasks: number, level: number): Result[] {
   const results: Result[] = [];
@@ -143,21 +185,26 @@ export function clearing(tasks: number, level: number): Result[] {
  * campaign really has is what its first comparisons measure (the review of 2026-10-09, finding 5).
  */
 export function sizeLines(tasks: number, asked: Asked): string[] {
-  const { solves, level } = asked;
-  const results = clearing(tasks, level);
+  const { solves, level, trigger } = asked;
+  const first = clearing(tasks, trigger);
   const scored = `${tasks === 0 ? "no held-out task" : plural(tasks, "held-out task")} can be scored`;
-  if (results.length === 0) {
+  if (first.length === 0) {
     return [
-      `${scored}, and at --level ${String(level)} a step takes ${String(sweepOf(level))}, all won: this comparison cannot read a step`,
+      `${scored}, and at --trigger ${String(trigger)} a first reading takes ${String(sweepOf(trigger))}, all won: this comparison cannot buy a repeat`,
     ];
   }
-  const named = results.slice(0, NAMED).map(({ wins, losses }) => `${String(wins)}-${String(losses)}`);
+  const said = (results: readonly Result[]) =>
+    results
+      .slice(0, NAMED)
+      .map(({ wins, losses }) => `${String(wins)}-${String(losses)}`)
+      .join(", ");
   const percent = (chance: number) => `${String(Math.round(100 * chance))}%`;
   const [low, mid, high] = SHARES.map((share) => percent(power(tasks, share, level)));
+  const worked = taskChances(WORKED, solves);
   const equal = taskChances({ old: WORKED.old, fresh: WORKED.old }, solves);
   return [
-    `${scored}; at --level ${String(level)} the smallest results that clear are ${named.join(", ")}`,
-    `at ${plural(solves, "solve")} a side, with the reference harness valid half the time and the new one three times in four, a step would be read ${percent(chanceOfStep(tasks, taskChances(WORKED, solves), level))} of the time; two equal harnesses valid half the time tie on ${percent(1 - equal.win - equal.loss)} of tasks and read a step ${percent(chanceOfStep(tasks, equal, level))} of the time`,
-    `were no task to tie, a harness that truly wins 65% of them would be read a step ${String(low)} of the time, one that wins 75%, ${String(mid)}, and one that wins 85%, ${String(high)}`,
+    `${scored}; at --trigger ${String(trigger)} the smallest results that buy the repeat are ${said(first)}, and at --level ${String(level)} the step and its repeat together clear at ${said(clearing(2 * tasks, level))}`,
+    `at ${plural(solves, "solve")} a side, with the reference harness valid half the time and the new one three times in four, a first reading would buy the repeat ${percent(chanceOfStep(tasks, worked, trigger))} of the time and the two would promote ${percent(chanceOfPromotion(tasks, worked, trigger, level))}; two equal harnesses valid half the time tie on ${percent(1 - equal.win - equal.loss)} of tasks and would be promoted ${percent(chanceOfPromotion(tasks, equal, trigger, level))} of the time`,
+    `were no task to tie, a harness that truly wins 65% of them would be read a step at --level ${String(level)} on one comparison ${String(low)} of the time, one that wins 75%, ${String(mid)}, and one that wins 85%, ${String(high)}`,
   ];
 }

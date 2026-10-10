@@ -6,12 +6,18 @@
  * (`pairings`), and in a pair a valid answer beats one that is not. Two valid answers are even,
  * and so are two that are not. The harness that wins more pairs wins the task, and otherwise the
  * task is a tie. A tie says nothing and leaves the test. The step is read off a one-sided sign
- * test of wins against losses. At the level of 0.20 its smallest wins are 3-0, 4-1, 6-2 and 7-3;
- * 2-0 and 3-1 clear nothing. The level is the caller's and is recorded with the comparison's
- * terms, so a comparison made at the plan's 0.10 still reads as it did. 0.20 is the default since
- * 10 October: at 0.10 the smallest win was 4-0, and three campaigns of 9 and 10 October stopped
- * on 3-0-3, 3-0-5 and 3-0-7, one win short of a step each; 2-0 stays out because the reference
- * against itself read 2-0-5 (`docs/plan.md`, Statistical power and cost).
+ * test of wins against losses, read in two stages since 10 October (`src/builder/move.ts`): a
+ * comparison whose tally is at or under the trigger, 0.25 by default (2-0, 4-1, 5-2, 7-3), buys
+ * the repeat and promotes nothing, and the step and its repeat read together, their wins and
+ * losses summed, clear the level, 0.10 by default (4-0, 6-1, 7-2, 9-3). One comparison's own
+ * reading, `step`, is its tally against the level alone. For most of 10 October the default was
+ * 0.20 on each reading by itself (#175): at 0.10 three campaigns of 9 and 10 October had stopped
+ * on 3-0-3, 3-0-5 and 3-0-7, one win short, and at 0.20 on sixteen tasks of which three in four
+ * tie a harness that wins 96% of the untied was promoted 55% of the time, two readings at 0.20
+ * each; read in two stages it is 83%, and two equal harnesses 3.4% an attempt where it was 0.9%.
+ * The level and the trigger are the caller's and recorded with the campaign's opening, so a
+ * campaign reads by its own rule whatever the tree's default (`docs/plan.md`, Statistical power
+ * and cost).
  *
  * How each ending of a solve enters a pair (`solve.ts` names the endings; the table is the plan's,
  * `docs/plan.md`, Phase 2):

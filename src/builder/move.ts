@@ -4,6 +4,7 @@
  * says of a step, a budget and a full-limit reading; and a move in one line. Split from
  * `decide.ts` on 10 October, when that file passed 800 lines.
  */
+import { signP } from "../kernel/compare.ts";
 import { validAt } from "../kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
@@ -65,9 +66,39 @@ export const toBudget = (modelTurns: number | null, why: string): Decided => ({
 });
 export const short = (digest: string): string => digest.slice(0, 8);
 
-/** Whether the last two of a pair's comparisons both read a step: a step read again. */
-export function readTwice(reports: readonly JsonObject[]): boolean {
-  return reports.length >= 2 && reports.slice(-2).every(({ reading }) => reading === STEP);
+/** A report's tally, where it holds one. */
+function tallyOf(report: JsonObject): { readonly wins: number; readonly losses: number } | null {
+  const scored = asRecord(report.scored);
+  return scored !== null && isNumber(scored.wins) && isNumber(scored.losses)
+    ? { wins: scored.wins, losses: scored.losses }
+    : null;
+}
+
+/**
+ * Whether the last two of a pair's comparisons, read together, clear `level`: the step and its
+ * repeat as one sign test, their wins and losses summed, ties dropped. Until 10 October each had
+ * to read a step by itself, which at 0.20 took three wins and no loss twice; on sixteen tasks of
+ * which three in four tie that came through 8% of the time for a harness that wins 96% of the
+ * tasks it unties, and the operator found the rule too strict ("2-0-4 should climb"). Read
+ * together at 0.10 a 2-0 and a 2-0 are a 4-0 (p 0.0625): 31% at a win rate of 0.75 where it was
+ * 14%, and a false promotion of two equal harnesses 3.4% an attempt where it was 0.9%, by exact
+ * enumeration. Every untied task of either comparison is a fresh solve, so the null holds.
+ */
+export function readTwice(reports: readonly JsonObject[], level: number): boolean {
+  if (reports.length < 2) return false;
+  const tallies = reports.slice(-2).map(tallyOf);
+  const [first, second] = tallies;
+  if (first === null || second === null || first === undefined || second === undefined) return false;
+  const wins = first.wins + second.wins;
+  const losses = first.losses + second.losses;
+  return wins > 0 && signP(wins, losses) <= level;
+}
+
+/** Whether one comparison's reading buys the repeat: more wins than losses, and the sign test at
+ *  or under `trigger`, which a 2-0 clears at 0.25 and a 1-0 does not. */
+export function triggered(report: JsonObject, trigger: number): boolean {
+  const tally = tallyOf(report);
+  return tally !== null && tally.wins > tally.losses && signP(tally.wins, tally.losses) <= trigger;
 }
 
 /**

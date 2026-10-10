@@ -71,6 +71,7 @@ const OPTIONS = {
   name: { type: "string" },
   practice: { type: "string", default: String(PRACTICE) },
   level: ROUND_OPTIONS.level,
+  trigger: ROUND_OPTIONS.trigger,
   target: ROUND_OPTIONS.target,
   solves: ROUND_OPTIONS.solves,
   tasks: ROUND_OPTIONS.tasks,
@@ -231,7 +232,11 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   const awaiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
   console.log(`${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`);
   const scored = named.length > 0 ? named.length : Math.min(target, sets.held.length - awaiting.length);
-  const asked = { solves: Number(values.solves), level: Number(values.level) };
+  const asked = {
+    solves: Number(values.solves),
+    level: Number(values.level),
+    trigger: Number(values.trigger),
+  };
   for (const line of [...sizeLines(scored, asked), ...awaitingLines(campaign)]) console.log(line);
   if (named.length === 0) return 0;
 

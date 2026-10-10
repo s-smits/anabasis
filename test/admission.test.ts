@@ -38,6 +38,7 @@ const WANTED: Wanted = {
   target: 12,
   solves: 2,
   level: 0.1,
+  trigger: 0.25,
   builds: true,
   cap: { dollars: 600, reserve: 10 },
   restarted: [],
@@ -243,7 +244,7 @@ describe("whether a comparison may start", () => {
       refusals: [],
       notes: [
         "4 held out · 1 released for practice · 4 to score",
-        ...sizeLines(4, { solves: 2, level: 0.1 }),
+        ...sizeLines(4, { solves: 2, level: 0.1, trigger: 0.25 }),
       ],
     });
     // A target caps the scored set as few held-out tasks do.
@@ -259,35 +260,38 @@ describe("whether a comparison may start", () => {
   });
 
   // As exam-1 stood on 2026-10-08, with one task to score. It was a note then, and eight rounds ran.
-  it("refuses fewer tasks than a step takes: it could not read one", () => {
-    const small = admission({ ...SETS, held: 3 }, WANTED);
+  it("refuses fewer tasks than a first reading takes: it could not buy a repeat", () => {
+    // Since 10 October a first reading at or under the trigger buys the repeat, and 2-0 clears
+    // 0.25: one task cannot, where three could not read a step at 0.10 before.
+    const small = admission({ ...SETS, held: 1 }, WANTED);
     expect(small.refusals).toEqual([
-      "3 held-out tasks can be scored, and at --level 0.1 a step takes 4, all won: this comparison cannot read a step. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks",
+      "1 held-out task can be scored, and at --trigger 0.25 a first reading takes 2, all won: this comparison cannot buy a repeat. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks",
     ]);
-    expect(small.notes).toEqual(["3 held out · 1 released for practice · 3 to score"]);
-    expect(admission(SETS, { ...WANTED, target: 3 }).refusals).toEqual([
-      expect.stringContaining("and ask for a --target of 4 or more"),
+    expect(small.notes).toEqual(["1 held out · 1 released for practice · 1 to score"]);
+    expect(admission(SETS, { ...WANTED, target: 1 }).refusals).toEqual([
+      expect.stringContaining("and ask for a --target of 2 or more"),
     ]);
-    expect(admission(SETS, { ...WANTED, level: 0.05 }).refusals).toEqual([
-      expect.stringContaining("a step takes 5"),
+    expect(admission({ ...SETS, held: 3 }, { ...WANTED, trigger: 0.1 }).refusals).toEqual([
+      expect.stringContaining("a first reading takes 4"),
     ]);
   });
 
   it("refuses a comparison the campaign's own tie share leaves too few untied tasks of", () => {
-    // The last comparison left a quarter of its tasks untied. Twelve then leave about three.
-    const tied = { ...SETS, held: 12, untied: 0.25 };
+    // The last comparison left a tenth of its tasks untied. Twelve then leave about one, where a
+    // first reading takes two (a quarter, three, was too few at 0.10 until 10 October).
+    const tied = { ...SETS, held: 12, untied: 0.1 };
     expect(admission(tied, WANTED).refusals).toEqual([
-      "the campaign's last comparison left 25% of its tasks for this one to untie: the rest tied there, or this one's reference harness was valid on them in every solve. At that share 12 scored tasks leave about 3.0 untied, where at --level 0.1 a step takes 4, all won: this comparison could hardly read a step. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks, or change the budget so that fewer tasks tie",
+      "the campaign's last comparison left 10% of its tasks for this one to untie: the rest tied there, or this one's reference harness was valid on them in every solve. At that share 12 scored tasks leave about 1.2 untied, where at --trigger 0.25 a first reading takes 2, all won: this comparison could hardly buy a repeat. Run an Examiner session (tools/d1b/examine.ts) for more held-out tasks, or change the budget so that fewer tasks tie",
     ]);
-    expect(admission({ ...tied, untied: 0.5 }, WANTED).refusals).toEqual([]);
+    expect(admission({ ...tied, untied: 0.25 }, WANTED).refusals).toEqual([]);
     expect(admission({ ...tied, untied: null }, WANTED).refusals).toEqual([]);
     // A task held out since that comparison has no share on record and is counted whole. A round
     // that tied nine of nine left no later one able to start, whatever an Examiner session added.
     const allTied = { ...tied, untied: 0 };
-    expect(admission({ ...allTied, since: 3 }, WANTED).refusals).toEqual([
-      expect.stringContaining("12 scored tasks, the 3 held out since counted whole, leave about 3.0 untied"),
+    expect(admission({ ...allTied, since: 1 }, WANTED).refusals).toEqual([
+      expect.stringContaining("12 scored tasks, the 1 held out since counted whole, leave about 1.0 untied"),
     ]);
-    expect(admission({ ...allTied, since: 4 }, WANTED).refusals).toEqual([]);
+    expect(admission({ ...allTied, since: 2 }, WANTED).refusals).toEqual([]);
     // A comparison asked for under another setting than the log's last solves counts every task,
     // since the share on record is that other setting's, and says what the caller found of it.
     const other = admission(tied, { ...WANTED, restarted: ["the tallies on record are another setting's"] });
@@ -378,7 +382,7 @@ describe("a command about to start a comparison", () => {
     );
     expect(admitComparison(logOf([read1]), { ...asked, seats: "paid" })).toEqual([
       "4 held out · 0 released for practice · 4 to score",
-      ...sizeLines(4, { solves: 2, level: 0.1 }),
+      ...sizeLines(4, { solves: 2, level: 0.1, trigger: 0.25 }),
       "no task is released: the Builder has nothing to practise on",
     ]);
   });

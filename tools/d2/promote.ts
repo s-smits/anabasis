@@ -28,13 +28,14 @@
  * It starts no solve and calls no model.
  */
 import { unpromoted } from "#src/builder/decide.ts";
-import { planOf } from "#src/builder/opening.ts";
+import { openingOf, planOf } from "#src/builder/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { comparedAs, promoted } from "#src/kernel/reports.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { campaignLog, keptAs, starter } from "./campaign.ts";
+import { COMPARISON_OPTIONS } from "./round.ts";
 
 const OPTIONS = {
   name: { type: "string" },
@@ -68,8 +69,13 @@ export async function promoteCommand(args: readonly string[]): Promise<number> {
   for (const { comparison, against, reading } of rests) {
     console.log(`  ${comparison}: against ${said(against)}, read ${reading}`);
   }
-  // The level is none of the rule's: it reads the comparisons' own readings.
-  const plan = planOf(events, { unprepared: false, level: 0.1 });
+  // The level and the trigger are the opening's where it names them, and the defaults otherwise.
+  const terms = openingOf(events)?.terms;
+  const plan = planOf(events, {
+    unprepared: false,
+    level: Number(terms?.level ?? COMPARISON_OPTIONS.level.default),
+    trigger: Number(terms?.trigger ?? COMPARISON_OPTIONS.trigger.default),
+  });
   const why = kept.digest === least.digest ? null : unpromoted(events, plan, kept.digest);
   if (why !== null) console.log(`the plan would not promote it now: ${why}`);
   if (!values.yes) {

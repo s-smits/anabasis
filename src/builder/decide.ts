@@ -90,6 +90,7 @@ import {
   type Fresh,
   held,
   readTwice,
+  triggered,
   short,
   STEP,
   toBudget,
@@ -429,7 +430,7 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
   const step = onStep({ ...groundOf(events, plan), latest: harness });
   if (step?.move === "promote") return null;
   return step === null
-    ? `harness ${short(harness)} has not read a step twice against the reference harness under the campaign's setting`
+    ? `harness ${short(harness)} has not read a step and its repeat against the reference harness under the campaign's setting`
     : step.why;
 }
 
@@ -470,14 +471,15 @@ function onStep(ground: Ground): Decided | null {
     harness: latest,
     why: `harness ${short(latest)} ${why}`,
   });
+  const { level } = plan.wanted;
   if (turns === plan.limit) {
-    if (readTwice(pair)) return promote("read a step twice at the full limit");
+    if (readTwice(pair, level)) return promote("read a step and its repeat at the full limit");
     // The reading at the full limit of a step that was read twice under a shorter budget.
     const below = settings.findLast(
       (each) =>
         each.rest === rest &&
         each.turns !== plan.limit &&
-        readTwice(pairOf(under(ground, each.turns), latest, reference)),
+        readTwice(pairOf(under(ground, each.turns), latest, reference), level),
     );
     if (below === undefined) return null;
     const steps = pairOf(under(ground, below.turns), latest, reference).slice(-2);
@@ -486,14 +488,16 @@ function onStep(ground: Ground): Decided | null {
       return compare("a step read again is read once at the full limit, where it must not lose", "alone");
     }
     return held(last)
-      ? promote(`read a step twice at ${budgetSaid(below.turns)}, and did not lose at the full limit`)
+      ? promote(
+          `read a step and its repeat at ${budgetSaid(below.turns)}, and did not lose at the full limit`,
+        )
       : {
           move: "budget",
           modelTurns: below.turns,
-          why: `harness ${short(latest)} read a step twice at a shorter budget and lost at the full limit: it is not promoted, and the campaign returns to that budget`,
+          why: `harness ${short(latest)} read a step and its repeat at a shorter budget and lost at the full limit: it is not promoted, and the campaign returns to that budget`,
         };
   }
-  if (!readTwice(pair)) return null;
+  if (!readTwice(pair, level)) return null;
   // A reading of the two at the full limit stands whenever it was made, before the budget was
   // shortened as much as after the step, so long as it vouches for the step's tasks (`vouches`).
   const full = pairOf(under(ground, plan.limit), latest, reference).findLast((report) =>
@@ -503,12 +507,12 @@ function onStep(ground: Ground): Decided | null {
     return {
       move: "budget",
       modelTurns: plan.limit,
-      why: `harness ${short(latest)} read a step twice: before a promotion it is read once at the full limit`,
+      why: `harness ${short(latest)} read a step and its repeat: before a promotion it is read once at the full limit`,
     };
   }
   return held(full)
     ? promote(
-        `read a step twice at ${budgetSaid(turns)}, and did not lose at the full limit (comparison ${isString(full.session) ? full.session : "?"})`,
+        `read a step and its repeat at ${budgetSaid(turns)}, and did not lose at the full limit (comparison ${isString(full.session) ? full.session : "?"})`,
       )
     : build(`harness ${short(latest)} lost at the full limit and is not the reference`);
 }
@@ -633,16 +637,6 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
   const id = isString(last.session) ? last.session : "";
   const { reading } = last;
   const control = fresh === "starter";
-  if (reading === STEP && !control) {
-    const noise = noiseRead(ground);
-    const again = `comparison ${id} read a step, which is one draw: the same two harnesses are compared again on fresh solves`;
-    return noise === null
-      ? compare(`${again}, with the reference read against itself`, "noise")
-      : compare(
-          `${again}. The reference was read against itself under this setting in comparison ${noise}, on the tasks the campaign holds`,
-          "alone",
-        );
-  }
   if (reading === "check-defects") {
     return end(
       "exam",
@@ -657,6 +651,18 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
       noise: false,
       why: `comparison ${id} cleared its level and the starter was not solved on its tasks: the new harness is compared with the starter`,
     };
+  }
+  // A reading that clears the trigger buys the repeat and promotes nothing: the two are then read
+  // together (`readTwice`). Until 10 October only a step bought one.
+  if (!control && triggered(last, ground.plan.wanted.trigger)) {
+    const noise = noiseRead(ground);
+    const again = `comparison ${id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`;
+    return noise === null
+      ? compare(`${again}, with the reference read against itself`, "noise")
+      : compare(
+          `${again}. The reference was read against itself under this setting in comparison ${noise}, on the tasks the campaign holds`,
+          "alone",
+        );
   }
   // A comparison of the same two on tasks written since is the answer to a want of tasks or of
   // room, once: three in a row that still leave none end the campaign.

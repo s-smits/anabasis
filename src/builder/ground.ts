@@ -34,7 +34,7 @@ export interface Plan {
    *  the caller holds a count. */
   readonly practice?: number | undefined;
   /** The size a comparison is asked for at, as its admission reads it. */
-  readonly wanted: Pick<Wanted, "target" | "level" | "restarted">;
+  readonly wanted: Pick<Wanted, "target" | "level" | "trigger" | "restarted">;
   /** The operator's reason to go on past the stop rule, where one was given. */
   readonly pastStop?: string | undefined;
   /** Whether the campaign opened from a prompt: its exam is then drafted, and no pack holds it. */

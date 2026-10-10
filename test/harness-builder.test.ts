@@ -130,7 +130,7 @@ describe("a campaign run by its log", () => {
         patience: 2,
         seats: { builder: null, examiner: null, reviewer: null },
         // The level is pinned whether or not a command named it: this tree's default.
-        terms: { level: "0.2", practice: "2" },
+        terms: { level: "0.1", practice: "2", trigger: "0.25" },
       },
     ]);
     // The ending is the log's last event, and run again the command says it and adds nothing.
@@ -163,13 +163,23 @@ describe("a campaign run by its log", () => {
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
     };
-    await harnessBuilder([...flags, "--moves", "0"], seats);
-    expect(of(name, OPENED).at(-1)).toMatchObject({ terms: { level: "0.1", practice: "2" } });
+    // Its comparisons began under the rule of one reading at a time, so the two-stage rule's
+    // trigger is not defaulted for it: the operator names both terms once.
+    expect(harnessBuilder([...flags, "--moves", "0"], seats)).rejects.toThrow(
+      "name --level and --trigger once for it (the plan's are --level 0.1 --trigger 0.25)",
+    );
+    expect(of(name, OPENED)).toHaveLength(1);
+    await harnessBuilder([...flags, "--level", "0.1", "--trigger", "0.25", "--moves", "0"], seats);
+    expect(of(name, OPENED).at(-1)).toMatchObject({
+      terms: { level: "0.1", practice: "2", trigger: "0.25" },
+    });
     // A later command on the same tree writes no new record, and one that names the level does.
     await harnessBuilder([...flags, "--moves", "0"], seats);
     expect(of(name, OPENED)).toHaveLength(2);
     await harnessBuilder([...flags, "--level", "0.2", "--moves", "0"], seats);
-    expect(of(name, OPENED).at(-1)).toMatchObject({ terms: { level: "0.2", practice: "2" } });
+    expect(of(name, OPENED).at(-1)).toMatchObject({
+      terms: { level: "0.2", practice: "2", trigger: "0.25" },
+    });
   });
 
   it("ends on an exam whose checks wait for the operator's word, and prints the command that gives it with the pack's flags", async () => {

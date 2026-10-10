@@ -28,6 +28,7 @@ const WANTED: Wanted = {
   target: 12,
   solves: 2,
   level: 0.1,
+  trigger: 0.25,
   builds: true,
   cap: { dollars: 600, reserve: 10 },
   restarted: [],

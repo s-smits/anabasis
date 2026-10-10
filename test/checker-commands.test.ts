@@ -538,7 +538,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),
     ).toHaveLength(2);
-    expect(viewed).toContain("on 1 task, 2 solves a side at 0.2: 1 won, 0 lost, 0 tied, which reads no-step");
+    expect(viewed).toContain("on 1 task, 2 solves a side at 0.1: 1 won, 0 lost, 0 tied, which reads no-step");
     const launched = cli("launch", ...flags, "--session", "b-9", "--cap", "100", "--loaded", "--dry-run");
     const told = launched.said.split("\n").filter((line) => line.startsWith("⚠ ") || line.startsWith("· "));
     // The pack's one held-out task cannot read a step, and its checker was never read here.
@@ -551,7 +551,12 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     // campaign's own command, rehearsed and asked what it would do next, names the same.
     const tabled = viewed.slice(viewed.indexOf("the table's move\n") + "the table's move\n".length).trim();
     expect(tabled).toContain(": ");
-    expect(rehearse("--campaign", "--dry-run").said).toContain(`next · ${tabled}`);
+    // The seed's comparisons began under the rule of one reading at a time, so the campaign's
+    // command is refused the two-stage rule's defaults until the operator names both terms once.
+    expect(rehearse("--campaign", "--dry-run").said).toContain("name --level and --trigger once for it");
+    expect(rehearse("--campaign", "--level", "0.1", "--trigger", "0.25", "--dry-run").said).toContain(
+      `next · ${tabled}`,
+    );
     // Fix row F43: the launcher reads a cap as the command does, and refuses one that is no number.
     expect(
       cli("launch", ...flags, "--session", "b-9", "--cap", "$100", "--loaded", "--dry-run").said,

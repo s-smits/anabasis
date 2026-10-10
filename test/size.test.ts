@@ -2,11 +2,19 @@
 // cost") and cases small enough to work by hand. The arithmetic is exact, so the figures are too.
 import { describe, expect, it } from "bun:test";
 import { signP, sweepOf } from "../src/kernel/compare.ts";
-import { binomial, chanceOfStep, clearing, power, sizeLines, taskChances } from "../src/kernel/size.ts";
+import {
+  binomial,
+  chanceOfPromotion,
+  chanceOfStep,
+  clearing,
+  power,
+  sizeLines,
+  taskChances,
+} from "../src/kernel/size.ts";
 import { ROUND_OPTIONS } from "../tools/d2/round.ts";
 
 const LEVEL = 0.1;
-const ASKED = { solves: 2, level: LEVEL };
+const ASKED = { solves: 2, level: LEVEL, trigger: 0.25 };
 
 describe("the chance that a comparison reads a step", () => {
   it("is none without a task, under the least sweep, or when every task ties", () => {
@@ -143,26 +151,39 @@ describe("the smallest results that clear a level", () => {
     // times in four read a step 69% of the time on 12 tasks; two equal harnesses 11%.
     expect(Math.round(100 * chanceOfStep(12, taskChances({ old: 0.5, fresh: 0.75 }, 2), 0.2))).toBe(69);
     expect(Math.round(100 * chanceOfStep(12, taskChances({ old: 0.5, fresh: 0.5 }, 2), 0.2))).toBe(11);
-    expect(ROUND_OPTIONS.level.default).toBe("0.2");
+    expect(ROUND_OPTIONS.level.default).toBe("0.1");
+    expect(ROUND_OPTIONS.trigger.default).toBe("0.25");
   });
 });
 
 describe("what a comparison of a given size can show, said before it runs", () => {
-  it("is nothing on fewer tasks than the least sweep", () => {
-    expect(sizeLines(3, ASKED)).toEqual([
-      "3 held-out tasks can be scored, and at --level 0.1 a step takes 4, all won: this comparison cannot read a step",
+  it("is nothing on fewer tasks than a first reading takes", () => {
+    expect(sizeLines(1, ASKED)).toEqual([
+      "1 held-out task can be scored, and at --trigger 0.25 a first reading takes 2, all won: this comparison cannot buy a repeat",
     ]);
     expect(sizeLines(0, ASKED)).toEqual([
-      "no held-out task can be scored, and at --level 0.1 a step takes 4, all won: this comparison cannot read a step",
+      "no held-out task can be scored, and at --trigger 0.25 a first reading takes 2, all won: this comparison cannot buy a repeat",
     ]);
   });
 
-  it("names the results that clear, the plan's worked case with its ties, and the table's best case", () => {
+  it("names the results that buy the repeat and that promote, the plan's worked case with its ties, and the table's best case", () => {
     expect(sizeLines(12, ASKED)).toEqual([
-      "12 held-out tasks can be scored; at --level 0.1 the smallest results that clear are 4-0, 6-1, 7-2",
-      // A comparison buys tasks, not untied tasks: the table's 65% at twelve untied is 51% of twelve tasks.
-      "at 2 solves a side, with the reference harness valid half the time and the new one three times in four, a step would be read 51% of the time; two equal harnesses valid half the time tie on 38% of tasks and read a step 5% of the time",
-      "were no task to tie, a harness that truly wins 65% of them would be read a step 35% of the time, one that wins 75%, 65%, and one that wins 85%, 91%",
+      "12 held-out tasks can be scored; at --trigger 0.25 the smallest results that buy the repeat are 2-0, 4-1, 5-2, and at --level 0.1 the step and its repeat together clear at 4-0, 6-1, 7-2",
+      // A comparison buys tasks, not untied tasks. Two equal harnesses are promoted 4% of the time
+      // at twelve tasks of which 38% tie, by the two-stage rule of 10 October.
+      "at 2 solves a side, with the reference harness valid half the time and the new one three times in four, a first reading would buy the repeat 75% of the time and the two would promote 68%; two equal harnesses valid half the time tie on 38% of tasks and would be promoted 4% of the time",
+      "were no task to tie, a harness that truly wins 65% of them would be read a step at --level 0.1 on one comparison 35% of the time, one that wins 75%, 65%, and one that wins 85%, 91%",
     ]);
+  });
+
+  it("promotes by the two-stage rule at the rates of the enumeration of 10 October", () => {
+    // Sixteen tasks of which three in four tie: a harness that wins 96% of the untied is promoted
+    // 83% of the time at 0.25 and 0.10 (55% by two readings at 0.20), 31% at a win rate of 0.75
+    // (14%), and two equal harnesses 3.4% (0.9%).
+    const each = (win: number) => ({ win: 0.25 * win, loss: 0.25 * (1 - win) });
+    expect(chanceOfPromotion(16, each(0.96), 0.25, 0.1)).toBeCloseTo(0.829, 2);
+    expect(chanceOfPromotion(16, each(0.75), 0.25, 0.1)).toBeCloseTo(0.314, 2);
+    expect(chanceOfPromotion(16, each(0.5), 0.25, 0.1)).toBeCloseTo(0.034, 2);
+    expect(chanceOfStep(16, each(0.96), 0.2) ** 2).toBeCloseTo(0.545, 2);
   });
 });

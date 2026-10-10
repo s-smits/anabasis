@@ -146,7 +146,11 @@ export const COMPARISON_OPTIONS = {
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string" },
   solves: { type: "string", default: "2" },
-  level: { type: "string", default: "0.2" },
+  // The step and its repeat read together clear `level`; a first reading at or under `trigger`
+  // buys the repeat (`src/builder/move.ts`). 0.20 on each reading alone was the default from
+  // #175 until 10 October's two-stage rule.
+  level: { type: "string", default: "0.1" },
+  trigger: { type: "string", default: "0.25" },
   defects: { type: "string", default: "3" },
   budget: { type: "string", multiple: true },
   cap: { type: "string" },
@@ -313,6 +317,7 @@ export function wantedNamed(
   values: {
     readonly solves: string;
     readonly level: string;
+    readonly trigger: string;
     readonly "past-stop"?: string | undefined;
   },
   given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
@@ -326,6 +331,7 @@ export function wantedNamed(
     target: tasks === undefined ? target : tasks.split(",").length,
     solves: Number(values.solves),
     level: Number(values.level),
+    trigger: Number(values.trigger),
     builds: given.builds,
     cap: given.cap ?? null,
     restarted: restarts(solving, ran),

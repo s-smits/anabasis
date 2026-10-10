@@ -1,8 +1,8 @@
 {
   "version": 1,
   "files": {
-    "test/harness-builder.test.ts": 108721,
     "test/round.test.ts": 47256,
+    "test/harness-builder.test.ts": 46074,
     "test/solve-run.test.ts": 45705,
     "test/harness-tools.test.ts": 36202,
     "test/checker-commands.test.ts": 22438,

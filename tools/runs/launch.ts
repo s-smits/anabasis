@@ -392,6 +392,7 @@ export const LAUNCH_OPTIONS = {
   target: ROUND_OPTIONS.target,
   solves: ROUND_OPTIONS.solves,
   level: ROUND_OPTIONS.level,
+  trigger: ROUND_OPTIONS.trigger,
   cap: ROUND_OPTIONS.cap,
   reserve: ROUND_OPTIONS.reserve,
   tasks: { type: "string" },
@@ -425,6 +426,7 @@ export function askedFlagged(values: Readonly<Record<string, Loose>>, events: re
     target: setting.tasks === undefined ? setting.target : setting.tasks.split(",").length,
     solves: Number(values.solves),
     level: Number(values.level),
+    trigger: Number(values.trigger),
     builds: true,
     restarted: restarts(setting.named, ran),
   };

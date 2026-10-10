@@ -113,7 +113,7 @@ on 2026-10-09: the first rehearsal on a seed should write these as its predictio
 | `--reference <a built digest> --held none:pass` | `step`, with `against` 4-0 | after a promotion a step is held to the starter, which is solved because the test cleared and answers nothing |
 | the same with `--starter pass` | `step`, with `against` 0-0-4 | against the starter every task ties between valid answers, and as many wins as losses is enough |
 | the same with `--held fail:pass`, then `settle.ts` with every label `earned` | `starter-unread` | a settling makes no solve, so the new harness is compared with the starter in a checkpoint of its own |
-| fewer than three tasks held out | refused at launch; `no-step` at best if run | at 0.20 a step takes three untied tasks, all won |
+| fewer than two tasks held out | refused at launch; `no-step` at best if run | at a trigger of 0.25 a first reading takes two untied tasks, all won |
 | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
 
 `check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's

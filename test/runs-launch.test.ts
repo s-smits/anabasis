@@ -47,6 +47,7 @@ const ASKED: Asked = {
   target: 12,
   solves: 2,
   level: 0.1,
+  trigger: 0.25,
   builds: true,
   cap: { dollars: 600, reserve: 10 },
   reported: null,
@@ -62,7 +63,15 @@ const ASKED: Asked = {
 
 describe("a launch's preflight", () => {
   it("is the comparison's own admission, with what only the host and the id can refuse", () => {
-    const wanted = { target: 12, solves: 2, level: 0.1, builds: true, cap: ASKED.cap, restarted: [] };
+    const wanted = {
+      target: 12,
+      solves: 2,
+      level: 0.1,
+      trigger: 0.25,
+      builds: true,
+      cap: ASKED.cap,
+      restarted: [],
+    };
     expect(preflight(SETS, ASKED)).toEqual(admission(SETS, wanted));
     // Both are said at once: what the log refuses, then what the host does.
     const unread = { ...SETS, faults: null };
@@ -251,7 +260,7 @@ describe("a launch's reading of the setting", () => {
     expect(preflight(SETS, { ...ASKED, ran }).notes.join("\n")).not.toContain(told);
     expect(preflight(SETS, { ...ASKED, named: longer, ran }).notes.at(-1)).toContain(told);
     // The share on record is then another setting's, and every task is counted whole.
-    const tied = { ...SETS, held: 12, untied: 0.25 };
+    const tied = { ...SETS, held: 12, untied: 0.1 };
     expect(preflight(tied, { ...ASKED, ran }).refusals).toHaveLength(1);
     expect(preflight(tied, { ...ASKED, named: longer, ran }).refusals).toEqual([]);
     // An Examiner session solves nothing, so nothing of the kind is said of it.

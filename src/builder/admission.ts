@@ -93,7 +93,10 @@ export interface Wanted {
   /** The tasks to score: `--target`, or as many as `--tasks` names. */
   readonly target: number;
   readonly solves: number;
+  /** The level the step and its repeat together clear, and the one a first reading clears to buy
+   *  the repeat (`src/builder/move.ts`, `readTwice`, `triggered`). */
   readonly level: number;
+  readonly trigger: number;
   /** Whether a Builder session runs before the comparison. */
   readonly builds: boolean;
   readonly cap: Cap | null;
@@ -243,11 +246,12 @@ function stopped({ stop }: Supply, pastStop: string | undefined) {
 /** The numbers a comparison's size is read from on a supply: the tasks it would score, the fewest
  *  a step takes at its level, the share its last comparison left untied, and the untied tasks that
  *  share leaves it. */
-function sized(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "restarted">) {
+function sized(supply: Supply, wanted: Pick<Wanted, "target" | "trigger" | "restarted">) {
   const scored = Math.min(wanted.target, supply.held);
   // What a comparison's test can say at this size is arithmetic, and rehearsals found it before a
-  // round paid to (2026-10-08): exam-1 held one task to score.
-  const least = sweepOf(wanted.level);
+  // round paid to (2026-10-08): exam-1 held one task to score. A first reading that clears the
+  // trigger buys the repeat, so the fewest it takes is the trigger's sweep (10 October).
+  const least = sweepOf(wanted.trigger);
   // A share measured of another solver, or under other limits, says little of this comparison.
   const share = wanted.restarted.length === 0 ? (supply.untied ?? 1) : 1;
   // A task held out since that comparison has no share on record, and is counted whole.
@@ -263,7 +267,7 @@ function sized(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "restar
  */
 export function shortOf(
   supply: Supply,
-  wanted: Pick<Wanted, "target" | "level" | "restarted">,
+  wanted: Pick<Wanted, "target" | "trigger" | "restarted">,
 ): "held" | "untied" | null {
   const { scored, least, untied } = sized(supply, wanted);
   if (scored < least) return "held";
@@ -290,7 +294,7 @@ export function admission(supply: Supply, wanted: Wanted) {
     ],
     [
       scored >= least && untied < least,
-      `the campaign's last comparison left ${String(Math.round(100 * share))}% of its tasks for this one to untie: the rest tied there, or this one's reference harness was valid on them in every solve. At that share ${String(scored)} scored tasks${supply.since > 0 ? `, the ${String(supply.since)} held out since counted whole,` : ""} leave about ${untied.toFixed(1)} untied, where at --level ${String(wanted.level)} a step takes ${String(least)}, all won: this comparison could hardly read a step. ${more}, or change the budget so that fewer tasks tie`,
+      `the campaign's last comparison left ${String(Math.round(100 * share))}% of its tasks for this one to untie: the rest tied there, or this one's reference harness was valid on them in every solve. At that share ${String(scored)} scored tasks${supply.since > 0 ? `, the ${String(supply.since)} held out since counted whole,` : ""} leave about ${untied.toFixed(1)} untied, where at --trigger ${String(wanted.trigger)} a first reading takes ${String(least)}, all won: this comparison could hardly buy a repeat. ${more}, or change the budget so that fewer tasks tie`,
     ],
     [
       cap === null,

@@ -126,7 +126,7 @@ rehearsal is exempt from them: its seats are scripts, which are paid nothing.
 - **A checker nobody has read.** `accept.ts` has not run on this log. In the first live rounds the
   reading was made after the solves, by hand, and on truss 22 of 32 solves had by then been
   rejected, 14 on one check.
-- **Too few tasks to read a step.** At `--level 0.2` a step takes three untied tasks, all won. A
+- **Too few tasks to read a step.** At `--trigger 0.25` a first reading takes two untied tasks, all won. A
   comparison of fewer scored tasks is refused, and so is one the campaign's own tie share leaves
   too few untied: the share is that of the last tallied comparison made under the same solver
   and limits, and before any such comparison every scored task is counted. Run an Examiner

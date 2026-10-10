@@ -611,6 +611,26 @@ describe("a Builder session", () => {
     expect(spent.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "finished", turns: 4, practiceSolves: 3 });
   });
 
+  it("practises under the harness it started from where asked, which spends the same solves", async () => {
+    // The change is read against the parent on the same task: t-10's first session had no parent
+    // record to read its change against (10 October).
+    const s = await setup([
+      edit,
+      call("practice", { tasks: ["t-1"], under: "parent" }),
+      call("practice", { tasks: ["t-1"] }),
+      finish,
+    ]);
+    await session(s.request, s, s.walled);
+    expect(s.ran[0]).toEqual({ dir: s.parent, digest: s.digest });
+    expect(s.ran[1]?.digest).not.toBe(s.digest);
+    expect(s.sent[2]).toContain("t-1 under the harness you started from: pass. Solve s-3.");
+    expect(s.sent[2]).toContain(
+      "Record under this harness: passed 0 of 0. Under the harness you started from: 1 of 2.",
+    );
+    expect(s.sent[3]).toContain("1 practice solve left.");
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 2, changed: true });
+  });
+
   it("is not given the correctness model a v1 state carries, whose battery holds hidden values", async () => {
     const s = await setup([finish]);
     // A v1 state keeps it at its root and again under each bundle snapshot.

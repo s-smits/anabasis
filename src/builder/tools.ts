@@ -380,12 +380,18 @@ export function practiceTool(bench: Bench): AgentTool {
     name: "practice",
     label: "Practise",
     description:
-      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task's record under this harness and under the one you started from, the solve's id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve.",
+      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task's record under this harness and under the one you started from, the solve's id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: \"parent\"` the tasks are solved under the harness you started from instead, which costs the same solves and shows what your change is measured against.",
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
         description: "Practice task ids, as the opening message lists them.",
       }),
+      under: Type.Optional(
+        Type.Union([Type.Literal("harness"), Type.Literal("parent")], {
+          description:
+            "Which harness solves: harness/ as it stands (the default), or the one you started from.",
+        }),
+      ),
     }),
     executionMode: "sequential",
     execute: async (_id, args, signal) => {
@@ -412,13 +418,20 @@ export function practiceTool(bench: Bench): AgentTool {
       // The session's wall, its kill and its halt all reach a solve through the loop's signal, so a
       // practice in flight ends with the session and not a solve's whole wall after it.
       const kill = signal ?? bench.halt.signal;
-      const kept = await snapshot(bench);
+      // Under the parent, the solve runs the harness the session started from, as kept outside the
+      // home, and harness/ as it stands need not open: until 10 October a Builder could read its
+      // change only against the parent's comparison record, and t-10's first session had none
+      // (its whole-run investigation, lane 16).
+      const parent = args.under === "parent";
+      const ran: Snapshot = parent
+        ? { dir: request.parent, harness: await openHarness(request.parent), listed: null }
+        : await snapshot(bench);
       if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
       const solved = await pooled(chosen, request.limits.concurrency, async (task) => {
         if (bench.fatal !== null) return [];
         try {
-          return [await practise(bench, task, kept, kill)];
+          return [await practise(bench, task, ran, kill)];
         } catch (error) {
           bench.fatal ??= asError(error);
           bench.halt.abort();
@@ -432,11 +445,11 @@ export function practiceTool(bench: Bench): AgentTool {
       }
       const events = read(request.log);
       const said = solved.flat().map(({ task, solve, ending, lines }) => {
-        const [now, before] = [kept.harness.digest, bench.parent].map((harness) =>
-          record(events, task.version, harness),
+        const [now, before] = [bench.opened?.harness.digest ?? null, bench.parent].map((harness) =>
+          harness === null ? null : record(events, task.version, harness),
         );
         return [
-          `${task.task.taskId}: ${endingText(ending)}. Solve ${solve}.${usedText(events, solve)}`,
+          `${task.task.taskId}${parent ? " under the harness you started from" : ""}: ${endingText(ending)}. Solve ${solve}.${usedText(events, solve)}`,
           `Record under this harness: passed ${String(now?.passed ?? 0)} of ${String(now?.solves.length ?? 0)}. Under the harness you started from: ${String(before?.passed ?? 0)} of ${String(before?.solves.length ?? 0)}.`,
           ...lines,
         ].join("\n");

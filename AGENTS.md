@@ -542,7 +542,9 @@ harness is the one to promote (`unpromoted` says why another is not). No step wi
 Builder to build again, once the next comparison has tasks to untie: where the reference harness
 answered too many of them in every solve, the Examiner writes tasks first, since a changed harness
 can only tie again on those (t-2, 10 October: 3-0-2 on 5 tasks, two unchanged sessions and a
-stop). A comparison without room changes the budget before the tasks: the budget
+stop), and tasks written since the comparison are compared on before anything is built (t-3, the
+same day: four written, two unchanged sessions and a stop before any comparison on them). A
+comparison without room changes the budget before the tasks: the budget
 rule takes the longest budget, of the one the comparison ran under and the shorter ones it was
 read at (the ladder: by default a half, a quarter and an eighth of the full limit), at which the
 reference harness was valid on at most half its solves. A reading at a shorter budget is of a

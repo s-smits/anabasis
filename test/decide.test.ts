@@ -263,6 +263,15 @@ describe("what is built and what is compared", () => {
     // Tasks held out since count whole, and the comparison is admitted.
     const more = ["v7", "v8", "v9", "v10"].flatMap(heldOut);
     expect(move([...tied, built("b-2", "h2"), ...more])).toMatchObject({ move: "compare" });
+    // Before any session too: t-3 (10 October) built twice on the tasks its Examiner had just
+    // written, changed nothing, and stopped before comparing on them.
+    expect(move([...tied, ...more])).toEqual({
+      move: "compare",
+      fresh: "latest",
+      reference: "promoted",
+      noise: false,
+      why: "comparison g-1 read no step with room to gain, and tasks were written since: harness h1 is compared on them",
+    });
   });
 });
 
@@ -278,8 +287,9 @@ describe("practice, before a Builder session", () => {
       move: "prepare",
       why: "1 of the 3 practice tasks the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds",
     });
-    // The same before a later session, after a comparison that read no step with room.
-    const later = [...SET_UP, built("b-1", "h1"), ...lost, ...heldOut("v7")];
+    // The same before a later session, after a comparison that read no step with room. A task
+    // held out since the comparison is compared on first (below, "what is built").
+    const later = [...SET_UP, built("b-1", "h1"), ...heldOut("v7"), ...lost];
     expect(move(later, plan)).toMatchObject({ move: "prepare" });
     // Once it released, the campaign builds: nothing was held out since.
     const released = event("task.state", { version: "v7", state: "released" });

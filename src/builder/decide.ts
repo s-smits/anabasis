@@ -609,11 +609,22 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string): Deci
   }
   const room = roomOf(last);
   if (room === ROOM) {
+    // Tasks written since are compared on before anything is built: t-3 (10 October) had four
+    // held out on the supply row and then two sessions that left the harness as it was, and the
+    // stop rule, before any comparison on them.
+    if (again) {
+      return compare(
+        `comparison ${id} read no step with room to gain, and tasks were written since: harness ${short(latest)} is compared on them`,
+        "alone",
+      );
+    }
     // The plan's supply row before its build row: on tasks the reference harness answered in every
     // solve a changed harness can only tie again, so the next comparison has to have tasks to
     // untie before a session is worth its cost. t-2 (10 October) read 3-0-2 on 5 tasks at 3
     // turns, the new harness valid on every solve; two sessions then left it unchanged, and the
-    // stop rule ended the campaign where an Examiner session was the move.
+    // stop rule ended the campaign where an Examiner session was the move. A harness valid on
+    // every solve that read no step is always here: its wins are the untied tasks, and fewer
+    // than a step takes.
     if (tasksShort === "untied") {
       return supplied(
         ground,

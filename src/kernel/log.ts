@@ -112,6 +112,11 @@ const EVENT_KINDS = [
 
 export type EventKind = (typeof EVENT_KINDS)[number];
 
+/** The file a campaign's log is, under the campaign's folder. Five files joined this name onto a
+ *  folder of their own on 10 October, two of them beside a constant of their own, and
+ *  `identity-without-owner` reported it; the module that reads and appends the file owns its name. */
+export const LOG_FILE = "log.jsonl";
+
 const NEWLINE = 0x0a;
 
 export interface LogEvent {

@@ -35,7 +35,7 @@ import { campaignOf, type Handover } from "#src/builder/handover.ts";
 import { openingOf } from "#src/builder/opening.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll, promoted } from "#src/kernel/reports.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -228,7 +228,7 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
   // The tasks an Examiner session wrote are in the log and in no pack.
   const task = [...writtenTasks(events), ...campaign.tasks].find(({ taskId }) => taskId === values.solve);
   if (task === undefined) throw new Error(`--solve ${values.solve}: the campaign holds no task by that id`);
-  const trialLog = join(campaign.log, "..", "handover", "log.jsonl");
+  const trialLog = join(campaign.log, "..", "handover", LOG_FILE);
   mkdirSync(join(campaign.log, "..", "handover"), { recursive: true });
   const trial = await openCampaign({ ...pack, trial: trialLog });
   const { solve } = seated(trial, { builder: undefined, reference: PROMOTED });

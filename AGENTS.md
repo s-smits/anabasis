@@ -1167,7 +1167,7 @@ Each runtime surface has one owner. Import from it; add a missing member beside 
 | Canonical JSON and hashes | `stable-json.ts`, `digest.ts` | `stableJson`, `canonicalJson`, `sameJsonValue`, `hashJsonValue`, `compareCodeUnits`; `sha256`, `sha256OfFile` |
 | Atomic files | `completed-json.ts` | `writeCompleted`, `readCompleted` |
 | Caught values | `runtime-values.ts` | `errorMessage`, `asError`, `errorCode` |
-| Optional keys | `optional-key.ts` | `keyIfDefined`, `keyIfNotNull`, `keyIfTruthy`, `keysIf` |
+| Optional keys | `optional-key.ts` | `keyIfDefined`, `keyIfNotNull`, `keysIf` |
 | Text | `text.ts`, `bounded-text.ts` | `hasText`, `textOr`, `plural`; `boundText` |
 | Counting and pooling | `tally.ts`, `pool.ts` | `countBy`, `median`; `pooled` |
 

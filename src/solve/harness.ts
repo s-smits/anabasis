@@ -22,7 +22,7 @@
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
-import { AGENT_DIR, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
+import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import {
   existsSync,
@@ -145,7 +145,7 @@ function located(module: string, dir: string): string {
  * here either.
  */
 export function guideOf(dir: string): string | null {
-  const file = join(dir, `${AGENT_DIR}BUILT_AGENTS.md`);
+  const file = join(dir, `${AGENT_DIR}${GUIDE_FILE}`);
   return existsSync(file) && lstatSync(file).isFile() ? readFileSync(file, "utf8") : null;
 }
 
@@ -153,7 +153,7 @@ export async function openHarness(dir: string): Promise<Harness> {
   // The three files the host reads by name are the harness's own: a guide or a spec linked to a host
   // file would be read here, outside every wall, and handed to the solver.
   const root = realpathSync(dir);
-  const guideName = `${AGENT_DIR}BUILT_AGENTS.md`;
+  const guideName = `${AGENT_DIR}${GUIDE_FILE}`;
   for (const name of [guideName, TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE]) {
     const file = join(dir, name);
     if (existsSync(file) && !containsPath(realpathSync(file), root)) {

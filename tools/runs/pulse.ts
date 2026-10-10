@@ -13,7 +13,7 @@
  * Quiet, no event for 20 minutes in an open run, is said when it starts and when it ends.
  */
 import { EXAMINE } from "#src/builder/admission.ts";
-import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { type EventKind, LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
 import {
   existsSync,
@@ -280,7 +280,7 @@ export function runs(): Run[] {
       .map((name) => ({
         name,
         tree,
-        path: join(tree, ".ana", "d2", name, "log.jsonl"),
+        path: join(tree, ".ana", "d2", name, LOG_FILE),
         end: "comparison.reported" as const,
         seed: existsSync(join(tree, ".ana", "d2", name, SEED_FILE)),
       }))

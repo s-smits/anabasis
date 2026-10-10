@@ -32,7 +32,7 @@
  * handed it afresh in its home (`src/builder/session.ts`), so it describes the host that will open
  * the harness, whichever harness the session forks.
  */
-import { AGENT_DIR, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
+import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
@@ -312,7 +312,7 @@ export function writeHarness(dir: string, harness: Written): void {
   mkdirSync(join(dir, AGENT_DIR), { recursive: true });
   writeFileSync(join(dir, TOOLS_SPEC_FILE), `${capturedJsonStringify(harness.spec, null, 2)}\n`);
   writeFileSync(join(dir, GENERATED_TOOLS_FILE), harness.tools);
-  if (harness.guide !== undefined) writeFileSync(join(dir, AGENT_DIR, "BUILT_AGENTS.md"), harness.guide);
+  if (harness.guide !== undefined) writeFileSync(join(dir, AGENT_DIR, GUIDE_FILE), harness.guide);
   const bin = join(dir, ".toolchain", "bin");
   for (const [name, source] of Object.entries(harness.programs ?? {})) {
     mkdirSync(bin, { recursive: true });

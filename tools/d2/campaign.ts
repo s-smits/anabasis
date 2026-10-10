@@ -39,7 +39,7 @@ import {
 } from "#src/kernel/condition.ts";
 import { type Contract, contractHash } from "#src/kernel/contract.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
-import { read } from "#src/kernel/log.ts";
+import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { awaitingLabel, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskVersion } from "#src/kernel/task.ts";
@@ -159,7 +159,7 @@ const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-cor
 
 /** Where campaign `name` keeps its log: what a command reads before it opens the campaign, for the
  *  setting the campaign recorded (`setting.ts`). */
-export const campaignLog = (name: string): string => join(REPO, ".ana", "d2", name, "log.jsonl");
+export const campaignLog = (name: string): string => join(REPO, ".ana", "d2", name, LOG_FILE);
 
 /**
  * The campaign a command's flags name, and the pack it opens over: the stored one that `--root`,
@@ -267,7 +267,7 @@ function recordedUnder({ contract, tools, limits }: Standing) {
 export async function openCampaign(args: CampaignArgs) {
   const dir = join(REPO, ".ana", "d2", args.name);
   mkdirSync(dir, { recursive: true });
-  const log = join(dir, "log.jsonl");
+  const log = join(dir, LOG_FILE);
   const { bundle, checks, format, solver } = packOpened(dir, log, args);
   const { brief, tasks } = readPack(bundle);
   const contract = contractOf(brief, format);

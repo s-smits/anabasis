@@ -17,6 +17,7 @@
 import { type Draft, draftFaults } from "#src/examiner/draft.ts";
 import { doNothingFaults, readChecker } from "#src/kernel/acceptance.ts";
 import { CHECK_PROGRAM_CONTRACT, openVerifier, readBrief } from "#src/kernel/verify.ts";
+import { EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
 import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
@@ -87,7 +88,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
       expectedCheckId: check,
     })),
   });
-  writeFileSync(join(model, "evaluator.ts"), draft.evaluator);
+  writeFileSync(join(model, EVALUATOR_FILE), draft.evaluator);
   checkProgram(bundle, checks);
   return { bundle, checks };
 }

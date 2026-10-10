@@ -24,6 +24,13 @@
  * 109 sites at 0.52 eventual and 3 of 139 per visit, and what they hold is another program's
  * vocabulary — bubblewrap paths, JSON-schema keys, package.json fields — which this tree lists
  * rather than produces.
+ *
+ * A member made of word characters, dots, slashes and hyphens is looked up in a reader's set of
+ * such runs. Any other member — `$PPID`, with its dollar — is matched line by line instead, and
+ * until 10 October that path applied the declaring file's skip window to every reader, so a
+ * producer standing above the declaration's line number in its own file was not seen: `$PPID`,
+ * passed at src/solve/command.ts:196 to a union declared at line 460 of another file, was reported
+ * as produced nowhere. The window is the declaring file's alone.
  */
 import type { TreeFinding } from "./tree-findings.ts";
 
@@ -146,7 +153,8 @@ function producers(
   let tests = 0;
   for (const [reader, lines] of readers) {
     const own = reader === one.path;
-    if (!spells(lines, words.get(reader) ?? new Set(), one.member, own ? one.first : -1, one.last)) continue;
+    const skip = own ? one : { first: -1, last: -1 };
+    if (!spells(lines, words.get(reader) ?? new Set(), one.member, skip.first, skip.last)) continue;
     if (!own && TEST_PATH.test(reader)) tests += 1;
     else production += 1;
   }

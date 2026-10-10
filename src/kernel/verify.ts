@@ -20,6 +20,7 @@
  * A check's tools resolve only from the verifier's tool tree. The condition pins that tree's digest,
  * and a tool missing from it once ran the host's copy off the search path's later directories.
  */
+import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import {
   copyFileSync,
   existsSync,
@@ -341,7 +342,7 @@ async function runCheck(
       copyFileSync(join(wall.tree.checks, file), join(copy, file));
     }
     const input: CheckChildInput = {
-      program: join(copy, "evaluator.ts"),
+      program: join(copy, EVALUATOR_FILE),
       checkId: check.id,
       request: checkEvaluationRequest(check, request),
       tools: requiredToolsOf(check.execution),

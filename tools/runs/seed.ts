@@ -19,7 +19,7 @@
  * tool trees kept beside them. A state frozen while its link named the tree by its whole path still
  * links to the source's tree; a solve reads it behind the wall and writes nothing there.
  */
-import { read } from "#src/kernel/log.ts";
+import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -28,7 +28,6 @@ import { parseArgs } from "#src/meta/process.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { SEED_FILE } from "./pulse.ts";
 
-const LOG = "log.jsonl";
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started"]);
 
 /** Where a seed's log is cut: before a session, after a count of events, or nowhere. */
@@ -65,15 +64,15 @@ export const seedCut = (folder: string): number =>
 /** Copy the campaign in `from` to the folder `to`, its log cut, and say what the seed holds. */
 export function seedCampaign(from: string, to: string, cut: Cut) {
   if (existsSync(to)) throw new Error(`${to} is there already: a seed takes a name of its own`);
-  const source = join(from, LOG);
-  if (!existsSync(source)) throw new Error(`${from} holds no ${LOG}: name a campaign's folder`);
+  const source = join(from, LOG_FILE);
+  if (!existsSync(source)) throw new Error(`${from} holds no ${LOG_FILE}: name a campaign's folder`);
   // A run still writing may have a torn last line, which is no event yet.
   const lines = readFileSync(source, "utf8").split("\n").slice(0, -1);
   const kept = keptLines(lines, cut);
   mkdirSync(to, { recursive: true });
   try {
     writeFileSync(
-      join(to, LOG),
+      join(to, LOG_FILE),
       lines
         .slice(0, kept)
         .map((line) => `${line}\n`)
@@ -85,7 +84,7 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
       }
     }
     // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
-    const events = read(join(to, LOG));
+    const events = read(join(to, LOG_FILE));
     for (const { kind, data } of events) {
       const notes = kind === "build.started" && isString(data.session) ? join("memory", data.session) : null;
       if (notes !== null && existsSync(join(from, notes))) {

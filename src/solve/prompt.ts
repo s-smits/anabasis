@@ -28,6 +28,7 @@
 import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
 import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
 import type { Limits } from "../kernel/condition.ts";
+import { GUIDE_FILE } from "../meta/bundle-layout.ts";
 import { mkdirSync, readdirSync, statSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
@@ -63,8 +64,6 @@ export interface Told {
 /** The prompt a turn that ended without a submit is followed by (v1's built-starter.ts:67-68). */
 export const NUDGE = "Finish the task with the available tools, then submit your answer.";
 
-/** The name a harness's guide goes by in pi's project context: the file's own. */
-const GUIDE_FILE = "BUILT_AGENTS.md";
 /** Installed program names the prompt lists before it elides the rest (v1's built-bash.ts:98). */
 const LISTED_PROGRAMS = 20;
 const GIB = 1024 ** 3;

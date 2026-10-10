@@ -18,6 +18,7 @@ import {
   endedEarly,
   examPreflight,
   family,
+  flagsRefused,
   launch,
   leftOpen,
   preflight,
@@ -133,6 +134,33 @@ describe("a launch's preflight", () => {
     expect(preflight(SETS, { ...ASKED, spent: "session b-1 was cut" }).refusals).toEqual([
       "session b-1 was cut. Pass another --session",
     ]);
+  });
+});
+
+describe("the flags a launch passes on", () => {
+  it("are parsed by the command's own table first, so a flag it would refuse at its first line refuses the launch", () => {
+    const own = ["--name", "r1", "--session", "b-5", "--builder", "m", "--cap", "1"];
+    // A comparison's flag on a session by itself, and the command's own path as a positional: both
+    // were passed on to the command on 10 October, which refuses each after the receipt is written.
+    expect(flagsRefused("tools/d2/session.ts", [...own, "--predict", "p"])).toBe(
+      "tools/d2/session.ts would refuse these flags: Unknown option '--predict'",
+    );
+    expect(flagsRefused("tools/d2/session.ts", ["tools/d2/session.ts", ...own])).toStartWith(
+      "tools/d2/session.ts would refuse these flags: Unexpected argument 'tools/d2/session.ts'.",
+    );
+    expect(flagsRefused("tools/d2/session.ts", own)).toBeNull();
+    expect(flagsRefused("tools/d2/round.ts", [...own, "--predict", "p"])).toBeNull();
+    expect(flagsRefused("tools/d2/checkpoint.ts", ["--name", "r1", "--id", "g2", "--cap", "1"])).toBeNull();
+    expect(
+      flagsRefused("tools/d2/checkpoint.ts", ["--name", "r1", "--id", "g2", "--minutes", "5"]),
+    ).toContain("Unknown option '--minutes'");
+    expect(
+      flagsRefused("tools/d1b/examine.ts", ["--name", "r1", "--session", "x-1", "--examiner", "m"]),
+    ).toBeNull();
+    expect(
+      flagsRefused("tools/d1b/examine.ts", ["--name", "r1", "--session", "x-1", "--cap", "1"]),
+    ).toContain("Unknown option '--cap'");
+    expect(flagsRefused("tools/d2/other.ts", own)).toBe("tools/d2/other.ts is not a command a launch starts");
   });
 });
 

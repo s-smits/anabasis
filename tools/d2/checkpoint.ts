@@ -76,7 +76,9 @@ import {
 } from "./round.ts";
 import { keepSetting, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
 
-const OPTIONS = {
+/** A checkpoint's flags and their defaults. A launch parses its flags by the same table first
+ *  (`tools/runs/launch.ts`, `flagsRefused`). */
+export const CHECKPOINT_OPTIONS = {
   root: ROUND_OPTIONS.root,
   sweep: ROUND_OPTIONS.sweep,
   cycle: ROUND_OPTIONS.cycle,
@@ -92,7 +94,7 @@ const OPTIONS = {
 /** `bun tools/d2/checkpoint.ts`, and under a simulation's `seated` the same comparison with its
  *  solver scripted. */
 export async function checkpointCommand(args: readonly string[], seated: Seated = solved): Promise<Report> {
-  const { values } = parseArgs({ args: [...args], options: OPTIONS });
+  const { values } = parseArgs({ args: [...args], options: CHECKPOINT_OPTIONS });
   const { id } = values;
   const pack = packNamed(values, " and --id");
   const { name } = pack;

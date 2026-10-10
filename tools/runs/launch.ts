@@ -68,9 +68,16 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
-import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import {
+  capturedExecPath,
+  capturedSpawn,
+  parseArgs,
+  type ParseArgsOptionsConfig,
+  runtimeProcess,
+} from "#src/meta/process.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import {
   admission,
@@ -86,7 +93,9 @@ import { sessionDirs, spent } from "#src/builder/session.ts";
 import { claimed } from "#src/examiner/session.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
-import { capRead, ROUND_OPTIONS } from "../d2/round.ts";
+import { CHECKPOINT_OPTIONS } from "../d2/checkpoint.ts";
+import { EXAMINE_OPTIONS } from "../d1b/examine.ts";
+import { capRead, ROUND_OPTIONS, SESSION_OPTIONS } from "../d2/round.ts";
 import {
   firstRecord,
   type NamedSetting,
@@ -114,6 +123,13 @@ type Loose = string | boolean | (string | boolean)[] | undefined;
 const START_MS = 8000;
 /** The launcher's own flags; every other one is the command's. */
 const OWN = new Set(["env-file", "loaded", "dry-run", "no-comparison"]);
+/** Each command's own option table, by which it parses its flags at its first line. */
+const OPTIONS_OF: ReadonlyMap<string, ParseArgsOptionsConfig> = new Map<string, ParseArgsOptionsConfig>([
+  [ROUND, ROUND_OPTIONS],
+  [SESSION, SESSION_OPTIONS],
+  [CHECKPOINT, CHECKPOINT_OPTIONS],
+  [EXAMINE, EXAMINE_OPTIONS],
+]);
 
 /** What any launch finds on the host and in the log's sessions. */
 export interface Host {
@@ -343,6 +359,25 @@ function commandOf(holds: {
   return holds.alone ? SESSION : ROUND;
 }
 
+/**
+ * What the command would say of the flags passed on to it, before anything starts, or null where
+ * it takes them. A launch parses its own flags loosely, so that each command's flags pass through
+ * it, and passed on a flag the command does not take: on 10 October a dry run would have started
+ * a session by itself with `--predict`, a comparison's flag, and another with the command's own
+ * path as a positional, and each command refuses those at its first line, after the receipt is
+ * written and the operator's word for the launch is spent.
+ */
+export function flagsRefused(command: string, flags: readonly string[]): string | null {
+  const options = OPTIONS_OF.get(command);
+  if (options === undefined) return `${command} is not a command a launch starts`;
+  try {
+    parseArgs({ args: [...flags], options });
+    return null;
+  } catch (error) {
+    return `${command} would refuse these flags: ${errorMessage(error)}`;
+  }
+}
+
 /** The flags a launch reads for itself: its own, and those of the command that its preflight
  *  needs, with the command's defaults. Every other flag is passed on unread. */
 export const LAUNCH_OPTIONS = {
@@ -450,10 +485,13 @@ export async function launch(args: readonly string[]): Promise<void> {
           reported: reportedAs(events ?? [], session),
           continued: begun(events ?? [], session, "comparison.started"),
         });
+  const command = commandOf({ examining, checking, alone });
+  const flagged = flagsRefused(command, flags);
+  const whys = flagged === null ? refusals : [...refusals, flagged];
   for (const note of notes) console.log(`· ${note}`);
-  if (run === undefined || refusals.length > 0) {
+  if (run === undefined || whys.length > 0) {
     // A refusal is an answer and not a fault of this command, so it is said without a stack.
-    for (const why of refusals) console.error(`⚠ ${why}`);
+    for (const why of whys) console.error(`⚠ ${why}`);
     console.error(`${name} is not launched`);
     runtimeProcess.exitCode = 1;
     return;
@@ -464,7 +502,7 @@ export async function launch(args: readonly string[]): Promise<void> {
     "19",
     capturedExecPath,
     ...(isString(envFile) ? [`--env-file=${envFile}`] : []),
-    commandOf({ examining, checking, alone }),
+    command,
     ...flags,
   ];
   if (values["dry-run"] === true) {

@@ -32,7 +32,9 @@ import { parseArgs } from "#src/meta/process.ts";
 import { openCampaign, packNamed, stayAwake } from "../d2/campaign.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
-const OPTIONS = {
+/** An Examiner session's flags and their defaults. A launch parses its flags by the same table
+ *  first (`tools/runs/launch.ts`, `flagsRefused`). */
+export const EXAMINE_OPTIONS = {
   root: { type: "string" },
   sweep: { type: "string" },
   cycle: { type: "string" },
@@ -50,7 +52,7 @@ const OPTIONS = {
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
  *  with no model stands in for it to read what the command would have asked of one. */
 export async function examineCommand(args: readonly string[], session = examine): Promise<void> {
-  const { values } = parseArgs({ args: [...args], options: OPTIONS });
+  const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS });
   const { session: id, examiner } = values;
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
   const campaign = await openCampaign(packNamed(values, ", --session and --examiner"));

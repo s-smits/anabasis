@@ -31,7 +31,7 @@ function filesUnder(dir: string): string[] {
 
 /** Zip bundle folder `dir` beside itself and return what was made. Refuses a folder with no task
  *  document, one that holds a credential-shaped line, and a zip over `maxBytes`. */
-export function bundle(dir: string, maxBytes: number): { out: string; bytes: number; files: number } {
+export function bundle(dir: string, maxBytes: number) {
   if (!existsSync(join(dir, "REVIEW.md"))) {
     throw new CommandFailure(`${dir} holds no REVIEW.md: the task document goes at the root`);
   }

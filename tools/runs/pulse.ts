@@ -40,6 +40,9 @@ export interface Seen {
 }
 
 /** A run's log, and the event that says the run is done: a round reports, a live solve finishes. */
+/** Whether a run's process is still there: open while it writes the log, closed once it is gone. */
+type Process = "open" | "closed";
+
 export interface Run {
   readonly name: string;
   readonly tree: string;
@@ -170,25 +173,25 @@ function lastWork(log: readonly LogEvent[]): number {
 /** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A
  *  report counts when it follows the last work: a checkpoint solving after an earlier
  *  comparison's report has not reported. */
-function stage(log: readonly LogEvent[], solving: boolean, open: boolean): string {
+function stage(log: readonly LogEvent[], running: number, process: Process): string {
   const from = Math.max(lastStart(log), 0);
   const since = log.slice(from);
   const report = log.slice(Math.max(lastWork(log), 0)).findLast(({ kind }) => kind === REPORTED);
   if (report !== undefined) return `reported ${word(report.data.reading)}`;
-  if (!open) return "closed";
+  if (process === "closed") return "closed";
   // Inside a session when the last thing started is one, and it has not finished.
   const session = (["build", "exam"] as const).find(
     (role) => log[from]?.kind === `${role}.started` && count(since, `${role}.finished`) === 0,
   );
   if (session !== undefined) return `${session} turn ${String(count(since, `${session}.turn`))}`;
-  return solving ? "solving" : "working";
+  return running > 0 ? "solving" : "working";
 }
 
 /** The status line of a run whose log holds `log`, of which `solves` are the solves. */
 function status(
   run: Run,
   { log, solves }: { readonly log: readonly LogEvent[]; readonly solves: readonly Solve[] },
-  open: boolean,
+  process: Process,
   now: number,
 ): string {
   const said = ["pass", "fail", "non-result"].flatMap((outcome) => {
@@ -202,7 +205,7 @@ function status(
   const age = last === undefined ? "no events" : `${minutes(now - Date.parse(last.at))} since the last event`;
   return [
     // A seed's counts and dollars are its source's up to the cut, and a script's after it.
-    `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, running > 0, open)}`,
+    `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, running, process)}`,
     `solves ${said.join(", ") || "none"}`,
     dollars(total),
     age,
@@ -216,10 +219,11 @@ function status(
 export function pulse(
   run: Run,
   log: readonly LogEvent[],
-  open: boolean,
+  process: Process,
   before: Seen | undefined,
   now: number,
 ): Look {
+  const open = process === "open";
   const solves = solvesIn(log);
   const tasks = new Map(solves.map(({ id, start }) => [id, word(start.task)]));
   const task = (solve: JsonValue | undefined) => tasks.get(word(solve)) ?? word(solve);
@@ -248,7 +252,7 @@ export function pulse(
     n === 1 ? line : `${line} (×${String(n)})`,
   );
   return {
-    status: status(run, { log, solves }, open, now),
+    status: status(run, { log, solves }, process, now),
     said: told,
     seen: { lines: log.length, open, quiet },
   };
@@ -362,7 +366,7 @@ function look(state: string, names: readonly string[]): void {
   // A run this look left out keeps what the last look saw of it.
   const logs: Record<string, Seen> = { ...memory.logs };
   for (const { run, open: isRunning, before } of chosen) {
-    const seen = pulse(run, logEvents(run.path), isRunning, before, now);
+    const seen = pulse(run, logEvents(run.path), isRunning ? "open" : "closed", before, now);
     console.log(seen.status);
     for (const line of seen.said) console.log(`  ${line}`);
     logs[run.path] = seen.seen;

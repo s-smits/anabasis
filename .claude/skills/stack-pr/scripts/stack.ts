@@ -24,7 +24,7 @@ export interface Pull {
  *  such chain. A chain starts on a base that is no open pull request's head, which is `main` or a
  *  branch that has landed. Of two chains as long, the one of the lower number is the stack, so the
  *  reading does not change with the order GitHub lists them in. */
-export function chain(pulls: readonly Pull[]): { line: Pull[]; sides: Pull[] } {
+export function chain(pulls: readonly Pull[]) {
   const longest = (bases: readonly string[], seen: ReadonlySet<string>): Pull[] => {
     const children = pulls
       .filter((pull) => bases.includes(pull.baseRefName) && !seen.has(pull.headRefName))

@@ -44,7 +44,7 @@ import {
 import { append, read } from "#src/kernel/log.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openCampaign, packNamed } from "../d2/campaign.ts";
@@ -151,7 +151,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     if (frozenChecker(read(log)) === null) {
       append(log, "contract.frozen", {
         ...checker,
-        ...(faults.length > 0 ? { despite, faults: faults.length } : {}),
+        ...keysIf(faults.length > 0, () => ({ despite, faults: faults.length })),
         ...keyIfDefined("admitted", admitted.size > 0 ? [...admitted] : undefined),
       });
     }

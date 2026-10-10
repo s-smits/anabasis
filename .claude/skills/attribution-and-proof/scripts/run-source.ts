@@ -17,20 +17,6 @@ import { launchesOf } from "#tools/runs/launch.ts";
 
 const SHOWN = 3;
 
-/** The remote branches of `repo` that hold `commit`: where an outside reader can open it. None
- *  for a commit never pushed, and for one this repository does not hold. */
-function publishedOn(repo: string, commit: string): string[] {
-  return (gitMaybe(repo, "branch", "-r", "--contains", commit) ?? "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "" && !line.includes(" -> "));
-}
-
-/** Whether `commit` holds `fix` among its ancestors. False for a fix it does not hold and for
- *  either commit unknown here, which is why a restacked fix is asked for by its replayed commit. */
-const holds = (repo: string, fix: string, commit: string) =>
-  gitMaybe(repo, "merge-base", "--is-ancestor", fix, commit) !== null;
-
 /** The lines said of campaign `folder`, read against repository `repo`. */
 export function told(folder: string, repo: string, fixes: readonly string[]): string[] {
   const launches = launchesOf(join(folder, "log.jsonl"));
@@ -38,15 +24,24 @@ export function told(folder: string, repo: string, fixes: readonly string[]): st
     return ["no launch receipt: every round here was started by hand, and its commit is on no record"];
   }
   return launches.flatMap((launch) => {
-    const branches = publishedOn(repo, launch.commit);
+    // The remote branches that hold the commit: where an outside reader can open it. None for a
+    // commit never pushed, and for one this repository does not hold.
+    const branches = (gitMaybe(repo, "branch", "-r", "--contains", launch.commit) ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.includes(" -> "));
     const more = branches.length > SHOWN ? ` and ${String(branches.length - SHOWN)} more` : "";
     const published =
       branches.length === 0 ? "on no remote branch" : `on ${branches.slice(0, SHOWN).join(", ")}${more}`;
     return [
       `${launch.session}  ${launch.at}  ${launch.commit.slice(0, 9)}  ${launch.dirty ? "with uncommitted changes" : "clean"}  load ${launch.load.toFixed(1)} on ${String(launch.cores)} cores`,
       `  published ${published}`,
+      // Whether the commit holds the fix among its ancestors: false for a fix it does not hold and
+      // for either commit unknown here, which is why a restacked fix is asked for by its replayed
+      // commit.
       ...fixes.map(
-        (fix) => `  ${holds(repo, fix, launch.commit) ? "holds" : "does not hold"} ${fix.slice(0, 9)}`,
+        (fix) =>
+          `  ${gitMaybe(repo, "merge-base", "--is-ancestor", fix, launch.commit) === null ? "does not hold" : "holds"} ${fix.slice(0, 9)}`,
       ),
     ];
   });

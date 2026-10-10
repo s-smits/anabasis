@@ -137,23 +137,23 @@ export function repairReading(
   const refusedBefore = rows.filter(({ was }) => was.startsWith("fail "));
   const passing = refusedBefore.filter(({ now }) => now === "pass");
   const of = (ruling: Ruling | undefined) =>
-    passing.filter(({ solve }) => ruled(solve) === ruling).map(({ solve }) => solve);
+    passing.flatMap(({ solve }) => (ruled(solve) === ruling ? [solve] : []));
   const withdrawn = {
     "check-defect": of("check-defect"),
     earned: of("earned"),
     unread: [...of("unclear"), ...of(undefined)],
   };
-  const tightened = rows
-    .filter(({ was, now }) => was === "pass" && now.startsWith("fail "))
-    .map(({ solve }) => solve);
+  const tightened = rows.flatMap(({ solve, was, now }) =>
+    was === "pass" && now.startsWith("fail ") ? [solve] : [],
+  );
   const said = (solves: readonly string[], what: string) =>
     solves.length === 0 ? [] : [`${plural(solves.length, "answer")} ${what}: ${solves.join(", ")}`];
   return {
     withdrawn,
     tightened,
-    unrepaired: refusedBefore
-      .filter(({ solve, now }) => now.startsWith("fail ") && ruled(solve) === "check-defect")
-      .map(({ solve }) => solve),
+    unrepaired: refusedBefore.flatMap(({ solve, now }) =>
+      now.startsWith("fail ") && ruled(solve) === "check-defect" ? [solve] : [],
+    ),
     against: [
       ...said(withdrawn.earned, "ruled an earned fail would pass"),
       ...said(withdrawn.unread, "refused before and read by nobody would pass"),

@@ -66,6 +66,9 @@ type HostSolveIsolationFixture =
 export const HOST_SOLVE_ISOLATION_PROFILE_ID = "harness-host-solve-isolated";
 
 const CANARY_MARKER = "ANA-HOST-ISOLATION-PROBE-CANARY-DO-NOT-TRUST";
+/** The file of a sibling worktree the probe reads, and the text a read of it shows. */
+const SIBLING_FILE = "package.json";
+const SIBLING_MARKER = '"name"';
 /** The canary file a probe writes in each place a read is tried. */
 const CANARY_FILE = "canary.txt";
 /** The move-guard probe runs through `isolationArgv` like every launch, so it needs a cap of its own;
@@ -409,7 +412,6 @@ export function probeHostSolveReadDeny(opts: {
   }
   let workRoot: string | null = null;
   let repoCanaryDir: string | null = null;
-  let siblingCanaryDir: string | null = null;
   try {
     // The probe's own folder, under the temporary directory and under no shared parent: a parent
     // made 0700 by the first user to probe refused every other, and on 10 October a rehearsal run
@@ -423,15 +425,13 @@ export function probeHostSolveReadDeny(opts: {
     repoCanaryDir = mkdtempSync(join(resolve(opts.repoRoot), ".ana-host-isolation-probe-"));
     const repoCanary = join(repoCanaryDir, CANARY_FILE);
     writeFileSync(repoCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
-    // A canary in the first other worktree, which the live policy must refuse as it refuses the
-    // repository's own.
+    // A file of the first other worktree, which the live policy must refuse as it refuses the
+    // repository's own: its `package.json`, which every worktree of this repository holds, read
+    // and never written. Until 10 October the probe wrote a canary there, and a sibling tree
+    // another user owns refused the write: a rehearsal as the campaign user then ended every
+    // solve as `sandbox-crash` on EACCES in the root-owned main tree.
     const [sibling] = trees.otherTrees;
-    let siblingCanary: string | null = null;
-    if (sibling !== undefined) {
-      siblingCanaryDir = mkdtempSync(join(resolve(sibling), ".ana-host-isolation-probe-"));
-      siblingCanary = join(siblingCanaryDir, CANARY_FILE);
-      writeFileSync(siblingCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
-    }
+    const siblingCanary = sibling === undefined ? null : join(resolve(sibling), SIBLING_FILE);
     const open = solveIsolationPolicy({
       repoRoot: opts.repoRoot,
       ...trees,
@@ -450,7 +450,7 @@ export function probeHostSolveReadDeny(opts: {
       real.policyHash,
     );
   } finally {
-    for (const dir of [workRoot, repoCanaryDir, siblingCanaryDir]) {
+    for (const dir of [workRoot, repoCanaryDir]) {
       if (hasText(dir)) {
         try {
           rmSync(dir, { recursive: true, force: true });
@@ -500,7 +500,7 @@ function judgeSteps(
   const siblingReadRefused =
     sibling === null
       ? null
-      : observedRefusal(sibling.combined, sibling.status, CANARY_MARKER, real.mechanismId);
+      : observedRefusal(sibling.combined, sibling.status, SIBLING_MARKER, real.mechanismId);
   const controlReadSucceeded = control.combined.includes(CANARY_MARKER);
   const discriminationReadSucceeded = discrimination.combined.includes(CANARY_MARKER);
   const moveGuard: MoveGuardCheck =

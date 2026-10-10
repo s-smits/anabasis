@@ -466,7 +466,21 @@ session 0.12, a draft 0.15 to 0.19, and a campaign of two comparisons of 5 or 6 
 solves a side 2 to 5 dollars in all. And the ladder of shorter budgets is cut from the full
 limit (`--ladder`, by default a half, a quarter and an eighth of `--solve-model-turns`): with no
 limit named the ladder is empty, and the budget rule has no rung to set, so a campaign that is to
-move its budget names the limit.
+move its budget names the limit. One flag line that ran a small campaign from a prompt to a typed
+ending on 10 October, for a first campaign to start from:
+
+```text
+bun tools/d2/harness-builder.ts --name t-9 --prompt-file <file> --budget 6 --reserve 0.05 \
+  --builder claude-api/claude-sonnet-5-5 --examiner claude-api/claude-sonnet-5-5 \
+  --reviewer claude-api/claude-sonnet-5-5 --solver claude-api/claude-sonnet-5-5 --solver-effort high \
+  --solve-minutes 8 --solve-model-turns 10 --ladder 6,4,3,2 --solves 2 --target 8 --practice 3 \
+  --minutes 20 --turns 60 --practice-solves 6 --exam-tasks 10 --unattended
+```
+
+An Examiner session ends when the Examiner calls `finish`, which it may at any count, as much as
+at `--exam-tasks`: on 10 October every session held out two to four tasks and finished of its own
+accord. A campaign that runs is ended by a word (`tools/d2/word.ts --stop`), read at the next
+boundary; `bun run runs stop` ends a run the launcher started.
 
 ## 7. How a comparison is read
 

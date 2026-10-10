@@ -15,8 +15,9 @@
  * the Examiner's own turns. Until 2026-10-09 it put each instance to a stronger solver and to the
  * measured one; the second live session spent $48.45 that way, $2.01 of it on the Examiner.
  *
- * The session stops at `--tasks` held-out tasks, at `--proposals` instances put to the gate, or at
- * its minutes and turns. `--tasks` is the host's and is never told to the Examiner. It defaults to
+ * The session stops at `--tasks` held-out tasks, at `--proposals` instances put to the gate, at
+ * its minutes and turns, or when the Examiner calls `finish`, which it may at any count: on
+ * 10 October every session held out two to four tasks and finished of its own accord. `--tasks` is the host's and is never told to the Examiner. It defaults to
  * the scored set's size: asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`docs/plan.md`).
  *

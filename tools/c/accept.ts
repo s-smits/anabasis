@@ -32,7 +32,8 @@
  * holds this verifier to them. The check program is the campaign's staged copy of the bundle's,
  * without its battery, and its tools are the bundle's.
  *
- * It needs the pack and its tool tree on disk, and the Mac's verifier wall.
+ * It needs the pack and its tool tree on disk, and the verifier's wall: Seatbelt on macOS, Bubblewrap
+ * on Linux.
  */
 import {
   authoredFaults,

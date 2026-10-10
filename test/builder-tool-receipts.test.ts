@@ -219,28 +219,41 @@ it("reads the host's own load when no reading is injected, and states nothing mo
 
 // truss-opushmm-20261008T004146905Z: the mark at 235 min was read as "235 minutes left", and the
 // launcher's stop fell 64 minutes later inside a re-rehearsal, with three passing rehearsals and no
-// submit. The stop is one absolute instant, so the minutes left are read against it at each mark.
+// submit. The stop is one absolute instant, so the minutes left are read against it at each mark,
+// off the wall clock; the minutes since the round opened stay on the monotonic clock, so a host
+// clock step moves the one reading and not the other.
 it("states the run's stop beside each half-hour mark, as an instant and the minutes left to it", () => {
   const opened = Date.parse("2026-10-08T00:42:15.000Z");
-  let now = opened;
+  let now = 0;
+  let stepped = 0;
   // One submit already made, so the two-hour authoring ask stays out of this reading.
   const clock = sessionClock(
     () => 1,
     opened + 17_940_000,
     () => now,
     () => "host load average 43.0 on 12 cores",
+    () => opened + now + stepped,
   );
-  now = opened + 20 * 60_000;
+  now = 20 * 60_000;
   expect(clock(false)).toBeNull();
-  now = opened + 235 * 60_000;
+  now = 235 * 60_000;
   expect(clock(false)).toBe(
     [
       "Round clock: 235 min since this round opened; host load average 43.0 on 12 cores.",
       "Run stop: this run is stopped at 2026-10-08T05:41:15.000Z, 64 min from now, whether or not a candidate has been submitted.",
     ].join("\n"),
   );
-  now = opened + 239 * 60_000;
+  now = 239 * 60_000;
   expect(clock(false)).toBeNull();
+  // The host clock steps ten minutes ahead: the stop is ten minutes nearer, the round no older.
+  stepped = 10 * 60_000;
+  now = 270 * 60_000;
+  expect(clock(false)).toBe(
+    [
+      "Round clock: 270 min since this round opened; host load average 43.0 on 12 cores.",
+      "Run stop: this run is stopped at 2026-10-08T05:41:15.000Z, 19 min from now, whether or not a candidate has been submitted.",
+    ].join("\n"),
+  );
 });
 
 it("asks once inside a running turn for authoring when two hours pass without a submit", async () => {

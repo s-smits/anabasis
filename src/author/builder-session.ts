@@ -396,10 +396,23 @@ function conversationEnding(state: SessionState, failure: { error: unknown } | n
   return error instanceof BuildAgentTurnNonResult && error.status === "failed" ? "turn-non-result" : null;
 }
 
-/** The exit class written on the settled execution record. A session that threw after the
- *  controller cancelled the run's turns on its closing signal (the operator's stop, SIGTERM or
- *  SIGINT) is labelled from that cause, whatever the turn threw on its way out: its prose is the
- *  model's own, which `turn-non-result` says it is not. */
+/** Whether the controller's closing signal (the operator's stop, SIGTERM or SIGINT) cut the turn
+ *  that threw, rather than the turn failing on its own. The signal has to be among the budget's
+ *  cancellations, and what the turn threw has to be a cancellation cause (the retry's admission
+ *  check rethrows the budget's stop, which is the signal, or the provider denial that preceded it)
+ *  or the turn's own aborted non-result. The budget's abort reason alone cannot say: it keeps the
+ *  first stop cause, and the signal may arrive after a turn failed on the provider's side. */
+function cutByClosingSignal(error: unknown, budget: ProviderResourceBudget | undefined): boolean {
+  const cancellations = budget?.cancellations ?? [];
+  if (!cancellations.some((cause) => cause instanceof ControllerSignalAbort)) return false;
+  return (
+    cancellations.some((cause) => cause === error) ||
+    (error instanceof BuildAgentTurnNonResult && error.status === "aborted")
+  );
+}
+
+/** The exit class written on the settled execution record. A session the closing signal cut is
+ *  labelled from that cause: its prose is the model's own, which `turn-non-result` says it is not. */
 function classifyExit(
   state: SessionState,
   closing: Pick<SessionClosing, "deps" | "failure">,
@@ -409,8 +422,9 @@ function classifyExit(
     const ending = settledEnding(state);
     return ending === "accepted" ? "recorded" : ending;
   }
-  const cause: unknown = closing.deps.providerBudget?.cancellationSignal.reason;
-  return cause instanceof ControllerSignalAbort ? "signal-terminated" : "turn-non-result";
+  return cutByClosingSignal(closing.failure.error, closing.deps.providerBudget)
+    ? "signal-terminated"
+    : "turn-non-result";
 }
 
 async function finishBuilderSession(

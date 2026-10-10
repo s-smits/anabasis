@@ -58,12 +58,16 @@ function closedResult(reason: Closure): AgentToolResult<unknown> {
  *  does not silence it.
  *
  *  A run with a hard stop states it beside each mark (`stopFact`): the minutes since the round
- *  opened are not the minutes left, and a Builder told only the first read them as the second. */
+ *  opened are not the minutes left, and a Builder told only the first read them as the second. The
+ *  minutes so far and the marks run on the monotonic clock (`now`), which a host clock step cannot
+ *  move; the stop is an epoch instant, so the minutes left to it are read off the wall clock
+ *  (`wall`) at the mark. */
 export function sessionClock(
   submits: () => number = () => 0,
   stopAt: number | null = null,
-  now: () => number = () => Date.now(),
+  now: () => number = () => performance.now(),
   load: () => string = hostLoad,
+  wall: () => number = () => Date.now(),
 ): (clearPreview: boolean) => string | null {
   const opened = now();
   let marks = 0;
@@ -82,7 +86,7 @@ export function sessionClock(
     if (Math.floor(minutes / 30) > marks) {
       marks = Math.floor(minutes / 30);
       lines.push(`Round clock: ${String(minutes)} min since this round opened; ${load()}.`);
-      if (stopAt !== null) lines.push(stopFact(stopAt, at));
+      if (stopAt !== null) lines.push(stopFact(stopAt, wall()));
       if (since !== null) lines.push(since);
     }
     if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && submits() === 0) {

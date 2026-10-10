@@ -57,10 +57,14 @@ export interface FingerprintEvidence {
  *  and scoringHash, so a task-only change can keep the scoring program fixed. */
 export const BATTERY_FILES = [basename(TASKS_FILE), basename(CONTROLS_FILE)] as const;
 
+/** A refused finding and the bundle it reads, so a reader that routes findings by their half (a
+ *  split build) knows which side the agent validators and the hashes refused. */
+type FingerprintFinding = BundleValidationFinding & { side: "agent" | "correctness-model" };
+
 interface FingerprintRejection {
   ok: false;
   slug: string;
-  findings: BundleValidationFinding[];
+  findings: FingerprintFinding[];
 }
 
 /** One content address over the battery pair. Null without tasks.json. */
@@ -102,6 +106,7 @@ export function fingerprintSlug(
           {
             code: "missing-bundle",
             file: name,
+            side: name,
             detail: `slug has no ${name}/ bundle — the two-bundle layout is the fingerprint's precondition`,
           },
         ],
@@ -113,18 +118,15 @@ export function fingerprintSlug(
   // what selects the capability scan below; a read-only fixture without that marker skips it.
   const generated = existsSync(join(correctnessModelDir, basename(BRIEF_FILE)));
   const validation = validateAgentBundle(agentDir);
-  if (!validation.ok) return { ok: false, slug, findings: validation.findings };
+  if (!validation.ok) {
+    return { ok: false, slug, findings: validation.findings.map((f) => ({ ...f, side: "agent" })) };
+  }
 
   // Validation already walked agent/, and an irregular entry there returned findings above. The
   // correctness-model bundle is hashed here, so its irregular entries have to reject here: a
   // symlinked correctness-model file would be verified at runtime while being absent from the
   // verifier's content address, which is the one place a reader looks to say what ran.
-  let agent: ReturnType<typeof hashBundle>;
-  let correctnessModel: ReturnType<typeof hashBundle>;
-  try {
-    agent = hashBundle(agentDir);
-    correctnessModel = hashBundle(correctnessModelDir, { excludeTop: [...BATTERY_FILES] });
-  } catch (error) {
+  const irregular = (side: FingerprintFinding["side"], error: unknown): FingerprintRejection => {
     if (!(error instanceof IrregularBundleEntryError)) throw error;
     return {
       ok: false,
@@ -132,19 +134,33 @@ export function fingerprintSlug(
       findings: error.entries.map((path) => ({
         code: "non-regular-entry" as const,
         file: path,
+        side,
         detail:
           "unsupported or excluded entry in the bundle — rejected, not skipped: unhashed content breaks the content address's coverage",
       })),
     };
+  };
+  let agent: ReturnType<typeof hashBundle>;
+  let correctnessModel: ReturnType<typeof hashBundle>;
+  try {
+    agent = hashBundle(agentDir);
+  } catch (error) {
+    return irregular("agent", error);
+  }
+  try {
+    correctnessModel = hashBundle(correctnessModelDir, { excludeTop: [...BATTERY_FILES] });
+  } catch (error) {
+    return irregular("correctness-model", error);
   }
   // Brief-marked generated source the verifier runs may not spawn processes or forward the ambient
   // environment. Code only the Builder's own tests reach is not part of what the verifier executes.
-  const correctnessModelSourceFindings: BundleValidationFinding[] = generated
+  const correctnessModelSourceFindings: FingerprintFinding[] = generated
     ? verifierSourceFiles(correctnessModelDir).flatMap((path) => {
         const source = parseGeneratedSource(readFileSync(join(correctnessModelDir, path), "utf8"), path);
         return generatedCorrectnessModelCapabilityEscapes(source).map((capabilityEscape) => ({
           code: "correctness-model-capability-escape" as const,
           file: `correctness-model/${path}`,
+          side: "correctness-model" as const,
           detail:
             capabilityEscape.kind === "child-process"
               ? `generated correctnessModel loads ${capturedJsonStringify(capabilityEscape.token)} directly — process execution belongs to the controller-owned verifier host, never model-authored correctnessModel source`

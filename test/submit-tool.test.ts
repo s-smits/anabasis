@@ -23,6 +23,7 @@ function submitWith(holds: (string | null)[], workspace = scratchDir("ana-submit
     lastRefusal: [],
     activeTurn: 1,
     terminal: false,
+    handedBack: false,
     submitBound: false,
   };
   const recorder = new BuilderExecutionRecorder();

@@ -195,7 +195,9 @@ describe("an answer pass", () => {
 });
 
 /** The epoch's execution records in the order their sessions claimed them. */
-function executionRecords(campaignDir: string): Array<{ submits: Array<{ outcome: string }> }> {
+function executionRecords(
+  campaignDir: string,
+): Array<{ outcome: string; submits: Array<{ outcome: string }> }> {
   const order = (name: string) => Number(/-(\d+)\.json$/.exec(name)?.[1] ?? 1);
   return readdirSync(campaignDir)
     .filter((name) => /^builder-execution(?:-\d+)?\.json$/.test(name))
@@ -223,18 +225,25 @@ function refusesOnce() {
   return { gates, calls: () => calls };
 }
 
+/** Whether the answer agent's roots stand in the workspace. */
+const answerRootsStand = (workspace: string) =>
+  ["answer", ".toolchain/answer"].every((dir) => existsSync(join(workspace, dir)));
+
 describe("a split build's round", () => {
   it("hands the Harness Builder the projection, and hands a correctness-model refusal back unread", async () => {
     const campaignDir = scratchDir("ana-split-round-");
     const workspace = join(campaignDir, "workspace");
     const gate = refusesOnce();
     const replies: string[] = [];
+    const recorded: Record<Role, number> = { answer: 0, harness: 0 };
+    let rootsStood = false;
     const { open, turns } = splitSessions({
       answer: ({ pass }) => {
         if (pass === 2) writeAnswerHalf(workspace);
         if (pass === 3) writeFileSync(join(workspace, "correctness-model/NOTES.md"), "revised\n");
       },
       harness: async ({ tools }) => {
+        rootsStood = answerRootsStand(workspace);
         writeHarnessHalf(workspace);
         replies.push(await replyText(namedTool(tools, "correctness_check"), "check"));
         replies.push(await replyText(namedTool(tools, "submit"), "submit"));
@@ -245,6 +254,9 @@ describe("a split build's round", () => {
       {
         tools: [],
         answer: { tools: [], wallMs: HOUR },
+        recordSession: (_roster, _prompt, role) => {
+          if (role !== "whole") recorded[role] += 1;
+        },
         toolsProbes: () => ({}),
         waitMs: async () => {},
         gates: gate.gates,
@@ -253,6 +265,10 @@ describe("a split build's round", () => {
     );
     expect(outcome.buildAdmissible).toBe(true);
     expect(turns.map((turn) => turn.role)).toEqual(["answer", "answer", "harness", "answer", "harness"]);
+    // Each side's entry check records its first pass; every later pass records its own.
+    expect(recorded).toEqual({ answer: 3, harness: 2 });
+    // The answer agent's roots stand before the Harness Builder's first shell, so every wall holds.
+    expect(rootsStood).toBe(true);
     const [empty, written, harness, revised, resubmit] = turns;
     // The starter's correctness model does not validate alone, so it goes back before any harness pass.
     expect(written?.prompt).toContain("The correctness model came back with these findings:");
@@ -268,6 +284,8 @@ describe("a split build's round", () => {
     // Rule 4 across the split: the census row reaches the answer agent and never the Harness Builder.
     expect(replies[0]).toContain("Not shown here: 1 finding on the correctness model");
     expect(replies[1]).toContain("split-handed-back");
+    // The hand-back ends the pass, not the submits: nothing calls it final, here or next pass.
+    expect(replies[1]).not.toContain("This refusal is final");
     for (const reply of replies) expect(reply).not.toContain(PROTECTED_DETAIL);
     expect(harness?.prompt).not.toContain(PROTECTED_DETAIL);
     expect(revised?.prompt).toContain(PROTECTED_DETAIL);
@@ -279,9 +297,9 @@ describe("a split build's round", () => {
     const records = executionRecords(campaignDir);
     expect(records).toHaveLength(turns.length);
     const submitted = records.filter((record) => record.submits.length > 0);
-    expect(submitted.map((record) => record.submits.map((row) => row.outcome))).toEqual([
-      ["refused"],
-      ["accepted"],
+    expect(submitted.map((record) => [record.outcome, ...record.submits.map((row) => row.outcome)])).toEqual([
+      ["handed-back", "refused"],
+      ["recorded", "accepted"],
     ]);
   });
 
@@ -366,6 +384,12 @@ describe("a split round on the production composition", () => {
     expect(filePolicy(answered)).toMatch(/^[0-9a-f]{64}$/);
     expect(filePolicy(answered)).not.toBe(filePolicy(harness));
     expect(answered.framingDigest).not.toBe(harness.framingDigest);
+    // Each side records the capabilities it mounts: the search tools stand beside the answer agent's
+    // file tools, and the Harness Builder's record lists none it never had.
+    const mounted = (evidence: { isolations: Array<{ capabilities: string[] }> }) =>
+      evidence.isolations.flatMap((row) => row.capabilities);
+    expect(mounted(answered)).toEqual(expect.arrayContaining(["public_source", "verifier_workshop"]));
+    for (const tool of ["public_source", "verifier_workshop"]) expect(mounted(harness)).not.toContain(tool);
   });
 
   // Seconds before the answer pass, not hours after it.

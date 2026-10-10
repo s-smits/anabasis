@@ -45,15 +45,17 @@ holds.
 3. **Build the lanes.** `wri.ts lanes --out <dir>` writes one prompt per lane under `<dir>/lanes/`
    and one entry per session in `<dir>/launch.md`. With no `--lanes` it opens every lane a trigger
    started and the four standing lanes. It builds no isolated lane: it names the ones whose trigger
-   fired, and each waits on another lane's report.
+   fired, and each waits on another lane's report. A prompt built before is kept, never rebuilt
+   under a report written against it, and `launch.md` lists every prompt that stands, once each, so
+   a second run changes neither.
    *Check:* exit 0, and count the entries: that is the spend.
 4. **Launch.** Start one session per `launch.md` entry, all in one message, on the model the
    operator chose, handing each its one line and nothing else.
    *Check:* read the model each transcript recorded before using its report.
 5. **Collect.** `wri.ts collect --out <dir>` holds every expected report to its shape and writes
    `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 11, 15 and 18, then
-   decide lane 19. Build either with `wri.ts lanes --out <dir> --lanes 5`, launch it alone, and
-   collect again.
+   decide lane 19. Build either with `wri.ts lanes --out <dir> --lanes 5`, launch the one lane it
+   says it built, alone, and collect again.
    *Check:* `collect` exits 0. It exits 1 while a report is missing or invalid.
 6. **Synthesise.** `wri.ts synthesis --out <dir>` renders `<dir>/synthesis-prompt.md`; one session
    writes `<dir>/synthesis.md`, and the primary adjudicates it ("Adjudicating" below).

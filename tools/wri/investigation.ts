@@ -201,6 +201,10 @@ export function reportOf(lane: Lane, text: string | null, owners: readonly strin
         ]
       : []),
     ...(verdict === "finding" && findings === 0 ? ["the verdict is a finding and none is written"] : []),
+    // Recode's lane 15 on 10 October said no finding over two written findings, and was accepted.
+    ...(verdict === "no finding" && findings > 0
+      ? [`the verdict is no finding and the report writes ${plural(findings, "finding")}`]
+      : []),
     ...(unowned > 0
       ? [`${String(unowned)} of ${String(named.length)} owners are not in the owner table`]
       : []),

@@ -14,7 +14,8 @@
  * - `start` writes that as `overview.md`, and the shared instructions with the campaign's row filled
  *   in and two sections left for the primary to write.
  * - `lanes` builds one prompt per lane and `launch.md`. With no `--lanes` it opens the lanes a
- *   trigger started and the standing ones; an isolated lane is built only when named.
+ *   trigger started and the standing ones; an isolated lane is built only when named. A prompt
+ *   built before is kept, and `launch.md` lists every prompt that stands, each once.
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
  *   every report is there and valid.
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
@@ -40,7 +41,7 @@ import { treeContent } from "#src/solve/harness.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
-import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
+import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import {
   blankSections,
   filled,
@@ -133,6 +134,16 @@ function opened(): Investigation {
 const promptPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-prompt.md`);
 const reportPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-report.md`);
 
+/** One session's entry in `launch.md`. */
+function launchEntry(out: string, lane: Lane): string {
+  return [
+    `## Lane ${String(lane.number)}: ${lane.title}${lane.isolated ? " (alone)" : ""}`,
+    `Prompt: \`${promptPath(out, lane.number)}\``,
+    `Report: \`${reportPath(out, lane.number)}\``,
+    `One line to hand the session: Read \`${promptPath(out, lane.number)}\` and do exactly what it says.`,
+  ].join("\n\n");
+}
+
 function lanes(): number {
   const { out, shared, seen } = opened();
   const blank = blankSections(shared);
@@ -141,7 +152,12 @@ function lanes(): number {
   const owners = ownersOf(catalogue);
   const named = values.lanes === undefined ? null : numbersOf(values.lanes);
   const { open, isolated, waiting } = selected(lanesOf(catalogue), seen.triggers, named);
-  const built = [...open, ...isolated];
+  // A prompt already built is kept: a report may have been written against it, and `collect` reads
+  // the report and never the prompt, so a rebuilt one would change under it unseen. v1 kept an
+  // earlier read's lanes (9762afb0) and bound a report to its prompt's bytes (23bdedb8).
+  const asked = [...open, ...isolated];
+  const kept = asked.filter((lane) => existsSync(promptPath(out, lane.number)));
+  const built = asked.filter((lane) => !kept.includes(lane));
   for (const lane of built) {
     const report = reportPath(out, lane.number);
     writeFileSync(
@@ -149,25 +165,21 @@ function lanes(): number {
       `${lanePrompt({ lane, shared, overview: seen, catalogue, owners, report })}\n`,
     );
   }
-  const entries = built.map((lane) =>
-    [
-      `## Lane ${String(lane.number)}: ${lane.title}${lane.isolated ? " (alone)" : ""}`,
-      `Prompt: \`${promptPath(out, lane.number)}\``,
-      `Report: \`${reportPath(out, lane.number)}\``,
-      `One line to hand the session: Read \`${promptPath(out, lane.number)}\` and do exactly what it says.`,
-    ].join("\n\n"),
-  );
+  // The launch list is written whole from the prompts that stand, so a second build cannot list a
+  // session twice, and its count stays the spend (SKILL.md, step 3).
+  const listed = lanesOf(catalogue).filter((lane) => existsSync(promptPath(out, lane.number)));
   const launch = join(out, "launch.md");
-  // A second build, of the isolated lanes, adds to the first build's entries.
-  const before = existsSync(launch) ? `${readFileSync(launch, "utf8").trim()}\n\n` : "# Launch\n\n";
-  writeFileSync(launch, `${before}${entries.join("\n\n")}\n`);
+  writeFileSync(launch, `# Launch\n\n${listed.map((lane) => launchEntry(out, lane)).join("\n\n")}\n`);
   console.log(`${plural(built.length, "lane")} built: ${built.map((lane) => lane.number).join(", ")}`);
+  for (const lane of kept) console.log(`lane ${String(lane.number)}: built before, kept`);
   for (const lane of waiting) {
     console.log(
       `lane ${String(lane.number)} has its trigger and runs alone: read what it waits on, then build it with --lanes ${String(lane.number)}`,
     );
   }
-  console.log(`one session per entry of ${launch}`);
+  console.log(
+    `one session per entry of ${launch}, ${String(listed.length)} in all; launch only those built now`,
+  );
   return 0;
 }
 

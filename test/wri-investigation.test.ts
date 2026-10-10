@@ -1,6 +1,19 @@
 // What an investigation builds from the catalogue and one log's overview: which lanes open, the
-// prompt each session is given, and whether a report has the shape the synthesis reads.
-import { describe, expect, it } from "bun:test";
+// prompt each session is given, and whether a report has the shape the synthesis reads; and the
+// `lanes` verb, run twice over one directory, building each prompt once and listing each session once.
+import { afterAll, describe, expect, it } from "bun:test";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join, resolve } from "../src/meta/path.ts";
+import { capturedExecPath } from "../src/meta/process.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
 import {
   blankSections,
@@ -11,7 +24,10 @@ import {
   selected,
 } from "../tools/wri/investigation.ts";
 import type { Overview } from "../tools/wri/read.ts";
+import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 
+const shared =
+  "## Orientation\n\nWhy the step.\n\n## Campaign under review\n\nthe row\n\n## Hard rules\n\n- quote nothing\n";
 const catalogue = catalogueText();
 const lanes = lanesOf(catalogue);
 const owners = ownersOf(catalogue);
@@ -51,8 +67,6 @@ describe("an investigation's lanes", () => {
       { lane: 5, name: "FAILS ON ONE CHECK", detail: "check-a refused 2 of 2" },
     ],
   };
-  const shared =
-    "## Orientation\n\nWhy the step.\n\n## Campaign under review\n\nthe row\n\n## Hard rules\n\n- quote nothing\n";
 
   it("gives an open lane the shared instructions and every trigger", () => {
     const prompt = lanePrompt({
@@ -104,10 +118,74 @@ describe("an investigation's lanes", () => {
     expect(reportOf(lane(4), "# Lane 4: x\nVerdict: finding\n", owners).faults).toEqual([
       "the verdict is a finding and none is written",
     ]);
+    // Recode's lane 15 on 10 October: no finding said, two written, and accepted.
+    const denied = `${good.replace("Verdict: finding", "Verdict: no finding")}\n${good.split("\n").slice(3).join("\n")}`;
+    expect(reportOf(lane(4), denied, owners)).toMatchObject({
+      state: "invalid",
+      faults: ["the verdict is no finding and the report writes 2 findings"],
+    });
+    expect(
+      reportOf(lane(4), "# Lane 4: x\nVerdict: no finding, all sound\n## Findings\n", owners).state,
+    ).toBe("ok");
   });
 
   it("fills a template's slots and names one it cannot fill", () => {
     expect(filled("<!-- note -->\nto {out}\n", { out: "/d" })).toBe("to /d\n");
     expect(() => filled("{reports}", {})).toThrow("which nothing fills");
+  });
+});
+
+describe("the lanes verb", () => {
+  const REPO = resolve(import.meta.dir, "..");
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-wri-")));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  // One pass and two refusals that both name check-a: lane 5's trigger fires, among the open lanes'.
+  const events = [
+    ["solve.started", { solve: "s1", condition: "c" }],
+    ["solve.finished", { solve: "s1", ending: { outcome: "pass" } }],
+    ["solve.started", { solve: "s2", condition: "c" }],
+    ["solve.finished", { solve: "s2", ending: { outcome: "fail", kind: "rejected" } }],
+    ["verdict", { solve: "s2", kind: "fail", blocking: ["check-a", "check-b"] }],
+    ["solve.started", { solve: "s3", condition: "c" }],
+    ["solve.finished", { solve: "s3", ending: { outcome: "fail", kind: "rejected" } }],
+    ["verdict", { solve: "s3", kind: "fail", blocking: ["check-a"] }],
+  ] as const;
+  const log = join(dir, "log.jsonl");
+  writeFileSync(
+    log,
+    events
+      .map(
+        ([kind, data], index) =>
+          `${JSON.stringify({ at: new Date(index * 1_000).toISOString(), kind, data })}\n`,
+      )
+      .join(""),
+  );
+  const out = join(dir, "out");
+  const lanesVerb = (...more: string[]) =>
+    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "lanes", "--out", out, ...more], { cwd: REPO });
+  const prompts = () =>
+    Object.fromEntries(
+      readdirSync(join(out, "lanes")).map((name) => [name, readFileSync(join(out, "lanes", name), "utf8")]),
+    );
+  const launch = () => readFileSync(join(out, "launch.md"), "utf8");
+  const entries = () => launch().match(/^## Lane \d+:/gm) ?? [];
+
+  it("keeps a prompt built before, lists each session once, and adds a lane named later", () => {
+    mkdirSync(join(out, "lanes"), { recursive: true });
+    writeFileSync(join(out, "investigation.json"), JSON.stringify({ log }));
+    writeFileSync(join(out, "shared-instructions.md"), shared);
+    lanesVerb();
+    const [built, listed, count] = [prompts(), launch(), entries().length];
+    expect(Object.keys(built)).toContain("04-prompt.md");
+    expect(Object.keys(built)).not.toContain("05-prompt.md");
+    // The primary rewrites the orientation after the first sessions wrote against the first prompts.
+    writeFileSync(join(out, "shared-instructions.md"), shared.replace("Why the step.", "Another question."));
+    expect(lanesVerb()).toContain("lane 4: built before, kept");
+    expect(prompts()).toEqual(built);
+    expect(launch()).toBe(listed);
+    expect(lanesVerb("--lanes", "4-5")).toContain("1 lane built: 5");
+    expect(entries()).toHaveLength(count + 1);
+    expect(entries().filter((entry) => entry === "## Lane 5:")).toHaveLength(1);
+    expect(prompts()["04-prompt.md"]).toBe(built["04-prompt.md"]);
   });
 });

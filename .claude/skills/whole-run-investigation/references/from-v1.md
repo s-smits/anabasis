@@ -115,8 +115,11 @@ archive alone.
   climbs (lane 25).
 - **17. Round hand-off census.** v1 had many channels between rounds. A v2 session is handed a
   parent harness, practice tasks, their records and the reviewers' readings, and lane 30 reads that.
-- **26. Builder memory and posture.** A session carries no memory to the next. The harness state is
-  the only thing that passes.
+- **26. Builder memory and posture.** A session does carry notes to the next: `MEMORY.md`, capped
+  at 8,000 bytes, `SCRATCHPAD.md` and helpers under `scratch/` (`src/builder/memory.ts`). Buffer's
+  `MEMORY.md` grew about a kilobyte a session, from 3,156 bytes after b-1 to 7,796 after b-6
+  (10 October). The notes are not in the log, so the reader folds none of them; a lane that wants
+  them reads `<campaign>/memory/<session>/`, beside the harness states. No lane does yet.
 
 **No hardware target.**
 

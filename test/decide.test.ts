@@ -564,6 +564,23 @@ describe("no step", () => {
     expect(move(tied([row(20, ALL, ALL), row(10, HALF, ALL)]), plan)).toMatchObject({
       move: "budget",
       modelTurns: 10,
+      why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four: at 10 turns it was valid on at most half",
+    });
+    // The share leaves out the tasks no solve answered, and the reason says so: recode's g-1
+    // (10 October) read three in four where the report's row showed 7 of 12, two tasks unanswered.
+    const unanswered = [
+      setting(40),
+      ...first,
+      ...compared("g-1", "h1", "no-step", {
+        tally: [0, 0, 6],
+        valid: { old: [2, 0, 4], fresh: [2, 0, 4] },
+        budgets: [row(20, ALL, ALL), row(10, [3, 2, 1], ALL)],
+        extra: { scored: { wins: 0, losses: 0, ties: 6, unsolved: 2 } },
+      }),
+    ];
+    expect(move(unanswered, plan)).toMatchObject({
+      move: "budget",
+      why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four, 2 tasks no solve answered left out: at 10 turns it was valid on at most half",
     });
     const none = tied([row(20, ALL, ALL), row(10, [0, 1, 5], ALL)]);
     expect(move(none, plan)).toMatchObject({ move: "examine", room: true });

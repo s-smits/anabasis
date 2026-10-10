@@ -651,10 +651,18 @@ function noRoom(ground: Ground, last: JsonObject, since: number): Decided {
   const { turns, tasksShort } = ground;
   const id = isString(last.session) ? last.session : "";
   const rung = budgetBy(last, "old", turns);
+  // The share is over the tasks some solve answered (`validAt`): a reader of the report's own
+  // valid row sees the unanswered tasks counted in, so the reason names what it left out. On
+  // recode's g-1 (10 October) the reason said three in four where the row read 7 of 12, two
+  // tasks answered by neither.
+  const unsolved = asRecord(last.scored)?.unsolved;
+  const left =
+    isNumber(unsolved) && unsolved > 0 ? `, ${plural(unsolved, "task")} no solve answered left out` : "";
+  const nearlyAll = `the reference harness was valid on more than three solves in four${left}`;
   if (rung !== undefined && rung !== turns && !tried(ground, rung)) {
     return toBudget(
       rung,
-      `comparison ${id} read no step, and the reference harness was valid on more than three solves in four: at ${budgetSaid(rung)} it was valid on at most half`,
+      `comparison ${id} read no step, and ${nearlyAll}: at ${budgetSaid(rung)} it was valid on at most half`,
     );
   }
   if (tasksShort === null && since > 0) {
@@ -663,7 +671,7 @@ function noRoom(ground: Ground, last: JsonObject, since: number): Decided {
   return written(ground.drafts, "room", {
     move: "examine",
     room: true,
-    why: `comparison ${id} read no step, the reference harness was valid on more than three solves in four, and no shorter budget leaves room: the tasks have to change${fewYet(since)}`,
+    why: `comparison ${id} read no step, ${nearlyAll}, and no shorter budget leaves room: the tasks have to change${fewYet(since)}`,
   });
 }
 /**

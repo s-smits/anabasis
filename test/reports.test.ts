@@ -596,7 +596,7 @@ describe("the tasks that go to a person as possibly infeasible", () => {
   });
 });
 
-describe("the tasks both harnesses exhausted", () => {
+describe("the tasks the reference harness exhausted", () => {
   const terms = { old: "h1", solves: 2 };
   const read = event("checker.read", { contract: "c", checks: "k", faults: [] });
   /** One comparison of the three tasks under `setting`: `e1` to `e3` answered by both sides in
@@ -613,18 +613,20 @@ describe("the tasks both harnesses exhausted", () => {
   ];
   const start = [read, ...["e1", "e2", "e3", "open"].flatMap(heldOut)];
 
-  it("are the ones answered in every solve of two comparisons under the setting, but for a third kept by the contract's hash", () => {
+  it("are the ones the reference answered in every solve of two comparisons under the setting, but for a third kept by the contract's hash", () => {
     const once = compared(start, "b-1", "h2", SETTING);
     expect(exhausted(once)).toEqual([]);
+    // All four: `open` too, which the new harness failed once and the reference never did, since
+    // a changed harness can only tie or lose it. Until 10 October both sides had to answer a
+    // task, and a simulated climb drew closed tasks into its set three comparisons running.
     const twice = compared(once, "b-2", "h3", SETTING);
     const spent = exhausted(twice);
     expect(spent).toHaveLength(2);
-    expect(spent.every((task) => ["e1", "e2", "e3"].includes(task))).toBe(true);
-    expect(spent).not.toContain("open");
-    // The Examiner hears it as one outcome a task, and the kept third stays a tie.
+    expect(spent.every((task) => ["e1", "e2", "e3", "open"].includes(task))).toBe(true);
+    // The Examiner hears it as one outcome a task, and the kept ones keep theirs.
     const heard = outcomesOf(twice);
     expect([...heard.values()].filter((outcome) => outcome === "exhausted")).toHaveLength(2);
-    expect(heard.get("open")).toBe("won");
+    expect(heard.get("open") === "won" || heard.get("open") === "exhausted").toBe(true);
     // Under another setting the count starts again: a report there holds no pair of this setting's
     // solves, and the earlier reports are not read. A released task is no held-out one.
     expect(exhausted(compared(twice, "b-3", "h4", "other"))).toEqual([]);

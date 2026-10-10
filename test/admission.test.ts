@@ -117,10 +117,12 @@ describe("what a log holds for the next comparison", () => {
   });
 
   it("takes the untied share from the last comparison that tallied a task under the log's last setting", () => {
+    // Six of the eight tasks closed by the reference in the last one: two to win.
+    const closed = (count: number) => ({ valid: { old: [8 - count, 0, count], fresh: [0, 0, 8] } });
     const log = [
       ...here.events,
-      reported("b-1", tallied(6, 0, here.setting)),
-      reported("b-2", tallied(1, 1, here.setting)),
+      reported("b-1", { ...tallied(6, 0, here.setting), ...closed(0) }),
+      reported("b-2", { ...tallied(1, 1, here.setting), ...closed(6) }),
       // One the cap cut, and one with every task set aside, tallied nothing and say nothing of it.
       reported("b-3", { scored: null, versions: [], capped: true, setting: here.setting }),
       reported("b-4", { scored: { wins: 0, losses: 0, ties: 0 }, versions: [], setting: here.setting }),
@@ -129,12 +131,19 @@ describe("what a log holds for the next comparison", () => {
     // A comparison made under other limits says nothing of the solver the log's last solves were.
     const moved = [...log, ...longer.events];
     expect(supplyOf(moved).untied).toBeNull();
-    expect(supplyOf([...moved, reported("b-5", tallied(4, 0, longer.setting))]).untied).toBe(0.5);
+    expect(
+      supplyOf([...moved, reported("b-5", { ...tallied(4, 0, longer.setting), ...closed(4) })]).untied,
+    ).toBe(0.5);
+    // A report with no count of valid solves closes nothing: every task may be won.
+    expect(supplyOf([...moved, reported("b-6", tallied(0, 0, longer.setting))]).untied).toBe(1);
   });
 
-  it("counts no more tasks than the harness to be compared with left to win", () => {
+  it("counts the tasks the harness to be compared with left to win, whatever the last comparison untied", () => {
     // After a step read 7-0-4 the harness that won was valid in every solve on 8 of the 11 tasks,
-    // so a round made against it had 3 to win where the share on record said 7 (2026-10-09).
+    // so a round made against it had 3 to win where the tally said 7 (2026-10-09). The other way
+    // round, a task nobody answered yet is one a changed harness may win: until 10 October no
+    // more were counted than the last comparison untied, and a simulated climb read 0 to win on
+    // six tasks written for room.
     const stepped = [
       ...here.events,
       reported("g-1", {
@@ -145,7 +154,7 @@ describe("what a log holds for the next comparison", () => {
         valid: { old: [6, 1, 1], fresh: [1, 1, 6] },
       }),
     ];
-    expect(supplyOf(stepped).untied).toBe(0.75);
+    expect(supplyOf(stepped).untied).toBe(0.875);
     expect(supplyOf(stepped, "h1").untied).toBe(0.25);
     // `latest` is the harness the last whole session left. One that comparison did not solve has
     // no record in it.
@@ -156,9 +165,10 @@ describe("what a log holds for the next comparison", () => {
       ended: "finished",
     });
     expect(supplyOf([built, ...stepped], "latest").untied).toBe(0.25);
-    expect(supplyOf(stepped, "h9").untied).toBe(0.75);
+    // A harness the comparison did not read closed nothing on record.
+    expect(supplyOf(stepped, "h9").untied).toBe(1);
     // The campaign's reference harness is the starter until one is promoted, and that one after.
-    expect(supplyOf(stepped, "promoted").untied).toBe(0.75);
+    expect(supplyOf(stepped, "promoted").untied).toBe(0.875);
     const promotion = event("harness.promoted", { harness: "h1", from: "h0", rests: [] });
     expect(supplyOf([...stepped, promotion], "promoted").untied).toBe(0.25);
     expect(supplyOf([...stepped, promotion]).untied).toBe(0.25);
@@ -176,13 +186,14 @@ describe("what a log holds for the next comparison", () => {
       valid: { old: [6, 0, 2], fresh: [6, 1, 1] },
     });
     const log = [...here.events, control];
-    // The same pair again: the share stands, with the reference's closed task taken off.
-    expect(supplyOf(log, "p1", undefined, "h0").untied).toBeCloseTo(0.125, 10);
-    expect(supplyOf(log, "h0", undefined, "p1").untied).toBeCloseTo(0.125, 10);
+    // The same pair again: the reference closed two tasks, and six may be won, the ones nobody
+    // answered among them.
+    expect(supplyOf(log, "p1", undefined, "h0").untied).toBeCloseTo(7 / 8, 10);
+    expect(supplyOf(log, "h0", undefined, "p1").untied).toBeCloseTo(6 / 8, 10);
     // Another harness against those programs: no comparison of that pair, so no share.
     expect(supplyOf(log, "p1", undefined, "h1").untied).toBeNull();
     // With no harness named, the last comparison under the setting stands, as before.
-    expect(supplyOf(log, "p1").untied).toBeCloseTo(0.125, 10);
+    expect(supplyOf(log, "p1").untied).toBeCloseTo(7 / 8, 10);
     const pair = reported("c-2", {
       ...tallied(5, 0, here.setting),
       old: "p1",
@@ -190,11 +201,15 @@ describe("what a log holds for the next comparison", () => {
       starter: "h0",
       valid: { old: [6, 1, 1], fresh: [0, 0, 8] },
     });
-    expect(supplyOf([...log, pair, control], "p1", undefined, "h1").untied).toBeCloseTo(5 / 8, 10);
+    expect(supplyOf([...log, pair, control], "p1", undefined, "h1").untied).toBeCloseTo(7 / 8, 10);
   });
 
   it("counts the tasks held out since that comparison, and the ones that wait for a label", () => {
-    const before = [...heldOut("v"), ...here.events, reported("b-1", tallied(0, 0, here.setting))];
+    const before = [
+      ...heldOut("v"),
+      ...here.events,
+      reported("b-1", { ...tallied(0, 0, here.setting), valid: { old: [0, 0, 8], fresh: [0, 0, 8] } }),
+    ];
     expect(supplyOf(before)).toMatchObject({ held: 1, untied: 0, since: 0 });
     expect(supplyOf([...before, ...heldOut("w"), ...heldOut("x")])).toMatchObject({ held: 3, since: 2 });
   });

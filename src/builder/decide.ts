@@ -75,7 +75,7 @@
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, roomOf } from "../kernel/reports.ts";
 import { practiceRan } from "../kernel/solves.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { supplyOf } from "./admission.ts";
@@ -308,7 +308,11 @@ function unshown(ground: Ground): Decided | null {
   const shown = practiceRan(events).some(
     ({ started, ending }) => started > began && started < at && ending?.outcome === "fail",
   );
-  if (shown) return null;
+  // Tasks held out since the session ended are what it lacked: the next rows read them, by a
+  // release for practice or a comparison, and not another Examiner session. Until 10 October this
+  // row asked again for as long as its patience lasted, and a simulated climb wrote four tasks the
+  // starter failed, then three sessions more, and ended `no-room` with none of them read.
+  if (shown || heldSince(events, at) > 0) return null;
   return written(
     ground.drafts,
     "room",
@@ -670,6 +674,16 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
   const room = roomOf(last);
   if (room === ROOM || (room !== "none" && control && reading === STEP)) {
     if (control) {
+      // The supply row holds here too: a control that read room on tasks of which the reference
+      // closed all but two or three leaves the next comparison nothing to read a step on. The
+      // simulated climb of 10 October built three times on such a set, 2-0-6 each time.
+      if (tasksShort === "untied") {
+        return supplied(
+          ground,
+          last,
+          `comparison ${id} read the starter against harness ${short(reference ?? "")} with room, and left too few tasks for the next comparison to untie: harness ${short(reference ?? "")} answered the rest in every solve`,
+        );
+      }
       return build(
         `comparison ${id} read the starter against harness ${short(reference ?? "")} on the tasks held out since, and they leave it room: the Builder builds`,
       );
@@ -716,14 +730,7 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
 function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): Decided {
   const { tasksShort } = ground;
   const id = isString(last.session) ? last.session : "";
-  // The share is over the tasks some solve answered (`validAt`): a reader of the report's own
-  // valid row sees the unanswered tasks counted in, so the reason names what it left out. On
-  // recode's g-1 (10 October) the reason said three in four where the row read 7 of 12, two
-  // tasks answered by neither.
-  const unsolved = asRecord(last.scored)?.unsolved;
-  const left =
-    isNumber(unsolved) && unsolved > 0 ? `, ${plural(unsolved, "task")} no solve answered left out` : "";
-  const nearlyAll = `the reference harness was valid on more than three solves in four${left}`;
+  const nearlyAll = "the reference harness was valid on more than three solves in four";
   if (tasksShort === null && since > 0) {
     return compare(`comparison ${id} left no room, and tasks were written since`, "alone", fresh);
   }

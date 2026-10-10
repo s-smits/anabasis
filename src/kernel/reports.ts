@@ -146,14 +146,12 @@ export function comparedAs(events: readonly LogEvent[], harness: string) {
 }
 
 /** A harness's share of valid solves, from a report's count of its tasks by how many of their
- *  solves were valid, over the tasks that are not `unanswered`; null where the report holds no
- *  such count, and nothing where no task was answered. */
-function validShare(counts: unknown, unanswered: number): number | null {
+ *  solves were valid, over every scored task; null where the report holds no such count. */
+function validShare(counts: unknown): number | null {
   if (!Array.isArray(counts) || counts.length < 2 || !counts.every(isNumber)) return null;
   const tasks = counts.reduce((sum, each) => sum + each, 0);
   const valid = counts.reduce((sum, each, solves) => sum + each * solves, 0);
-  if (tasks === 0) return null;
-  return tasks > unanswered ? valid / ((tasks - unanswered) * (counts.length - 1)) : 0;
+  return tasks === 0 ? null : valid / (tasks * (counts.length - 1));
 }
 
 /**
@@ -161,21 +159,22 @@ function validShare(counts: unknown, unanswered: number): number | null {
  * at the limits the comparison ran under, or with `turns` at the shorter budget of that many of
  * the model's turns it was also read at. Null where the report holds no such count.
  *
- * The share is over the tasks some solve of the comparison answered. A task neither harness
- * answered at the full limit is hard for both or has no valid answer at all, and says nothing of
- * the room one harness leaves the other: counted in, it reads as room. The first campaign opened
- * from a prompt showed it (2026-10-09): an Examiner pressing its tasks to the margin wrote two of
- * seven that ask for more addresses than their block has free, both harnesses failed both on
- * every solve, and the reference harness's share fell from 14 of 14 to 14 of 18 solves, one such
- * task short of reading as room. A task with no valid answer goes to a person after two
- * comparisons (`awaitingLabel`), and is no room meanwhile.
+ * The share is over every scored task, the ones no solve answered counted as failed. Until
+ * 10 October those were left out, on the reading that a task neither harness answered is hard
+ * for both or has no valid answer and says nothing of room: an Examiner pressing its tasks to
+ * the margin had written two of seven with no valid answer (2026-10-09). The simulated climb of
+ * 10 October showed the cost: after a promotion the Examiner wrote six tasks the promoted
+ * harness fails, the control read it valid on every task it answered, with the six left out, and
+ * four comparisons read "no room" and ended the campaign with no Builder session on tasks that
+ * were the room itself. A task the reference harness fails is room whether or not the starter
+ * answers it; one with no valid answer at all goes to a person after two comparisons
+ * (`awaitingLabel`), and the Examiner's `try_answer` is for writing none.
  */
 export function validAt(report: JsonObject, side: "old" | "fresh", turns?: number): number | null {
   const rows = Array.isArray(report.budgets) ? report.budgets.map(asRecord) : [];
   const row =
     turns === undefined ? report : rows.find((each) => each?.turns === turns && each.seconds === undefined);
-  const unanswered = asRecord(report.scored)?.unsolved;
-  return validShare(asRecord(row?.valid)?.[side], isNumber(unanswered) ? unanswered : 0);
+  return validShare(asRecord(row?.valid)?.[side]);
 }
 
 /**
@@ -360,25 +359,36 @@ export function unsolved({ old, fresh }: Paired): boolean {
  * and a refused task is no held-out task.
  */
 /**
- * The held-out tasks both harnesses answered validly in every solve of `UNSOLVED_RUN` or more
- * comparisons under the campaign's last setting, but for a third of them: exhausted, and left out
- * of the scored set from then on (`scoredSet`), until the setting changes. Such a task can only
- * tie again at that budget or be lost, and every one in the set is a task a step cannot be read
- * on: on the operator's host (9 and 10 October) a harness came one win short of a step three
- * times with most of its tasks tied, and t-10's promoted harness and the starter tied 10 of 10
- * twice. A third of them stays in the draw, by the contract's hash, so that a harness that
- * breaks what the reference answers still shows its losses: left out whole, the set would hold
- * no task the new harness could lose. The Examiner is told a task is exhausted, which is one
- * outcome a task and no count (`outcomesOf`).
+ * The held-out tasks the reference harness answered validly in every solve of `UNSOLVED_RUN` or
+ * more comparisons under the campaign's last setting, but for a third of them: exhausted, and
+ * left out of the scored set from then on (`scoredSet`), until the setting or the reference
+ * changes. Such a task can only tie again at that budget or be lost, and every one in the set is
+ * a task a step cannot be read on: on the operator's host (9 and 10 October) a harness came one
+ * win short of a step three times with most of its tasks tied, and t-10's promoted harness and
+ * the starter tied 10 of 10 twice. Until 10 October both harnesses had to answer the task, so a
+ * task the reference answered and a new harness lost never closed; the simulated climb of that
+ * day kept drawing such tasks, three comparisons in a row read 2-0-6 and 3-0-5 on a scored set
+ * of eight, and the campaign stopped one win short. The reference's own answers close a task,
+ * since its answers are what the next harness has to match. A third of them stays in
+ * the draw, by the contract's hash, so that a harness that breaks what the reference answers
+ * still shows its losses: left out whole, the set would hold no task the new harness could lose.
+ * The Examiner is told a task is exhausted, which is one outcome a task and no count
+ * (`outcomesOf`).
  */
 export function exhausted(events: readonly LogEvent[]): string[] {
   const reports = lastReports(events);
   const setting = reports.at(-1)?.data.setting;
+  // The reference harness: the one last promoted, or the one the first report was made against.
+  const reference = promoted(events) ?? reports[0]?.data.old;
   const runs = new Map<string, number>();
+  // Its own answers, on whichever side it stood: the old one of a comparison made against it,
+  // the fresh one where it was read as the new harness before its promotion.
   for (const report of reports.filter(({ data }) => data.setting === setting)) {
-    for (const { task, old, fresh } of pairsReported(events, report)) {
-      const all = old.length > 0 && fresh.length > 0 && old.every(Boolean) && fresh.every(Boolean);
-      if (all) runs.set(task, (runs.get(task) ?? 0) + 1);
+    const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
+    if (side === null) continue;
+    for (const pair of pairsReported(events, report)) {
+      const own = pair[side];
+      if (own.length > 0 && own.every(Boolean)) runs.set(pair.task, (runs.get(pair.task) ?? 0) + 1);
     }
   }
   const held = new Set(taskSets(events).held);

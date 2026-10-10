@@ -4,12 +4,10 @@
 // comparison are the real ones; the seats are scripts, which are paid nothing.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
-import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { draftExam } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
 import { type LogEvent, read } from "../src/kernel/log.ts";
 import {
-  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -30,18 +28,14 @@ import { settleCommand } from "../tools/d2/settle.ts";
 import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
+import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
 const STEM = `test-hb-${String(runtimeProcess.pid)}`;
-const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
-const TASKS = Array.from({ length: 7 }, (_, index) => ({
-  taskId: `t-${String(index + 1)}`,
-  family: "fixture",
-  publicInput: { base: index + 2 },
-  hidden: null,
-}));
-const TOOL_USE = { stopReason: "toolUse" } as const;
+const TASKS = fixtureTasks(7);
+const scripted = scriptedModel;
+const GRADED = gradedOf(TASKS);
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
 const bundle = join(root, "bundle");
 const names: string[] = [];
@@ -52,80 +46,6 @@ afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   for (const name of names) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
 });
-
-/** A stored sweep and its pack as v1 left one: seven tasks whose answer is the base times six, one
- *  check, and a control of each kind. */
-function layOut(): void {
-  const model = join(bundle, "correctness-model");
-  mkdirSync(join(root, "grades", "s"), { recursive: true });
-  const graded = TASKS.map(({ taskId }) => ["1", taskId, "verified-pass", ""].join("\t"));
-  writeFileSync(
-    join(root, "grades", "s", "grades.tsv"),
-    `${["cycle\ttaskId\tkind\tblockingChecks", ...graded].join("\n")}\n`,
-  );
-  for (const { taskId, publicInput } of TASKS) {
-    const dir = join(root, "runs", "s", "c01", taskId);
-    const caseDir = join(dir, "harness", "cases", taskId);
-    mkdirSync(caseDir, { recursive: true });
-    mkdirSync(join(dir, "work"), { recursive: true });
-    const stored = {
-      provider: "claude",
-      model: "claude-opus-5-5",
-      timedOut: false,
-      answerPresent: true,
-      answerParses: true,
-    };
-    writeFileSync(join(dir, "result.json"), JSON.stringify(stored));
-    writeFileSync(join(dir, "work", "answer.json"), JSON.stringify({ answer: String(publicInput.base * 6) }));
-    const ended = { status: "ended", inputTokens: 1, outputTokens: 1, costUsd: 0.01 };
-    writeFileSync(join(caseDir, "trace.json"), JSON.stringify({ turns: [ended] }));
-    writeFileSync(
-      join(caseDir, "built-runtime.json"),
-      JSON.stringify({
-        modelWorker: { modelSelection: { effort: "medium" } },
-        contractCondition: {
-          tools: [{ description: "Role: artifact-writer. Records.", parameters: FORMAT }],
-        },
-      }),
-    );
-  }
-  cpSync(FIXTURE, join(root, "hb-bundles", "s-c01"), { recursive: true });
-  mkdirSync(model, { recursive: true });
-  mkdirSync(join(bundle, ".toolchain", "bin"), { recursive: true });
-  const execution = {
-    families: "all",
-    artifactPaths: ["$.answer"],
-    publicInputPaths: ["$.base"],
-    hidden: "none",
-    evidence: { kind: "authored" },
-  };
-  writeFileSync(
-    join(model, "brief.json"),
-    JSON.stringify({
-      correctnessContract: "check-program/v1",
-      domain: "Fixture",
-      ruleDecisions: [{ id: "R1", statement: "The answer is the base times six.", visibility: "public" }],
-      truthChecks: [{ id: "check-product", assertion: "Six times.", citedDecisionIds: ["R1"], execution }],
-      artifactSchema: [],
-      designRuleConstants: [],
-    }),
-  );
-  writeFileSync(
-    join(model, "evaluator.ts"),
-    `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),\n};\n`,
-  );
-  writeFileSync(join(model, "tasks.json"), JSON.stringify(TASKS));
-  writeFileSync(
-    join(model, "controls.json"),
-    JSON.stringify({
-      accept: TASKS.map(({ taskId, publicInput }) => ({
-        taskId,
-        artifact: { answer: String(publicInput.base * 6) },
-      })),
-      reject: [{ taskId: "t-1", artifact: { answer: "13" }, expectedCheckId: "check-product" }],
-    }),
-  );
-}
 
 /** A campaign's folder marked as a seed, which is where a scripted solve may be written, and the
  *  flags that name it. */
@@ -139,26 +59,6 @@ function seeded(name: string): string[] {
   return ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name, ...admitted];
 }
 
-/** A model that makes `calls` in order, a turn each. */
-function scripted(calls: readonly (readonly [string, JsonObject])[]) {
-  const faux = fauxProvider({
-    models: [
-      { id: "script", contextWindow: 200_000, cost: { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } },
-    ],
-  });
-  faux.setResponses(calls.map(([name, args]) => fauxAssistantMessage(fauxToolCall(name, args), TOOL_USE)));
-  const models = createModels();
-  models.setProvider(faux.provider);
-  return { model: faux.getModel(), models: () => models };
-}
-
-/** The pack's controls, as a rehearsal's solves are scripted from them. */
-const GRADED = TASKS.map(({ taskId, publicInput }) => ({
-  taskId,
-  answer: { answer: String(publicInput.base * 6) },
-  refusedBy: null,
-}));
-
 /** What a campaign's log holds of one kind, in order. */
 const of = (name: string, kind: string): JsonObject[] =>
   read(join(REPO, ".ana", "d2", name, "log.jsonl")).flatMap((event: LogEvent) =>
@@ -167,7 +67,7 @@ const of = (name: string, kind: string): JsonObject[] =>
 
 describe("a campaign run by its log", () => {
   it("runs from set-up to an ending on one command, with every move on record: a session with nothing to work on sends it to the Examiner", async () => {
-    layOut();
+    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-idle`;
     // A patience of two, so that the ending is reached in two idle Examiner sessions.
     const flags = [...seeded(name), "--patience", "2"];

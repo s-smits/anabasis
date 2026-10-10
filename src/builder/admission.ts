@@ -12,11 +12,11 @@
  *
  * - a log with no held-out task, or with fewer to score than a step takes at the level asked for;
  * - a comparison that would leave fewer untied tasks than a step takes. The untied tasks are
- *   counted from the share the campaign's last comparison left untied under the setting of the
- *   log's last test-side solves, and no more are counted than the harness this one is made
- *   against left to win there: after buffer's first step that harness was valid in every solve on
- *   8 of 11 tasks. A task held out since counts whole, and so does every task where the caller
- *   found the comparison asked for under another setting (`restarted`);
+ *   the ones the harness this comparison is made against did not answer in every solve of the
+ *   campaign's last comparison under the setting of the log's last test-side solves: after
+ *   buffer's first step that harness was valid in every solve on 8 of 11 tasks. A task held out
+ *   since counts whole, and so does every task where the caller found the comparison asked for
+ *   under another setting (`restarted`);
  * - a comparison with no dollar cap;
  * - a checker `tools/c/accept.ts` has never read;
  * - a campaign the plan's stop rule has stopped: three moves in a row that could have shown a
@@ -208,10 +208,11 @@ export function supplyOf(
     awaiting: labelled.length,
     exhausted: spent.length,
     released: sets.released.length,
-    untied:
-      tally !== null && isNumber(tally.wins) && isNumber(tally.losses) && versions.length > 0
-        ? Math.min(tally.wins + tally.losses, versions.length - closed) / versions.length
-        : null,
+    // The tasks the reference harness did not answer in every solve: those a changed harness can
+    // still win. Until 10 October no more were counted than the last comparison untied, and a
+    // simulated climb then wrote tasks the reference failed, read 0 untied where nobody answered
+    // them yet, and asked for tasks again in place of a Builder session.
+    untied: tally !== null && versions.length > 0 ? (versions.length - closed) / versions.length : null,
     since: sets.held.filter((version) => ![...versions, ...waiting].includes(version)).length,
     faults: Array.isArray(reading) ? reading.length : null,
     frozen: frozenChecker(events) !== null,

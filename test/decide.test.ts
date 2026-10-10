@@ -276,8 +276,13 @@ describe("what is built and what is compared", () => {
   });
 
   it("writes tasks where the next comparison would be short of them", () => {
-    // One task untied of six leaves the next comparison about one, where a step takes four.
-    const tied = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "no-step", { tally: [2, 0, 10] })];
+    // Nine of twelve tasks closed by the reference, valid in every solve: three to win, where a
+    // step takes four, and the reference at three solves in four leaves room.
+    const tied = [
+      ...SET_UP,
+      built("b-1", "h1"),
+      ...compared("g-1", "h1", "no-step", { tally: [3, 0, 9], valid: { old: [3, 0, 9], fresh: HALF } }),
+    ];
     expect(move([...tied, built("b-2", "h2")])).toEqual({
       move: "examine",
       room: false,
@@ -697,8 +702,9 @@ describe("no step", () => {
       room: true,
       why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change",
     });
-    // The share leaves out the tasks no solve answered, and the reason says so: recode's g-1
-    // (10 October) read three in four where the report's row showed 7 of 12, two tasks unanswered.
+    // The tasks no solve answered are counted as the reference's failures, and are room: recode's
+    // g-1 (10 October) read three in four with two tasks unanswered left out, where the row read
+    // 7 of 12, and a simulated climb read "no room" four times on tasks written for room.
     const unanswered = [
       setting(40),
       ...first,
@@ -706,12 +712,12 @@ describe("no step", () => {
         tally: [0, 0, 12],
         valid: { old: [4, 0, 8], fresh: [4, 0, 8] },
         budgets: [row(20, ALL, ALL), row(10, [6, 4, 2], ALL)],
-        extra: { scored: { wins: 0, losses: 0, ties: 12, unsolved: 2 } },
+        extra: { scored: { wins: 0, losses: 0, ties: 12, unsolved: 4 } },
       }),
     ];
     expect(move(unanswered, plan)).toMatchObject({
-      move: "examine",
-      why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four, 2 tasks no solve answered left out: the tasks have to change",
+      move: "build",
+      why: "comparison g-1 read no step with room to gain: harness h1 did not help",
     });
     // Once as many Examiner sessions as the campaign's patience held out nothing, the budget the
     // rule takes is the fallback, where one is untried; and where none is, the campaign ends.
@@ -731,20 +737,23 @@ describe("no step", () => {
     expect(move([...none, ...more], plan)).toMatchObject({ move: "compare", noise: false });
   });
 
-  it("reads no room in the tasks neither harness answered", () => {
-    // Four tasks answered by both on every solve, and two by nobody: two solves in three were
-    // valid, and on the tasks anyone answered, all of them.
+  it("reads room in the tasks neither harness answered: they are the ones a better harness could answer", () => {
+    // Eight tasks answered by both on every solve, and four by nobody: the reference was valid on
+    // two solves in three, which is room. Until 10 October the four were left out of the share,
+    // and the simulated climb then read "no room" four times on tasks written for room, with no
+    // Builder session between them.
     const mixed = { old: [4, 0, 8], fresh: [4, 0, 8] } as const;
     const read = (unsolved: number) =>
       compared("g-1", "h1", "no-step", {
         tally: [0, 0, 12],
         valid: mixed,
-        extra: { scored: { wins: 0, losses: 0, ties: 6, unsolved } },
+        extra: { scored: { wins: 0, losses: 0, ties: 12, unsolved } },
       });
-    expect(move([...first, ...read(2)])).toMatchObject({ move: "examine", room: true });
-    // Where each of those tasks was answered by one of the two harnesses, they are room: the four
-    // the reference answered in every solve leave too few to untie, so tasks are written for that.
-    expect(move([...first, ...read(0)])).toMatchObject({ move: "examine", room: false });
+    expect(move([...first, ...read(4)])).toMatchObject({
+      move: "build",
+      why: "comparison g-1 read no step with room to gain: harness h1 did not help",
+    });
+    expect(move([...first, ...read(0)])).toMatchObject({ move: "build" });
   });
 
   it("ends the campaign where the tasks could not be made to leave room", () => {

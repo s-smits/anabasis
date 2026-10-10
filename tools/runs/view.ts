@@ -22,6 +22,7 @@
  * for the operator and the session that stands in for the campaign's owner: what a Builder is told
  * of the same rows is `src/builder/past.ts`.
  */
+import { epochLine, epochsOf } from "#src/builder/climb.ts";
 import { decide } from "#src/builder/decide.ts";
 import { decidedLine } from "#src/builder/move.ts";
 import { planOf } from "#src/builder/opening.ts";
@@ -150,5 +151,8 @@ export function view(args: readonly string[]): void {
       pastStop: asked.comparison.pastStop,
     }),
   );
-  for (const line of [...lines, "the table's move", `  ${decidedLine(decided)}`]) console.log(line);
+  const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch)}`);
+  for (const line of [...lines, "the climb", ...climb, "the table's move", `  ${decidedLine(decided)}`]) {
+    console.log(line);
+  }
 }

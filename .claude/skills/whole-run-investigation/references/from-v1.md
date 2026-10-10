@@ -182,7 +182,8 @@ the gap, and neither is made: who authors and repairs a pack, and whether an exa
 harness improves.
 
 **What is unproven.** The one live round so far was a plumbing run, so no comparison has yet
-reported a step on a real campaign, and this catalogue has read two simulated logs. v1 found the
+reported a step on a real campaign; this catalogue has read two simulated logs and two real
+campaigns, both stopped before their first comparison. v1 found the
 signal too rare to settle a comparison at the size it ran, 11 of 322 batteries with an uncontested
 fail. v2's answer since 2026-10-09 is one compute budget for both harnesses, set where the
 reference harness is valid about half the time, and first of all a measurement of how the

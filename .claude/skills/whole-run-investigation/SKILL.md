@@ -168,22 +168,40 @@ decisions and predictions. The primary then treats the note as research.
 - **Confirm against the stack's head.** Before a `patch` row becomes work, check that the defect
   still stands at the top of the open stack, and put the fix in a new PR on that top.
 
-## What is not yet known
+## What the first real pair measured
 
-This catalogue has read two simulated campaigns and no real one. v1's was tuned over many runs.
-Three things are therefore provisional, and the first real investigation should report on each:
+The catalogue was tuned on two simulated campaigns. The first real ones it read are the two packs
+opened at `ae66f1d` on 10 October and stopped forty minutes in, one with 12 practice solves and one
+with none; 15 lane reports, 14 of them carrying a finding. They answer the three things that were
+provisional and add two the catalogue did not know to ask.
 
-- **The thresholds.** A miss is wall-bound at 95% of its wall, a pass is quick under 5%, a silence
-  is twenty minutes. The first two are v1's; the third is an estimate. Whether a round has too few
-  informative pairs is no threshold: the trigger asks the report's own test whether any result with
-  a loss could have cleared its level.
-- **Which triggers over-fire.** Some fire whenever their events exist, by design, because they
-  carry a lane's opening counts: `PASSES UNREAD`, `TOOLS CALLED`, `ADMITTED BY`, `CHAIN`,
-  `WALL SHARE`. If the conditional ones fire on every campaign too, they start lanes with nothing
-  to read.
-- **The standing lanes.** 1, 15, 18 and 22 open on every report. That choice follows v1's finding
-  that the open questions of a compared harness are the pass nobody read, the tool that judges, the
-  leak and the test's size.
+- **The thresholds all sit outside the range a real campaign produced.** Over 12 solves at an
+  8-minute wall the longest took 273 s, 57% of its wall, and the shortest 49 s, 10.3%, so the
+  wall-bound cut at 95% and the quick cut at 5% each fired on nothing — the fastest real pass is
+  twice the quick cut, because a solve that loads a harness and runs an engine costs about fifty
+  seconds here. The silence of twenty minutes against a Builder session's 62 turns: its longest gap
+  was 4.6 minutes. All three are therefore still untested, and the quick cut reads better against a
+  campaign's own median solve than against its wall. Whether a round has too few informative pairs
+  is no threshold: the trigger asks the report's own test whether any result with a loss could have
+  cleared its level.
+- **No conditional trigger over-fired; one could not fire where it mattered most.**
+  `SPEND LED BY A ROLE` fired on neither cut session, because `spendOf` read ending records alone and
+  a stop leaves none — with the turns counted (open #150) it fires and names the Builder. Every
+  trigger that did fire opened a lane that returned a finding, the ones carrying opening counts
+  included. What fired with half its method missing was a standing lane, not a trigger: lane 1 opened
+  on the campaign with no pass, where the sample of passes cannot be taken. Its other half, the
+  check rows beside the brief, is readable without a pass, and the lane's own text should say so.
+- **The standing lanes hold.** 15, 18 and 22 each returned a finding on both campaigns, and lane 1
+  on the one with solves found what the whole investigation turned on: the harness being measured
+  judged the answers its own solver submitted.
+- **A held-out task set opens no lane.** Both campaigns held 3 of their pack's 6 tasks for a
+  comparison and released 3, and no trigger of link (b) — the task set, lanes 7 to 12 and 21 — fired
+  on either, so every task-set count in both syntheses is the primary's own recount. A campaign
+  stopped before its first comparison is where the draw and the held set are most worth reading.
+- **A lane's reading can be refused as content.** Lane 1 reads the pack's own brief beside the check
+  rows, and on one pack that reading was refused; the arithmetic half — rows, instrument tokens,
+  passed and refused counts — reads without the brief. That lane wrote `could not read`, which
+  `collect` accepts, and no retry recovered it.
 
 ## Where the detail lives
 

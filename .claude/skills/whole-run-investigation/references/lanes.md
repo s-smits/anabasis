@@ -152,7 +152,9 @@ rules it cites, and which tool it names. Then take a sample of passes, spread ov
 over both harnesses, and for each say from the published rules alone what the answer would have to
 get wrong to still pass: a field no check reads, a rule no check cites, a tolerance wider than the
 rule's. An `authored` instrument computes with its author's own code, and what its pass means is
-that the author's computation agreed. `wri.ts grade` puts one constructed answer to the campaign's
+that the author's computation agreed. With no pass in the log — a campaign stopped before its first
+solve — the rows beside the brief are the whole lane, and the reading is what a pass would establish
+were one taken; say that, and do not come back `could not read` for the missing sample. `wri.ts grade` puts one constructed answer to the campaign's
 checker and writes nothing; use it to show a gap, on the Mac. Do not read a pass rate here. The
 decision it changes is whether a pass on this pack counts as the solver being right or as the
 answer having the checked shape; it routes to `pack/evaluator` for a check that reads too little

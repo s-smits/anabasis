@@ -22,7 +22,8 @@
  * for the operator and the session that stands in for the campaign's owner: what a Builder is told
  * of the same rows is `src/builder/past.ts`.
  */
-import { decide, decidedLine } from "#src/builder/decide.ts";
+import { decide } from "#src/builder/decide.ts";
+import { decidedLine } from "#src/builder/move.ts";
 import { planOf } from "#src/builder/opening.ts";
 import { type Campaign, campaignOf, type Handover, type Move, nextMoves } from "#src/builder/handover.ts";
 import { shortDigest } from "#src/builder/past.ts";

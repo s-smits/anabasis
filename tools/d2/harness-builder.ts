@@ -89,7 +89,8 @@
  */
 import { type draftExam, draftOf } from "#src/examiner/draft.ts";
 import type { examine } from "#src/examiner/session.ts";
-import { type Decided, decide, decidedLine } from "#src/builder/decide.ts";
+import { decide } from "#src/builder/decide.ts";
+import { type Decided, decidedLine } from "#src/builder/move.ts";
 import type { Plan } from "#src/builder/ground.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS, TERMS } from "#src/builder/opening.ts";
 import { pendingWords, type Word } from "#src/builder/word.ts";

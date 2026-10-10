@@ -43,7 +43,7 @@ import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { awaitingLabel, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskVersion } from "#src/kernel/task.ts";
-import { checkProgramVersion, openVerifier, type Task } from "#src/kernel/verify.ts";
+import { checkProgramVersion, openVerifier, type Task, type Verifier } from "#src/kernel/verify.ts";
 import {
   cpSync,
   existsSync,
@@ -281,6 +281,33 @@ function recordedUnder({ contract, tools, limits }: Standing) {
   return { conditionOf, setting };
 }
 
+/** The two reviewers on one reader, for the campaign at `dir`. */
+function reviewersOf(
+  reader: Reader,
+  at: { dir: string; log: string; contract: Contract; checks: string; verify: Verifier },
+) {
+  const { dir, log, contract, checks, verify } = at;
+  return {
+    referee: (solve: string, task: TaskPackage, kill: AbortSignal) =>
+      referee({ ...reader, kill }, { solve, task, contract, checks, verify, log }),
+    diagnose: (solve: string, task: TaskPackage, kill: AbortSignal) =>
+      diagnose(
+        { ...reader, kill },
+        {
+          solve,
+          task,
+          contract,
+          log,
+          // A solve's harness is one the campaign keeps under its digest, a session's or the starter.
+          guide: (harness) => {
+            const state = join(dir, "states", harness);
+            return existsSync(state) ? guideOf(state) : undefined;
+          },
+        },
+      ),
+  };
+}
+
 export async function openCampaign(args: CampaignArgs) {
   const dir = join(REPO, ".ana", "d2", args.name);
   mkdirSync(dir, { recursive: true });
@@ -337,26 +364,7 @@ export async function openCampaign(args: CampaignArgs) {
       ...keyIfDefined("comparison", comparison),
     });
   };
-  /** The two reviewers on one reader. */
-  const reviewers = (reader: Reader) => ({
-    referee: (solve: string, task: TaskPackage, kill: AbortSignal) =>
-      referee({ ...reader, kill }, { solve, task, contract, checks, verify, log }),
-    diagnose: (solve: string, task: TaskPackage, kill: AbortSignal) =>
-      diagnose(
-        { ...reader, kill },
-        {
-          solve,
-          task,
-          contract,
-          log,
-          // A solve's harness is one the campaign keeps under its digest, a session's or the starter.
-          guide: (harness) => {
-            const state = join(dir, "states", harness);
-            return existsSync(state) ? guideOf(state) : undefined;
-          },
-        },
-      ),
-  });
+  const reviewers = (reader: Reader) => reviewersOf(reader, { dir, log, contract, checks, verify });
   return {
     repo: REPO,
     trees,

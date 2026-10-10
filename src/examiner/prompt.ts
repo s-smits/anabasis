@@ -60,7 +60,7 @@ export interface CheckRow {
 /** The limits a session is told it runs under. How many tasks are wanted is not among them. */
 /** What a session is told of its campaign beside the contract: the operator's brief, where the
  *  campaign opened from one, and the budget every solve is held to, where the caller knows it. */
-export interface Facts {
+interface Facts {
   readonly brief?: string | null | undefined;
   readonly budget?: { readonly modelTurns: number | null; readonly minutes: number } | null | undefined;
 }

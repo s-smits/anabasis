@@ -2,7 +2,8 @@
 // the rows are asked in (`src/builder/decide.ts`), and what a campaign runs by (`opening.ts`).
 
 import { describe, expect, it } from "bun:test";
-import { type Decided, decide, unpromoted } from "../src/builder/decide.ts";
+import { decide, unpromoted } from "../src/builder/decide.ts";
+import type { Decided } from "../src/builder/move.ts";
 import type { Plan } from "../src/builder/ground.ts";
 import { openingOf, planOf } from "../src/builder/opening.ts";
 import { pendingWords } from "../src/builder/word.ts";

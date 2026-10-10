@@ -36,6 +36,7 @@ import { containsPath } from "#src/meta/path-containment.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
+import { passesRead } from "#src/review/passes.ts";
 import { openHarness } from "#src/solve/harness.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import { recordedSetting } from "./setting.ts";
@@ -150,12 +151,22 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       `- The exam: its checker ${supply.faults === null ? "was never read" : `was read, with ${plural(supply.faults, "fault")} in its last reading`}, and ${frozenChecker(events) === null ? "nobody froze it" : "the operator froze it"}.`,
       `- Rejected answers: the Referee ruled ${String(ruled.earned)} earned, ${String(ruled.defect)} a check defect and ${String(ruled.unclear)} unclear. A ruling is a model's reading and is not measured against a person's labels here.`,
       `- A person's labels settled ${plural(settled, "comparison")}. ${plural(supply.awaiting, "held-out task")} ${supply.awaiting === 1 ? "waits" : "wait"} for a person to say whether a valid answer exists.`,
-      "- No answer that passed was read by anyone: a pass is the checks' word alone.",
+      passesLine(events),
     ].join("\n"),
     "## Work and spend",
     `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a budget of $${String(budget.dollars)}`}.`,
     "",
   ].join("\n\n");
+}
+
+/** What a person read of the answers that passed, or that nobody did (`src/review/passes.ts`). */
+function passesLine(events: readonly LogEvent[]): string {
+  const passes = passesRead(events);
+  if (passes.comparisons === 0) {
+    return "- No answer that passed was read by anyone: a pass is the checks' word alone.";
+  }
+  const { sound, wrong, unclear } = passes.labels;
+  return `- Answers that passed: a person read ${String(passes.read)} of the ${String(passes.of)} in ${plural(passes.comparisons, "comparison")}, drawn by each comparison's id: ${String(sound)} sound, ${String(wrong)} wrong, ${String(unclear)} unclear. A wrong pass is a check's fault, and changes no tally.`;
 }
 
 /** The public contract as a solver reads it, for whoever takes the harness over. */

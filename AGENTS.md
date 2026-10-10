@@ -346,7 +346,7 @@ flags.
 | 4 | `bun tools/d2/round.ts ... --session b-1 --builder <model>` | A Builder session, then the comparison of the harness it left with the reference |
 | 4 | `bun tools/d2/session.ts ... --session b-2 --builder <model>` | A Builder session with no comparison after it, under a dollar cap of its own. The plan's checkpoint is several of these and then one comparison |
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
-| 5 | `bun tools/d2/settle.ts ... --session b-1` | A person's labels for the rejections a comparison set aside, and its report once more |
+| 5 | `bun tools/d2/settle.ts ... --session b-1 [--passes N]` | A person's labels for the rejections a comparison set aside, and its report once more; with `--passes`, the person's labels of N answers that passed, drawn by the comparison's id (`pass.labelled`), which change no reading |
 | 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing. A harness the rule would not promote takes `--despite "<why>"` |
 | 7 | `bun tools/d2/close.ts ... --to <dir>` | Nothing. It writes what the campaign hands over, outside the repository: the reference harness as a directory that stands by itself, the public rules, and the closing report |
 | all | `bun tools/d2/harness-builder.ts ... --budget <dollars> --builder <model> --examiner <model> --reviewer <model>` | What the campaign runs by, once (`campaign.opened`); then each move the table names, made by the command of its row above and recorded with its reason (`campaign.move`); and how the campaign ended (`campaign.ended`) |
@@ -363,8 +363,9 @@ last event says which: `budget`, `stop`, `exam`, `no-room`, `environment` or `op
 `--handover <dir>` it then writes what it hands over (row 7): the harness is copied whole, with
 the programs a kept state names by a link, and has to open there as the harness it was kept as.
 The closing report is a view of the log, names no task and holds no check, and says what was
-audited and what was not: what the Referee ruled, what a person's labels settled, and that no
-answer that passed was read by anyone.
+audited and what was not: what the Referee ruled, what a person's labels settled, and what a
+person read of the answers that passed (`settle.ts --passes`, `src/review/passes.ts`), or that
+nobody did.
 
 A move that solves waits for the host: a Builder session and a comparison start once the
 one-minute load is at or under the cores, and the command says once that it waits. `--loaded`
@@ -662,7 +663,8 @@ are. Check the plan and the head before relying on this list, and delete a line 
 change that makes it false:
 
 - the Judge: the Referee has a probe and no shell, reads the check program, and is unmeasured
-  against hand labels. No seat reads an answer that passed;
+  against hand labels. No seat reads an answer that passed: a person reads a drawn few
+  (`settle.ts --passes`);
 - a repairer for the check program, and an engine behind a drafted one: the Examiner drafts an
   exam for a campaign that opens from a prompt (section 6), no seat repairs a check, and every
   check of a drafted exam is its author's own computation, which waits for the operator's
@@ -1281,7 +1283,7 @@ the operator.
 | Practice task | A task released to the Builder. Once released it is never scored |
 | Valid answer | An answer that passes every check, submitted within the limits |
 | Rejection | An answer at least one check rejects: a true fail when the answer is wrong, a check defect when it was right |
-| Hand label | A person's verdict on one rejection: `earned`, `check-defect` or `unclear` |
+| Hand label | A person's verdict on one rejection: `earned`, `check-defect` or `unclear`; or on one answer that passed: `sound`, `wrong` or `unclear` |
 | Reference harness | The harness a new one is compared with: the starter until a step is promoted |
 | Comparison | Both harnesses solve the same held-out tasks; each task is a win, a loss or a tie |
 | Round | One Builder session followed by one comparison. A session may also run by itself, with no comparison after it |

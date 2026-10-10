@@ -20,12 +20,15 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
+import { toRead } from "../src/review/passes.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { openCampaign } from "../tools/d2/campaign.ts";
 import { closeCommand } from "../tools/d2/close.ts";
+import { settleCommand } from "../tools/d2/settle.ts";
 import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
@@ -313,9 +316,35 @@ describe("a campaign run by its log", () => {
     expect(next).toMatchObject({ move: "build" });
     expect(strayed).toEqual([]);
 
+    // A person reads two of the answers that passed in g-1: the draw is by the comparison's id, so
+    // asked again it is the same two; the labels are recorded once a label stands on each, and
+    // once only. g-1 held 5 passes, the new harness's, and the noise arm's are the reference's,
+    // which answered none.
+    const pack = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name];
+    const passes = join(REPO, ".ana", "d2", name, "settle-g-1", "passes", "passes.json");
+    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
+    const drawn = Object.keys(parseJsonAs<JsonObject>(readFileSync(passes, "utf8")));
+    expect(drawn).toHaveLength(2);
+    expect(drawn).toEqual(toRead(read(join(REPO, ".ana", "d2", name, "log.jsonl")), "g-1", 2));
+    expect(
+      readFileSync(join(REPO, ".ana", "d2", name, "settle-g-1", "passes", `${drawn[0]}.json`), "utf8"),
+    ).toContain('"rules"');
+    writeFileSync(passes, JSON.stringify({ [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "wrng" }));
+    expect(settleCommand([...pack, "--session", "g-1", "--passes", "2"])).rejects.toThrow(
+      "holds what is no label (sound, wrong, unclear) for 1 answer",
+    );
+    writeFileSync(passes, JSON.stringify({ [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "" }));
+    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
+    expect(of(name, "pass.labelled")).toEqual([]);
+    writeFileSync(passes, JSON.stringify({ [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "wrong" }));
+    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
+    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
+    expect(of(name, "pass.labelled")).toMatchObject([
+      { session: "g-1", of: 5, labels: { [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "wrong" } },
+    ]);
+
     // What the campaign hands over: the promoted harness as a folder that stands by itself, the
     // public rules, and the closing report. It is written outside the repository and once.
-    const pack = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name];
     const to = join(root, "handover");
     expect(closeCommand([...pack, "--to", join(REPO, ".ana", "handover")])).rejects.toThrow(
       "lies inside the repository",
@@ -324,6 +353,9 @@ describe("a campaign run by its log", () => {
     expect(handed.to).toBe(to);
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: handed.harness }]);
     expect(closeCommand([...pack, "--to", to])).rejects.toThrow("holds something already");
+    expect(readFileSync(join(to, "REPORT.md"), "utf8")).toContain(
+      "a person read 2 of the 5 in 1 comparison, drawn by each comparison's id: 1 sound, 1 wrong, 0 unclear",
+    );
     // It holds no link: a kept harness names its programs by one, into a tree beside it, and what
     // is handed over is the files themselves.
     const links = readdirSync(join(to, "harness"), { recursive: true }).filter((entry) =>

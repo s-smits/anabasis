@@ -24,26 +24,6 @@ import { compareCodeUnits } from "../meta/stable-json.ts";
 /** What a Darwin system command answered, by the command: each is asked once per process. */
 const darwinAnswers = new Map<string, string | undefined>();
 
-/**
- * Home-relative roots no confined actor may read.
- *
- * `.claude`, `.claude.json` and `.codex` are here because a transport keeps its own state in the
- * home: `~/.claude/projects` carries authoring transcripts and `~/.claude.json` per-project prompt
- * history. A solving session reading either would be reading the authoring of its own tasks, which
- * is what the wall between the Builder and the Built Harness exists to prevent.
- */
-export const PROTECTED_HOME_NAMES = [
-  ".ssh",
-  ".aws",
-  ".gnupg",
-  ".netrc",
-  ".npmrc",
-  ".config",
-  ".codex",
-  ".claude",
-  ".claude.json",
-] as const;
-
 /** The Seatbelt baseline every wall imports; its closure digest is recorded beside the name. */
 export const SEATBELT_BASELINE = "system.sb";
 

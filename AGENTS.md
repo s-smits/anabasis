@@ -863,9 +863,8 @@ nine Builder sessions and 308 solves finished on a Linux test host on 9 October.
 on macOS, where a sparse image is mounted at the root of each solve and each Builder session. On
 Linux nothing caps a solve, a Builder session or an Examiner session: each runs its commands
 under the command wall, which binds its root from the host's disk, and the sized tmpfs is in a
-launch (`isolationArgv`, `src/verify/solve-sandbox.ts`) that only the wall's probe makes. The
-head comment of `src/verify/disk-cap.ts` still says a solve is capped there, and is to be
-corrected with the wall (`docs/simplify.md`, F6). When the required wall is unavailable
+launch (`isolationArgv`, `src/verify/solve-sandbox.ts`) that only the wall's probe makes; the
+head comment of `src/verify/disk-cap.ts` says so (`docs/simplify.md`, F6). When the required wall is unavailable
 the result is a typed non-result, never an unconfined run. Each wall is probed once a process
 before its first use, with a canary read in the repository and a read of its first other
 worktree's `package.json`, which the probe never writes, and a read that gets through refuses the start with the probe's lines (`walledBase`,
@@ -1275,7 +1274,6 @@ Each runtime surface has one owner. Import from it; add a missing member beside 
 | JSON in and out | `json-runtime.ts` | `capturedJsonParse`, `parseJsonAs<T>`, `capturedJsonStringify`, `capturedStructuredClone` |
 | JSON types and predicates | `json-shape.ts` | `JsonValue`, `JsonObject`, `OpenRecord`, `isString`, `isNumber`, `isBoolean`, `isRecord`, `asRecord`, `isFunction` |
 | Canonical JSON and hashes | `stable-json.ts`, `digest.ts` | `stableJson`, `canonicalJson`, `sameJsonValue`, `hashJsonValue`, `compareCodeUnits`; `sha256`, `sha256OfFile` |
-| Atomic files | `completed-json.ts` | `writeCompleted`, `readCompleted` |
 | Caught values | `runtime-values.ts` | `errorMessage`, `asError`, `errorCode` |
 | Optional keys | `optional-key.ts` | `keyIfDefined`, `keyIfNotNull`, `keysIf` |
 | Text | `text.ts`, `bounded-text.ts` | `hasText`, `textOr`, `plural`; `boundText` |

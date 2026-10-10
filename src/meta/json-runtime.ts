@@ -31,8 +31,7 @@ export const capturedStructuredClone = globalThis.structuredClone;
  * `JSON.parse` returns `any`, so every reader in the tree ended in `as T`. The type parameter says
  * the same thing in one place. It remains a declaration about whoever wrote those bytes and not a
  * check on them: this owner narrows `any` and can observe no mismatch. A reader that must refuse
- * damaged bytes validates them itself, as `readCompleted` in completed-json.ts does when it throws
- * on a record whose `schema` field is not the one asked for.
+ * damaged bytes validates them itself, as `read` in src/kernel/log.ts does when it refuses a line.
  *
  * The captured binding is used rather than the ambient one, so a generated module that replaces
  * `JSON` after load does not change what the controller reads.

@@ -4,24 +4,19 @@
  * so a solve that filled the host's disk took every concurrent solve and the controller down with
  * it.
  *
- * The two hosts cap in different places. On Linux the worker's Bubblewrap launch mounts a tmpfs of
- * `bytes` at the root (`isolationArgv` in `solve-sandbox.ts`), so the cap exists only inside the
- * worker's namespace and its contents vanish when that namespace ends. That is accepted: the answer
- * and the trace cross the worker's pipe, not the disk. It also means the root is empty when the
- * worker starts, whatever the host put there, so a solve's layout under it is made from inside.
- * Darwin has no mount namespace, so `mountDiskCap` attaches a sparse APFS image of `bytes` at the
- * root on the host before the worker starts; measured on an M3 Pro under macOS 15.7, creating a 64 MiB
- * image took about 1 s, attaching it about 0.2 s, and a `dd` of 200 MB into it stopped at 61 MB with
- * ENOSPC.
- *
- * That caps a solve. A Builder session (`build`, `src/builder/session.ts`) runs in the host process
- * and launches no worker: each of its commands runs under the command wall
- * (`stageCommandIsolation`), which binds the session's home read-write and mounts no tmpfs, since
- * the home has to survive from one command to the next. So on Linux a Builder session's disk is
- * uncapped: `mountDiskCap` makes its root and `diskBytes` binds nothing there. Nine Builder sessions
- * finished so on a Linux test host on 9 October. A capped volume on Linux would take a loop mount or
- * a quota, neither of which an unprivileged host has, so the gap is stated here rather than closed
- * (read at 7b387fb, 10 October).
+ * Only Darwin caps. There `mountDiskCap` attaches a sparse APFS image of `bytes` at the root on
+ * the host before anything runs; measured on an M3 Pro under macOS 15.7, creating a 64 MiB image
+ * took about 1 s, attaching it about 0.2 s, and a `dd` of 200 MB into it stopped at 61 MB with
+ * ENOSPC. On Linux nothing caps a solve, a Builder session or an Examiner session: each runs its
+ * commands under the command wall (`stageCommandIsolation`), which binds the seat's root from
+ * the host's disk read-write and mounts no tmpfs there, since the root has to survive from one
+ * command to the next. The sized tmpfs of `bytes` is in `isolationArgv` (`solve-sandbox.ts`),
+ * the launch of v1's sandboxed model process, which in v2 only the wall's probe makes
+ * (`docs/simplify.md`, F5 and F6; read 11 October). So on Linux `mountDiskCap` makes the root
+ * and `diskBytes` binds nothing there: nine Builder sessions and 308 solves finished so on a
+ * Linux test host on 9 October. A capped volume on Linux would take a loop mount or a quota,
+ * neither of which an unprivileged host has, so the gap is stated here and in AGENTS.md section
+ * 10 rather than closed, and a campaign on Linux is bounded by its dollar total and its walls.
  *
  * What stays uncapped. On Darwin the command profile in `solve-command-isolation.ts` also lets a
  * command write the user temporary root system toolchains take through `confstr`, and `/tmp`, both

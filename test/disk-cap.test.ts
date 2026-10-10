@@ -1,8 +1,8 @@
 // The disk cap on Darwin, executed: a volume of the cap's size mounted at the solve's root, the
 // command wall's scratch roots inside it, and a write past the cap. The Seatbelt rules are
 // path-based, so the case runs a command under the real command profile to show they still let it
-// write its three roots once those sit on the mounted volume. Linux applies the cap inside the
-// worker's Bubblewrap launch instead; its argv is tested in solve-sandbox.test.ts.
+// write its three roots once those sit on the mounted volume. On Linux nothing caps a seat's disk
+// (`src/verify/disk-cap.ts`): the sized tmpfs in solve-sandbox.test.ts is the probe's launch.
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";

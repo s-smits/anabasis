@@ -178,12 +178,12 @@ describe("what a comparison of a given size can show, said before it runs", () =
 
   it("promotes by the two-stage rule at the rates of the enumeration of 10 October", () => {
     // Sixteen tasks of which three in four tie: a harness that wins 96% of the untied is promoted
-    // 83% of the time at 0.25 and 0.10 (55% by two readings at 0.20), 31% at a win rate of 0.75
-    // (14%), and two equal harnesses 3.4% (0.9%).
+    // 82% of the time at 0.25 and 0.10 (55% by two readings at 0.20), 31% at a win rate of 0.75
+    // (14%), and two equal harnesses 3.3% (0.9%); the repeat has to untie a task and not lose.
     const each = (win: number) => ({ win: 0.25 * win, loss: 0.25 * (1 - win) });
-    expect(chanceOfPromotion(16, each(0.96), 0.25, 0.1)).toBeCloseTo(0.829, 2);
-    expect(chanceOfPromotion(16, each(0.75), 0.25, 0.1)).toBeCloseTo(0.314, 2);
-    expect(chanceOfPromotion(16, each(0.5), 0.25, 0.1)).toBeCloseTo(0.034, 2);
+    expect(chanceOfPromotion(16, each(0.96), 0.25, 0.1)).toBeCloseTo(0.823, 2);
+    expect(chanceOfPromotion(16, each(0.75), 0.25, 0.1)).toBeCloseTo(0.311, 2);
+    expect(chanceOfPromotion(16, each(0.5), 0.25, 0.1)).toBeCloseTo(0.033, 2);
     expect(chanceOfStep(16, each(0.96), 0.2) ** 2).toBeCloseTo(0.545, 2);
   });
 });

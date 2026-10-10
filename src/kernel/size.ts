@@ -118,11 +118,13 @@ function tallies(tasks: number, each: Each): Map<string, { wins: number; losses:
 
 /**
  * The chance that a harness is promoted on two comparisons of `tasks` in the model: the first
- * reads a tally at or under `trigger` with more wins than losses, which buys the repeat, and the
- * two read together clear `level` (`src/builder/move.ts`, `readTwice`). The two draws are
+ * reads a tally at or under `trigger` with more wins than losses, which buys the repeat, the
+ * repeat unties a task and does not lose, and the two read together clear `level`
+ * (`src/kernel/compare.ts`, `readTwice`). The two draws are
  * independent, as fresh solves are. At sixteen tasks of which three in four tie, a harness that
- * wins 96% of the tasks it unties is promoted 83% of the time at 0.25 and 0.10, where two readings
- * at 0.20 each gave 55%; two equal harnesses 3.4% where it was 0.9% (10 October).
+ * wins 96% of the tasks it unties is promoted 82% of the time at 0.25 and 0.10, where two readings
+ * at 0.20 each gave 55%; two equal harnesses 3.3% where it was 0.9% (10 October; 83% and 3.4%
+ * until the repeat was held to an untied task, 11 October).
  */
 export function chanceOfPromotion(tasks: number, each: Each, trigger: number, level: number): number {
   const once = tallies(tasks, each);
@@ -131,8 +133,10 @@ export function chanceOfPromotion(tasks: number, each: Each, trigger: number, le
     if (first.wins + first.losses === 0 || first.wins <= first.losses) continue;
     if (signP(first.wins, first.losses) > trigger) continue;
     for (const second of once.values()) {
+      // The repeat has to untie a task and not lose, as `readTwice` holds it to.
+      if (second.wins + second.losses === 0 || second.wins < second.losses) continue;
       const [wins, losses] = [first.wins + second.wins, first.losses + second.losses];
-      if (wins > 0 && signP(wins, losses) <= level) chance += first.chance * second.chance;
+      if (signP(wins, losses) <= level) chance += first.chance * second.chance;
     }
   }
   return Math.min(1, chance);

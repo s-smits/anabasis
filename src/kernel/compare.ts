@@ -14,7 +14,7 @@
  * 0.20 on each reading by itself (#175): at 0.10 three campaigns of 9 and 10 October had stopped
  * on 3-0-3, 3-0-5 and 3-0-7, one win short, and at 0.20 on sixteen tasks of which three in four
  * tie a harness that wins 96% of the untied was promoted 55% of the time, two readings at 0.20
- * each; read in two stages it is 83%, and two equal harnesses 3.4% an attempt where it was 0.9%.
+ * each; read in two stages it is 82%, and two equal harnesses 3.3% an attempt where it was 0.9%.
  * The level and the trigger are the caller's and recorded with the campaign's opening, so a
  * campaign reads by its own rule whatever the tree's default (`docs/plan.md`, Statistical power
  * and cost).
@@ -71,7 +71,7 @@
  * reported (`Used.cpu`, `spread`); it is no unit a budget is given in.
  */
 import { sha256 } from "../meta/digest.ts";
-import { asRecord, isNumber } from "../meta/json-shape.ts";
+import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { conditionsOf, settingId } from "./condition.ts";
@@ -99,6 +99,9 @@ export interface Used {
 
 /** The two units a compute budget can be given in. */
 export const UNITS = ["turns", "seconds"] as const;
+/** The trigger a first reading has to clear to buy the repeat, where no flag or opening names one
+ *  (`--trigger`): 2-0, 4-1, 5-2 and 7-3 clear it, and 1-0 does not. */
+export const TRIGGER = 0.25;
 /** What a solve's use is reported in: a budget's units, and the CPU seconds of its commands. */
 export const MEASURED = ["turns", "cpu", "seconds"] as const;
 
@@ -161,6 +164,47 @@ export function signP(wins: number, losses: number): number {
     term = (term * (untied - k)) / (k + 1);
   }
   return Math.min(1, tail);
+}
+
+/** A report's tally, where it holds one. */
+export function tallyOf(report: JsonObject): { readonly wins: number; readonly losses: number } | null {
+  const counts = asRecord(report.scored);
+  return counts !== null && isNumber(counts.wins) && isNumber(counts.losses)
+    ? { wins: counts.wins, losses: counts.losses }
+    : null;
+}
+
+/** Whether one comparison's reading buys the repeat: more wins than losses, and the sign test at
+ *  or under `trigger`. It is what the stop rule counts as a move that showed a gain, since 11
+ *  October (`stopRule`): a 2-0 at level 0.10 reads `no-step` and buys the repeat, and counted as
+ *  no gain it ended a campaign of patience 3 before the repeat was bought. */
+export function triggered(report: JsonObject, trigger: number): boolean {
+  const read = tallyOf(report);
+  return read !== null && read.wins > read.losses && signP(read.wins, read.losses) <= trigger;
+}
+
+/**
+ * Whether the last two of a pair's comparisons, read together, clear `level`: the step and its
+ * repeat as one sign test, their wins and losses summed, ties dropped. The first has to have
+ * bought the repeat (`triggered`), and the repeat has to have untied a task and won at least as
+ * many as it lost: summed alone, a 4-0 and a repeat that tied every task promoted on one draw
+ * (found by review, 11 October), against AGENTS §7, where a step is one draw and is repeated on
+ * fresh solves. Until 10 October each had to read a step by itself, which at 0.20 took three wins
+ * and no loss twice; on sixteen tasks of which three in four tie that came through 8% of the
+ * time for a harness that wins 96% of the tasks it unties, and the operator found the rule too
+ * strict ("2-0-4 should climb"). Read together at 0.10 a 2-0 and a 2-0 are a 4-0 (p 0.0625): 31%
+ * at a win rate of 0.75 where it was 14%, and a false promotion of two equal harnesses 3.3% an
+ * attempt where it was 0.9%, by exact enumeration (`chanceOfPromotion`, `size.ts`; 82%, 31% and
+ * 3.3% with the repeat held to an untied task, where the sum alone gave 83%, 31% and 3.4%). Every untied
+ * task of either comparison is a fresh solve, so the null holds.
+ */
+export function readTwice(reports: readonly JsonObject[], level: number, trigger: number): boolean {
+  if (reports.length < 2) return false;
+  const [first, second] = reports.slice(-2);
+  if (first === undefined || second === undefined || !triggered(first, trigger)) return false;
+  const [one, two] = [tallyOf(first), tallyOf(second)];
+  if (one === null || two === null || two.wins + two.losses === 0 || two.wins < two.losses) return false;
+  return signP(one.wins + two.wins, one.losses + two.losses) <= level;
 }
 
 /** The smallest scored set a sign test at `level` can read a step on: that many tasks, all won. */

@@ -425,6 +425,14 @@ describe("a step", () => {
     expect(move([...stepped, ...compared("g-2", "h1", "no-step", { tally: [4, 4, 4] })])).toMatchObject({
       move: "promote",
     });
+    // A repeat that tied every task, or lost more than it won, is no repeat: summed alone an 8-0
+    // and a 0-0-12 promoted on one draw (found by review, 11 October).
+    expect(move([...stepped, ...compared("g-2", "h1", "no-step", { tally: [0, 0, 12] })])).not.toMatchObject({
+      move: "promote",
+    });
+    expect(move([...stepped, ...compared("g-2", "h1", "no-step", { tally: [3, 4, 5] })])).not.toMatchObject({
+      move: "promote",
+    });
   });
 
   it("is named for promotion though later sessions left another harness, and one read once is not", () => {

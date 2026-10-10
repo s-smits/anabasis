@@ -139,6 +139,19 @@ describe("the stop rule", () => {
       sinceStep: 3,
       stop: true,
     });
+    // A reading under the trigger showed a gain: it bought the repeat, and reads `no-step` by
+    // itself. Counted as no gain, a 2-0 at level 0.10 ended a campaign of patience 3 before its
+    // repeat was bought (found by review, 11 October). The trigger is the opening's where it
+    // names one, as a term, and 0.25 otherwise: a 1-0 clears neither.
+    const bought = flat("b-3", "h4", { scored: { wins: 2, losses: 0, ties: 10 } });
+    expect(stopRule([...two, bought])).toEqual({ checkpoints: 3, sinceStep: 0, stop: false });
+    expect(stopRule([...two, flat("b-3", "h4", { scored: { wins: 1, losses: 0, ties: 11 } })])).toMatchObject(
+      {
+        stop: true,
+      },
+    );
+    const strict = event("campaign.opened", { ...three.data, terms: { trigger: "0.1" } });
+    expect(stopOf([strict, ...two, bought])).toMatchObject({ sinceStep: 3, stop: true });
   });
 
   // Fix row F48. On 9 October one harness was compared with the starter three times, each time on

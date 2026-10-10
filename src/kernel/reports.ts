@@ -23,7 +23,7 @@
  * Nothing here decides a comparison or makes a solve.
  */
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { draw, type Paired, pairings, pairsOf } from "./compare.ts";
+import { draw, type Paired, pairings, pairsOf, TRIGGER, triggered } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
 import { taskSets } from "./task.ts";
@@ -222,6 +222,14 @@ export function patienceOf(events: readonly LogEvent[]): number {
   return isNumber(named) ? named : PATIENCE;
 }
 
+/** The campaign's trigger as its opening records it (`--trigger`, a term the opening keeps as a
+ *  string), or `TRIGGER`. */
+export function triggerOf(events: readonly LogEvent[]): number {
+  const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.trigger;
+  const parsed = isString(named) ? Number(named) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : TRIGGER;
+}
+
 export function stopRule(events: readonly LogEvent[]) {
   const built = new Set(
     events.flatMap(({ kind, data }) =>
@@ -238,6 +246,7 @@ export function stopRule(events: readonly LogEvent[]) {
   );
   const setting = tallied.at(-1)?.data.setting;
   const from = (tallied.findLast(({ data }) => data.setting !== setting)?.index ?? -1) + 1;
+  const trigger = triggerOf(events);
   /** The harnesses already compared with a reference that is not the starter. */
   const referenced = new Set<unknown>();
   /** Each pair of a harness and a reference, where it first reported and as it last read. */
@@ -248,7 +257,8 @@ export function stopRule(events: readonly LogEvent[]) {
     if (old !== starter) referenced.add(fresh);
     else if (referenced.has(fresh)) continue;
     const pair = `${isString(fresh) ? fresh : ""} ${isString(old) ? old : ""}`;
-    const step = data.reading === STEP;
+    // A reading under the trigger showed a gain too: it bought the repeat (11 October).
+    const step = data.reading === STEP || triggered(data, trigger);
     pairs.set(pair, {
       index: pairs.get(pair)?.index ?? index,
       step,

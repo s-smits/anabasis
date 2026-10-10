@@ -168,6 +168,10 @@ describe("a campaign run by its log", () => {
     expect(harnessBuilder([...flags, "--moves", "0"], seats)).rejects.toThrow(
       "name --level and --trigger once for it (the plan's are --level 0.1 --trigger 0.25)",
     );
+    // Naming the trigger alone would pin the level to the start's, under the summed rule.
+    expect(harnessBuilder([...flags, "--trigger", "0.25", "--moves", "0"], seats)).rejects.toThrow(
+      "name --level and --trigger once",
+    );
     expect(of(name, OPENED)).toHaveLength(1);
     await harnessBuilder([...flags, "--level", "0.1", "--trigger", "0.25", "--moves", "0"], seats);
     expect(of(name, OPENED).at(-1)).toMatchObject({
@@ -207,7 +211,21 @@ describe("a campaign run by its log", () => {
     const name = `${STEM}-climb`;
     // The seed holds five tasks to score once two are released, and the comparison scores five:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
-    const flags = [...seeded(name), "--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5"];
+    // At a trigger of its own, so that the comparisons are seen to run under the campaign's and
+    // not the command's default (found by review, 11 October: the flag was not passed on).
+    const flags = [
+      ...seeded(name),
+      "--practice",
+      "2",
+      "--solves",
+      "1",
+      "--sessions",
+      "1",
+      "--target",
+      "5",
+      "--trigger",
+      "0.5",
+    ];
     const strayed: string[] = [];
     // Under the new harness every held-out task is answered, and under the reference none.
     const seats: Seats = {
@@ -228,6 +246,10 @@ describe("a campaign run by its log", () => {
     // Set-up, one session, the comparison and its repeat: then the promotion is the operator's.
     const waits = await harnessBuilder(flags, seats);
     expect(waits).toMatchObject({ move: "promote" });
+    // Each comparison was made under the campaign's trigger, and the move records the command.
+    for (const made of of(name, "campaign.move").filter(({ move }) => move === "compare")) {
+      expect(made.args).toEqual(expect.arrayContaining(["--trigger", "0.5", "--level", "0.1"]));
+    }
     expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
       ["prepare", null],

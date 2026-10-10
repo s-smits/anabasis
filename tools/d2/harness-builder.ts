@@ -380,7 +380,10 @@ function pinned(events: readonly LogEvent[], was: Opening | null, term: "level" 
   if (isString(recorded)) return recorded;
   const began = events.findLast(({ kind, data }) => kind === "comparison.started" && isNumber(data.level))
     ?.data.level;
-  if (term === "trigger" && isNumber(began)) {
+  // Either term pinned from a start under the one-reading rule, with no trigger on record, would
+  // read the campaign on under this tree's rule at the old level (found by review, 11 October:
+  // `--trigger` named alone pinned the level to the start's 0.20).
+  if (isNumber(began) && !isString(was?.terms.trigger)) {
     throw new Error(
       `the campaign's comparisons began at --level ${String(began)} under the rule of one reading at a time, and the step and its repeat are read together since 10 October: name --level and --trigger once for it (the plan's are --level ${COMPARISON_OPTIONS.level.default} --trigger ${COMPARISON_OPTIONS.trigger.default}), and the opening keeps them`,
     );
@@ -470,12 +473,17 @@ function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn
           ...(decided.noise ? ["--noise"] : []),
           ...flag("solves", values.solves),
           ...flag("level", values.level),
+          // The trigger is the table's and no term of the comparison's start: it goes on the
+          // command whether the comparison is new or continued, so the admission's size reads
+          // what `decide` read (found by review, 11 October: left off, a campaign at 0.5 ran its
+          // comparisons under the command's 0.25).
+          ...flag("trigger", values.trigger),
           ...plan.ladder.flatMap((rung) =>
             turns === null || rung < turns ? ["--budget", `turns=${String(rung)}`] : [],
           ),
           ...cap,
         ]
-      : termsOf(events, decided.id);
+      : [...termsOf(events, decided.id), ...flag("trigger", values.trigger)];
   return {
     session,
     args: [
@@ -511,7 +519,14 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
   }
   if (decided.move === "prepare") {
     const practice = decided.practice === undefined ? values.practice : String(decided.practice);
-    await prepareCommand([...pack, ...flag("practice", practice)]);
+    // The campaign's terms, so what it prints of a comparison's size is the campaign's.
+    await prepareCommand([
+      ...pack,
+      ...flag("practice", practice),
+      ...flag("solves", values.solves),
+      ...flag("level", values.level),
+      ...flag("trigger", values.trigger),
+    ]);
     return {};
   }
   if (decided.move === "budget") {
@@ -525,7 +540,9 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
   if (decided.move === "compare") {
     const { session, args } = comparisonOf(decided, turn);
     await checkpointCommand(args, seats.seated);
-    return { session };
+    // The comparison's own flags beside the pack's, so the log says what command the move ran
+    // (11 October: the trigger had been left off, and no record could show it).
+    return { session, args: args.slice(pack.length) };
   }
   if (decided.move === "draft" || decided.move === "examine") {
     const stand = decided.move === "draft" ? seats.draft : seats.examine;

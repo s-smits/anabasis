@@ -669,7 +669,9 @@ describe("a round", () => {
     );
     expect(() => settleReading(defect.s.log, "b-1", new Map())).toThrow("is settled already");
     expect(defect.s.of(COMPARISON_REPORTED)).toHaveLength(2);
-    expect(stopRule(read(defect.s.log))).toMatchObject({ checkpoints: 1, sinceStep: 1 });
+    // The settled 3-0 reads no step at 0.10 and buys the repeat, which the stop rule counts as
+    // a gain (11 October).
+    expect(stopRule(read(defect.s.log))).toMatchObject({ checkpoints: 1, sinceStep: 0 });
 
     // Labelled earned, the rejections stand on a person's word and the task is restored: the same
     // whether the labels come at once or after a later round has solved the same tasks.
@@ -1095,8 +1097,9 @@ describe("a checkpoint with no session", () => {
     // Four tasks, two harnesses, two solves: no solve under any other harness.
     expect(s.asked).toHaveLength(16);
     expect(s.asked.every(({ side }) => side !== "old")).toBe(true);
-    // The first round is a checkpoint of the stop rule: its harness is one a session built.
-    expect(stopRule(read(s.log))).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
+    // The first round is a checkpoint of the stop rule: its harness is one a session built, and
+    // its 3-0, which buys the repeat, counts as a gain (11 October).
+    expect(stopRule(read(s.log))).toEqual({ checkpoints: 1, sinceStep: 0, stop: false });
     // One harness on both sides is no comparison.
     await expect(checkpoint(s.compare("aa", { fresh: { dir: s.parent, digest: s.old } }))).rejects.toThrow(
       "a comparison sets two harnesses against each other, and both sides are",

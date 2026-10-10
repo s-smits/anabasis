@@ -534,7 +534,9 @@ same task. The harness that wins more pairs wins the task; otherwise the task is
 the test. A one-sided sign test reads wins against losses, in two stages: a comparison whose
 tally is at or under the trigger (0.25: 2 to 0, 4 to 1, 5 to 2, 7 to 3) buys the repeat and
 promotes nothing, and the step and its repeat read together, wins and losses summed, clear the
-level (0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3). Both are recorded in the campaign's opening, so a
+level (0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), the repeat having untied a task and won at least as
+many as it lost (`readTwice`, `src/kernel/compare.ts`). A reading under the trigger counts for the
+stop rule as a move that showed a gain. Both terms are recorded in the campaign's opening, so a
 campaign reads by its own rule whatever the tree's default.
 
 **The reading** is one of seven words (`Reading`, `src/builder/comparison.ts`):

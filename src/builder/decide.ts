@@ -72,6 +72,7 @@
  * and 10 of 10 once it was told two. So the rule's budget is a place to look, the comparison
  * under it is what counts, and the ladder is walked by what those comparisons show.
  */
+import { readTwice, triggered } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, roomOf } from "../kernel/reports.ts";
 import { practiceRan } from "../kernel/solves.ts";
@@ -89,8 +90,6 @@ import {
   end,
   type Fresh,
   held,
-  readTwice,
-  triggered,
   short,
   STEP,
   toBudget,
@@ -471,15 +470,15 @@ function onStep(ground: Ground): Decided | null {
     harness: latest,
     why: `harness ${short(latest)} ${why}`,
   });
-  const { level } = plan.wanted;
+  const { level, trigger } = plan.wanted;
   if (turns === plan.limit) {
-    if (readTwice(pair, level)) return promote("read a step and its repeat at the full limit");
+    if (readTwice(pair, level, trigger)) return promote("read a step and its repeat at the full limit");
     // The reading at the full limit of a step that was read twice under a shorter budget.
     const below = settings.findLast(
       (each) =>
         each.rest === rest &&
         each.turns !== plan.limit &&
-        readTwice(pairOf(under(ground, each.turns), latest, reference), level),
+        readTwice(pairOf(under(ground, each.turns), latest, reference), level, trigger),
     );
     if (below === undefined) return null;
     const steps = pairOf(under(ground, below.turns), latest, reference).slice(-2);
@@ -497,7 +496,7 @@ function onStep(ground: Ground): Decided | null {
           why: `harness ${short(latest)} read a step and its repeat at a shorter budget and lost at the full limit: it is not promoted, and the campaign returns to that budget`,
         };
   }
-  if (!readTwice(pair, level)) return null;
+  if (!readTwice(pair, level, trigger)) return null;
   // A reading of the two at the full limit stands whenever it was made, before the budget was
   // shortened as much as after the step, so long as it vouches for the step's tasks (`vouches`).
   const full = pairOf(under(ground, plan.limit), latest, reference).findLast((report) =>

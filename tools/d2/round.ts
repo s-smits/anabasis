@@ -77,7 +77,7 @@ import { admitComparison, type Wanted } from "#src/builder/admission.ts";
 import { predicted, type Report, type Valid } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type Budget, UNITS } from "#src/kernel/compare.ts";
+import { type Budget, TRIGGER, UNITS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -150,7 +150,7 @@ export const COMPARISON_OPTIONS = {
   // buys the repeat (`src/builder/move.ts`). 0.20 on each reading alone was the default from
   // #175 until 10 October's two-stage rule.
   level: { type: "string", default: "0.1" },
-  trigger: { type: "string", default: "0.25" },
+  trigger: { type: "string", default: String(TRIGGER) },
   defects: { type: "string", default: "3" },
   budget: { type: "string", multiple: true },
   cap: { type: "string" },

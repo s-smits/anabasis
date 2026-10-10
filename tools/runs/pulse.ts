@@ -76,6 +76,8 @@ export const CHECKPOINT = "tools/d2/checkpoint.ts";
 /** The command a Builder session with no comparison after it runs as. */
 export const SESSION = "tools/d2/session.ts";
 const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT, SESSION];
+/** This CLI's own command, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
+const CLI = "tools/runs/cli.ts";
 /** The file beside a log that says its campaign is a seed, and of what. */
 export const SEED_FILE = "seed.json";
 const LIVE = "tools/m0/live-solve.ts";
@@ -89,9 +91,20 @@ const runsAs = (args: readonly string[], tools: readonly string[]) =>
   args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
 /** Whether a process writes a campaign's log: a round, an Examiner session, or a rehearsal
  *  (`rehearse.ts`), which is a round on a seed run as a verb of this CLI. A stop releases what a
- *  run that is not being written left mounted, so a writer missed here would lose its roots. */
-const campaigns = (args: readonly string[]) =>
-  runsAs(args, CAMPAIGN) || (runsAs(args, ["tools/runs/cli.ts"]) && args.includes("rehearse"));
+ *  run that is not being written left mounted, so a writer missed here would lose its roots.
+ *
+ *  A launch is none, and its command line carries the command it launches: on 10 October
+ *  `runs launch tools/d2/round.ts --name t-10` into the tree that held t-10's log was refused as
+ *  "already being written here" by the one process that matched, the launcher itself, and by two
+ *  when run as the package script (`bun run runs launch …`). Every launch after a campaign's first
+ *  into its own tree was refused so; the campaigns on record were run through
+ *  `tools/d2/harness-builder.ts`, which this does not list, and never met it. */
+const campaigns = (args: readonly string[]) => {
+  if (runsAs(args, [CLI])) return args.includes("rehearse");
+  // The package script `bun run runs <verb> …`, which holds no log open whatever the verb.
+  if (args[1] === "run" && args[2] === "runs") return false;
+  return runsAs(args, CAMPAIGN);
+};
 
 const minutes = (ms: number) => `${String(Math.round(ms / 60_000))}m`;
 const dollars = (value: number) => `$${value.toFixed(2)}`;

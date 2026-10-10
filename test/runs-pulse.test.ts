@@ -179,6 +179,20 @@ describe("the runs pulse", () => {
       { pid: 6, cwd: "/wt", args: ["bun", "tools/runs/cli.ts", "rehearse", "--name", "r1"] },
       { pid: 7, cwd: "/wt", args: ["bun", "run", "runs", "rehearse", "--name", "r1"] },
       { pid: 8, cwd: "/wt", args: ["bun", "tools/runs/cli.ts", "pulse", "--name", "r1"] },
+      // A launch names the command it starts and holds no log open: on 10 October a launch of a
+      // round into the tree that held the campaign's log was refused by itself, and by its package
+      // script too.
+      {
+        pid: 9,
+        cwd: "/wt",
+        args: ["bun", "tools/runs/cli.ts", "launch", "tools/d2/round.ts", "--name", "r1"],
+      },
+      { pid: 10, cwd: "/wt", args: ["bun", "run", "runs", "launch", "tools/d2/round.ts", "--name", "r1"] },
+      {
+        pid: 11,
+        cwd: "/wt",
+        args: ["bun", "tools/runs/cli.ts", "launch", "--dry-run", "tools/d1b/examine.ts", "--name", "r1"],
+      },
     ];
     expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };

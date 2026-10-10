@@ -3,6 +3,7 @@
   "files": {
     "test/oxlint-fixers.test.ts": 2918,
     "test/harness-tools.test.ts": 2115,
+    "test/runs-launch.test.ts": 1744,
     "test/declarations-before-the-first-function.test.ts": 1656,
     "test/require-meta-runtime-import.test.ts": 1616,
     "test/simplify-catchers-ownership.test.ts": 1507,
@@ -40,6 +41,7 @@
     "test/require-type-for-null-default.test.ts": 179,
     "test/solve-sandbox.test.ts": 177,
     "test/no-property-read-on-function.test.ts": 163,
+    "test/runs-pulse.test.ts": 160,
     "test/no-unknown-union.test.ts": 156,
     "test/not-slop-ledger.test.ts": 149,
     "test/no-positional-boolean-parameter.test.ts": 147,

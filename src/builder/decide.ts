@@ -207,11 +207,21 @@ function tried(ground: Ground, turns: number | null): boolean {
 /** The plan's decision table over a campaign's log: the next move, or the campaign's ending. */
 /** The first move of a campaign that opened from a prompt and holds no exam: a draft, while the
  *  plan's three have not been put. A session that put none, as one its provider failed, counts
- *  as a session, so that a campaign does not draft against a dead provider without end. */
+ *  as a session, so that a campaign does not draft against a dead provider without end. Where
+ *  every session crashed and no draft was put, the ending is the environment's, with what the
+ *  last crash said: on 10 October three sessions crashed in one second before any model call
+ *  (Claude Code refused to run as root), and the campaign ended on an exam nobody had read. */
 function drafting(events: readonly LogEvent[]): Decided {
   const sessions = events.filter(({ kind }) => kind === "draft.finished");
   const tries = sessions.reduce((sum, { data }) => sum + (isNumber(data.tries) ? data.tries : 0), 0);
   if (tries >= DRAFTS || sessions.length >= DRAFTS) {
+    const crash = sessions.at(-1)?.data.crash;
+    if (tries === 0 && sessions.every(({ data }) => data.ended === "crashed") && isString(crash)) {
+      return end(
+        "environment",
+        `no draft was put: the Examiner's session crashed ${String(sessions.length)} times (${crash})`,
+      );
+    }
     return end(
       "exam",
       `the exam was not accepted: ${plural(tries, "draft")} in ${plural(sessions.length, "session")} did not stand at the host's reading`,

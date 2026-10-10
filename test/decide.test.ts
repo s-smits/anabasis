@@ -106,8 +106,23 @@ describe("the exam and the tasks, before anything is built", () => {
       ending: "exam",
       why: "the exam was not accepted: 3 drafts in 2 sessions did not stand at the host's reading",
     });
-    // Three sessions that put no draft, as ones their provider failed, end it too.
+    // Three sessions that put no draft end it too: on the exam where one was read, and as the
+    // environment's where every session crashed before a draft, with what the crash said.
     expect(move([fell(0), fell(0), fell(0)], plan)).toMatchObject({ move: "end", ending: "exam" });
+    const crashed = event("draft.finished", {
+      session: "d-1",
+      stands: false,
+      tries: 0,
+      ended: "crashed",
+      crash: "exited 1",
+    });
+    expect(move([crashed, crashed, crashed], plan)).toEqual({
+      move: "end",
+      ending: "environment",
+      why: "no draft was put: the Examiner's session crashed 3 times (exited 1)",
+    });
+    expect(move([crashed, fell(1), crashed], plan)).toMatchObject({ move: "end", ending: "exam" });
+    expect(move([crashed, crashed], plan)).toMatchObject({ move: "draft" });
     // A draft that stood is the exam, and it is read like any other.
     const stood = event("exam.drafted", { session: "d-1", draft: { domain: "a field" } });
     expect(move([fell(1), stood], plan)).toMatchObject({ move: "accept" });

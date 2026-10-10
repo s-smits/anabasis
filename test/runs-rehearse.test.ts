@@ -51,6 +51,9 @@ function campaignAt(name: string, lines: readonly string[], tail = ""): string {
   mkdirSync(join(folder, "states", "abc", "agent"), { recursive: true });
   writeFileSync(join(folder, "log.jsonl"), `${lines.map((each) => `${each}\n`).join("")}${tail}`);
   writeFileSync(join(folder, "checks", "brief.json"), "{}");
+  // A drafted exam, as a campaign opened from a prompt stages it (`tools/d2/exam.ts`).
+  mkdirSync(join(folder, "exams", "f32e9cd8", "checks"), { recursive: true });
+  writeFileSync(join(folder, "exams", "f32e9cd8", "checks", "evaluator.ts"), "export const checks = {};\n");
   writeFileSync(join(folder, "states", "abc", "agent", "BUILT_AGENTS.md"), "guide\n");
   writeFileSync(join(folder, "launch-b-1.json"), "{}");
   // The notes two Builder sessions left, each in the folder the campaign keeps for it.
@@ -80,7 +83,7 @@ describe("a seed's cut", () => {
 });
 
 describe("a seed", () => {
-  it("copies the log cut, the checks and the states, and says where it came from", () => {
+  it("copies the log cut, the checks, a drafted exam and the states, and says where it came from", () => {
     // The source is still being written: its last line is torn, and is no event yet.
     const from = campaignAt("source", LINES, '{"at":"2026');
     const to = join(root, "seeded");
@@ -93,6 +96,7 @@ describe("a seed", () => {
     ]);
     expect(readFileSync(join(to, "states", "abc", "agent", "BUILT_AGENTS.md"), "utf8")).toBe("guide\n");
     expect(existsSync(join(to, "checks", "brief.json"))).toBe(true);
+    expect(existsSync(join(to, "exams", "f32e9cd8", "checks", "evaluator.ts"))).toBe(true);
     // The notes of a session the cut log holds come with it. Those of a later session stay: a
     // session run again under that id would find them in the place its own are kept.
     expect(readFileSync(join(to, "memory", "b-1", "MEMORY.md"), "utf8")).toBe("notes of b-1\n");
@@ -253,6 +257,17 @@ describe("a rehearsal's seats", () => {
     );
   });
 
+  it("take a stored pack by its three flags together, or a drafted exam's seed, and nothing between", async () => {
+    // Two of the three flags name no pack; none of them names the seed's own drafted exam, which
+    // a campaign of this tree holds in its log and not here.
+    await expect(
+      rehearse(["--root", root, "--sweep", "s", "--name", "n", "--session", "r-1"]),
+    ).rejects.toThrow("usage:");
+    await expect(rehearse(["--name", "no-such-campaign", "--session", "r-1"])).rejects.toThrow(
+      /no such file|holds no exam of its own/,
+    );
+  });
+
   it("script each solve by its harness, and name the one that ended otherwise", async () => {
     const folder = campaignAt("rehearsed", []);
     writeFileSync(join(folder, SEED_FILE), "{}\n");
@@ -284,16 +299,20 @@ describe("a rehearsal's seats", () => {
       's-2: t-2 under the reference harness was scripted to fail and ended {"outcome":"pass"}',
       's-3: t-1 under the starter was scripted to fail and ended {"outcome":"pass"}',
     ]);
-    // A task with no answer on record for its scripted ending stops the rehearsal where it is.
-    await expect(seats.solve(pack("t-3"), old, undefined)).rejects.toThrow(
-      "t-3 has no answer on record that the checks rejected",
+    // A task with no answer on record for its scripted ending is given none, and named once at
+    // the end: the rehearsal goes on, as the control after a promotion has to over tasks no solve
+    // has answered (10 October).
+    await seats.solve(pack("t-3"), old, undefined);
+    expect(calls.at(-1)).toMatchObject({ name: "submit" });
+    expect(strayed.at(-1)).toBe(
+      "t-3 has no answer on record that the checks rejected, so the script gave none",
     );
     // Scripted to give no answer, a solve submits with none written, whatever is on record.
     const silent = scriptedSeats({ held: sidesOf("none:pass"), starter: "none" }, graded, strayed);
     await silent(campaign, { builder: undefined, reference: FIXTURE }).solve(pack("t-3"), old, undefined);
     expect(calls.at(-1)).toMatchObject({ name: "submit" });
     expect(strayed.at(-1)).toBe(
-      's-4: t-3 under the reference harness was scripted to give no answer and ended {"outcome":"pass"}',
+      's-5: t-3 under the reference harness was scripted to give no answer and ended {"outcome":"pass"}',
     );
     // Where the starter is the reference harness, as it is until a promotion, it is scripted as
     // that side of the comparison, by `--held`'s first word; `--starter` scripts it only as a
@@ -305,7 +324,7 @@ describe("a rehearsal's seats", () => {
       name: "write",
       arguments: { path: "answer.json", content: '{"answer":"t-2 wrong"}' },
     });
-    expect(strayed.at(-1)).toStartWith("s-5: t-2 under the reference harness was scripted to fail");
-    expect(named).toEqual([undefined, undefined, undefined, undefined, "g0"]);
+    expect(strayed.at(-1)).toStartWith("s-6: t-2 under the reference harness was scripted to fail");
+    expect(named).toEqual([undefined, undefined, undefined, undefined, undefined, "g0"]);
   });
 });

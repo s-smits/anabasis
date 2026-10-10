@@ -1,8 +1,8 @@
 /**
  * `bun run runs seed --from <campaign folder> --name <name> [--before <session> | --events <n>]`
  *
- * A campaign is its folder: the log, the staged check program, the harness states its sessions
- * kept and the notes each session left the next (`src/builder/memory.ts`). A seed is a copy of one under another name in this worktree, with the log cut where a
+ * A campaign is its folder: the log, the staged check program (or the staged exam it drafted), the
+ * harness states its sessions kept and the notes each session left the next (`src/builder/memory.ts`). A seed is a copy of one under another name in this worktree, with the log cut where a
  * question starts, so that the campaign's own commands (`tools/d2/campaign.ts`) go on from a
  * recorded position and the run that recorded it is never written.
  *
@@ -78,7 +78,9 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
         .map((line) => `${line}\n`)
         .join(""),
     );
-    for (const part of ["checks", "states"]) {
+    // A campaign over a stored pack stages its checks beside the log; one that drafted its exam
+    // stages the exam under `exams/<digest>/` (`tools/d2/exam.ts`), which a seed of it needs too.
+    for (const part of ["checks", "exams", "states"]) {
       if (existsSync(join(from, part))) {
         cpSync(join(from, part), join(to, part), { recursive: true, verbatimSymlinks: true });
       }

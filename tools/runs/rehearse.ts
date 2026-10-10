@@ -16,7 +16,9 @@
  * the command wall and its freeze, each solve's wall and disk cap, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
  * seats, so its flags and defaults are the round's, but that it needs no `--cap`: a script is paid
- * nothing. The three flags that name a model are refused.
+ * nothing. The three flags that name a model are refused. The answers the script writes are a
+ * stored pack's graded passes and controls where `--root --sweep --bundle` name one, and otherwise
+ * the drafted exam's controls and every answer the seed's source campaign passed (`draftedGraded`).
  *
  * The Builder's script adds one line to the harness's guide through its walled shell and finishes.
  * A solve's script ends one of three ways. For `pass` it writes an answer on record that the checks
@@ -41,9 +43,10 @@
  */
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import type { Control } from "#src/kernel/acceptance.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { verdictsOf } from "#src/kernel/solves.ts";
-import { existsSync } from "#src/meta/filesystem.ts";
+import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
+import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -51,7 +54,8 @@ import { ANSWER_FILE } from "#src/solve/answer.ts";
 import { selectedCodingTools } from "#src/solve/coding-tools.ts";
 import { openHarness } from "#src/solve/harness.ts";
 import { shellQuote } from "#src/verify/solve-command-isolation.ts";
-import { starter } from "../d2/campaign.ts";
+import { campaignLog, starter } from "../d2/campaign.ts";
+import { stagedExamOf } from "../d2/exam.ts";
 import { checkpointCommand } from "../d2/checkpoint.ts";
 import { harnessBuilder } from "../d2/harness-builder.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
@@ -76,6 +80,8 @@ interface Script {
 }
 
 const OWN = new Set(["held", "starter", "no-comparison", "campaign"]);
+/** The flags that name a stored pack together (`packNamed`). */
+const PACK_FLAGS = 3;
 const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A list price for the scripted model, which the meter refuses to run without: what a rehearsal
  *  meters is the script's own words at this price, and is no cost. */
@@ -173,10 +179,14 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         const side = await sideOf(harness.dir);
         const wanted = { old: script.held.old, new: script.held.fresh, starter: script.starter }[side];
         // A solve scripted to give no answer submits with none written, and needs none on record.
+        // One scripted to answer a task with no answer on record gives none and is named at the
+        // end as strayed: until 10 October it ended the campaign, and a rehearsal of the control
+        // after a promotion (`onReference`) fell at the first task no solve had ever answered.
         const answer = wanted === "none" ? null : asRecord(answers.get(task.taskId)?.[wanted]);
-        if (wanted !== "none" && answer === null) {
-          throw new Error(
-            `${task.taskId} has no answer on record that the checks ${wanted === "pass" ? "accepted" : "rejected"}, so no script can ${wanted} it`,
+        const missing = wanted !== "none" && answer === null;
+        if (missing) {
+          strayed.push(
+            `${task.taskId} has no answer on record that the checks ${wanted === "pass" ? "accepted" : "rejected"}, so the script gave none`,
           );
         }
         const content = JSON.stringify(answer);
@@ -192,7 +202,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         const failed = { pass: null, fail: "rejected", none: "no-answer" }[wanted];
         const held =
           failed === null ? ending.outcome === "pass" : ending.outcome === "fail" && ending.kind === failed;
-        if (!held) {
+        if (!held && !missing) {
           strayed.push(
             `${done.solve}: ${task.taskId} under the ${side === "starter" ? "starter" : `${side === "old" ? "reference" : "new"} harness`} was scripted to ${wanted === "none" ? "give no answer" : wanted} and ended ${JSON.stringify(ending)}`,
           );
@@ -201,6 +211,38 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
       },
     };
   };
+}
+
+/** The answers a stored sweep graded as passes, for the script to write. */
+function storedPasses(root: string, sweep: string): Control[] {
+  return sweepRows(root, sweep).flatMap((row) => {
+    const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
+    return answer === undefined ? [] : [{ taskId: row.taskId, answer, refusedBy: null }];
+  });
+}
+
+/**
+ * The answers a seed of a campaign that drafted its exam gives the script: the draft's controls,
+ * from where the campaign staged them, and every answer the source campaign's checks passed, which
+ * a seed cut before those solves no longer holds. Until 10 October a rehearsal took a stored pack
+ * only, and no campaign run on the Linux host has one: every one of them drafted its exam.
+ */
+function draftedGraded(name: string): Control[] {
+  const log = campaignLog(name);
+  const staged = stagedExamOf(log);
+  if (staged === null) {
+    throw new Error(
+      `name --root, --sweep and --bundle: campaign ${name} holds no exam of its own, and a rehearsal scripts answers from a stored pack or a drafted exam`,
+    );
+  }
+  const seed = asRecord(capturedJsonParse(readFileSync(join(dirname(log), SEED_FILE), "utf8")));
+  const source = isString(seed?.from) ? join(seed.from, LOG_FILE) : log;
+  const passes = [...verdictsOf(read(source)).values()].flatMap(({ task, answer, checker }) =>
+    task !== null && answer !== undefined && checker?.kind === "pass"
+      ? [{ taskId: task, answer, refusedBy: null }]
+      : [],
+  );
+  return [...packControls(staged.bundle), ...passes];
 }
 
 /** `bun run runs rehearse`. */
@@ -218,6 +260,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
       root: { type: "string" },
       sweep: { type: "string" },
       bundle: { type: "string" },
+      name: { type: "string" },
       builder: { type: "string" },
       solver: { type: "string" },
       reviewer: { type: "string" },
@@ -230,21 +273,23 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     // A reviewer named here would be a live one, reading scripted fails for money.
     throw new Error(`a rehearsal seats no model: drop --${seated.join(", --")}`);
   }
-  if (!isString(held) || least === undefined || !isString(root) || !isString(sweep) || !isString(bundle)) {
+  const stored = [root, sweep, bundle].filter(isString).length;
+  if (
+    !isString(held) ||
+    least === undefined ||
+    (stored !== 0 && stored !== PACK_FLAGS) ||
+    !isString(values.name)
+  ) {
     throw new Error(
       "usage: bun run runs rehearse <the flags of tools/d2/round.ts, of tools/d2/checkpoint.ts, of tools/d2/session.ts with --no-comparison, or of tools/d2/harness-builder.ts with --campaign, that name no model> [--held old:new] [--starter pass|fail|none]",
     );
   }
-  const passes = sweepRows(root, sweep).flatMap((row) => {
-    const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
-    return answer === undefined ? [] : [{ taskId: row.taskId, answer, refusedBy: null }];
-  });
+  const graded =
+    isString(root) && isString(sweep) && isString(bundle)
+      ? [...storedPasses(root, sweep), ...packControls(bundle)]
+      : draftedGraded(values.name);
   const strayed: string[] = [];
-  const seats = scriptedSeats(
-    { held: sidesOf(held), starter: least },
-    [...passes, ...packControls(bundle)],
-    strayed,
-  );
+  const seats = scriptedSeats({ held: sidesOf(held), starter: least }, graded, strayed);
   const flags = passedOn(args, tokens, OWN);
   // A checkpoint is named by its `--id` and runs no session, so no Builder's script can stray, and
   // a campaign's sessions are its own to count.

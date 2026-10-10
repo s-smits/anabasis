@@ -97,6 +97,10 @@ export interface CampaignArgs {
   /** What every solve of this command is held to, when not `LIMITS`: a command's `--solve-minutes`
    *  and `--solve-turns` (`setting.ts`). */
   readonly limits?: Limits | undefined;
+  /** A log of this command's own for the solves it makes, when not the campaign's: the trial solve
+   *  of a handed-over harness (`close.ts --solve`), which the campaign's readings never count. The
+   *  exam, the tasks and the checker are read from the campaign's log all the same. */
+  readonly trial?: string | undefined;
 }
 
 /** A harness as a solve is handed it. */
@@ -263,6 +267,8 @@ export async function openCampaign(args: CampaignArgs) {
   let solves = 0;
   /** One live solve of a task under a harness, by a solver, its condition recorded first. A solve
    *  made for a comparison names it, and is counted by that comparison alone. */
+  // Where this command's solves are recorded: the campaign's log, or a trial's of its own.
+  const written = args.trial ?? log;
   const solveOnce = (
     task: TaskPackage,
     harness: Kept,
@@ -274,7 +280,7 @@ export async function openCampaign(args: CampaignArgs) {
     return practised({
       // No two solves of a campaign share an id, whichever process made them.
       id: `${args.name}-${Date.now().toString(36)}-${String(solves)}`,
-      condition: recordCondition(log, conditionOf(task, harness, by)),
+      condition: recordCondition(written, conditionOf(task, harness, by)),
       task,
       contract,
       harness: harness.dir,
@@ -284,7 +290,7 @@ export async function openCampaign(args: CampaignArgs) {
       limits,
       models: by.models ?? ((home) => backends(sweepOptions(home))),
       verify,
-      log,
+      log: written,
       repoRoot: REPO,
       ...keyIfDefined("kill", kill),
       ...keyIfDefined("comparison", comparison),

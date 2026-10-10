@@ -23,10 +23,18 @@
  *
  * The campaign command writes it at an ending where `--handover <dir>` names the place
  * (`harness-builder.ts`), and this command writes it at any time, of an ended campaign or not.
+ *
+ * With `--solve <task id>` it then solves that task of the campaign under the harness as handed
+ * over, from the folder it was written to: row F51's criterion that the harness runs by itself.
+ * The solve is the campaign's solver's, under the campaign's checks, and is recorded in a log of
+ * its own under the campaign's folder (`handover/log.jsonl`), which no reading of the campaign
+ * counts; the command prints how it ended. A released task is the one to name: a held-out task
+ * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
 import { campaignOf, type Handover } from "#src/builder/handover.ts";
 import { openingOf } from "#src/builder/opening.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
+import { writtenTasks } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll, promoted } from "#src/kernel/reports.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -38,6 +46,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openHarness } from "#src/solve/harness.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
+import { type Seated, solved } from "./round.ts";
 import { recordedSetting } from "./setting.ts";
 
 type Campaign = Awaited<ReturnType<typeof openCampaign>>;
@@ -50,6 +59,7 @@ const OPTIONS = {
   bundle: { type: "string" },
   name: { type: "string" },
   to: { type: "string" },
+  solve: { type: "string" },
 } as const;
 
 const short = (digest: string): string => digest.slice(0, 8);
@@ -185,7 +195,7 @@ function rulesOf({ contract }: Pick<Campaign, "contract">): string {
 }
 
 /** `bun tools/d2/close.ts`. Returns where the handover was written and the harness it holds. */
-export async function closeCommand(args: readonly string[]): Promise<{ to: string; harness: string }> {
+export async function closeCommand(args: readonly string[], seated: Seated = solved) {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   if (values.to === undefined) throw new Error("name --to, the folder the handover is written to");
   const to = resolve(values.to);
@@ -214,7 +224,19 @@ export async function closeCommand(args: readonly string[]): Promise<{ to: strin
   writeFileSync(join(to, "RULES.md"), rulesOf(campaign));
   writeFileSync(join(to, "REPORT.md"), closingReport(pack.name, events, kept.digest));
   console.log(`handed over harness ${short(kept.digest)} with its report: ${to}`);
-  return { to, harness: kept.digest };
+  if (values.solve === undefined) return { to, harness: kept.digest, solved: null };
+  // The tasks an Examiner session wrote are in the log and in no pack.
+  const task = [...writtenTasks(events), ...campaign.tasks].find(({ taskId }) => taskId === values.solve);
+  if (task === undefined) throw new Error(`--solve ${values.solve}: the campaign holds no task by that id`);
+  const trialLog = join(campaign.log, "..", "handover", "log.jsonl");
+  mkdirSync(join(campaign.log, "..", "handover"), { recursive: true });
+  const trial = await openCampaign({ ...pack, trial: trialLog });
+  const { solve } = seated(trial, { builder: undefined, reference: PROMOTED });
+  const trialled = await solve(trial.pack(task), { dir: harness, digest: opened.digest }, undefined);
+  console.log(
+    `solved task ${task.taskId} under harness ${short(opened.digest)} from ${harness}: ${trialled.ending.outcome}${"kind" in trialled.ending ? ` (${trialled.ending.kind})` : ""}, recorded in ${trialLog}`,
+  );
+  return { to, harness: kept.digest, solved: trialled.ending.outcome };
 }
 
 if (import.meta.main) {

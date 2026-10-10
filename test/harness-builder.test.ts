@@ -25,7 +25,6 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { openCampaign } from "../tools/d2/campaign.ts";
 import { closeCommand } from "../tools/d2/close.ts";
 import { settleCommand } from "../tools/d2/settle.ts";
 import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
@@ -375,17 +374,24 @@ describe("a campaign run by its log", () => {
     expect(report).not.toContain("t-1");
     expect(report).not.toContain("check-product");
 
-    // The harness solves a task from where it was handed over, outside the campaign's folder.
-    const campaign = await openCampaign({ root, sweep: "s", cycle: "c01", bundle, name });
-    const seat = scriptedSeats(
-      { held: { old: "none", fresh: "pass" }, starter: "none" },
-      GRADED,
-      strayed,
-    )(campaign, { builder: undefined, reference: join(root, "no-such-harness") });
-    const task = [...campaign.packages().values()].find(({ taskId }) => taskId === "t-1");
-    if (task === undefined) throw new Error("the pack holds no t-1");
-    const solved = await seat.solve(task, { dir: join(to, "harness"), digest: handed.harness }, undefined);
-    expect(solved.ending).toEqual({ outcome: "pass" });
+    // The harness solves a task from where it was handed over, outside the campaign's folder: the
+    // solve is recorded in a log of its own under the campaign, and the campaign's log is as it was.
+    const before = read(join(REPO, ".ana", "d2", name, "log.jsonl")).length;
+    const trial = join(root, "handover-solved");
+    expect(closeCommand([...pack, "--to", trial, "--solve", "no-such-task"])).rejects.toThrow(
+      "--solve no-such-task: the campaign holds no task by that id",
+    );
+    rmSync(trial, { recursive: true, force: true });
+    const solved = await closeCommand(
+      [...pack, "--to", trial, "--solve", "t-1"],
+      scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed),
+    );
+    expect(solved).toMatchObject({ harness: handed.harness, solved: "pass" });
+    const trialled = read(join(REPO, ".ana", "d2", name, "handover", "log.jsonl"));
+    expect(trialled.filter(({ kind }) => kind === "solve.finished")).toMatchObject([
+      { data: { ending: { outcome: "pass" }, harness: handed.harness } },
+    ]);
+    expect(read(join(REPO, ".ana", "d2", name, "log.jsonl"))).toHaveLength(before);
     expect(strayed).toEqual([]);
   });
 

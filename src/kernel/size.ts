@@ -122,8 +122,8 @@ export function taskChances(rates: { readonly old: number; readonly fresh: numbe
   };
 }
 
-/** The smallest results that clear `level` on at most `tasks` scored tasks: at 0.10, 4-0, 6-1, 7-2
- *  and 9-3 as far as they fit. */
+/** The smallest results that clear `level` on at most `tasks` scored tasks: at 0.20, 3-0, 4-1, 6-2
+ *  and 7-3 as far as they fit; at 0.10, 4-0, 6-1, 7-2 and 9-3. */
 export function clearing(tasks: number, level: number): Result[] {
   const results: Result[] = [];
   let wins = 0;

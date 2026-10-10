@@ -146,7 +146,7 @@ export const COMPARISON_OPTIONS = {
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string" },
   solves: { type: "string", default: "2" },
-  level: { type: "string", default: "0.1" },
+  level: { type: "string", default: "0.2" },
   defects: { type: "string", default: "3" },
   budget: { type: "string", multiple: true },
   cap: { type: "string" },

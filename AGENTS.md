@@ -464,7 +464,7 @@ test-side solves ran under, and the first record is held to it in the same way (
 A solver that is another model, at another effort or under other limits is another solver, and no
 solve on record then counts.
 
-Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.10
+Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.20
 (`--level`), a stop past 3 tasks with a check defect (`--defects`), a patience of 6 (`--patience`),
 a reserve of 10 dollars a solve
 (`--reserve`), `--parent latest`, `--reference promoted`, which is the harness last promoted and
@@ -531,8 +531,9 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 
 **The tally.** Every solve of the new harness is paired with every solve of the reference on the
 same task. The harness that wins more pairs wins the task; otherwise the task is a tie. Ties leave
-the test. A one-sided sign test reads wins against losses, and at the default level of 0.10 the
-smallest results that clear it are 4 to 0, 6 to 1, 7 to 2 and 9 to 3.
+the test. A one-sided sign test reads wins against losses, and at the default level of 0.20 the
+smallest results that clear it are 3 to 0, 4 to 1, 6 to 2 and 7 to 3. The level is recorded with
+the comparison's terms, so one made at 0.10, the default until 10 October, reads as it did.
 
 **The reading** is one of seven words (`Reading`, `src/builder/comparison.ts`):
 

@@ -1,8 +1,9 @@
 // The size of a comparison, against the plan's own table (`docs/plan.md`, "Statistical power and
 // cost") and cases small enough to work by hand. The arithmetic is exact, so the figures are too.
 import { describe, expect, it } from "bun:test";
-import { signP } from "../src/kernel/compare.ts";
+import { signP, sweepOf } from "../src/kernel/compare.ts";
 import { binomial, chanceOfStep, clearing, power, sizeLines, taskChances } from "../src/kernel/size.ts";
+import { ROUND_OPTIONS } from "../tools/d2/round.ts";
 
 const LEVEL = 0.1;
 const ASKED = { solves: 2, level: LEVEL };
@@ -122,6 +123,27 @@ describe("the smallest results that clear a level", () => {
     expect(clearing(7, LEVEL)).toHaveLength(2);
     expect(clearing(3, LEVEL)).toEqual([]);
     expect(clearing(0, LEVEL)).toEqual([]);
+  });
+
+  it("are 3-0, 4-1, 6-2 and 7-3 at 0.20, the default since 10 October, and never 2-0 or 3-1", () => {
+    // Three campaigns of 9 and 10 October stopped on 3-0-3, 3-0-5 and 3-0-7, one win short of the
+    // sweep at 0.10. At 0.20 a 3-0 clears (p = 0.125); 2-0 (p = 0.25) and 3-1 (p = 0.3125) do not,
+    // and 2-0-5 is what the reference harness read against itself.
+    expect(sweepOf(0.2)).toBe(3);
+    expect(clearing(12, 0.2)).toEqual([
+      { wins: 3, losses: 0 },
+      { wins: 4, losses: 1 },
+      { wins: 6, losses: 2 },
+      { wins: 7, losses: 3 },
+      { wins: 8, losses: 4 },
+    ]);
+    expect(signP(2, 0)).toBeGreaterThan(0.2);
+    expect(signP(3, 1)).toBeGreaterThan(0.2);
+    // The plan's worked case at 0.20: the reference valid half the time and the new harness three
+    // times in four read a step 69% of the time on 12 tasks; two equal harnesses 11%.
+    expect(Math.round(100 * chanceOfStep(12, taskChances({ old: 0.5, fresh: 0.75 }, 2), 0.2))).toBe(69);
+    expect(Math.round(100 * chanceOfStep(12, taskChances({ old: 0.5, fresh: 0.5 }, 2), 0.2))).toBe(11);
+    expect(ROUND_OPTIONS.level.default).toBe("0.2");
   });
 });
 

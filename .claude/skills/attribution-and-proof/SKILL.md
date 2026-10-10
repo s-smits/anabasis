@@ -70,8 +70,8 @@ Answer these from the log before using the word step in a sentence of your own:
   `STEP NOT REPEATED` names a step that has none.
 - **What does the reference do against itself?** `--noise` beside the checkpoint. A reference
   that wins tasks from itself sets the floor under every other tally of that hour.
-- **How thin?** At `--level 0.1`, four untied tasks all won is the least that clears, at
-  p = 0.0625. Say the tally, never the word alone.
+- **How thin?** At `--level 0.2`, three untied tasks all won is the least that clears, at
+  p = 0.125. Say the tally, never the word alone.
 - **Under what load?** A wall counts the clock. The reader's `HOST LOADED` and `LOAD MOVED` say
   when a comparison ran on a busy host or two comparisons ran under different loads. Compare no
   times across them.

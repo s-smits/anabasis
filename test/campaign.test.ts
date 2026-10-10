@@ -43,7 +43,7 @@ const EARLIER = `${NAME}-earlier`;
 const SERVED = "claude/claude-opus-5-5";
 /** A campaign whose recorded setting names the tasks to score. */
 const RECORDED = `${NAME}-recorded`;
-const ASKED = { solves: 2, level: 0.1 };
+const ASKED = { solves: 2, level: 0.2 };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
   family: "fixture",

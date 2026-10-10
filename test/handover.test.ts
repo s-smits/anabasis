@@ -493,6 +493,8 @@ describe("the moves that may start next", () => {
   it("are a stop where the plan's stop rule has stopped the campaign", () => {
     const c = campaign();
     c.setUp();
+    // A campaign whose patience is the plan's three; the default is six (`PATIENCE`).
+    c.record("campaign.opened", { budget: null, limit: null, ladder: [], sessions: 1, patience: 3 });
     expect(move(c, "stop")).toBeUndefined();
     for (const [index, harness] of [HA, HB, "c".repeat(64)].entries()) {
       const id = `b-${String(index + 1)}`;
@@ -501,7 +503,9 @@ describe("the moves that may start next", () => {
     }
     expect(move(c, "stop")).toMatchObject({
       may: true,
-      notes: ["3 checkpoints since the last step: the plan stops the campaign here (docs/plan.md, Phase 5)"],
+      notes: [
+        "3 checkpoints since the last step: the campaign's patience is spent (docs/plan.md, Phase 5; --patience)",
+      ],
     });
     expect(move(c, "a round")?.may).toBe(false);
   });
@@ -525,7 +529,7 @@ describe("the operator's view", () => {
     const lines = viewLines("truss", campaignOf(c.events()), nextMoves(c.events(), ASKED));
     expect(lines.slice(0, 5)).toEqual([
       "truss",
-      "  set-up      4 held out · 1 released for practice · 0 wait for a label · checker read, 0 faults, not frozen · reference: the starter",
+      "  set-up      4 held out · 1 released for practice · 0 wait for a label · 0 exhausted · checker read, 0 faults, not frozen · reference: the starter",
       "  x-1         Examiner session, finished: 3 proposed, 2 held out, 1 refused · $2.25",
       "  b-1         Builder session, finished: from 00000000 it left aaaaaaaa, 2 practice solves · $7.00",
       "  b-1         comparison of aaaaaaaa with 00000000 on 4 tasks, 2 solves a side at 0.1: 4 won, 0 lost, 0 tied, which reads step · tasks with 0, 1, 2 valid answers: reference 4/0/0, new 0/0/4 · 1 rejection ruled earned · $3.50",

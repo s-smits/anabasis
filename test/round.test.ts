@@ -31,7 +31,7 @@ import type { Bench } from "../src/builder/tools.ts";
 import { type Condition, recordCondition, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
-import { awaitingLabel, latestBuilt, stopRule } from "../src/kernel/reports.ts";
+import { awaitingLabel, exhausted, latestBuilt, stopRule } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { taskStates } from "../src/kernel/task.ts";
 import {
@@ -898,7 +898,7 @@ describe("a round", () => {
     expect(stopRule(read(s.log))).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
   });
 
-  it("stops the campaign after three harnesses without a step, where their comparisons left room", async () => {
+  it("counts three harnesses without a step, where their comparisons left room, and stops at the campaign's patience", async () => {
     // Either harness answers each task on one of its two solves: nothing separates them, and the
     // reference harness is valid on half its solves, which leaves a harness room to gain.
     // A harness's solves of a task are counted across the rounds, so every other one passes.
@@ -907,11 +907,15 @@ describe("a round", () => {
     for (const [index, id] of ["b-1", "b-2", "b-3"].entries()) {
       const report = await round(s.next(id));
       expect(report).toMatchObject({ scored: { wins: 0, losses: 0, ties: 4 }, reading: NO_STEP });
-      expect(stopRule(read(s.log))).toEqual({
-        checkpoints: index + 1,
-        sinceStep: index + 1,
-        stop: id === "b-3",
-      });
+      // The campaign's patience is six by default, so three harnesses without a step do not stop
+      // it; with an opening of patience three, as the plan had it, the third does.
+      expect(stopRule(read(s.log))).toEqual({ checkpoints: index + 1, sinceStep: index + 1, stop: false });
+      const three = {
+        at: "2026-10-09T00:00:00.000Z",
+        kind: "campaign.opened",
+        data: { patience: 3 },
+      } as const;
+      expect(stopRule([three, ...read(s.log)])).toMatchObject({ stop: id === "b-3" });
     }
     // Sixteen solves a comparison, and no starter solve where none read a step.
     expect(s.asked).toHaveLength(48);
@@ -1425,7 +1429,10 @@ describe("the scored set", () => {
     expect(scoredSet(read(s.log), 12, "c")).toContain("s1");
     await round(s.next("b-2"));
     expect(awaitingLabel(read(s.log))).toEqual(["s1"]);
-    expect(scoredSet(read(s.log), 12, "c").toSorted()).toEqual(["s2", "s3", "s4", "s5"]);
+    // s2 to s4 were answered by both harnesses in every solve of both comparisons: exhausted, and
+    // left out but for a third of them, kept by the contract's hash as a check on regression.
+    expect(exhausted(read(s.log)).toSorted()).toEqual(["s2", "s4"]);
+    expect(scoredSet(read(s.log), 12, "c").toSorted()).toEqual(["s3", "s5"]);
     // Named for a comparison all the same, it is refused: the draw leaves it out, and a name
     // was the one way past that (2026-10-09).
     await expect(round(s.next("b-3"))).rejects.toThrow(

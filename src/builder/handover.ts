@@ -389,7 +389,7 @@ export function nextMoves(events: readonly LogEvent[], asked: Asked): Move[] {
           move("stop", {
             refusals: [],
             notes: [
-              `${plural(supply.stop.sinceStep, "checkpoint")} since the last step: the plan stops the campaign here (docs/plan.md, Phase 5)`,
+              `${plural(supply.stop.sinceStep, "checkpoint")} since the last step: the campaign's patience is spent (docs/plan.md, Phase 5; --patience)`,
             ],
           }),
         ]

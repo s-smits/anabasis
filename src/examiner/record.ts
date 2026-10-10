@@ -28,6 +28,7 @@ const SAID: Readonly<Record<Outcome, string>> = {
   tie: "a tie between valid answers",
   "no-valid-answer": "no valid answer yet",
   disputed: "disputed: a rejection of an answer to it is not settled",
+  exhausted: "answered validly by both harnesses in every solve of two comparisons: no longer scored",
 };
 /** What a state that is not held out says of a task. */
 const SETTLED = new Map([

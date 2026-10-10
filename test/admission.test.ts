@@ -26,6 +26,7 @@ const GOING = { checkpoints: 0, sinceStep: 0, stop: false };
 const SETS: Supply = {
   held: 4,
   awaiting: 0,
+  exhausted: 0,
   released: 1,
   untied: null,
   since: 0,
@@ -95,6 +96,7 @@ describe("what a log holds for the next comparison", () => {
     expect(supplyOf([])).toEqual({
       held: 0,
       awaiting: 0,
+      exhausted: 0,
       released: 0,
       untied: null,
       since: 0,
@@ -202,10 +204,21 @@ describe("what a log holds for the next comparison", () => {
       event("build.finished", { session, ended: "finished", harness, changed: true }),
       reported(session, { old: "h0", fresh: harness, starter: "h0", ...tallied(1, 1, "s"), reading }),
     ];
-    const two = [...checkpoint("b-1", "h1", "no-step"), ...checkpoint("b-2", "h2", "no-step")];
+    // A campaign whose patience is the plan's three; the default is six (`PATIENCE`).
+    const three = event("campaign.opened", {
+      budget: null,
+      limit: null,
+      ladder: [],
+      sessions: 1,
+      patience: 3,
+    });
+    const two = [three, ...checkpoint("b-1", "h1", "no-step"), ...checkpoint("b-2", "h2", "no-step")];
     expect(supplyOf(two).stop).toEqual({ checkpoints: 2, sinceStep: 2, stop: false });
     expect(supplyOf([...two, ...checkpoint("b-3", "h3", "no-step")]).stop.stop).toBe(true);
     expect(supplyOf([...two, ...checkpoint("b-3", "h3", "step")]).stop).toMatchObject({ sinceStep: 0 });
+    // By default the campaign bears six.
+    const patient = two.slice(1);
+    expect(supplyOf([...patient, ...checkpoint("b-3", "h3", "no-step")]).stop.stop).toBe(false);
   });
 });
 
@@ -306,7 +319,7 @@ describe("whether a comparison may start", () => {
   it("refuses the launch after three moves without a gain, unless the operator says why it goes on", () => {
     const stopped = { ...SETS, stop: { checkpoints: 3, sinceStep: 3, stop: true } };
     expect(admission(stopped, WANTED).refusals).toEqual([
-      'the campaign has had 3 moves that could have shown a gain since its last step, and none did: the plan stops it at three (docs/plan.md, row F48). To go on all the same, pass --past-stop "<why>", which is logged',
+      'the campaign has had 3 moves that could have shown a gain since its last step, and none did: its patience is spent (docs/plan.md, row F48; --patience). To go on all the same, pass --past-stop "<why>", which is logged',
     ]);
     const past = admission(stopped, { ...WANTED, pastStop: "the budget was set anew" });
     expect(past.refusals).toEqual([]);
@@ -430,9 +443,16 @@ describe("a command about to start a comparison", () => {
         reading: "no-step",
       }),
     ];
-    const log = logOf([read1, ...["b-1", "b-2", "b-3"].flatMap((id) => checkpoint(id, `h-${id}`))]);
+    const three = event("campaign.opened", {
+      budget: null,
+      limit: null,
+      ladder: [],
+      sessions: 1,
+      patience: 3,
+    });
+    const log = logOf([three, read1, ...["b-1", "b-2", "b-3"].flatMap((id) => checkpoint(id, `h-${id}`))]);
     const fourth = { ...asked, id: "b-4", seats: "paid" } as const;
-    expect(() => admitComparison(log, fourth)).toThrow("the plan stops it at three");
+    expect(() => admitComparison(log, fourth)).toThrow("its patience is spent");
     expect(read(log).some(({ kind }) => kind === "stop.overridden")).toBe(false);
     const past = { ...fourth, wanted: { ...WANTED, pastStop: "new tasks since" } };
     expect(admitComparison(log, past).at(-1)).toContain("going on past the plan's stop rule");
@@ -493,7 +513,7 @@ describe("whether a session with no comparison may start", () => {
     });
     const stopped = { ...SETS, stop: { checkpoints: 3, sinceStep: 3, stop: true } };
     expect(sessionAdmission(stopped, { cap: CAP }).refusals).toEqual([
-      expect.stringContaining("the plan stops it at three"),
+      expect.stringContaining("its patience is spent"),
     ]);
     const past = sessionAdmission(stopped, { cap: CAP, pastStop: "a new budget" });
     expect(past.refusals).toEqual([]);

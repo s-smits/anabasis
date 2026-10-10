@@ -11,12 +11,13 @@ import {
   billedAll,
   billedFor,
   comparedAs,
+  exhausted,
   lastReports,
   latestBuilt,
   outcomesOf,
   pairsReported,
   promoted,
-  stopRule,
+  stopRule as stopOf,
   unansweredTwice,
 } from "../src/kernel/reports.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -115,6 +116,9 @@ describe("the harness a Builder goes on from", () => {
 });
 
 describe("the stop rule", () => {
+  /** A campaign whose patience is the plan's three; the default is six (`PATIENCE`). */
+  const three = event("campaign.opened", { budget: null, limit: null, ladder: [], sessions: 1, patience: 3 });
+  const stopRule = (log: readonly LogEvent[]) => stopOf([three, ...log]);
   /** A Builder session that left `harness`, changed unless `more` says otherwise. */
   const session = (id: string, harness: string, more: JsonObject = {}) =>
     event("build.finished", { session: id, harness, changed: true, ended: "finished", ...more });
@@ -545,6 +549,43 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(unansweredTwice([...twice, event("task.state", { version: "hard", state: "released" })])).toEqual(
       [],
     );
+  });
+});
+
+describe("the tasks both harnesses exhausted", () => {
+  const terms = { old: "h1", solves: 2 };
+  const read = event("checker.read", { contract: "c", checks: "k", faults: [] });
+  /** One comparison of the three tasks under `setting`: `e1` to `e3` answered by both sides in
+   *  every solve, `open` by the reference only. */
+  const compared = (log: readonly LogEvent[], session: string, fresh: string, setting: string) => [
+    ...log,
+    ...["e1", "e2", "e3"].flatMap((task) => [
+      ...solved(session, task, "h1", [P, P]),
+      ...solved(session, task, fresh, [P, P]),
+    ]),
+    ...solved(session, "open", "h1", [P, P]),
+    ...solved(session, "open", fresh, [F, P]),
+    reported(session, "no-step", fresh, { ...terms, fresh, setting, versions: ["e1", "e2", "e3", "open"] }),
+  ];
+  const start = [read, ...["e1", "e2", "e3", "open"].flatMap(heldOut)];
+
+  it("are the ones answered in every solve of two comparisons under the setting, but for a third kept by the contract's hash", () => {
+    const once = compared(start, "b-1", "h2", SETTING);
+    expect(exhausted(once)).toEqual([]);
+    const twice = compared(once, "b-2", "h3", SETTING);
+    const spent = exhausted(twice);
+    expect(spent).toHaveLength(2);
+    expect(spent.every((task) => ["e1", "e2", "e3"].includes(task))).toBe(true);
+    expect(spent).not.toContain("open");
+    // The Examiner hears it as one outcome a task, and the kept third stays a tie.
+    const heard = outcomesOf(twice);
+    expect([...heard.values()].filter((outcome) => outcome === "exhausted")).toHaveLength(2);
+    expect(heard.get("open")).toBe("won");
+    // Under another setting the count starts again: a report there holds no pair of this setting's
+    // solves, and the earlier reports are not read. A released task is no held-out one.
+    expect(exhausted(compared(twice, "b-3", "h4", "other"))).toEqual([]);
+    const released = [...twice, event("task.state", { version: spent[0] ?? "", state: "released" })];
+    expect(exhausted(released)).not.toContain(spent[0]);
   });
 });
 

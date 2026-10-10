@@ -35,6 +35,7 @@ import { seedCampaign } from "../tools/runs/seed.ts";
 const SETS: Supply = {
   held: 4,
   awaiting: 0,
+  exhausted: 0,
   released: 1,
   untied: null,
   since: 0,

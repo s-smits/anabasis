@@ -23,7 +23,7 @@
  * Nothing here decides a comparison or makes a solve.
  */
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { type Paired, pairings, pairsOf } from "./compare.ts";
+import { draw, type Paired, pairings, pairsOf } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
 import { taskSets } from "./task.ts";
@@ -38,7 +38,7 @@ interface Reported {
 /** What a task's author may hear of it: that one of the two harnesses won it, that it was a tie
  *  between valid answers, that no solve of the last comparison gave a valid answer, or that a
  *  rejection of an answer to it is not settled. Never which harness, and never a count. */
-export type Outcome = "won" | "tie" | "no-valid-answer" | "disputed";
+export type Outcome = "won" | "tie" | "no-valid-answer" | "disputed" | "exhausted";
 
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
  *  (`billedFor`), and what each solve is held at before it starts. */
@@ -48,7 +48,15 @@ export interface Cap {
 }
 
 /** Moves without a gain at which the plan stops the campaign. */
-const STOP_AFTER = 3;
+/**
+ * The campaign's patience, where its opening names none: the moves in a row that could have shown
+ * a gain and showed none before the stop rule ends it, and move 7's bound on Examiner sessions in
+ * a row that held out no task and on comparisons of one harness that left no room. The plan's
+ * three ended every campaign of 9 and 10 October before its tasks were measured, and the operator
+ * set the development phase to err towards more iterations of the Builder than fewer
+ * (10 October): six, until a campaign climbs and the figure can be read from its record.
+ */
+export const PATIENCE = 6;
 /** The shares of valid solves by which the process reads room (`roomOf`): the reference harness
  *  above `full` leaves none, and both harnesses below `empty` are held by tasks too hard for the
  *  budget. The two fractions are the plan's proposal, and the operator's to set. */
@@ -186,7 +194,8 @@ export function roomOf(report: JsonObject, turns?: number): "none" | "too-hard" 
 
 /**
  * The plan's stop rule over a log: how many moves could have shown a gain, how many of them have
- * passed since the last step, and whether that is three (`docs/plan.md`, row F48).
+ * passed since the last step, and whether that is the campaign's patience (`docs/plan.md`, row
+ * F48; `patienceOf`).
  *
  * A move that counts is one of two. The first is a harness a Builder session changed, compared
  * with one reference under the campaign's setting, where the comparison tallied a task and left
@@ -208,6 +217,12 @@ export function roomOf(report: JsonObject, turns?: number): "none" | "too-hard" 
  * the starter after it was compared with another reference is that comparison's reading against
  * the starter (`starter-unread`), and no move of its own.
  */
+/** The campaign's patience as its opening records it (`--patience`), or `PATIENCE`. */
+export function patienceOf(events: readonly LogEvent[]): number {
+  const named = events.findLast(({ kind }) => kind === "campaign.opened")?.data.patience;
+  return isNumber(named) ? named : PATIENCE;
+}
+
 export function stopRule(events: readonly LogEvent[]) {
   const built = new Set(
     events.flatMap(({ kind, data }) =>
@@ -256,7 +271,7 @@ export function stopRule(events: readonly LogEvent[]) {
     (one, other) => one.index - other.index,
   );
   const sinceStep = moves.length - 1 - moves.findLastIndex(({ step }) => step);
-  return { checkpoints: moves.length, sinceStep, stop: sinceStep >= STOP_AFTER };
+  return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 
 /**
@@ -344,6 +359,37 @@ export function unsolved({ old, fresh }: Paired): boolean {
  * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
  * and a refused task is no held-out task.
  */
+/**
+ * The held-out tasks both harnesses answered validly in every solve of `UNSOLVED_RUN` or more
+ * comparisons under the campaign's last setting, but for a third of them: exhausted, and left out
+ * of the scored set from then on (`scoredSet`), until the setting changes. Such a task can only
+ * tie again at that budget or be lost, and every one in the set is a task a step cannot be read
+ * on: on the operator's host (9 and 10 October) a harness came one win short of a step three
+ * times with most of its tasks tied, and t-10's promoted harness and the starter tied 10 of 10
+ * twice. A third of them stays in the draw, by the contract's hash, so that a harness that
+ * breaks what the reference answers still shows its losses: left out whole, the set would hold
+ * no task the new harness could lose. The Examiner is told a task is exhausted, which is one
+ * outcome a task and no count (`outcomesOf`).
+ */
+export function exhausted(events: readonly LogEvent[]): string[] {
+  const reports = lastReports(events);
+  const setting = reports.at(-1)?.data.setting;
+  const runs = new Map<string, number>();
+  for (const report of reports.filter(({ data }) => data.setting === setting)) {
+    for (const { task, old, fresh } of pairsReported(events, report)) {
+      const all = old.length > 0 && fresh.length > 0 && old.every(Boolean) && fresh.every(Boolean);
+      if (all) runs.set(task, (runs.get(task) ?? 0) + 1);
+    }
+  }
+  const held = new Set(taskSets(events).held);
+  const spent = [...runs].flatMap(([task, run]) => (run >= UNSOLVED_RUN && held.has(task) ? [task] : []));
+  const contract = events.find(({ kind }) => kind === "checker.read")?.data.contract;
+  const kept = new Set(
+    draw(spent, Math.ceil(spent.length / 3), `${isString(contract) ? contract : ""}:kept`),
+  );
+  return spent.filter((task) => !kept.has(task));
+}
+
 export function awaitingLabel(events: readonly LogEvent[]): string[] {
   const kept = new Map<string, number>();
   for (const [index, { kind, data }] of events.entries()) {
@@ -432,12 +478,13 @@ export function unansweredTwice(events: readonly LogEvent[]): string[] {
  */
 export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
   const outcomes = new Map<string, Outcome>();
+  const spent = new Set(exhausted(events));
   for (const report of lastReports(events)) {
     const valid = answered(events, report.session);
     for (const pair of pairsReported(events, report)) {
       const won = pairings(pair);
       const tied = valid.has(pair.task) ? "tie" : "no-valid-answer";
-      outcomes.set(pair.task, won.fresh === won.old ? tied : "won");
+      outcomes.set(pair.task, spent.has(pair.task) ? "exhausted" : won.fresh === won.old ? tied : "won");
     }
     const aside = Array.isArray(report.data.aside) ? report.data.aside.filter(isString) : [];
     for (const task of aside) outcomes.set(task, "disputed");

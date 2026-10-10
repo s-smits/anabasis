@@ -107,7 +107,7 @@ export function viewLines(name: string, campaign: Campaign, moves: readonly Move
     name,
     row(
       "set-up",
-      `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${checker} · reference: ${campaign.reference === null ? "the starter" : shortDigest(campaign.reference)}`,
+      `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted · ${checker} · reference: ${campaign.reference === null ? "the starter" : shortDigest(campaign.reference)}`,
     ),
     ...campaign.steps.map(stepLine),
     ...(fails.length === 0

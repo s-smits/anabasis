@@ -51,7 +51,15 @@ import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { settingId } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { awaitingLabel, type Cap, lastReports, latestBuilt, promoted, stopRule } from "../kernel/reports.ts";
+import {
+  awaitingLabel,
+  type Cap,
+  exhausted,
+  lastReports,
+  latestBuilt,
+  promoted,
+  stopRule,
+} from "../kernel/reports.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { ranUnder } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
@@ -60,9 +68,11 @@ import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shap
 /** What a log holds for the next comparison. */
 export interface Supply {
   /** The held-out tasks that may be scored, those that wait for a person's label and are left
-   *  out, and the tasks released for practice. */
+   *  out, those both harnesses answered in every solve of two comparisons and are left out
+   *  (`exhausted`), and the tasks released for practice. */
   readonly held: number;
   readonly awaiting: number;
+  readonly exhausted: number;
   readonly released: number;
   /** The share of its tallied tasks the last comparison left for the next to untie, under the
    *  setting of the log's last test-side solve and against the harness the next is made with;
@@ -158,7 +168,13 @@ export function supplyOf(
   fresh?: string,
 ): Supply {
   const sets = taskSets(events);
-  const waiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
+  // Left out of the scored set as `scoredSet` leaves them out: the tasks waiting for a person's
+  // label, and the ones both harnesses answered in every solve of two comparisons.
+  const labelled = awaitingLabel(events).filter((version) => sets.held.includes(version));
+  const spent = exhausted(events).filter(
+    (version) => sets.held.includes(version) && !labelled.includes(version),
+  );
+  const waiting = [...labelled, ...spent];
   const solved = ranUnder(events).findLast(({ under }) => under.side === "test")?.under;
   const setting = solved === undefined ? null : settingId(solved);
   const reports = lastReports(events);
@@ -189,7 +205,8 @@ export function supplyOf(
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
   return {
     held: sets.held.length - waiting.length,
-    awaiting: waiting.length,
+    awaiting: labelled.length,
+    exhausted: spent.length,
     released: sets.released.length,
     untied:
       tally !== null && isNumber(tally.wins) && isNumber(tally.losses) && versions.length > 0
@@ -210,7 +227,7 @@ function stopped({ stop }: Supply, pastStop: string | undefined) {
     refusals: said([
       [
         stop.stop && pastStop === undefined,
-        `the campaign has had ${after} since its last step, and none did: the plan stops it at three (docs/plan.md, row F48). To go on all the same, pass --past-stop "<why>", which is logged`,
+        `the campaign has had ${after} since its last step, and none did: its patience is spent (docs/plan.md, row F48; --patience). To go on all the same, pass --past-stop "<why>", which is logged`,
       ],
     ]),
     notes: said([
@@ -292,6 +309,10 @@ export function admission(supply: Supply, wanted: Wanted) {
       [
         supply.awaiting > 0,
         `${String(supply.awaiting)} held-out task(s) wait for a person's label and are not scored (tools/d2/prepare.ts)`,
+      ],
+      [
+        supply.exhausted > 0,
+        `${String(supply.exhausted)} held-out task(s) were answered by both harnesses in every solve of two comparisons under this setting and are not scored: they can only tie again`,
       ],
       [wanted.builds && supply.released === 0, "no task is released: the Builder has nothing to practise on"],
       [

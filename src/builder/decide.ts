@@ -120,8 +120,9 @@ export type Decided =
 
 /** The share of valid solves at or under which the budget rule takes a budget. */
 const HALF = 1 / 2;
-/** The tries the plan gives before an ending: drafts of an exam, Examiner sessions in a row that
- *  held out no task, and comparisons of one harness that left no room. */
+/** The drafts of an exam the plan gives before the campaign ends on it. The other two bounds,
+ *  Examiner sessions in a row that held out no task and comparisons of one harness that left no
+ *  room, are the campaign's patience (`plan.patience`, `PATIENCE`), as the stop rule's is. */
 const DRAFTS = 3;
 const STEP = "step";
 /** What a comparison the table names is of: the last harness a session left, or the starter as a
@@ -195,7 +196,12 @@ function supplied(ground: Ground, last: JsonObject | undefined, why: string): De
   const none = last !== undefined && roomOf(last) === "none";
   const rung = last !== undefined && none ? budgetBy(last, "old", turns) : undefined;
   if (rung === undefined || rung === turns || tried(ground, rung)) {
-    return written(drafts, none ? "room" : "tasks", { move: "examine", room: none, why });
+    return written(
+      drafts,
+      none ? "room" : "tasks",
+      { move: "examine", room: none, why },
+      ground.plan.patience,
+    );
   }
   return {
     move: "budget",
@@ -207,8 +213,8 @@ function supplied(ground: Ground, last: JsonObject | undefined, why: string): De
 /** An Examiner session, unless three in a row have already held out no task.
  *  Then the campaign ends: on its exam where it wants for tasks, which could not be written, and
  *  on its room where the tasks it has leave none. */
-function written(drafts: number, wants: "tasks" | "room", examine: Decided): Decided {
-  if (drafts < DRAFTS) return examine;
+function written(drafts: number, wants: "tasks" | "room", examine: Decided, patience: number): Decided {
+  if (drafts < patience) return examine;
   const sessions = `${plural(drafts, "Examiner session")} in a row held out no task (${examine.why})`;
   return wants === "tasks"
     ? end("exam", `${sessions}: the tasks could not be written`)
@@ -302,12 +308,13 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
       `$${left.dollars.toFixed(2)} of the campaign's budget are left, and one solve is held at $${String(left.reserve)}`,
     );
   }
-  if (supply.held + supply.awaiting + supply.released === 0) {
-    return written(idleDrafts(events), "tasks", {
-      move: "examine",
-      room: false,
-      why: "the campaign holds no task",
-    });
+  if (supply.held + supply.awaiting + supply.exhausted + supply.released === 0) {
+    return written(
+      idleDrafts(events),
+      "tasks",
+      { move: "examine", room: false, why: "the campaign holds no task" },
+      plan.patience,
+    );
   }
   if (supply.released === 0 && supply.held >= 2) {
     return { move: "prepare", why: "no task is released for practice: the contract's draw releases some" };
@@ -325,7 +332,7 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
   if (supply.stop.stop && plan.pastStop === undefined) {
     return end(
       "stop",
-      `${plural(supply.stop.sinceStep, "move")} in a row could have shown a gain and showed none: the plan stops the campaign at three`,
+      `${plural(supply.stop.sinceStep, "move")} in a row could have shown a gain and showed none: the campaign's patience is ${String(plan.patience)}`,
     );
   }
   const ground = groundOf(events, plan);
@@ -583,11 +590,16 @@ function toTarget(ground: Ground, before: string): Decided | null {
   const { plan, scorable, drafts } = ground;
   const { target } = plan.wanted;
   if (scorable >= target) return null;
-  return written(drafts, "tasks", {
-    move: "examine",
-    room: false,
-    why: `the campaign holds ${String(scorable)} of the ${plural(target, "task")} a comparison scores, and ${before}: the Examiner writes more first`,
-  });
+  return written(
+    drafts,
+    "tasks",
+    {
+      move: "examine",
+      room: false,
+      why: `the campaign holds ${String(scorable)} of the ${plural(target, "task")} a comparison scores, and ${before}: the Examiner writes more first`,
+    },
+    plan.patience,
+  );
 }
 
 /** The tasks held out after the log's index `after`. */
@@ -763,7 +775,7 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
   const unroomed = pairOf(here, latest, reference).filter(
     (report) => report.reading !== STEP && roomOf(report) !== ROOM,
   ).length;
-  if (unroomed > DRAFTS) {
+  if (unroomed > ground.plan.patience) {
     return end(
       "no-room",
       `${plural(unroomed, "comparison")} of harness ${short(latest)} left no room, with tasks written between them: the tasks could not be made to leave room`,
@@ -794,11 +806,16 @@ function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): 
   if (tasksShort === null && since > 0) {
     return compare(`comparison ${id} left no room, and tasks were written since`, "alone", fresh);
   }
-  return written(ground.drafts, "room", {
-    move: "examine",
-    room: true,
-    why: `comparison ${id} read no step, ${nearlyAll}, and no shorter budget leaves room: the tasks have to change${fewYet(since)}`,
-  });
+  return written(
+    ground.drafts,
+    "room",
+    {
+      move: "examine",
+      room: true,
+      why: `comparison ${id} read no step, ${nearlyAll}, and no shorter budget leaves room: the tasks have to change${fewYet(since)}`,
+    },
+    ground.plan.patience,
+  );
 }
 /**
  * After a comparison in which neither harness answered: the next longer budget, and other tasks
@@ -841,11 +858,16 @@ function tooHard(ground: Ground, id: string, latest: string, since: number, fres
       fresh,
     );
   }
-  return written(ground.drafts, "room", {
-    move: "examine",
-    room: false,
-    why: `${said}, with no longer budget left to try: other tasks are written${fewYet(since)}`,
-  });
+  return written(
+    ground.drafts,
+    "room",
+    {
+      move: "examine",
+      room: false,
+      why: `${said}, with no longer budget left to try: other tasks are written${fewYet(since)}`,
+    },
+    ground.plan.patience,
+  );
 }
 
 /** A decided move in one line, as the campaign's command and its view print it. */

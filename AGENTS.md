@@ -462,7 +462,8 @@ A solver that is another model, at another effort or under other limits is anoth
 solve on record then counts.
 
 Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.10
-(`--level`), a stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve
+(`--level`), a stop past 3 tasks with a check defect (`--defects`), a patience of 6 (`--patience`),
+a reserve of 10 dollars a solve
 (`--reserve`), `--parent latest`, `--reference promoted`, which is the harness last promoted and
 the starter until one is; a Builder session of 240 minutes, 300
 turns and 24 practice solves; a solve of 120 minutes and 24 prompts, with the model's own turns
@@ -501,7 +502,13 @@ head comments are the full account. The short form follows.
 **Terms first.** A comparison writes `comparison.started` before its first solve: its two
 harnesses, its setting, its scored tasks, its solves a side, its level, the budgets it will be read
 at, its dollar cap and, where given, its prediction (`--predict`). One continued from its log
-keeps those terms, and one asked for again on other terms is refused.
+keeps those terms, and one asked for again on other terms is refused. The scored tasks are
+`--target` of the held-out ones, drawn by the contract's hash, less two kinds the draw leaves
+out: a task with no valid answer after two comparisons, until a person labels it
+(`awaitingLabel`), and one both harnesses answered in every solve of two comparisons under the
+setting, which can only tie again or be lost (`exhausted`). A third of the latter stays in by
+the same hash, so that a harness that breaks what the reference answers still shows its losses.
+The Examiner is told such a task is exhausted.
 
 **Fresh solves.** Each scored task is solved under each harness, afresh, the two harnesses taking
 the first place in turn. A solve counts only when its start names the comparison. No earlier solve
@@ -562,8 +569,10 @@ are summed from the log, and the solve does not start when a reserve for it and 
 in flight would pass the cap.
 
 **After the test.** A comparison that wrote its report is finished: run again, it returns that
-report. The stop rule is three moves in a row that could have shown a gain and showed none
-(`stopRule`, `src/kernel/reports.ts`). A move that counts is a harness a session changed, once
+report. The stop rule is as many moves in a row that could have shown a gain and showed none as
+the campaign's patience (`stopRule`, `src/kernel/reports.ts`; `--patience`, six by default while
+the system is built, since every campaign of 9 and 10 October ended on the plan's three before
+its tasks were measured). A move that counts is a harness a session changed, once
 against one reference and read by the last comparison of the two under the campaign's setting,
 where that comparison tallied a task and left room; or a session that left its harness as it
 was. A repeat, a control, a comparison that scored nothing or left no room, and whatever was
@@ -604,8 +613,8 @@ control before a Builder session is paid for: the starter compared with the refe
 which says whether they leave the reference room; with room the Builder builds, on practice
 brought up from those tasks, and without it the budget or the tasks change (t-4, t-9 and t-10,
 10 October, each built three times here on practice the promoted harness passed, and stopped
-with the tasks unmeasured). It ends `no-room` after more than three comparisons of one harness
-without room, or three Examiner sessions in a row that held out no task. The half, and the two
+with the tasks unmeasured). It ends `no-room` after more comparisons of one harness without
+room than its patience, or as many Examiner sessions in a row that held out no task. The half, and the two
 shares of `roomOf`, are the plan's proposal and the operator's to set.
 
 ## 8. Rules

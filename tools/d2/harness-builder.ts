@@ -40,7 +40,10 @@
  * reserve one solve is held at (`--budget`, `--reserve`), the full limit of a solve in the model's
  * turns (`--solve-model-turns`), the ladder of shorter budgets (`--ladder`, by default a half, a
  * quarter and an eighth of the limit), the Builder sessions before a comparison (`--sessions`),
- * who sits in each seat, and the terms of its moves as a command last named them (`TERMS`,
+ * the campaign's patience (`--patience`: the moves without a gain, the idle Examiner sessions and
+ * the comparisons without room it bears in a row before it ends, six by default while the system
+ * is built, since every campaign of 9 and 10 October ended on the plan's three before its tasks
+ * were measured), who sits in each seat, and the terms of its moves as a command last named them (`TERMS`,
  * `src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks. A later
  * run that names nothing runs by the record, and one that names another records it again: these
  * are the operator's conditions, and a comparison logs its own terms at its start. The setting is
@@ -91,7 +94,7 @@ import type { Plan } from "#src/builder/ground.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS, TERMS } from "#src/builder/opening.ts";
 import { pendingWords, type Word } from "#src/builder/word.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { latestBuilt, promoted } from "#src/kernel/reports.ts";
+import { latestBuilt, PATIENCE, promoted } from "#src/kernel/reports.ts";
 import { taskStates, taskVersion } from "#src/kernel/task.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -157,6 +160,7 @@ const OPTIONS = {
   reserve: { type: "string" },
   ladder: { type: "string" },
   sessions: { type: "string" },
+  patience: { type: "string" },
   builder: SESSION_OPTIONS.builder,
   "builder-effort": { type: "string" },
   examiner: { type: "string" },
@@ -290,6 +294,7 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
         ? was.ladder
         : ladderOf(values.ladder, limit),
     sessions: values.sessions === undefined ? (was?.sessions ?? DEFAULTS.sessions) : Number(values.sessions),
+    patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     prompt,
     solver: prompt === null ? null : solver,
@@ -306,11 +311,17 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
       `--sessions ${String(values.sessions)}: the Builder sessions before a comparison are a whole number of at least one`,
     );
   }
+  if (!Number.isInteger(named.patience) || named.patience < 1) {
+    throw new Error(
+      `--patience ${String(values.patience)}: the moves without a gain the campaign bears in a row are a whole number of at least one`,
+    );
+  }
   const record: JsonObject = {
     budget: named.budget === null ? null : { ...named.budget },
     limit: named.limit,
     ladder: [...named.ladder],
     sessions: named.sessions,
+    patience: named.patience,
     seats: Object.fromEntries(
       SEATS.map((each) => [each, named.seats[each] === null ? null : { ...named.seats[each] }]),
     ),

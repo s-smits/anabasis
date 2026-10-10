@@ -19,7 +19,7 @@
  * so.
  */
 import type { LogEvent } from "../kernel/log.ts";
-import { billedAll, type Cap } from "../kernel/reports.ts";
+import { billedAll, type Cap, patienceOf } from "../kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { Plan } from "./ground.ts";
@@ -39,6 +39,9 @@ export interface Opening {
   readonly limit: number | null;
   readonly ladder: readonly number[];
   readonly sessions: number;
+  /** The moves without a gain, the idle Examiner sessions and the comparisons without room the
+   *  campaign bears in a row before it ends (`--patience`; `PATIENCE`). */
+  readonly patience: number;
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
   /** The operator's prompt, for a campaign that opened from one: its exam is drafted from it
    *  (`src/examiner/draft.ts`). Null for a campaign that opened over a stored pack. */
@@ -98,6 +101,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     limit: isNumber(data.limit) ? data.limit : null,
     ladder: Array.isArray(data.ladder) ? data.ladder.filter(isNumber) : [],
     sessions: isNumber(data.sessions) ? data.sessions : SESSIONS,
+    patience: patienceOf(events),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
@@ -139,6 +143,7 @@ export function planOf(
     limit: opening === null ? began : opening.limit,
     ladder: opening?.ladder ?? [],
     sessions: opening?.sessions ?? SESSIONS,
+    patience: patienceOf(events),
     unprepared: beside.unprepared,
     wanted: {
       target: isNumber(named) ? named : (beside.target ?? TARGET),

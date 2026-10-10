@@ -21,6 +21,8 @@ const PLAN: Plan = {
   limit: null,
   ladder: [],
   sessions: 1,
+  // The plan's three, which these rows were written against; the default is six (`PATIENCE`).
+  patience: 3,
   unprepared: false,
   wanted: { target: 12, level: 0.1, restarted: [] },
 };
@@ -772,16 +774,27 @@ describe("the stop", () => {
     ...compared(`g-${String(nth + 1)}`, harness, "no-step"),
   ]);
 
-  it("ends the campaign after three moves that could have shown a gain, unless the operator says to go on", () => {
-    expect(move([...SET_UP, ...flat.slice(0, 6)])).toMatchObject({ move: "build" });
-    expect(move([...SET_UP, ...flat])).toEqual({
+  it("ends the campaign after as many moves without a gain as its patience, unless the operator says to go on", () => {
+    // The campaign's patience is its opening's (`--patience`), read by the stop rule from the log;
+    // the default is six, and this one bears three, as the plan had it.
+    const opened = event("campaign.opened", {
+      budget: null,
+      limit: null,
+      ladder: [],
+      sessions: 1,
+      patience: 3,
+    });
+    expect(move([opened, ...SET_UP, ...flat.slice(0, 6)])).toMatchObject({ move: "build" });
+    expect(move([opened, ...SET_UP, ...flat])).toEqual({
       move: "end",
       ending: "stop",
-      why: "3 moves in a row could have shown a gain and showed none: the plan stops the campaign at three",
+      why: "3 moves in a row could have shown a gain and showed none: the campaign's patience is 3",
     });
-    expect(move([...SET_UP, ...flat], { ...PLAN, pastStop: "new tasks since" })).toMatchObject({
+    expect(move([opened, ...SET_UP, ...flat], { ...PLAN, pastStop: "new tasks since" })).toMatchObject({
       move: "build",
     });
+    // By default the campaign bears six: three moves without a gain, and the Builder builds on.
+    expect(move([...SET_UP, ...flat], { ...PLAN, patience: 6 })).toMatchObject({ move: "build" });
   });
 });
 
@@ -901,6 +914,7 @@ describe("what a campaign runs by", () => {
       limit: 40,
       ladder: [20, 10, 5],
       sessions: 2,
+      patience: 6,
       unprepared: false,
       wanted: { target: 12, level: 0.1, restarted: [] },
       left: { dollars: 360, reserve: 10 },
@@ -919,6 +933,7 @@ describe("what a campaign runs by", () => {
       limit: 15,
       ladder: [],
       sessions: 3,
+      patience: 6,
       unprepared: true,
       // The setting on record names twelve tasks to score, which stands over the caller's nine.
       wanted: { target: 12, level: 0.2, restarted: [] },

@@ -101,7 +101,7 @@
  */
 import { type Budget, draw, UNITS } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { awaitingLabel, billedFor, type Cap, capHolds } from "../kernel/reports.ts";
+import { awaitingLabel, billedFor, type Cap, capHolds, exhausted } from "../kernel/reports.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
@@ -227,11 +227,13 @@ const TASK_STATE = "task.state";
  * it holds fewer, drawn by the contract's hash and nothing else (`draw`). The hash is fixed before
  * any task exists, so no result chooses the set, and a task written since takes a place by its own
  * rank and moves no other's. A task with no valid answer on record, after two comparisons that cut
- * no solve of it at a limit, is left out until a person has labelled it (`awaitingLabel`).
+ * no solve of it at a limit, is left out until a person has labelled it (`awaitingLabel`), and so
+ * is one both harnesses answered in every solve of two comparisons under the setting, which can
+ * only tie again (`exhausted`).
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string): string[] {
-  const awaiting = new Set(awaitingLabel(events));
-  const held = taskSets(events).held.filter((version) => !awaiting.has(version));
+  const aside = new Set([...awaitingLabel(events), ...exhausted(events)]);
+  const held = taskSets(events).held.filter((version) => !aside.has(version));
   return draw(held, Math.min(target, held.length), contract);
 }
 

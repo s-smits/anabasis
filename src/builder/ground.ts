@@ -25,6 +25,9 @@ export interface Plan {
   readonly ladder: readonly number[];
   /** Builder sessions before a comparison, after the campaign's first, which follows one. */
   readonly sessions: number;
+  /** The moves without a gain, idle Examiner sessions and comparisons without room the campaign
+   *  bears in a row before it ends (`PATIENCE`). */
+  readonly patience: number;
   /** Whether the campaign's pack holds a task its log does not. */
   readonly unprepared: boolean;
   /** The practice tasks the campaign is brought to (`--practice`, `tools/d2/prepare.ts`), where

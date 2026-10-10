@@ -10,8 +10,10 @@
  * (`tools/d2/session.ts`): the plan's checkpoint is walked as two of those and then a checkpoint.
  * With `--campaign` the flags are the Harness Builder's (`tools/d2/harness-builder.ts`), and the
  * whole loop is rehearsed: every move the decision table names, until the campaign ends or
- * `--moves` are made. No script sits in the Examiner's seat, so a rehearsal that comes to need
- * tasks written stops there and says so.
+ * `--moves` are made. Over a stored pack no script sits in the Examiner's seat, so a rehearsal
+ * that comes to need tasks written stops there and says so; over a drafted exam the Examiner is
+ * scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
+ * cut, in their order, until none is left.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's wall and disk cap, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
@@ -44,10 +46,14 @@
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import type { Control } from "#src/kernel/acceptance.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
+import { proposalsOf } from "#src/kernel/history.ts";
 import { verdictsOf } from "#src/kernel/solves.ts";
+import type { Task } from "#src/kernel/verify.ts";
+import { examine } from "#src/examiner/session.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { ANSWER_FILE } from "#src/solve/answer.ts";
@@ -77,6 +83,12 @@ interface Sides {
 interface Script {
   readonly held: Sides;
   readonly starter: End;
+}
+
+/** What a seed of a drafted exam gives the scripts: the answers, and the source's later tasks. */
+interface DraftedSource {
+  readonly graded: Control[];
+  readonly later: Task[];
 }
 
 const OWN = new Set(["held", "starter", "no-comparison", "campaign"]);
@@ -199,9 +211,17 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         );
         const done = await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill, comparison);
         const { ending } = done;
-        const failed = { pass: null, fail: "rejected", none: "no-answer" }[wanted];
+        // A solve scripted to give none submits nothing and is asked again until its turns end:
+        // under a bound on the model's turns it ends `turns-ended`, and `no-answer` at its wall.
+        const failed: readonly string[] = {
+          pass: [],
+          fail: ["rejected"],
+          none: ["no-answer", "turns-ended"],
+        }[wanted];
         const held =
-          failed === null ? ending.outcome === "pass" : ending.outcome === "fail" && ending.kind === failed;
+          failed.length === 0
+            ? ending.outcome === "pass"
+            : ending.outcome === "fail" && failed.includes(ending.kind);
         if (!held && !missing) {
           strayed.push(
             `${done.solve}: ${task.taskId} under the ${side === "starter" ? "starter" : `${side === "old" ? "reference" : "new"} harness`} was scripted to ${wanted === "none" ? "give no answer" : wanted} and ended ${JSON.stringify(ending)}`,
@@ -227,7 +247,7 @@ function storedPasses(root: string, sweep: string): Control[] {
  * a seed cut before those solves no longer holds. Until 10 October a rehearsal took a stored pack
  * only, and no campaign run on the Linux host has one: every one of them drafted its exam.
  */
-function draftedGraded(name: string): Control[] {
+function draftedSource(name: string): DraftedSource {
   const log = campaignLog(name);
   const staged = stagedExamOf(log);
   if (staged === null) {
@@ -236,13 +256,42 @@ function draftedGraded(name: string): Control[] {
     );
   }
   const seed = asRecord(capturedJsonParse(readFileSync(join(dirname(log), SEED_FILE), "utf8")));
-  const source = isString(seed?.from) ? join(seed.from, LOG_FILE) : log;
-  const passes = [...verdictsOf(read(source)).values()].flatMap(({ task, answer, checker }) =>
+  const source = isString(seed?.from) ? read(join(seed.from, LOG_FILE)) : [];
+  const passes = [...verdictsOf(source).values()].flatMap(({ task, answer, checker }) =>
     task !== null && answer !== undefined && checker?.kind === "pass"
       ? [{ taskId: task, answer, refusedBy: null }]
       : [],
   );
-  return [...packControls(staged.bundle), ...passes];
+  // The tasks the source's Examiner sessions wrote after the cut, for the scripted Examiner to
+  // propose in their order: the seed's log holds the ones before it.
+  const held = new Set(proposalsOf(read(log)).map(({ version }) => version));
+  const later = proposalsOf(source).flatMap(({ version, task, session }) =>
+    task !== null && session !== null && !held.has(version) ? [task] : [],
+  );
+  return { graded: [...packControls(staged.bundle), ...passes], later };
+}
+
+/**
+ * An Examiner session scripted from the source campaign's: each proposes the next tasks the
+ * source's sessions wrote after the cut, as many as the host asks for, and finishes; one with
+ * none left finishes with none, which the campaign reads as a session that held out no task.
+ */
+function scriptedExaminer(later: Task[]): typeof examine {
+  return (request) => {
+    const batch = later.splice(0, request.limits.tasks).map(({ family, publicInput, hidden }) => ({
+      family,
+      public_input: publicInput,
+      hidden: hidden ?? null,
+    }));
+    const calls: (readonly [string, JsonObject])[] = [
+      ...(batch.length === 0 ? [] : [["propose_tasks", { tasks: batch }] as const]),
+      [
+        "finish",
+        { note: batch.length === 0 ? "The source holds no further task." : "The source's next tasks." },
+      ] as const,
+    ];
+    return examine({ ...request, ...scripted(calls, 0) });
+  };
 }
 
 /** `bun run runs rehearse`. */
@@ -273,28 +322,35 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     // A reviewer named here would be a live one, reading scripted fails for money.
     throw new Error(`a rehearsal seats no model: drop --${seated.join(", --")}`);
   }
-  const stored = [root, sweep, bundle].filter(isString).length;
+  const named = [root, sweep, bundle].filter(isString).length;
   if (
     !isString(held) ||
     least === undefined ||
-    (stored !== 0 && stored !== PACK_FLAGS) ||
+    (named !== 0 && named !== PACK_FLAGS) ||
     !isString(values.name)
   ) {
     throw new Error(
       "usage: bun run runs rehearse <the flags of tools/d2/round.ts, of tools/d2/checkpoint.ts, of tools/d2/session.ts with --no-comparison, or of tools/d2/harness-builder.ts with --campaign, that name no model> [--held old:new] [--starter pass|fail|none]",
     );
   }
+  const stored = isString(root) && isString(sweep) && isString(bundle) ? { root, sweep, bundle } : null;
+  const drafted = stored === null ? draftedSource(values.name) : null;
   const graded =
-    isString(root) && isString(sweep) && isString(bundle)
-      ? [...storedPasses(root, sweep), ...packControls(bundle)]
-      : draftedGraded(values.name);
+    stored === null
+      ? (drafted?.graded ?? [])
+      : [...storedPasses(stored.root, stored.sweep), ...packControls(stored.bundle)];
   const strayed: string[] = [];
   const seats = scriptedSeats({ held: sidesOf(held), starter: least }, graded, strayed);
   const flags = passedOn(args, tokens, OWN);
   // A checkpoint is named by its `--id` and runs no session, so no Builder's script can stray, and
-  // a campaign's sessions are its own to count.
-  if (values.campaign === true) await harnessBuilder(flags, { seated: seats });
-  else if (isString(values.id)) await checkpointCommand(flags, seats);
+  // a campaign's sessions are its own to count. A campaign over a drafted exam seats an Examiner
+  // scripted from its source; one over a stored pack seats none, and stops where it needs one.
+  if (values.campaign === true) {
+    await harnessBuilder(flags, {
+      seated: seats,
+      ...keyIfDefined("examine", drafted === null ? undefined : scriptedExaminer(drafted.later)),
+    });
+  } else if (isString(values.id)) await checkpointCommand(flags, seats);
   else if (
     values["no-comparison"] === true
       ? (await sessionCommand(flags, seats)) === null

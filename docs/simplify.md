@@ -1,7 +1,8 @@
 # The simplification plan
 
 11 October 2026. Read at PR #185 (`49900e5`); the branch that carries this file sits on #186
-(`4d13d22`), which was opened while it was written and which the reading does not cover.
+(`4d13d22`), which was opened while it was written and which the reading does not cover. The
+review that follows the header was written at `e25370d` by the session that implements it.
 
 The operator's question: the climb chosen by about PR #180 stays, so which hooks and edges beside
 it are no longer needed, and how does the tree get back to that mechanism with less around it?
@@ -27,6 +28,94 @@ format check and the suite did not run on anything here. No campaign log was rea
 file was changed: one removal was tried, the `withheld` programs of the command wall, and the
 session's own permissions refused an edit to the wall's rules. The change beside this file is
 text in `AGENTS.md`.
+
+---
+
+# Review, 11 October (UTC), at PR #186 (`e25370d`)
+
+Read by the session that wrote #178 to #186, against the source at the stack's top and against
+what two read-only reviewers found there earlier the same night. The plan was read at `49900e5`;
+the top moved under it by three commits (#183's second, #184's third, #186's second), and some of
+what it found was mended there. Each item below says what stands, what is corrected, and what
+of the plan is taken, deferred or declined, with the reason. The order of Part II is kept.
+
+**Taken as written:** F3, F4, F9, F6 (the comment), W1, A1 to A4, B1, B2, C1, D1, E1, E3, R1,
+T1, T3, T4, and the edges of section 11 but `campaign-root.ts`. Each is one pull request on the
+top, in the order of section 10, with the guard of section 9.
+
+**Already done, otherwise than proposed:**
+
+- *F1.* Mended at #183's second commit (`9217594`): `stopRule` counts a reading under the
+  campaign's trigger as a move that showed a gain (`triggered`, `triggerOf`), which resets the
+  count as a `step` does, so a 2-0 as the last move of the patience does not end the campaign
+  before its repeat. The count does not start again at `harness.promoted`: a promotion follows a
+  reading that already counted. The rule now lives in `src/kernel/compare.ts` beside the sign
+  test, which the kernel reads without `src/builder`, as the plan asks.
+- *F2.* Half mended there: `readTwice` requires the earlier of the two to have cleared the
+  trigger, and the repeat to have untied a task and not lost. The other half, that both scored
+  the same task versions, is **declined**: `pairOf` already holds the two to one pair of harnesses
+  under one setting, and under the null every untied task of either comparison is a fresh solve
+  whichever versions it drew, so the summed test holds whatever was written between. Holding the
+  repeat to identical versions would refuse a repeat whenever a task was released, refused or
+  held out between the two, which the climb does on purpose. What the plan's 3.4% describes is
+  the rule that runs, since the enumeration (`chanceOfPromotion`) was held to the same two
+  conditions.
+- *F7* stands and is taken with D1.
+- *F8* stands: under the two-stage rule `reading()` returns `no-step` for a 2-0 and never asks
+  the starter, so the guard runs only for a comparison that clears 0.10 alone. Taken with B2.
+
+**Corrected readings:**
+
+- *F4* overstates the drain. `awaitingLabel` counts no comparison that cut a solve of the task at
+  a limit (`AT_A_LIMIT`), so a room task the reference harness runs out of turns or time on stays
+  scored. What drains is a task the reference *answers wrongly* twice, with no valid answer on
+  record: that is the plan's "possibly infeasible" case by design, and it is where the Examiner's
+  own `try_answer` pass is the fact that settles it. The package stands at that size. Rule 9 is
+  noted: the fact kept is that an answer exists, not the answer, and nothing solves.
+- *F5 and F6* are confirmed in the source: `isolationArgv` has one caller, the probe
+  (`solve-sandbox.ts:310`), and `stageCommandIsolation` mounts no sized tmpfs, so a solve, a
+  Builder session and an Examiner session are uncapped on Linux. A cap there needs a mount on
+  the host, which the `ana` user that runs R1 cannot make, so F6 stays a statement and the
+  budget and the wall are what bound R1.
+- *F10* is confirmed as a reading of the patterns; whether it opens a stored pack on the Mac is
+  not: the operator's home is closed whole there, and every stored pack lies under it. W5 is
+  right all the same, and the Mac's.
+- *Section 5(b)* names `exhausted`, `awaitingLabel`, `unansweredTwice`, `referenceFailed` and
+  `outcomesOf` as compensation for weak seats. Three of them are what the draw, the release and
+  the Examiner read of a task's record, and C1 is the right answer: one fold, five predicates.
+- *Section 9, rule 8* ("no package adds a flag, a threshold, an event kind or a sentence to a
+  prompt") is kept for the cuts. F3 changes sentences of the Examiner's record and F4 adds a
+  field to an event the log already writes; both are named under "Not done" of their pull
+  requests as the rule asks.
+
+**Deferred, with the reason:**
+
+- *B3 (no `--predict`)*: declined. `AGENTS.md` section 10 holds a prediction to the log before
+  the first solve, written so that a recorded count settles it; a ledger a session keeps is not
+  the record. Fifty lines buy that. It is reconsidered when D2 lands and the ledger is the only
+  place a launch is described.
+- *D2 (the launcher starts nothing)* and *D3 (the round is no command)*: deferred until the
+  session on the Mac says it starts nothing through `runs launch` any more. The buffer campaigns
+  of 10 October were launched through it, and a cut that spans fifteen files collides with a
+  session patching one (section 12). D3 is taken last if at all, as the plan says.
+- *W2 to W7*: the Mac's, as the plan says: each needs the suite on both systems and the Seatbelt
+  half cannot run here. W1 is taken here, since it removes names with no maker and no reader.
+- *E2 (a Builder's home carried whole)*: deferred. It is a design change to what a Builder reads
+  across sessions, which `docs/plan.md` row F27 holds open, and the byte limits of `memory.ts`
+  are what keep a carried folder from growing a session; one limit for the whole is the same
+  mechanism with one number. Taken once a campaign has run two sessions on one home.
+- *R2 (the pulse)* and *T5 (the lint rules)*: the operator's, as the plan says. *R3*: waits for
+  buffer under the objective, as D11 says. *T2*: as files are touched.
+
+**What the review adds:**
+
+- The guard of section 9 runs at the top before any cut, so each package is read against the
+  same baseline: `test/decide.test.ts test/admission.test.ts test/reports.test.ts
+  test/compare.test.ts test/round.test.ts test/harness-builder.test.ts` 180 pass, and the whole
+  suite at `e25370d` 870 pass, 32 skip, the container's 3 (a stop's process-group reaping, the
+  resolver bind, the policy-rename case, which fail at every head here).
+- Nothing here changes R1's launch: its tree stands at the top the cuts are made on, and moves
+  with it once the phase it is in has its guard green, never while it runs.
 
 ---
 

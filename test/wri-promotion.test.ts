@@ -174,6 +174,9 @@ describe("lane 31: a promotion and the climb after it", () => {
       valid: { old: [0, 2, 2], fresh: [3, 1, 0] },
       reading: "no-step",
     })();
+    // A release after the promotion, of a task proposed before it: buffer-a's prepare move on
+    // 10 October, which a reader that folded the stretch alone refused as never proposed.
+    put("task.state", { version: "v5", state: "released" });
     put("build.started", { session: "b-2", parent: "hn", tasks: ["t1", "v5"] });
     put("build.finished", { session: "b-2", ended: "finished", harness: "hm", changed: true });
     compare("g-4", "hn", "hm", STEP);

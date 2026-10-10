@@ -23,7 +23,6 @@ import {
   EXAM_END,
   fired,
   type Index,
-  indexOf,
   items,
   share,
   short,
@@ -124,13 +123,19 @@ export function restSaid(log: Index, { session, last }: Compared): string {
 }
 
 /** The hours and dollars from event `from` to event `to`: what the campaign paid for a stretch. */
-export function spentTo(events: readonly LogEvent[], from: number, to: number): string {
+export function spentTo(log: Index, from: number, to: number): string {
+  const { events } = log;
   const [start, end] = [
     Date.parse(events[from]?.at ?? ""),
     Date.parse(events[Math.max(from, to - 1)]?.at ?? ""),
   ];
   const hours = Number.isNaN(start) || Number.isNaN(end) ? 0 : (end - start) / 3_600_000;
-  const dollars = spendOf(indexOf(events.slice(from, to))).reduce((sum, [, each]) => sum + each, 0);
+  // The whole log's index with its events cut to the stretch: an index of the slice alone would
+  // fold a release of a task proposed before it, and refuse it as never proposed.
+  const dollars = spendOf({ ...log, events: events.slice(from, to) }).reduce(
+    (sum, [, each]) => sum + each,
+    0,
+  );
   return `${hours.toFixed(1)} h and $${dollars.toFixed(0)}`;
 }
 
@@ -160,7 +165,7 @@ function restTriggers(log: Index, { at, data }: Epoch): Trigger[] {
   return [
     fired(
       "PROMOTED",
-      `${short(harness)} from ${short(text(data.from))} at event ${String(at)}, ${spentTo(log.events, 0, at)} after the opening, ${byTable ? "by the table" : "by the operator"}${despite > 0 ? ` despite ${plural(despite, "fault")}` : ""}; ${ruleOf(log)}; rests on ${said.join("; ") || "no comparison on record"}`,
+      `${short(harness)} from ${short(text(data.from))} at event ${String(at)}, ${spentTo(log, 0, at)} after the opening, ${byTable ? "by the table" : "by the operator"}${despite > 0 ? ` despite ${plural(despite, "fault")}` : ""}; ${ruleOf(log)}; rests on ${said.join("; ") || "no comparison on record"}`,
     ),
     ...(bare.length > 0 ? [fired("STARTER BARE", bare.join("; "))] : []),
   ];
@@ -218,7 +223,7 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
   ];
   return fired(
     "AFTER THE PROMOTION",
-    `${short(promoted)}, ${spentTo(log.events, at, until)} since: ${parts.join("; ")}`,
+    `${short(promoted)}, ${spentTo(log, at, until)} since: ${parts.join("; ")}`,
   );
 }
 

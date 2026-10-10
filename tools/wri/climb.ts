@@ -96,16 +96,16 @@ function rowOf({ name, events }: Campaign): string[] {
     epoch === undefined
       ? "none yet"
       : `${short(text(epoch.data.harness))} at ${events[epoch.at]?.at.slice(11, 16) ?? ""}Z`,
-    epoch === undefined ? "-" : spentTo(events, 0, epoch.at),
+    epoch === undefined ? "-" : spentTo(log, 0, epoch.at),
     tallies.join("; ") || "none reported",
     valid.join("; ") || "-",
-    epoch === undefined ? "-" : spentTo(events, epoch.at, events.length),
+    epoch === undefined ? "-" : spentTo(log, epoch.at, events.length),
     epoch === undefined
       ? "-"
       : after
           .map(({ session, last }) => `${session} ${testSaid(last.scored)} ${text(last.reading)}`)
           .join("; ") || "none",
-    spentTo(events, 0, events.length),
+    spentTo(log, 0, events.length),
     ended ? "ended" : `${text(move?.move)} ${text(move?.session)}`.trim() || "opening",
   ];
 }

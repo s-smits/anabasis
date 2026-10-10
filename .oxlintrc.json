@@ -41,42 +41,6 @@
       }
     },
     {
-      "files": ["**/src/backends/oauth/**"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": ["**/json-runtime.ts"],
-                "importNames": ["parseJsonAs"],
-                "message": "OAuth bytes are external input: use capturedJsonParse and validate the fields before use."
-              }
-            ]
-          }
-        ],
-        "no-restricted-properties": [
-          "error",
-          {
-            "object": "JSON",
-            "property": "parse",
-            "message": "Use capturedJsonParse so external input remains JsonValue until checked."
-          }
-        ]
-      }
-    },
-    {
-      "files": ["packages/ui/**"],
-      "rules": {
-        "typescript/no-unsafe-argument": "off",
-        "typescript/no-unsafe-assignment": "off",
-        "typescript/no-unsafe-call": "off",
-        "typescript/no-unsafe-member-access": "off",
-        "typescript/no-unsafe-return": "off",
-        "typescript/no-non-null-assertion": "off"
-      }
-    },
-    {
       "files": [".claude/**/*.ts", ".claude/**/*.mts"],
       "rules": {
         "typescript/no-unsafe-argument": "off",
@@ -98,7 +62,6 @@
     "ana/no-hand-rolled-error-render": "error",
     "ana/no-hand-rolled-sleep": "error",
     "ana/no-hand-read-argv": "error",
-    "ana/no-hand-read-controller-evidence": "error",
     "ana/no-hand-spelled-git": "error",
     "ana/no-hand-spelled-tree-root": "error",
     "ana/no-inline-block-reducer": "error",

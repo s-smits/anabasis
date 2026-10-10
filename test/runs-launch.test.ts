@@ -312,7 +312,7 @@ describe("a stop", () => {
 
   // What a stop releases. A Builder's root was once named for its session id alone, and one left
   // mounted refused that id to every campaign on the host with a bare EEXIST (2026-10-08).
-  it("names what a run's unfinished solves and Builder session left, and nothing of a seed's source", () => {
+  it("names what a run's unfinished solves and sessions left, and nothing of a seed's source", () => {
     const root = mkdtempSync(join(tmpdir(), "ana-runs-launch-test-"));
     try {
       const path = join(root, "r1", "log.jsonl");
@@ -323,8 +323,12 @@ describe("a stop", () => {
       append(path, "build.started", { session: "b-1" });
       append(path, "build.finished", { session: "b-1" });
       append(path, "build.started", { session: "b-2" });
+      // An Examiner session's root is capped as a Builder's, and a stop cut one (x-1, 2026-10-10).
+      append(path, "exam.started", { session: "x-1" });
+      append(path, "exam.finished", { session: "x-1" });
+      append(path, "exam.started", { session: "x-2" });
       const left = (run: Parameters<typeof leftOpen>[0]) => leftOpen(run).map((dirs) => basename(dirs.root));
-      expect(left({ path })).toEqual(["solve-s-2", "solve-build-r1-b-2"]);
+      expect(left({ path })).toEqual(["solve-s-2", "solve-build-r1-b-2", "solve-exam-r1-x-2"]);
       // A seed of that run where it stands. The solve and the session the run has open are still
       // the run's, and may be live: a stop of the seed names only what the seed started.
       const copy = join(root, "sim-r1", "log.jsonl");

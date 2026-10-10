@@ -75,7 +75,9 @@ export const ROUND = "tools/d2/round.ts";
 export const CHECKPOINT = "tools/d2/checkpoint.ts";
 /** The command a Builder session with no comparison after it runs as. */
 export const SESSION = "tools/d2/session.ts";
-const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT, SESSION];
+/** The command a whole campaign runs as, which runs each of the above in its own process. */
+const BUILDER = "tools/d2/harness-builder.ts";
+const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT, SESSION, BUILDER];
 /** This CLI's own command, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
 const CLI = "tools/runs/cli.ts";
 /** The file beside a log that says its campaign is a seed, and of what. */
@@ -89,16 +91,20 @@ const GIB = 2 ** 30;
 
 const runsAs = (args: readonly string[], tools: readonly string[]) =>
   args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
-/** Whether a process writes a campaign's log: a round, an Examiner session, or a rehearsal
- *  (`rehearse.ts`), which is a round on a seed run as a verb of this CLI. A stop releases what a
- *  run that is not being written left mounted, so a writer missed here would lose its roots.
+/** Whether a process writes a campaign's log: a campaign command, a round, an Examiner session, or
+ *  a rehearsal (`rehearse.ts`), which is a round on a seed run as a verb of this CLI. A stop
+ *  releases what a run that is not being written left mounted, so a writer missed here would lose
+ *  its roots.
+ *
+ *  A campaign command runs every move in its own process, so it is the only process a campaign of
+ *  record has. Unlisted, two running campaigns read as closed, `runs stop` answered "none of these
+ *  is running" and counted a live session's root as left behind, and both had to be ended by
+ *  signalling their process tree by hand (2026-10-10).
  *
  *  A launch is none, and its command line carries the command it launches: on 10 October
  *  `runs launch tools/d2/round.ts --name t-10` into the tree that held t-10's log was refused as
  *  "already being written here" by the one process that matched, the launcher itself, and by two
- *  when run as the package script (`bun run runs launch …`). Every launch after a campaign's first
- *  into its own tree was refused so; the campaigns on record were run through
- *  `tools/d2/harness-builder.ts`, which this does not list, and never met it. */
+ *  when run as the package script (`bun run runs launch …`). Both are read as no writer here. */
 const campaigns = (args: readonly string[]) => {
   if (runsAs(args, [CLI])) return args.includes("rehearse");
   // The package script `bun run runs <verb> …`, which holds no log open whatever the verb.

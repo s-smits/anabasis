@@ -90,7 +90,7 @@ import {
   type WantedPractice,
 } from "#src/builder/admission.ts";
 import { sessionDirs, spent } from "#src/builder/session.ts";
-import { claimed } from "#src/examiner/session.ts";
+import { claimed, examinerDirs } from "#src/examiner/session.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { CHECKPOINT_OPTIONS } from "../d2/checkpoint.ts";
@@ -560,13 +560,16 @@ export function family(table: string, pid: number): number[] {
 }
 
 /**
- * The directories of the solves and Builder sessions a run started and never finished. A run that
- * was stopped or killed leaves the capped root of each mounted: only its own process would have let
- * it go. A seed's log begins as its source's, and what that run has open is the source's to hold.
+ * The directories of the solves and sessions a run started and never finished. A run that was
+ * stopped or killed leaves the capped root of each mounted: only its own process would have let it
+ * go. A seed's log begins as its source's, and what that run has open is the source's to hold.
+ *
+ * An Examiner session has a capped root as a Builder's: left out here, the root of the one a stop
+ * cut stayed mounted and had to be released by hand (buffer x-1, 2026-10-10).
  */
 export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
-  const open = (role: "solve" | "build", key: "solve" | "session") => {
+  const open = (role: "solve" | "build" | "exam", key: "solve" | "session") => {
     const ended = new Set(
       events.flatMap(({ kind, data }) => (kind === `${role}.finished` ? [data[key]] : [])),
     );
@@ -578,6 +581,7 @@ export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
   return [
     ...open("solve", "solve").map((id) => solveDirs(id)),
     ...open("build", "session").map((id) => sessionDirs(run.path, id)),
+    ...open("exam", "session").map((id) => examinerDirs(run.path, id)),
   ];
 }
 

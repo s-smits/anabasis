@@ -168,7 +168,7 @@ describe("the runs pulse", () => {
     expect(look.status).toContain("2 running");
   });
 
-  it("knows a campaign's log is written by a round or an Examiner session of its name, in its worktree", () => {
+  it("knows a campaign's log is written by its campaign command, a round or an Examiner session of its name, in its worktree", () => {
     const running = [
       { pid: 1, cwd: "/wt", args: ["bun", "tools/d2/round.ts", "--name", "r1", "--session", "b-1"] },
       { pid: 2, cwd: "/wt", args: ["bun", "tools/d1b/examine.ts", "--name", "r1", "--session", "x-1"] },
@@ -193,8 +193,12 @@ describe("the runs pulse", () => {
         cwd: "/wt",
         args: ["bun", "tools/runs/cli.ts", "launch", "--dry-run", "tools/d1b/examine.ts", "--name", "r1"],
       },
+      // A campaign command runs every move in its own process: the campaigns on record have no
+      // other, and read as closed while they ran (2026-10-10).
+      { pid: 12, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name", "r1", "--unattended"] },
+      { pid: 13, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name", "r10"] },
     ];
-    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6]);
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
     expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
   });

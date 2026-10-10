@@ -221,31 +221,40 @@ const PASSES = 2;
  *  run again. Tasks and not solves: one task its provider refuses at the first turn is that task's
  *  fault, and is reported short. */
 const SILENT = 3;
+/** The share of a scored set kept for the epochs before the newest: one task in four. */
+const OLDER_SHARE = 4;
 const TASK_STATE = "task.state";
 
 /**
  * The tasks a comparison scores: `target` of the held-out tasks a log holds, or all of them where
  * it holds fewer, taken from the newest epoch down and within an epoch drawn by the contract's
  * hash and nothing else (`draw`). The tasks written since the last promotion are the exam the
- * reference harness has not answered, so they come first, whole; what room is left is filled
- * from the epoch before, by the same hash, and so on down, which is the regression check. The
- * epoch chooses the set and no result does: the hash is fixed before any task exists, and which
- * epoch a task is in is where it passed its gate (`tasksByEpoch`). Until 10 October the draw was
- * over every epoch at once, and after two promotions in the simulated climb a target of 8 over
- * 19 held tasks drew two or three the reference failed, so three comparisons read one win short
- * and the campaign stopped (`docs/plan.md`, B14). A task with no valid answer on record, after two
- * comparisons that cut no solve of it at a limit, is left out until a person has labelled it
- * (`awaitingLabel`), and so is one the reference answered in every solve of two comparisons under
- * the setting, which can only tie again, but for the third of them the hash keeps (`exhausted`).
+ * reference harness has not answered, so they come first; what room is left is filled from the
+ * epoch before, by the same hash, and so on down. One share in `OLDER_SHARE` of the set is kept
+ * for the epochs before whatever the newest holds, which is the regression check: the control
+ * reads the starter and not the last reference, so without it a harness that lost what the
+ * reference answers would read as progress once the newest epoch filled the target (the plan's
+ * climb section, C2; `regressionOf` reads the same gap after the fact). The epoch chooses the set
+ * and no result does: the hash is fixed before any task exists, and which epoch a task is in is
+ * where it passed its gate (`tasksByEpoch`). Until 10 October the draw was over every epoch at
+ * once, and after two promotions in the simulated climb a target of 8 over 19 held tasks drew two
+ * or three the reference failed, so three comparisons read one win short and the campaign
+ * stopped (`docs/plan.md`, B14). A task with no valid answer on record, after two comparisons that
+ * cut no solve of it at a limit, is left out until a person has labelled it (`awaitingLabel`), and
+ * so is one the reference answered in every solve of two comparisons under the setting, which can
+ * only tie again, but for the third of them the hash keeps (`exhausted`).
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string): string[] {
   const aside = new Set([...awaitingLabel(events), ...exhausted(events)]);
   const held = new Set(taskSets(events).held.filter((version) => !aside.has(version)));
   const count = Math.min(target, held.size);
-  const scored: string[] = [];
-  for (const epoch of tasksByEpoch(events).toReversed()) {
-    const pool = epoch.filter((version) => held.has(version));
-    scored.push(...draw(pool, Math.min(count - scored.length, pool.length), contract));
+  const [newest = [], ...older] = tasksByEpoch(events)
+    .toReversed()
+    .map((epoch) => epoch.filter((version) => held.has(version)));
+  const reserved = Math.min(Math.floor(count / OLDER_SHARE), older.flat().length);
+  const scored = draw(newest, Math.min(count - reserved, newest.length), contract);
+  for (const epoch of older) {
+    scored.push(...draw(epoch, Math.min(count - scored.length, epoch.length), contract));
   }
   return scored;
 }

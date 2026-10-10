@@ -1444,6 +1444,22 @@ describe("the scored set", () => {
     expect(scoredSet(climbed, 1, "contract-a")).toEqual(scoredSet(heldOut(["v7", "v8"]), 1, "contract-a"));
     // A target past the held-out count scores them all, newest first.
     expect(scoredSet(climbed, 12, "contract-a")).toHaveLength(8);
+    // One task in four is kept for the epochs before, however many the newest holds: the
+    // regression check, since the control reads the starter and not the last reference.
+    const filled: LogEvent[] = [
+      ...heldOut(held),
+      { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
+      ...heldOut(["v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14"]),
+    ];
+    const kept = scoredSet(filled, 8, "contract-a");
+    expect(kept).toHaveLength(8);
+    expect(kept.slice(0, 6).every((version) => Number(version.slice(1)) >= 7)).toBe(true);
+    expect(kept.slice(6)).toEqual(scoredSet(heldOut(held), 2, "contract-a"));
+    // Under four tasks nothing is reserved, and with no epoch before nothing can be.
+    expect(scoredSet(filled, 3, "contract-a").every((version) => Number(version.slice(1)) >= 7)).toBe(true);
+    expect(scoredSet(heldOut(held), 4, "contract-a").toSorted()).toEqual(
+      scoredSet(heldOut(held), 4, "contract-a").toSorted(),
+    );
     // A task released or exhausted in the newest epoch leaves room for an older one.
     const released: LogEvent[] = [
       ...climbed,

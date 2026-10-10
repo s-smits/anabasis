@@ -3,7 +3,7 @@
 // renamed in one place and not the other is refused here and not found in a campaign.
 import { describe, expect, it } from "bun:test";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
-import { TRIGGERS } from "../tools/wri/read.ts";
+import { TRIGGERS } from "../tools/wri/folds.ts";
 
 const catalogue = catalogueText();
 const lanes = lanesOf(catalogue);

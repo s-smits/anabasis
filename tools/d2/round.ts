@@ -73,15 +73,8 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison, type Wanted } from "#src/builder/admission.ts";
-import {
-  predicted,
-  refuseTerms,
-  type Report,
-  type RoundRequest,
-  round,
-  scoredSet,
-  type Valid,
-} from "#src/builder/round.ts";
+import { predicted, type Report, type Valid } from "#src/builder/comparison.ts";
+import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
 import { type Budget, UNITS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";

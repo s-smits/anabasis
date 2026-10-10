@@ -63,7 +63,7 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  `exam.drafted` holds the draft that stood, whole: its rules with their sources, its answer
  *  format, its check program's source, its example tasks and its controls. A campaign opened from
  *  a prompt reads its exam from that event and from no file beside the log. */
-export const EVENT_KINDS = [
+const EVENT_KINDS = [
   "campaign.opened",
   "campaign.setting",
   "campaign.move",

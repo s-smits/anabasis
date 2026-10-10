@@ -11,7 +11,8 @@
  */
 import { plural } from "#src/meta/text.ts";
 import { type Lane, section } from "./catalogue.ts";
-import type { Overview, Trigger } from "./read.ts";
+import type { Trigger } from "./folds.ts";
+import type { Overview } from "./read.ts";
 
 interface Selection {
   /** Lanes that open together, each with the shared instructions. */

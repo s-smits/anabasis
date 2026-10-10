@@ -31,7 +31,7 @@
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { refusedBy, verdictsOf } from "#src/kernel/solves.ts";
-import { decided, spelled } from "#src/kernel/verify.ts";
+import { decided, spelled, type Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -41,6 +41,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { agreement, clears, RULINGS } from "#src/review/agreement.ts";
 import { drawn, labelled, rejections } from "#src/review/rejections.ts";
 import { openCampaign, stayAwake } from "../d2/campaign.ts";
+import type { Campaign } from "../d2/round.ts";
 import { modelNamed, packControls, type Row, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 
 const { values } = parseArgs({
@@ -59,28 +60,26 @@ const { values } = parseArgs({
   },
 });
 
-async function main(): Promise<void> {
-  const { root, sweep, bundle, name } = values;
-  if (root === undefined || sweep === undefined || bundle === undefined || name === undefined) {
-    throw new Error("name --root, --sweep, --bundle and --name");
-  }
-  const rows = sweepRows(root, sweep);
-  const [first] = rows;
-  if (first === undefined) throw new Error(`${sweep} graded no solve`);
-  const campaign = await openCampaign({ root, sweep, cycle: first.cycle, bundle, name });
-  const { log, contract } = campaign;
-  const tasks = new Map(campaign.tasks.map((task) => [task.taskId, task]));
-  const taskOf = (taskId: string) => {
-    const task = tasks.get(taskId);
-    if (task === undefined) throw new Error(`the pack holds no task ${taskId}`);
-    return task;
-  };
-  const jobs = Number(values.jobs);
+/** What grading the sweep's stored answers takes: the campaign, the sweep's rows, the pack the
+ *  accept controls are read from, how many grade at once, and the pack's task by id. */
+interface StoredAnswers {
+  readonly campaign: Pick<Campaign, "log" | "verify">;
+  readonly rows: readonly Row[];
+  readonly sweep: string;
+  readonly bundle: string;
+  readonly jobs: number;
+  readonly taskOf: (taskId: string) => Task;
+}
 
-  // The stored rejections, and for each task that has one an answer the checks accept, which the
-  // Referee is shown beside the refused one: the first stored answer v1 passed, or failing that the
-  // pack's own accept control. Each is logged as this verifier grades it now, so that a check's
-  // replay is held to this verifier's own verdict and not to v1's.
+/**
+ * The stored rejections, and for each task that has one an answer the checks accept, which the
+ * Referee is shown beside the refused one: the first stored answer v1 passed, or failing that the
+ * pack's own accept control. Each is logged as this verifier grades it now, so that a check's
+ * replay is held to this verifier's own verdict and not to v1's. One line an answer that is
+ * graded otherwise than v1's record says, or could not be graded, and null where the two agree.
+ */
+async function gradedStored({ campaign, rows, sweep, bundle, jobs, taskOf }: StoredAnswers) {
+  const { log } = campaign;
   const solveId = (row: Row) => `${row.sweep}-${row.cycle}-${row.taskId}`;
   const stored = (row: Row) => ({
     solve: solveId(row),
@@ -108,7 +107,7 @@ async function main(): Promise<void> {
         ];
   });
   const held = verdictsOf(read(log));
-  const apart = await pooled(
+  return await pooled(
     [...accepted, ...rejected.map(stored)].filter(({ solve }) => !held.has(solve)),
     jobs,
     async ({ solve, taskId, answer, expected, control }) => {
@@ -134,6 +133,26 @@ async function main(): Promise<void> {
       return now === expected ? null : `${solve}: on record ${expected}, now ${now}`;
     },
   );
+}
+
+async function main(): Promise<void> {
+  const { root, sweep, bundle, name } = values;
+  if (root === undefined || sweep === undefined || bundle === undefined || name === undefined) {
+    throw new Error("name --root, --sweep, --bundle and --name");
+  }
+  const rows = sweepRows(root, sweep);
+  const [first] = rows;
+  if (first === undefined) throw new Error(`${sweep} graded no solve`);
+  const campaign = await openCampaign({ root, sweep, cycle: first.cycle, bundle, name });
+  const { log, contract } = campaign;
+  const tasks = new Map(campaign.tasks.map((task) => [task.taskId, task]));
+  const taskOf = (taskId: string) => {
+    const task = tasks.get(taskId);
+    if (task === undefined) throw new Error(`the pack holds no task ${taskId}`);
+    return task;
+  };
+  const jobs = Number(values.jobs);
+  const apart = await gradedStored({ campaign, rows, sweep, bundle, jobs, taskOf });
   for (const line of apart) if (line !== null) console.log(`apart: ${line}`);
 
   const dir = dirname(log);

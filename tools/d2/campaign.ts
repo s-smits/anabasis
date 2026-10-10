@@ -37,7 +37,7 @@ import {
   type Setting,
   settingId,
 } from "#src/kernel/condition.ts";
-import { contractHash } from "#src/kernel/contract.ts";
+import { type Contract, contractHash } from "#src/kernel/contract.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
@@ -123,6 +123,14 @@ interface Solver {
   readonly side: Condition["side"];
   /** The backends of a solver this host's do not serve: a simulation's script (`tools/runs/rehearse.ts`). */
   readonly models?: (home: string) => Models;
+}
+
+/** What a solve's condition is made of beside its solver, its task and its harness: the
+ *  campaign's contract, the verifier's tool tree, and what every solve is held to. */
+interface Standing {
+  readonly contract: Contract;
+  readonly tools: string;
+  readonly limits: Limits;
 }
 
 /** What names the reference harness of a campaign: the one last promoted, or the starter. */
@@ -212,33 +220,19 @@ function packOpened(dir: string, log: string, args: CampaignArgs) {
   };
 }
 
-export async function openCampaign(args: CampaignArgs) {
-  const dir = join(REPO, ".ana", "d2", args.name);
-  mkdirSync(dir, { recursive: true });
-  const log = join(dir, "log.jsonl");
-  const { bundle, checks, format, solver } = packOpened(dir, log, args);
-  const { brief, tasks } = readPack(bundle);
-  const contract = contractOf(brief, format);
-  // The checker this campaign runs under: its contract and its staged check program. Once the
-  // operator has frozen one in the log (`tools/c/accept.ts --freeze`), a campaign whose own is
-  // another does not open, since what the log counted was counted under the frozen one.
-  const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
-  const moved = departure(read(log), checker);
-  if (moved !== null) throw new Error(`${log}: ${moved}`);
-  const resources = sweepResources(brief);
-  const tools = join(bundle, ".toolchain");
-  const verify = openVerifier({ checks, tools });
+/**
+ * What a campaign's solves are recorded under (`src/kernel/condition.ts`): the condition of one
+ * solve of a task under a harness by a solver, and the setting of every solve by that solver,
+ * whatever its task and harness, as the id a comparison counts solves under. The runtime's pins
+ * and the two tree hashes are read once: each hash is a walk of a tree of thousands of files, and
+ * neither moves inside a run.
+ */
+function recordedUnder({ contract, tools, limits }: Standing) {
   const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
     readFileSync(join(REPO, "package.json"), "utf8"),
   ).dependencies;
-  // Read once: each is a walk of a tree of thousands of files, and neither moves inside a run.
   const verifierTools = hashJsonValue(treeContent(tools));
   const host = hashJsonValue(["src", "vendor"].map((part) => treeContent(join(REPO, part))));
-  const limits = args.limits ?? LIMITS;
-  const pack = (task: Task): TaskPackage => packageOf(checks, task);
-  /** Every task the pack holds or a session wrote into the log, by version. */
-  const packages = (): Map<string, TaskPackage> =>
-    new Map([...tasks, ...writtenTasks(read(log))].map((task) => [taskVersion(pack(task)), pack(task)]));
   /** What every solve by `by` runs under whatever its task and harness: its condition less those. */
   const settingOf = (by: Solver): Setting => ({
     contract: contractHash(contract),
@@ -264,6 +258,34 @@ export async function openCampaign(args: CampaignArgs) {
     task: taskVersion(task),
     solverTools: harness.digest,
   });
+  /** The setting of every solve by `by`, as an id: what a comparison counts solves under
+   *  (`src/kernel/compare.ts`). */
+  const setting = (by: Solver) => settingId(settingOf(by));
+  return { conditionOf, setting };
+}
+
+export async function openCampaign(args: CampaignArgs) {
+  const dir = join(REPO, ".ana", "d2", args.name);
+  mkdirSync(dir, { recursive: true });
+  const log = join(dir, "log.jsonl");
+  const { bundle, checks, format, solver } = packOpened(dir, log, args);
+  const { brief, tasks } = readPack(bundle);
+  const contract = contractOf(brief, format);
+  // The checker this campaign runs under: its contract and its staged check program. Once the
+  // operator has frozen one in the log (`tools/c/accept.ts --freeze`), a campaign whose own is
+  // another does not open, since what the log counted was counted under the frozen one.
+  const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
+  const moved = departure(read(log), checker);
+  if (moved !== null) throw new Error(`${log}: ${moved}`);
+  const resources = sweepResources(brief);
+  const tools = join(bundle, ".toolchain");
+  const verify = openVerifier({ checks, tools });
+  const limits = args.limits ?? LIMITS;
+  const { conditionOf, setting } = recordedUnder({ contract, tools, limits });
+  const pack = (task: Task): TaskPackage => packageOf(checks, task);
+  /** Every task the pack holds or a session wrote into the log, by version. */
+  const packages = (): Map<string, TaskPackage> =>
+    new Map([...tasks, ...writtenTasks(read(log))].map((task) => [taskVersion(pack(task)), pack(task)]));
   let solves = 0;
   /** One live solve of a task under a harness, by a solver, its condition recorded first. A solve
    *  made for a comparison names it, and is counted by that comparison alone. */
@@ -345,9 +367,7 @@ export async function openCampaign(args: CampaignArgs) {
     /** What `solveOnce` records a solve under, for a reader that sets a log beside this command's
      *  flags without a solve of its own. */
     conditionOf,
-    /** The setting of every solve by `by`, as an id: what a comparison counts solves under
-     *  (`src/kernel/compare.ts`). */
-    setting: (by: Solver) => settingId(settingOf(by)),
+    setting,
     reviewers,
     reader: (model: Model<Api>, effort: ThinkingLevel): Reader => ({
       model,

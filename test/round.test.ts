@@ -10,15 +10,14 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { predicted, toLabel } from "../src/builder/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
-  predicted,
   type RoundRequest,
   round,
   scoredSet,
   settleReading,
-  toLabel,
 } from "../src/builder/round.ts";
 import {
   type BuildRequest,

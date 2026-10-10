@@ -9,7 +9,8 @@ import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { overview, rendered, TRIGGERS } from "../tools/wri/read.ts";
+import { TRIGGERS } from "../tools/wri/folds.ts";
+import { overview, rendered } from "../tools/wri/read.ts";
 
 const START = Date.parse("2026-10-09T12:00:00Z");
 const REPORTED = "comparison.reported";

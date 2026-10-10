@@ -45,7 +45,8 @@
  * Not run here: see `campaign.ts`.
  */
 import { admitComparison } from "#src/builder/admission.ts";
-import { type CheckpointRequest, checkpoint, refuseTerms, type Report } from "#src/builder/round.ts";
+import type { Report } from "#src/builder/comparison.ts";
+import { type CheckpointRequest, checkpoint, refuseTerms } from "#src/builder/round.ts";
 import { read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
 import { parseArgs } from "#src/meta/process.ts";

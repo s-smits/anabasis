@@ -56,7 +56,8 @@
  *
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
-import { settleReading, toLabel } from "#src/builder/round.ts";
+import { toLabel } from "#src/builder/comparison.ts";
+import { settleReading } from "#src/builder/round.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";

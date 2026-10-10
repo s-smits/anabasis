@@ -451,8 +451,8 @@ unlimited until `--solve-model-turns` names a number.
 
 ## 7. How a comparison is read
 
-`src/kernel/compare.ts` and `src/builder/round.ts` own this, and their head comments are the full
-account. The short form follows.
+`src/kernel/compare.ts`, `src/builder/round.ts` and `src/builder/comparison.ts` own this, and their
+head comments are the full account. The short form follows.
 
 **Terms first.** A comparison writes `comparison.started` before its first solve: its two
 harnesses, its setting, its scored tasks, its solves a side, its level, the budgets it will be read
@@ -480,7 +480,7 @@ same task. The harness that wins more pairs wins the task; otherwise the task is
 the test. A one-sided sign test reads wins against losses, and at the default level of 0.10 the
 smallest results that clear it are 4 to 0, 6 to 1, 7 to 2 and 9 to 3.
 
-**The reading** is one of seven words (`Reading`, `src/builder/round.ts`):
+**The reading** is one of seven words (`Reading`, `src/builder/comparison.ts`):
 
 | Reading | Meaning |
 | --- | --- |
@@ -1305,8 +1305,9 @@ the operator.
 ```text
 src/kernel/     the log, tasks, conditions, the verifier's contract, the comparison, the reports
 src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
-src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round;
-                whether a comparison may start (admission); the one reading of a campaign (handover);
+src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round,
+                and what the log holds of a comparison (comparison); whether a comparison may start
+                (admission); the one reading of a campaign (handover);
                 the move that follows from a log (decide) and the reading of the log it is asked
                 of (ground), what a campaign runs by (opening), and the words the operator left
                 it (word)
@@ -1323,7 +1324,8 @@ tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, 
                 over; harness-builder, which runs a campaign move after move; and word, which
                 leaves the operator's word for one that runs
 tools/runs/     launch, stop, rehearse, seed, pulse, view, compare, replay, zip
-tools/wri/      the whole-run investigation's reader of one log
+tools/wri/      the whole-run investigation's reader of one log: its folds and the exam side's lanes
+                (folds), the other lanes, the rows and the overview (read)
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans
 tools/runtime/  the lint and test wrappers, the commit check
 tools/loc/      the size and unused-export policy

@@ -42,7 +42,7 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { Type } from "typebox";
+import { type Static, Type } from "typebox";
 import { REPORTED_COST } from "../backends/claude.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
@@ -146,6 +146,63 @@ const OUTSIDE = [
   [/\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b/, "a random number or the clock"],
 ] as const;
 const NUDGE = "You have not called finish. Put a draft with draft_exam, or call finish.";
+const CONTROL = {
+  task: Type.Integer({
+    minimum: 0,
+    description: "The example it answers, by its place in `tasks`, from 0.",
+  }),
+  answer: Type.Unknown(),
+};
+/** What `draft_exam` takes: a whole draft, in the words the Examiner is told. */
+const DRAFT_PARAMETERS = Type.Object({
+  domain: Type.String({ minLength: 1, description: "The domain, in a few words." }),
+  // What a size fixed here costs is said where the scope is written. The second exam drafted
+  // from a prompt (2026-10-09) held every task to six rows and six columns, which its field
+  // does not: the starter then answered 24 of 24 solves at the full limit whatever was
+  // written, and the harness that read a step listed every candidate of a task that small.
+  scope: Type.String({
+    minLength: 1,
+    description:
+      "What a task of this domain may ask. It bounds every task written later, so a size it fixes for a task is the ceiling on how hard one can be made.",
+  }),
+  conventions: Type.String({
+    description: "What a practitioner takes as given: units, rounding, notation.",
+  }),
+  rules: Type.Array(
+    Type.Object({
+      id: Type.String({ pattern: "^R[0-9]+$" }),
+      statement: Type.String({ minLength: 1 }),
+      source: Type.String({ minLength: 1, description: "Where the field states the rule." }),
+    }),
+    { minItems: 1 },
+  ),
+  answer_format: Type.Unknown({
+    description: "A JSON Schema of type object, which every answer follows.",
+  }),
+  checks: Type.Array(
+    Type.Object({
+      id: Type.String({ pattern: "^check-[a-z0-9-]+$" }),
+      rule: Type.String({ description: "The id of the one rule it enforces." }),
+      assertion: Type.String({
+        minLength: 1,
+        description: "The property it verifies, in a sentence a solver may read.",
+      }),
+    }),
+    { minItems: 1 },
+  ),
+  evaluator: Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
+  tasks: Type.Array(
+    Type.Object({
+      family: Type.String({ minLength: 1 }),
+      public_input: Type.Unknown({ description: "What the solver reads of the task." }),
+      hidden: Type.Unknown({ description: "What only the checks receive; null when a task has none." }),
+    }),
+  ),
+  accept_controls: Type.Array(Type.Object(CONTROL)),
+  reject_controls: Type.Array(
+    Type.Object({ ...CONTROL, check: Type.String({ description: "The check that must refuse it." }) }),
+  ),
+});
 
 const SYSTEM_PROMPT = [
   "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, its answer format, one check for each rule, a few example tasks, and controls. You do this once, at the opening of a campaign. Later sessions write further tasks against what you draft here, and a draft that stands is not changed afterwards.",
@@ -258,100 +315,50 @@ export function draftFaults(draft: Draft): string[] {
   ];
 }
 
+/** The draft as `draft_exam`'s arguments carry it, under the names `Draft` and `exam.drafted` use. */
+function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
+  return {
+    domain: args.domain,
+    scope: args.scope,
+    conventions: args.conventions,
+    rules: args.rules,
+    // SAFETY: a tool's arguments are JSON the provider parsed, here and for each value below.
+    answerFormat: args.answer_format as JsonValue,
+    checks: args.checks,
+    evaluator: args.evaluator,
+    tasks: args.tasks.map(({ family, public_input, hidden }) => ({
+      family,
+      // SAFETY: as above.
+      publicInput: public_input as JsonValue,
+      // SAFETY: as above.
+      hidden: (hidden ?? null) as JsonValue,
+    })),
+    // SAFETY: as above.
+    accept: args.accept_controls.map(({ task, answer }) => ({ task, answer: answer as JsonValue })),
+    // SAFETY: as above.
+    reject: args.reject_controls.map(({ task, answer, check }) => ({
+      task,
+      answer: answer as JsonValue,
+      check,
+    })),
+  };
+}
+
 function draftTool(desk: Desk): AgentTool {
   const { request } = desk;
-  const control = {
-    task: Type.Integer({
-      minimum: 0,
-      description: "The example it answers, by its place in `tasks`, from 0.",
-    }),
-    answer: Type.Unknown(),
-  };
   return tool({
     name: "draft_exam",
     label: "Draft the exam",
     description:
       "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
-    parameters: Type.Object({
-      domain: Type.String({ minLength: 1, description: "The domain, in a few words." }),
-      // What a size fixed here costs is said where the scope is written. The second exam drafted
-      // from a prompt (2026-10-09) held every task to six rows and six columns, which its field
-      // does not: the starter then answered 24 of 24 solves at the full limit whatever was
-      // written, and the harness that read a step listed every candidate of a task that small.
-      scope: Type.String({
-        minLength: 1,
-        description:
-          "What a task of this domain may ask. It bounds every task written later, so a size it fixes for a task is the ceiling on how hard one can be made.",
-      }),
-      conventions: Type.String({
-        description: "What a practitioner takes as given: units, rounding, notation.",
-      }),
-      rules: Type.Array(
-        Type.Object({
-          id: Type.String({ pattern: "^R[0-9]+$" }),
-          statement: Type.String({ minLength: 1 }),
-          source: Type.String({ minLength: 1, description: "Where the field states the rule." }),
-        }),
-        { minItems: 1 },
-      ),
-      answer_format: Type.Unknown({
-        description: "A JSON Schema of type object, which every answer follows.",
-      }),
-      checks: Type.Array(
-        Type.Object({
-          id: Type.String({ pattern: "^check-[a-z0-9-]+$" }),
-          rule: Type.String({ description: "The id of the one rule it enforces." }),
-          assertion: Type.String({
-            minLength: 1,
-            description: "The property it verifies, in a sentence a solver may read.",
-          }),
-        }),
-        { minItems: 1 },
-      ),
-      evaluator: Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
-      tasks: Type.Array(
-        Type.Object({
-          family: Type.String({ minLength: 1 }),
-          public_input: Type.Unknown({ description: "What the solver reads of the task." }),
-          hidden: Type.Unknown({ description: "What only the checks receive; null when a task has none." }),
-        }),
-      ),
-      accept_controls: Type.Array(Type.Object(control)),
-      reject_controls: Type.Array(
-        Type.Object({ ...control, check: Type.String({ description: "The check that must refuse it." }) }),
-      ),
-    }),
+    parameters: DRAFT_PARAMETERS,
     executionMode: "sequential",
     execute: async (_id, args) => {
       if (desk.tries >= request.limits.tries) {
         throw new Error("This session can put no further draft. Call finish.");
       }
       desk.tries += 1;
-      const draft: Draft = {
-        domain: args.domain,
-        scope: args.scope,
-        conventions: args.conventions,
-        rules: args.rules,
-        // SAFETY: a tool's arguments are JSON the provider parsed, here and for each value below.
-        answerFormat: args.answer_format as JsonValue,
-        checks: args.checks,
-        evaluator: args.evaluator,
-        tasks: args.tasks.map(({ family, public_input, hidden }) => ({
-          family,
-          // SAFETY: as above.
-          publicInput: public_input as JsonValue,
-          // SAFETY: as above.
-          hidden: (hidden ?? null) as JsonValue,
-        })),
-        // SAFETY: as above.
-        accept: args.accept_controls.map(({ task, answer }) => ({ task, answer: answer as JsonValue })),
-        // SAFETY: as above.
-        reject: args.reject_controls.map(({ task, answer, check }) => ({
-          task,
-          answer: answer as JsonValue,
-          check,
-        })),
-      };
+      const draft = draftedFrom(args);
       const faults = await request.reading(draft);
       if (faults.length === 0) {
         append(request.log, "exam.drafted", {

@@ -8,6 +8,7 @@ import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
   answered,
   awaitingLabel,
+  billedAll,
   billedFor,
   comparedAs,
   lastReports,
@@ -544,5 +545,32 @@ describe("the billed dollars a cap counts", () => {
   it("holds a session still running to what it has billed so far", () => {
     const log = [event("build.started", { session: "b-1" }), ...paid("s-b", 6), ...paid("s-c", 2)];
     expect(billedFor(log, "b-1")).toBe(8);
+  });
+
+  it("bills a session or a solve the run was killed in by its turns, and a finished one by its sum alone", () => {
+    const turn = (kind: EventKind, id: JsonObject, total: number) =>
+      event(kind, { ...id, usage: { input: 1, output: 1, cost: { total } } });
+    // t-5 (10 October): b-1 killed at its seventh turn, three solves of g-1 cut with it.
+    const log = [
+      event("build.started", { session: "b-1" }),
+      turn("build.turn", { session: "b-1" }, 0.07),
+      turn("build.turn", { session: "b-1" }, 0.05),
+      event("solve.started", { solve: "s-k", comparison: "g-1" }),
+      turn("solve.turn", { solve: "s-k" }, 0.01),
+      // Finished: the sum stands, and the turns are not counted again.
+      event("build.started", { session: "b-2" }),
+      turn("build.turn", { session: "b-2" }, 0.5),
+      event("build.finished", { session: "b-2", billed: 0.5 }),
+      ...paid("s-b", 6),
+      turn("solve.turn", { solve: "s-b" }, 9),
+      event("exam.started", { session: "x-1" }),
+      turn("exam.turn", { session: "x-1" }, 0.2),
+    ];
+    expect(billedAll(log)).toBeCloseTo(0.07 + 0.05 + 0.01 + 0.5 + 6 + 0.2, 10);
+    expect(
+      billedAll(
+        log.filter(({ kind }) => kind !== "build.turn" && kind !== "exam.turn" && kind !== "solve.turn"),
+      ),
+    ).toBe(6.5);
   });
 });

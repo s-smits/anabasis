@@ -72,6 +72,14 @@ const BILLED: ReadonlySet<string> = new Set([
   "referee.finding",
   "diagnosis.recorded",
 ]);
+/** Each kind of start its turns are billed by where no end is on record, with the field that
+ *  names the session or the solve in all three events. */
+const TURNS = [
+  { started: "build.started", finished: BUILD_FINISHED, turn: "build.turn", id: "session" },
+  { started: "exam.started", finished: "exam.finished", turn: "exam.turn", id: "session" },
+  { started: "draft.started", finished: "draft.finished", turn: "draft.turn", id: "session" },
+  { started: "solve.started", finished: "solve.finished", turn: "solve.turn", id: "solve" },
+] as const;
 
 /** Whether a cap can hold anything: its dollars and its reserve are numbers above nothing. One
  *  typed with a dollar sign reads as no number, and until 2026-10-09 a session by itself ran
@@ -393,12 +401,39 @@ export function billedFor(events: readonly LogEvent[], id: string): number {
 }
 
 /** Every billed dollar a log holds, whoever billed it: what a campaign's total budget is held
- *  against (`docs/plan.md`, row F49). */
+ *  against (`docs/plan.md`, row F49). A start the log holds no end of was killed before it could
+ *  sum its turns, and is billed by them (`unfinishedTurns`). */
 export function billedAll(events: readonly LogEvent[]): number {
-  return events.reduce(
+  const summed = events.reduce(
     (sum, { kind, data }) => (BILLED.has(kind) && isNumber(data.billed) ? sum + data.billed : sum),
     0,
   );
+  return summed + unfinishedTurns(events);
+}
+
+/**
+ * The dollars of every turn of a session or a solve that began and never ended on record: the run
+ * was killed from outside, so no `finished` event summed them, and the cap and the total read 0
+ * for what was spent. A turn's `usage.cost.total` is the backend's price of that turn, and the
+ * sum over a session's or a solve's turns is what its end carries as `billed`: equal to five
+ * decimals on every session and solve of t-2 (10 October). t-5's b-1, killed at its seventh turn
+ * the same day, had metered 0.12 dollars that nothing summed, and three solves of its g-1 were
+ * cut the same way.
+ */
+function unfinishedTurns(events: readonly LogEvent[]): number {
+  let dollars = 0;
+  for (const { started, finished, turn, id } of TURNS) {
+    const ended = new Set(events.flatMap(({ kind, data }) => (kind === finished ? [data[id]] : [])));
+    const begun = new Set(
+      events.flatMap(({ kind, data }) => (kind === started && !ended.has(data[id]) ? [data[id]] : [])),
+    );
+    for (const { kind, data } of events) {
+      if (kind !== turn || !begun.has(data[id])) continue;
+      const total = asRecord(asRecord(data.usage)?.cost)?.total;
+      if (isNumber(total)) dollars += total;
+    }
+  }
+  return dollars;
 }
 
 /** The same sum in its two parts: what the Builder session under `id` billed, and what the

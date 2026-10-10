@@ -816,9 +816,14 @@ describe("a Builder session", () => {
     const s = await setup([edit, call("practice", { tasks: ["t-1"] }), stop, finish]);
     await session(s.request, s, s.walled);
     const lines = s.of(BUILD_CALL).map(({ text: told }) => (isString(told) ? told.split("\n").at(-1) : ""));
-    // Every result ends with the line: the turn counts up and the practice solves down.
+    // Every result ends with the line: the turn counts up, the practice solves down, and until one
+    // has run the line says so. Fix row 1 of the 10 October reading: a session of 43 turns called
+    // none of the harness tools, and the only statement of where harness/ stood was the
+    // continuation, which a turn ending in a tool call never triggers.
     expect(lines).toEqual([
-      expect.stringMatching(/^\[Session: turn 1 of 12, 0:0\d of 10:00 used, 3 practice solves left\]$/),
+      expect.stringMatching(
+        /^\[Session: turn 1 of 12, 0:0\d of 10:00 used, 3 practice solves left, no practice solve has run harness\/\]$/,
+      ),
       expect.stringMatching(/^\[Session: turn 2 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
       expect.stringMatching(/^\[Session: turn 4 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
     ]);

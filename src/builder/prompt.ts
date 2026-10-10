@@ -106,6 +106,8 @@ export interface Used {
   readonly seconds: number;
   /** The practice solves the session may still start (`practiceLeft`, `tools.ts`). */
   readonly practiceLeft: number;
+  /** Whether a practice solve of this session has run (`bench.opened`, `tools.ts`). */
+  readonly practised: boolean;
 }
 
 /** Where `harness/` stands against the session's practice: no solve has run in this session, the
@@ -126,18 +128,24 @@ export const SHELL_WALLS =
   " The command runs in your home directory, where harness/, practice/, resources.json, HARNESS.md and your notes are. It has network access, so a program the solver runs, and what that program needs, can be installed under harness/.toolchain. It can write your home directory, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.";
 
 /**
- * The last line of every tool result a Builder reads: the turn it is in, the session time used and
- * the practice solves left. A solver has had the same of its own limits since 2026-10-09
- * (`timed`, `src/solve/run.ts`). The facts ride on tool results because that is where a Builder
- * reads: in the seven sessions on record that day, 365 turns in all, every turn ended in a tool
- * call, so the message sent between turns was never sent once.
+ * The last line of every tool result a Builder reads: the turn it is in, the session time used, the
+ * practice solves left, and, until one has run, that none has. A solver has had the same of its own
+ * limits since 2026-10-09 (`timed`, `src/solve/run.ts`). The facts ride on tool results because that
+ * is where a Builder reads: in the seven sessions on record that day, 365 turns in all, every turn
+ * ended in a tool call, so the message sent between turns was never sent once.
+ *
+ * The practice fact joined them on 2026-10-10, when a session of 43 turns spent 69% of its wall
+ * measuring a tool chain through 40 shell calls, called `check_harness`, `preview_harness` and
+ * `practice` not once, and left a tree whose own module spawns a program the tree does not hold.
+ * Where `harness/` stood was stated only by the continuation (`TRIED`), which again no turn of it
+ * triggered. The line states the condition and no course: which fact matters is the Builder's.
  */
 export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">): string {
   const clock = (seconds: number) => {
     const whole = Math.max(0, Math.floor(seconds));
     return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}`;
   };
-  return `[Session: turn ${String(used.turns + 1)} of ${String(limits.turns)}, ${clock(used.seconds)} of ${clock(limits.wallSeconds)} used, ${plural(used.practiceLeft, "practice solve")} left]`;
+  return `[Session: turn ${String(used.turns + 1)} of ${String(limits.turns)}, ${clock(used.seconds)} of ${clock(limits.wallSeconds)} used, ${plural(used.practiceLeft, "practice solve")} left${used.practised ? "" : ", no practice solve has run harness/"}]`;
 }
 
 /**

@@ -309,6 +309,7 @@ export async function session(
     turns: turns.length,
     seconds: (performance.now() - began) / 1000,
     practiceLeft: practiceLeft(bench, request.cap === undefined ? [] : read(log)),
+    practised: bench.opened !== null,
   });
   const tools = [
     ...walled(bench),

@@ -17,6 +17,8 @@ import {
   outcomesOf,
   pairsReported,
   promoted,
+  referenceFailed,
+  releaseOrder,
   stopRule as stopOf,
   unansweredTwice,
 } from "../src/kernel/reports.ts";
@@ -623,6 +625,37 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(unansweredTwice([...twice, event("task.state", { version: "hard", state: "released" })])).toEqual(
       [],
     );
+  });
+});
+
+describe("the release before the draw", () => {
+  // Four held-out tasks the reference harness failed in the last comparison, and two it answered.
+  const terms = { old: "h1", fresh: "h2", solves: 2, setting: SETTING };
+  const tasks = ["f1", "f2", "f3", "f4", "a1", "a2"];
+  const log = [
+    ...tasks.flatMap(heldOut),
+    ...tasks.flatMap((task) => [
+      ...solved("b-1", task, "h1", task.startsWith("f") ? [F, F] : [P, P]),
+      ...solved("b-1", task, "h2", [P, P]),
+    ]),
+    reported("b-1", "no-step", "h2", { ...terms, versions: tasks }),
+  ];
+  const failed = referenceFailed(log);
+
+  it("takes half of the tasks the reference failed, and the draw cannot release the other half", () => {
+    expect(failed.toSorted()).toEqual(["f1", "f2", "f3", "f4"]);
+    // Half of the failed, then the draw over the answered tasks alone: the kept half stays scored.
+    const taken = releaseOrder(log, tasks, 4, "seed");
+    const versions = taken.map(([version]) => version);
+    expect(versions.slice(0, 2).every((version) => failed.includes(version))).toBe(true);
+    expect(versions.slice(2).toSorted()).toEqual(["a1", "a2"]);
+    expect(taken.slice(0, 2).every(([, why]) => why.includes("the reference harness failed it"))).toBe(true);
+    // Asked for more than the draw's pool holds, the release takes what there is and no kept task.
+    expect(
+      releaseOrder(log, tasks, 6, "seed")
+        .map(([version]) => version)
+        .toSorted(),
+    ).toEqual(["a1", "a2", ...versions.slice(0, 2).toSorted()]);
   });
 });
 

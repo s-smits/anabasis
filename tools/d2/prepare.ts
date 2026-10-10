@@ -48,10 +48,9 @@
  *
  * Not run here: see `campaign.ts`.
  */
-import { draw } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
-import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { awaitingLabel, referenceFailed, unansweredTwice } from "#src/kernel/reports.ts";
+import { append, read } from "#src/kernel/log.ts";
+import { awaitingLabel, releaseOrder } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
@@ -113,37 +112,6 @@ async function confirmed(campaign: Campaign, version: string, accepted: Readonly
 
 /** `bun tools/d2/prepare.ts`. It returns the command's exit code: 1 where a task named to score
  *  has no stored accepted answer that passes today's verifier. */
-/**
- * The `count` held-out tasks of `pool` a release takes, each with why, in the order they are
- * taken. A task no solve answered in two comparisons goes to the Builder before the draw: it is
- * what a session has to work on, where every released task passes. Proposed on 10 October after
- * t-5 held two such tasks at its release after g-3 and the draw released another, and its three
- * last sessions then passed every practice task and changed nothing (`unansweredTwice`). Then the
- * tasks the reference harness failed in the last comparison, half of them at most, so that the
- * comparison keeps tasks it can untie (`referenceFailed`). The rest is the contract's draw.
- */
-function releaseOrder(
-  events: readonly LogEvent[],
-  pool: readonly string[],
-  count: number,
-  seed: string,
-): [string, string][] {
-  const unanswered = unansweredTwice(events).filter((version) => pool.includes(version));
-  const failed = referenceFailed(events).filter(
-    (version) => pool.includes(version) && !unanswered.includes(version),
-  );
-  const first = [...unanswered, ...failed.slice(0, Math.floor(failed.length / 2))];
-  const rest = pool.filter((version) => !first.includes(version));
-  const chosen = [...first.slice(0, count), ...draw(rest, Math.max(0, count - first.length), seed)];
-  return chosen.map((version) => {
-    const why = unanswered.includes(version)
-      ? ": no solve answered it in two comparisons, and it is"
-      : failed.includes(version)
-        ? ": the reference harness failed it in the last comparison, and it is"
-        : ":";
-    return [version, why];
-  });
-}
 
 export async function prepareCommand(args: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });

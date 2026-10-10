@@ -486,6 +486,44 @@ export function referenceFailed(events: readonly LogEvent[]): string[] {
   return [...failed].filter((task) => held.has(task));
 }
 
+/**
+ * The `count` held-out tasks of `pool` a release takes, each with why, in the order they are
+ * taken. A task no solve answered in two comparisons goes to the Builder before the draw: it is
+ * what a session has to work on, where every released task passes. Proposed on 10 October after
+ * t-5 held two such tasks at its release after g-3 and the draw released another, and its three
+ * last sessions then passed every practice task and changed nothing (`unansweredTwice`). Then the
+ * tasks the reference harness failed in the last comparison, half of them at most, so that the
+ * comparison keeps tasks it can untie (`referenceFailed`). The rest is the contract's draw, over
+ * the tasks neither list holds: until 11 October the draw ran over the half kept as well, and
+ * could release it (`docs/simplify.md`, F9). Owned by the release in `tools/d2/prepare.ts`
+ * until that day, and here since, beside the two folds it reads.
+ */
+export function releaseOrder(
+  events: readonly LogEvent[],
+  pool: readonly string[],
+  count: number,
+  seed: string,
+): [string, string][] {
+  const unanswered = unansweredTwice(events).filter((version) => pool.includes(version));
+  const failed = referenceFailed(events).filter(
+    (version) => pool.includes(version) && !unanswered.includes(version),
+  );
+  const first = [...unanswered, ...failed.slice(0, Math.floor(failed.length / 2))];
+  const rest = pool.filter((version) => !first.includes(version) && !failed.includes(version));
+  const chosen = [
+    ...first.slice(0, count),
+    ...draw(rest, Math.min(rest.length, Math.max(0, count - first.length)), seed),
+  ];
+  return chosen.map((version) => {
+    const why = unanswered.includes(version)
+      ? ": no solve answered it in two comparisons, and it is"
+      : failed.includes(version)
+        ? ": the reference harness failed it in the last comparison, and it is"
+        : ":";
+    return [version, why];
+  });
+}
+
 export function unansweredTwice(events: readonly LogEvent[]): string[] {
   const ran = ranUnder(events);
   const feasible = new Set(ran.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])));

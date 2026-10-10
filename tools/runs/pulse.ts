@@ -76,7 +76,7 @@ export const CHECKPOINT = "tools/d2/checkpoint.ts";
 /** The command a Builder session with no comparison after it runs as. */
 export const SESSION = "tools/d2/session.ts";
 /** The command a whole campaign runs as, which runs each of the above in its own process. */
-const BUILDER = "tools/d2/harness-builder.ts";
+export const BUILDER = "tools/d2/harness-builder.ts";
 const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT, SESSION, BUILDER];
 /** This CLI's own command, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
 const CLI = "tools/runs/cli.ts";

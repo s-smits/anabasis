@@ -105,6 +105,7 @@ import {
   settingAsked,
 } from "../d2/setting.ts";
 import {
+  BUILDER,
   CHECKPOINT,
   logEvents,
   processes,
@@ -614,11 +615,17 @@ export async function stop(args: readonly string[]): Promise<void> {
     // The session is the stopped process's own, by its flags: a checkpoint names none, and the
     // log's last Builder session may be another run's.
     const session = flagOf(ran, "session");
-    const cut = ran.some((arg) => arg.endsWith(EXAMINE))
+    const ranAs = (tool: string) => ran.some((arg) => arg.endsWith(tool));
+    const cut = ranAs(EXAMINE)
       ? "An Examiner session's id names one session: the next takes another --session"
-      : session === undefined
-        ? null
-        : spent(logEvents(run.path), session);
+      : // A campaign command names no session: the one it was inside is in its log, and its id is
+        // spent whichever role it was. A word costs none, and both campaigns stopped by signal on
+        // 10 October lost a session that was running (b-1 and x-1).
+        ranAs(BUILDER)
+        ? "A campaign goes on from its log under the same --name, and the session it was inside has spent its id. A word left with tools/d2/word.ts ends a campaign at its next move boundary and spends none"
+        : session === undefined
+          ? null
+          : spent(logEvents(run.path), session);
     console.log(
       `  stopped, its log as it was. ${cut ?? "A round or a checkpoint goes on from it when launched again under the same id"}`,
     );

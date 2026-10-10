@@ -72,7 +72,13 @@ export async function sessionCommand(args: readonly string[], seated: Seated = s
   const request = sessionNamed(
     campaign,
     { ...values, session },
-    { parent, limits: setting.named.limits, seats, reviewers: reviewersNamed(campaign, values) },
+    {
+      parent,
+      reference: reference.dir,
+      limits: setting.named.limits,
+      seats,
+      reviewers: reviewersNamed(campaign, values),
+    },
   );
   // Asked last of all that can refuse, and before anything is recorded.
   const notes = admitSession(campaign.log, {

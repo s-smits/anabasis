@@ -373,6 +373,13 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
   return Math.max(0, Math.min(counted, afforded));
 }
 
+/** What a practice line says of the harness a solve ran under, by the tool's `under`. */
+const UNDER = {
+  harness: "",
+  parent: " under the harness you started from",
+  reference: " under the reference harness",
+} as const;
+
 export function practiceTool(bench: Bench): AgentTool {
   const { request } = bench;
   const offered = new Map(request.tasks.map((task) => [task.task.taskId, task]));
@@ -380,16 +387,16 @@ export function practiceTool(bench: Bench): AgentTool {
     name: "practice",
     label: "Practise",
     description:
-      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task's record under this harness and under the one you started from, the solve's id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: \"parent\"` the tasks are solved under the harness you started from instead, which costs the same solves and shows what your change is measured against.",
+      'Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host\'s limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task\'s record under this harness and under the one you started from, the solve\'s id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: "parent"` the tasks are solved under the harness you started from instead, and with `under: "reference"` under the reference harness, the one yours is compared with; each costs the same solves and shows what your change is measured against.',
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
         description: "Practice task ids, as the opening message lists them.",
       }),
       under: Type.Optional(
-        Type.Union([Type.Literal("harness"), Type.Literal("parent")], {
+        Type.Union([Type.Literal("harness"), Type.Literal("parent"), Type.Literal("reference")], {
           description:
-            "Which harness solves: harness/ as it stands (the default), or the one you started from.",
+            "Which harness solves: harness/ as it stands (the default), the one you started from, or the reference harness yours is compared with.",
         }),
       ),
     }),
@@ -422,10 +429,15 @@ export function practiceTool(bench: Bench): AgentTool {
       // home, and harness/ as it stands need not open: until 10 October a Builder could read its
       // change only against the parent's comparison record, and t-10's first session had none
       // (its whole-run investigation, lane 16).
-      const parent = args.under === "parent";
-      const ran: Snapshot = parent
-        ? { dir: request.parent, harness: await openHarness(request.parent), listed: null }
-        : await snapshot(bench);
+      // Under the reference the solve runs the harness the session's is compared with: the fact
+      // "what does the reference do on this task" is the Builder's to buy with its own solve,
+      // and the host hands it no table of it (the plan's climb section, C5).
+      const other =
+        args.under === "parent" ? request.parent : args.under === "reference" ? request.reference : null;
+      const ran: Snapshot =
+        other === null
+          ? await snapshot(bench)
+          : { dir: other, harness: await openHarness(other), listed: null };
       if (kill.aborted) throw new Error("The session has ended.");
       bench.spent += chosen.length;
       const solved = await pooled(chosen, request.limits.concurrency, async (task) => {
@@ -449,7 +461,7 @@ export function practiceTool(bench: Bench): AgentTool {
           harness === null ? null : record(events, task.version, harness),
         );
         return [
-          `${task.task.taskId}${parent ? " under the harness you started from" : ""}: ${endingText(ending)}. Solve ${solve}.${usedText(events, solve)}`,
+          `${task.task.taskId}${UNDER[args.under ?? "harness"]}: ${endingText(ending)}. Solve ${solve}.${usedText(events, solve)}`,
           `Record under this harness: passed ${String(now?.passed ?? 0)} of ${String(now?.solves.length ?? 0)}. Under the harness you started from: ${String(before?.passed ?? 0)} of ${String(before?.solves.length ?? 0)}.`,
           ...lines,
         ].join("\n");

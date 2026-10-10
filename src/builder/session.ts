@@ -126,6 +126,9 @@ export interface BuildRequest {
   readonly id: string;
   /** The harness state the session starts from, v1's format (`src/solve/harness.ts`). */
   readonly parent: string;
+  /** The reference harness's kept state: what the harness the session leaves is compared with,
+   *  and what a practice solve may run under on request. */
+  readonly reference: string;
   /** Where a frozen harness is kept, under its digest. The caller's, outside every wall. */
   readonly states: string;
   /** Where the campaign keeps each session's notes, a folder a session (`memory.ts`). The

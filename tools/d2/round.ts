@@ -244,6 +244,7 @@ export function sessionNamed(
   values: SessionFlags,
   given: {
     readonly parent: string;
+    readonly reference: string;
     readonly limits: Limits;
     readonly seats: Seats;
     readonly reviewers: Reviewers | null;
@@ -256,6 +257,7 @@ export function sessionNamed(
   return {
     id: values.session,
     parent: given.parent,
+    reference: given.reference,
     states: campaign.states,
     memory: campaign.memory,
     tasks: taskSets(read(campaign.log)).released.map((version) => ({ version, task: packageOf(version) })),
@@ -453,7 +455,11 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   const parent = await parentNamed(campaign, { ...values, session });
   const reference = await keptAs(campaign, "--reference", values.reference);
   const seats = seated(campaign, { builder: values.builder, reference: reference.dir });
-  const built = sessionNamed(campaign, { ...values, session }, { parent, limits, seats, reviewers });
+  const built = sessionNamed(
+    campaign,
+    { ...values, session },
+    { parent, reference: reference.dir, limits, seats, reviewers },
+  );
   const request: RoundRequest = {
     session: built,
     reference,

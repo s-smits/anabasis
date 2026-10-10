@@ -180,6 +180,8 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
   const request: BuildRequest = {
     id: "b-1",
     parent: parent,
+    // The reference harness is the parent here, as it is for a first session from the starter.
+    reference: parent,
     states: join(scratch, "states"),
     memory: join(scratch, "memory"),
     tasks: TASKS,
@@ -629,6 +631,16 @@ describe("a Builder session", () => {
     );
     expect(s.sent[3]).toContain("1 practice solve left.");
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 2, changed: true });
+  });
+
+  it("practises under the reference harness where asked, so the Builder buys that fact with its own solve", async () => {
+    // What the reference does on a released task is the Builder's to find out, and the host hands
+    // it no table of it (the plan's climb section, C5).
+    const s = await setup([edit, call("practice", { tasks: ["t-1"], under: "reference" }), finish]);
+    await session(s.request, s, s.walled);
+    expect(s.ran[0]).toEqual({ dir: s.request.reference, digest: s.digest });
+    expect(s.sent[2]).toContain("t-1 under the reference harness: pass. Solve s-3.");
+    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 1 });
   });
 
   it("is not given the correctness model a v1 state carries, whose battery holds hidden values", async () => {

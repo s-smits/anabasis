@@ -202,6 +202,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
   const build: BuildRequest = {
     id: "b-1",
     parent,
+    reference: starter.dir,
     states: join(scratch, "states"),
     memory: join(scratch, "memory"),
     tasks: [{ version: "p1", task: { taskId: "t-p1", family: "fixture", publicInput: { base: 7 } } }],

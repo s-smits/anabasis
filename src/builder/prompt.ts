@@ -44,6 +44,7 @@ import type { Contract } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
+import type { NetworkReach } from "../solve/command.ts";
 
 /** A practice task as the opening message lists it. */
 interface Listed {
@@ -123,9 +124,10 @@ const TRIED: Readonly<Record<Tried, string>> = {
 
 /** What the Builder's shell is told about its wall, after pi's own description. The command wall
  *  is the solver's, and the facts are the ones a solver's prompt gives of it
- *  (`src/solve/prompt.ts`, `environment`): the shell is the solver's `bash`, started in the home. */
-export const SHELL_WALLS =
-  " The command runs in your home directory, where harness/, practice/, resources.json, HARNESS.md and your notes are. It has network access, so a program the solver runs, and what that program needs, can be installed under harness/.toolchain. It can write your home directory, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.";
+ *  (`src/solve/prompt.ts`, `environment`), the network as the wall's probe found it
+ *  (`networkReach`): the shell is the solver's `bash`, started in the home. */
+export const shellWalls = (network: NetworkReach): string =>
+  ` The command runs in your home directory, where harness/, practice/, resources.json, HARNESS.md and your notes are. ${network === "reached" ? "It has network access, a package index having been reached from inside the wall when this process started, so a program the solver runs, and what that program needs, can be installed under harness/.toolchain." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be fetched, and a program the solver runs is one written here or already on the host."} It can write your home directory, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.`;
 
 /**
  * The last line of every tool result a Builder reads: the turn it is in, the session time used, the

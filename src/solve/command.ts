@@ -86,6 +86,23 @@ export interface Walled {
 /** The policies this process has probed and found to hold, by their hash: once a process. */
 const PROBED = new Set<string>();
 
+/**
+ * Whether a package index is reached from inside the wall: `reached` where a command run as a
+ * solver's fetched one when this process first asked, `unreached` where it did not. The solver's
+ * prompt said "commands have network access" whatever the host did: on the Linux host of
+ * 10 October the wall's commands get an empty environment and no resolver, 0 of 143 solves of t-10
+ * installed anything, and 26 of the 34 that ran out of turns had spent one on a pip install
+ * (its whole-run investigation, lanes 14 and 27). A sentence a host makes false is the host's to
+ * make true, so the prompt now says what the probe found.
+ */
+export type NetworkReach = "reached" | "unreached";
+/** The reach of each policy this process has probed, by its hash: once a process, and the promise
+ *  so that solves that start together wait on one probe. */
+const REACH = new Map<string, Promise<NetworkReach>>();
+const REACH_MARK = "ANA-NETWORK-REACHED";
+/** The index pip reads; curl first, and the resolver pip itself uses where curl is not on the host. */
+const REACH_COMMAND = `(curl -fsS -m 10 -o /dev/null https://pypi.org/simple/pip/ 2>/dev/null || python3 -c 'import urllib.request; urllib.request.urlopen("https://pypi.org/simple/pip/", timeout=10)' 2>/dev/null) && echo ${REACH_MARK}`;
+
 /** A solve's time: when its first turn started, null until it has, and how long the solve may be. */
 export interface SolveClock {
   started: number | null;
@@ -224,6 +241,26 @@ export function commandDirs(
     if (brings === "files" || errorCode(error) !== "ENOSPC") throw error;
     return { run: null, work: dirs.home, temp: dirs.home };
   }
+}
+
+/** The reach of the wall `wall` stands for, probed once a process (`NetworkReach`). The probe's
+ *  CPU is charged to no solve, and a probe that fails to run reads as unreached. */
+export function networkReach(wall: CommandWall): Promise<NetworkReach> {
+  const key = wall.base.policyHash;
+  const known = REACH.get(key);
+  if (known !== undefined) return known;
+  const probe = (async (): Promise<NetworkReach> => {
+    let out = "";
+    await runWalled({ ...wall, cpu: { seconds: 0, unmeasured: 0 } }, REACH_COMMAND, {
+      onData: (data) => {
+        out += data.toString();
+      },
+      timeout: 30,
+    });
+    return out.includes(REACH_MARK) ? "reached" : "unreached";
+  })().catch((): NetworkReach => "unreached");
+  REACH.set(key, probe);
+  return probe;
 }
 
 export async function runWalled(

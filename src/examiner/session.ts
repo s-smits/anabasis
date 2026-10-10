@@ -58,7 +58,15 @@ import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
-import { type CommandWall, type SolveDirs, solveDirs, type Walled, walledBase } from "../solve/command.ts";
+import {
+  type CommandWall,
+  type NetworkReach,
+  networkReach,
+  type SolveDirs,
+  solveDirs,
+  type Walled,
+  walledBase,
+} from "../solve/command.ts";
 import { codingTools } from "../solve/coding-tools.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { mountDiskCap } from "../verify/disk-cap.ts";
@@ -133,9 +141,10 @@ interface Desk {
 const SHOWN_CHARS = 20_000;
 const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
-/** What the Examiner's shell is told of its wall, after pi's own description of `bash`. */
-const SHELL_WALLS =
-  " The command runs in your home directory, which is yours for the session and empty at its start. It can write there, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. It has network access. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: a task enters it through propose_tasks alone.";
+/** What the Examiner's shell is told of its wall, after pi's own description of `bash`; the
+ *  network as the wall's probe found it (`networkReach`). */
+const shellWalls = (network: NetworkReach): string =>
+  ` The command runs in your home directory, which is yours for the session and empty at its start. It can write there, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: a task enters it through propose_tasks alone.`;
 
 /** An instance by what a solver and the checks read of it, whatever id it carries. */
 function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
@@ -344,13 +353,13 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     checks: request.checks.map(({ id }) => id),
     examples: request.examples.map(({ taskId }) => taskId),
   });
+  const walls = request.shell === undefined ? "" : shellWalls(await networkReach(request.shell));
   const shell =
     request.shell === undefined
       ? []
       : // SAFETY: pi's wrapper types its tools' parameters `any`; each is one of pi's definitions.
         (wrapToolDefinitions(codingTools(request.shell, ["bash", "read", "write"])) as AgentTool[]).map(
-          (each) =>
-            each.name === "bash" ? { ...each, description: `${each.description}${SHELL_WALLS}` } : each,
+          (each) => (each.name === "bash" ? { ...each, description: `${each.description}${walls}` } : each),
         );
   const tools = [
     proposeTool(desk),

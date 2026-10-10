@@ -62,7 +62,14 @@ import {
 } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "./answer.ts";
 import { codingTools, selectedCodingTools, type SolverTool, wallExec } from "./coding-tools.ts";
-import { type CommandWall, type SolveClock, solveDirs, usedSeconds, walledBase } from "./command.ts";
+import {
+  type CommandWall,
+  networkReach,
+  type SolveClock,
+  solveDirs,
+  usedSeconds,
+  walledBase,
+} from "./command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
 import { firstTurn, installedPrograms, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
 
@@ -242,6 +249,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
       limits,
       resources,
       programs: installedPrograms(harness.toolTree),
+      network: await networkReach(commandWall),
     });
     const used = { clock, turns: () => turns.length, modelTurns: limits.modelTurns };
     const tools = wrapToolDefinitions(defined.map((tool) => timed(tool, used)));

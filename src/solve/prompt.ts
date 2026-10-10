@@ -35,6 +35,7 @@ import type { JsonValue } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
+import type { NetworkReach } from "./command.ts";
 import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
 import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "./answer.ts";
 import { reserveSeconds } from "./command.ts";
@@ -59,6 +60,8 @@ export interface Told {
   readonly resources: number;
   /** The programs the harness installed, by the names that run them (`installedPrograms`). */
   readonly programs: readonly string[];
+  /** Whether a package index was reached from inside the wall (`networkReach`, `command.ts`). */
+  readonly network: NetworkReach;
 }
 
 /** The prompt a turn that ended without a submit is followed by (v1's built-starter.ts:67-68). */
@@ -96,7 +99,7 @@ function duty({ wallSeconds, limits, resources, guide }: Told): string {
 
 /** What the command wall is, as facts: each one something a solver would otherwise find out by
  *  running into it. */
-function environment({ limits, programs, wallSeconds }: Told): string {
+function environment({ limits, programs, wallSeconds, network }: Told): string {
   const volume =
     limits.diskBytes >= GIB
       ? `${String(Math.round((limits.diskBytes / GIB) * 10) / 10)} GiB`
@@ -107,7 +110,9 @@ function environment({ limits, programs, wallSeconds }: Told): string {
   return [
     `The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only ${ANSWER_FILE} is read as your answer, and only when you submit.`,
     "Commands and the file tools can write the home directory, /tmp and $TMPDIR, which is fresh for each command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
-    "Commands have network access, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
+    network === "reached"
+      ? "Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host."
+      : "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
     `The home directory and $TMPDIR share one volume of ${volume}.`,
     `A command runs for at most ${String(limits.shellDefaultSeconds)} seconds unless it names a longer timeout, and ${String(limits.shellMaxSeconds)} seconds is the longest it may name. One that would run into the last ${String(reserveSeconds(wallSeconds))} seconds of the solve time is cut there, so that its result still reaches you.`,
     "Nothing a command starts runs on after it returns: a background job ends with the command that started it.",

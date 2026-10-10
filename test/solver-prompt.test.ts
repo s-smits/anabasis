@@ -63,7 +63,7 @@ const TIME =
 const ENVIRONMENT = [
   "- The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only answer.json is read as your answer, and only when you submit.",
   "- Commands and the file tools can write the home directory, /tmp and $TMPDIR, which is fresh for each command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
-  "- Commands have network access, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
+  "- Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
   "- The home directory and $TMPDIR share one volume of 2 GiB.",
   "- A command runs for at most 300 seconds unless it names a longer timeout, and 900 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there, so that its result still reaches you.",
   "- Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
@@ -93,9 +93,20 @@ const TOLD: Told = {
   limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900, diskBytes: 2 * GIB },
   resources: 4,
   programs: [],
+  network: "reached",
 };
 
 describe("the solver's system prompt", () => {
+  it("says that nothing can be installed where the wall's commands reached no package index", () => {
+    // t-10 on 10 October: the prompt promised network access on a host whose wall has none, and
+    // 26 of the 34 solves that ran out of turns had spent one on a pip install.
+    const unreached = systemPrompt({ ...TOLD, network: "unreached" });
+    expect(unreached).toContain(
+      "- Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is.",
+    );
+    expect(unreached).not.toContain("can be installed into the home directory");
+  });
+
   it("is pi's under the Starter, with the duty, the working directory and the wall's facts", () => {
     expect(systemPrompt(TOLD)).toBe(
       [

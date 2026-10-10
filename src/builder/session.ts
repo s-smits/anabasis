@@ -71,7 +71,7 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import type { RefereeFinding } from "../review/referee.ts";
-import { type CommandWall, type SolveDirs, solveDirs, walledBase } from "../solve/command.ts";
+import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../solve/command.ts";
 import type { PublicResource } from "../solve/answer.ts";
 import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
@@ -531,7 +531,8 @@ export async function build(request: BuildRequest): Promise<Built> {
       limits: request.limits,
       cpu: { seconds: 0, unmeasured: 0 },
     };
-    return await session(request, dirs, (bench) => walledTools(bench, wall));
+    const network = await networkReach(wall);
+    return await session(request, dirs, (bench) => walledTools(bench, wall, network));
   } finally {
     await release();
     rmSync(dirs.host, { recursive: true, force: true });

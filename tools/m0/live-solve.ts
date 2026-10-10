@@ -43,7 +43,7 @@ import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { openDesk } from "#src/solve/answer.ts";
-import { solveDirs, walledBase } from "#src/solve/command.ts";
+import { networkReach, solveDirs, walledBase } from "#src/solve/command.ts";
 import { type Harness, openHarness, treeContent } from "#src/solve/harness.ts";
 import { firstTurn, installedPrograms, NUDGE, seedHome, systemPrompt } from "#src/solve/prompt.ts";
 import { type SolveRequest, solve, solverTools } from "#src/solve/run.ts";
@@ -222,6 +222,7 @@ async function shown(
       limits: LIMITS,
       resources: files,
       programs: installedPrograms(harness.toolTree),
+      network: await networkReach(wall),
     });
     return `${prompt}\n\ntools: ${tools.map(({ name }) => name).join(", ")}`;
   } finally {

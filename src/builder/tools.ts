@@ -71,12 +71,12 @@ import type { Diagnosis } from "../review/diagnoser.ts";
 import { callList, callsOf, callText, closingOf, solveOf } from "../review/trace.ts";
 import { openDesk, text, tool } from "../solve/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../solve/coding-tools.ts";
-import { type CommandWall, runWalled } from "../solve/command.ts";
+import { type CommandWall, type NetworkReach, networkReach, runWalled } from "../solve/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
 import { installedPrograms, systemPrompt } from "../solve/prompt.ts";
 import { clockText, solverTools } from "../solve/run.ts";
 import { memoryOverCapNotice } from "./memory.ts";
-import { SHELL_WALLS, type Tried } from "./prompt.ts";
+import { shellWalls, type Tried } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
 /** `harness/` frozen: a copy kept under its digest, what a solve would open it as, and the tools
@@ -677,6 +677,7 @@ function previewTool(bench: Bench, wall: CommandWall): AgentTool {
           limits: request.solve,
           resources: request.resources.length,
           programs: installedPrograms(harness.toolTree),
+          network: await networkReach({ ...wall, toolTree: harness.toolTree }),
         });
         const declared = tools.map(({ name, description }) => `- ${name}: ${description}`).join("\n");
         return text(
@@ -730,7 +731,7 @@ function resetTool(bench: Bench, wall: CommandWall): AgentTool {
 /** The tools that run on the command wall: pi's four, with what the Builder's shell is told of its
  *  wall, and the three that ask the host about `harness/`. Making them also gives a freeze its
  *  listing: every harness frozen from here on is asked for its tools under this wall. */
-export function walledTools(bench: Bench, wall: CommandWall): AgentTool[] {
+export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): AgentTool[] {
   const sample = bench.request.tasks[0];
   if (sample !== undefined) {
     bench.lists = async (harness) => (await harnessTools(harness, sample.task, wall)).map(({ name }) => name);
@@ -739,7 +740,7 @@ export function walledTools(bench: Bench, wall: CommandWall): AgentTool[] {
   const coding = wrapToolDefinitions(codingTools(wall, CODING_TOOLS)) as AgentTool[];
   return [
     ...coding.map((each) =>
-      each.name === "bash" ? { ...each, description: `${each.description}${SHELL_WALLS}` } : each,
+      each.name === "bash" ? { ...each, description: `${each.description}${shellWalls(network)}` } : each,
     ),
     checkTool(bench),
     previewTool(bench, wall),

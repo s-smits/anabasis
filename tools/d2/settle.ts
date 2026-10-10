@@ -44,7 +44,7 @@
  * file is what `tools/c/repaired.ts --labels` takes.
  *
  * With `--passes N` it is the other half of the person's reading, of the answers that passed
- * (`src/review/passes.ts`, the plan's row F25 until there is a Judge). Run once, it draws N of the
+ * (the plan's row F25 until there is a Judge). Run once, it draws N of the
  * comparison's passes by the comparison's id, so the draw stands before any is read, and writes
  * `passes/passes.json` under the same folder, one empty entry a drawn solve, with a packet each
  * beside it: the task with its hidden values, the public rules, the harness and the answer. A
@@ -57,10 +57,11 @@
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
 import { settleReading, toLabel } from "#src/builder/round.ts";
+import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
-import { refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
+import { passed, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -68,14 +69,7 @@ import { asRecord } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import {
-  PASS_LABELLED,
-  PASS_LABELS,
-  passesLabelled,
-  passesOf,
-  passLabels,
-  toRead,
-} from "#src/review/passes.ts";
+import { RULINGS } from "#src/review/agreement.ts";
 import { labelled } from "#src/review/rejections.ts";
 import { openCampaign, packNamed } from "./campaign.ts";
 import { type Campaign, validLines } from "./round.ts";
@@ -90,9 +84,15 @@ const OPTIONS = {
   all: { type: "boolean", default: false },
   passes: { type: "string" },
 } as const;
+/** A person's words on an answer that passed: a valid answer by the rules; not one, and the checks
+ *  passed it; unclear. A label changes no tally and no reading. */
+const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
+const PASS_LABELLED = "pass.labelled";
 
-/** A person's reading of comparison `session`'s passes: the draw on the first run, the record
- *  on the next, once every drawn answer carries a label. */
+/** A person's reading of comparison `session`'s passes: the draw on the first run, the record on
+ *  the next, once every drawn answer carries a label. The passes are the comparison's own solves
+ *  that passed, drawn by the comparison's id as the scored set is drawn, so the same draw comes
+ *  back whenever it is asked for. */
 function readPasses(campaign: Campaign, events: readonly LogEvent[], session: string, asked: string): number {
   const count = Number(asked);
   if (!Number.isInteger(count) || count < 1) {
@@ -100,32 +100,34 @@ function readPasses(campaign: Campaign, events: readonly LogEvent[], session: st
   }
   const dir = join(dirname(campaign.log), `settle-${session}`, "passes");
   const file = join(dir, "passes.json");
+  const solves = solvesIn(events);
+  const passes = solves.flatMap((solve) =>
+    solve.start.comparison === session && passed(solve) === true ? [solve.id] : [],
+  );
   if (existsSync(file)) {
-    const { labels, empty, mistyped } = passLabels(capturedJsonParse(readFileSync(file, "utf8")));
+    const entries = asRecord(capturedJsonParse(readFileSync(file, "utf8"))) ?? {};
+    const { labels, open } = labelled(entries, PASS_LABELS);
+    const mistyped = open.filter((solve) => entries[solve] !== "");
     if (mistyped.length > 0) {
       throw new Error(
         `${file} holds what is no label (${PASS_LABELS.join(", ")}) for ${plural(mistyped.length, "answer")}: ${mistyped.join(", ")}`,
       );
     }
-    if (empty.length > 0) {
+    if (open.length > 0) {
       console.log(
-        `${plural(empty.length, "answer")} still to read in ${file}; nothing is recorded until none is`,
+        `${plural(open.length, "answer")} still to read in ${file}; nothing is recorded until none is`,
       );
       return 0;
     }
-    const was = passesLabelled(events, session);
-    const record = was?.data ?? {
-      session,
-      of: passesOf(events, session).length,
-      labels: Object.fromEntries(labels),
-    };
-    if (was === null) append(campaign.log, PASS_LABELLED, record);
+    const was = events.findLast(({ kind, data }) => kind === PASS_LABELLED && data.session === session);
+    const record = was?.data ?? { session, of: passes.length, labels: Object.fromEntries(labels) };
+    if (was === undefined) append(campaign.log, PASS_LABELLED, record);
     console.log(
-      `${was === null ? "recorded" : `the passes of comparison ${session} are labelled already, and this is the record`}: ${capturedJsonStringify(record)}`,
+      `${was === undefined ? "recorded" : `the passes of comparison ${session} are labelled already, and this is the record`}: ${capturedJsonStringify(record)}`,
     );
     return 0;
   }
-  const drawn = toRead(events, session, count);
+  const drawn = draw(passes, Math.min(count, passes.length), `passes:${session}`);
   if (drawn.length === 0) {
     console.log(`comparison ${session} has no answer that passed`);
     return 0;
@@ -133,13 +135,12 @@ function readPasses(campaign: Campaign, events: readonly LogEvent[], session: st
   // The tasks an Examiner session wrote are in the log and in no pack.
   const tasks: readonly Task[] = [...writtenTasks(events), ...campaign.tasks];
   const verdicts = verdictsOf(events);
-  const harnesses = new Map(solvesIn(events).map((solve) => [solve.id, solve.end?.harness]));
   mkdirSync(dir, { recursive: true });
   for (const solve of drawn) {
     const verdict = verdicts.get(solve);
     const packet = {
       solve,
-      harness: harnesses.get(solve) ?? null,
+      harness: solves.find((each) => each.id === solve)?.end?.harness ?? null,
       task: tasks.find((task) => task.taskId === verdict?.task) ?? null,
       rules: campaign.contract.rules,
       answer: verdict?.answer ?? null,
@@ -151,7 +152,7 @@ function readPasses(campaign: Campaign, events: readonly LogEvent[], session: st
     `${capturedJsonStringify(Object.fromEntries(drawn.map((solve) => [solve, ""])), null, 2)}\n`,
   );
   console.log(
-    `${String(drawn.length)} of the ${plural(passesOf(events, session).length, "answer")} that passed in comparison ${session} to read in ${file}, a packet each beside it`,
+    `${String(drawn.length)} of the ${plural(passes.length, "answer")} that passed in comparison ${session} to read in ${file}, a packet each beside it`,
   );
   return 0;
 }
@@ -167,7 +168,7 @@ export async function settleCommand(args: readonly string[]): Promise<number> {
   const labelFile = join(dir, "labels.json");
   if (existsSync(labelFile)) {
     const file = capturedJsonParse(readFileSync(labelFile, "utf8"));
-    const { labels, open } = labelled(file);
+    const { labels, open } = labelled(file, RULINGS);
     const entries = asRecord(file) ?? {};
     const mistyped = open.filter((solve) => entries[solve] !== "");
     if (mistyped.length > 0) {

@@ -3,6 +3,7 @@
 // keeps a person's labels blind.
 import { describe, expect, it } from "bun:test";
 import type { LogEvent } from "../src/kernel/log.ts";
+import { RULINGS } from "../src/review/agreement.ts";
 import { drawn, labelled, rejections, repairReading } from "../src/review/rejections.ts";
 
 const at = "2026-10-08T00:00:00.000Z";
@@ -55,7 +56,7 @@ describe("a checker's refused answers", () => {
   });
 
   it("holds a label open until it is one of the three rulings", () => {
-    const { labels, open } = labelled({ a: "earned", b: "", c: "check-defect", d: "wrong answer" });
+    const { labels, open } = labelled({ a: "earned", b: "", c: "check-defect", d: "wrong answer" }, RULINGS);
     expect([...labels]).toEqual([
       ["a", "earned"],
       ["c", "check-defect"],

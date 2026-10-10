@@ -38,7 +38,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { agreement, clears } from "#src/review/agreement.ts";
+import { agreement, clears, RULINGS } from "#src/review/agreement.ts";
 import { drawn, labelled, rejections } from "#src/review/rejections.ts";
 import { openCampaign, stayAwake } from "../d2/campaign.ts";
 import { modelNamed, packControls, type Row, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
@@ -167,6 +167,7 @@ async function main(): Promise<void> {
   }
   const { labels, open } = labelled(
     existsSync(labelFile) ? capturedJsonParse(readFileSync(labelFile, "utf8")) : {},
+    RULINGS,
   );
 
   if (values.referee !== undefined) {

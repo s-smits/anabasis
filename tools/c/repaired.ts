@@ -38,6 +38,7 @@ import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
+import { RULINGS } from "#src/review/agreement.ts";
 import { labelled, repairReading } from "#src/review/rejections.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { checkProgram, packControls, readPack } from "../m0/stored-sweep.ts";
@@ -77,6 +78,7 @@ async function main(): Promise<number> {
     );
     const { labels } = labelled(
       values.labels === undefined ? {} : capturedJsonParse(readFileSync(values.labels, "utf8")),
+      RULINGS,
     );
     const reading = repairReading(rows, events, labels);
     console.log(capturedJsonStringify(reading, null, 2));

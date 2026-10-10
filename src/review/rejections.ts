@@ -97,15 +97,16 @@ export function drawn(events: readonly LogEvent[], count: number, seed: string):
   return draw(fails, count, seed);
 }
 
-/** A person's labels as their file holds them, a ruling a drawn solve, and the solves still to be
- *  labelled: any whose entry is not one of the three rulings. */
-export function labelled(file: JsonValue) {
-  const labels = new Map<string, Ruling>();
+/** A person's labels as their file holds them, a word a drawn solve, and the solves still to be
+ *  labelled: any whose entry is none of the `known` words, which are the three rulings of a
+ *  rejection unless the caller reads another kind of label (`settle.ts --passes`). */
+export function labelled<Word extends string>(file: JsonValue, known: readonly Word[]) {
+  const labels = new Map<string, Word>();
   const open: string[] = [];
   for (const [solve, value] of Object.entries(asRecord(file) ?? {})) {
-    const ruling = RULINGS.find((known) => known === value);
-    if (ruling === undefined) open.push(solve);
-    else labels.set(solve, ruling);
+    const word = known.find((each) => each === value);
+    if (word === undefined) open.push(solve);
+    else labels.set(solve, word);
   }
   return { labels, open };
 }

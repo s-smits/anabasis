@@ -24,7 +24,6 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
-import { toRead } from "../src/review/passes.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { openCampaign } from "../tools/d2/campaign.ts";
 import { closeCommand } from "../tools/d2/close.ts";
@@ -325,7 +324,9 @@ describe("a campaign run by its log", () => {
     await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
     const drawn = Object.keys(parseJsonAs<JsonObject>(readFileSync(passes, "utf8")));
     expect(drawn).toHaveLength(2);
-    expect(drawn).toEqual(toRead(read(join(REPO, ".ana", "d2", name, "log.jsonl")), "g-1", 2));
+    rmSync(passes);
+    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
+    expect(Object.keys(parseJsonAs<JsonObject>(readFileSync(passes, "utf8")))).toEqual(drawn);
     expect(
       readFileSync(join(REPO, ".ana", "d2", name, "settle-g-1", "passes", `${drawn[0]}.json`), "utf8"),
     ).toContain('"rules"');

@@ -222,14 +222,6 @@ export function patienceOf(events: readonly LogEvent[]): number {
   return isNumber(named) ? named : PATIENCE;
 }
 
-/** The campaign's trigger as its opening records it (`--trigger`, a term the opening keeps as a
- *  string), or `TRIGGER`. */
-export function triggerOf(events: readonly LogEvent[]): number {
-  const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.trigger;
-  const parsed = isString(named) ? Number(named) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : TRIGGER;
-}
-
 export function stopRule(events: readonly LogEvent[]) {
   const built = new Set(
     events.flatMap(({ kind, data }) =>
@@ -246,7 +238,11 @@ export function stopRule(events: readonly LogEvent[]) {
   );
   const setting = tallied.at(-1)?.data.setting;
   const from = (tallied.findLast(({ data }) => data.setting !== setting)?.index ?? -1) + 1;
-  const trigger = triggerOf(events);
+  // The campaign's trigger as its opening records it (`--trigger`, a term kept as a string), or
+  // `TRIGGER`.
+  const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.trigger;
+  const parsed = isString(named) ? Number(named) : Number.NaN;
+  const trigger = Number.isFinite(parsed) ? parsed : TRIGGER;
   /** The harnesses already compared with a reference that is not the starter. */
   const referenced = new Set<unknown>();
   /** Each pair of a harness and a reference, where it first reported and as it last read. */

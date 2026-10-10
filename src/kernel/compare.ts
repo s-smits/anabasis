@@ -167,7 +167,7 @@ export function signP(wins: number, losses: number): number {
 }
 
 /** A report's tally, where it holds one. */
-export function tallyOf(report: JsonObject): { readonly wins: number; readonly losses: number } | null {
+function tallyOf(report: JsonObject): { readonly wins: number; readonly losses: number } | null {
   const counts = asRecord(report.scored);
   return counts !== null && isNumber(counts.wins) && isNumber(counts.losses)
     ? { wins: counts.wins, losses: counts.losses }

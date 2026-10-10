@@ -473,10 +473,8 @@ function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn
           ...(decided.noise ? ["--noise"] : []),
           ...flag("solves", values.solves),
           ...flag("level", values.level),
-          // The trigger is the table's and no term of the comparison's start: it goes on the
-          // command whether the comparison is new or continued, so the admission's size reads
-          // what `decide` read (found by review, 11 October: left off, a campaign at 0.5 ran its
-          // comparisons under the command's 0.25).
+          // The trigger is the table's and no term of the start: it goes on the command, new or
+          // continued, so the admission reads what `decide` read (left off until 11 October).
           ...flag("trigger", values.trigger),
           ...plan.ladder.flatMap((rung) =>
             turns === null || rung < turns ? ["--budget", `turns=${String(rung)}`] : [],

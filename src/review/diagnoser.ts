@@ -68,9 +68,9 @@ interface DiagnosisCase {
 
 /** Where a cause lies: the harness, or one of two places that are not the harness's.
  *  diagnosis-tool.ts:52-62, with v1's bundle files folded into `harness`. */
-const OWNERS = ["harness", "public-rules", "solver"] as const;
+export const OWNERS = ["harness", "public-rules", "solver"] as const;
 
-type Owner = (typeof OWNERS)[number];
+export type Owner = (typeof OWNERS)[number];
 
 const OWNER_MEANING: Record<Owner, string> = {
   harness:

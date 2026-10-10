@@ -6,7 +6,7 @@
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { draftExam } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
-import { append, type LogEvent, read } from "../src/kernel/log.ts";
+import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import {
   existsSync,
   lstatSync,
@@ -62,7 +62,7 @@ function seeded(name: string): string[] {
 
 /** What a campaign's log holds of one kind, in order. */
 const of = (name: string, kind: string): JsonObject[] =>
-  read(join(REPO, ".ana", "d2", name, "log.jsonl")).flatMap((event: LogEvent) =>
+  read(join(REPO, ".ana", "d2", name, LOG_FILE)).flatMap((event: LogEvent) =>
     event.kind === kind ? [event.data] : [],
   );
 
@@ -134,13 +134,13 @@ describe("a campaign run by its log", () => {
       },
     ]);
     // The ending is the log's last event, and run again the command says it and adds nothing.
-    const log = read(join(REPO, ".ana", "d2", name, "log.jsonl"));
+    const log = read(join(REPO, ".ana", "d2", name, LOG_FILE));
     expect(log.at(-1)).toMatchObject({
       kind: "campaign.ended",
       data: { ending: "no-room", reference: "starter" },
     });
     expect(await harnessBuilder(flags, seats)).toMatchObject({ move: "end", ending: "no-room" });
-    expect(read(join(REPO, ".ana", "d2", name, "log.jsonl"))).toHaveLength(log.length);
+    expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(log.length);
     expect(strayed).toEqual([]);
   });
 
@@ -149,7 +149,7 @@ describe("a campaign run by its log", () => {
     // campaign opened on a tree at 0.10 and run on from one at 0.20 changed its test (#175).
     const name = `${STEM}-level`;
     const flags = seeded(name);
-    const log = join(REPO, ".ana", "d2", name, "log.jsonl");
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
     append(log, OPENED, {
       budget: null,
       limit: null,
@@ -290,6 +290,41 @@ describe("a campaign run by its log", () => {
       { session: "g-1", of: 5, labels: { [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "wrong" } },
     ]);
 
+    // A person reads the Diagnoser's accounts the same way: the fails it diagnosed are drawn by
+    // the contract's hash, the packet holds the case and no diagnosis, and the labels are
+    // recorded once. The rehearsal's Builder practises nothing and its seats script no reviewer,
+    // so two diagnoses are written here as a Diagnoser writes them, naming two of g-1's solves:
+    // a live Diagnoser reads practice solves only, and the draw reads solve ids.
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const [one = "", two = ""] = of(name, "solve.started").flatMap(({ solve }) =>
+      isString(solve) ? [solve] : [],
+    );
+    append(log, "diagnosis.recorded", {
+      solve: one,
+      owner: "solver",
+      cause: "It guessed.",
+      confidence: "low",
+    });
+    append(log, "diagnosis.recorded", {
+      solve: two,
+      owner: "harness",
+      cause: "The guide.",
+      confidence: "low",
+    });
+    const diagnoses = join(REPO, ".ana", "d2", name, "settle-diagnoses", "diagnoses", "diagnoses.json");
+    await settleCommand([...pack, "--diagnoses", "5"]);
+    const entries = parseJsonAs<JsonObject>(readFileSync(diagnoses, "utf8"));
+    expect(Object.keys(entries).toSorted()).toEqual([one, two].toSorted());
+    const packet = readFileSync(
+      join(REPO, ".ana", "d2", name, "settle-diagnoses", "diagnoses", `${one}.json`),
+      "utf8",
+    );
+    expect(packet).toContain('"rules"');
+    expect(packet).not.toContain("It guessed.");
+    writeFileSync(diagnoses, JSON.stringify({ [one]: "harness", [two]: "harness" }));
+    await settleCommand([...pack, "--diagnoses", "5"]);
+    expect(of(name, "diagnosis.labelled")).toMatchObject([{ of: 2 }]);
+
     // What the campaign hands over: the promoted harness as a folder that stands by itself, the
     // public rules, and the closing report. It is written outside the repository and once.
     const to = join(root, "handover");
@@ -319,6 +354,9 @@ describe("a campaign run by its log", () => {
       `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2 at the full limit. At the full limit (g-2) it won 5, lost 0 and tied 0`,
     );
     expect(report).toContain("| g-1 |");
+    expect(report).toContain(
+      "Diagnoses: the Diagnoser named the solver in 1 of 2 diagnoses; a person labelled 2 blind and agreed with 1.",
+    );
     expect(report).toContain("The campaign has not ended");
     // No task is named in it, and no check.
     expect(report).not.toContain("t-1");
@@ -326,7 +364,7 @@ describe("a campaign run by its log", () => {
 
     // The harness solves a task from where it was handed over, outside the campaign's folder: the
     // solve is recorded in a log of its own under the campaign, and the campaign's log is as it was.
-    const before = read(join(REPO, ".ana", "d2", name, "log.jsonl")).length;
+    const before = read(join(REPO, ".ana", "d2", name, LOG_FILE)).length;
     const trial = join(root, "handover-solved");
     expect(closeCommand([...pack, "--to", trial, "--solve", "no-such-task"])).rejects.toThrow(
       "--solve no-such-task: the campaign holds no task by that id",
@@ -337,11 +375,11 @@ describe("a campaign run by its log", () => {
       scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed),
     );
     expect(solved).toMatchObject({ harness: handed.harness, solved: "pass" });
-    const trialled = read(join(REPO, ".ana", "d2", name, "handover", "log.jsonl"));
+    const trialled = read(join(REPO, ".ana", "d2", name, "handover", LOG_FILE));
     expect(trialled.filter(({ kind }) => kind === "solve.finished")).toMatchObject([
       { data: { ending: { outcome: "pass" }, harness: handed.harness } },
     ]);
-    expect(read(join(REPO, ".ana", "d2", name, "log.jsonl"))).toHaveLength(before);
+    expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(before);
     expect(strayed).toEqual([]);
   });
 
@@ -383,7 +421,7 @@ describe("a campaign run by its log", () => {
       ending: "operator",
       why: "the operator's word: enough for today",
     });
-    const log = read(join(REPO, ".ana", "d2", name, "log.jsonl"));
+    const log = read(join(REPO, ".ana", "d2", name, LOG_FILE));
     const at = log.findIndex(({ kind }) => kind === "campaign.word");
     expect(log.at(-1)).toMatchObject({ kind: "campaign.ended", data: { ending: "operator", answers: [at] } });
     expect(of(name, "campaign.move").map(({ move }) => move)).toEqual([
@@ -531,7 +569,7 @@ describe("a campaign run by its log", () => {
     expect(await harnessBuilder([...flags, "--prompt", prompt, "--dry-run"], seats)).toMatchObject({
       move: "draft",
     });
-    expect(existsSync(join(folder, "log.jsonl"))).toBe(false);
+    expect(existsSync(join(folder, LOG_FILE))).toBe(false);
 
     // A campaign that opens from a prompt has no folder before its opening, which makes one.
     const fresh = `${STEM}-fresh`;

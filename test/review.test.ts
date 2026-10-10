@@ -12,14 +12,14 @@ import {
 } from "@earendil-works/pi-ai";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
-import { append, type EventKind, read } from "../src/kernel/log.ts";
+import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import type { Task, Verdict } from "../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { diagnose } from "../src/review/diagnoser.ts";
-import { agreement, clears } from "../src/review/agreement.ts";
+import { agreement, clears, diagnosesAgreement } from "../src/review/agreement.ts";
 import {
   editedPassage,
   PROBE_BUDGET,
@@ -428,6 +428,38 @@ describe("the Referee's agreement with hand labels", () => {
     const noDefects = agreement(events, new Map([["c", "earned"]] as const));
     expect(noDefects.caught).toBeNull();
     expect(clears(noDefects, { fails: 1, caught: 0, voided: 1 })).toBe(false);
+  });
+
+  it("counts the Diagnoser's lean, and its agreement with a person's blind labels of its owners", () => {
+    // Eight of eight diagnoses on 10 October named the solver, one for an engine the Starter
+    // lacked: the lean is what the labels measure, and a diagnosis enters no verdict.
+    const diagnosed = (solve: string, owner: string): LogEvent => ({
+      at,
+      kind: "diagnosis.recorded",
+      data: { solve, owner, cause: "x", confidence: "low" },
+    });
+    const log: LogEvent[] = [
+      diagnosed("a", "solver"),
+      diagnosed("b", "solver"),
+      diagnosed("c", "harness"),
+      { at, kind: "diagnosis.recorded", data: { solve: "d", abstain: "no contrast" } },
+    ];
+    const measured = diagnosesAgreement(
+      log,
+      new Map([
+        ["a", "harness"],
+        ["b", "solver"],
+        ["c", "harness"],
+        ["d", "solver"],
+        ["e", "unclear"],
+      ] as const),
+    );
+    // d abstained and e was never diagnosed: neither is a labelled diagnosis.
+    expect(measured).toEqual({ recorded: 3, solver: 2, labelled: 3, agreed: 2, undiagnosed: ["d", "e"] });
+    expect(diagnosesAgreement(log, new Map([["a", "unclear"]] as const))).toMatchObject({
+      labelled: 0,
+      agreed: 0,
+    });
   });
 });
 

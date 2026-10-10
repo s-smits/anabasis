@@ -108,6 +108,7 @@ const EVENT_KINDS = [
   "anchor.drawn",
   "anchor.scored",
   "pass.labelled",
+  "diagnosis.labelled",
 ] as const;
 
 export type EventKind = (typeof EVENT_KINDS)[number];

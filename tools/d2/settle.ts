@@ -54,23 +54,37 @@
  * entry that is neither empty nor one of the three is refused by name; an empty one is still to
  * be read, and nothing is recorded until none is.
  *
+ * With `--diagnoses N` it is the third reading, of the Diagnoser's accounts of practice fails
+ * (the plan's climb section, C4). Run once, it draws N of the campaign's diagnosed practice
+ * solves by the campaign's name, so the draw stands before any is read, and writes
+ * `diagnoses/diagnoses.json` under `settle-diagnoses/`, one empty entry a drawn solve, with a
+ * packet each beside it: the public task, the public rules, the answer, the guide the solve ran
+ * under and its trace. A packet holds no diagnosis. A person writes `harness`, `public-rules`,
+ * `solver` or `unclear` into each entry, as the Diagnoser's owners read. Run again with every
+ * entry filled, it records the labels once (`diagnosis.labelled`), which changes no tally and
+ * no reading: a diagnosis is the Builder's lead and enters no verdict, and what the labels
+ * measure is its lean (`diagnosesAgreement`): of eight diagnoses with real models on 10 October,
+ * all eight named the solver, one of them for an engine the Starter lacked. `--session` is not
+ * read for it, since a diagnosis belongs to a practice solve and no comparison.
+ *
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
 import { toLabel } from "#src/builder/comparison.ts";
 import { settleReading } from "#src/builder/round.ts";
 import { draw } from "#src/kernel/compare.ts";
+import { contractHash } from "#src/kernel/contract.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
-import { passed, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
+import { passed, practiceRan, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord } from "#src/meta/json-shape.ts";
+import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { RULINGS } from "#src/review/agreement.ts";
+import { DIAGNOSIS_LABELS, RULINGS } from "#src/review/agreement.ts";
 import { labelled } from "#src/review/rejections.ts";
 import { openCampaign, packNamed } from "./campaign.ts";
 import { type Campaign, validLines } from "./round.ts";
@@ -84,11 +98,14 @@ const OPTIONS = {
   session: { type: "string" },
   all: { type: "boolean", default: false },
   passes: { type: "string" },
+  diagnoses: { type: "string" },
 } as const;
 /** A person's words on an answer that passed: a valid answer by the rules; not one, and the checks
  *  passed it; unclear. A label changes no tally and no reading. */
 const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
 const PASS_LABELLED = "pass.labelled";
+const DIAGNOSIS_LABELLED = "diagnosis.labelled";
+const DIAGNOSES = "diagnoses";
 
 /** A person's reading of comparison `session`'s passes: the draw on the first run, the record on
  *  the next, once every drawn answer carries a label. The passes are the comparison's own solves
@@ -106,20 +123,8 @@ function readPasses(campaign: Campaign, events: readonly LogEvent[], session: st
     solve.start.comparison === session && passed(solve) === true ? [solve.id] : [],
   );
   if (existsSync(file)) {
-    const entries = asRecord(capturedJsonParse(readFileSync(file, "utf8"))) ?? {};
-    const { labels, open } = labelled(entries, PASS_LABELS);
-    const mistyped = open.filter((solve) => entries[solve] !== "");
-    if (mistyped.length > 0) {
-      throw new Error(
-        `${file} holds what is no label (${PASS_LABELS.join(", ")}) for ${plural(mistyped.length, "answer")}: ${mistyped.join(", ")}`,
-      );
-    }
-    if (open.length > 0) {
-      console.log(
-        `${plural(open.length, "answer")} still to read in ${file}; nothing is recorded until none is`,
-      );
-      return 0;
-    }
+    const labels = labelsIn(file, PASS_LABELS);
+    if (labels === null) return 0;
     const was = events.findLast(({ kind, data }) => kind === PASS_LABELLED && data.session === session);
     const record = was?.data ?? { session, of: passes.length, labels: Object.fromEntries(labels) };
     if (was === undefined) append(campaign.log, PASS_LABELLED, record);
@@ -158,9 +163,97 @@ function readPasses(campaign: Campaign, events: readonly LogEvent[], session: st
   return 0;
 }
 
+/** The labels a file holds, refused where an entry is neither empty nor a known word, and said to
+ *  be still open where one is empty: nothing is recorded until none is. */
+function labelsIn<Word extends string>(
+  file: string,
+  known: readonly Word[],
+): ReadonlyMap<string, Word> | null {
+  const entries = asRecord(capturedJsonParse(readFileSync(file, "utf8"))) ?? {};
+  const { labels, open } = labelled(entries, known);
+  const mistyped = open.filter((solve) => entries[solve] !== "");
+  if (mistyped.length > 0) {
+    throw new Error(
+      `${file} holds what is no label (${known.join(", ")}) for ${plural(mistyped.length, "answer")}: ${mistyped.join(", ")}`,
+    );
+  }
+  if (open.length > 0) {
+    console.log(
+      `${plural(open.length, "answer")} still to read in ${file}; nothing is recorded until none is`,
+    );
+    return null;
+  }
+  return labels;
+}
+
+/** A person's reading of the campaign's diagnosed practice fails: the draw on the first run, the
+ *  record on the next. The packet holds the case and no diagnosis, so the label is blind. */
+function readDiagnoses(campaign: Campaign, events: readonly LogEvent[], asked: string): number {
+  const count = Number(asked);
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error(`--diagnoses ${asked}: the diagnoses to read are a whole number of at least one`);
+  }
+  const dir = join(dirname(campaign.log), `settle-${DIAGNOSES}`, DIAGNOSES);
+  const file = join(dir, "diagnoses.json");
+  const diagnosed = events.flatMap(({ kind, data }) =>
+    kind === "diagnosis.recorded" && isString(data.solve) && isString(data.owner) ? [data.solve] : [],
+  );
+  if (existsSync(file)) {
+    const labels = labelsIn(file, DIAGNOSIS_LABELS);
+    if (labels === null) return 0;
+    const was = events.findLast(({ kind }) => kind === DIAGNOSIS_LABELLED);
+    const record = was?.data ?? { of: diagnosed.length, labels: Object.fromEntries(labels) };
+    if (was === undefined) append(campaign.log, DIAGNOSIS_LABELLED, record);
+    console.log(
+      `${was === undefined ? "recorded" : "the diagnoses are labelled already, and this is the record"}: ${capturedJsonStringify(record)}`,
+    );
+    return 0;
+  }
+  const drawn = draw(
+    diagnosed,
+    Math.min(count, diagnosed.length),
+    `${DIAGNOSES}:${contractHash(campaign.contract)}`,
+  );
+  if (drawn.length === 0) {
+    console.log("the campaign holds no diagnosed practice fail");
+    return 0;
+  }
+  const tasks: readonly Task[] = [...writtenTasks(events), ...campaign.tasks];
+  const verdicts = verdictsOf(events);
+  const ran = new Map(practiceRan(events).map((solve) => [solve.id, solve]));
+  mkdirSync(dir, { recursive: true });
+  for (const solve of drawn) {
+    const verdict = verdicts.get(solve);
+    const packet = {
+      solve,
+      harness: ran.get(solve)?.under.harness ?? null,
+      task: tasks.find((task) => task.taskId === verdict?.task) ?? null,
+      rules: campaign.contract.rules,
+      answer: verdict?.answer ?? null,
+      // The solve's trace, as the Diagnoser read it: a released task's, which the Builder reads too.
+      trace: events.flatMap(({ kind, data }) =>
+        (kind === "solve.turn" || kind === "solve.call") && data.solve === solve ? [{ kind, ...data }] : [],
+      ),
+    };
+    writeFileSync(join(dir, `${solve}.json`), `${capturedJsonStringify(packet, null, 2)}\n`);
+  }
+  writeFileSync(
+    file,
+    `${capturedJsonStringify(Object.fromEntries(drawn.map((solve) => [solve, ""])), null, 2)}\n`,
+  );
+  console.log(
+    `${String(drawn.length)} of the ${plural(diagnosed.length, "diagnosed practice fail")} to read in ${file}, a packet each beside it`,
+  );
+  return 0;
+}
+
 export async function settleCommand(args: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { session } = values;
+  if (values.diagnoses !== undefined) {
+    const campaign = await openCampaign(packNamed(values));
+    return readDiagnoses(campaign, read(campaign.log), values.diagnoses);
+  }
   if (session === undefined) throw new Error("name --session, the comparison whose rejections are settled");
   const campaign = await openCampaign(packNamed(values, " and --session"));
   const events = read(campaign.log);

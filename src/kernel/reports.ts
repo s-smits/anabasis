@@ -38,7 +38,7 @@ interface Reported {
 /** What a task's author may hear of it: that one of the two harnesses won it, that it was a tie
  *  between valid answers, that no solve of the last comparison gave a valid answer, or that a
  *  rejection of an answer to it is not settled. Never which harness, and never a count. */
-export type Outcome = "won" | "tie" | "no-valid-answer" | "disputed" | "exhausted";
+export type Outcome = "won" | "tie" | "no-valid-answer" | "disputed" | "exhausted" | "earlier-setting";
 
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
  *  (`billedFor`), and what each solve is held at before it starts. */
@@ -469,25 +469,35 @@ export function unansweredTwice(events: readonly LogEvent[]): string[] {
 
 /**
  * The outcome of each task some comparison scored or set aside, by task version, from the last
- * comparison that did. The plan lets a task's author hear this and no more (`docs/plan.md`, Phase
- * 2): without a stronger solve the author would otherwise hear nothing, and a difficulty zone or a
- * count is what v1 found an author writes towards. A task no comparison has scored has no outcome.
- * A tie with a valid answer in it is a tie between valid answers on both sides, since a task ties
- * when both harnesses gave as many. A tie the test's own solves left without a valid answer is
- * still no "no valid answer" where another solve of the comparison gave one (`answered`).
+ * comparison that did under the setting the last report was made under. The plan lets a task's
+ * author hear this and no more (`docs/plan.md`, Phase 2): without a stronger solve the author
+ * would otherwise hear nothing, and a difficulty zone or a count is what v1 found an author
+ * writes towards. A task no comparison has scored has no outcome. A tie with a valid answer in it
+ * is a tie between valid answers on both sides, since a task ties when both harnesses gave as
+ * many. A tie the test's own solves left without a valid answer is still no "no valid answer"
+ * where another solve of the comparison gave one (`answered`).
+ *
+ * An outcome is of a setting: on 10 October t-10's five tasks tied at 10 turns and read "won" at
+ * 3 without a byte of them changing, and the Examiner that heard "won" was told no budget. A task
+ * whose last report stands under another setting than the last report's is `earlier-setting`: it
+ * was compared, and not under the budget the campaign now compares at.
  */
 export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
   const outcomes = new Map<string, Outcome>();
   const spent = new Set(exhausted(events));
-  for (const report of lastReports(events)) {
+  const reports = lastReports(events);
+  const setting = reports.at(-1)?.data.setting;
+  for (const report of reports) {
+    const now = report.data.setting === setting;
     const valid = answered(events, report.session);
     for (const pair of pairsReported(events, report)) {
       const won = pairings(pair);
       const tied = valid.has(pair.task) ? "tie" : "no-valid-answer";
-      outcomes.set(pair.task, spent.has(pair.task) ? "exhausted" : won.fresh === won.old ? tied : "won");
+      const outcome = spent.has(pair.task) ? "exhausted" : won.fresh === won.old ? tied : "won";
+      outcomes.set(pair.task, now ? outcome : "earlier-setting");
     }
     const aside = Array.isArray(report.data.aside) ? report.data.aside.filter(isString) : [];
-    for (const task of aside) outcomes.set(task, "disputed");
+    for (const task of aside) outcomes.set(task, now ? "disputed" : "earlier-setting");
   }
   return outcomes;
 }

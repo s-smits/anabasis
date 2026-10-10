@@ -418,6 +418,50 @@ describe("the outcome an Examiner hears of a task", () => {
     );
   });
 
+  it("is of the setting the last comparison was made under: a task compared under an earlier one only says so", () => {
+    // t-10 on 10 October: five tasks tied at 10 turns and read "won" at 3 without changing.
+    const shorter = (task: string, harness: string): Condition => {
+      const ran = condition(task, harness);
+      return { ...ran, limits: { ...ran.limits, modelTurns: 3 } };
+    };
+    const under = (task: string, harness: string, valid: readonly boolean[]) => {
+      const ran = shorter(task, harness);
+      return [
+        event("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) }),
+        ...valid.flatMap((each) => {
+          solves += 1;
+          const solve = `s-${String(solves)}`;
+          return [
+            event("solve.started", { solve, condition: conditionId(ran), comparison: "b-2" }),
+            event("solve.finished", {
+              solve,
+              ending: each ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+              billed: 2,
+            }),
+          ];
+        }),
+      ];
+    };
+    const shortened = [
+      ...log,
+      ...under("tied", "h1", [F, F]),
+      ...under("tied", "h2", [P, P]),
+      reported("b-2", "no-step", "h2", {
+        ...terms,
+        setting: settingId(shorter("any", "any")),
+        versions: ["tied"],
+      }),
+    ];
+    expect(outcomesOf(shortened)).toEqual(
+      new Map([
+        ["won", "earlier-setting"],
+        ["tied", "won"],
+        ["unsolved", "earlier-setting"],
+        ["aside", "earlier-setting"],
+      ]),
+    );
+  });
+
   it("is no 'no valid answer' where a solve outside the test answered: the starter, or the reference again", () => {
     // The test's own four solves of the task were all rejected. The reference harness's third
     // solve, made to read it against itself, was valid, and on another task the starter's was.

@@ -354,7 +354,12 @@ flags.
 The last row is the Harness Builder's controller. It asks `decide` for the one move that follows,
 prints it, makes it, and reads the log again. `--dry-run` prints the move and makes none,
 `--moves N` makes at most that many, and `--unattended` is the operator's word, given once, for
-the freeze and the promotion (section 3). Its budget is one total: each move's cap is what is
+the freeze and the promotion (section 3). Without it a campaign still runs once every fault of
+its checks is admitted: a reading with no fault left stands by itself, and the freeze is the
+operator's word over a reading that has faults; and a step read twice is then reported and not
+promoted, and the campaign waits there for `promote.ts`. To end a campaign that runs at a move
+of your choosing, leave it a word (`tools/d2/word.ts --stop`): `--moves` counts moves, which the
+table names as it goes. Its budget is one total: each move's cap is what is
 left of `--budget` once every billed dollar in the log is taken off, and the campaign ends on its
 budget where less is left than one solve is held at, or than the next comparison would bill by
 what the last one under its setting did (`afforded`, `src/builder/decide.ts`): a comparison the
@@ -758,7 +763,9 @@ What holds in all of them:
    (`bun run runs launch --dry-run`), a replay for a changed reader (`bun run runs replay`), a
    rehearsal over a seed for a changed round (`bun run runs seed`, `bun run runs rehearse`).
 3. **Put one prediction on record before the first solve** (`--predict`), written so that a
-   recorded count settles it. One written after the first solve started is a description.
+   recorded count settles it. One written after the first solve started is a description. The
+   campaign command takes no `--predict`, since its comparisons are the table's: a prediction for
+   a campaign is written in the ledger of the session that launches it, before the first solve.
 4. **One or two rounds at a time on one host.** A wall counts the clock, and a loaded host moves
    every solve's time.
 5. **Never open, print or copy the file passed as `--env-file`**, and name no account or

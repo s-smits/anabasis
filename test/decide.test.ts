@@ -198,8 +198,13 @@ describe("a word the operator left", () => {
 describe("what is built and what is compared", () => {
   it("builds while no session has left a harness that is not the reference", () => {
     expect(move(SET_UP)).toMatchObject({ move: "build" });
-    // A session that left the harness as it was leaves nothing to compare.
-    expect(move([...SET_UP, built("b-1", "start", { changed: false })])).toMatchObject({ move: "build" });
+    // A session that left the harness as it was, having practised on nothing, leaves nothing to
+    // compare and had nothing to work on: the tasks change before another session is paid for.
+    expect(move([...SET_UP, built("b-1", "start", { changed: false })])).toMatchObject({
+      move: "examine",
+      room: true,
+      why: "Builder session b-1 left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for",
+    });
   });
 
   it("compares the first harness after one session, with the reference read against itself", () => {

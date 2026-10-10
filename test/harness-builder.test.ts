@@ -166,18 +166,23 @@ const of = (name: string, kind: string): JsonObject[] =>
   );
 
 describe("a campaign run by its log", () => {
-  it("runs from set-up to the stop rule's ending on one command, with every move on record", async () => {
+  it("runs from set-up to an ending on one command, with every move on record: a session with nothing to work on sends it to the Examiner", async () => {
     layOut();
     const name = `${STEM}-idle`;
-    const flags = seeded(name);
+    // A patience of two, so that the ending is reached in two idle Examiner sessions.
+    const flags = [...seeded(name), "--patience", "2"];
     const strayed: string[] = [];
     const solves = scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed);
-    // A Builder that finishes with the harness as it was: three such sessions are the stop rule.
+    // A Builder that finishes with the harness as it was, having practised on nothing: it had
+    // nothing to work on, which counts nothing towards the stop and sends the table to the
+    // Examiner for tasks that leave room. An Examiner that holds out none, as many times as the
+    // campaign's patience, ends it on its room.
     const seats: Seats = {
       seated: (campaign, given) => ({
         ...solves(campaign, given),
         builder: scripted([["finish", { note: "Nothing to change." }]]),
       }),
+      examine: (request) => examine({ ...request, ...scripted([["finish", { note: "Nothing to add." }]]) }),
     };
     // The host is loaded at the first two looks: a move that solves waits, and the others do not.
     const looks: number[] = [];
@@ -194,33 +199,34 @@ describe("a campaign run by its log", () => {
     expect(of(name, "campaign.opened")).toEqual([]);
 
     const ending = await harnessBuilder([...flags, "--practice", "2"], { ...seats, host });
-    // Reading the exam and setting the tasks apart asked the host nothing. The first session
+    // Reading the exam and setting the tasks apart asked the host nothing. The one session
     // looked three times: twice at a loaded host, where it said so and waited, and once at a
-    // quiet one. The two sessions after it looked once each.
-    expect(looks).toHaveLength(5);
+    // quiet one. An Examiner session solves nothing and looks not at all.
+    expect(looks).toHaveLength(3);
     expect(ending).toEqual({
       move: "end",
-      ending: "stop",
-      why: "3 moves in a row could have shown a gain and showed none: the plan stops the campaign at three",
+      ending: "no-room",
+      why: "2 Examiner sessions in a row held out no task (Builder session b-1 left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for): the tasks could not be made to leave room",
     });
-    // The exam was read, the tasks set apart, and three sessions ran, each from the starter.
     expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
       ["prepare", null],
       ["build", "b-1"],
-      ["build", "b-2"],
-      ["build", "b-3"],
+      ["examine", "x-1"],
+      ["examine", "x-2"],
     ]);
     expect(of(name, "checker.read")).toHaveLength(1);
-    expect(of(name, "build.finished").map(({ changed }) => changed)).toEqual([false, false, false]);
+    expect(of(name, "build.finished").map(({ changed }) => changed)).toEqual([false]);
     expect(of(name, "solve.started")).toEqual([]);
-    // It runs by what it was opened with: no budget under a rehearsal's seats, and no limit named.
+    // It runs by what it was opened with: no budget under a rehearsal's seats, no limit named, and
+    // the patience it was given.
     expect(of(name, "campaign.opened")).toEqual([
       {
         budget: null,
         limit: null,
         ladder: [],
         sessions: 3,
+        patience: 2,
         seats: { builder: null, examiner: null, reviewer: null },
         terms: { practice: "2" },
       },
@@ -229,16 +235,10 @@ describe("a campaign run by its log", () => {
     const log = read(join(REPO, ".ana", "d2", name, "log.jsonl"));
     expect(log.at(-1)).toMatchObject({
       kind: "campaign.ended",
-      data: { ending: "stop", reference: "starter" },
+      data: { ending: "no-room", reference: "starter" },
     });
-    expect(await harnessBuilder(flags, seats)).toMatchObject({ move: "end", ending: "stop" });
+    expect(await harnessBuilder(flags, seats)).toMatchObject({ move: "end", ending: "no-room" });
     expect(read(join(REPO, ".ana", "d2", name, "log.jsonl"))).toHaveLength(log.length);
-    // Past the stop rule on the operator's reason, one more session runs.
-    const past = await harnessBuilder([...flags, "--past-stop", "a path test", "--moves", "1"], seats);
-    expect(past).toMatchObject({ move: "build" });
-    // A rehearsal's seats are exempt from the admission, which is where a paid session's override
-    // is logged: here the session runs, and the log holds its move.
-    expect(of(name, "campaign.move").at(-1)).toMatchObject({ move: "build", session: "b-4" });
     expect(strayed).toEqual([]);
   });
 
@@ -384,7 +384,10 @@ describe("a campaign run by its log", () => {
     );
     expect(readFileSync(join(to, "RULES.md"), "utf8")).toContain("- R1: The answer is the base times six.");
     const report = readFileSync(join(to, "REPORT.md"), "utf8");
-    expect(report).toContain(`harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2`);
+    // The step is named with the budget it was read at and the reading at the full limit beside it.
+    expect(report).toContain(
+      `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2 at the full limit. At the full limit (g-2) it won 5, lost 0 and tied 0`,
+    );
     expect(report).toContain("| g-1 |");
     expect(report).toContain("The campaign has not ended");
     // No task is named in it, and no check.

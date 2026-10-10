@@ -55,7 +55,12 @@ const SETTING = settingId(condition("any", "any"));
 let solves = 0;
 /** Solves of `task` under `harness` made for `comparison`, one an entry: true for a valid answer,
  *  false for a rejected one, and a fail's kind for a solve that ended so. */
-function solved(comparison: string, task: string, harness: string, valid: readonly (boolean | string)[]) {
+function solved(
+  comparison: string | undefined,
+  task: string,
+  harness: string,
+  valid: readonly (boolean | string)[],
+) {
   const ran = condition(task, harness);
   const id = conditionId(ran);
   return [
@@ -64,7 +69,7 @@ function solved(comparison: string, task: string, harness: string, valid: readon
       solves += 1;
       const solve = `s-${String(solves)}`;
       return [
-        event("solve.started", { solve, condition: id, comparison }),
+        event("solve.started", { solve, condition: id, ...keyIfDefined("comparison", comparison) }),
         event("solve.finished", {
           solve,
           ending:
@@ -150,6 +155,8 @@ describe("the stop rule", () => {
 
   it("counts under one setting: what was compared under an earlier one is cut, with all before it", () => {
     const earlier = [
+      event("build.started", { session: "b-0" }),
+      ...solved(undefined, "p1", "h2", [false]),
       session("b-0", "h2", { changed: false }),
       ...sessions,
       flat("b-1", "h2", { setting: "s1" }),
@@ -189,12 +196,30 @@ describe("the stop rule", () => {
     });
   });
 
-  it("counts a session that left its harness as it was, in its place, and none that was killed or crashed", () => {
-    const idle = (id: string, more: JsonObject = {}) => session(id, "h2", { changed: false, ...more });
-    const log = [session("b-1", "h2"), flat("b-1", "h2"), idle("b-2"), idle("b-3")];
+  it("counts a session that left its harness as it was where a practice solve of its failed, in its place, and none that was killed or crashed", () => {
+    // A session that was shown a failure and declined it: a practice solve of its own, a fail,
+    // between its start and its end. One whose every practice solve passed had nothing to work on,
+    // which is the supply's fault: all ten campaigns of 9 and 10 October stopped on three such.
+    const idle = (id: string, shown: readonly boolean[], more: JsonObject = {}) => [
+      event("build.started", { session: id }),
+      ...solved(undefined, "p1", "h2", shown),
+      session(id, "h2", { changed: false, ...more }),
+    ];
+    const log = [
+      session("b-1", "h2"),
+      flat("b-1", "h2"),
+      ...idle("b-2", [false]),
+      ...idle("b-3", [true, false]),
+    ];
     expect(stopRule(log)).toEqual({ checkpoints: 3, sinceStep: 3, stop: true });
+    const passing = [session("b-1", "h2"), flat("b-1", "h2"), ...idle("b-2", [true]), ...idle("b-3", [])];
+    expect(stopRule(passing)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
     expect(
-      stopRule([idle("b-1"), idle("b-2", { ended: "killed" }), idle("b-3", { ended: "crashed" })]),
+      stopRule([
+        ...idle("b-1", [false]),
+        ...idle("b-2", [false], { ended: "killed" }),
+        ...idle("b-3", [false], { ended: "crashed" }),
+      ]),
     ).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
     // A step after them starts the count again.
     expect(stopRule([...log, session("b-4", "h3"), reported("b-4", "step", "h3")])).toMatchObject({

@@ -70,6 +70,7 @@
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, roomOf, validAt } from "../kernel/reports.ts";
+import { practiceRan } from "../kernel/solves.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
@@ -341,7 +342,42 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
   }
   const next = afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
   if (next.move === "compare") return afforded(ground, next);
-  return (next.move === "build" ? toPractise(ground, supply) : null) ?? next;
+  if (next.move !== "build") return next;
+  return toPractise(ground, supply) ?? unshown(ground) ?? next;
+}
+
+/**
+ * Tasks, where the last Builder session left its harness as it was and no practice solve of its
+ * failed: it had nothing to work on, which is the supply's fault, so the table does not build
+ * again on the same practice. Such a session counts nothing towards the stop (`stopRule`), and
+ * until 10 October the table built again on it, three times, in every campaign on record. The
+ * Examiner is asked for tasks that leave room, bounded by the campaign's patience as every
+ * Examiner session is (`written`).
+ */
+function unshown(ground: Ground): Decided | null {
+  const { events, plan } = ground;
+  const at = events.findLastIndex(({ kind }) => kind === "build.finished");
+  const last = events[at]?.data;
+  if (last === undefined || last.changed !== false || last.ended === "killed" || last.ended === "crashed") {
+    return null;
+  }
+  const began = events.findLastIndex(
+    (event, index) => index < at && event.kind === "build.started" && event.data.session === last.session,
+  );
+  const shown = practiceRan(events).some(
+    ({ started, ending }) => started > began && started < at && ending?.outcome === "fail",
+  );
+  if (shown) return null;
+  return written(
+    ground.drafts,
+    "room",
+    {
+      move: "examine",
+      room: true,
+      why: `Builder session ${isString(last.session) ? last.session : "?"} left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for`,
+    },
+    plan.patience,
+  );
 }
 
 /**

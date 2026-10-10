@@ -25,7 +25,7 @@
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { type Paired, pairings, pairsOf } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
-import { passed, ranUnder, solvesIn } from "./solves.ts";
+import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
 /** A comparison's last report, with where the comparison stands in the log: at its first report. */
@@ -194,7 +194,11 @@ export function roomOf(report: JsonObject, turns?: number): "none" | "too-hard" 
  * comparison: a step its repeat does not read again was one draw, and three repeats of one
  * harness are one harness that showed no gain. On 9 October one harness compared with the starter
  * three times, each time on more tasks, stopped a campaign. The second is a whole session that
- * left its harness as it was.
+ * left its harness as it was, where a practice solve of the session failed: it was shown a failure
+ * and declined it. A session whose every practice solve passed, or that ran none, had nothing to
+ * work on, which is a fault of the supply and no evidence about the domain: all ten campaigns of
+ * 9 and 10 October stopped on three such sessions after a promotion, each practising on tasks the
+ * promoted harness passed (`docs/plan.md`, row F52).
  *
  * What does not count: a comparison of two harnesses no session made, which a control and a
  * reading of the reference against itself are; one stopped on its check defects, cut by its cap,
@@ -237,11 +241,17 @@ export function stopRule(events: readonly LogEvent[]) {
       counts: step || roomOf(data) === "room",
     });
   }
-  const idle = events.flatMap(({ kind, data }, index) =>
-    kind === BUILD_FINISHED && data.changed === false && !CUT.has(data.ended) && index >= from
-      ? [{ index, step: false }]
-      : [],
-  );
+  const practised = practiceRan(events);
+  const idle = events.flatMap(({ kind, data }, index) => {
+    if (kind !== BUILD_FINISHED || data.changed !== false || CUT.has(data.ended) || index < from) return [];
+    const began = events.findLastIndex(
+      (event, at) => at < index && event.kind === "build.started" && event.data.session === data.session,
+    );
+    const shown = practised.some(
+      ({ started, ending }) => started > began && started < index && ending?.outcome === "fail",
+    );
+    return shown ? [{ index, step: false }] : [];
+  });
   const moves = [...pairs.values().filter(({ counts }) => counts), ...idle].toSorted(
     (one, other) => one.index - other.index,
   );

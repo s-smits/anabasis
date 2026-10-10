@@ -180,7 +180,7 @@ function validShare(counts: unknown): number | null {
  * answers it; one with no valid answer at all goes to a person after two comparisons
  * (`awaitingLabel`), and the Examiner's `try_answer` is for writing none.
  */
-export function validAt(report: JsonObject, side: "old" | "fresh", turns?: number): number | null {
+function validAt(report: JsonObject, side: "old" | "fresh", turns?: number): number | null {
   const rows = Array.isArray(report.budgets) ? report.budgets.map(asRecord) : [];
   const row =
     turns === undefined ? report : rows.find((each) => each?.turns === turns && each.seconds === undefined);

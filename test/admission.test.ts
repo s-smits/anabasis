@@ -224,7 +224,6 @@ describe("what a log holds for the next comparison", () => {
     const three = event("campaign.opened", {
       budget: null,
       limit: null,
-      ladder: [],
       sessions: 1,
       patience: 3,
     });
@@ -465,7 +464,6 @@ describe("a command about to start a comparison", () => {
     const three = event("campaign.opened", {
       budget: null,
       limit: null,
-      ladder: [],
       sessions: 1,
       patience: 3,
     });

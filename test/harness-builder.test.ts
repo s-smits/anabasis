@@ -125,7 +125,6 @@ describe("a campaign run by its log", () => {
       {
         budget: null,
         limit: null,
-        ladder: [],
         sessions: 3,
         patience: 2,
         seats: { builder: null, examiner: null, reviewer: null },
@@ -153,7 +152,6 @@ describe("a campaign run by its log", () => {
     append(log, OPENED, {
       budget: null,
       limit: null,
-      ladder: [],
       sessions: 1,
       patience: 6,
       seats: { builder: null, examiner: null, reviewer: null },
@@ -381,9 +379,9 @@ describe("a campaign run by its log", () => {
     );
     expect(readFileSync(join(to, "RULES.md"), "utf8")).toContain("- R1: The answer is the base times six.");
     const report = readFileSync(join(to, "REPORT.md"), "utf8");
-    // The step is named with the budget it was read at and the reading at the full limit beside it.
+    // The step is named with the budget it was read at and its last tally beside it.
     expect(report).toContain(
-      `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2 at the full limit. At the full limit (g-2) it won 5, lost 0 and tied 0`,
+      `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2 at the full limit. In g-2 it won 5, lost 0 and tied 0`,
     );
     expect(report).toContain("| g-1 |");
     expect(report).toContain(
@@ -479,9 +477,8 @@ describe("a campaign run by its log", () => {
     expect(strayed).toEqual([]);
   });
 
-  it("has the tasks changed where the reference left no room, and sets the budget by the rule once the Examiner's patience is spent", async () => {
+  it("has the tasks changed where the reference left no room, and ends once the Examiner's patience is spent", async () => {
     const name = `${STEM}-budget`;
-    const limits = ["--solve-model-turns", "8", "--ladder", "4,1"];
     const flags = [
       ...seeded(name),
       "--practice",
@@ -494,54 +491,35 @@ describe("a campaign run by its log", () => {
       "5",
       "--patience",
       "2",
-      ...limits,
+      "--solve-model-turns",
+      "8",
     ];
     const strayed: string[] = [];
-    // Every harness answers every task, in two of the model's turns: no room at eight or at four.
-    // The Examiner holds out nothing, twice, which is the campaign's patience.
+    // Every harness answers every task, in two of the model's turns: no room at eight. The
+    // Examiner holds out nothing, twice, which is the campaign's patience. Until 11 October the
+    // campaign then walked a ladder of shorter budgets (`--ladder`), three more moves here.
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, strayed),
       examine: (request) => examine({ ...request, ...scripted([["finish", { note: "Nothing to add." }]]) }),
     };
     const next = await harnessBuilder([...flags, "--moves", "10"], seats);
-    expect(
-      of(name, "campaign.move").map(({ move, session, modelTurns }) => [move, session ?? modelTurns ?? null]),
-    ).toEqual([
+    expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
       ["prepare", null],
       ["build", "b-1"],
       ["compare", "g-1"],
       ["examine", "x-1"],
       ["examine", "x-2"],
-      ["budget", 1],
-      ["compare", "g-2"],
-      ["budget", 4],
-      ["compare", "g-3"],
     ]);
-    // The first comparison ran at the full limit and was read at each shorter budget of the ladder:
-    // the reference answered every task at eight turns and at four, and none at one.
-    const [first, second, third] = of(name, "comparison.reported");
-    expect(first).toMatchObject({
-      reading: "no-step",
-      valid: { old: [0, 5] },
-      budgets: [
-        { turns: 4, valid: { old: [0, 5] } },
-        { turns: 1, valid: { old: [5, 0] } },
-      ],
-    });
-    // The rule took one turn, the setting was recorded again, and the second comparison ran under it.
-    expect(second).toMatchObject({ reading: "no-step", valid: { old: [5, 0], fresh: [5, 0] }, budgets: [] });
-    // At one turn nobody answers, and at four the first reading left no room: no budget of the
-    // ladder leaves room. The campaign stands at four turns, where a solver can answer, and its
-    // comparison there shows the same; with the Examiner's patience already spent, it ends on
-    // its room.
-    expect(of(name, "campaign.setting").map(({ modelTurns }) => modelTurns)).toEqual([8, 1, 4]);
-    expect(third).toMatchObject({ reading: "no-step", valid: { old: [0, 5], fresh: [0, 5] } });
+    const [first] = of(name, "comparison.reported");
+    expect(first).toMatchObject({ reading: "no-step", valid: { old: [0, 5] }, budgets: [] });
+    expect(of(name, "campaign.setting").map(({ modelTurns }) => modelTurns)).toEqual([8]);
     expect(next).toMatchObject({ move: "end", ending: "no-room" });
-    // What strayed from its script is the second comparison alone: each of its solves, scripted to
-    // answer in two turns, was ended by the budget of one.
-    expect(strayed).toHaveLength(15);
-    expect(strayed.every((line) => line.includes('"kind":"turns-ended"'))).toBe(true);
+    expect(strayed).toEqual([]);
+    // `--ladder` is no flag of the campaign's since 11 October.
+    await expect(harnessBuilder([...flags, "--ladder", "4,1", "--moves", "0"], seats)).rejects.toThrow(
+      "--ladder",
+    );
   });
   it("opens from a prompt: drafts its exam, waits for the operator's word on its checks, and reaches a comparison with no file written by hand", async () => {
     const name = `${STEM}-prompt`;

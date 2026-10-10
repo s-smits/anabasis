@@ -516,6 +516,7 @@ harnesses answered at the full limit (t-10, `docs/handover-2026-10-10.md`).
 - **On the recorded logs.** Replay. A campaign that walked the ladder (t-4, t-9, t-10) reads
   another next move after its last comparison, and the body lists them.
 - **Lines.** About −280 (*estimate*).
+- **Done** at PR #193 (11 October), as written, with two differences: `here` is the comparisons since the setting's last record (no reading across two settings, kept until A4), and `Opening.limit` stays, since the controller names `--solve-model-turns` from it for a campaign from a prompt.
 
 #### A2. A comparison read at one budget
 

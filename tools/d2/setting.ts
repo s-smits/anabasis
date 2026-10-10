@@ -54,7 +54,7 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { Limits } from "#src/kernel/condition.ts";
-import { append, type LogEvent, read } from "#src/kernel/log.ts";
+import { append, type LogEvent } from "#src/kernel/log.ts";
 import type { solverLast } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -319,25 +319,6 @@ export function keepSetting(log: string, { record }: Pick<AskedSetting, "record"
     solver: solver === null ? null : { ...solver },
     tasks: tasks === null ? null : [...tasks],
   });
-}
-
-/**
- * Record the campaign's setting again with a solve held to `modelTurns` of the model's own turns,
- * null for no limit, and everything else of the record as it stands. It is how the budget of the
- * comparisons that follow is set (`docs/plan.md`, "The budget follows the reference"): a changed
- * budget is a new setting, so no earlier comparison is read at it, and every command from here on
- * runs under it with no flag. A campaign with no record yet has no budget to change.
- */
-export function rebudget(log: string, modelTurns: number | null): Recorded {
-  const recorded = recordedSetting(read(log));
-  if (recorded === null) {
-    throw new Error(
-      `${log} records no setting yet: a budget is set again once a command has begun under one`,
-    );
-  }
-  const record = { ...recorded, modelTurns };
-  keepSetting(log, { record });
-  return record;
 }
 
 /**

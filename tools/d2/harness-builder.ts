@@ -31,15 +31,13 @@
  *   set the tasks apart tools/d2/prepare.ts
  *   an Examiner session tools/d1b/examine.ts, under the next free id `x-N`
  *   a Builder session   tools/d2/session.ts, under `b-N`
- *   a comparison        tools/d2/checkpoint.ts, under `g-N`, read also at each shorter budget of
- *                       the ladder; one that began goes on under its id and its own terms
- *   the budget          a new record of the setting (`rebudget`, `setting.ts`)
+ *   a comparison        tools/d2/checkpoint.ts, under `g-N`; one that began goes on under its id
+ *                       and its own terms
  *   a promotion         tools/d2/promote.ts `--yes`
  *
  * **What it runs by** is recorded once, as `campaign.opened`: the total budget in dollars and the
  * reserve one solve is held at (`--budget`, `--reserve`), the full limit of a solve in the model's
- * turns (`--solve-model-turns`), the ladder of shorter budgets (`--ladder`, by default a half, a
- * quarter and an eighth of the limit), the Builder sessions before a comparison (`--sessions`),
+ * turns (`--solve-model-turns`), the Builder sessions before a comparison (`--sessions`),
  * the campaign's patience (`--patience`: the moves without a gain, the idle Examiner sessions and
  * the comparisons without room it bears in a row before it ends, six by default while the system
  * is built, since every campaign of 9 and 10 October ended on the plan's three before its tasks
@@ -117,7 +115,7 @@ import { PRACTICE, prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { COMPARISON_OPTIONS, capRead, type Seated, SESSION_OPTIONS, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
-import { rebudget, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
+import { recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
 
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
 export interface Seats {
@@ -159,7 +157,6 @@ const OPTIONS = {
   "prompt-file": { type: "string" },
   budget: { type: "string" },
   reserve: { type: "string" },
-  ladder: { type: "string" },
   sessions: { type: "string" },
   patience: { type: "string" },
   builder: SESSION_OPTIONS.builder,
@@ -213,21 +210,6 @@ const flag = (name: string, value: string | undefined): string[] =>
 
 function flagsOf(args: readonly string[]) {
   return parseArgs({ args: [...args], options: OPTIONS }).values;
-}
-
-/** The shorter budgets a campaign's comparisons are read at: the ones `--ladder` names, or a half,
- *  a quarter and an eighth of the full limit where that is at least two of the model's turns. */
-function ladderOf(named: string | undefined, limit: number | null): number[] {
-  const rungs =
-    named === undefined
-      ? [2, 4, 8].flatMap((part) => (limit !== null && limit / part >= 2 ? [Math.floor(limit / part)] : []))
-      : named.split(",").map(Number);
-  if (rungs.some((rung) => !Number.isInteger(rung) || rung < 1)) {
-    throw new Error(
-      `--ladder ${String(named)}: the shorter budgets are whole numbers of the model's turns, as 20,10,5`,
-    );
-  }
-  return [...new Set(rungs)].filter((rung) => limit === null || rung < limit).toSorted((a, b) => b - a);
 }
 
 /** Whether a command names a stored pack, by any of the four flags that name one together. */
@@ -292,10 +274,6 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
   const named: Opening = {
     budget: dollars === undefined ? null : capRead(dollars, reserve),
     limit,
-    ladder:
-      values.ladder === undefined && was !== null && was.limit === limit
-        ? was.ladder
-        : ladderOf(values.ladder, limit),
     sessions: values.sessions === undefined ? (was?.sessions ?? DEFAULTS.sessions) : Number(values.sessions),
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
@@ -329,7 +307,6 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
   const record: JsonObject = {
     budget: named.budget === null ? null : { ...named.budget },
     limit: named.limit,
-    ladder: [...named.ladder],
     sessions: named.sessions,
     patience: named.patience,
     seats: Object.fromEntries(
@@ -460,13 +437,11 @@ function sharedOf({ events, plan, opening, values }: Turn) {
   };
 }
 
-/** The flags of the comparison a move names: a new one under the next free id, read also at each
- *  shorter budget of the ladder, or one that began, under its id and its own terms. */
+/** The flags of the comparison a move names: a new one under the next free id, or one that began,
+ *  under its id and its own terms. */
 function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn) {
-  const { events, plan, values } = turn;
+  const { events, values } = turn;
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);
-  const recorded = recordedSetting(events);
-  const turns = recorded === null ? plan.limit : recorded.modelTurns;
   const session = decided.id ?? nextId(events, "g");
   const terms =
     decided.id === undefined
@@ -478,9 +453,6 @@ function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn
           // continued, so the admission reads what `decide` read (left off until 11 October).
           ...flag("trigger", values.trigger),
           ...flag("margin", values.margin),
-          ...plan.ladder.flatMap((rung) =>
-            turns === null || rung < turns ? ["--budget", `turns=${String(rung)}`] : [],
-          ),
           ...cap,
         ]
       : [...termsOf(events, decided.id), ...flag("trigger", values.trigger)];
@@ -528,10 +500,6 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
       ...flag("trigger", values.trigger),
     ]);
     return {};
-  }
-  if (decided.move === "budget") {
-    rebudget(campaignLog(values.name ?? ""), decided.modelTurns);
-    return { modelTurns: decided.modelTurns };
   }
   if (decided.move === "promote") {
     await promoteCommand([...flag("name", values.name), "--harness", decided.harness, "--yes"]);

@@ -2,27 +2,24 @@
  * What move 7 reads its rows from: a campaign's plan, and its log as comparisons by setting.
  *
  * The table (`decide.ts`) asks one question after another of the same reading of the log, which
- * is made here once: every comparison in the order it began, the stretches of the log between two
- * records of the setting, the reference harness and the last one a session left, and what the
- * next comparison would be short of. It adds no fold of its own beside the owners it reads: the
- * supply (`admission.ts`), the reports and the reference (`reports.ts`).
+ * is made here once: every comparison in the order it began, the ones under the campaign's
+ * setting, the reference harness and the last one a session left, and what the next comparison
+ * would be short of. It adds no fold of its own beside the owners it reads: the supply
+ * (`admission.ts`), the reports and the reference (`reports.ts`).
  *
  * A setting is recorded once and again at each change (`campaign.setting`), and no reading is
- * carried across two. A campaign returns to a budget, so the comparisons under its setting are
- * those of every stretch of the log that stood under it (`under`).
+ * carried across two: the comparisons under the campaign's setting are the ones since its last
+ * record. Until 11 October a campaign walked a ladder of shorter budgets and returned to one, so
+ * every stretch of the log that stood under a setting was read; a campaign runs at one budget
+ * since (`docs/simplify.md`, package A).
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { stableJson } from "../meta/stable-json.ts";
+import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { shortOf, supplyOf, type Wanted } from "./admission.ts";
 
 /** What a campaign was set to run by: what move 7 reads beside the log. */
 export interface Plan {
-  /** The full limit of a solve in the model's own turns, null where they are not limited. */
-  readonly limit: number | null;
-  /** The shorter budgets a comparison is also read at, in the model's turns. */
-  readonly ladder: readonly number[];
   /** Builder sessions before a comparison, after the campaign's first, which follows one. */
   readonly sessions: number;
   /** The moves without a gain, idle Examiner sessions and comparisons without room the campaign
@@ -58,29 +55,14 @@ export interface Compared {
   readonly reported: number | null;
 }
 
-/** One stretch of the log between two records of the setting. */
-export interface Under {
-  /** The model's turns that setting holds a solve to. */
-  readonly turns: number | null;
-  /** Everything else the record holds, as one text: two stretches that agree in it and in the
-   *  turns stood under one setting. */
-  readonly rest: string;
-  readonly comparisons: readonly Compared[];
-}
-
 /** What the table's rows on the comparisons are read from: the log's comparisons by setting, the
  *  two harnesses in question, and what the next comparison would be short of. */
 export interface Ground {
   readonly events: readonly LogEvent[];
   readonly plan: Plan;
   readonly all: readonly Compared[];
-  readonly settings: readonly Under[];
-  /** The comparisons under the campaign's setting, in every stretch of the log that stood under
-   *  it, and the model's turns it holds a solve to. */
+  /** The comparisons under the campaign's setting: the ones since its last record. */
   readonly here: readonly Compared[];
-  readonly turns: number | null;
-  /** What the campaign's setting holds beside the model's turns (`Under.rest`). */
-  readonly rest: string;
   /** The reference harness, null before any comparison or promotion has named it. */
   readonly reference: string | null;
   /** The Starter Built Harness, as the reports name it; null before any comparison reported. */
@@ -129,41 +111,6 @@ function comparisonsOf(events: readonly LogEvent[]): Compared[] {
   return [...begun.values()].toSorted((one, other) => one.at - other.at);
 }
 
-/** The comparisons under each record of the setting, oldest first. A log with no record is one
- *  setting, and what stands before the first record belongs to it. */
-function settingsOf(events: readonly LogEvent[], comparisons: readonly Compared[]): Under[] {
-  const records = events.flatMap(({ kind, data }, index) =>
-    kind === SETTING
-      ? [
-          {
-            index,
-            turns: isNumber(data.modelTurns) ? data.modelTurns : null,
-            rest: stableJson({ ...data, modelTurns: null }),
-          },
-        ]
-      : [],
-  );
-  if (records.length === 0) return [{ turns: null, rest: "", comparisons }];
-  return records.map(({ index, turns, rest }, nth) => {
-    const next = records[nth + 1]?.index ?? Number.POSITIVE_INFINITY;
-    return {
-      turns,
-      rest,
-      comparisons: comparisons.filter(({ at }) => (nth === 0 || at > index) && at < next),
-    };
-  });
-}
-/** The comparisons made under the campaign's setting with so many of the model's turns, in every
- *  stretch of the log that stood there. A campaign returns to a budget, and what it read there
- *  the first time still stands: until 2026-10-09 only the last stretch was read, and a budget set
- *  again would have had its comparison made again. */
-export function under(
-  { settings, rest }: Pick<Ground, "settings" | "rest">,
-  turns: number | null,
-): Compared[] {
-  return settings.flatMap((each) => (each.turns === turns && each.rest === rest ? each.comparisons : []));
-}
-
 /** The reported comparisons of `fresh` with `old` among `comparisons`. */
 export function pairOf(comparisons: readonly Compared[], fresh: string, old: string | null) {
   return comparisons.flatMap((each) =>
@@ -183,10 +130,9 @@ export function idleDrafts(events: readonly LogEvent[]): number {
 /** What the rows on the comparisons are read from, for a log and its plan. */
 export function groundOf(events: readonly LogEvent[], plan: Plan): Ground {
   const all = comparisonsOf(events);
-  const settings = settingsOf(events, all);
-  const turns = settings.at(-1)?.turns ?? null;
-  const rest = settings.at(-1)?.rest ?? "";
-  const here = under({ settings, rest }, turns);
+  // The comparisons since the last record of the setting: a log with no record is one setting.
+  const recorded = events.findLastIndex(({ kind }) => kind === SETTING);
+  const here = all.filter(({ at }) => at > recorded);
   // The share of tasks a comparison left untied was measured under its setting, so the one read
   // is the last that tallied under the campaign's own: none, where it has not stood there yet,
   // and then every task is counted whole. A budget set by the rule is set to untie them.
@@ -197,10 +143,7 @@ export function groundOf(events: readonly LogEvent[], plan: Plan): Ground {
     events,
     plan,
     all,
-    settings,
     here,
-    turns,
-    rest,
     reference: promoted(events) ?? starter,
     starter,
     latest: latestBuilt(events),

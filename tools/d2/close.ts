@@ -96,10 +96,10 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   const opening = openingOf(events);
   const setting = recordedSetting(events);
   const reference = promoted(events);
-  // A step is named with the budget it was read at, and the reading at the full limit beside
-  // it: a step at a shortened budget says the harness answers within that budget what the
-  // reference does not, which a harness that saves a solver its set-up reads as, and the full
-  // limit says whether it holds where the solver has the time (`AGENTS.md`, section 9).
+  // A step is named with the budget it was read at, the model's turns a solve was held to, and
+  // its last tally against the reference: a step at a short budget says the harness answers
+  // within it what the reference does not, which a harness that saves a solver its set-up reads
+  // as (`AGENTS.md`, section 9).
   /** Where an imported harness came from, by its digest (`tools/d2/import.ts`). */
   const imported = new Map(
     events.flatMap(({ kind, data }) =>
@@ -117,14 +117,11 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     const atBudget = budgets
       .map((turns) => (turns === null ? "the full limit" : plural(turns, "turn")))
       .join(" and ");
-    const full = comparisons.findLast(
-      (each) =>
-        each.fresh === data.harness && each.modelTurns === (opening?.limit ?? null) && each.tally !== null,
-    );
+    const last = comparisons.findLast((each) => each.fresh === data.harness && each.tally !== null);
     const held =
-      full?.tally === null || full === undefined
-        ? ". No comparison of it at the full limit tallied a task"
-        : `. At the full limit (${full.id}) it won ${String(full.tally.wins)}, lost ${String(full.tally.losses)} and tied ${String(full.tally.ties)}`;
+      last?.tally === null || last === undefined
+        ? ". No comparison of it tallied a task"
+        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}`;
     return [
       `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${stepped.length === 0 ? "" : ` at ${atBudget}`}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}`,
     ];

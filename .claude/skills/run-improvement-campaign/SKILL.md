@@ -248,11 +248,11 @@ a default over the log, and what it cannot read is yours to bring. The moves it 
 the system's own: change one flag and run again; fix the one owner the evidence names; delete a
 mechanism nothing reads; investigate one consequential ambiguity.
 
-After a repeated step the table tests link 8 with what exists: where the campaign runs under a
-shortened budget the step is read once more at the full limit, then the harness is the one to
-promote, and the budget is set again from the promoted harness's own solves before the next
-session. Build for difficulty only once no budget leaves room, and then start from the one lever
-v1 found to work, several requirements that share one limit (`docs/plan.md`, row F52).
+After a repeated step the harness is the one to promote, and after the promotion the Examiner
+writes the next epoch's tasks, the ones the harness now the reference fails. A campaign runs at
+one budget since 11 October (`docs/simplify.md`, package A): there is no shorter budget to read a
+step under and no budget rule to set one again. Build for difficulty from the one lever v1 found
+to work, several requirements that share one limit (`docs/plan.md`, row F52).
 
 Keep a negative result and its limits intact, and say which level of evidence each claim of the
 pass reached (attribution-and-proof lists the four).

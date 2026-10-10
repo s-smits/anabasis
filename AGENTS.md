@@ -411,7 +411,7 @@ waits for none, and the event that acts on a word names it (`answers`), so each 
 pause. A word reaches no seat: no Builder, Examiner, solver or reviewer reads it or its reason.
 
 The opening (`campaign.opened`) keeps what the campaign runs by, so that its command goes on by
-its name alone: the total, the full limit and the ladder, the seats, and the terms of its moves
+its name alone: the total, the full limit, the seats, and the terms of its moves
 as a command last named them (`TERMS`, `src/builder/opening.ts`), which are a session's limits,
 a comparison's size, the practice tasks, and a solve's wall and prompts until the setting is
 recorded. A term no command named is its move's default. A flag that names another setting than
@@ -496,17 +496,17 @@ what one solve of the solver bills, which the log of any earlier campaign under 
 says (`solve.finished.billed`). With `claude-api/claude-sonnet-5-5` at high on tasks a program
 answers, 10 October: a solve 0.01 to 0.05 dollars, a Builder session 0.02 to 0.25, an Examiner
 session 0.12, a draft 0.15 to 0.19, and a campaign of two comparisons of 5 or 6 tasks at 2 or 3
-solves a side 2 to 5 dollars in all. And the ladder of shorter budgets is cut from the full
-limit (`--ladder`, by default a half, a quarter and an eighth of `--solve-model-turns`): with no
-limit named the ladder is empty, and the budget rule has no rung to set, so a campaign that is to
-move its budget names the limit. One flag line that ran a small campaign from a prompt to a typed
-ending on 10 October, for a first campaign to start from:
+solves a side 2 to 5 dollars in all. A campaign runs at one budget, the model's turns and the
+minutes its setting names (`--solve-model-turns`, `--solve-minutes`): until 11 October a ladder
+of shorter budgets was read beside it (`--ladder`), and it went with `docs/simplify.md`, package
+A. One flag line that ran a small campaign from a prompt to a typed ending on 10 October, for a
+first campaign to start from, less the `--ladder 6,4,3,2` it carried then:
 
 ```text
 bun tools/d2/harness-builder.ts --name t-9 --prompt-file <file> --budget 6 --reserve 0.05 \
   --builder claude-api/claude-sonnet-5-5 --examiner claude-api/claude-sonnet-5-5 \
   --reviewer claude-api/claude-sonnet-5-5 --solver claude-api/claude-sonnet-5-5 --solver-effort high \
-  --solve-minutes 8 --solve-model-turns 10 --ladder 6,4,3,2 --solves 2 --target 8 --practice 3 \
+  --solve-minutes 8 --solve-model-turns 10 --solves 2 --target 8 --practice 3 \
   --minutes 20 --turns 60 --practice-solves 6 --exam-tasks 10 --unattended
 ```
 
@@ -635,25 +635,24 @@ comparison without room changes the tasks before the budget: the Examiner writes
 reference harness fails, and a promotion sends it to write them too, since the next epoch's tasks
 are the ones the harness now the reference fails. Until 10 October the budget came first, and
 what t-10 climbed was the turn count: a harness that answered in 2 turns where the starter took
-3, on tasks both answered at the full limit. The budget is the fallback once as many Examiner
-sessions in a row as the campaign's patience held out nothing: the budget rule takes the longest
-budget, of the one the comparison ran under and the shorter ones it was read at (the ladder: by
-default a half, a quarter and an eighth of the full limit), at which the reference harness was
-valid on at most half its solves. A reading at a shorter budget is of a solver that was told the
-longer one, and understates a solver told the shorter: on 9 October the starter answered 0 of 10
-solves read at two turns, and 10 of 10 once it was told two. So the rule's budget is a place to
-look, and the comparison made under it is what counts. Where that one leaves neither harness an
-answer, the campaign goes to the next longer budget, and where no budget leaves room it stands at
-the shortest that leaves the reference its answers and has the Examiner write other tasks. A campaign returns to a budget, and what it read there still stands
-(`under`): no comparison is made twice for one answer. Where no session has left a harness but
+3, on tasks both answered at the full limit. Since 11 October there is no budget to fall back
+to: a campaign runs at the one its setting names, a comparison in which the reference answered
+nearly everything or neither harness answered sends the Examiner for other tasks, and as many
+Examiner sessions in a row as the campaign's patience that hold out none end it. The ladder, the
+readings at shorter budgets, the budget rule and the return to a budget went with
+`docs/simplify.md`, package A: every step a rung read on record was on tasks both harnesses
+answered at the full limit, which measures set-up time and not method, and a reading at a
+shorter budget is of a solver that was told the longer one (on 9 October the starter answered 0
+of 10 solves read at two turns, and 10 of 10 once it was told two). The two ways to room are the
+tasks and the objective. Where no session has left a harness but
 the reference, as after a promotion, tasks held out since the last comparison are read by a
 control before a Builder session is paid for: the starter compared with the reference on them,
 which says whether they leave the reference room; with room the Builder builds, on practice
 brought up from those tasks, and without it the tasks change again (t-4, t-9 and t-10,
 10 October, each built three times here on practice the promoted harness passed, and stopped
 with the tasks unmeasured). It ends `no-room` after more comparisons of one harness without
-room than its patience, or as many Examiner sessions in a row that held out no task. The half, and the two
-shares of `roomOf`, are the plan's proposal and the operator's to set.
+room than its patience, or as many Examiner sessions in a row that held out no task. The two
+shares of `roomOf` are the plan's proposal and the operator's to set.
 
 ## 8. Rules
 

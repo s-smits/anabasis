@@ -497,7 +497,7 @@ describe("the moves that may start next", () => {
     const c = campaign();
     c.setUp();
     // A campaign whose patience is the plan's three; the default is six (`PATIENCE`).
-    c.record("campaign.opened", { budget: null, limit: null, ladder: [], sessions: 1, patience: 3 });
+    c.record("campaign.opened", { budget: null, limit: null, sessions: 1, patience: 3 });
     expect(move(c, "stop")).toBeUndefined();
     for (const [index, harness] of [HA, HB, "c".repeat(64)].entries()) {
       const id = `b-${String(index + 1)}`;

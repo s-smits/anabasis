@@ -79,6 +79,24 @@ describe("the solve isolation's policy", () => {
     expect(closed.policyHash).not.toBe(alone.policyHash);
   });
 
+  it("mounts nothing on a denied worktree removed since the policy was made, so a solve still starts", () => {
+    // The other worktrees are read once when a campaign opens. On 10 October two were removed
+    // while a simulated campaign ran, and from the next policy on every solve ended
+    // `sandbox-crash`: Bubblewrap cannot make a mountpoint under the read-only root. A removed
+    // tree cannot be read, so it stays in the identity and takes no mount.
+    const repoRoot = workRepo();
+    const sibling = workRepo();
+    const policy = solveIsolationPolicy({ repoRoot, otherTrees: [sibling], cap });
+    if ("unsupported" in policy) throw new Error(`this host cannot run the isolation: ${policy.unsupported}`);
+    rmSync(sibling, { recursive: true, force: true });
+    expect(policy.deniedReadRoots).toContain(sibling);
+    if (onLinux) {
+      const argv = isolationArgv(policy, "/bin/true", [], {});
+      expect(argv).not.toContain(sibling);
+      expect(argv).toEqual(expect.arrayContaining(["--tmpfs", realpathSync.native(repoRoot)]));
+    }
+  });
+
   it("denies the repository and whole operator home, reopening only explicit runtimes", () => {
     const repoRoot = workRepo();
     const policy = solveIsolationPolicy({ repoRoot, cap });
@@ -260,13 +278,14 @@ describe("the disk cap", () => {
     );
   });
 
-  // Argv only: this suite's host may not be Linux, and the order is what the policy is.
+  // Argv only: this suite's host may not be Linux, and the order is what the policy is. The denied
+  // roots exist, since a root that does not takes no mount.
   it("mounts a sized tmpfs at the root after the denies and before any read-only remount", () => {
     const argv = isolationArgv(
       {
         profile: "linux",
         mechanismId: LINUX_BWRAP_ID,
-        deniedReadRoots: ["/home/operator", "/srv/repo"],
+        deniedReadRoots: [homedir(), workRepo()],
         allowedReadRoots: ["/home/operator/.bun"],
         cap: { root: "/tmp/solve-1", bytes: 1_048_576 },
       },

@@ -34,6 +34,7 @@ import {
   bwrapIsolationArgs,
   bwrapWholeRootArgs,
   bwrapReadBinds,
+  bwrapReadonlyRemounts,
   bwrapTmpfsDenies,
   nodeRuntimeReadRoots,
 } from "./linux-bwrap.ts";
@@ -258,7 +259,7 @@ export function isolationArgv(
       // After the re-exposing binds, so that nothing reopens a hidden root as writable. Without
       // this a write into an overmounted path would succeed against the tmpfs and land on namespace
       // memory the host never sees; with it the write fails with EROFS.
-      ...policy.deniedReadRoots.flatMap((path) => ["--remount-ro", path]),
+      ...bwrapReadonlyRemounts(policy.deniedReadRoots),
       ...bwrapEnvironmentArgs(environment),
       command,
       ...args,

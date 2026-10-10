@@ -20,6 +20,7 @@ import {
   bwrapEnvironmentArgs,
   bwrapOpenReadArgs,
   bwrapReadBinds,
+  bwrapReadonlyRemounts,
   bwrapTmpfsDenies,
   bwrapWriteBinds,
   nodeRuntimeBinDirs,
@@ -482,10 +483,10 @@ export function stageCommandIsolation(
         canonicalForms(path).length === 1 ? ["--ro-bind", "/dev/null", path] : [],
       ),
       ...bwrapWriteBinds(policy.scratchRoots),
-      ...[
+      ...bwrapReadonlyRemounts([
         "/",
         ...policy.readDenies.filter((deny) => !policy.scratchRoots.some((root) => covers(deny, root))),
-      ].flatMap((path) => ["--remount-ro", path]),
+      ]),
       ...bwrapEnvironmentArgs(policy.environment),
       "/bin/sh",
       "-c",

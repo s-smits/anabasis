@@ -386,6 +386,13 @@ export function bwrapReadBinds(paths: readonly string[]): string[] {
   return paths.flatMap((path) => ["--ro-bind", path, path]);
 }
 
+/** `--remount-ro` each path, so that a bind made earlier cannot reopen it writable. A path that no
+ *  longer exists is left out, as `bwrapTmpfsDenies` leaves it unmounted and for the same reason:
+ *  Bubblewrap refuses the launch on it ("realpath(destination): No such file or directory"). */
+export function bwrapReadonlyRemounts(paths: readonly string[]): string[] {
+  return paths.flatMap((path) => (existsSync(path) ? ["--remount-ro", path] : []));
+}
+
 /** `--bind` each writable root read-write at its own location. */
 export function bwrapWriteBinds(paths: readonly string[]): string[] {
   return paths.flatMap((path) => ["--bind", path, path]);
@@ -399,17 +406,26 @@ export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
   // and leaves the host file untouched, where an empty tmpfs file would read as empty rather than
   // refuse. The probe's witness requires an observable refusal, because an isolation returning ""
   // instead of an error cannot be told apart from one that is not running.
-  return paths.flatMap((path) =>
-    isRegularFileDeny(path) ? ["--ro-bind", "/dev/null", path] : ["--tmpfs", path],
-  );
+  //
+  // A path that no longer exists takes no mount. The root is bound read-only, so Bubblewrap cannot
+  // make the mountpoint ("Can't mkdir <path>: Read-only file system") and refuses the whole launch.
+  // The policy names the repository's other worktrees, read once when the campaign opens, and on
+  // 10 October two of them were removed while a simulated campaign ran: from the next policy on
+  // every solve ended `sandbox-crash`, 12 in a row, with the probe's own control read refused. A
+  // path that does not exist cannot be read, so leaving it unmounted denies nothing; it stays in
+  // the policy's identity, which says what was denied by name.
+  return paths.flatMap((path) => {
+    if (isRegularFileDeny(path)) return ["--ro-bind", "/dev/null", path];
+    return existsSync(path) ? ["--tmpfs", path] : [];
+  });
 }
 
 /**
  * Whether a protected path is a plain file on this host, and so cannot take a tmpfs.
  *
- * `--tmpfs` mounts a directory. Bubblewrap creates a missing mountpoint, so an absent path and a
- * directory are both fine, but an existing regular file refuses the whole launch with "Can't mkdir
- * <path>: Not a directory", and one refused mountpoint takes the entire isolation with it. Three of
+ * `--tmpfs` mounts a directory. An existing regular file refuses the whole launch with "Can't mkdir
+ * <path>: Not a directory", and one refused mountpoint takes the entire isolation with it. (An
+ * absent path refuses it too, under a read-only root; `bwrapTmpfsDenies` leaves those out.) Three of
  * the protected home paths are file-shaped: `.netrc`, `.npmrc` and `.claude.json`. A fresh Linux VM
  * has none of them, so a clean-VM gate run passes while an operator machine that has actually run
  * Claude Code has `~/.claude.json` and refuses every confined call.

@@ -44,6 +44,31 @@ A row marked **open #N** is built in pull request #N. #2 to #15 are on main sinc
 | close, deadline, observer | run/full-run-close.ts:35; run/full-run-deadline.ts:34; observe/run-observer.ts | closes the run; live observation | deferred | M4 |
 | solve concurrency | run/session-pool.ts:32, :81 | limits concurrent solves | open #8, #9 | `pooled()`: the round's and the Examiner's solves at most `concurrency` at once (decision 18) |
 
+### Two campaigns under the one command, 10 October
+
+The campaign command ran two campaigns over stored packs on the Mac, at `26f3aa2` (open #107), from 9 October 22:43Z. Each opened under $300, with 16 told turns, a ladder of 8, 4 and 2 turns, 2 solves a side and the level 0.10. The operator admitted each pack's checks by name and gave `--unattended`. The figures below are read from the two logs.
+
+| campaign, solver | comparison | told turns | tasks | won-lost-tied | p | Starter valid | new harness valid | reading |
+|---|---|---|---|---|---|---|---|---|
+| buffer, Opus 5.5 at medium | `g-1` | 16 | 6 | 5-0-1 | 0.031 | 4 of 12 solves | 12 of 12 | `step` |
+| | `g-2`, its repeat | 16 | 6 | 3-0-3 | 0.125 | 6 of 12 | 11 of 12 | `no-step` |
+| | `g-3`, the fourth harness of the chain | 16 | 10 | 3-0-7 | 0.125 | 15 of 20 | 20 of 20 | `no-step` |
+| recode, Sonnet 5.5 at high | `g-1` | 16 | 6 | 1-0-5 | 0.5 | 7 of 12 | 8 of 12 | `no-step` |
+| | `g-2`, after the budget rule | 8 | 6 | 3-0-3 | 0.125 | 4 of 12 | 8 of 12 | `no-step` |
+
+Buffer made 16 moves in seven hours: seven Builder sessions, of which six changed the harness, three Examiner sessions that held out 11 tasks, and three comparisons. Its 179 solves, its ten sessions and the reviewers' readings of its rejections billed $99.49. It ended on the stop rule at 05:38Z with no harness promoted, since the step was read once. Recode had made 10 moves and billed $29.40 when this was written, and was running its third Builder session.
+
+What the two logs show of the table, as it stood at #107:
+
+- **A harness valid on every solve was sent back to the Builder.** In buffer's `g-3` the new harness was valid on 20 of 20 solves and the Starter on exactly three in four, so the table read room and named a Builder session with the reason that the harness did not help. No session can gain at that budget. Read at 8 turns from the same solves, the tally was 8-0-2 (p = 0.004).
+- **The campaign stopped with work on no comparison.** After `g-3` a session changed the harness, an Examiner session held out four tasks on the operator's word for tasks that leave room, a second session changed the harness again, and a third left it as it was. That unchanged session was the third move without a gain. Two changed harnesses and four tasks stand on no comparison. A dry run with `--past-stop` names that comparison as the next move, at `26f3aa2` and at `1813ec7` (open #135) over a copy of the log.
+- **The written tasks tied.** All three wins of `g-3` were stored tasks. On the seven tasks the Examiner had written by then, both harnesses were valid on both solves, the four asked for with room among them (`docs/plan.md`, row F52).
+- **A budget read after the fact is not the budget told.** Recode's `g-1` left no room once the two tasks no solve answered were left out, and the rule set 8 turns. Read at 8 turns from the 16-turn solves, the Starter was valid on 1 of 12. Told 8 turns in `g-2`, it was valid on 4 of 12.
+- **The opening kept none of a move's flags.** Each campaign's first run named a wall of 8 and of 30 minutes. The run that went on named none, and both recorded 120 minutes (mended in open #108). The told turns bound these solves, and the wall did not.
+- **The operator's word was read.** Three words for other tasks were left (`tools/d2/word.ts`), and an Examiner session answered each after the move then running.
+
+The truss pack did not open: its exam's reading holds 46 faults, and admission clears only the ten that name a check its author's own computation decides. The other 36 are control faults, and their cause is in the pack. Every one of the 35 accept controls holds exactly one published joint, a support or a load point, at other coordinates than its task publishes, by the same distance in all 35, and at least 97 of the 99 reject controls hold such a joint too. The controls were written for other coordinates than the bundle's tasks hold. `tools/m0/regrade.ts` at the same source matches 100 of 100 stored verdicts, 36 of them passes over 15 of the 25 tasks, which is the evidence an accept control would give. Nothing is admitted or frozen there, and whether the exam stands despite those faults is the operator's (`tools/c/accept.ts --freeze --despite`).
+
 ## 2. Builder session
 
 The Builder is `src/builder/session.ts`, `tools.ts` and `prompt.ts` (open #5, #13). `build()` runs one session from a parent harness state, which is a Built Harness. It copies the parent whole into the Builder's home as `harness/`. When the session ends, it freezes what `harness/` holds, a child Built Harness, into `<states>/<digest>`. `round()` (open #8) then screens and scores the child against the parent.
@@ -212,5 +237,6 @@ Ranked by how much each delays a live round once the open stack lands.
 5. **The checker's owner.** Nothing writes or repairs a check program. Phase C's commands read one (open #24), record the reading against its version, let the operator freeze it and show what a repair would move (open #26). The plan names the Examiner as the author and repairer (Phase 1), and no command yet holds a round until a checker is frozen. What an owner would use is built: a repair is judged against the rulings and its controls, and adopted with no solve (open #33).
 6. **A host's room.** A condition records four solves at a time, and each round runs its own four. Three rounds and a checkpoint at once (9 October) had seven solves running and a one-minute load of 120 to 158 on 12 cores, from the solvers' own parallel searches. The launcher refuses a launch on a loaded host, and nothing looks again after it. What that load did to a solve's time is on record once: one harness answered the same seven buffer tasks in a median of 105 s under a load of 31 and of 40 s under a load of 6, with the same answers. A solve's start now holds the cores beside the load, and the reader names a comparison whose solves started over the host's cores (`HOST LOADED`) and a campaign whose comparisons ran under loads a factor of two apart (`LOAD MOVED`). Not measured: what a load did to any solve's result.
 7. **The unsure rows** above, to decide.
+8. **A stop with work on no comparison.** Buffer's campaign of 10 October ended on the stop rule while two changed harnesses and four tasks had met no comparison (section 1, under the table). An unchanged session counts toward the stop whatever waits to be compared.
 
-Not ranked: the **deferred** rows that are left of the controller loop (M4): the lock, resume, and one Builder conversation carried forward. The loop's entry, its rounds, the next move, its endings and adopt or hold are open #99, proved on a rehearsal and not yet run with a model.
+Not ranked: the **deferred** rows that are left of the controller loop (M4): the lock, resume, and one Builder conversation carried forward. The loop's entry, its rounds, the next move and its endings are open #99 and ran with models on 10 October: section 1 holds the two campaigns over stored packs, and row F52 of `docs/plan.md` those opened from a prompt. Adopt or hold has not run on a stored pack: neither campaign promoted a harness.

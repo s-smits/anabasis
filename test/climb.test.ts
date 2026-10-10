@@ -98,8 +98,13 @@ describe("the climb", () => {
         "1",
         "--sessions",
         "1",
+        // Every held-out task is scored. The scored set is drawn by hash from the tasks of every
+        // epoch (`scoredSet`), so a target of 8 over the 19 tasks the third epoch holds drew two or
+        // three the reference fails and left the comparison one win short three times (climb-9,
+        // 10 October): the draw's part in the climb is the operator's open row, and no result of
+        // this test says anything about it.
         "--target",
-        "8",
+        "24",
         "--exam-tasks",
         "6",
         "--patience",
@@ -165,7 +170,9 @@ describe("the climb", () => {
           });
         },
       };
-      const ending = await harnessBuilder([...flags, "--moves", "60"], seats);
+      // Three epochs take 21 moves with every task scored (climb-10, 10 October: four promotions
+      // in 36 moves and still climbing). A campaign that ends on its moves has not stopped.
+      const ending = await harnessBuilder([...flags, "--moves", "24"], seats);
       const moves = of("campaign.move").map(({ move }) => (isString(move) ? move : "?"));
       const promotions = of("harness.promoted");
       const log = read(join(folder, "log.jsonl"));

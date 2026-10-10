@@ -303,7 +303,7 @@ Not pulled, since each buys steps that are not climbs: a looser level; dropping 
 | C4 | Diagnoses into the blind packets; `agreement` reads them | M3 | The packet writer and the reader |
 | C5 | `practice` under the reference | The Builder buys the fact itself; no host table | The tool, and the byte-identical wall test |
 | C6 | A side reading of the newest candidate against the previous one on shared tasks, same-condition solves only, the overlap printed; to the Builder a tally at most | A regression from B to C visible; the trigger for any restart | A reader with a test, read on a real log once #171 has one |
-| C7 | Import a handed-over harness into a campaign's `states/` under its digest | L4 without a Builder session | `keptAs` opens it |
+| C7 | Import a handed-over harness into a campaign's `states/` under its digest | L4 without a Builder session | `keptAs` opens it. Present in source at PR #186 (11 October UTC): `tools/d2/import.ts`, kept as a session keeps a state, recorded as `harness.imported`, the closing report naming the origin of a promoted import; proved without a model in `test/campaign.test.ts` |
 | C8 | Restart from the reference, at most once an epoch | Only if C6 shows a regression in a real log | A simulated campaign shows it firing once and the stop holding |
 
 Not built: pooling across comparisons; a host-written diagnosis table; a step rule other than the sign test.

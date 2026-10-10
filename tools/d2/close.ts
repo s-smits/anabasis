@@ -100,8 +100,18 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   // it: a step at a shortened budget says the harness answers within that budget what the
   // reference does not, which a harness that saves a solver its set-up reads as, and the full
   // limit says whether it holds where the solver has the time (`AGENTS.md`, section 9).
+  /** Where an imported harness came from, by its digest (`tools/d2/import.ts`). */
+  const imported = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "harness.imported" && isString(data.harness) && isString(data.from)
+        ? [[data.harness, data.from]]
+        : [],
+    ),
+  );
   const promotions = events.flatMap(({ kind, at, data }) => {
     if (kind !== "harness.promoted" || !isString(data.harness)) return [];
+    const from = imported.get(data.harness);
+    const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
     const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");
     const budgets = [...new Set(stepped.map(({ modelTurns }) => modelTurns))];
     const atBudget = budgets
@@ -116,7 +126,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
         ? ". No comparison of it at the full limit tallied a task"
         : `. At the full limit (${full.id}) it won ${String(full.tally.wins)}, lost ${String(full.tally.losses)} and tied ${String(full.tally.ties)}`;
     return [
-      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${stepped.length === 0 ? "" : ` at ${atBudget}`}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}`,
+      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${stepped.length === 0 ? "" : ` at ${atBudget}`}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}`,
     ];
   });
   const ruled = comparisons.reduce(

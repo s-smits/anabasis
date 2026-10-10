@@ -358,6 +358,7 @@ flags.
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
 | 5 | `bun tools/d2/settle.ts ... --session b-1 [--passes N]` | A person's labels for the rejections a comparison set aside, and its report once more; with `--passes`, the person's labels of N answers that passed, drawn by the comparison's id (`pass.labelled`), which change no reading |
 | 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing. A harness the rule would not promote takes `--despite "<why>"` |
+| 6 | `bun tools/d2/import.ts --name <name> --harness <dir> [--note "<why>"]` | The operator's word that a harness built elsewhere, another campaign's handover or one written by hand, is one this campaign keeps (`harness.imported`): it is kept under its digest as a session keeps one, and `--parent`, `--reference` and `promote.ts` then name it. It is no session, so `latest` is unmoved |
 | 7 | `bun tools/d2/close.ts ... --to <dir>` | Nothing. It writes what the campaign hands over, outside the repository: the reference harness as a directory that stands by itself, the public rules, and the closing report |
 | all | `bun tools/d2/harness-builder.ts ... --budget <dollars> --builder <model> --examiner <model> --reviewer <model>` | What the campaign runs by, once (`campaign.opened`); then each move the table names, made by the command of its row above and recorded with its reason (`campaign.move`); and how the campaign ended (`campaign.ended`) |
 
@@ -1404,7 +1405,7 @@ src/backends/   the three model backends as one pi collection, and compaction
 src/meta/       the owners of every runtime surface (section 12.8)
 tools/c/        the check program: accept, carry, rejections, repaired
 tools/d1b/      examine, draft
-tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote; exam,
+tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote, import; exam,
                 which stages a drafted exam as a pack; close, which writes what a campaign hands
                 over; harness-builder, which runs a campaign move after move; and word, which
                 leaves the operator's word for one that runs

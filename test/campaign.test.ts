@@ -7,10 +7,12 @@ import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { priceKey } from "../src/kernel/meter.ts";
+import { latestBuilt, promoted } from "../src/kernel/reports.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets, taskVersion } from "../src/kernel/task.ts";
 import {
   cpSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -26,6 +28,7 @@ import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
 import { openHarness } from "../src/solve/harness.ts";
 import { starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
+import { importCommand } from "../tools/d2/import.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
 import { budgetsNamed, capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
@@ -324,6 +327,54 @@ describe("a campaign", () => {
     // A harness that installed nothing has no control but the starter.
     await expect(keptAs(campaign, "--new", "programs-of:starter")).rejects.toThrow(
       `${least.digest} installed no program, so the control for its programs is the starter itself`,
+    );
+  });
+
+  it("imports a harness built elsewhere, kept as a session keeps one, and records where it came from", async () => {
+    layOut();
+    const campaign = await openCampaign(ARGS);
+    const least = await starter(campaign);
+    // A harness as a campaign hands one over (`close.ts`): a folder that stands by itself, with
+    // its programs under `.toolchain` as files and no link.
+    const handed = join(root, "handed", "harness");
+    cpSync(least.dir, handed, { recursive: true });
+    writeFileSync(join(handed, "agent", "BUILT_AGENTS.md"), "Imported: run the engine, then record.\n");
+    mkdirSync(join(handed, ".toolchain", "bin"), { recursive: true });
+    writeFileSync(join(handed, ".toolchain", "bin", "engine"), "#!/bin/sh\necho engine\n", { mode: 0o755 });
+    const { digest } = await openHarness(handed);
+    const flags = ["--name", NAME, "--harness", handed];
+    const was = { latest: latestBuilt(read(campaign.log)), promoted: promoted(read(campaign.log)) };
+    const trees = () => readdirSync(campaign.states).filter((name) => name.startsWith("tree-")).length;
+    const treesBefore = trees();
+    const imported = await importCommand([...flags, "--note", "epoch 0: the engine harness"]);
+    expect(imported).toEqual({ digest, dir: join(campaign.states, digest) });
+    // Kept under its digest with its programs in a tree beside it, named by a link, as `snapshot`
+    // keeps a session's state; and every flag that names a kept harness opens it.
+    expect(lstatSync(join(imported.dir, ".toolchain")).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(imported.dir, ".toolchain", "bin", "engine"), "utf8")).toContain("echo engine");
+    expect(await keptAs(campaign, "--parent", digest)).toEqual(imported);
+    expect(await keptAs(campaign, "--reference", `programs-of:${digest}`)).not.toEqual(imported);
+    // The record says where it came from. The import is no session: `latest` is unmoved, and so
+    // is the reference, which `promote.ts` alone moves.
+    const events = read(campaign.log).filter(({ kind }) => kind === "harness.imported");
+    // The origin by its last two segments, since the closing report prints it and leaves the host.
+    expect(events.map(({ data }) => data)).toEqual([
+      { harness: digest, from: join("handed", "harness"), note: "epoch 0: the engine harness" },
+    ]);
+    expect({ latest: latestBuilt(read(campaign.log)), promoted: promoted(read(campaign.log)) }).toEqual(was);
+    // Imported again it is the same harness, and nothing is recorded or left half-made.
+    expect(await importCommand(flags)).toEqual(imported);
+    expect(read(campaign.log).filter(({ kind }) => kind === "harness.imported")).toHaveLength(1);
+    // A folder that is no harness is refused, and nothing of it is left among the states.
+    const stray = join(root, "stray");
+    mkdirSync(stray, { recursive: true });
+    writeFileSync(join(stray, "note.txt"), "not a harness\n");
+    await expect(importCommand(["--name", NAME, "--harness", stray])).rejects.toThrow();
+    expect(readdirSync(campaign.states).filter((name) => name.startsWith("importing-"))).toEqual([]);
+    // One tree for the one import, whatever a session or a control kept beside it.
+    expect(trees()).toBe(treesBefore + 1);
+    expect(importCommand(["--name", "never-opened", "--harness", handed])).rejects.toThrow(
+      "has no folder yet",
     );
   });
 

@@ -229,30 +229,43 @@ function keptTree(bench: Bench): string | null {
  * Every question is asked of the copy, which no command of the Builder's can reach, and none of
  * `harness/` itself, which a process a command left behind could still be changing.
  */
+/**
+ * `source`, a harness directory, copied into a fresh folder among `states` as a state is kept:
+ * its files less its own `.toolchain`, links as they are, and its programs named by a link to
+ * `tree` beside it, so both go where the campaign's folder goes. The caller opens the copy and
+ * keeps it or removes it. Shared with the import of a harness built elsewhere
+ * (`tools/d2/import.ts`, 11 October), which keeps one the same way.
+ */
+export function stagedState(source: string, states: string, tree: string | null, prefix: string): string {
+  mkdirSync(states, { recursive: true });
+  const dir = realpathSync(mkdtempSync(join(states, prefix)));
+  try {
+    const own = resolve(source, ".toolchain");
+    cpSync(source, dir, { recursive: true, verbatimSymlinks: true, filter: (each) => resolve(each) !== own });
+    if (!lstatSync(dir).isDirectory()) throw new Error("harness/ is not a directory");
+    if (tree !== null) symlinkSync(join("..", basename(tree)), join(dir, ".toolchain"));
+    return dir;
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function frozen(bench: Bench): Promise<Snapshot> {
   const { states } = bench.request;
   mkdirSync(states, { recursive: true });
-  const dir = realpathSync(mkdtempSync(join(states, "freezing-")));
+  let dir: string | null = null;
   try {
-    const own = resolve(bench.home, HOME_TOOL_TREE);
-    cpSync(join(bench.home, "harness"), dir, {
-      recursive: true,
-      verbatimSymlinks: true,
-      filter: (source) => resolve(source) !== own,
-    });
-    if (!lstatSync(dir).isDirectory()) throw new Error("harness/ is not a directory");
+    dir = stagedState(join(bench.home, "harness"), states, keptTree(bench), "freezing-");
     refuseNamingHome(dir, bench.home, "harness");
-    const tree = keptTree(bench);
-    // By the tree's name beside the state, so both go where the campaign's folder goes.
-    if (tree !== null) symlinkSync(join("..", basename(tree)), join(dir, ".toolchain"));
     const harness = await openHarness(dir);
     // A preset no solve serves fails every solve, and is refused here before one is spent on it.
     selectedCodingTools(harness.presets);
     return { dir, harness, listed: (await bench.lists?.(harness)) ?? null };
   } catch (error) {
-    rmSync(dir, { recursive: true, force: true });
+    if (dir !== null) rmSync(dir, { recursive: true, force: true });
     // The copy's own path is the host's, and says where the states and the log beside them are.
-    const why = errorMessage(error).replaceAll(dir, "harness");
+    const why = errorMessage(error).replaceAll(dir ?? states, "harness");
     throw new Error(`the harness does not open: ${why}`, { cause: error });
   }
 }

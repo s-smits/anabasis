@@ -411,9 +411,11 @@ export function probeHostSolveReadDeny(opts: {
   let repoCanaryDir: string | null = null;
   let siblingCanaryDir: string | null = null;
   try {
-    const parent = join(tmpdir(), "ana-host-isolation-probe");
-    mkdirSync(parent, { recursive: true, mode: 0o700 });
-    workRoot = mkdtempSync(join(parent, "run-"));
+    // The probe's own folder, under the temporary directory and under no shared parent: a parent
+    // made 0700 by the first user to probe refused every other, and on 10 October a rehearsal run
+    // as the campaign user after the suite had run as root ended all 56 of its solves as
+    // `sandbox-crash` on EACCES here.
+    workRoot = mkdtempSync(join(tmpdir(), "ana-host-isolation-probe-"));
     const controlCanary = join(workRoot, "control-canary.txt");
     writeFileSync(controlCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
     // The deny target sits inside the protected root, where the live policy must refuse the read and

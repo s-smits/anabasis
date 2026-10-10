@@ -795,7 +795,7 @@ describe("a round", () => {
       return left < 0 ? LIMITED : step(version, side, nth, digest);
     });
     await expect(round(s.request)).rejects.toThrow(
-      "the provider answered no solve of 3 tasks in a row, so the comparison stops: You've hit your session limit",
+      "no solve of 3 tasks in a row ran, so the comparison stops: You've hit your session limit",
     );
     expect(s.of(COMPARISON_REPORTED)).toEqual([]);
     expect(s.asked.length).toBeLessThan(16);
@@ -811,6 +811,22 @@ describe("a round", () => {
       side === "fresh" ? cut : step(version, side, nth, digest),
     );
     expect(await round(worked.request)).toMatchObject({ short: HELD, versions: [], reading: NOT_SCORED });
+  });
+
+  it("stops the same way when the wall refuses every solve, which is the environment's and no harness's", async () => {
+    // sim-t10, 10 October: a probe folder another user owned refused the wall on every solve, and
+    // the rehearsal ran 56 of them to sandbox-crash before it was killed.
+    const unwalled: Ending = {
+      outcome: "non-result",
+      kind: "sandbox-crash",
+      reason: "the wall does not hold on this host, so a solve is not started",
+    };
+    const s = await setup([edit, finish], () => unwalled);
+    await expect(round(s.request)).rejects.toThrow(
+      "no solve of 3 tasks in a row ran, so the comparison stops: the wall does not hold on this host",
+    );
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
+    expect(s.asked.length).toBeLessThan(8);
   });
 
   it("reports a task short when its solves end in nothing countable, and tallies the rest", async () => {

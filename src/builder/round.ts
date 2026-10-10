@@ -347,11 +347,14 @@ function dispute(log: string, id: string, version: string, found: { solve: strin
   return true;
 }
 
-/** What the provider said of a solve it wrote nothing for, or null: no output token in the solve's
- *  last attempt's record. A solve the provider cut after an hour's work holds thousands (the Sol
- *  rounds of 2026-10-08), and is a non-result the comparison solves on from. A solve whose start
- *  does not name the comparison is refused: no fold would count it, and the comparison would buy
- *  it again at every pass. */
+/** What the environment said of a solve that never ran, or null: the provider wrote no output
+ *  token in the solve's last attempt's record, or the wall did not hold on the host, so the solve
+ *  was not started. A solve the provider cut after an hour's work holds thousands (the Sol
+ *  rounds of 2026-10-08), and is a non-result the comparison solves on from. On 10 October a
+ *  rehearsal whose wall refused every solve ran 56 of them to `sandbox-crash` before it was
+ *  killed: a dead wall is a dead provider's case (AGENTS.md, rule 14). A solve whose start does
+ *  not name the comparison is refused: no fold would count it, and the comparison would buy it
+ *  again at every pass. */
 function unanswered(log: string, id: string, { solve, ending }: Practised): string | null {
   const events = read(log);
   if (!solvesIn(events).some((each) => each.id === solve && each.start.comparison === id)) {
@@ -359,7 +362,9 @@ function unanswered(log: string, id: string, { solve, ending }: Practised): stri
       `solve ${solve} does not name comparison ${id} at its start, so no reading would count it: the caller's solve hands the comparison on to its solve request`,
     );
   }
-  if (ending.outcome !== "non-result" || ending.kind !== "provider") return null;
+  if (ending.outcome !== "non-result") return null;
+  if (ending.kind === "sandbox-crash") return ending.reason;
+  if (ending.kind !== "provider") return null;
   const record = events.findLast(({ kind, data }) => kind === "solve.finished" && data.solve === solve);
   return asRecord(record?.data.tokens)?.output === 0 ? ending.reason : null;
 }
@@ -412,7 +417,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     if (why === null) silent.clear();
     else if (silent.add(task).size >= SILENT) {
       throw new Error(
-        `the provider answered no solve of ${String(SILENT)} tasks in a row, so the comparison stops: ${why}. Run it again and it goes on from its log`,
+        `no solve of ${String(SILENT)} tasks in a row ran, so the comparison stops: ${why}. Run it again and it goes on from its log`,
       );
     }
     if (ending.outcome === "non-result" && ending.kind === "check" && !dropped.has(task)) {

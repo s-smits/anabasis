@@ -972,3 +972,88 @@ describe("the reader of comparisons the campaign command named apart from its Bu
     );
   });
 });
+
+describe("the reader of a harness that answered for its solver", () => {
+  /** A log of one Builder session that practised `t1` and left `hy`, then its comparison with `href`
+   *  on `v1`. A practice row is one solve's calls in order; a compared row is the harness one ran
+   *  under and its calls. */
+  const read = (
+    practice: readonly (readonly string[])[],
+    compared: readonly (readonly [string, readonly string[]])[],
+  ) => {
+    const log: LogEvent[] = [];
+    const put = appendTo(log);
+    const made = (task: string, harness: string, calls: readonly string[], measuredIn: string | null) => {
+      const ran = condition(task, harness);
+      const id = `s${String(log.length)}`;
+      put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      put("solve.started", {
+        solve: id,
+        condition: conditionId(ran),
+        limits: { wallSeconds: 100 },
+        ...keyIfNotNull("comparison", measuredIn),
+      });
+      for (const [turn, tool] of calls.entries()) {
+        put("solve.call", { solve: id, turn, tool, isError: false });
+      }
+      put("solve.finished", { solve: id, ending: { outcome: "pass" }, seconds: 50, responseModels: ["m-1"] });
+    };
+    for (const version of ["t1", "v1"]) {
+      put("task.proposed", { version });
+      put("task.gate", { version, gate: 1, outcome: "passed" });
+    }
+    put("build.started", { session: "p-1", parent: "href", tasks: ["t1"] });
+    for (const calls of practice) made("t1", "hy", calls, null);
+    put("build.finished", { session: "p-1", ended: "finished", harness: "hy", changed: true });
+    const terms = { session: "p-1", old: "href", fresh: "hy", starter: "hbase", setting: SETTING };
+    put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
+    for (const [harness, calls] of compared) made("v1", harness, calls, "p-1");
+    put(REPORTED, {
+      ...REPORT,
+      ...terms,
+      solves: 1,
+      level: 0.1,
+      tasks: 1,
+      versions: ["v1"],
+      reading: "no-step",
+    });
+    const { triggers } = overview(log);
+    return triggers.find((trigger) => trigger.name === "ANSWER FROM A PROGRAM")?.detail;
+  };
+
+  it("reads a practice solve that ran one program and submitted what it made", () => {
+    // The shape of recode's practice on the #107 campaigns, 21 solves of 22 and each a pass.
+    expect(
+      read(
+        [
+          ["bash", "submit"],
+          ["bash", "bash", "submit"],
+        ],
+        [],
+      ),
+    ).toBe("one shell call, then submit, in p-1: 1 of 2 practice solves");
+  });
+
+  it("puts each comparison's reference side beside its new one, since a solver can match it alone", () => {
+    // A read before the one command still counts; a second command does not, and neither does a
+    // trace with a write in it, which is the solver carrying the candidate as the rule permits.
+    expect(
+      read(
+        [],
+        [
+          ["hy", ["read", "bash", "submit"]],
+          ["hy", ["bash", "bash", "submit"]],
+          ["href", ["bash", "submit"]],
+          ["href", ["write", "bash", "submit"]],
+        ],
+      ),
+    ).toBe("one shell call, then submit, in p-1: 1 of 2 under the new harness, 1 of 2 under the reference");
+  });
+
+  it("stays quiet on solves that worked through several commands or wrote their answer, and on the reference alone", () => {
+    // Under the reference Starter these solvers take many commands and write `answer.json` with the
+    // last: 57 of buffer's 68 reference solves ended on a shell call, and not one was a single call.
+    expect(read([["bash", "bash", "submit"]], [["hy", ["write", "bash", "submit"]]])).toBeUndefined();
+    expect(read([], [["href", ["bash", "submit"]]])).toBeUndefined();
+  });
+});

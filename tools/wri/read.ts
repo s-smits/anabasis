@@ -199,6 +199,47 @@ function winTriggers(log: Index): Trigger[] {
   });
 }
 
+/**
+ * Lane 19's reading of whether a harness answered for its solver, which `src/builder/prompt.ts`
+ * forbids a part to do: a solve whose one shell call was followed by its submit, with no write of
+ * its own, submitted what one program made. Read per Builder session's practice and per comparison,
+ * with the comparison's reference side beside its new one as the control, because a solver can do
+ * the whole task in one command of its own.
+ *
+ * The shape is that strict because these solvers do everything through the shell, the answer file
+ * included: across the #107 buffer campaign's solves, 1,920 `bash` calls to 7 `write` and no `read`.
+ * A looser shape, a shell call last before `submit`, read 57 of the 68 solves under the reference
+ * Starter there, which carries no engine to answer with. This one read none of the 132 reference
+ * solves of the #107 buffer and recode campaigns, and 24 of recode's 40 measured solves under its
+ * built harnesses and 21 of its 22 practice solves, every one a pass.
+ */
+function programTriggers(log: Index): Trigger[] {
+  const oneProgram = (solve: Solve) =>
+    solve.outcome !== null &&
+    solve.calls.at(-1) === "submit" &&
+    solve.calls.at(-2) === "bash" &&
+    solve.calls.filter((tool) => tool === "bash").length === 1 &&
+    !solve.calls.some((tool) => FILE_WRITERS.has(tool));
+  const read = (solves: readonly Solve[]) =>
+    share(solves.filter(oneProgram).length, solves.filter((solve) => solve.outcome !== null).length);
+  const practised = log.builds.flatMap((build) => {
+    const practice = practiceOf(log, build);
+    return practice.some(oneProgram) ? [`${build.session}: ${read(practice)} practice solves`] : [];
+  });
+  const compared = log.compared.flatMap(({ session, own, scoring }) => {
+    const under = (harness: JsonValue | undefined) => scoring.filter((solve) => solve.harness === harness);
+    return under(own.fresh).some(oneProgram)
+      ? [
+          `${session}: ${read(under(own.fresh))} under the new harness, ${read(under(own.old))} under the reference`,
+        ]
+      : [];
+  });
+  const lines = [...practised, ...compared];
+  return lines.length > 0
+    ? [fired("ANSWER FROM A PROGRAM", `one shell call, then submit, in ${lines.join("; ")}`)]
+    : [];
+}
+
 /** Lanes 13 to 19: the harness, which is the Builder's. */
 function harnessTriggers(log: Index): Trigger[] {
   return log.builds.flatMap((build) => {
@@ -688,6 +729,7 @@ export function overview(events: readonly LogEvent[]): Overview {
       ...comparisonTriggers(log),
       ...solveTriggers(log, steps),
       ...winTriggers(log),
+      ...programTriggers(log),
       ...reviewTriggers(log),
       ...promotionTriggers(log),
     ],

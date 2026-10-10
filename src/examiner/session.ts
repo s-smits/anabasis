@@ -53,6 +53,7 @@ import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { mkdtempSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, type JsonValue } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { tmpdir } from "../meta/os.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -134,6 +135,10 @@ interface Desk {
   /** The instances this campaign has been given so far, by content, so that none is taken twice:
    *  this session's, and the ones earlier sessions wrote. */
   readonly seen: Map<string, "now" | "earlier">;
+  /** The instances, by content, the host saw a valid answer to in this session's `try_answer`:
+   *  a proposal of one is logged as feasible, and never waits for a person as possibly infeasible
+   *  (`awaitingLabel`). The answer itself is kept nowhere (11 October, `docs/simplify.md`, F4). */
+  readonly answered: Set<string>;
   readonly held: string[];
   readonly refused: string[];
   note: string | null;
@@ -165,6 +170,7 @@ function gated(desk: Desk, instance: Task): string {
     taskId,
     session: request.id,
     task: { taskId, family, publicInput, hidden },
+    ...keyIfDefined("feasible", desk.answered.has(contentOf(instance)) ? true : undefined),
   });
   const packaged = packageGate(request.contract, task);
   append(request.log, "task.gate", { version, gate: 1, ...packaged });
@@ -277,7 +283,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
     name: "try_answer",
     label: "Try an answer",
     description:
-      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try keeps nothing: no task enters the exam by it, and no answer is kept. The gate's reading of the instance's package is given first, where it would refuse it.",
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try keeps no answer and enters no task in the exam; where the checks pass, the host keeps that the instance has a valid answer, so a task proposed with that content is not later read as possibly infeasible. The gate's reading of the instance's package is given first, where it would refuse it.",
     parameters: Type.Object({
       family: Type.String({ minLength: 1 }),
       public_input: Type.Unknown({ description: "What the solver would read of the task." }),
@@ -301,6 +307,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
 `;
       if (signal?.aborted === true) throw new Error("The session has ended.");
       const verdict = await verify(instance, answer);
+      if (verdict.kind === "pass") desk.answered.add(contentOf(instance));
       return text(`${gate}${tried(verdict)}`);
     },
   });
@@ -363,6 +370,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     request,
     proposed: 0,
     seen: new Map(writtenTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
+    answered: new Set(),
     held: [],
     refused: [],
     note: null,

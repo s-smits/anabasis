@@ -603,6 +603,18 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(awaitingLabel(compared(settled, "b-3", "h4", F))).toEqual([]);
   });
 
+  it("are not the ones the host saw their author's try_answer pass: the proposal says so", () => {
+    // The Examiner's `try_answer` passed an answer to the task before it proposed it (11 October):
+    // the task has a valid answer on record though no solve found one, so it waits for nobody.
+    const proposed = twice.map((each) =>
+      each.kind === "task.proposed" && each.data.version === "hard"
+        ? { ...each, data: { ...each.data, feasible: true } }
+        : each,
+    );
+    expect(awaitingLabel(proposed)).toEqual([]);
+    expect(awaitingLabel(compared(proposed, "b-3", "h4", F))).toEqual([]);
+  });
+
   it("are not the ones the starter answered, though the test's two harnesses did not", () => {
     const lower = (log: readonly LogEvent[], session: string) => {
       const whole = compared(log, session, "h2", F);

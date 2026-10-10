@@ -209,10 +209,37 @@ describe("an Examiner session", () => {
     // A try is no proposal: no task was held out, and no answer entered the log but in the trace.
     expect(s.of("task.proposed")).toEqual([]);
     expect(s.of("exam.finished")[0]).toMatchObject({ proposed: 0 });
+
+    // What a pass keeps is the fact: a proposal with the content the host saw answered is logged
+    // feasible, and one whose content moved, by its public input or its hidden values, is not.
+    const kept = setup([
+      call("try_answer", {
+        family: "fixture",
+        public_input: { base: 7 },
+        hidden: { seed: 1 },
+        answer: { answer: 42 },
+      }),
+      call("try_answer", {
+        family: "fixture",
+        public_input: { base: 8 },
+        hidden: { seed: 1 },
+        answer: { answer: 1 },
+      }),
+      propose(7, 8),
+      finish,
+    ]);
+    await examine({
+      ...kept.request,
+      verify: async (_task, answer) =>
+        asRecord(answer)?.answer === 42 ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] },
+    });
+    expect(kept.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
+      ["x-1-001", true],
+      ["x-1-002", null],
+    ]);
+    expect(JSON.stringify(kept.of("task.proposed"))).not.toContain('"answer":42');
     // The Examiner is told it has the tool, and the shell, and what neither does to the exam.
-    expect(s.sent[0]).toContain(
-      "try_answer runs the checks on an instance with an answer of yours and keeps nothing",
-    );
+    expect(s.sent[0]).toContain("try_answer runs the checks on an instance with an answer of yours");
     expect(s.sent[0]).toContain("bash, read and write are yours in a home of your own");
   });
 

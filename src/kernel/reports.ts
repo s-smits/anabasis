@@ -430,7 +430,14 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
     }
   }
   const ran = ranUnder(events);
-  const feasible = new Set(ran.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])));
+  // A valid answer on record settles a task for good: a solve's, or the one the host saw its
+  // author's `try_answer` pass before the proposal, which the proposal says (11 October).
+  const feasible = new Set([
+    ...ran.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])),
+    ...events.flatMap(({ kind, data }) =>
+      kind === "task.proposed" && data.feasible === true && isString(data.version) ? [data.version] : [],
+    ),
+  ]);
   const made = (comparison: string, task: string) => `${comparison} ${task}`;
   const cut = new Set(
     ran.flatMap((solve) => {

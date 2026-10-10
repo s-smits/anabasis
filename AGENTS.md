@@ -614,8 +614,9 @@ harness was valid on more than three solves in four, or neither harness on one i
 its answer is another budget or other tasks. The next comparison or session is then refused,
 unless the operator gives a reason to go on (`--past-stop`), which is logged as
 `stop.overridden`. A task with no valid answer in two comparisons goes to a person as
-possibly infeasible, unless a valid answer for it stands anywhere on record or a limit cut its
-solves (`awaitingLabel`). Promotion is the operator's `promote.ts --yes`, which writes
+possibly infeasible, unless a valid answer for it stands anywhere on record, a solve's or the
+one the host saw its author's `try_answer` pass before the proposal (`task.proposed.feasible`),
+or a limit cut its solves (`awaitingLabel`). Promotion is the operator's `promote.ts --yes`, which writes
 `harness.promoted`. A comparison that names no `--reference` is made against the harness last
 promoted, and one that names a digest is made against that harness and promotes nothing.
 

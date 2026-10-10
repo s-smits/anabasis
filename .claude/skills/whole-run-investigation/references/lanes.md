@@ -18,9 +18,10 @@ the pen apart, and each part has its own way of going wrong.
   check itself has been read.
 - **The Examiner** writes task instances, against checks it is shown by id and assertion only.
   It writes no check, no control and no verdict, and it is put to no solver. At a session's
-  opening it is told one outcome of every task the campaign holds: one harness won, a tie between
-  valid answers, no valid answer yet, or disputed (`src/examiner/record.ts`). It is never told
-  which harness, a count, a budget, a target or a level.
+  opening it is told one outcome of every task the campaign holds: how the reference harness did
+  on it in the last comparison that scored it, valid in every solve, in some or in none, or
+  disputed (`src/examiner/record.ts`). It is never told any other harness, a count, a budget, a
+  target or a level.
 - **The Builder** writes the harness: the guide, the tools, the tool tree. It sees practice tasks,
   their records and the reviewers' readings of its practice fails. It never sees a check or a
   held-out task.
@@ -367,12 +368,12 @@ reference-distance pointer, and removed each after measuring it: every one point
 one route. v2 tells the Examiner one outcome of every task the campaign holds and nothing to aim
 at (`src/examiner/record.ts`). That is the one channel by which a better exam is asked for, so
 read whether it carried. `OUTCOMES BY SESSION` gives, for each session's held-out tasks, how many
-one harness won, how many tied, how many have no valid answer and how many no comparison has
+the reference harness answered in every solve, in some, in none, and how many no comparison has
 scored. Read them in session order, and what changed in the instances between sessions:
 families, the number of requirements meeting in one limit, sizes. The public inputs are in
-`task.proposed`; describe how they differ and quote none. An author told "one harness won" can
-reach that outcome with tasks whose solves vary widely in what they need: such tasks split
-evenly and add nothing, so set a session's wins beside lane 24's reading of the reference
+`task.proposed`; describe how they differ and quote none. An author told the reference failed a
+task can reach that outcome with tasks whose solves vary widely in what they need: such tasks
+split evenly and add nothing, so set a session's outcomes beside lane 24's reading of the reference
 harness against itself. Do not propose telling the Examiner a share, a target or a level: v1
 measured that. The decision it changes is whether the Examiner's inputs are revised before
 another session; it routes to `examiner-prompt`, and to `operator` for the reading.

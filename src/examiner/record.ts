@@ -5,8 +5,10 @@
  * task is held out on the shape of its package (`src/kernel/task.ts`), so nothing a session does
  * tells its author whether a task was any good. What tells it is the comparisons. The plan has the
  * author see every task of the campaign, the pack's and the ones earlier sessions wrote, the older
- * and easier ones included, each with its outcome so far: one harness won, a tie between valid
- * answers, no valid answer yet, or disputed (`docs/plan.md`, Phase 2). That is every word here
+ * and easier ones included, each with its outcome so far: how the reference harness did on it in
+ * the last comparison that scored it, valid in every solve, in some or in none, or disputed
+ * (`docs/plan.md`, Phase 2; since 11 October, `docs/simplify.md` F3: "one harness won" and "no
+ * valid answer yet" told the author nothing of where the room was). That is every word here
  * beside the ones about a task's own standing in the campaign. It is a view of the log, and no
  * store is kept for it. Until that day a session was shown the pack's tasks by id and family alone,
  * and no outcome.
@@ -24,9 +26,10 @@ import type { Task } from "../kernel/verify.ts";
 
 /** How each outcome is said. */
 const SAID: Readonly<Record<Outcome, string>> = {
-  won: "one harness won",
-  tie: "a tie between valid answers",
-  "no-valid-answer": "no valid answer yet",
+  "reference-every": "the reference harness answered it validly in every solve of the last comparison",
+  "reference-some":
+    "the reference harness answered it validly in some solves of the last comparison and not in others",
+  "reference-none": "the reference harness answered it validly in no solve of the last comparison",
   disputed: "disputed: a rejection of an answer to it is not settled",
   exhausted: "answered validly by both harnesses in every solve of two comparisons: no longer scored",
   "earlier-setting": "compared under an earlier budget only, not yet under the one now set",

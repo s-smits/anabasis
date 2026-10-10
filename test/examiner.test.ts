@@ -369,11 +369,13 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     append(s.log, "task.state", { version: practice ?? "", state: "released" });
     // Every task the campaign holds, the pack's first: the session is handed them in that order.
     const tasks = [EXAMPLE, ...writtenTasks(read(s.log))];
+    // The reference harness is h1, the comparison's old side: the author hears how it did on
+    // each task, and nothing of h2.
     expect(heard(read(s.log), tasks)).toEqual([
-      "e-1 (family fixture): one harness won",
-      "x-1-001 (family fixture): one harness won",
-      "x-1-002 (family fixture): a tie between valid answers",
-      "x-1-003 (family fixture): no valid answer yet",
+      "e-1 (family fixture): the reference harness answered it validly in some solves of the last comparison and not in others",
+      "x-1-001 (family fixture): the reference harness answered it validly in no solve of the last comparison",
+      "x-1-002 (family fixture): the reference harness answered it validly in every solve of the last comparison",
+      "x-1-003 (family fixture): the reference harness answered it validly in no solve of the last comparison",
       "x-1-004 (family fixture): in use as practice, and so never scored",
       "x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled",
     ]);
@@ -383,8 +385,12 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(opening).toContain(
       "The tasks of the exam so far, and what the last comparison that scored each one found",
     );
-    expect(opening).toContain("- e-1 (family fixture): one harness won");
-    expect(opening).toContain("- x-1-003 (family fixture): no valid answer yet");
+    expect(opening).toContain(
+      "- e-1 (family fixture): the reference harness answered it validly in some solves",
+    );
+    expect(opening).toContain(
+      "- x-1-002 (family fixture): the reference harness answered it validly in every solve",
+    );
     // Which harness won, how many solves failed and what a solver answered are not the author's.
     expect(opening).not.toContain("h2");
     expect(opening).not.toContain(SOLVER);

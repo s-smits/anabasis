@@ -206,8 +206,8 @@ tasks carry it.
 A session makes no solve, so it takes no solver, no limits of a solve and no reviewer, and costs
 the Examiner's own turns: $2.01 of the $48.45 the second live session spent when it still paid
 for a stronger solver. At its opening it is told one outcome of every task the campaign holds:
-one harness won, a tie between valid answers, no valid answer yet, or disputed. It is told no
-count, no budget and no target.
+how the reference harness did on it in the last comparison that scored it, valid in every solve,
+in some or in none, or disputed. It is told no other harness, no count, no budget and no target.
 
 A session ended by its provider reads `crashed` in `exam.finished`, with what the provider said.
 

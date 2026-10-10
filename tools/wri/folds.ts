@@ -19,7 +19,14 @@
  */
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { awaitingLabel, billedAll, lastReports, outcomesOf } from "#src/kernel/reports.ts";
+import {
+  awaitingLabel,
+  billedAll,
+  lastReports,
+  outcomesOf,
+  pairsReported,
+  unsolved as noneAnswered,
+} from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -613,8 +620,14 @@ export function taskTriggers(log: Index): Trigger[] {
     gates.filter((data) => data.outcome === "refused"),
     (data) => text(data.reason) || "unrecorded",
   );
+  // Each scored task by its last report: whether any counted solve of either side answered it.
+  const scored = new Map(
+    lastReports(log.events).flatMap((report) =>
+      pairsReported(log.events, report).map((pair) => [pair.task, noneAnswered(pair)] as const),
+    ),
+  );
+  const unanswered = [...scored.values()].filter(Boolean).length;
   const outcomes = outcomesOf(log.events);
-  const unanswered = [...outcomes.values()].filter((outcome) => outcome === "no-valid-answer").length;
   const awaiting = awaitingLabel(log.events).filter((version) => log.held.includes(version));
   const done = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
   const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE);
@@ -637,7 +650,7 @@ export function taskTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "NO VALID ANSWER",
-            `${share(unanswered, outcomes.size)} scored tasks have no valid answer from any harness`,
+            `${share(unanswered, scored.size)} scored tasks have no valid answer from any harness`,
           ),
         ]
       : []),

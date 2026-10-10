@@ -24,7 +24,7 @@
  */
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { draw, objectiveRuleIn, type Paired, pairings, pairsOf, TRIGGER, triggered } from "./compare.ts";
+import { draw, objectiveRuleIn, type Paired, pairsOf, TRIGGER, triggered } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
 import { taskSets } from "./task.ts";
@@ -39,7 +39,16 @@ interface Reported {
 /** What a task's author may hear of it: that one of the two harnesses won it, that it was a tie
  *  between valid answers, that no solve of the last comparison gave a valid answer, or that a
  *  rejection of an answer to it is not settled. Never which harness, and never a count. */
-export type Outcome = "won" | "tie" | "no-valid-answer" | "disputed" | "exhausted" | "earlier-setting";
+/** What a task's author hears of it: how the reference harness did on it in the last comparison
+ *  that scored it (every solve valid, some, none), or that it was set aside, is no longer scored,
+ *  or was compared under an earlier setting only. */
+export type Outcome =
+  | "reference-every"
+  | "reference-some"
+  | "reference-none"
+  | "disputed"
+  | "exhausted"
+  | "earlier-setting";
 
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
  *  (`billedFor`), and what each solve is held at before it starts. */
@@ -492,13 +501,17 @@ export function unansweredTwice(events: readonly LogEvent[]): string[] {
 
 /**
  * The outcome of each task some comparison scored or set aside, by task version, from the last
- * comparison that did under the setting the last report was made under. The plan lets a task's
- * author hear this and no more (`docs/plan.md`, Phase 2): without a stronger solve the author
- * would otherwise hear nothing, and a difficulty zone or a count is what v1 found an author
- * writes towards. A task no comparison has scored has no outcome. A tie with a valid answer in it
- * is a tie between valid answers on both sides, since a task ties when both harnesses gave as
- * many. A tie the test's own solves left without a valid answer is still no "no valid answer"
- * where another solve of the comparison gave one (`answered`).
+ * comparison that did under the setting the last report was made under: how the reference
+ * harness did on it, valid in every one of its counted solves, in some, or in none. The plan lets
+ * a task's author hear this and no more (`docs/plan.md`, Phase 2): without a stronger solve the
+ * author would otherwise hear nothing, and a difficulty zone or a count is what v1 found an
+ * author writes towards. The reading is of the reference's side alone: which other harness was
+ * compared, and what it answered, are not the author's. Until 11 October the outcome was "one
+ * harness won", "a tie between valid answers" or "no valid answer yet", which told the author
+ * nothing of where the room was: after a control a task the reference failed and the starter
+ * failed read as one with no valid answer, which the author's prompt says measures nothing, and
+ * one the reference answered read as "won" (`docs/simplify.md`, F3). A task no comparison has
+ * scored has no outcome.
  *
  * An outcome is of a setting: on 10 October t-10's five tasks tied at 10 turns and read "won" at
  * 3 without a byte of them changing, and the Examiner that heard "won" was told no budget. A task
@@ -512,11 +525,11 @@ export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
   const setting = reports.at(-1)?.data.setting;
   for (const report of reports) {
     const now = report.data.setting === setting;
-    const valid = answered(events, report.session);
     for (const pair of pairsReported(events, report)) {
-      const won = pairings(pair);
-      const tied = valid.has(pair.task) ? "tie" : "no-valid-answer";
-      const outcome = spent.has(pair.task) ? "exhausted" : won.fresh === won.old ? tied : "won";
+      const valid = pair.old.filter(Boolean).length;
+      const reference: Outcome =
+        valid === pair.old.length ? "reference-every" : valid === 0 ? "reference-none" : "reference-some";
+      const outcome = spent.has(pair.task) ? "exhausted" : reference;
       outcomes.set(pair.task, now ? outcome : "earlier-setting");
     }
     const aside = Array.isArray(report.data.aside) ? report.data.aside.filter(isString) : [];

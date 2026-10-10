@@ -347,8 +347,8 @@ describe("a report read as it was found", () => {
     expect(awaitingLabel(settled)).toEqual([]);
     expect(outcomesOf(settled)).toEqual(
       new Map([
-        ["v1", "won"],
-        ["v2", "tie"],
+        ["v1", "reference-none"],
+        ["v2", "reference-some"],
       ]),
     );
   });
@@ -398,18 +398,34 @@ describe("the outcome an Examiner hears of a task", () => {
     reported("b-1", "no-step", "h2", { ...terms, versions: ["won", "tied", "unsolved"], aside: ["aside"] }),
   ];
 
-  it("is that one harness won, a tie between valid answers, no valid answer yet, or disputed", () => {
+  it("is how the reference harness did on it, in every solve, some or none, or that it is disputed", () => {
+    // The reference is the comparison's old side; what the new harness answered is not heard.
     expect(outcomesOf(log)).toEqual(
       new Map([
-        ["won", "won"],
-        ["tied", "tie"],
-        ["unsolved", "no-valid-answer"],
+        ["won", "reference-none"],
+        ["tied", "reference-some"],
+        ["unsolved", "reference-none"],
         // A rejection of an answer to it is not settled, so it was in no tally.
         ["aside", "disputed"],
       ]),
     );
     // A task no comparison has scored has no outcome.
     expect(outcomesOf(log).has("waiting")).toBe(false);
+    // The hostile case of rule 3: two logs that differ only in what the new harness answered,
+    // and so in which harness won each task, give the author the same outcomes.
+    const flipped = [
+      ...tasks.flatMap(heldOut),
+      ...solved("b-1", "won", "h1", [F, F]),
+      ...solved("b-1", "won", "h2", [F, F]),
+      ...solved("b-1", "tied", "h1", [P, F]),
+      ...solved("b-1", "tied", "h2", [P, P]),
+      ...solved("b-1", "unsolved", "h1", [F, F]),
+      ...solved("b-1", "unsolved", "h2", [P, P]),
+      ...solved("b-1", "aside", "h1", [P, F]),
+      ...solved("b-1", "aside", "h2", [F, F]),
+      reported("b-1", "no-step", "h2", { ...terms, versions: ["won", "tied", "unsolved"], aside: ["aside"] }),
+    ];
+    expect(outcomesOf(flipped)).toEqual(outcomesOf(log));
   });
 
   it("is read from the last comparison that scored the task", () => {
@@ -423,10 +439,10 @@ describe("the outcome an Examiner hears of a task", () => {
     ];
     expect(outcomesOf(again)).toEqual(
       new Map([
-        ["won", "won"],
-        ["tied", "won"],
-        ["unsolved", "no-valid-answer"],
-        ["aside", "tie"],
+        ["won", "reference-none"],
+        ["tied", "reference-none"],
+        ["unsolved", "reference-none"],
+        ["aside", "reference-every"],
       ]),
     );
   });
@@ -468,16 +484,17 @@ describe("the outcome an Examiner hears of a task", () => {
     expect(outcomesOf(shortened)).toEqual(
       new Map([
         ["won", "earlier-setting"],
-        ["tied", "won"],
+        ["tied", "reference-none"],
         ["unsolved", "earlier-setting"],
         ["aside", "earlier-setting"],
       ]),
     );
   });
 
-  it("is no 'no valid answer' where a solve outside the test answered: the starter, or the reference again", () => {
+  it("reads the reference's counted solves alone: not its third, made to read it against itself, nor the starter's", () => {
     // The test's own four solves of the task were all rejected. The reference harness's third
-    // solve, made to read it against itself, was valid, and on another task the starter's was.
+    // solve, made to read it against itself, was valid, and on another task the starter's was:
+    // neither is counted, and the author hears the reference valid in no solve of either.
     const beside = [
       ...heldOut("again"),
       ...heldOut("lower"),
@@ -489,7 +506,7 @@ describe("the outcome an Examiner hears of a task", () => {
       reported("g-1", "no-step", "h2", { ...terms, versions: ["again", "lower"] }),
     ];
     expect(answered(beside, "g-1")).toEqual(new Set(["again", "lower"]));
-    expect([...outcomesOf(beside).values()]).toEqual(["tie", "tie"]);
+    expect([...outcomesOf(beside).values()]).toEqual(["reference-none", "reference-none"]);
   });
 });
 
@@ -639,7 +656,7 @@ describe("the tasks the reference harness exhausted", () => {
     // The Examiner hears it as one outcome a task, and the kept ones keep theirs.
     const heard = outcomesOf(twice);
     expect([...heard.values()].filter((outcome) => outcome === "exhausted")).toHaveLength(2);
-    expect(heard.get("open") === "won" || heard.get("open") === "exhausted").toBe(true);
+    expect(heard.get("open") === "reference-every" || heard.get("open") === "exhausted").toBe(true);
     // Under another setting the count starts again: a report there holds no pair of this setting's
     // solves, and the earlier reports are not read. A released task is no held-out one.
     expect(exhausted(compared(twice, "b-3", "h4", "other"))).toEqual([]);

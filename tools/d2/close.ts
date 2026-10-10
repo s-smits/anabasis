@@ -95,18 +95,29 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   const opening = openingOf(events);
   const setting = recordedSetting(events);
   const reference = promoted(events);
-  const promotions = events.flatMap(({ kind, at, data }) =>
-    kind === "harness.promoted" && isString(data.harness)
-      ? [
-          `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${
-            comparisons
-              .filter((each) => each.fresh === data.harness && each.reading === "step")
-              .map((each) => each.id)
-              .join(" and ") || "no comparison on record"
-          }${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}`,
-        ]
-      : [],
-  );
+  // A step is named with the budget it was read at, and the reading at the full limit beside
+  // it: a step at a shortened budget says the harness answers within that budget what the
+  // reference does not, which a harness that saves a solver its set-up reads as, and the full
+  // limit says whether it holds where the solver has the time (`AGENTS.md`, section 9).
+  const promotions = events.flatMap(({ kind, at, data }) => {
+    if (kind !== "harness.promoted" || !isString(data.harness)) return [];
+    const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");
+    const budgets = [...new Set(stepped.map(({ modelTurns }) => modelTurns))];
+    const atBudget = budgets
+      .map((turns) => (turns === null ? "the full limit" : plural(turns, "turn")))
+      .join(" and ");
+    const full = comparisons.findLast(
+      (each) =>
+        each.fresh === data.harness && each.modelTurns === (opening?.limit ?? null) && each.tally !== null,
+    );
+    const held =
+      full?.tally === null || full === undefined
+        ? ". No comparison of it at the full limit tallied a task"
+        : `. At the full limit (${full.id}) it won ${String(full.tally.wins)}, lost ${String(full.tally.losses)} and tied ${String(full.tally.ties)}`;
+    return [
+      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${stepped.length === 0 ? "" : ` at ${atBudget}`}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}`,
+    ];
+  });
   const ruled = comparisons.reduce(
     (sum, { rulings }) => ({
       earned: sum.earned + rulings.earned,

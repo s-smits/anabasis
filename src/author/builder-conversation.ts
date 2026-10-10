@@ -23,6 +23,8 @@ import type { HostSession, PiTool } from "../backends/pi-session.ts";
 export type RoundEnding =
   | "accepted"
   | "terminal-refusal"
+  /** A split build's Harness Builder pass whose submit handed the correctness model back. */
+  | "handed-back"
   | "turn-bound"
   | "no-progress"
   | "budget-limited"

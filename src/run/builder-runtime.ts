@@ -136,8 +136,12 @@ export function campaignBuilderMount(
       epochDir: campaignDir,
       policy,
       capabilityPolicies: {
-        public_source: [workshopPolicy],
-        verifier_workshop: [workshopPolicy, exportBinding.policy],
+        ...Object.fromEntries(
+          beside.map(({ name }) => [
+            name,
+            name === "verifier_workshop" ? [workshopPolicy, exportBinding.policy] : [workshopPolicy],
+          ]),
+        ),
         ...Object.fromEntries(files.map(({ name }) => [name, [policy]])),
       },
       record,
@@ -184,17 +188,16 @@ export function composeBuilderRuntime(
   const workspace = join(campaignDir, WORKSPACE_DIR);
   const trialIsolation = builtSolveIsolation(repoRoot, piBuiltReadAllowRoots(slots));
   const slot = builderSlot(builder, repoRoot);
-  const shellWall = builderShellWall(builder.kind, workspace, policyReadGrant(mount.evidenceInput.policy));
   // Every round records what its session exposes, whether the round opened the session or continued
   // the run's conversation: the registered roster against the declarations the provider receives,
-  // and the catalogue of the role it opens in, with that role's own isolation.
+  // and the catalogue of the role it opens in, with that role's own isolation and shell wall.
   const recordSession = (roster: readonly PiTool[], systemPrompt: string, role: BuilderRole): void => {
     const side = role === "answer" ? mount.answer : mount;
     if (side === undefined) throw new Error("an answer session on a Builder mount with no answer side");
     writeBuilderSessionEvidence({
       ...side.evidenceInput,
       role,
-      shellWall,
+      shellWall: builderShellWall(builder.kind, workspace, policyReadGrant(side.evidenceInput.policy)),
       tools: roster,
       framing: systemPrompt,
       contract: { backend: builder.kind, backendExposed: roster.map(toToolDeclaration) },

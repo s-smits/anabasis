@@ -48,6 +48,7 @@ import {
   submitStages,
 } from "../src/gate/validation-pipeline.ts";
 import { checkCandidate, conditionKey } from "../src/author/candidate-check.ts";
+import { onHarnessSide } from "../src/author/feedback-routing.ts";
 import {
   type Brief,
   controllerValidatedFinding,
@@ -845,6 +846,23 @@ describe("correctness_check", () => {
     expect(body.notReached).toEqual(["conformance", "gates"]);
     expect(gated).toBe(false);
     expect(JSON.stringify(body.findings)).toContain("non-regular-entry");
+  });
+
+  // A split build routes a refusal by its half: what agent/ refused is the Harness Builder's to
+  // repair, and only what the correctness model refused goes back to the answer agent.
+  it("marks a fingerprint refusal of agent/ as the Harness Builder's, and one of the correctness model as the answer agent's", () => {
+    const refusedIn = (name: string, bundle: "agent" | "correctness-model", file: string) => {
+      const dir = workspace(name);
+      symlinkSync(join(dir, bundle, file), join(dir, bundle, `link-${file}`));
+      const candidate = checkCandidate(dir, { slug: "matching", exactTasks: 4 });
+      if (candidate.ok) throw new Error("a symlinked bundle entry fingerprinted");
+      expect(candidate.findings.map((finding) => finding.code)).toContain("non-regular-entry");
+      return candidate.findings;
+    };
+    expect(refusedIn("fingerprint-side-agent", "agent", "tools.ts").every(onHarnessSide)).toBe(true);
+    expect(refusedIn("fingerprint-side-model", "correctness-model", "evaluator.ts").some(onHarnessSide)).toBe(
+      false,
+    );
   });
 
   it("reports a gate that threw as blocked on the gate stage", async () => {

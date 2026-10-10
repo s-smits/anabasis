@@ -650,7 +650,9 @@ export async function runBuilderCampaign(
   const seed = created ? fresh : "resumed";
   const controller = new BuilderCampaignController(input, deps, memory);
   const feedback = new BuilderAuthorFeedback();
-  const authoringTools = controller.authoringTools(feedback);
+  const { answer } = deps;
+  // A split build composes each side's own tools (`runSplitBuild`); these are the whole Builder's.
+  const authoringTools = answer === undefined ? controller.authoringTools(feedback) : [];
   // One writer for checkpoints and the settled record, so a host kill between two writes leaves
   // the last checkpoint standing as evidence instead of a half-written pair.
   const writeExecution = builderExecutionEvidenceWriter(input.campaignDir);
@@ -698,7 +700,6 @@ export async function runBuilderCampaign(
       ...keyIfDefined("providerBudget", deps.providerBudget),
       ...keyIfDefined("waitMs", deps.waitMs),
     };
-    const { answer } = deps;
     outcome =
       answer === undefined
         ? await runBuilderSession(sessionInput, sessionDeps)

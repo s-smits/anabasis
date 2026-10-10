@@ -254,6 +254,31 @@ describe("the battery driver", () => {
     expect(digest("r1", older)).not.toBe(digest("r2", older));
   });
 
+  // A fail group confirms a fail across solves of one exam, so the key must not move with the notes
+  // or the reference solve beside the checks, which no solver reads; the scoring program moves it.
+  it("keys each row's exam on the agent, the scoring program and the task, not the notes beside them", async () => {
+    const where = slug("exam-key");
+    const examOf = (runId: string) =>
+      new Map(
+        readCaseRecord(where.recordPath)
+          .map((entry) => entry.row)
+          .filter((row) => row.runId === runId)
+          .map((row) => [row.taskId, row.examHash] as const),
+      );
+    await drive(where, "run-exam-1", scriptedSolver());
+    writeFileSync(join(where.slugDir, "correctness-model/NOTES.md"), "revised notes\n");
+    mkdirSync(join(where.slugDir, "correctness-model/reference"), { recursive: true });
+    writeFileSync(join(where.slugDir, "correctness-model/reference/notes.txt"), "a revised reference\n");
+    await drive(where, "run-exam-2", scriptedSolver());
+    const evaluator = join(where.slugDir, "correctness-model/evaluator.ts");
+    writeFileSync(evaluator, `${readFileSync(evaluator, "utf8")}\n// a changed scoring program\n`);
+    await drive(where, "run-exam-3", scriptedSolver());
+    const [first, second, third] = ["run-exam-1", "run-exam-2", "run-exam-3"].map(examOf);
+    expect(first?.size).toBe(TASKS.length);
+    expect([...(second ?? [])]).toEqual([...(first ?? [])]);
+    for (const [taskId, exam] of third ?? []) expect(exam).not.toBe(first?.get(taskId));
+  });
+
   it("records one case row per task with checked pointers, and reads rows only from their own bytes", async () => {
     const where = slug("drive");
     const { summary } = await drive(where, "run-drive-1", boundarySolver(scriptedSolver(new Set(["t2"]))));

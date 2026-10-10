@@ -25,6 +25,10 @@ export type CampaignBuilderCondition = {
   reasoningEffort: string;
   /** Ordered exclusive upstream route when the Builder uses OpenRouter. */
   providerPin?: string[];
+  /** Present when an answer agent writes the correctness model and a Harness Builder writes agent/
+   *  (AGENTS.md "Owners and handoffs"): the answer agent's wall per pass. It keys the epoch, since
+   *  a split build is a different condition from a whole one. */
+  answerWallMs?: number;
 };
 
 /** An epoch is one authoring workspace: one Builder condition, on one prompt, for one authoring
@@ -163,6 +167,16 @@ export function epochSuccession(campaignRoot: string, epoch: CampaignEpochEviden
   const prior = epochs.find(({ key }) => key === epoch.supersedes);
   if (entry === undefined || prior === undefined) return null;
   return sameCondition(prior, entry.binding) ? "pass" : "binding";
+}
+
+/** Whether `epoch` opened a split build over a whole one. The whole Builder wrote its notes holding
+ *  the correctness model, so a Harness Builder that inherited them would read what its wall
+ *  withholds. */
+export function opensSplit(campaignRoot: string, epoch: CampaignEpochEvidence): boolean {
+  const epochs = readEpochRecord(campaignRoot)?.epochs ?? [];
+  const split = (key: string | null) =>
+    epochs.find((entry) => entry.key === key)?.binding.builder?.answerWallMs !== undefined;
+  return split(epoch.key) && !split(epoch.supersedes);
 }
 
 /** The epoch a reopening pass would supersede: its own when it has already opened, otherwise the

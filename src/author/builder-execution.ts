@@ -204,11 +204,16 @@ export interface BuilderExecutionEvidence {
     | "recorded"
     | "turn-bound"
     | "terminal-refusal"
+    /** A split build's Harness Builder pass ended by handing the correctness model back. */
+    | "handed-back"
     /** The round went `POLICY.loop.stalledTurns` turns without a successful tool call. */
     | "no-progress"
     /** The run's model budget ran out inside the round. */
     | "budget-limited"
     | "turn-non-result"
+    /** The controller's closing signal (the operator's stop, SIGTERM or SIGINT) cancelled the
+     *  session; unlike a non-result, its prose is the model's own. */
+    | "signal-terminated"
     | "evidence-unavailable"
     | "in-flight"
     | "recorded-at-terminal";

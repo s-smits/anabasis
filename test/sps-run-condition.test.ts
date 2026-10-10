@@ -284,6 +284,19 @@ describe("run-condition through the real controller", () => {
     ).toBe(false);
   });
 
+  it("carries --answer-agent, so a split capture opens the answer agent and the opening records it", () => {
+    for (const dir of ["vendor", "src"]) symlinkSync(join(REPO_ROOT, dir), join(scratch, dir));
+    const result = run(base({ "--builder": "capture", "--answer-agent": "true" }));
+    expect(result.exitCode).toBe(0);
+    const capture = parseJsonAs<CaptureReport>(readFileSync(join(out, "capture.json"), "utf8"));
+    // The split's first session is the answer agent's, not the whole Builder's.
+    expect(capture.systemPromptIsSurface).toBe(false);
+    const opening = JSON.parse(
+      readFileSync(join(scratch, "campaigns", SLUG, "controller", "c1", "opening.json"), "utf8"),
+    );
+    expect(opening.answerAgent).toBe(true);
+  });
+
   it("measures a no-solve Built slot as typed non-results", () => {
     const result = run(base({ "--built": "no-solve" }));
     expect(result.exitCode).toBe(3);

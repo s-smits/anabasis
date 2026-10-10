@@ -14,7 +14,12 @@ import { AGENT_DIR, CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { dirname, join } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
-import { type CampaignEpochEvidence, type EpochSuccession, epochSuccession } from "./campaign-epoch.ts";
+import {
+  type CampaignEpochEvidence,
+  type EpochSuccession,
+  epochSuccession,
+  opensSplit,
+} from "./campaign-epoch.ts";
 
 /** What the carry copied, and the names it left behind: a tree as `dir/`, a file by its path. */
 interface ScratchCarry {
@@ -133,6 +138,11 @@ const SCRATCH_CARRY_LIMIT_BYTES = 16 * SCRATCH_FILE_LIMIT_BYTES;
 
 /** The two limits in the words the handover and the carry marker both use. */
 export const SCRATCH_LIMITS = `files up to ${String(SCRATCH_FILE_LIMIT_BYTES / 1024)} KB each, ${String(SCRATCH_CARRY_LIMIT_BYTES / 1024)} KB in all`;
+
+/** The answer agent's scratch in a split build — searches, seed projects, experiments — untracked
+ *  like every path outside the candidate interface, which the Harness Builder can neither read nor
+ *  write. */
+export const ANSWER_DIR = "answer";
 
 /** How many helper names the carry marker spells out; the rest are counted. A predecessor can leave
  *  a hundred helpers, and naming each one spent a third of the memory ceiling on a file listing the
@@ -386,12 +396,13 @@ function carryScratchHelpers(prior: string, next: string): ScratchCarry {
  * Builder already moved into MEMORY.md. Either way each file opens on a marker naming where it came
  * from, and a binding change says so, so an inherited line is never read as a description of the
  * current ask. Only an authored file crosses, only into a slot the successor has not written, and
- * never fatally.
+ * never fatally. Nothing crosses into the first epoch of a split build that follows a whole one
+ * (`opensSplit`).
  */
 export function carryMemoryForward(campaignRoot: string, epoch: CampaignEpochEvidence): void {
   const from = epoch.supersedes;
   const succession = epochSuccession(campaignRoot, epoch);
-  if (from === null || succession === null) return;
+  if (from === null || succession === null || opensSplit(campaignRoot, epoch)) return;
   const prior = join(campaignRoot, from, WORKSPACE_DIR);
   // An epoch key never escapes its campaign root, even in a hand-damaged epochs.json, and the root
   // itself is not a workspace either, so the equal case refuses as well.

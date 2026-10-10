@@ -120,6 +120,7 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     policy,
     record: openPathRecord(binding.epochDir, "toolkit-test"),
     workDir: binding.iterationDir,
+    installTree: ".toolchain",
   };
   const byName = new Map<string, AgentTool>(createBuilderTools(isolation).map((tool) => [tool.name, tool]));
   const run = async (name: string, params: Record<string, JsonValue>): Promise<string> => {
@@ -252,6 +253,7 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(killed.message).toContain("killed after 1 s");
     expect(killed.message).toContain("up to 7200");
     expect(killed.message).toMatch(/host load average was \d+\.\d on \d+ cores/);
+    expect(killed.message).not.toContain("fewer iterations");
     expect(killed.message).not.toContain("late");
     expect(await run("bash", { command: "echo quick", timeout: 5 })).toContain("quick");
   });

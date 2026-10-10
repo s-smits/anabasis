@@ -444,13 +444,15 @@ export class ControllerLedger {
     );
   }
 
-  /** Every version a product decision named, held ones included. A hold is a recorded decision
-   *  about a measured candidate, so its battery is recorded history; filtering on `adopted=1` here
-   *  removed a held candidate's runs from the climb population before `admitBattery` could see
-   *  them, which is neither an admission nor a named exclusion. */
-  recordedProducts(): string[] {
+  /** Every version a decision named or a battery measured, held ones included. A measurement binding
+   *  lands before its battery runs, so a version whose run stopped before the claim and the decision
+   *  is here too; read from the decisions alone, its battery was neither an admission nor a named
+   *  exclusion, and filtering on `adopted=1` removed a held candidate's runs the same way. */
+  historyProducts(): string[] {
     return this.db
-      .query<{ version_id: string }, []>("SELECT DISTINCT version_id FROM product_decisions")
+      .query<{ version_id: string }, []>(
+        "SELECT version_id FROM product_decisions UNION SELECT version_id FROM product_measurements",
+      )
       .all()
       .map((row) => row.version_id);
   }

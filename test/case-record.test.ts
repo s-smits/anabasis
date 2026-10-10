@@ -190,7 +190,7 @@ describe("row discipline", () => {
       ),
     ).toBeNull();
     const numericInstant: JsonValue = { ...verifiedRow("t1", true), solverStartedAt: 5 };
-    expect(caseRowDefect(numericInstant)).toBe("solverStartedAt must be a string instant when present");
+    expect(caseRowDefect(numericInstant)).toBe("solverStartedAt must be a string when present");
     const unaccepted = verifiedRow("t1", false, { acceptedSubmit: false, truthOk: null, pass: false });
     expect(caseRowDefect(unaccepted)).toBeNull();
     const nonResult = verifiedRow("t1", false, {

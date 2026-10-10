@@ -19,6 +19,9 @@ import type { ProjectedReadGrant } from "../builder/candidate-isolation.ts";
  *  WebSearch builtin, Codex through the Responses search tool. */
 const BUILDER_DEFAULTS: PiSlotDefaults = { webSearch: true };
 
+/** The key that carries `--answer-agent` from the launch to the Builder condition. */
+export const ANSWER_AGENT_ENV = "HARNESS_ANSWER_AGENT";
+
 /** The host tool policy projection, retained under the existing shellWall evidence key so a
  *  refused call can be traced to the rule that refused it: run
  *  truss-opus-20260907T160200000Z-bdd329 recorded a git EPERM without the rule that caused it. The
@@ -68,6 +71,23 @@ export function builderSessionCapMs(
     );
   }
   return parsed;
+}
+
+/** The answer agent's wall per pass when `HARNESS_ANSWER_AGENT` is `true`, from
+ *  `HARNESS_ANSWER_WALL_HOURS`; undefined leaves the whole Builder. The default of four hours covers
+ *  the offline searches that found reference answers the solver could not, which took from under an
+ *  hour to three and a half. A spelling other than `true` or `false`, or a wall that is not a
+ *  positive number of hours, is refused rather than read as either. */
+export function answerWallMs(env: Record<string, string>): number | undefined {
+  const on = env[ANSWER_AGENT_ENV];
+  if (on === undefined || on === "false") return undefined;
+  if (on !== "true") throw new Error(`${ANSWER_AGENT_ENV} must be true or false, got "${on}"`);
+  const raw = env.HARNESS_ANSWER_WALL_HOURS ?? "4";
+  const hours = Number(raw);
+  if (!Number.isFinite(hours) || hours <= 0) {
+    throw new Error(`HARNESS_ANSWER_WALL_HOURS must be a positive number of hours, got "${raw}"`);
+  }
+  return Math.round(hours * 3_600_000);
 }
 
 export function builderShellWall(

@@ -541,11 +541,20 @@ describe("the four facts that do cross", () => {
       "truthVerdict",
       "turns",
     ]);
-    // A miss is stated as the mirror of a pass and names no next task: a first battery is authored to
-    // be missed, so steering towards an easier rehearsal would choose the Builder's course for it.
+    // Neither result forecasts the battery. A pass states the pass; a miss says the checks rejected
+    // the answer and names its three readings, none first, and no next task: a first battery is
+    // authored to be missed, so steering towards an easier rehearsal would choose the Builder's
+    // course for it.
+    const passedText = isString(passing.nextAction) ? passing.nextAction : "";
+    expect(passedText).toStartWith("Your solver passed this task on its first unaided attempt.");
     const missed = isString(failing.nextAction) ? failing.nextAction : "";
-    expect(missed).toContain("a battery of tasks like it scores near zero");
+    expect(missed).toStartWith(
+      "The checks rejected the answer your solver submitted on its first unaided attempt. This result does not say which of three things happened: the answer is wrong, a check refuses a right answer, or the task leaves the answer open.",
+    );
     expect(missed).not.toMatch(/easier|rehearse a/);
+    for (const text of [passedText, missed]) {
+      expect(text).not.toMatch(/a battery of tasks like it|scores near/);
+    }
     expect(passing.solve).toEqual({
       accepted: true,
       turns: 1,
@@ -659,6 +668,8 @@ describe("what one round of rehearsals costs", () => {
       "Each rehearsal costs one measured case from the run's provider budget",
     );
     expect(tool.description).not.toMatch(/At most \d+ rehearsals/);
+    // The description forecasts no battery from one rehearsal.
+    expect(tool.description).not.toContain("will most likely pass in the battery");
     expect(tool.description).toContain("the same per-check wall your agent/config.yaml sets for the battery");
   }, 120_000);
 

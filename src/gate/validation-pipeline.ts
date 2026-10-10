@@ -25,6 +25,7 @@
  * run writes into its own new directory, so a run another call reuses still holds exactly the
  * evidence it produced.
  */
+import { markHarnessSide } from "../author/feedback-routing.ts";
 import { type AgentToolsProbes, attestToolConformance } from "../author/agent-tools-session.ts";
 import type { BuiltHarness, CampaignFeedback } from "../author/campaign-types.ts";
 import {
@@ -283,6 +284,8 @@ async function executeStages(
     };
   }
   const { harness, findings } = load.value;
+  // Conformance runs the generated tools the agent half declares.
+  markHarnessSide(findings);
   const conformanceReceipt: StageReceipt = {
     stage: "conformance",
     status: findings.length > 0 ? "refused" : "passed",

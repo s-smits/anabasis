@@ -18,6 +18,8 @@ import { errorMessage } from "../src/meta/runtime-values.ts";
 const MIN = ["--prompt", "Design steel connections", "--provider-turn-budget", "12"];
 const COMMIT = "a".repeat(40);
 const DIGEST = "b".repeat(64);
+/** A stop an hour ahead: the flag takes an instant still to come. */
+const STOP_AT = String(Date.now() + 3_600_000);
 
 describe("the condition an operator may ask for", () => {
   it.each<[string[], Partial<FullRunArgs>]>([
@@ -25,6 +27,8 @@ describe("the condition an operator may ask for", () => {
     [["--dcg", "false"], { dcg: false }],
     [["--withhold-instruments", "true"], { withholdInstruments: true }],
     [["--withhold-instruments", "false"], { withholdInstruments: false }],
+    [["--answer-agent", "true"], { answerAgent: true }],
+    [["--stop-at", STOP_AT], { stopAt: Number(STOP_AT) }],
     [["--context", "a.md", "--context", "b.md"], { contextPaths: ["a.md", "b.md"] }],
     [["--iteration-budget", "none"], { turnBudget: null }],
     [["--iteration-budget", "4"], { turnBudget: 4 }],
@@ -52,6 +56,7 @@ describe("the condition an operator may ask for", () => {
       "true | false",
     ]),
     [[...MIN, "--withhold-instruments", "yes"], "true | false"],
+    [[...MIN, "--answer-agent", "1"], "true | false"],
     // The digest is compared byte for byte against the recorded identity, so an uppercase spelling
     // accepted here would mismatch at launch, after the composed gate has already run.
     ...["abc", `${COMMIT}:${"b".repeat(63)}`, `${"A".repeat(40)}:${DIGEST}`, COMMIT].map(
@@ -61,6 +66,9 @@ describe("the condition an operator may ask for", () => {
     [[...MIN, "--turn-budget", "8"], "--iteration-budget"],
     [[...MIN, "--tasks", "25"], "unknown flag --tasks"],
     [[...MIN, "--tasks", "25"], "--provider-turn-budget"],
+    // An instant already past would be restated to the Builder as a stop zero minutes away.
+    [[...MIN, "--stop-at", "1791438075000"], "--stop-at: expected an instant after now"],
+    [[...MIN, "--stop-at", "0"], "--stop-at: expected a positive integer"],
   ])("refuses %j, naming %s", (argv, named) => {
     let message: string | undefined;
     try {
@@ -78,6 +86,8 @@ describe("the condition an operator may ask for", () => {
       digest(["--run", id, "--expected-source", `${commit}:${DIGEST}`, "--project", project]);
     expect(run("run-a", COMMIT, "p-1")).toBe(run("run-b", "c".repeat(40), "p-2"));
     expect(run("run-a", COMMIT, "p-1")).toBe(digest([]));
+    // The stop is an instant, which two launches of one condition never share; the opening records it.
+    expect(digest(["--stop-at", STOP_AT])).toBe(digest([]));
     expect(digest(["--max-iterations", "1"])).not.toBe(digest([]));
     expect(commandDigest(parseFullRunArgs(MIN), "d".repeat(64))).not.toBe(digest([]));
   });

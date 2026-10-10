@@ -41,6 +41,9 @@ export type BuilderSubmitOutcome =
       findings: ContractFinding[];
       commit: string;
       terminal?: boolean;
+      /** A terminal refusal that ends this pass alone, not the author's submits: a split build's
+       *  hand-back of the correctness model, after which the next pass submits again. */
+      handedBack?: boolean;
       /** A controller stop that did not validate or inspect a candidate tree. */
       kind?: "controller-terminal";
       /** The stages that reached a verdict and each code under its stage (`stagesOf`), for a
@@ -58,6 +61,7 @@ interface SubmitSessionState {
   lastRefusal: ContractFinding[];
   activeTurn: number;
   terminal: boolean;
+  handedBack: boolean;
   submitBound: boolean;
 }
 
@@ -206,8 +210,11 @@ async function settleSubmit(binding: SubmitToolBinding) {
     outcome.findings,
   );
   state.terminal ||= outcome.terminal === true;
+  state.handedBack ||= outcome.handedBack === true;
+  // A hand-back ends the pass, not the submits: it reads as a refusal the next pass answers.
+  const final = state.terminal && !state.handedBack;
   return {
-    ...text(renderRefusal({ ...outcome, terminal: state.terminal }, attempt, maxTurns, closest), {
+    ...text(renderRefusal({ ...outcome, terminal: final }, attempt, maxTurns, closest), {
       outcome: "refused",
       stage: outcome.stage,
       findings: outcome.findings.length,
@@ -219,7 +226,10 @@ async function settleSubmit(binding: SubmitToolBinding) {
       ),
       ...keyIfDefined("stagesRun", outcome.stagesRun),
       ...keyIfDefined("stagedCodes", outcome.stagedCodes),
-      ...keyIfDefined("reason", state.terminal ? "terminal-refusal" : undefined),
+      ...keyIfDefined(
+        "reason",
+        state.handedBack ? "handed-back" : state.terminal ? "terminal-refusal" : undefined,
+      ),
     }),
     terminate: state.terminal,
   };
@@ -238,6 +248,12 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
         return text("Already accepted. Nothing was submitted a second time.", {
           outcome: "terminal-closed",
           reason: "accepted",
+        });
+      }
+      if (state.handedBack) {
+        return text("Submit has handed the correctness model back; this pass has ended.", {
+          outcome: "terminal-closed",
+          reason: "handed-back",
         });
       }
       if (state.terminal) {

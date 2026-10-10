@@ -183,6 +183,7 @@ it("states the session clock once per half hour and not after the build closed",
     closed: () => closed,
     clock: sessionClock(
       () => 1,
+      null,
       () => now,
       () => "host load average 57.6 on 12 cores",
     ),
@@ -203,15 +204,55 @@ it("states the session clock once per half hour and not after the build closed",
   expect(recorder.finish("turn-bound").authoringReviews).toEqual([]);
 });
 
-it("reads the host's own load when no reading is injected", () => {
+it("reads the host's own load when no reading is injected, and states nothing more with no stop", () => {
   let now = 0;
   const clock = sessionClock(
     () => 1,
+    null,
     () => now,
   );
   now = 30 * 60_000;
   expect(clock(false)).toMatch(
     /^Round clock: 30 min since this round opened; host load average \d+\.\d on \d+ cores\.$/,
+  );
+});
+
+// truss-opushmm-20261008T004146905Z: the mark at 235 min was read as "235 minutes left", and the
+// launcher's stop fell 64 minutes later inside a re-rehearsal, with three passing rehearsals and no
+// submit. The stop is one absolute instant, so the minutes left are read against it at each mark,
+// off the wall clock; the minutes since the round opened stay on the monotonic clock, so a host
+// clock step moves the one reading and not the other.
+it("states the run's stop beside each half-hour mark, as an instant and the minutes left to it", () => {
+  const opened = Date.parse("2026-10-08T00:42:15.000Z");
+  let now = 0;
+  let stepped = 0;
+  // One submit already made, so the two-hour authoring ask stays out of this reading.
+  const clock = sessionClock(
+    () => 1,
+    opened + 17_940_000,
+    () => now,
+    () => "host load average 43.0 on 12 cores",
+    () => opened + now + stepped,
+  );
+  now = 20 * 60_000;
+  expect(clock(false)).toBeNull();
+  now = 235 * 60_000;
+  expect(clock(false)).toBe(
+    [
+      "Round clock: 235 min since this round opened; host load average 43.0 on 12 cores.",
+      "Run stop: this run is stopped at 2026-10-08T05:41:15.000Z, 64 min from now, whether or not a candidate has been submitted.",
+    ].join("\n"),
+  );
+  now = 239 * 60_000;
+  expect(clock(false)).toBeNull();
+  // The host clock steps ten minutes ahead: the stop is ten minutes nearer, the round no older.
+  stepped = 10 * 60_000;
+  now = 270 * 60_000;
+  expect(clock(false)).toBe(
+    [
+      "Round clock: 270 min since this round opened; host load average 43.0 on 12 cores.",
+      "Run stop: this run is stopped at 2026-10-08T05:41:15.000Z, 19 min from now, whether or not a candidate has been submitted.",
+    ].join("\n"),
   );
 });
 
@@ -222,6 +263,7 @@ it("asks once inside a running turn for authoring when two hours pass without a 
     wrap(async () => ({ content: [] }), undefined, {
       clock: sessionClock(
         () => submits,
+        null,
         () => now,
       ),
     });
@@ -256,6 +298,7 @@ it("states the last clear preview in place of the authoring ask, and only for a 
       closed: () => null,
       clock: sessionClock(
         () => submits,
+        null,
         () => now,
         () => "host load average 3.0 on 12 cores",
       ),
@@ -294,6 +337,7 @@ it("states a clear preview that came after a refused submit, until the next subm
   let submits = 1;
   const clock = sessionClock(
     () => submits,
+    null,
     () => now,
     () => "host load average 3.0 on 12 cores",
   );
@@ -327,6 +371,7 @@ it("keeps the authoring ask for a round whose previews never came back clear", a
       closed: () => null,
       clock: sessionClock(
         () => 0,
+        null,
         () => now,
         () => "host load average 3.0 on 12 cores",
       ),

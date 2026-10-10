@@ -76,6 +76,8 @@ import { collectRows } from "#tools/runs/rows.ts";
 const REPO = resolve(import.meta.dirname, "../../../..");
 const WORKTREE = join(REPO, WORKTREE_SCRIPT);
 const SKILLS = resolve(import.meta.dirname, "../..");
+/** The fullrun flag that carries the stop instant to the Builder. */
+const STOP_FLAG = "--stop-at";
 /** The stop timer and what it imports from the skills tree, relative to `SKILLS`; the first runs. */
 const STOP_TIMER_FILES = [
   "launch-run/scripts/stop.ts",
@@ -392,6 +394,7 @@ async function prepare(
   console.log(`${plan.runId}: preparing ${context.commit.slice(0, 9)} in ${plan.dir}`);
   await command([WORKTREE, "new", plan.branch, plan.dir, context.commit]);
   chmodSync(plan.dir, 0o700);
+  if (options["kill-after-ms"] !== undefined) assertStopAccepted(plan);
   for (const name of ["campaigns", "domains"]) {
     const shared = join(context.sharedRoot, name);
     mkdirSync(shared, { recursive: true });
@@ -558,6 +561,34 @@ function serviceArgv(plan: PreparedRun, manager: ServiceManager, label: string, 
   ];
 }
 
+/** What fullrun is told of the stop: the timer's own instant, so the Builder hears when it falls. */
+const stopArgument = (deadline: number): string[] => [STOP_FLAG, String(deadline)];
+
+/** A timed launch hands fullrun the stop as `--stop-at`, which the target's own parser has to
+ *  accept (its src/run/launch-arguments.ts): a source without the flag would exit on it after the
+ *  stop timer was armed, so such a launch is refused before the tree is probed or any timer loaded.
+ *  The probe cannot ask, because it parses the argv the target's own options build. */
+function assertStopAccepted(plan: RunPlan): void {
+  const parser = join(plan.dir, "src/run/launch-arguments.ts");
+  if (existsSync(parser) && readFileSync(parser, "utf8").includes(`"${STOP_FLAG}"`)) return;
+  throw new Error(
+    `${plan.runId}: this source does not accept ${STOP_FLAG}, so its Builder cannot be told when the stop falls; launch it without --kill-after-ms`,
+  );
+}
+
+/** Takes down the stop timer armed for a controller whose start was not confirmed, which would
+ *  otherwise fire against a service that is gone. The launch's own error stays the one reported. */
+async function disarmStopTimer(plan: PreparedRun, context: Context, command: Command): Promise<string> {
+  const service = context.manager.service(context.uid, `${plan.label}.stop`);
+  try {
+    await command(context.manager.remove(service));
+    return `removed ${service}`;
+  } catch (error) {
+    return `${service} not removed: ${errorMessage(error)}`;
+  }
+}
+
+/** Arms the operator's stop and returns the argument that tells fullrun when it falls. */
 async function armStopTimer(plan: PreparedRun, killAfterMs: string, context: Context, command: Command) {
   const deadline = Date.now() + Number(killAfterMs);
   const timer = [process.execPath, "--no-env-file", stageStopTimer(plan.dir), "--worktree", plan.dir];
@@ -581,6 +612,7 @@ async function armStopTimer(plan: PreparedRun, killAfterMs: string, context: Con
   if (Date.now() >= deadline || existsSync(join(plan.dir, STOP_RECEIPT_PATH))) {
     throw new Error(`${plan.runId}: stop deadline elapsed before controller launch`);
   }
+  return stopArgument(deadline);
 }
 
 /** Whether the pass record holds `<commit> --at`: the whole gate passed on a checkout holding
@@ -696,11 +728,11 @@ export async function launchBatch(
     console.log(
       `${plan.runId}: launching; log: ${plan.log}\nStop: ${context.manager.terminate(plan.service).join(" ")}`,
     );
+    const killAfter = options["kill-after-ms"];
     try {
       writeReport(plan, "starting", extra);
-      const killAfter = options["kill-after-ms"];
-      if (killAfter !== undefined) await armStopTimer(plan, killAfter, context, command);
-      const fullrun = ["bun", "run", "fullrun", "--", ...plan.argv];
+      const stop = killAfter === undefined ? [] : await armStopTimer(plan, killAfter, context, command);
+      const fullrun = ["bun", "run", "fullrun", "--", ...plan.argv, ...stop];
       await command(serviceArgv(plan, context.manager, plan.label, plan.log, fullrun));
       const opened = await checkOpening(plan, command, { manager: context.manager });
       writeReport(plan, "started", { ...extra, ...opened });
@@ -713,9 +745,11 @@ export async function launchBatch(
       });
       console.log(`${plan.runId}: opening verified and process running; project ${opened.project}`);
     } catch (error) {
-      writeReport(plan, "start-unconfirmed", { ...extra, error: errorMessage(error) });
+      const stopTimer =
+        killAfter === undefined ? "none armed" : await disarmStopTimer(plan, context, command);
+      writeReport(plan, "start-unconfirmed", { ...extra, error: errorMessage(error), stopTimer });
       console.error(
-        `${plan.runId}: ${errorMessage(error)}\nReceipt: ${reportPath(plan)}\nNo retry or signal was sent.`,
+        `${plan.runId}: ${errorMessage(error)}\nReceipt: ${reportPath(plan)}\nNo retry or signal was sent to the controller; stop timer: ${stopTimer}.`,
       );
       results.push({ runId: plan.runId, error: errorMessage(error), log: plan.log });
       break;
@@ -750,6 +784,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     mainRepo = dirname(commonDir),
     parent = options["output-dir"] ?? dirname(mainRepo),
     passRecord = join(commonDir, "ana-gate-passed");
+  const killAfter = options["kill-after-ms"];
   if (options["dry-run"]) {
     // A dry run fetches nothing, so only a full commit named outright reads the record.
     const commit = /^[0-9a-f]{40}$/.test(options.source) ? options.source : null;
@@ -761,6 +796,8 @@ export async function main(argv: readonly string[]): Promise<number> {
       tasks: Number(options.tasks),
       pins: Object.fromEntries(options.conditions.map((name) => [name, slotEnvironment(name)])),
       gate: plannedGate(options.gate, passRecord, commit),
+      // The instant is the timer's, read when it is armed; this one is as if it were armed now.
+      fullrunStop: killAfter === undefined ? null : stopArgument(Date.now() + Number(killAfter)),
       runs: plans,
     };
     console.log(JSON.stringify(summary, null, 2));

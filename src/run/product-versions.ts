@@ -246,10 +246,11 @@ export function selectInitialProduct(repoRoot: string, slug: string, id: string)
   });
 }
 
-/** Retained versions supply history without copying old runs into each new product. Held versions
- *  are in it too: their batteries were measured, and whether a measured battery is difficulty
- *  evidence is `admitBattery`'s decision, not this reader's. So is `domainDir` itself: its
- *  decision row lands at promotion, after the review of its own battery has read this history. */
+/** Retained versions supply history without copying old runs into each new product: every version a
+ *  decision named or a battery measured (`historyProducts`), and `domainDir` itself. A held version
+ *  is in it, and so is one a run measured and then stopped before its claim and promotion, which has
+ *  no decision row: whether a measured battery is difficulty evidence is `admitBattery`'s decision,
+ *  not this reader's. */
 export function productHistoryDirs(domainDir: string): string[] {
   if (basename(dirname(domainDir)) !== "versions") return [domainDir];
   const campaign = dirname(dirname(domainDir));
@@ -258,7 +259,7 @@ export function productHistoryDirs(domainDir: string): string[] {
   using ledger = ControllerLedger.open(campaign);
   return [
     defaultProductDir(repoRoot, slug),
-    ...[...new Set([...ledger.recordedProducts(), basename(domainDir)])].map((id) =>
+    ...[...new Set([...ledger.historyProducts(), basename(domainDir)])].map((id) =>
       readProductVersion(repoRoot, slug, id),
     ),
   ];

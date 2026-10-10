@@ -160,41 +160,125 @@ describe("run timeline", () => {
     });
   });
 
-  // The epochs sit beside the observation stream, so the reader must open them under the campaign
-  // and not under whatever directory the lane was started from.
-  it("attributes a gap to the rehearsal or the allowance wait an epoch's Builder record holds", () => {
+  /** One Builder session in epoch-aa, 10:00 to 10:50, holding these retries and calls. */
+  function epoch(extra: Parameters<typeof executionRecord>[2]): string {
     const dir = campaign(RECORDED);
     mkdirSync(join(dir, "epoch-aa"), { recursive: true });
     writeFileSync(
       join(dir, "epoch-aa", "builder-execution.json"),
-      executionRecord([], 0, {
-        durationMs: 50 * 60_000,
-        writtenAt: "2026-09-19T10:50:00.000Z",
-        turnRetries: [
-          {
-            role: "builder",
-            turn: 2,
-            attempt: 1,
-            of: 3,
-            status: "failed",
-            reason:
-              "Claude Code returned an error result: You've hit your limit · resets 9:10pm (Europe/Amsterdam)",
-            waitMs: 12 * 60_000,
-          },
-        ],
-        customCalls: [
-          { ...trialCall(1, "t1", "c1", "pass"), startedAtMs: 12 * 60_000, durationMs: 20 * 60_000 },
-        ],
-      }),
+      executionRecord([], 0, { durationMs: 50 * 60_000, writtenAt: "2026-09-19T10:50:00.000Z", ...extra }),
     );
-    const timeline = buildTimeline({ campaign: dir, runId: RUN });
+    return dir;
+  }
+  const at = (minute: number) => minute * 60_000;
+
+  // The epochs sit beside the observation stream, so the reader must open them under the campaign
+  // and not under whatever directory the lane was started from.
+  it("attributes a gap to the allowance wait an epoch's Builder record holds when the wait covers it", () => {
+    const dir = epoch({
+      turnRetries: [
+        {
+          role: "builder",
+          turn: 2,
+          attempt: 1,
+          of: 3,
+          status: "failed",
+          reason:
+            "Claude Code returned an error result: You've hit your limit · resets 9:10pm (Europe/Amsterdam)",
+          waitMs: 12 * 60_000,
+        },
+      ],
+    });
     const allowance = "explicit allowance wait of 12 min recorded in epoch-aa session 1";
-    expect(timeline.stalls?.map((stall) => [stall.minutes, stall.cause])).toEqual([
-      [30, "harness_trial rehearsal in flight (epoch-aa session 1)"],
+    expect(
+      buildTimeline({ campaign: dir, runId: RUN }).stalls?.map((stall) => [stall.minutes, stall.cause]),
+    ).toEqual([
+      [30, "unattributed"],
       [15, allowance],
       [10, allowance],
       [5, allowance],
     ]);
+  });
+
+  // buffer-opushmm-20261008T004146905Z: a 69-minute gap was labelled with a rehearsal that covered
+  // six minutes of it, while two of the Builder's own optimiser calls covered 59. A gap is held by
+  // what was in flight across it, so the calls that cover most of it are named, each with its share.
+  it("names the calls that held most of a gap with their shares, not a short rehearsal overlapping it", () => {
+    // A shell call as the recorder writes one: an empty target and no semantic; sequences run from 1.
+    const shell = (sequence: number, start: number, minutes: number) => ({
+      sequence,
+      turn: 1,
+      tool: "bash",
+      action: "execute",
+      target: {},
+      startedAtMs: at(start),
+      durationMs: at(minutes),
+      dispatchOutcome: "returned" as const,
+    });
+    const dir = epoch({
+      customCalls: [
+        shell(1, 11, 27),
+        { ...trialCall(2, "t1", "c1", "pass"), startedAtMs: at(38), durationMs: at(4) },
+        shell(3, 46, 6),
+        shell(4, 52, 5),
+      ],
+    });
+    // An authoring review timed inside a gap records an instant and no span, so it covers no share.
+    mkdirSync(join(dir, "analysis"), { recursive: true });
+    writeFileSync(
+      join(dir, "analysis", "authoring-01a0b920-58e0-7000-8000-000000000000-epoch-review.json"),
+      "{}",
+    );
+    expect(
+      buildTimeline({ campaign: dir, runId: RUN }).stalls?.map((stall) => [stall.minutes, stall.cause]),
+    ).toEqual([
+      [30, "bash seq 1, 27 min (90%, epoch-aa session 1)"],
+      [15, "bash 2 calls, 11 min (73%; longest bash seq 3, 6 min; epoch-aa session 1)"],
+      // Nothing in flight, and a rehearsal that covers 40% of the five minutes, hold no majority.
+      [10, "unattributed"],
+      [5, "unattributed"],
+    ]);
+  });
+
+  // truss-opushmm-20261008T004146905Z: the operator's stop fell inside a rehearsal, which the record
+  // settled around with no duration. It held the Builder from its start to the record's end.
+  it("places a call still in flight when the record settled from its start to the record's end", () => {
+    const dir = epoch({
+      customCalls: [
+        {
+          ...trialCall(1, "t1", "c1", "pass"),
+          startedAtMs: at(12),
+          durationMs: null,
+          dispatchOutcome: "in-flight",
+        },
+      ],
+    });
+    expect(
+      buildTimeline({ campaign: dir, runId: RUN }).stalls?.map((stall) => [stall.minutes, stall.cause]),
+    ).toEqual([
+      [30, "harness_trial seq 1, 28 min (93%, epoch-aa session 1)"],
+      // The record ends at 10:50, five minutes into the fifteen-minute gap.
+      [15, "unattributed"],
+      [10, "unattributed"],
+      [5, "harness_trial seq 1, 5 min (100%, epoch-aa session 1)"],
+    ]);
+  });
+
+  it("counts the minutes two calls of one tool ran across together once, not twice", () => {
+    const shell = (sequence: number) => ({
+      sequence,
+      turn: 1,
+      tool: "bash",
+      action: "execute",
+      target: {},
+      startedAtMs: at(11),
+      durationMs: at(27),
+      dispatchOutcome: "returned" as const,
+    });
+    const dir = epoch({ customCalls: [shell(1), shell(2)] });
+    expect(buildTimeline({ campaign: dir, runId: RUN }).stalls?.[0]?.cause).toBe(
+      "bash 2 calls, 27 min (90%; longest bash seq 1, 27 min; epoch-aa session 1)",
+    );
   });
 
   it("tallies prompts, hooks, steering and settled iterations from the rows alone", () => {

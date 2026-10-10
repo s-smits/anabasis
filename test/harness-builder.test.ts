@@ -6,7 +6,7 @@
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
 import { draftExam } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
-import { type LogEvent, read } from "../src/kernel/log.ts";
+import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import {
   existsSync,
   lstatSync,
@@ -33,6 +33,7 @@ import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./hel
 const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
 const STEM = `test-hb-${String(runtimeProcess.pid)}`;
+const OPENED = "campaign.opened";
 const TASKS = fixtureTasks(7);
 const scripted = scriptedModel;
 const GRADED = gradedOf(TASKS);
@@ -96,7 +97,7 @@ describe("a campaign run by its log", () => {
     };
     // A dry run names the first move and writes nothing.
     expect(await harnessBuilder([...flags, "--dry-run"], seats)).toMatchObject({ move: "accept" });
-    expect(of(name, "campaign.opened")).toEqual([]);
+    expect(of(name, OPENED)).toEqual([]);
 
     const ending = await harnessBuilder([...flags, "--practice", "2"], { ...seats, host });
     // Reading the exam and setting the tasks apart asked the host nothing. The one session
@@ -120,7 +121,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, "solve.started")).toEqual([]);
     // It runs by what it was opened with: no budget under a rehearsal's seats, no limit named, and
     // the patience it was given.
-    expect(of(name, "campaign.opened")).toEqual([
+    expect(of(name, OPENED)).toEqual([
       {
         budget: null,
         limit: null,
@@ -128,7 +129,8 @@ describe("a campaign run by its log", () => {
         sessions: 3,
         patience: 2,
         seats: { builder: null, examiner: null, reviewer: null },
-        terms: { practice: "2" },
+        // The level is pinned whether or not a command named it: this tree's default.
+        terms: { level: "0.2", practice: "2" },
       },
     ]);
     // The ending is the log's last event, and run again the command says it and adds nothing.
@@ -140,6 +142,34 @@ describe("a campaign run by its log", () => {
     expect(await harnessBuilder(flags, seats)).toMatchObject({ move: "end", ending: "no-room" });
     expect(read(join(REPO, ".ana", "d2", name, "log.jsonl"))).toHaveLength(log.length);
     expect(strayed).toEqual([]);
+  });
+
+  it("holds a campaign whose comparisons ran at a level its opening never named to that level, and not to the tree's default", async () => {
+    // Until 10 October the level was read at each comparison from the tree's default, so a
+    // campaign opened on a tree at 0.10 and run on from one at 0.20 changed its test (#175).
+    const name = `${STEM}-level`;
+    const flags = seeded(name);
+    const log = join(REPO, ".ana", "d2", name, "log.jsonl");
+    append(log, OPENED, {
+      budget: null,
+      limit: null,
+      ladder: [],
+      sessions: 1,
+      patience: 6,
+      seats: { builder: null, examiner: null, reviewer: null },
+      terms: { practice: "2" },
+    });
+    append(log, "comparison.started", { session: "g-1", level: 0.1, old: "a", fresh: "b", tasks: [] });
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+    };
+    await harnessBuilder([...flags, "--moves", "0"], seats);
+    expect(of(name, OPENED).at(-1)).toMatchObject({ terms: { level: "0.1", practice: "2" } });
+    // A later command on the same tree writes no new record, and one that names the level does.
+    await harnessBuilder([...flags, "--moves", "0"], seats);
+    expect(of(name, OPENED)).toHaveLength(2);
+    await harnessBuilder([...flags, "--level", "0.2", "--moves", "0"], seats);
+    expect(of(name, OPENED).at(-1)).toMatchObject({ terms: { level: "0.2", practice: "2" } });
   });
 
   it("ends on an exam whose checks wait for the operator's word, and prints the command that gives it with the pack's flags", async () => {
@@ -372,7 +402,7 @@ describe("a campaign run by its log", () => {
       move: "examine",
       why: "the operator asked for other tasks: the step was too easy",
     });
-    expect(of(name, "campaign.opened").at(-1)).toMatchObject({ budget: { dollars: 50 } });
+    expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 50 } });
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");
@@ -518,13 +548,13 @@ describe("a campaign run by its log", () => {
       "0",
     ];
     expect(await harnessBuilder(opened, seats)).toMatchObject({ move: "draft" });
-    expect(of(fresh, "campaign.opened")).toMatchObject([{ prompt }]);
+    expect(of(fresh, OPENED)).toMatchObject([{ prompt }]);
 
     // The Examiner drafts, the host reads each draft without a model, and the second stands. Its
     // one check is its author's own computation, so the campaign waits for the operator's word.
     const waits = await harnessBuilder([...flags, "--prompt", prompt], seats);
     expect(waits).toMatchObject({ move: "end", ending: "exam" });
-    expect(of(name, "campaign.opened")).toMatchObject([
+    expect(of(name, OPENED)).toMatchObject([
       {
         prompt,
         solver: { model: "claude/claude-opus-5-5", effort: "high" },
@@ -550,7 +580,7 @@ describe("a campaign run by its log", () => {
     // runs by the terms the campaign was opened with, which this command does not name: the
     // second campaign from a prompt, continued so, ran each by its default (2026-10-09).
     const next = await harnessBuilder(["--name", name, "--admit", "check-product", "--moves", "4"], seats);
-    expect(of(name, "campaign.opened")).toHaveLength(1);
+    expect(of(name, OPENED)).toHaveLength(1);
     // The Builder session recorded the setting, with the scored tasks the campaign opened with:
     // t-2 (10 October) opened with --target 6 and its first session recorded the default 12.
     expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 5 }]);
@@ -577,12 +607,12 @@ describe("a campaign run by its log", () => {
     // A term named again is recorded again, and a flag that names another setting than the
     // campaign's is refused with both.
     await harnessBuilder(["--name", name, "--practice-solves", "3", "--moves", "0"], seats);
-    expect(of(name, "campaign.opened").at(-1)).toMatchObject({
+    expect(of(name, OPENED).at(-1)).toMatchObject({
       terms: { practice: "2", solves: "1", "solve-minutes": "8", "practice-solves": "3" },
     });
     expect(harnessBuilder(["--name", name, "--solve-minutes", "30", "--moves", "0"], seats)).rejects.toThrow(
       "--solve-minutes 30 names another setting than the campaign's, which was recorded as --solve-minutes 8",
     );
-    expect(of(name, "campaign.opened")).toHaveLength(2);
+    expect(of(name, OPENED)).toHaveLength(2);
   });
 });

@@ -299,8 +299,14 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     prompt,
     solver: prompt === null ? null : solver,
-    // Each term as this command names it, and as the record holds it where it names none.
+    // Each term as this command names it, and as the record holds it where it names none. The
+    // level is pinned whether or not a command named it: until 10 October a campaign that named
+    // none read each comparison at the tree's default, so that a tree whose default moved from
+    // 0.10 to 0.20 (#175) changed the test of a campaign run on from it, and the stop rule then
+    // counted no-steps of two levels in one row. A campaign whose comparisons already ran at a
+    // level is held to that one, as the setting is held to its first solves (`firstRecord`).
     terms: {
+      level: levelOf(events, was),
       ...was?.terms,
       ...Object.fromEntries(
         TERMS.flatMap((term) => (values[term] === undefined ? [] : [[term, values[term]]])),
@@ -356,6 +362,17 @@ function nextId(events: readonly LogEvent[], prefix: string): string {
     return id !== "" && Number.isInteger(nth) ? [nth] : [];
   });
   return `${prefix}-${String(Math.max(0, ...taken) + 1)}`;
+}
+
+/** The level a campaign's comparisons are read at where no command names one: the record's, else
+ *  the one its comparisons on record began under, else this tree's default, as a string, since a
+ *  term is a flag's value. */
+function levelOf(events: readonly LogEvent[], was: Opening | null): string {
+  const recorded = was?.terms.level;
+  if (isString(recorded)) return recorded;
+  const began = events.findLast(({ kind, data }) => kind === "comparison.started" && isNumber(data.level))
+    ?.data.level;
+  return isNumber(began) ? String(began) : COMPARISON_OPTIONS.level.default;
 }
 
 /** The flags of a comparison that began, as its start holds them: it goes on under its own terms. */

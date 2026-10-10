@@ -95,6 +95,9 @@ export interface ExamRequest {
   /** The backends, built on the home the Examiner's model process keeps its state in. */
   readonly models: (home: string) => Models;
   readonly log: string;
+  /** The budget every solve is held to, as a fact for the Examiner: the solver's own turns, null
+   *  where unlimited, and the minutes. Null where the caller knows none, as a test may. */
+  readonly budget?: { readonly modelTurns: number | null; readonly minutes: number } | null | undefined;
   /** The campaign's verifier, for `try_answer`: the checks run on an instance with an answer of the
    *  Examiner's own. Absent, the tool is not given. */
   readonly verify?: Verifier | undefined;
@@ -375,13 +378,10 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     await runAgentLoop(
       [
         user(
-          firstMessage(
-            request.contract,
-            request.checks,
-            heard(before, request.examples),
-            limits,
-            openingOf(before)?.prompt ?? null,
-          ),
+          firstMessage(request.contract, request.checks, heard(before, request.examples), limits, {
+            brief: openingOf(before)?.prompt,
+            budget: request.budget,
+          }),
         ),
       ],
       { messages: system === undefined ? [] : [system], tools },

@@ -140,6 +140,14 @@ describe("an Examiner session", () => {
     // The pack's task is listed with its outcome, as every task of the campaign is.
     expect(s.sent[0]).toContain("- e-1 (family fixture): not yet compared");
     expect(s.sent[0]).toContain("10 minutes and 12 turns");
+    // The budget every solve is held to, as a fact and no target, where the campaign lends it.
+    expect(s.sent[0]).not.toContain("Every solve of a task is held to");
+    const told = setup([finish]);
+    await examine({ ...told.request, budget: { modelTurns: 3, minutes: 8 } });
+    expect(told.sent[0]).toContain(
+      "Every solve of a task is held to 3 turns of the solver's own, a turn being one reply with the tool calls in it, and 8 minutes. Both harnesses are measured under that budget",
+    );
+    expect(told.sent[0]).toContain("it is no target of yours");
     // It is told how a task is scored: a valid answer within the budget, with no objective to rank
     // two of them, and neither the size of the budget nor any count.
     expect(s.sent[0]).toContain("the harness that gives more valid answers wins");

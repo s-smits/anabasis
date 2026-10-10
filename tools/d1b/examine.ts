@@ -25,11 +25,13 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { examineWalled } from "#src/examiner/session.ts";
+import { openingOf } from "#src/builder/opening.ts";
 import { read } from "#src/kernel/log.ts";
 import { taskSets, taskStates } from "#src/kernel/task.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { openCampaign, packNamed, REPO, stayAwake } from "../d2/campaign.ts";
+import { recordedSetting } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 /** An Examiner session's flags and their defaults. A launch parses its flags by the same table
@@ -58,7 +60,8 @@ export async function examineCommand(args: readonly string[], session = examineW
   const campaign = await openCampaign(packNamed(values, ", --session and --examiner"));
   // The brief's rows in the verifier's reading and in the pack's are the same rows in the same order.
   const declared = readBrief(campaign.checks).truthChecks;
-  const before = taskStates(read(campaign.log));
+  const sofar = read(campaign.log);
+  const before = taskStates(sofar);
   stayAwake();
   const examined = await session({
     id,
@@ -66,6 +69,12 @@ export async function examineCommand(args: readonly string[], session = examineW
     otherTrees: campaign.trees,
     diskBytes: campaign.limits.diskBytes,
     verify: campaign.verify,
+    // The budget every solve is held to now: the recorded setting's turns, or the opening's full
+    // limit before a setting is recorded, and the campaign's wall.
+    budget: {
+      modelTurns: recordedSetting(sofar)?.modelTurns ?? openingOf(sofar)?.limit ?? null,
+      minutes: Math.round(campaign.limits.wallSeconds / 60),
+    },
     contract: campaign.contract,
     checks: declared.map((check, index) => ({
       id: check.id,

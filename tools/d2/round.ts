@@ -77,16 +77,18 @@ import { admitComparison, type Wanted } from "#src/builder/admission.ts";
 import { predicted, type Report, type Valid } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type Budget, TRIGGER, UNITS } from "#src/kernel/compare.ts";
+import { type Budget, type ObjectiveRule, TRIGGER, UNITS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
 import { type Cap, capHolds, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
+import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
+import { plural } from "#src/meta/text.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import {
   awaitingLines,
@@ -147,10 +149,15 @@ export const COMPARISON_OPTIONS = {
   target: { type: "string" },
   solves: { type: "string", default: "2" },
   // The step and its repeat read together clear `level`; a first reading at or under `trigger`
-  // buys the repeat (`src/builder/move.ts`). 0.20 on each reading alone was the default from
+  // buys the repeat (`src/kernel/compare.ts`, `readTwice`). 0.20 on each reading alone was the default from
   // #175 until 10 October's two-stage rule.
   level: { type: "string", default: "0.1" },
   trigger: { type: "string", default: String(TRIGGER) },
+  // Two valid answers are compared by the objective where the check program declares one
+  // (`src/kernel/compare.ts`, `ObjectiveRule`), and the better by more than this share of the
+  // larger measure wins the pair. It is fixed with the comparison's other terms, and read by no
+  // comparison of a check program that declares none.
+  margin: { type: "string", default: "0.01" },
   defects: { type: "string", default: "3" },
   budget: { type: "string", multiple: true },
   cap: { type: "string" },
@@ -347,6 +354,16 @@ export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "na
   return { solver: { model: priceKey(model), effort }, limits };
 }
 
+/** The objective a comparison of this campaign pairs two valid answers by, where its check program
+ *  declares one: the brief's direction and the margin `--margin` names. Undefined otherwise. */
+export function objectiveNamed(
+  campaign: Pick<Campaign, "checks">,
+  margin: string,
+): ObjectiveRule | undefined {
+  const declared = readBrief(campaign.checks).objective;
+  return declared === undefined ? undefined : { direction: declared.direction, margin: Number(margin) };
+}
+
 /** What `--predict` names: the operator's expectation of the comparison, in a sentence, or none. */
 export function predictionNamed(flag: string | undefined): string | undefined {
   const said = flag?.trim() ?? "";
@@ -415,7 +432,11 @@ export function capNamed(
  * starter, which is the reference harness of the first round (`docs/plan.md`, G0). None for a
  * report that compared nothing.
  */
-export function validLines({ valid, budgets }: Pick<Report, "valid" | "budgets">): string[] {
+export function validLines({
+  valid,
+  budgets,
+  objective,
+}: Pick<Report, "valid" | "budgets" | "objective">): string[] {
   if (valid === null) return [];
   const row = (at: string, each: Valid) =>
     `  ${at}: reference ${each.old.join("/")}, new ${each.fresh.join("/")}`;
@@ -429,6 +450,11 @@ export function validLines({ valid, budgets }: Pick<Report, "valid" | "budgets">
     ...budgets.flatMap((budget) =>
       budget.valid === undefined ? [] : [row(`at ${named(budget)}`, budget.valid)],
     ),
+    ...(objective === null
+      ? []
+      : [
+          `the objective (${objective.direction} is better, margin ${String(objective.margin)}) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
+        ]),
   ];
 }
 
@@ -473,6 +499,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     tasks: scoredNamed(campaign, setting.tasks, setting.target),
     solves: Number(values.solves),
     level: Number(values.level),
+    objective: objectiveNamed(campaign, values.margin),
     defects: Number(values.defects),
     budgets,
     cap,

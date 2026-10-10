@@ -15,6 +15,9 @@
  */
 import {
   type Budget,
+  decidedByObjective,
+  type ObjectiveRule,
+  objectiveRuleIn,
   type Paired,
   pairsOf,
   scored,
@@ -111,6 +114,10 @@ export interface Report {
    *  the starter's solves, where the test stands and the reading is `starter-unread`. */
   readonly capped: boolean;
   readonly reading: Reading;
+  /** The objective the comparison fixed, and how many tallied tasks it decided: won or lost where
+   *  validity alone would have tied. Null where the check program declares none, and in a report
+   *  written before 10 October. */
+  readonly objective: (ObjectiveRule & { readonly decided: number }) | null;
   /** What a person's labels settled, in the report `settleReading` writes after the comparison's
    *  own: how many rejections were labelled, how many of them a check defect, the tasks those
    *  disputed, and the tasks the labels restored to the tally. */
@@ -143,6 +150,8 @@ export interface Fixed {
   readonly noise: boolean;
   readonly budgets: readonly Budget[];
   readonly tasks: readonly string[];
+  /** The objective two valid answers are compared by, where the check program declares one. */
+  readonly objective: ObjectiveRule | undefined;
 }
 
 export const STARTED = "comparison.started";
@@ -168,6 +177,7 @@ const REPORT_KEYS = [
   "capped",
   "reading",
   "settled",
+  "objective",
 ] as const satisfies readonly (keyof Report)[];
 const NOTHING_TO_LABEL: ToLabel = { aside: [], others: [] };
 export const DEFECT = "check-defect";
@@ -189,6 +199,7 @@ export const NOTHING = {
   withdrawn: [],
   capped: false,
   settled: null,
+  objective: null,
 } as const;
 
 /** The log as comparison `id` is read once it has reported: up to its own first report. What comes
@@ -280,7 +291,13 @@ export function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, 
   const open = new Set(
     rejections(events, fixed, labels).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
   );
-  const sides: Sides = { old: fixed.old, fresh: fixed.fresh, setting: fixed.setting, comparison: fixed.id };
+  const sides: Sides = {
+    old: fixed.old,
+    fresh: fixed.fresh,
+    setting: fixed.setting,
+    comparison: fixed.id,
+    objective: fixed.objective,
+  };
   const pairsUnder = (other: Sides) => whole(pairsOf(events, live, other).pairs, fixed.solves);
   const first = pairsUnder(sides);
   const kept = (pairs: readonly Paired[]) => pairs.filter(({ task }) => !open.has(task));
@@ -326,6 +343,8 @@ export function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, 
     short: live.filter((task) => first.short.includes(task)),
     withdrawn: scorable.filter((task) => !held.has(task)),
     reading: reading(),
+    objective:
+      fixed.objective === undefined ? null : { ...fixed.objective, decided: decidedByObjective(pairs) },
   };
 }
 
@@ -343,7 +362,8 @@ export function startOf(events: readonly LogEvent[], id: string): JsonObject | u
 
 /** What comparison `id` fixed at its start, read back from the log; null where it never began. */
 export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
-  const { old, fresh, starter, setting, solves, level, noise, budgets, tasks } = startOf(events, id) ?? {};
+  const start = startOf(events, id) ?? {};
+  const { old, fresh, starter, setting, solves, level, noise, budgets, tasks } = start;
   return isString(old) &&
     isString(fresh) &&
     isString(starter) &&
@@ -361,6 +381,7 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         noise: isBoolean(noise) && noise,
         budgets: Array.isArray(budgets) ? budgets.map(asBudget) : [],
         tasks: Array.isArray(tasks) ? tasks.filter(isString) : [],
+        objective: objectiveRuleIn(start),
       }
     : null;
 }

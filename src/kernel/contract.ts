@@ -17,15 +17,31 @@ export interface Rule {
   readonly statement: string;
 }
 
+/** The objective a check program may declare beside its checks: a quantity its evaluator computes
+ *  from a valid answer, and which way is better. Two valid answers on one task are compared by it
+ *  (`src/kernel/compare.ts`, `ObjectiveRule`), so it is public: a solver and a Builder read it
+ *  with the rules. Added 10 October (`docs/plan.md`, the climb). */
+export interface Objective {
+  readonly quantity: string;
+  readonly direction: "lower" | "higher";
+}
+
 export interface Contract {
   /** The schema every answer must follow. */
   readonly answerFormat: JsonValue;
+  /** The objective, where the check program declares one. */
+  readonly objective?: Objective;
   /** Whatever a practitioner would take as given. */
   readonly conventions: string;
   /** The requirements a task may cite. */
   readonly rules: readonly Rule[];
   /** What a task in this domain may ask. */
   readonly scope: string;
+}
+
+/** The objective in a sentence, for the prompts and the public resource that state it. */
+export function objectiveLine({ quantity, direction }: Objective): string {
+  return `Of two valid answers to one task, the one with the ${direction} ${quantity} is the better, by more than a small margin; a valid answer beats any invalid one, whatever its ${quantity}.`;
 }
 
 /** The contract's identity: the hash of its canonical JSON. A rule id named twice would let a

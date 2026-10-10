@@ -24,14 +24,16 @@
  * faults its author thought of, so controls cannot show that the answers a check refused were
  * wrong; that takes a reading of the refused answers themselves (`src/review/rejections.ts`).
  */
-import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { pooled } from "../meta/pool.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import type { LogEvent } from "./log.ts";
+import { checkerVerdict } from "./solves.ts";
 import {
   applicableTruthChecks,
   type Brief,
   decided,
+  OBJECTIVE,
   requiredToolsOf,
   spelled,
   type Task,
@@ -235,6 +237,23 @@ export function acceptance(
     }),
     ...stored,
   ];
+  // The objective is read as a check is: its author's own computation, which the operator admits
+  // by name, and seen to measure every valid answer or none (10 October).
+  const measured: CheckReading[] =
+    brief.objective === undefined
+      ? []
+      : [
+          {
+            id: OBJECTIVE.id,
+            instrument: "authored",
+            missing: [],
+            passed: graded.filter(({ verdict }) => verdict.kind === "pass" && verdict.objective !== undefined)
+              .length,
+            refused: 0,
+            named: 0,
+            caught: 0,
+          },
+        ];
   const checks = brief.truthChecks.map(({ id, execution }): CheckReading => {
     const seen = graded.filter(
       ({ task, verdict }) =>
@@ -278,8 +297,15 @@ export function acceptance(
             ...(refused > 0 && caught === 0 ? [`${id} has refused no reject control that names it`] : []),
           ]),
     ]),
+    ...measured.flatMap(({ id, passed }) =>
+      unrun.has(id)
+        ? [`${id} could not be measured on a valid answer: ${unrun.get(id) ?? ""}`]
+        : passed === 0
+          ? [`${id} has measured nothing: no accept control and no stored answer passed`]
+          : [],
+    ),
   ];
-  return { checks, faults };
+  return { checks: [...checks, ...measured], faults };
 }
 
 /**
@@ -338,18 +364,6 @@ export function departure(events: readonly LogEvent[], own: Checker): string | n
     : `the log froze another ${moved.join(" and ")}; a changed checker takes a campaign of its own`;
 }
 
-/** The verdict a `verdict` event holds, when a check gave it. An answer outside the contract's
- *  format reached no check, and a non-result decided nothing: neither is a checker's verdict. */
-function loggedVerdict(data: JsonObject): Verdict | null {
-  if (data.kind === "pass") return { kind: "pass" };
-  if (data.kind === "fail" && Array.isArray(data.blocking) && data.blocking.length > 0) {
-    return { kind: "fail", blocking: data.blocking.filter(isString) };
-  }
-  return data.kind === "faulty" && isString(data.check) && isString(data.reason)
-    ? { kind: "faulty", check: data.check, reason: data.reason }
-    : null;
-}
-
 /**
  * Every answer the log holds a checker's verdict for, graded again by `verify` over `tasks`, a
  * repaired checker's own: the last verdict of each solve beside the repaired checker's of the same
@@ -372,7 +386,7 @@ export function regraded(
     ),
   );
   const held = [...last].flatMap(([solve, data]) => {
-    const verdict = loggedVerdict(data);
+    const verdict = checkerVerdict(data);
     return verdict === null || !isString(data.task) || data.answer === undefined
       ? []
       : [{ solve, task: data.task, answer: data.answer, was: spelled(verdict) }];

@@ -11,7 +11,7 @@
  */
 import { mkdtempSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, lockJsonGlobals, parseJsonAs } from "../meta/json-runtime.ts";
-import { asRecord, isBoolean, isFunction, isRecord, typeName } from "../meta/json-shape.ts";
+import { asRecord, isBoolean, isFunction, isNumber, isRecord, typeName } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
 import { capturedSpawn, runtimeProcess } from "../meta/process.ts";
@@ -23,6 +23,9 @@ export interface CheckChildInput {
   /** The check program's absolute path. */
   readonly program: string;
   readonly checkId: string;
+  /** What the program is asked for: a check's verdict, a boolean under `checks[checkId]`, or the
+   *  objective's measure, a finite number from its `objective` export (`verify.ts`, `OBJECTIVE`). */
+  readonly returns: "verdict" | "measure";
   /** The check's own projection of the answer and the task. */
   readonly request: EvaluationRequest;
   /** The tools the check declares; it may run no other. */
@@ -35,6 +38,7 @@ export interface CheckChildInput {
 /** `faulty`: the check itself failed on this request, which drops the task rather than stopping the run. */
 export type CheckChildResult =
   | { readonly passed: boolean }
+  | { readonly value: number }
   | { readonly nonResult: string }
   | { readonly faulty: string };
 
@@ -69,11 +73,12 @@ const SHELL_LAUNCH_FAILURE =
  *  line ran (`init_fs_encoding: ...` for a home whose stdlib it cannot read); it then exits 1. */
 const PYTHON_START_FAILURE = /^Fatal Python error: init/m;
 
-/** v1's `CheckFn` (src/correctness-bundle/correctness-model-contract.ts, 3f93d06b). */
+/** v1's `CheckFn` (src/correctness-bundle/correctness-model-contract.ts, 3f93d06b). The objective
+ *  takes the same arguments and returns a number. */
 type CheckFn = (
   request: EvaluationRequest & { runtime?: CheckRuntime },
   runtime?: CheckRuntime,
-) => boolean | Promise<boolean>;
+) => boolean | number | Promise<boolean | number>;
 
 async function runTool(input: CheckChildInput, call: ToolCall, lapses: string[]): Promise<ToolRun> {
   const lapse = (kind: string, message: string): ToolRun => {
@@ -140,31 +145,43 @@ function programNeverRan(exitCode: number, stdout: string, stderr: string): bool
 }
 
 /** The check's answer. A check that throws, returns no boolean or is missing is at fault itself; a
- *  program that does not load, or a tool that lapsed, leaves the verifier undecided. */
+ *  program that does not load, or a tool that lapsed, leaves the verifier undecided. The objective
+ *  is held the same way to a finite number. */
 async function decide(input: CheckChildInput): Promise<CheckChildResult> {
   const lapses: string[] = [];
+  const named = input.returns === "measure" ? "the objective" : "the check";
   let check: unknown;
   try {
     const program: unknown = await import(input.program);
-    check = isRecord(program) ? asRecord(program.checks)?.[input.checkId] : undefined;
+    const exported = isRecord(program) ? program : {};
+    check = input.returns === "measure" ? exported.objective : asRecord(exported.checks)?.[input.checkId];
   } catch (error) {
     return { nonResult: `the check program did not load: ${errorMessage(error)}` };
   }
-  if (!isFunction(check)) return { faulty: `the check program has no check ${input.checkId}` };
+  if (!isFunction(check)) {
+    return {
+      faulty: `the check program has no ${input.returns === "measure" ? "objective" : `check ${input.checkId}`}`,
+    };
+  }
   const runtime: CheckRuntime = { tools: { run: (call) => runTool(input, call, lapses) } };
-  let passed: unknown;
+  let returned: unknown;
   let threw: string | null = null;
   try {
     // As in v1, the port rides on the request too, so a check that destructures it from there
     // reaches the same tools as one that takes it as the second argument.
     // SAFETY: a check program exports each check as a CheckFn; what it returns is narrowed below.
-    passed = await (check as CheckFn)({ ...input.request, runtime }, runtime);
+    returned = await (check as CheckFn)({ ...input.request, runtime }, runtime);
   } catch (error) {
     threw = errorMessage(error);
   }
   if (lapses.length > 0) return { nonResult: lapses.join("; ") };
-  if (threw !== null) return { faulty: `the check threw: ${threw}` };
-  return isBoolean(passed) ? { passed } : { faulty: `the check returned ${typeName(passed)}` };
+  if (threw !== null) return { faulty: `${named} threw: ${threw}` };
+  if (input.returns === "measure") {
+    return isNumber(returned) && Number.isFinite(returned)
+      ? { value: returned }
+      : { faulty: `the objective returned ${isNumber(returned) ? String(returned) : typeName(returned)}` };
+  }
+  return isBoolean(returned) ? { passed: returned } : { faulty: `the check returned ${typeName(returned)}` };
 }
 
 const input = parseJsonAs<CheckChildInput>(await Bun.stdin.text());

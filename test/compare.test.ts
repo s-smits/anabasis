@@ -2,8 +2,10 @@
 // solves count for a held-out task under a harness, and what it refuses to compare.
 import { describe, expect, it } from "bun:test";
 import {
+  decidedByObjective,
   draw,
   MEASURED,
+  objectiveRuleIn,
   pairings,
   pairsOf,
   scored,
@@ -16,9 +18,11 @@ import {
 import { type Condition, conditionId, fieldsApart, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 
 const [P, F] = [true, false];
+const lowerRule = { direction: "lower", margin: 0.01 } as const;
 /** A task the new harness wins, loses or ties, on three solves a harness. */
 const pairs = (wins: number, losses: number, ties: number) => [
   ...Array.from({ length: wins }, (_, i) => ({ task: `w${String(i)}`, old: [F, F, P], fresh: [P, P, F] })),
@@ -68,6 +72,74 @@ describe("a task's pairings", () => {
     expect(pairings({ task: "t", old: [F, F], fresh: [F, F] })).toEqual({ fresh: 0, old: 0 });
     // One valid answer a side wins a pair each, and the task is a tie.
     expect(pairings({ task: "t", old: [P, F], fresh: [F, P] })).toEqual({ fresh: 1, old: 1 });
+  });
+
+  it("sets two valid answers apart by the objective, by more than the margin, and no invalid one", () => {
+    const lower = { direction: "lower", margin: 0.01 } as const;
+    // Two valid answers a side, the new harness's lighter: it wins every pairing of the four.
+    expect(
+      pairings({
+        task: "t",
+        old: [P, P],
+        fresh: [P, P],
+        objective: { ...lower, old: [10, 11], fresh: [8, 9] },
+      }),
+    ).toEqual({ fresh: 4, old: 0 });
+    // The same measures the other way up, where higher is better.
+    expect(
+      pairings({
+        task: "t",
+        old: [P, P],
+        fresh: [P, P],
+        objective: { ...lower, direction: "higher", old: [10, 11], fresh: [8, 9] },
+      }),
+    ).toEqual({ fresh: 0, old: 4 });
+    // Within the margin of the larger measure two answers are even: 10 against 10.05 at 0.01 is,
+    // and 10 against 10.2 is not. A measure missing on one side decides nothing.
+    expect(
+      pairings({
+        task: "t",
+        old: [P, P],
+        fresh: [P, P],
+        objective: { ...lower, old: [10.05, 10.2], fresh: [10, null] },
+      }),
+    ).toEqual({ fresh: 1, old: 0 });
+    // Validity is read first: a refused answer loses to a valid one whatever either measures, and
+    // a measure on a refused answer is never read. Between the two valid answers the objective
+    // decides, so the new harness, valid once at 100, loses that pairing too.
+    expect(
+      pairings({
+        task: "t",
+        old: [P, F],
+        fresh: [F, P],
+        objective: { ...lower, old: [1, 1], fresh: [1, 100] },
+      }),
+    ).toEqual({ fresh: 1, old: 2 });
+    // How many tasks the objective decided: the ones that validity alone would have tied.
+    const even = { task: "e", old: [P, P], fresh: [P, P] };
+    expect(
+      decidedByObjective([
+        { ...even, objective: { ...lower, old: [10, 10], fresh: [8, 8] } },
+        { ...even, objective: { ...lower, old: [10, 10], fresh: [10, 10] } },
+        { ...even, task: "w", old: [F, F], objective: { ...lower, old: [1, 1], fresh: [100, 100] } },
+        even,
+      ]),
+    ).toBe(1);
+  });
+
+  it("reads an objective rule off a comparison's start, and none off a malformed one", () => {
+    expect(objectiveRuleIn({ objective: { direction: "lower", margin: 0.01, decided: 3 } })).toEqual(
+      lowerRule,
+    );
+    for (const objective of [
+      undefined,
+      null,
+      { direction: "lower" },
+      { direction: "best", margin: 0.01 },
+      { direction: "higher", margin: -1 },
+    ]) {
+      expect(objectiveRuleIn({ objective: objective ?? null })).toBeUndefined();
+    }
   });
 
   it("reads as the harness with more valid answers, at every split of up to four solves a side", () => {
@@ -282,6 +354,35 @@ describe("the pairs a comparison reads from the log", () => {
     // A disputed task is out on both sides, and it is named.
     const disputed = [...log, event("task.state", { version: "v1", state: "disputed" })];
     expect(pairsOf(disputed, ["v1", "v0"], sides)).toEqual({ pairs: [other], disputed: ["v1"] });
+  });
+
+  it("reads each counted solve's measure off its verdict where the sides fix an objective", () => {
+    /** A solve's events with its verdict after them, measured where a value is given. */
+    const measured = (solved: readonly LogEvent[], objective?: number) => [
+      ...solved,
+      event("verdict", {
+        solve: solved[1]?.data.solve ?? "",
+        task: "t",
+        answer: {},
+        kind: "pass",
+        ...keyIfDefined("objective", objective),
+      }),
+    ];
+    const log = [
+      ...held,
+      ...measured(solve(base, "pass"), 12),
+      ...measured(solve(fresh, "pass"), 9),
+      ...solve(base, "fail"),
+      ...measured(solve(fresh, "pass")),
+    ];
+    const read = pairsOf(log, ["v1"], { ...sides, objective: lowerRule }).pairs[0];
+    expect(read).toMatchObject({
+      old: [P, F],
+      fresh: [P, P],
+      objective: { ...lowerRule, old: [12, null], fresh: [9, null] },
+    });
+    // Sides that fix no objective read none, whatever the verdicts hold.
+    expect(pairsOf(log, ["v1"], sides).pairs[0]).not.toHaveProperty("objective");
   });
 
   it("counts no solve that opened another harness than its condition names", () => {

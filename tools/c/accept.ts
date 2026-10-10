@@ -43,7 +43,7 @@ import {
   toolFaults,
 } from "#src/kernel/acceptance.ts";
 import { append, read } from "#src/kernel/log.ts";
-import { readBrief } from "#src/kernel/verify.ts";
+import { OBJECTIVE, readBrief } from "#src/kernel/verify.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -78,7 +78,11 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
   const admitted = new Set(
     (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()])),
   );
-  const unknown = [...admitted].filter((id) => !brief.truthChecks.some((check) => check.id === id));
+  const unknown = [...admitted].filter(
+    (id) =>
+      !brief.truthChecks.some((check) => check.id === id) &&
+      (id !== OBJECTIVE.id || brief.objective === undefined),
+  );
   if (unknown.length > 0) {
     throw new Error(`--admit names ${unknown.join(", ")}, and the check program holds no such check`);
   }

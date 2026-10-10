@@ -82,16 +82,27 @@ const condition = (task: string, harness: string, host = "h"): Condition => ({
 });
 const SETTING = settingId(condition("any", "any"));
 let solves = 0;
-function solved(comparison: string, task: string, harness: string, valid: readonly boolean[], host = "h") {
+function solved(
+  comparison: string,
+  task: string,
+  harness: string,
+  valid: readonly boolean[],
+  under: { host?: string; measures?: readonly number[] } = {},
+) {
+  const { host = "h", measures = [] } = under;
   const ran = condition(task, harness, host);
   const id = conditionId(ran);
   return [
     event("condition.recorded", { id, condition: requireJsonValue(ran) }),
-    ...valid.flatMap((each) => {
+    ...valid.flatMap((each, nth) => {
       solves += 1;
       const solve = `s-${String(solves)}`;
+      const measure = measures[nth];
       return [
         event("solve.started", { solve, condition: id, ...keyIfDefined("comparison", comparison) }),
+        ...(each && measure !== undefined
+          ? [event("verdict", { solve, task, answer: {}, kind: "pass", objective: measure })]
+          : []),
         event("solve.finished", {
           solve,
           ending: each ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
@@ -105,7 +116,7 @@ const heldOut = (version: string) => [
   event("task.proposed", { version, taskId: version }),
   event("task.gate", { version, gate: 1, outcome: "passed" }),
 ];
-const reported = (session: string, old: string, fresh: string, versions: string[]) =>
+const reported = (session: string, old: string, fresh: string, versions: string[], objective?: JsonObject) =>
   event("comparison.reported", {
     session,
     reading: "no-step",
@@ -114,6 +125,7 @@ const reported = (session: string, old: string, fresh: string, versions: string[
     solves: 2,
     setting: SETTING,
     versions,
+    ...keyIfDefined("objective", objective),
   });
 
 setDefaultTimeout(1_800_000);
@@ -306,8 +318,8 @@ describe("the regression reading beside a comparison", () => {
       ...solved("g-1", "v3", "h1", [false, false]),
       ...solved("g-1", "v3", "h2", [true, false]),
       reported("g-1", "h1", "h2", ["v1", "v2", "v3"]),
-      ...solved("g-2", "v1", "h1", [false, false], "h2-host"),
-      ...solved("g-2", "v1", "h3", [true, true], "h2-host"),
+      ...solved("g-2", "v1", "h1", [false, false], { host: "h2-host" }),
+      ...solved("g-2", "v1", "h3", [true, true], { host: "h2-host" }),
       ...solved("g-2", "v2", "h1", [false, false]),
       ...solved("g-2", "v2", "h3", [false, false]),
       ...solved("g-2", "v3", "h1", [false, false]),
@@ -343,6 +355,43 @@ describe("the regression reading beside a comparison", () => {
     expect(regressionOf([...log, reported("g-3", "h1", "h3", ["v4"])])).toMatchObject({
       newest: "h3",
       previous: "h2",
+    });
+  });
+
+  it("reads two valid answers by the objective where both comparisons fixed the same rule, and on validity alone otherwise", () => {
+    const lower = { direction: "lower", margin: 0.01 };
+    // Both candidates answer v1 in both solves; h3's answers are lighter. g-1 and g-2 fixed the
+    // same rule, so the reading sets them apart; g-3 fixed another margin, and reads a tie.
+    const log: LogEvent[] = [
+      ...heldOut("v1"),
+      ...solved("g-1", "v1", "h1", [false, false]),
+      ...solved("g-1", "v1", "h2", [true, true], { measures: [10, 10] }),
+      reported("g-1", "h1", "h2", ["v1"], { ...lower, decided: 0 }),
+      ...solved("g-2", "v1", "h1", [false, false]),
+      ...solved("g-2", "v1", "h3", [true, true], { measures: [8, 8] }),
+      reported("g-2", "h1", "h3", ["v1"], { ...lower, decided: 0 }),
+    ];
+    expect(regressionOf(log)).toMatchObject({
+      newest: "h3",
+      previous: "h2",
+      shared: 1,
+      wins: 1,
+      losses: 0,
+      ties: 0,
+    });
+    const other = [
+      ...log,
+      ...solved("g-3", "v1", "h1", [false, false]),
+      ...solved("g-3", "v1", "h4", [true, true], { measures: [6, 6] }),
+      reported("g-3", "h1", "h4", ["v1"], { ...lower, margin: 0.5, decided: 0 }),
+    ];
+    expect(regressionOf(other)).toMatchObject({
+      newest: "h4",
+      previous: "h3",
+      shared: 1,
+      wins: 0,
+      losses: 0,
+      ties: 1,
     });
   });
 });

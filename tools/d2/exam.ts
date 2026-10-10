@@ -21,6 +21,7 @@ import { CHECK_PROGRAM_CONTRACT, openVerifier, readBrief } from "#src/kernel/ver
 import { EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
 import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
@@ -95,6 +96,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
         evidence: { kind: "authored" },
       },
     })),
+    ...keyIfDefined("objective", draft.objective),
     artifactSchema: [],
     designRuleConstants: [],
   });

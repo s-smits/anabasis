@@ -87,6 +87,7 @@ function stepLine(step: Handover): string {
         : [
             `tasks with ${valid.old.map((_, index) => String(index)).join(", ")} valid answers: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
           ]),
+      ...(step.decided === null ? [] : [`${plural(step.decided, "task")} decided by the objective`]),
       ...(step.aside > 0 ? [`${plural(step.aside, "task")} set aside for a person's labels`] : []),
       ...(ruled.length === 0 ? [] : [ruled.join(", ")]),
       dollars(step.billed),

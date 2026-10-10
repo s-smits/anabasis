@@ -46,7 +46,7 @@
  * in at least eight that a task's feasibility rests on hand estimates. The sentence asks for no
  * easier task: an answer chosen first can sit as close to a limit as its author likes.
  */
-import type { Contract } from "../kernel/contract.ts";
+import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 
@@ -113,6 +113,7 @@ ${brief}`,
     `Public rules of the domain:\n${contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n") || "(none)"}`,
     ...(contract.conventions === "" ? [] : [`Conventions: ${contract.conventions}`]),
     `Scope: ${contract.scope}`,
+    ...(contract.objective === undefined ? [] : [`Objective: ${objectiveLine(contract.objective)}`]),
     `A solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     // The budget as a fact: a task that tells two harnesses apart is one a better method answers
     // within it and a worse one does not, which nobody can write without knowing it (10 October).

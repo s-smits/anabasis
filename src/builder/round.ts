@@ -99,12 +99,12 @@
  * 10 October: its start, its counted solves, its rejections, its tallies and its report. This
  * file keeps what runs one and what it writes.
  */
-import { type Budget, draw, UNITS } from "../kernel/compare.ts";
+import { type Budget, draw, type ObjectiveRule, UNITS } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { awaitingLabel, billedFor, type Cap, capHolds, exhausted } from "../kernel/reports.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
-import { asRecord, isString } from "../meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
@@ -147,6 +147,9 @@ interface Terms {
   readonly solves: number;
   /** The sign test's level. */
   readonly level: number;
+  /** The objective two valid answers are compared by, where the check program declares one: the
+   *  brief's direction and the caller's margin. */
+  readonly objective?: ObjectiveRule | undefined;
   /** Tasks with a check defect past which the comparison stops. */
   readonly defects: number;
   /** Solves in flight at once. */
@@ -327,6 +330,9 @@ function refuseUnreadable(terms: Terms): void {
     );
   }
   if (!(terms.level > 0 && terms.level < 1)) throw new Error("a sign test's level lies between 0 and 1");
+  if (terms.objective !== undefined && !(terms.objective.margin >= 0)) {
+    throw new Error("an objective's margin is a share of the larger measure, from nothing up");
+  }
   if (terms.cap !== undefined && !capHolds(terms.cap)) {
     throw new Error("a cap and its reserve are dollars, and both are more than nothing");
   }
@@ -528,14 +534,20 @@ function begin(request: CheckpointRequest): Fixed {
     budgets: (request.budgets ?? []).map(asBudget),
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
+    ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
   };
   const was = startOf(read(log), id);
   if (was === undefined) append(log, STARTED, { session: id, ...terms, tasks: [...request.tasks] });
   const fixed = fixedIn(read(log), id);
   if (fixed === null) throw new Error(`comparison ${id} wrote no start the log reads back`);
-  const moved = Object.entries(terms).flatMap(([name, value]) =>
-    was === undefined || sameJsonValue(was[name], value) ? [] : [name],
+  // Over the names of both: a continuation that drops a term the start recorded moved it too.
+  const now: JsonObject = { ...terms };
+  const named = new Set([...Object.keys(now), ...Object.keys(was ?? {})]).difference(
+    new Set(["session", "tasks"]),
   );
+  const moved = [...named]
+    .toSorted()
+    .filter((name) => was !== undefined && !sameJsonValue(was[name], now[name]));
   if (moved.length > 0) {
     throw new Error(
       `comparison ${id} began on other terms (${moved.join(", ")}), and its solves so far were made for those: run it as it began, or under another id`,
@@ -597,6 +609,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
     const told: Report = {
       ...head,
       ...NOTHING,
+      objective: fixed.objective === undefined ? null : { ...fixed.objective, decided: 0 },
       disputed: disputed(),
       aside: fixed.tasks.filter((task) => open.has(task)),
       capped: work.capped(),

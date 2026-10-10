@@ -398,6 +398,7 @@ describe("a campaign", () => {
           { seconds: 1800, ...tested, valid: { old: [4, 2, 2], fresh: [1, 3, 4] } },
           { turns: 40, seconds: 600, ...tested, valid: { old: [6, 2, 0], fresh: [3, 3, 2] } },
         ],
+        objective: null,
       }),
     ).toEqual([
       "each harness by itself, as how many tasks had 0, 1, 2 valid answers in 2 solves (a count of tasks a column, not a share):",
@@ -405,7 +406,15 @@ describe("a campaign", () => {
       "  at seconds=1800: reference 4/2/2, new 1/3/4",
       "  at turns=40,seconds=600: reference 6/2/0, new 3/3/2",
     ]);
-    expect(validLines({ valid: null, budgets: [] })).toEqual([]);
+    expect(validLines({ valid: null, budgets: [], objective: null })).toEqual([]);
+    // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
+    expect(
+      validLines({
+        valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
+        budgets: [],
+        objective: { direction: "lower", margin: 0.01, decided: 1 },
+      }).at(-1),
+    ).toBe("the objective (lower is better, margin 0.01) decided 1 task that validity alone would have tied");
     // The prompts a solver was given and the CPU seconds of its commands were units until
     // 2026-10-09: the first read what the full limit read, and the second left tasks unread.
     for (const flag of ["turns", "turns=0", "tokens=5", "turns=4=5", "", "prompts=8", "turns=40,cpu=600"]) {

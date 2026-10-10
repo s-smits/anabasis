@@ -44,12 +44,13 @@ import {
 } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import { REPORTED_COST } from "../backends/claude.ts";
-import { answerFormatFault, type Contract } from "../kernel/contract.ts";
+import { answerFormatFault, type Contract, type Objective } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { mkdtempSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { tmpdir } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -76,8 +77,12 @@ export interface Draft {
   readonly answerFormat: JsonValue;
   /** One check a rule: its id, the rule it enforces, and the property it verifies, in words. */
   readonly checks: readonly { readonly id: string; readonly rule: string; readonly assertion: string }[];
-  /** The check program's source: a module that exports `checks`, a function for each check id. */
+  /** The check program's source: a module that exports `checks`, a function for each check id,
+   *  and `objective` where the draft declares one. */
   readonly evaluator: string;
+  /** The objective two valid answers are compared by, where the field has one (10 October):
+   *  absent, two valid answers to one task are even. */
+  readonly objective?: Objective;
   /** The example tasks, which are the exam's first. */
   readonly tasks: readonly {
     readonly family: string;
@@ -191,6 +196,23 @@ const DRAFT_PARAMETERS = Type.Object({
     { minItems: 1 },
   ),
   evaluator: Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
+  objective: Type.Optional(
+    Type.Object(
+      {
+        quantity: Type.String({
+          minLength: 1,
+          description: "The quantity the check program computes of a valid answer, with its unit.",
+        }),
+        direction: Type.Union([Type.Literal("lower"), Type.Literal("higher")], {
+          description: "Which way is better.",
+        }),
+      },
+      {
+        description:
+          "The objective, where the field has one: a quantity every valid answer has, which practitioners minimise or maximise. Leave it out where the field has none.",
+      },
+    ),
+  ),
   tasks: Type.Array(
     Type.Object({
       family: Type.String({ minLength: 1 }),
@@ -208,6 +230,7 @@ const SYSTEM_PROMPT = [
   "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, its answer format, one check for each rule, a few example tasks, and controls. You do this once, at the opening of a campaign. Later sessions write further tasks against what you draft here, and a draft that stands is not changed afterwards.",
   "A task is a family, a public input, which with the public rules is all a solver reads, and hidden values, which only the checks receive. A solver answers a task with one JSON value that follows the answer format. A check is a program that reads one answer with its task and returns whether the answer keeps one rule, and an answer every check passes is valid. Two sets of tools for the solver are then compared by how many valid answers each gives on tasks neither has seen. No reference answer exists for those tasks, so a check has to be right on a task nobody has solved: it verifies the property its rule states, and never compares an answer with one you worked out.",
   "Take the rules from the field's own public standard, and give each its source: the standard, specification, reference manual or textbook that states it, named precisely enough to look up. A limit, state or duty the field does not hold measures your wording and no solver, so add none. A solver that follows every public rule must never be rejected for something it could not read: whatever a check enforces is stated in a rule, the scope or the conventions, with its units and tolerances, and nothing a solver needs is in the hidden values. Choose rules that can act together on one answer, so that a task can make meeting one spend the margin another needs.",
+  "Where the field has an objective, a quantity every valid answer has and practitioners minimise or maximise, such as a mass, a cost or a length, declare it: two valid answers to one task are then compared by it, and a task on which both tools find a valid answer still tells them apart. The check program then also exports `objective`, a function that takes the same `request` and returns that quantity of the answer as a finite number, computed from the answer and the public input alone; it is told nothing hidden. A field with no such quantity declares none.",
   "Write one check for each rule, and no other. The check program is one TypeScript module that exports `checks`, an object with a function under each check id. A function takes one argument, `request`, and returns a boolean, or a promise of one: `request.publicTask` is `{ taskId, family, publicInput }`, `request.artifact` is the answer, and `request.hidden` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. It returns true where the answer keeps its rule and false where it breaks it. An answer that breaks another rule is that rule's check's to refuse. It does not throw on any answer the format allows.",
   `Give at least ${plural(EXAMPLES, "example task")}, different in what they ask and not only in their numbers. Either every task carries hidden values or none does. For each example give one accept control: an answer that keeps every rule. You choose the task, so you can start from an answer and derive the task from it. For each check give at least one reject control: an answer to an example that follows the answer format, breaks that check's rule, and names the check. The smallest answer the format allows, such as empty strings and empty lists, has to be rejected on every task: where it would pass, the format or the rules ask too little.`,
   "draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.",
@@ -306,6 +329,11 @@ export function draftFaults(draft: Draft): string[] {
     ...(hidden === 0 || hidden === draft.tasks.length
       ? []
       : ["some examples carry hidden values and some carry none: either every task has them or none does"]),
+    ...(draft.objective !== undefined && !/\bobjective\b/.test(draft.evaluator)
+      ? [
+          "the draft declares an objective and the check program exports no `objective`: a function of the request that returns the quantity as a number",
+        ]
+      : []),
     ...draft.tasks.flatMap(({ family, publicInput }, index) =>
       family.trim() === "" || publicInput === null
         ? [`example ${String(index)} has no family or no public input`]
@@ -326,6 +354,7 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
     answerFormat: args.answer_format as JsonValue,
     checks: args.checks,
     evaluator: args.evaluator,
+    ...keyIfDefined("objective", args.objective),
     tasks: args.tasks.map(({ family, public_input, hidden }) => ({
       family,
       // SAFETY: as above.

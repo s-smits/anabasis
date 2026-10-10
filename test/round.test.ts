@@ -64,6 +64,8 @@ type Side = "old" | "fresh" | "starter";
 interface Used {
   readonly ending: Ending;
   readonly turns?: number;
+  /** What the verifier measured of a valid answer, where the check program has an objective. */
+  readonly objective?: number;
 }
 /** How a solve of `version` under a harness ends, by how many came before it. A table that tells
  *  two new harnesses apart reads the digest. */
@@ -168,7 +170,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     counts.set(key, nth + 1);
     asked.push({ version, side });
     const ended = table(version, side, nth, digest);
-    const { ending, turns = 10 }: Used = "ending" in ended ? ended : { ending: ended };
+    const { ending, turns = 10, objective }: Used = "ending" in ended ? ended : { ending: ended };
     const id = `r-${String(asked.length)}-${String(read(log).length)}`;
     record("solve.started", {
       solve: id,
@@ -176,7 +178,13 @@ async function setup(responses: FauxResponseStep[], table: Table) {
       ...keyIfDefined("comparison", comparison),
     });
     if (ending === PASS) {
-      record("verdict", { solve: id, task: version, kind: "pass", answer: { answer: "42" } });
+      record("verdict", {
+        solve: id,
+        task: version,
+        kind: "pass",
+        answer: { answer: "42" },
+        ...keyIfDefined("objective", objective),
+      });
     }
     if (ending === REJECTED) {
       const answer = { answer: "41" };
@@ -346,6 +354,7 @@ describe("a round", () => {
         against: tested,
         noise: null,
         counted: null,
+        objective: null,
         versions: HELD,
         disputed: [],
         aside: [],
@@ -413,6 +422,26 @@ describe("a round", () => {
     });
     expect(s.asked).toHaveLength(16);
     expect(s.asked.some(({ side }) => side === "starter")).toBe(false);
+  });
+
+  it("sets two valid answers apart by the objective the comparison fixed, and says how many it decided", async () => {
+    // Every solve but s1's is valid under both harnesses. The new harness's answers are lighter on
+    // s2 and s3, heavier on s4 by less than the margin, and s1 nobody answers.
+    const mass = (version: string, side: Side): number =>
+      (side === "fresh" ? { s2: 8, s3: 9, s4: 10.05 }[version] : 10) ?? 10;
+    const s = await setup([edit, finish], (version, side) =>
+      version === "s1" ? LATE : { ending: PASS, objective: mass(version, side) },
+    );
+    const objective = { direction: "lower", margin: 0.01 } as const;
+    expect(await round({ ...s.request, objective })).toMatchObject({
+      scored: { wins: 2, losses: 0, ties: 2, p: 0.25, unsolved: 1 },
+      objective: { ...objective, decided: 2 },
+      reading: NO_STEP,
+    });
+    // The rule is a term of the comparison, fixed at its start, and the report carries it with
+    // the count, so a reader of the report pairs as the comparison did.
+    expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ objective });
+    expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ objective: { ...objective, decided: 2 } });
   });
 
   it("reads a win over the reference that loses to the starter as below the starter, and no step", async () => {
@@ -498,6 +527,20 @@ describe("a round", () => {
     await expect(round({ ...s.request, noise: true, level: 0.05 })).rejects.toThrow(
       "other terms (level, noise)",
     );
+    // It began with no objective, and its pairs were read on validity alone.
+    await expect(round({ ...s.request, objective: { direction: "lower", margin: 0.01 } })).rejects.toThrow(
+      "other terms (objective)",
+    );
+    // A term the start recorded and a continuation drops has moved too.
+    let left = 10;
+    const t = await setup([edit, finish], (version, side, nth, digest) => {
+      left -= 1;
+      if (left === 0) throw new Error(STOPS);
+      return step(version, side, nth, digest);
+    });
+    const objective = { direction: "lower", margin: 0.01 } as const;
+    await expect(round({ ...t.request, objective, prediction: "a step" })).rejects.toThrow(STOPS);
+    await expect(round(t.request)).rejects.toThrow("other terms (objective, prediction)");
     // It began with no prediction, and takes none now that some of its solves can be seen.
     await expect(round({ ...s.request, prediction: "a step, 4 to 0" })).rejects.toThrow(
       "other terms (prediction)",
@@ -900,13 +943,16 @@ describe("a round", () => {
   it("stops on more check defects than it allows, and says so in place of a reading", async () => {
     const s = await setup([edit, finish], () => REJECTED);
     const ruled = { s1: "check-defect", s2: "check-defect", s3: "check-defect" } as const;
-    const report = await round({ ...s.request, referee: referee(s.log, ruled), defects: 1 });
+    const objective = { direction: "lower", margin: 0.01 } as const;
+    const report = await round({ ...s.request, referee: referee(s.log, ruled), defects: 1, objective });
+    // A comparison that stopped keeps the rule it fixed, and decided nothing by it.
     expect(report).toMatchObject({
       scored: null,
       aside: ["s1", "s2"],
       disputed: [],
       capped: false,
       reading: "check-defects",
+      objective: { ...objective, decided: 0 },
     });
     // The round stopped at the second task with a check defect: three solves, and no more.
     expect(s.asked).toEqual([

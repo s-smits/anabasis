@@ -125,6 +125,15 @@ describe("the shape of a draft", () => {
     ]);
   });
 
+  it("holds a draft that declares an objective to a check program that exports one", () => {
+    const objective = { quantity: "mass in kg", direction: "lower" } as const;
+    expect(draftFaults({ ...SOUND, objective })).toEqual([
+      "the draft declares an objective and the check program exports no `objective`: a function of the request that returns the quantity as a number",
+    ]);
+    const measured = `${SOUND.evaluator}\nexport const objective = (request) => request.artifact.mass;\n`;
+    expect(draftFaults({ ...SOUND, objective, evaluator: measured })).toEqual([]);
+  });
+
   it("refuses a check program that reaches outside its request", () => {
     const reads = `import { readFileSync } from "node:fs";\n${SOUND.evaluator}`;
     expect(draftFaults({ ...SOUND, evaluator: reads })).toEqual([

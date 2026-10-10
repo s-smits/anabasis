@@ -40,7 +40,7 @@
  * trace and the reviewers' readings, and is told that one solve is weak evidence, because in v1's
  * record a fail repeated on the same bytes 5 times in 21.
  */
-import type { Contract } from "../kernel/contract.ts";
+import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
 import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
@@ -188,6 +188,7 @@ export function firstMessage(contract: Contract, tasks: readonly Listed[], told:
     `Public rules of the domain:\n${contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n") || "(none)"}`,
     ...(contract.conventions === "" ? [] : [`Conventions: ${contract.conventions}`]),
     `Scope: ${contract.scope}`,
+    ...(contract.objective === undefined ? [] : [`Objective: ${objectiveLine(contract.objective)}`]),
     `The solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     "The public resources every solve's home holds under public/resources/ are in resources.json.",
     `Practice tasks, each one's public part in practice/<task>.json:\n${listed.join("\n") || "(none)"}`,

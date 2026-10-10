@@ -17,6 +17,8 @@ import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, pairsReported } from "../kernel/reports.ts";
 import { passed, solvesIn } from "../kernel/solves.ts";
 import { isString } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
+import { short } from "./move.ts";
 
 /** Valid answers and solves of one harness on a set of tasks. */
 export interface Share {
@@ -185,7 +187,21 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
     const other = previousPairs.get(pair.task);
     if (other === undefined) continue;
     counts.shared += 1;
-    const won = pairings({ task: pair.task, old: other.fresh, fresh: pair.fresh });
+    // By the objective too, where both comparisons fixed the same rule; on validity alone otherwise.
+    const rule = pair.objective;
+    const same =
+      rule !== undefined &&
+      other.objective?.direction === rule.direction &&
+      other.objective.margin === rule.margin;
+    const won = pairings({
+      task: pair.task,
+      old: other.fresh,
+      fresh: pair.fresh,
+      ...keyIfDefined(
+        "objective",
+        same ? { ...rule, old: other.objective?.fresh ?? [], fresh: rule.fresh } : undefined,
+      ),
+    });
     counts[won.fresh > won.old ? "wins" : won.fresh < won.old ? "losses" : "ties"] += 1;
   }
   return {
@@ -199,6 +215,5 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
 
 /** One line for the view: the reading, and that it is beside the test. */
 export function regressionLine(found: Regression): string {
-  const short = (digest: string) => digest.slice(0, 8);
   return `regression check: harness ${short(found.newest)} (${found.comparisons[0]}) against the candidate before it, ${short(found.previous)} (${found.comparisons[1]}), both read against ${short(found.against)} under one setting, on the ${String(found.shared)} tasks both scored: ${String(found.wins)} won, ${String(found.losses)} lost, ${String(found.ties)} tied. A reading beside the test: it decides nothing`;
 }

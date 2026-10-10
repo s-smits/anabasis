@@ -102,6 +102,9 @@ interface Compared {
   readonly tally: Tally | null;
   /** Each harness by itself: the tasks with no, one, two... valid answers among its solves. */
   readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] } | null;
+  /** The tallied tasks the objective decided, where the comparison fixed one: won or lost where
+   *  validity alone would have tied. Null where it fixed none. */
+  readonly decided: number | null;
   /** The tasks set aside for a person's labels. */
   readonly aside: number;
   /** The Referee's last ruling of each of its rejected answers, by kind. */
@@ -245,6 +248,9 @@ function compared(events: readonly LogEvent[], id: string): Compared {
         ? null
         : { wins: count(scored.wins), losses: count(scored.losses), ties: count(scored.ties) },
     valid: valid === null ? null : { old: side(valid.old), fresh: side(valid.fresh) },
+    decided: isNumber(asRecord(report?.objective)?.decided)
+      ? count(asRecord(report?.objective)?.decided)
+      : null,
     aside: listed(report?.aside),
     rulings: {
       earned: [...ruled.values()].filter((ruling) => ruling === "earned").length,

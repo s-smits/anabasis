@@ -23,7 +23,8 @@
  * Nothing here decides a comparison or makes a solve.
  */
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { draw, type Paired, pairings, pairsOf, TRIGGER, triggered } from "./compare.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
+import { draw, objectiveRuleIn, type Paired, pairings, pairsOf, TRIGGER, triggered } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
 import { taskSets } from "./task.ts";
@@ -291,7 +292,7 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
   const { old, fresh, setting, solves } = data;
   const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
   if (!isString(old) || !isString(fresh) || !isString(setting) || !isNumber(solves)) return [];
-  const sides = { old, fresh, setting, comparison: session };
+  const sides = { old, fresh, setting, comparison: session, objective: objectiveRuleIn(data) };
   return whole(pairsOf(events.slice(0, index + 1), versions, sides).pairs, solves).pairs;
 }
 
@@ -315,7 +316,7 @@ export function whole(pairs: readonly Paired[], solves: number) {
   return {
     pairs: pairs.flatMap((pair): Paired[] => {
       if (!enough(pair)) return [];
-      const { task, old, fresh, solves: named, used } = pair;
+      const { task, old, fresh, solves: named, used, objective } = pair;
       return [
         {
           task,
@@ -323,6 +324,12 @@ export function whole(pairs: readonly Paired[], solves: number) {
           fresh: cut(fresh),
           solves: { old: cut(named?.old), fresh: cut(named?.fresh) },
           used: { old: cut(used?.old), fresh: cut(used?.fresh) },
+          ...keyIfDefined(
+            "objective",
+            objective === undefined
+              ? undefined
+              : { ...objective, old: cut(objective.old), fresh: cut(objective.fresh) },
+          ),
         },
       ];
     }),

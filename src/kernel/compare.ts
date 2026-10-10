@@ -34,9 +34,17 @@
  * With the same number of solves a side, the pairing reads exactly as "the harness with more valid
  * answers wins": of n solves a side with f and o valid, the new harness wins f(n-o) pairs and the
  * reference o(n-f), and the first is the larger exactly when f is. It is stated over pairs because
- * that is the form an objective joins, should validity leave too many ties: the plan adds one only
- * then, computed by the host from the answer, and never a value the answer reports about itself
- * (Phase 3). No objective is built here.
+ * that is the form the objective joins (`ObjectiveRule`, since 10 October): where the check program
+ * declares one, a quantity its evaluator computes from a valid answer (`verify.ts`, `OBJECTIVE`),
+ * two valid answers in a pair are compared by it, and the better one by more than the margin wins
+ * the pair. Validity is read first and the objective only between two valid answers, so no answer
+ * the checks refuse is ever the better one, and the margin is relative to the larger of the two
+ * magnitudes, so a quantity's unit does not set it. The rule, the direction and the margin, is a
+ * term of the comparison, fixed at its start with the rest (`comparison.started`, `objective`); a
+ * comparison whose start names none pairs on validity alone, as every comparison before 10
+ * October did. The value is the host's: the evaluator computes it from the answer, and no value
+ * the answer reports about itself is read. 110 of the 189 pairs on record on 10 October tied,
+ * most of them between two valid answers (`docs/plan.md`, the climb).
  *
  * Every held-out task is compared (`task.ts`). Until 2026-10-09 a screening chose the scored tasks
  * by which harness failed them, and an anchor of unscreened tasks guarded that choice. With no
@@ -76,7 +84,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { conditionsOf, settingId } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
-import { ended, passed, ranUnder } from "./solves.ts";
+import { ended, passed, ranUnder, verdictsOf } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
 /** What one counted solve used, as its `solve.finished` holds it: null where the log has none. */
@@ -114,12 +122,27 @@ interface Spread {
   readonly most: number;
 }
 
+/** How two valid answers on one task are set against each other: by the quantity the check program
+ *  computes of each, lower or higher being better, where the two differ by more than `margin` of
+ *  the larger magnitude. */
+export interface ObjectiveRule {
+  readonly direction: "lower" | "higher";
+  readonly margin: number;
+}
+
 /** One task version's counted solves under the reference harness and under the new: true for a
  *  valid answer. */
 export interface Paired {
   readonly task: string;
   readonly old: readonly boolean[];
   readonly fresh: readonly boolean[];
+  /** The objective each of those solves measured, in the same order, null where its answer was
+   *  not valid or the verdict holds none; and the rule it is read by. Absent where the comparison
+   *  fixed no objective. */
+  readonly objective?: ObjectiveRule & {
+    readonly old: readonly (number | null)[];
+    readonly fresh: readonly (number | null)[];
+  };
   /** Each of those solves as the log names it, in the same order. */
   readonly solves?: { readonly old: readonly string[]; readonly fresh: readonly string[] };
   /** What each of those solves used of its limits, in the same order. */
@@ -144,6 +167,8 @@ export interface Sides {
    *  one side and the ones after them the other. It is how the noise of one harness is read, and
    *  the one case in which both sides may name the same harness. */
   readonly halves?: number | undefined;
+  /** The objective two valid answers are compared by, where the comparison fixed one. */
+  readonly objective?: ObjectiveRule | undefined;
 }
 
 /** A compute budget a comparison is read at after the fact: a solve that used more of any named
@@ -207,6 +232,15 @@ export function readTwice(reports: readonly JsonObject[], level: number, trigger
   return signP(one.wins + two.wins, one.losses + two.losses) <= level;
 }
 
+/** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
+ *  none: a direction and a margin that is a number from nothing up. */
+export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
+  const { direction, margin } = asRecord(data.objective) ?? {};
+  return (direction === "lower" || direction === "higher") && isNumber(margin) && margin >= 0
+    ? { direction, margin }
+    : undefined;
+}
+
 /** The smallest scored set a sign test at `level` can read a step on: that many tasks, all won. */
 export function sweepOf(level: number): number {
   let sweep = 1;
@@ -235,11 +269,43 @@ export function sweepOf(level: number): number {
 // takes 3-0 and refuses 4-1; at 0.95 it is the sign test at 0.10.
 //   const betterP = (wins: number, losses: number) => 1 - signP(wins + 1, losses);
 
+/** Which of two valid answers' measures is the better by more than the rule's margin: 1 for the
+ *  first, -1 for the second, 0 where neither is or one is missing. */
+function better(rule: ObjectiveRule, one: number | null, other: number | null): -1 | 0 | 1 {
+  if (one === null || other === null) return 0;
+  if (Math.abs(one - other) <= rule.margin * Math.max(Math.abs(one), Math.abs(other))) return 0;
+  const lower = one < other ? 1 : -1;
+  return rule.direction === "lower" ? lower : lower === 1 ? -1 : 1;
+}
+
 /** One task's pairings: every solve of the new harness against every solve of the reference one,
- *  and how many each side won. A valid answer beats one that is not, and nothing else decides. */
+ *  and how many each side won. A valid answer beats one that is not; two valid answers are even,
+ *  unless the pair carries an objective and one is the better by it. */
 export function pairings(pair: Paired) {
-  const [valid, other] = [pair.fresh.filter(Boolean).length, pair.old.filter(Boolean).length];
-  return { fresh: valid * (pair.old.length - other), old: other * (pair.fresh.length - valid) };
+  const won = { fresh: 0, old: 0 };
+  /** Who wins one pairing: the valid answer, or between two valid ones the better by the objective. */
+  const winner = (f: number, o: number): "fresh" | "old" | null => {
+    const [freshValid, oldValid] = [pair.fresh[f] === true, pair.old[o] === true];
+    if (freshValid !== oldValid) return freshValid ? "fresh" : "old";
+    if (!freshValid || pair.objective === undefined) return null;
+    const by = better(pair.objective, pair.objective.fresh[f] ?? null, pair.objective.old[o] ?? null);
+    return by === 0 ? null : by === 1 ? "fresh" : "old";
+  };
+  for (let f = 0; f < pair.fresh.length; f += 1) {
+    for (let o = 0; o < pair.old.length; o += 1) {
+      const side = winner(f, o);
+      if (side !== null) won[side] += 1;
+    }
+  }
+  return won;
+}
+
+/** How many of `pairs` the objective decided: tasks won or lost that would tie on validity alone. */
+export function decidedByObjective(pairs: readonly Paired[]): number {
+  const outcome = (pair: Paired) => Math.sign(pairings(pair).fresh - pairings(pair).old);
+  return pairs.filter(
+    ({ objective, ...rest }) => objective !== undefined && outcome({ objective, ...rest }) !== outcome(rest),
+  ).length;
 }
 
 /** Each task once: won by the harness that wins more of its pairings, and tied otherwise. A task
@@ -349,7 +415,8 @@ export function draw(versions: readonly string[], count: number, seed: string): 
  * task from the test and cannot make a win. Any other version that is no held-out task is refused.
  */
 export function pairsOf(events: readonly LogEvent[], versions: readonly string[], sides: Sides) {
-  const { old, fresh, setting, comparison, halves } = sides;
+  const { old, fresh, setting, comparison, halves, objective } = sides;
+  const verdicts = objective === undefined ? null : verdictsOf(events);
   if (old === fresh && halves === undefined) {
     throw new Error(`a comparison sets two harnesses against each other, and both sides are ${old}`);
   }
@@ -398,6 +465,11 @@ export function pairsOf(events: readonly LogEvent[], versions: readonly string[]
           billed: isNumber(end.billed) ? end.billed : null,
         };
       });
+    const measured = (solves: typeof counted) =>
+      solves.map(({ id }) => {
+        const checker = verdicts?.get(id)?.checker;
+        return checker?.kind === "pass" && checker.objective !== undefined ? checker.objective : null;
+      });
     return [
       {
         task,
@@ -405,6 +477,12 @@ export function pairsOf(events: readonly LogEvent[], versions: readonly string[]
         fresh: after.map((solve) => passed(solve) === true),
         solves: { old: before.map(({ id }) => id), fresh: after.map(({ id }) => id) },
         used: { old: used(before), fresh: used(after) },
+        ...keyIfDefined(
+          "objective",
+          objective === undefined
+            ? undefined
+            : { ...objective, old: measured(before), fresh: measured(after) },
+        ),
       },
     ];
   });

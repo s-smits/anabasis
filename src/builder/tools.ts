@@ -44,6 +44,7 @@ import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/too
 import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
+import type { Contract } from "../kernel/contract.ts";
 import { billedFor } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
@@ -135,6 +136,15 @@ export function endingText(ending: Ending): string {
   return ending.kind === "broken-harness"
     ? `fail (broken harness: ${ending.reason})`
     : `fail (${ending.kind})`;
+}
+
+/** What the verifier measured of a valid practice answer, where the contract states an objective:
+ *  the quantity and its value, which the Builder reads of its own practice and of nothing else. */
+function measuredText(events: readonly LogEvent[], solve: string, contract: Contract): string {
+  const checker = verdictsOf(events).get(solve)?.checker;
+  return contract.objective !== undefined && checker?.kind === "pass" && checker.objective !== undefined
+    ? ` Measured ${contract.objective.quantity}: ${String(checker.objective)} (${contract.objective.direction} is better).`
+    : "";
 }
 
 /** A task version's counted practice solves under one harness, by the log's condition records,
@@ -461,7 +471,7 @@ export function practiceTool(bench: Bench): AgentTool {
           harness === null ? null : record(events, task.version, harness),
         );
         return [
-          `${task.task.taskId}${UNDER[args.under ?? "harness"]}: ${endingText(ending)}. Solve ${solve}.${usedText(events, solve)}`,
+          `${task.task.taskId}${UNDER[args.under ?? "harness"]}: ${endingText(ending)}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract)}`,
           `Record under this harness: passed ${String(now?.passed ?? 0)} of ${String(now?.solves.length ?? 0)}. Under the harness you started from: ${String(before?.passed ?? 0)} of ${String(before?.solves.length ?? 0)}.`,
           ...lines,
         ].join("\n");

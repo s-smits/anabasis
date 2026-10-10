@@ -12,7 +12,7 @@ import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/backends/claude.ts";
 import { type BackendOptions, backends } from "#src/backends/models.ts";
 import type { Control } from "#src/kernel/acceptance.ts";
-import type { Contract } from "#src/kernel/contract.ts";
+import { type Contract, type Objective, objectiveLine } from "#src/kernel/contract.ts";
 import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Ending } from "#src/kernel/solve.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
@@ -21,6 +21,7 @@ import { CONTROLS_FILE } from "#src/meta/bundle-layout.ts";
 import { cpSync, existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { homedir } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { type PublicResource, publicResource } from "#src/solve/answer.ts";
@@ -74,6 +75,8 @@ interface PackBrief {
   readonly conventions?: string;
   readonly ruleDecisions: readonly (JsonObject & { id: string; statement: string; visibility: string })[];
   readonly truthChecks: readonly { assertion: string; execution: { publicInputPaths: string[] } }[];
+  /** The objective, where the check program declares one (`src/kernel/contract.ts`). */
+  readonly objective?: Objective;
   readonly artifactSchema: readonly JsonObject[];
   readonly designRuleConstants: readonly JsonObject[];
   readonly designRuleSets?: readonly JsonObject[];
@@ -317,6 +320,7 @@ export function contractOf(brief: PackBrief, answerFormat: JsonValue): Contract 
     conventions: brief.conventions ?? "",
     rules: brief.ruleDecisions.filter((rule) => rule.visibility === "public"),
     scope: brief.scope ?? brief.domain,
+    ...keyIfDefined("objective", brief.objective),
   };
 }
 
@@ -345,6 +349,13 @@ export function sweepResources(brief: PackBrief): PublicResource[] {
       brief.scope === undefined && brief.conventions === undefined
         ? []
         : [{ domain: brief.domain, scope: brief.scope ?? "", conventions: brief.conventions ?? "" }],
+    ],
+    // The objective is public with the rules: a solver held to it has to read it (10 October).
+    [
+      "public-objective",
+      brief.objective === undefined
+        ? []
+        : [{ ...brief.objective, statement: objectiveLine(brief.objective) }],
     ],
     [
       "public-validity-rules",

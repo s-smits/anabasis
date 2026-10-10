@@ -16,7 +16,8 @@
  * the condition; `ended` puts solves in the order they finished, which is the order every count of
  * "the latest so many" means; `verdictsOf` is the last verdict of each.
  */
-import { asRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { type Condition, conditionsOf, type Limits, limitsIn } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
 import type { Verdict } from "./verify.ts";
@@ -179,8 +180,16 @@ export function refusedBy(verdict: Judged | undefined): readonly string[] {
   return verdict?.checker?.kind === "fail" ? verdict.checker.blocking : [];
 }
 
-function checkerVerdict(data: JsonObject): Verdict | null {
-  if (data.kind === "pass") return { kind: "pass" };
+/** The checker's own verdict a `verdict` event holds, with its measure where one was taken, or
+ *  null where no check gave one. The acceptance's regrading reads the same event through this
+ *  (rule 12): until 11 October it had a copy that dropped the measure. */
+export function checkerVerdict(data: JsonObject): Verdict | null {
+  if (data.kind === "pass") {
+    return {
+      kind: "pass",
+      ...keyIfDefined("objective", isNumber(data.objective) ? data.objective : undefined),
+    };
+  }
   if (data.kind === "fail" && Array.isArray(data.blocking) && data.blocking.length > 0) {
     return { kind: "fail", blocking: data.blocking.filter(isString) };
   }

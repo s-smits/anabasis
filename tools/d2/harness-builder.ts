@@ -179,6 +179,7 @@ const OPTIONS = {
   solves: { type: "string" },
   level: { type: "string" },
   trigger: { type: "string" },
+  margin: { type: "string" },
   defects: { type: "string" },
   minutes: { type: "string" },
   turns: { type: "string" },
@@ -476,6 +477,7 @@ function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn
           // The trigger is the table's and no term of the start: it goes on the command, new or
           // continued, so the admission reads what `decide` read (left off until 11 October).
           ...flag("trigger", values.trigger),
+          ...flag("margin", values.margin),
           ...plan.ladder.flatMap((rung) =>
             turns === null || rung < turns ? ["--budget", `turns=${String(rung)}`] : [],
           ),

@@ -38,7 +38,7 @@ import {
   capturedStructuredClone,
   parseJsonAs,
 } from "../meta/json-runtime.ts";
-import { asRecord, isBoolean, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isBoolean, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { tmpdir } from "../meta/os.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
@@ -50,6 +50,7 @@ import { type VerifierOsIsolation, verifierOsIsolation } from "../verify/os-isol
 import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
 import { type FrozenToolchainAccess, frozenToolchainAccess } from "../verify/wall-policy.ts";
 import type { CheckChildInput, CheckChildResult } from "./check-child.ts";
+import type { Objective } from "./contract.ts";
 
 // Copied from v1 (github.com/s-smits/anabasis, 3f93d06b), verbatim: CHECK_PROGRAM_CONTRACT,
 // requiredToolsOf, applicableTruthChecks, projectPaths, projectJsonPaths and checkPublicInputs from
@@ -69,7 +70,10 @@ type CheckExecution = {
 
 type BriefTruthCheck = { id: string; citedDecisionIds: string[]; execution: CheckExecution };
 
-export type Brief = { correctnessContract: string; truthChecks: BriefTruthCheck[] };
+/** The brief declares its checks and, since 10 October, may declare an objective (`Objective`):
+ *  the evaluator then exports `objective(request)`, a finite number of a valid answer, which the
+ *  verifier measures after the checks pass (`OBJECTIVE`). An answer the checks refuse has none. */
+export type Brief = { correctnessContract: string; truthChecks: BriefTruthCheck[]; objective?: Objective };
 
 interface PublicTask<PublicInput> {
   taskId: string;
@@ -98,7 +102,7 @@ interface VerifierTree {
 }
 
 export type Verdict =
-  | { readonly kind: "pass" }
+  | { readonly kind: "pass"; readonly objective?: number }
   | { readonly kind: "fail"; readonly blocking: readonly string[] }
   | { readonly kind: "faulty"; readonly check: string; readonly reason: string }
   | { readonly kind: "non-result"; readonly reason: string };
@@ -117,6 +121,22 @@ interface Wall {
   readonly readRoots: string[];
 }
 
+/** The objective, run as a check is, in a cell of its own: the evaluator's `objective` export,
+ *  given the whole answer and the whole public task and no hidden value, with no tool. It is the
+ *  author's own computation, so `accept.ts` lists it as a fault until the operator admits it by
+ *  name (rule 10). */
+export const OBJECTIVE: BriefTruthCheck = {
+  id: "objective",
+  citedDecisionIds: [],
+  execution: {
+    families: "all",
+    artifactPaths: ["$"],
+    publicInputPaths: ["$"],
+    hidden: "none",
+    evidence: { kind: "authored" },
+  },
+};
+
 /** The check process, which reads these sources from where they stand. */
 const CHECK_CHILD = join(import.meta.dir, "check-child.ts");
 const CHECK_CHILD_SOURCES = [import.meta.dir, resolve(import.meta.dir, "..", "meta")];
@@ -131,7 +151,10 @@ const CHECK_WALL_MS = 2 * TOOL_CEILING_MS;
 export function spelled(verdict: Verdict): string {
   if (verdict.kind === "fail") return `fail ${[...verdict.blocking].sort().join(",")}`;
   if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
-  return verdict.kind === "pass" ? "pass" : `non-result ${verdict.reason}`;
+  if (verdict.kind === "pass") {
+    return verdict.objective === undefined ? "pass" : `pass ${String(verdict.objective)}`;
+  }
+  return `non-result ${verdict.reason}`;
 }
 
 /** An external check names its tools inside its evidence declaration, because the tool is the
@@ -278,7 +301,11 @@ export function checkProgramVersion(checks: string): Record<string, string> {
 
 /** A check program's declaration of its checks, as its author wrote it. */
 export function readBrief(checks: string): Brief {
-  return parseJsonAs<Brief>(readFileSync(join(checks, "brief.json"), "utf8"));
+  const brief = parseJsonAs<Brief>(readFileSync(join(checks, "brief.json"), "utf8"));
+  if (brief.truthChecks.some((check) => check.id === OBJECTIVE.id)) {
+    throw new Error(`a check is named ${OBJECTIVE.id}, which names the objective`);
+  }
+  return brief;
 }
 
 /**
@@ -303,13 +330,28 @@ export function openVerifier(given: VerifierTree): Verifier {
   return async (task, answer) => {
     if (answer === undefined) return { kind: "fail", blocking: [] };
     const blocking: string[] = [];
+    const request = { publicTask: task, artifact: answer, hidden: task.hidden };
     for (const check of applicableTruthChecks(brief, task)) {
-      const result = await runCheck(wall, check, { publicTask: task, artifact: answer, hidden: task.hidden });
+      const result = await runCheck(wall, check, request);
       if ("nonResult" in result) return { kind: "non-result", reason: `${check.id}: ${result.nonResult}` };
       if ("faulty" in result) return { kind: "faulty", check: check.id, reason: result.faulty };
+      if ("value" in result) {
+        return { kind: "faulty", check: check.id, reason: "the check returned a number" };
+      }
       if (!result.passed) blocking.push(check.id);
     }
-    return blocking.length === 0 ? { kind: "pass" } : { kind: "fail", blocking };
+    if (blocking.length > 0) return { kind: "fail", blocking };
+    if (brief.objective === undefined) return { kind: "pass" };
+    // The objective is read of a valid answer only, in a cell of its own like a check.
+    const measured = await runCheck(wall, OBJECTIVE, request);
+    if ("nonResult" in measured) {
+      return { kind: "non-result", reason: `${OBJECTIVE.id}: ${measured.nonResult}` };
+    }
+    if ("faulty" in measured) return { kind: "faulty", check: OBJECTIVE.id, reason: measured.faulty };
+    if (!("value" in measured)) {
+      return { kind: "faulty", check: OBJECTIVE.id, reason: "the objective returned a boolean" };
+    }
+    return { kind: "pass", objective: measured.value };
   };
 }
 
@@ -344,6 +386,7 @@ async function runCheck(
     const input: CheckChildInput = {
       program: join(copy, EVALUATOR_FILE),
       checkId: check.id,
+      returns: check === OBJECTIVE ? "measure" : "verdict",
       request: checkEvaluationRequest(check, request),
       tools: requiredToolsOf(check.execution),
       toolPath: wall.toolPath,
@@ -414,6 +457,7 @@ function writtenResult(path: string): CheckChildResult | null {
   }
   const result = asRecord(written);
   if (isBoolean(result?.passed)) return { passed: result.passed };
+  if (isNumber(result?.value) && Number.isFinite(result.value)) return { value: result.value };
   if (isString(result?.nonResult)) return { nonResult: result.nonResult };
   if (isString(result?.faulty)) return { faulty: result.faulty };
   return null;

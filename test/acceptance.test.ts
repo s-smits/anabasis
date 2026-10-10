@@ -146,6 +146,61 @@ describe("a checker's acceptance", () => {
     expect(authoredFaults(checks, new Set(["span"]))).toEqual([]);
   });
 
+  it("reads the objective as its author's own computation, seen to measure a valid answer or none", async () => {
+    const measured: Brief = { ...brief, objective: { quantity: "mass in kg", direction: "lower" } };
+    const weighed: Verifier = async (task, answer) => {
+      const verdict = await verify(task, answer);
+      const mass = asRecord(answer)?.mass;
+      return verdict.kind === "pass" && isNumber(mass) ? { kind: "pass", objective: mass } : verdict;
+    };
+    const runs = await runControls(weighed, [roof, mast], SOUND, 2);
+    const { checks, faults } = acceptance(measured, [roof, mast], runs, [], everyTool);
+    expect(faults).toEqual([]);
+    expect(checks.at(-1)).toEqual({
+      id: "objective",
+      instrument: "authored",
+      missing: [],
+      passed: 2,
+      refused: 0,
+      named: 0,
+      caught: 0,
+    });
+    // It waits on the operator's word like a check, under its own name.
+    expect(authoredFaults(checks, new Set(["span"]))).toEqual([
+      "objective is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit objective)",
+    ]);
+    expect(authoredFaults(checks, new Set(["span", "objective"]))).toEqual([]);
+    // The measure is part of the verdict, so a control measured twice at two values is one answer
+    // with two verdicts, as a check that decides twice is.
+    let weighings = 0;
+    const drifting: Verifier = async (task, answer) => {
+      const verdict = await weighed(task, answer);
+      weighings += 1;
+      return verdict.kind === "pass" ? { ...verdict, objective: weighings } : verdict;
+    };
+    const drifted = await runControls(drifting, [roof], SOUND.slice(0, 1), 1);
+    expect(acceptance(measured, [roof], drifted, [], everyTool).faults[0]).toBe(
+      "the accept control of roof-1 got two verdicts from one answer: pass 1, then pass 2",
+    );
+    // A verifier that measures nothing, or cannot, is a fault of the objective's and of no check.
+    const unweighed = await runControls(verify, [roof, mast], SOUND, 2);
+    expect(acceptance(measured, [roof, mast], unweighed, [], everyTool).faults).toEqual([
+      "objective has measured nothing: no accept control and no stored answer passed",
+    ]);
+    const broken: Verifier = async (task, answer) => {
+      const verdict = await verify(task, answer);
+      return verdict.kind === "pass"
+        ? { kind: "faulty", check: "objective", reason: "the objective returned NaN" }
+        : verdict;
+    };
+    const faulty = await runControls(broken, [roof, mast], SOUND, 2);
+    expect(acceptance(measured, [roof, mast], faulty, [], everyTool).faults).toEqual([
+      "the accept control of roof-1 did not pass: faulty objective: the objective returned NaN",
+      "the accept control of mast-1 did not pass: faulty objective: the objective returned NaN",
+      "objective could not be measured on a valid answer: the objective returned NaN",
+    ]);
+  });
+
   it("stops on a control of a task the pack does not hold", async () => {
     const gone: Control = { taskId: "gone", answer: {}, refusedBy: null };
     await expect(runControls(verify, [roof], [gone], 1)).rejects.toThrow("a control names gone");
@@ -234,7 +289,8 @@ describe("a log's answers under a repaired checker", () => {
   /** The repair: `mass` refuses past 60 and no longer past 10. */
   const repaired: Verifier = async (_task, answer) => {
     const mass = asRecord(answer)?.mass;
-    return isNumber(mass) && mass > 60 ? { kind: "fail", blocking: ["mass"] } : { kind: "pass" };
+    if (isNumber(mass) && mass > 60) return { kind: "fail", blocking: ["mass"] };
+    return isNumber(mass) && mass === 7 ? { kind: "pass", objective: 7 } : { kind: "pass" };
   };
 
   it("grades the last verdict of each solve again, and leaves out what no check decided", async () => {
@@ -243,6 +299,8 @@ describe("a log's answers under a repaired checker", () => {
       logged("a", "roof-1", { mass: 50 }, { kind: "fail", blocking: ["mass"] }),
       logged("b", "roof-1", { mass: 70 }, { kind: "fail", blocking: ["mass"] }),
       logged("c", "mast-1", { mass: 5 }, { kind: "pass" }),
+      // A measured pass keeps its measure through the regrading: the repair measures the same.
+      logged("m", "mast-1", { mass: 7 }, { kind: "pass", objective: 7 }),
       logged("d", "roof-1", { mass: 5 }, { kind: "faulty", check: "span", reason: "threw" }),
       logged("gone", "hall-1", { mass: 5 }, { kind: "pass" }),
       // No check ran on an answer outside the format, and a non-result decided nothing.
@@ -253,6 +311,7 @@ describe("a log's answers under a repaired checker", () => {
       { solve: "a", task: "roof-1", was: "fail mass", now: "pass" },
       { solve: "b", task: "roof-1", was: "fail mass", now: "fail mass" },
       { solve: "c", task: "mast-1", was: "pass", now: "pass" },
+      { solve: "m", task: "mast-1", was: "pass 7", now: "pass 7" },
       { solve: "d", task: "roof-1", was: "faulty span: threw", now: "pass" },
       { solve: "gone", task: "hall-1", was: "pass", now: "no task" },
     ]);

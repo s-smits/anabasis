@@ -69,10 +69,12 @@ the system's main asset.
 
 What crosses from the exam side to the build side is a closed list:
 
-- the contract's public rules, its scope and conventions, and the answer format;
+- the contract's public rules, its scope and conventions, the answer format and, where the check
+  program declares one, the objective: the quantity and which way is better;
 - the public part of each **released** (practice) task;
-- for a practice solve: its ending's outcome and kind, the solver's trace, and the Diagnoser's
-  reading;
+- for a practice solve: its ending's outcome and kind, the solver's trace, the Diagnoser's
+  reading and, where the contract states an objective, the measure the verifier took of a valid
+  answer;
 - for each comparison: the tally and the reading, with no task named.
 
 Nothing else crosses: no held-out task, no trace of one, no check, no hidden value, no list of the
@@ -154,7 +156,7 @@ wall keeps from it.
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
 | **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, and one outcome for each task of the campaign; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, and what the host's reading found in each draft | A target, a harness's name, a count of solves. It makes no solve of the exam's | `src/examiner/` |
-| **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules, practice tasks, practice results and traces, diagnoses, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
+| **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, diagnoses, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
 | **Referee** (model) | Rules each rejection `earned`, `check-defect` or `unclear` before it counts | The verifier's side only: the task with hidden values, the rules, the answer, the refusing checks, the check program | The harness, the solver's trace, the Builder | `src/review/referee.ts` |
@@ -465,7 +467,7 @@ A solver that is another model, at another effort or under other limits is anoth
 solve on record then counts.
 
 Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.10
-(`--level`) and trigger 0.25 (`--trigger`), a stop past 3 tasks with a check defect (`--defects`), a patience of 6 (`--patience`),
+(`--level`) and trigger 0.25 (`--trigger`), an objective margin of 0.01 (`--margin`), a stop past 3 tasks with a check defect (`--defects`), a patience of 6 (`--patience`),
 a reserve of 10 dollars a solve
 (`--reserve`), `--parent latest`, `--reference promoted`, which is the harness last promoted and
 the starter until one is; a Builder session of 240 minutes, 300
@@ -522,7 +524,7 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 
 | Ending | Kinds | In a pair |
 | --- | --- | --- |
-| pass | | Valid. It beats an answer that is not valid and is even with another valid one |
+| pass | | Valid. It beats an answer that is not valid, and is even with another valid one unless the comparison fixed an objective and one is the better by it |
 | fail | `rejected`, once the rejection is ruled a true fail | Not valid |
 | fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid. There is nothing to recompute, so no ruling is needed |
 | fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |
@@ -531,7 +533,14 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 
 **The tally.** Every solve of the new harness is paired with every solve of the reference on the
 same task. The harness that wins more pairs wins the task; otherwise the task is a tie. Ties leave
-the test. A one-sided sign test reads wins against losses, in two stages: a comparison whose
+the test. Where the check program declares an **objective**, a quantity its evaluator computes of a
+valid answer with a direction (`brief.objective`, `objective(request)`, verified after the checks
+pass: `OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and
+the better by more than the margin (`--margin`, 0.01 of the larger magnitude) wins the pair
+(`ObjectiveRule`, `src/kernel/compare.ts`). Validity is read first, so no refused answer is ever
+the better one. The objective is public, in the contract and the solver's resources, and the
+report says how many tallied tasks it decided (`objective.decided`). The rule is a term of the
+comparison, fixed at its start; a check program that declares none pairs on validity alone. A one-sided sign test reads wins against losses, in two stages: a comparison whose
 tally is at or under the trigger (0.25: 2 to 0, 4 to 1, 5 to 2, 7 to 3) buys the repeat and
 promotes nothing, and the step and its repeat read together, wins and losses summed, clear the
 level (0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), the repeat having untied a task and won at least as

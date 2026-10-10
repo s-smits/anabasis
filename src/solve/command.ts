@@ -41,7 +41,11 @@ import {
   shellQuote,
   stageCommandIsolation,
 } from "../verify/solve-command-isolation.ts";
-import { type SolveIsolationPolicy, solveIsolationPolicy } from "../verify/solve-sandbox.ts";
+import {
+  probeHostSolveReadDeny,
+  type SolveIsolationPolicy,
+  solveIsolationPolicy,
+} from "../verify/solve-sandbox.ts";
 
 export interface SolveDirs {
   /** The capped volume's mount point. */
@@ -78,6 +82,9 @@ export interface Walled {
   readonly otherTrees?: readonly string[] | undefined;
   readonly diskBytes: number;
 }
+
+/** The policies this process has probed and found to hold, by their hash: once a process. */
+const PROBED = new Set<string>();
 
 /** A solve's time: when its first turn started, null until it has, and how long the solve may be. */
 export interface SolveClock {
@@ -159,15 +166,35 @@ export function solveDirs(id: string): SolveDirs {
  * The base of a wall over `dirs`, with the three folders made: the solver's, the Builder's and the
  * Examiner's are built the same way, and until 10 October each spelled it. `who` names the actor
  * in the refusal of a host that cannot wall one.
+ *
+ * The wall is a test and no convention (`AGENTS.md`, rule 3): before its first use in a process
+ * each policy is probed, a canary read in the repository and in its first other worktree, and a
+ * read that gets through refuses the wall, with the probe's own lines. Until 10 October the probe
+ * ran in the test suite alone, and a sibling worktree's log was readable in every live run. The
+ * ancestor-rename guard is reported and refuses nothing here: on the Linux container it fails
+ * while every read-deny holds, and a run on such a host is a run under a wall that reads deny.
  */
 export function walledBase(dirs: SolveDirs, wall: Walled, who: string): SolveIsolationPolicy {
   for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-  const base = solveIsolationPolicy({
-    repoRoot: wall.repoRoot,
-    otherTrees: wall.otherTrees ?? [],
-    cap: { root: dirs.root, bytes: wall.diskBytes },
-  });
+  const otherTrees = wall.otherTrees ?? [];
+  const cap = { root: dirs.root, bytes: wall.diskBytes };
+  const base = solveIsolationPolicy({ repoRoot: wall.repoRoot, otherTrees, cap });
   if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);
+  if (!PROBED.has(base.policyHash)) {
+    const probe = probeHostSolveReadDeny({ repoRoot: wall.repoRoot, otherTrees, cap });
+    const holds =
+      probe.available &&
+      probe.deniedReadRefused &&
+      probe.siblingReadRefused !== false &&
+      probe.controlReadSucceeded &&
+      probe.discriminationReadSucceeded;
+    if (!holds) {
+      throw new Error(
+        `the wall does not hold on this host, so ${who} is not started:\n${probe.evidence.join("\n")}`,
+      );
+    }
+    PROBED.add(base.policyHash);
+  }
   return base;
 }
 

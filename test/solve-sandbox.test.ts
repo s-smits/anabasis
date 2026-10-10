@@ -14,7 +14,15 @@
 // while making the product unusable. Run 4 is the reason it is not hypothetical — it walled off
 // its own repair-attribution and Judge paths.
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { homedir, tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
@@ -183,6 +191,16 @@ describe("the executed fixture", () => {
     expect(evidence.moveGuardRefused).toBe(true);
     if (onLinux) expect(evidence.evidence.join("\n")).toContain("stayed hidden");
     expect(evidence.isolated).toBe(true);
+    // Given no other worktree the sibling read is not tried; given one, its canary is refused too,
+    // which every wall checks once a process before its first use (`walledBase`).
+    expect(evidence.siblingReadRefused).toBeNull();
+    const sibling = workRepo();
+    const closed = probeHostSolveReadDeny({ repoRoot, otherTrees: [sibling], cap });
+    expect(closed.siblingReadRefused).toBe(true);
+    expect(closed.isolated).toBe(true);
+    expect(closed.evidence.join("\n")).toContain("other-worktree read: REFUSED");
+    expect(existsSync(sibling)).toBe(true);
+    expect(readdirSync(sibling)).toEqual([]);
     const policy = solveIsolationPolicy({ repoRoot, cap });
     if ("unsupported" in policy) throw new Error("this host cannot run the isolation");
     // The evidence binds the rules it executed, so a later reader can re-derive them.

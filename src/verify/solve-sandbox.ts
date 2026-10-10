@@ -66,6 +66,8 @@ type HostSolveIsolationFixture =
 export const HOST_SOLVE_ISOLATION_PROFILE_ID = "harness-host-solve-isolated";
 
 const CANARY_MARKER = "ANA-HOST-ISOLATION-PROBE-CANARY-DO-NOT-TRUST";
+/** The canary file a probe writes in each place a read is tried. */
+const CANARY_FILE = "canary.txt";
 /** The move-guard probe runs through `isolationArgv` like every launch, so it needs a cap of its own;
  *  it writes nothing there, and one mebibyte is any small number. */
 const LINUX_MOVE_GUARD_CAP_BYTES = 1024 * 1024;
@@ -108,6 +110,9 @@ export interface HostSolveIsolationEvidence {
   /** False when the mechanism or a required probe could not run. */
   available: boolean;
   deniedReadRefused: boolean;
+  /** Whether a read of a canary in the repository's first other worktree was refused; null where
+   *  the probe was given no other tree. A sibling worktree's log was readable until 10 October. */
+  siblingReadRefused: boolean | null;
   controlReadSucceeded: boolean;
   discriminationReadSucceeded: boolean;
   /** Whether an ancestor rename failed to expose a protected path. Both mechanisms run this probe,
@@ -314,7 +319,7 @@ function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuard
       const secret = join(home, "secret");
       const moved = join(root, "moved");
       mkdirSync(secret, { recursive: true, mode: 0o700 });
-      writeFileSync(join(secret, "canary.txt"), `${CANARY_MARKER}\n`, { mode: 0o600 });
+      writeFileSync(join(secret, CANARY_FILE), `${CANARY_MARKER}\n`, { mode: 0o600 });
       return runUnderPolicy(
         {
           profile: LINUX_SOLVE_ISOLATION_DESCRIPTOR,
@@ -326,7 +331,7 @@ function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuard
         },
         root,
         "/bin/sh",
-        ["-c", `mv ${home} ${moved} 2>/dev/null; cat ${join(moved, "secret", "canary.txt")} 2>&1`],
+        ["-c", `mv ${home} ${moved} 2>/dev/null; cat ${join(moved, "secret", CANARY_FILE)} 2>&1`],
       );
     };
     const guarded = run("guarded", true);
@@ -367,6 +372,7 @@ function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuard
  */
 export function probeHostSolveReadDeny(opts: {
   repoRoot: string;
+  otherTrees?: readonly string[];
   cap: DiskCap;
   runtime?: OsIsolationRuntime;
   readAllowRoots?: readonly string[];
@@ -380,6 +386,7 @@ export function probeHostSolveReadDeny(opts: {
     isolated: false,
     available: false,
     deniedReadRefused: false,
+    siblingReadRefused: null,
     controlReadSucceeded: false,
     discriminationReadSucceeded: false,
     moveGuardRefused: false,
@@ -389,12 +396,20 @@ export function probeHostSolveReadDeny(opts: {
   });
   const runtime = opts.runtime === undefined ? {} : { runtime: opts.runtime };
   const readAllow = opts.readAllowRoots === undefined ? {} : { readAllowRoots: opts.readAllowRoots };
-  const real = solveIsolationPolicy({ repoRoot: opts.repoRoot, cap: opts.cap, ...runtime, ...readAllow });
+  const trees = { otherTrees: opts.otherTrees ?? [] };
+  const real = solveIsolationPolicy({
+    repoRoot: opts.repoRoot,
+    ...trees,
+    cap: opts.cap,
+    ...runtime,
+    ...readAllow,
+  });
   if ("unsupported" in real) {
     return unproven(`host solve isolation unavailable — remaining contractual: ${real.unsupported}`);
   }
   let workRoot: string | null = null;
   let repoCanaryDir: string | null = null;
+  let siblingCanaryDir: string | null = null;
   try {
     const parent = join(tmpdir(), "ana-host-isolation-probe");
     mkdirSync(parent, { recursive: true, mode: 0o700 });
@@ -404,10 +419,20 @@ export function probeHostSolveReadDeny(opts: {
     // The deny target sits inside the protected root, where the live policy must refuse the read and
     // the deny-lifted policy must not.
     repoCanaryDir = mkdtempSync(join(resolve(opts.repoRoot), ".ana-host-isolation-probe-"));
-    const repoCanary = join(repoCanaryDir, "canary.txt");
+    const repoCanary = join(repoCanaryDir, CANARY_FILE);
     writeFileSync(repoCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
+    // A canary in the first other worktree, which the live policy must refuse as it refuses the
+    // repository's own.
+    const [sibling] = trees.otherTrees;
+    let siblingCanary: string | null = null;
+    if (sibling !== undefined) {
+      siblingCanaryDir = mkdtempSync(join(resolve(sibling), ".ana-host-isolation-probe-"));
+      siblingCanary = join(siblingCanaryDir, CANARY_FILE);
+      writeFileSync(siblingCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
+    }
     const open = solveIsolationPolicy({
       repoRoot: opts.repoRoot,
+      ...trees,
       cap: opts.cap,
       ...runtime,
       ...readAllow,
@@ -416,14 +441,14 @@ export function probeHostSolveReadDeny(opts: {
     if ("unsupported" in open) {
       return unproven(`discrimination policy unavailable: ${open.unsupported}`, real.policyHash);
     }
-    return judgeSteps(real, open, workRoot, { repoCanary, controlCanary, probedAt });
+    return judgeSteps(real, open, workRoot, { repoCanary, siblingCanary, controlCanary, probedAt });
   } catch (error) {
     return unproven(
       `host solve isolation check failed — remaining contractual: ${errorMessage(error)}`,
       real.policyHash,
     );
   } finally {
-    for (const dir of [workRoot, repoCanaryDir]) {
+    for (const dir of [workRoot, repoCanaryDir, siblingCanaryDir]) {
       if (hasText(dir)) {
         try {
           rmSync(dir, { recursive: true, force: true });
@@ -439,12 +464,18 @@ function judgeSteps(
   real: SolveIsolationPolicy,
   open: SolveIsolationPolicy,
   workRoot: string,
-  targets: { repoCanary: string; controlCanary: string; probedAt: string },
+  targets: { repoCanary: string; siblingCanary: string | null; controlCanary: string; probedAt: string },
 ): HostSolveIsolationEvidence {
   const deny = runUnderPolicy(real, workRoot, "/bin/cat", [targets.repoCanary]);
+  const sibling =
+    targets.siblingCanary === null
+      ? null
+      : runUnderPolicy(real, workRoot, "/bin/cat", [targets.siblingCanary]);
   const control = runUnderPolicy(real, workRoot, "/bin/cat", [targets.controlCanary]);
   const discrimination = runUnderPolicy(open, workRoot, "/bin/cat", [targets.repoCanary]);
-  const executionError = [deny, control, discrimination].find((run) => hasText(run.error))?.error;
+  const executionError = [deny, control, discrimination, ...(sibling === null ? [] : [sibling])].find((run) =>
+    hasText(run.error),
+  )?.error;
   const base = {
     fixture: hostSolveIsolationFixture(real.mechanismId),
     profileDigest: real.policyHash,
@@ -456,6 +487,7 @@ function judgeSteps(
       isolated: false,
       available: false,
       deniedReadRefused: false,
+      siblingReadRefused: null,
       controlReadSucceeded: false,
       discriminationReadSucceeded: false,
       moveGuardRefused: false,
@@ -463,6 +495,10 @@ function judgeSteps(
     };
   }
   const deniedReadRefused = observedRefusal(deny.combined, deny.status, CANARY_MARKER, real.mechanismId);
+  const siblingReadRefused =
+    sibling === null
+      ? null
+      : observedRefusal(sibling.combined, sibling.status, CANARY_MARKER, real.mechanismId);
   const controlReadSucceeded = control.combined.includes(CANARY_MARKER);
   const discriminationReadSucceeded = discrimination.combined.includes(CANARY_MARKER);
   const moveGuard: MoveGuardCheck =
@@ -471,18 +507,28 @@ function judgeSteps(
       : probeMoveGuardCheck(real.mechanismPath);
   const moveGuardRefused = moveGuard.refused && moveGuard.liftedSucceeded;
   const isolated =
-    deniedReadRefused && controlReadSucceeded && discriminationReadSucceeded && moveGuardRefused;
+    deniedReadRefused &&
+    siblingReadRefused !== false &&
+    controlReadSucceeded &&
+    discriminationReadSucceeded &&
+    moveGuardRefused;
   const liftedCount = real.deniedReadRoots.length - open.deniedReadRoots.length;
   return {
     ...base,
     isolated,
     available: true,
     deniedReadRefused,
+    siblingReadRefused,
     controlReadSucceeded,
     discriminationReadSucceeded,
     moveGuardRefused,
     evidence: [
       `protected-root read: ${deniedReadRefused ? "REFUSED" : "not refused"} (status=${deny.status ?? "null"})`,
+      ...(sibling === null
+        ? []
+        : [
+            `other-worktree read: ${siblingReadRefused === true ? "REFUSED" : "not refused"} (status=${sibling.status ?? "null"})`,
+          ]),
       `same-policy tmp control read: ${controlReadSucceeded ? "canary returned" : "canary NOT returned"} (status=${control.status ?? "null"})`,
       `deny-lifted discrimination read (${liftedCount} covering rules lifted): ${discriminationReadSucceeded ? "canary returned" : "canary NOT returned"} (status=${discrimination.status ?? "null"})`,
       `ancestor-rename guard: ${moveGuard.detail}`,

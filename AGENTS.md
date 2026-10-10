@@ -823,7 +823,10 @@ nine Builder sessions and 308 solves finished on a Linux test host on 9 October.
 on macOS, where a sparse image is mounted at the root of each solve and each Builder session. On
 Linux a solve's worker launch mounts a tmpfs of the cap's size, and nothing caps a Builder session,
 whose home lies on the host's disk (`src/verify/disk-cap.ts`). When the required wall is unavailable
-the result is a typed non-result, never an unconfined run.
+the result is a typed non-result, never an unconfined run. Each wall is probed once a process
+before its first use, with a canary read in the repository and in its first other worktree, and
+a read that gets through refuses the start with the probe's lines (`walledBase`,
+`src/solve/command.ts`); until 10 October the probe ran in the test suite alone.
 
 ## 11. Working in the repository
 

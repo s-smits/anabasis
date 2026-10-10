@@ -181,9 +181,9 @@ function refuseNamingHome(dir: string, home: string, under: string): void {
 function dropUnlinked(states: string, dir: string): void {
   const named = join("..", basename(dir));
   const links = readdirSync(states).map((name) => join(states, name, ".toolchain"));
-  if (!links.some((link) => lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() === true && readlinkSync(link) === named)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const linked = (link: string) =>
+    lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() === true && readlinkSync(link) === named;
+  if (!links.some(linked)) rmSync(dir, { recursive: true, force: true });
 }
 
 /** A copy of `harness/.toolchain` beside the states, for a frozen harness to link to; the last one

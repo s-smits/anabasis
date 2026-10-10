@@ -657,13 +657,19 @@ an Examiner session, or a stop; it routes to `operator`.
 
 **26. Solver process and walls.**
 
-Starts from `WALL-BOUND MISSES (lane 26)`, `WALL SHARE (lane 26)`, `HOST LOADED (lane 26)`,
+Starts from `MISSES AT A LIMIT (lane 26)`, `WALL SHARE (lane 26)`, `HOST LOADED (lane 26)`,
 `LOAD MOVED (lane 26)`.
 
 The question is how the solver spent its walls, and whether a miss measured the task or the
 wall. The limits are the host's, in the condition: the solve's wall, the turn cap, the shell's
 default and maximum, the disk. A solve the wall ended is a fail in the count and a truncated
-solve, never a settled failure of capability. For each side, read the share of the wall a solve
+solve, never a settled failure of capability, and so is one its model turns or its context
+ended. `MISSES AT A LIMIT` counts, for each comparison and each side, the misses that ended at
+one of the three or past 95% of the wall, with their kinds and the turn bound the solves were
+told, and the misses outside any comparison on a line of their own: on 10 October recode ended
+41 of its 58 scored misses on turns, 12 of 18 reference misses and 4 of 4 new in g-2 at 8 turns,
+and a read of the wall alone saw none. A side whose misses are all at a limit was cut, not
+beaten. For each side, read the share of the wall a solve
 used: v1 found it the measure that moves on every battery and leads a fail, 18.6% against 6.6%
 in truss batteries that went on to fail a case, and that it said the opposite in firmware, where
 fails at 1.5% of the wall were not the solver's. So read the median share under the parent and
@@ -712,7 +718,7 @@ not open.
 
 **28. Time, spend and silence.**
 
-Starts from `SILENCE (lane 28)` and `SPEND LED BY A ROLE (lane 28)`.
+Starts from `LONG SILENCES (lane 28)` and `SPEND LED BY A ROLE (lane 28)`.
 
 The question is where the hours and the dollars went, and what each long silence was. Every
 `solve.finished`, `build.finished`, `exam.finished` and `referee.finding` (and, in a log of
@@ -722,8 +728,16 @@ its own cost. Sum them by role and by round, and set billed beside metered: they
 pricing and by what a backend reports. v1 found review took 54% of firmware's spend and changed
 nothing measurable, and that a gate took 31% of its Builder's time where the verifying tool was
 slow: say what share the reviewers took here and what their rulings changed, which is lane 30's.
-For each silence, name what was running from the events on either side: a solve at its wall, a
-Builder command, a provider wait, a machine asleep. Read the cost of one round at the plan's size
+Row A puts the hours by role beside the billed dollars: each Builder and Examiner session and
+each comparison from its start to its end, a session a stop cut to the stop, and the rest of the
+campaign's span as between moves; on 10 October recode's Builder took 52% of the hours against
+43% of the dollars. `LONG SILENCES` reads every gap between two events longer than five of the
+campaign's median finished solve, and never under ten minutes, and names the five longest by
+what ended them: a command whose time covers most of the gap, a model turn with its output
+tokens, or nothing open between moves. A fixed twenty minutes read nothing on buffer on
+10 October, whose longest gap was 19.5 minutes; recode's two gaps over it were each an Examiner
+turn of over 56,000 output tokens. For each silence, confirm what was running from the events on either side: a
+solve at its wall, a Builder command, a provider wait, a machine asleep. Read the cost of one round at the plan's size
 from this one's parts and say what the next costs. Do not propose a cap: the operator declined
 one. The decision it changes is what the next round is expected to cost and whether a role's
 spend is earning its place; it routes to `operator`, and to `environment` for a wait nobody

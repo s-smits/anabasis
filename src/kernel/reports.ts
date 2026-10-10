@@ -111,7 +111,7 @@ export const ROOM = { full: 3 / 4, empty: 1 / 4 } as const;
 const UNSOLVED_RUN = 2;
 /** The ways a solve ends at a limit of its own: its time, its model turns or its context. Such an
  *  ending says the budget was short, and nothing of whether the task has a valid answer. */
-const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
+export const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
 const STEP = "step";
 /** How a Builder session ends when it was cut and left half a session's work. */
 const CUT: ReadonlySet<unknown> = new Set(["killed", "crashed"]);

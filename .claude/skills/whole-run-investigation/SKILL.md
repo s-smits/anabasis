@@ -182,8 +182,10 @@ provisional and add two the catalogue did not know to ask.
   wall-bound cut at 95% and the quick cut at 5% each fired on nothing — the fastest real pass is
   twice the quick cut, because a solve that loads a harness and runs an engine costs about fifty
   seconds here. The silence of twenty minutes against a Builder session's 62 turns: its longest gap
-  was 4.6 minutes. All three are therefore still untested, and the quick cut reads better against a
-  campaign's own median solve than against its wall. Whether a round has too few informative pairs
+  was 4.6 minutes; since 10 October `LONG SILENCES` reads a gap against five of the campaign's own
+  median solve, with a floor of ten minutes, and names what ran through it. All three were
+  therefore untested, and the quick cut reads better against a campaign's own median solve than
+  against its wall. Whether a round has too few informative pairs
   is no threshold: the trigger asks the report's own test whether any result with a loss could have
   cleared its level.
 - **No conditional trigger over-fired; one could not fire where it mattered most.**

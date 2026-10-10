@@ -16,13 +16,14 @@
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 12) are
  * `folds.ts` since 10 October, when this file was over the size policy's ceiling. This file keeps
  * the lanes of the harness, the comparison, the solve and the review (13 to 30), the rows and the
- * overview.
+ * overview; the lanes that read the clock (26 and 28) and row A's hours are `time.ts`, split from
+ * here on the same day for the same ceiling.
  */
 import { signP } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { countBy, median } from "#src/meta/tally.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import {
   type Build,
@@ -35,7 +36,6 @@ import {
   indexOf,
   instrumentTriggers,
   items,
-  percent,
   practiceOf,
   REPORTED,
   share,
@@ -50,6 +50,7 @@ import {
   text,
   type Trigger,
 } from "./folds.ts";
+import { costTriggers, hoursLine, wallTriggers } from "./time.ts";
 
 export interface Row {
   readonly id: string;
@@ -62,17 +63,7 @@ export interface Overview {
   readonly triggers: readonly Trigger[];
 }
 
-/** The share of a wall past which a miss is read as bound by it, as v1's climb read it. */
-const WALL_BOUND_SHARE = 0.95;
 const FEW_CALLS = 3;
-/** The factor between the loads two comparisons ran under from which they are read as made on
- *  different hosts, and the load under which no factor is worth a line: a load of four moves no
- *  wall on a host of four cores or more. On 2026-10-09 one harness answered the same tasks in a
- *  median of 105 s under a load of 31 and of 40 s under a load of 6. */
-const LOAD_MOVED = 2;
-const LOAD_WORTH_A_LINE = 4;
-/** Minutes of silence in the log worth a line. */
-const SILENCE_MINUTES = 20;
 const EXAM_START = "exam.started";
 /** The Builder tools that write one named file: pi's two, and the one tool sessions had before them. */
 const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
@@ -393,71 +384,7 @@ function comparisonTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 26's wall and load: the misses bound by the wall, the share of it each harness used, and
- *  the host's load when each comparison's solves started. */
-function wallTriggers(log: Index): Trigger[] {
-  const missed = log.solves.filter((solve) => solve.outcome === "fail");
-  const walled = missed.filter(
-    (solve) => solve.kind === "wall-ended" || solve.seconds > solve.wallSeconds * WALL_BOUND_SHARE,
-  ).length;
-  const wallShares = log.compared.flatMap(({ session, own, scoring }) => {
-    // The median share of its wall a harness's solves used, or null for none under a wall. v1 read
-    // this share as the measure that moves on every battery and leads a fail (lane 26).
-    const under = (harness: JsonValue | undefined) =>
-      median(
-        scoring.flatMap((solve) =>
-          solve.harness === harness && solve.wallSeconds > 0 ? [solve.seconds / solve.wallSeconds] : [],
-        ),
-      );
-    const [before, after] = [under(own.old), under(own.fresh)];
-    return before === null || after === null || own.old === own.fresh
-      ? []
-      : [
-          fired(
-            "WALL SHARE",
-            `${session}: median ${percent(before)} under the reference harness, ${percent(after)} under the new`,
-          ),
-        ];
-  });
-  // The one-minute load each comparison's solves started under. A wall counts the clock, so the
-  // same wall holds less work on a loaded host: a comparison made there reaches walls an idle host
-  // would not, and two comparisons under different loads were not made under one budget, whatever
-  // their settings say.
-  const loads = log.compared.flatMap(({ session, scoring }) => {
-    const at = scoring.flatMap((solve) => (solve.load === null ? [] : [solve.load]));
-    const middle = median(at);
-    const cores = scoring.findLast((solve) => solve.cores !== null)?.cores ?? null;
-    return middle === null ? [] : [{ session, middle, most: Math.max(...at), cores }];
-  });
-  const loaded = loads.flatMap(({ session, middle, most, cores }) =>
-    cores !== null && middle > cores
-      ? [
-          fired(
-            "HOST LOADED",
-            `${session}: load ${middle.toFixed(1)} at the median and ${most.toFixed(1)} at most when its solves started, on ${plural(cores, "core")}`,
-          ),
-        ]
-      : [],
-  );
-  const middles = loads.map(({ middle }) => middle);
-  const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
-  const moved = loads.length > 1 && busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
-  return [
-    ...(walled > 0 ? [fired("WALL-BOUND MISSES", share(walled, missed.length))] : []),
-    ...wallShares,
-    ...loaded,
-    ...(moved
-      ? [
-          fired(
-            "LOAD MOVED",
-            `median load when each comparison's solves started: ${loads.map(({ session, middle }) => `${session} ${middle.toFixed(1)}`).join("; ")}`,
-          ),
-        ]
-      : []),
-  ];
-}
-
-/** Lanes 26 to 28: the solve, its failure and the cost. */
+/** Lanes 26 to 28: the solve, its failure and the cost, of which `time.ts` reads lanes 26 and 28. */
 function solveTriggers(log: Index): Trigger[] {
   const done = log.solves.filter((solve) => solve.outcome !== null);
   const missed = done.filter((solve) => solve.outcome === "fail");
@@ -475,11 +402,6 @@ function solveTriggers(log: Index): Trigger[] {
   );
   const ends = [...log.of(BUILD_END), ...log.of(EXAM_END)];
   const crashed = ends.filter((data) => isString(data.crash) || data.ended === "crashed");
-  const times = log.events.map((event) => Date.parse(event.at));
-  const gaps = times.flatMap((at, index) =>
-    at - (times[index - 1] ?? at) > SILENCE_MINUTES * 60_000 ? [index] : [],
-  );
-  const spend = spendOf(log);
   // Non-results by harness in each comparison: a side whose bad solves are run again is favoured.
   const rerun = log.compared.flatMap(({ session, own, scoring }) => {
     const mine = scoring.filter((solve) => solve.outcome === "non-result");
@@ -490,8 +412,6 @@ function solveTriggers(log: Index): Trigger[] {
           `${session}: ${String(under)} under the reference harness, ${String(mine.length - under)} under the others`,
         ];
   });
-  const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
-  const [[leader, most] = ["", 0]] = spend;
   return [
     ...wallTriggers(log),
     ...(non.length > 0
@@ -513,17 +433,7 @@ function solveTriggers(log: Index): Trigger[] {
     ...(crashed.length > 0
       ? [fired("SESSION CRASHED", crashed.map((data) => text(data.session)).join(", "))]
       : []),
-    ...(gaps.length > 0
-      ? [
-          fired(
-            "SILENCE",
-            `${plural(gaps.length, "gap")} over ${String(SILENCE_MINUTES)} minutes, the first before ${log.events[gaps[0] ?? 0]?.at ?? ""}`,
-          ),
-        ]
-      : []),
-    ...(total > 0 && leader !== "solver" && most > total / 2
-      ? [fired("SPEND LED BY A ROLE", `${leader}: ${percent(most / total)} of billed dollars`)]
-      : []),
+    ...costTriggers(log),
   ];
 }
 
@@ -616,6 +526,7 @@ function rowsOf(log: Index): Row[] {
         `billed dollars: ${spendOf(log)
           .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
           .join(", ")}`,
+        hoursLine(log),
       ],
     },
     {

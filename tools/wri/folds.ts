@@ -7,7 +7,8 @@
  * each comparison with the solves it could count, and the last verdict and ruling of each solve. `TRIGGERS` names every trigger a reader can print and the lane it starts, and
  * `fired` makes one. Lanes 1 to 6 read the exam's instrument, which is the pack author's, and
  * lanes 7 to 12 the tasks, which are the Examiner's and the pack's; both sit here, below the
- * lanes of the build side and the host, which `read.ts` keeps with the rows and the overview.
+ * lanes of the build side and the host, which `read.ts` keeps with the rows and the overview, and
+ * the lanes that read the clock, which are `time.ts`.
  *
  * Split from `read.ts` on 10 October, when that file stood at 1,227 nonblank lines against the
  * size policy's ceiling of 800 (`tools/loc/source-policy.ts`, `docs/plan.md` row F34). The lanes
@@ -184,13 +185,13 @@ export const TRIGGERS = {
   "WALL SHARE": 26,
   "HOST LOADED": 26,
   "LOAD MOVED": 26,
-  "WALL-BOUND MISSES": 26,
+  "MISSES AT A LIMIT": 26,
   "NON-RESULTS": 27,
   "SOLVE NEVER FINISHED": 27,
   "EXAMINER NEVER FINISHED": 27,
   "MISSES WITHOUT A VERDICT": 27,
   "SESSION CRASHED": 27,
-  "SILENCE": 28,
+  "LONG SILENCES": 28,
   "SPEND LED BY A ROLE": 28,
   "REPLAY MOVED THE VERDICT": 29,
   "SET ASIDE AND UNSETTLED": 30,

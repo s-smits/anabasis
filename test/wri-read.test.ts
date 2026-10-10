@@ -220,7 +220,9 @@ describe("the whole-run investigation's reader", () => {
       "b-1: 0 won, 0 lost and 2 tied between two samples of the reference harness",
     );
     expect(detail("WALL SHARE")).toBe("b-1: median 50.0% under the reference harness, 50.0% under the new");
-    expect(detail("WALL-BOUND MISSES")).toBe("2 of 5");
+    expect(detail("MISSES AT A LIMIT")).toBe(
+      "b-1: 2 of 4 reference misses and 0 of 0 new at a limit (wall-ended 2)",
+    );
   });
 
   it("reads what the Builder did before it stopped", () => {
@@ -669,5 +671,126 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
 
   it("reads no check as refusing most answers where every refusing check blocked the same ones", () => {
     expect(said("FAILS ON ONE CHECK")).toBeUndefined();
+  });
+});
+
+describe("the reader of misses at a limit, by comparison and side", () => {
+  /** A log of one comparison, g-1 of hp against hc, whose solves each end as a row says. */
+  const read = (endings: readonly (readonly [string, JsonObject, number])[]) => {
+    const log: LogEvent[] = [];
+    const put = (kind: EventKind, data: JsonObject) => {
+      log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
+    };
+    put("task.proposed", { version: "v1" });
+    put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
+    const terms = { session: "g-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
+    put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
+    for (const [index, [harness, ending, seconds]] of endings.entries()) {
+      const ran = condition("v1", harness);
+      const id = `m${String(index)}`;
+      put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      put("solve.started", {
+        solve: id,
+        condition: conditionId(ran),
+        limits: { wallSeconds: 100, modelTurns: 8 },
+        comparison: "g-1",
+      });
+      put("solve.finished", { solve: id, ending, seconds, responseModels: ["m-1"] });
+    }
+    put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
+    return overview(log).triggers.flatMap((trigger) =>
+      trigger.name === "MISSES AT A LIMIT" ? [trigger.detail] : [],
+    );
+  };
+  const refused = { outcome: "fail", kind: "rejected" };
+
+  it("counts a miss on its turns, on its context or near its wall as at a limit, by side, with the bound told", () => {
+    // recode on 10 October: 41 of 58 scored misses ended on turns, and a read of the wall saw none.
+    expect(
+      read([
+        ["hp", { outcome: "fail", kind: "turns-ended" }, 40],
+        ["hp", refused, 97],
+        ["hp", refused, 40],
+        ["hc", { outcome: "fail", kind: "context-ended" }, 40],
+        ["hc", { outcome: "pass" }, 40],
+      ]),
+    ).toEqual([
+      "g-1: 2 of 3 reference misses and 1 of 1 new at a limit (context-ended 1, turns-ended 1, wall share 1; turns 8)",
+    ]);
+  });
+
+  it("stays quiet on misses a check refused inside the wall, and on a pass that used all of it", () => {
+    expect(
+      read([
+        ["hp", refused, 40],
+        ["hc", refused, 94],
+        ["hc", { outcome: "pass" }, 99],
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe("the reader of the campaign's clock", () => {
+  /** A log whose events stand at the minutes their rows give, from noon on 9 October. */
+  const timed = (rows: readonly (readonly [number, EventKind, JsonObject])[]): LogEvent[] =>
+    rows.map(([minute, kind, data]) => ({ at: new Date(START + minute * 60_000).toISOString(), kind, data }));
+  /** A Builder session with a command of 29.5 minutes, then nothing open for 20, then an Examiner
+   *  turn of 28; its practice solves each took `seconds`. */
+  const silences = (seconds: number, stretch = 1) => {
+    const practice = [1, 2, 3].flatMap((index): [number, EventKind, JsonObject][] => [
+      [0, "solve.started", { solve: `p${String(index)}`, limits: { wallSeconds: 900 } }],
+      [0, "solve.finished", { solve: `p${String(index)}`, ending: { outcome: "pass" }, seconds }],
+    ]);
+    const log = timed([
+      [0, "build.started", { session: "b-1", parent: "hp", tasks: [] }],
+      ...practice,
+      [
+        30 * stretch,
+        "build.call",
+        { session: "b-1", tool: "bash", isError: false, ms: 29.5 * stretch * 60_000 },
+      ],
+      [30 * stretch, "build.turn", { session: "b-1", turn: 2, usage: { output: 400 } }],
+      [31 * stretch, "build.finished", { session: "b-1", ended: "finished", harness: "hc" }],
+      [51 * stretch, "exam.started", { session: "x-1" }],
+      [52 * stretch, "exam.turn", { session: "x-1", turn: 1, usage: { output: 300 } }],
+      [80 * stretch, "task.proposed", { version: "v1", session: "x-1" }],
+      [80 * stretch, "exam.turn", { session: "x-1", turn: 2, usage: { output: 118_906 } }],
+      [81 * stretch, "exam.finished", { session: "x-1", ended: "finished" }],
+    ]);
+    return overview(log).triggers.flatMap((trigger) =>
+      trigger.name === "LONG SILENCES" ? [trigger.detail] : [],
+    );
+  };
+
+  it("names each long silence by what ran through it, against the campaign's own median solve", () => {
+    // Solves of 50 s put the line at the floor of ten minutes, and the silence between moves is read.
+    expect(silences(50)).toEqual([
+      "3 gaps over 10.0 min, the floor: 30.0 min builder command; 28.0 min examiner turn (118,906 output tokens); 20.0 min between moves",
+    ]);
+    // Solves of five minutes put it at 25 minutes, past the silence between moves.
+    expect(silences(300)).toEqual([
+      "2 gaps over 25.0 min, 5 times the median finished solve: 30.0 min builder command; 28.0 min examiner turn (118,906 output tokens)",
+    ]);
+  });
+
+  it("stays quiet on gaps under the floor, however short the solves", () => {
+    expect(silences(1, 0.3)).toEqual([]);
+  });
+
+  it("puts the hours by role beside the dollars, a cut session to its stop and a session beside a comparison once", () => {
+    const log = timed([
+      [0, "build.started", { session: "b-1", parent: "hp", tasks: [] }],
+      // A stop cut b-1, and the campaign resumed half an hour later.
+      [60, "campaign.ended", {}],
+      [90, "build.started", { session: "b-2", parent: "hp", tasks: [] }],
+      [150, "build.finished", { session: "b-2", ended: "finished", harness: "hc" }],
+      [150, "comparison.started", { session: "g-1", old: "hp", fresh: "hc", tasks: [] }],
+      [160, "exam.started", { session: "x-1" }],
+      [190, "exam.finished", { session: "x-1", ended: "finished" }],
+      [210, REPORTED, { ...REPORT, session: "g-1", old: "hp", fresh: "hc", reading: "no-step" }],
+    ]);
+    expect(overview(log).rows[0]?.lines).toContain(
+      "hours: builder 2.0 (57%), comparisons 1.0 (29%), examiner 0.5 (14%), between moves 0.5 (14%), of 3.5",
+    );
   });
 });

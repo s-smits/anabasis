@@ -72,6 +72,71 @@ What the two logs show of the table, as it stood at #107:
 
 The truss pack did not open: its exam's reading holds 46 faults, and admission clears only the ten that name a check its author's own computation decides. The other 36 are control faults, and their cause is in the pack. Every one of the 35 accept controls holds exactly one published joint, a support or a load point, at other coordinates than its task publishes, by the same distance in all 35, and at least 97 of the 99 reject controls hold such a joint too. The controls were written for other coordinates than the bundle's tasks hold. `tools/m0/regrade.ts` at the same source matches 100 of 100 stored verdicts, 36 of them passes over 15 of the 25 tasks, which is the evidence an accept control would give. Nothing is admitted or frozen there, and whether the exam stands despite those faults is the operator's (`tools/c/accept.ts --freeze --despite`).
 
+### Two campaigns at the top, stopped forty minutes in, 10 October
+
+The same two packs opened again at 12:27Z from `ae66f1d` (open #143), under the seats, admitted
+checks and $300 ceiling of the pair above: buffer with Opus 5.5 at high for its Builder and medium
+for its solver, 8-minute solves; recode with Sonnet 5.5 at xhigh and high, 30-minute solves; 16 told
+turns each, `--unattended`. They are the first paid moves above #107. The operator stopped both at
+13:09Z, forty minutes in, so neither reached a comparison and no reading was spent.
+
+- Each read its exam with no fault and froze it, held 3 of its pack's 6 tasks out to be scored and
+  released 3 for practice.
+- Buffer's first Builder session ran 28 minutes and 62 turns, left a changed harness, and practised
+  12 times on the 3 released tasks under three of its own states, every solve a pass. The table then
+  named an Examiner session, not a comparison: 3 tasks cannot read a step at the level 0.10, which
+  needs four untied wins, and the campaign is sent to the Examiner until it holds the 12 a
+  comparison scores (open #140). That session ran 13 minutes and 38 turns and had proposed no task
+  when the stop came.
+- Recode's first Builder session ran 41 minutes and 43 turns, wrote its harness from its 15th turn
+  on, and had run no practice solve.
+- Buffer billed $9.93, its Builder $4.19, its practice solves $4.07 and its Examiner session $1.68.
+  Recode billed $2.42, all of it the Builder's turns.
+
+What the stop itself cost, which is the part a campaign cannot be read without:
+
+- **A stop spends the session's id and loses its work.** Buffer's next Examiner session is `x-2` and
+  recode's next Builder session `b-2`. A session writes its harness into the states when it finishes,
+  so recode's forty minutes of harness are unrecoverable: the log holds the paths its file tools
+  wrote and nothing else. A word left with `tools/d2/word.ts` is read at the next move boundary and
+  would have cost neither. Both folders were then investigated whole
+  (`.ana/wri/2026-10-10-buffer-top` and `-recode-top`, 15 lane reports and a synthesis each); what
+  that found is below.
+- **The turn in flight is on no record.** A turn event is written once its tools return, so the turn
+  the signal cut is in no event and the campaign's billed total reads about one turn low.
+- **Nothing knew the campaign was running.** A campaign of record runs as one process, the campaign
+  command, which runs every move in its own process. `tools/runs/pulse.ts` did not list that command
+  among the writers of a log, so both campaigns read as `closed` while they wrote, `runs stop`
+  answered "none of these is running", and a `--yes` would have released the disk under a live
+  Builder session. What a stop releases covered no Examiner session's capped root either. Both were
+  ended by signalling their process trees by hand; both gaps are mended in open #150.
+
+What the investigation of the two folders found, beyond the stop:
+
+- **Buffer's harness judges the work its solver submits.** The measured child `250937e0` carries a
+  program that decides all seven admitted checks offline and an optimiser that searches for an answer
+  passing them. In 12 of 12 practice solves the call before `submit` was a shell call whose record
+  holds that program's own pass report. The only named condition, `programs-of:<harness>`, hands the
+  solver engine, judge and search together, and the reference Starter `08079533` carries no engine,
+  so the first comparison — the round's largest part, about 72 solves and $24 to $33 billed — would
+  return a near-determined step that names no cause. A condition that separates the three, or a
+  Builder prompt that forbids a program returning answers it has judged
+  (`src/builder/prompt.ts`), is wanted before the next paid move. This is the binding constraint and
+  no patch in this stack touches it.
+- **That engine came from the campaign before it.** Three executables in the harness are
+  byte-identical (SHA-256) to files the previous campaign's Builder built under `/tmp/pq` at 00:45
+  and 01:17 local, twelve hours before this campaign opened — the shared folder of the finding
+  below, carrying a built engine between campaigns. Three further files there were written during
+  both paid sessions by a writer no event of either log names.
+- **Recode spent no solve**, so none of its 41 minutes can be read against anything: its harness is
+  in no state, and its exam, its held tasks and its reading are unspent.
+- Ranked and not patched, for the operator: an unruled rejection drops a task from both tallies
+  while no answer counts as a fail (`src/builder/round.ts`); a check fault on an answer another
+  check has already refused disputes and drops a held task (`src/kernel/verify.ts`); a check's
+  reported instrument comes from its authored label and a row's `passed` counts applicability, not
+  observation (`src/kernel/acceptance.ts`). Two findings are a pack's and are decisions, not
+  patches.
+
 ### What those campaigns left in the Mac's temp folders
 
 Read on 10 October, when the suite at `41e0533` (open #139) failed one test on the Mac on a 60-second limit. Two findings, both of the macOS command wall. The Linux wall has neither: it gives each command an empty `/tmp` and its own temp folder (`src/verify/solve-command-isolation.ts`).

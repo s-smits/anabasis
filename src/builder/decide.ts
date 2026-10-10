@@ -31,7 +31,8 @@
  * 5. After a promotion the budget is set again from the promoted harness's own solves.
  * 6. A step. Read once, it is one draw, and the same two harnesses are compared again with the
  *    reference read against itself. Read again, it is read once at the full limit, where it must
- *    not lose, and then the harness is promoted.
+ *    not lose, and then the harness is promoted. A reading at the full limit the two already have
+ *    stands for that where it scored every task the step did (`vouches`).
  * 7. No step. Where the reference harness left no room, the budget is set again by the rule, and
  *    where no budget leaves room the tasks have to change. Where neither harness answered, the
  *    campaign goes to the next longer budget: to try it, or, where it is known to leave no room,
@@ -75,7 +76,7 @@ import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shap
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { supplyOf } from "./admission.ts";
-import { type Ground, groundOf, idleDrafts, pairOf, type Plan, under } from "./ground.ts";
+import { type Compared, type Ground, groundOf, idleDrafts, pairOf, type Plan, under } from "./ground.ts";
 import { pendingWords } from "./word.ts";
 
 /** How a campaign ends, as its last event says it. */
@@ -173,6 +174,30 @@ function budgetBy(report: JsonObject, side: "old" | "fresh", ran: number | null)
 function held(report: JsonObject): boolean {
   const scored = asRecord(report.scored);
   return isNumber(scored?.wins) && isNumber(scored.losses) && scored.wins >= scored.losses;
+}
+
+/** The task versions a report scored, as the comparison fixed them before its first solve. */
+function versionsOf(report: JsonObject): string[] {
+  return Array.isArray(report.versions) ? report.versions.filter(isString) : [];
+}
+
+/**
+ * Whether a reading of the two at the full limit vouches for a step read twice below it: it was
+ * made after the second step, which is the reading once more that section 7 asks for, or it was
+ * made before and scored every task the two steps scored. On 10 October t-10 promoted a harness
+ * on "did not lose at the full limit (comparison g-1)", where g-1 had scored 5 tasks before the
+ * Examiner wrote 4 of the 8 the steps were read on: half the step stood on no reading at the full
+ * limit at all.
+ */
+function vouches(all: readonly Compared[], full: JsonObject, steps: readonly JsonObject[]): boolean {
+  const reportedAt = (report: JsonObject): number | null =>
+    all.find(({ id }) => id === report.session)?.reported ?? null;
+  const at = reportedAt(full);
+  if (at !== null && steps.every((step) => (reportedAt(step) ?? Number.POSITIVE_INFINITY) < at)) {
+    return true;
+  }
+  const scored = new Set(versionsOf(full));
+  return steps.every((step) => versionsOf(step).every((version) => scored.has(version)));
 }
 
 /** A budget in words: so many of the model's turns, or the full limit where that is unlimited. */
@@ -551,7 +576,8 @@ function onStep(ground: Ground): Decided | null {
         readTwice(pairOf(under(ground, each.turns), latest, reference)),
     );
     if (below === undefined) return null;
-    const last = pair.at(-1);
+    const steps = pairOf(under(ground, below.turns), latest, reference).slice(-2);
+    const last = pair.findLast((report) => vouches(ground.all, report, steps));
     if (last === undefined) {
       return compare("a step read again is read once at the full limit, where it must not lose", "alone");
     }
@@ -564,9 +590,11 @@ function onStep(ground: Ground): Decided | null {
         };
   }
   if (!readTwice(pair)) return null;
-  // A reading of the two at the full limit stands whenever it was made: before the budget was
-  // shortened as much as after the step.
-  const full = pairOf(under(ground, plan.limit), latest, reference).at(-1);
+  // A reading of the two at the full limit stands whenever it was made, before the budget was
+  // shortened as much as after the step, so long as it vouches for the step's tasks (`vouches`).
+  const full = pairOf(under(ground, plan.limit), latest, reference).findLast((report) =>
+    vouches(ground.all, report, pair.slice(-2)),
+  );
   if (full === undefined) {
     return {
       move: "budget",

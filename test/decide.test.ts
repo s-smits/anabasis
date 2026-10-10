@@ -542,6 +542,56 @@ describe("a budget the campaign has stood at before", () => {
     ];
     expect(move(unread, plan)).toMatchObject({ move: "budget", modelTurns: 12 });
   });
+
+  it("takes no earlier reading at the full limit that scored fewer tasks than the step did", () => {
+    // t-10 on 10 October: g-1 read five tasks at the full limit, the Examiner then wrote four,
+    // and the two steps were read on eight. Half the step stood on no reading at the full limit.
+    const more = ["v13", "v14", "v15", "v16"];
+    const eight = [...HELD.slice(0, 4), ...more];
+    const stepped = [
+      setting(12),
+      ...SET_UP,
+      built("b-1", "h1"),
+      ...compared("g-1", "h1", "no-step", {
+        ...full,
+        budgets: [row(2, HALF, HALF)],
+        extra: { versions: HELD.slice(0, 5) },
+      }),
+      setting(2),
+      ...more.flatMap(heldOut),
+      ...compared("g-2", "h1", "step", { tally: [8, 0, 4], extra: { versions: eight } }),
+      ...compared("g-3", "h1", "step", { tally: [8, 0, 4], extra: { versions: eight } }),
+    ];
+    expect(move(stepped, plan)).toEqual({
+      move: "budget",
+      modelTurns: 12,
+      why: "harness h1 read a step twice: before a promotion it is read once at the full limit",
+    });
+    // Back at the full limit g-1 is the pair's last reading there, and still vouches for nothing.
+    const back = [...stepped, setting(12)];
+    expect(move(back, plan)).toMatchObject({
+      move: "compare",
+      why: "a step read again is read once at the full limit, where it must not lose",
+    });
+    // A reading made after the step stands whatever it scored.
+    const read = [...back, ...compared("g-4", "h1", "no-step", { tally: [3, 3, 6] })];
+    expect(move(read, plan)).toEqual({
+      move: "promote",
+      harness: "h1",
+      why: "harness h1 read a step twice at 2 turns, and did not lose at the full limit",
+    });
+    // Steps read on the tasks g-1 scored take g-1's reading, as before.
+    const five = { tally: [5, 0, 0], extra: { versions: HELD.slice(0, 5) } } as const;
+    const same = [
+      ...stepped.slice(0, -4),
+      ...compared("g-2", "h1", "step", five),
+      ...compared("g-3", "h1", "step", five),
+    ];
+    expect(move(same, plan)).toMatchObject({
+      move: "promote",
+      why: "harness h1 read a step twice at 2 turns, and did not lose at the full limit (comparison g-1)",
+    });
+  });
 });
 
 describe("after a promotion", () => {

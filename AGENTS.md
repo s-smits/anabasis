@@ -539,7 +539,10 @@ reference is read against itself beside the first comparison under a setting and
 ones after it, until the reference is another harness or tasks were held out since (`noiseRead`). A step read twice at a shortened budget is read once more at
 the full limit, where the new harness must win at least as many tasks as it loses, and then the
 harness is the one to promote (`unpromoted` says why another is not). No step with room sends the
-Builder to build again. A comparison without room changes the budget before the tasks: the budget
+Builder to build again, once the next comparison has tasks to untie: where the reference harness
+answered too many of them in every solve, the Examiner writes tasks first, since a changed harness
+can only tie again on those (t-2, 10 October: 3-0-2 on 5 tasks, two unchanged sessions and a
+stop). A comparison without room changes the budget before the tasks: the budget
 rule takes the longest budget, of the one the comparison ran under and the shorter ones it was
 read at (the ladder: by default a half, a quarter and an eighth of the full limit), at which the
 reference harness was valid on at most half its solves. A reading at a shorter budget is of a

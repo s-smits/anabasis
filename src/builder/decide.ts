@@ -609,6 +609,18 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string): Deci
   }
   const room = roomOf(last);
   if (room === ROOM) {
+    // The plan's supply row before its build row: on tasks the reference harness answered in every
+    // solve a changed harness can only tie again, so the next comparison has to have tasks to
+    // untie before a session is worth its cost. t-2 (10 October) read 3-0-2 on 5 tasks at 3
+    // turns, the new harness valid on every solve; two sessions then left it unchanged, and the
+    // stop rule ended the campaign where an Examiner session was the move.
+    if (tasksShort === "untied") {
+      return supplied(
+        ground,
+        last,
+        `comparison ${id} read no step with room to gain and left too few tasks for the next to untie: harness ${short(latest)} can only tie again on the tasks the reference harness answered in every solve`,
+      );
+    }
     return build(`comparison ${id} read no step with room to gain: harness ${short(latest)} did not help`);
   }
   const unroomed = pairOf(here, latest, reference).filter(

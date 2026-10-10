@@ -80,7 +80,7 @@ One campaign is a loop of seven moves over one log. Code admits and chooses ever
 | A step, read again | A step | Read it once at the full limit, where it must not lose. Promote the harness, set the budget again from its solves, and build against the new reference |
 | No step, and the reference is valid on more than three solves in four | The tasks leave no room at this budget | Set the budget again by the rule. Where no budget of the ladder leaves room, write tasks that do (F52) |
 | No step, and neither harness is valid on one solve in four | The tasks are too hard, or the budget too short | Lengthen the budget. Otherwise write other tasks |
-| No step, with room | The harness did not help | Build again. The Builder is told the tally |
+| No step, with room | The harness did not help | Build again, once the next comparison has tasks to untie: the next row comes first. The Builder is told the tally |
 | The start check refuses the next comparison, because too few tasks would be left untied | Supply | Write tasks. Where the reference passes nearly all of them, the third row applies first |
 | Nothing was scored | Supply, or the cap | Write tasks, or give the move a larger share of the budget |
 | The comparison stopped on check defects | The exam is at fault | Repair the checks in move 2, grade the logged answers again, and compare once more |

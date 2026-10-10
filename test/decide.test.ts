@@ -250,6 +250,16 @@ describe("what is built and what is compared", () => {
       room: false,
       why: "the last comparison left too few tasks for the next to untie",
     });
+    // Before another session as much as after one: a comparison with room that left too few tasks
+    // to untie is answered with tasks, where t-2 (10 October) got two unchanged sessions and a stop.
+    expect(move(tied)).toEqual({
+      move: "examine",
+      room: false,
+      why: "comparison g-1 read no step with room to gain and left too few tasks for the next to untie: harness h1 can only tie again on the tasks the reference harness answered in every solve",
+    });
+    // Enough to untie, and the Builder builds again.
+    const untied = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "no-step", { tally: [3, 1, 2] })];
+    expect(move(untied)).toMatchObject({ move: "build" });
     // Tasks held out since count whole, and the comparison is admitted.
     const more = ["v7", "v8", "v9", "v10"].flatMap(heldOut);
     expect(move([...tied, built("b-2", "h2"), ...more])).toMatchObject({ move: "compare" });
@@ -258,7 +268,7 @@ describe("what is built and what is compared", () => {
 
 describe("practice, before a Builder session", () => {
   const plan = { ...PLAN, practice: 3 };
-  const lost = compared("g-1", "h1", "no-step", { tally: [0, 2, 4] });
+  const lost = compared("g-1", "h1", "no-step", { tally: [1, 3, 2] });
 
   it("is brought towards the count the campaign names once tasks were held out since the last release", () => {
     // One task is released of the three the campaign names, and nothing was held out since: a
@@ -347,7 +357,7 @@ describe("a step", () => {
   it("is named for promotion though later sessions left another harness, and one read once is not", () => {
     // A campaign of 9 October: two steps against the starter, then sessions and comparisons went
     // on by hand against that harness, which nobody had promoted.
-    const later = [built("b-2", "h2"), ...compared("b-2", "h2", "no-step", { old: "h1", tally: [1, 1, 6] })];
+    const later = [built("b-2", "h2"), ...compared("b-2", "h2", "no-step", { old: "h1", tally: [2, 2, 2] })];
     const twice = [...stepped, ...compared("g1", "h1", "step", { tally: [4, 0, 3] }), ...later];
     expect(move(twice)).toEqual({
       move: "promote",
@@ -563,8 +573,9 @@ describe("no step", () => {
         extra: { scored: { wins: 0, losses: 0, ties: 6, unsolved } },
       });
     expect(move([...first, ...read(2)])).toMatchObject({ move: "examine", room: true });
-    // Where each of those tasks was answered by one of the two harnesses, they are room.
-    expect(move([...first, ...read(0)])).toMatchObject({ move: "build" });
+    // Where each of those tasks was answered by one of the two harnesses, they are room: the four
+    // the reference answered in every solve leave too few to untie, so tasks are written for that.
+    expect(move([...first, ...read(0)])).toMatchObject({ move: "examine", room: false });
   });
 
   it("ends the campaign where the tasks could not be made to leave room", () => {

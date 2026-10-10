@@ -240,9 +240,16 @@ describe("the whole-run investigation's reader", () => {
         data: { session: "b-2", tool: "write", args: { path: "agent/tools.mjs" } },
       },
     ];
-    expect(overview(stopped).triggers.findLast(({ name }) => name === "HARNESS CHANGED")?.detail).toBe(
+    const cut = (name: string) =>
+      overview(stopped).triggers.findLast((trigger) => trigger.name === name)?.detail;
+    expect(cut("HARNESS CHANGED")).toBe(
       "b-2: hc to what a stop left unsaved; written by its file tools: agent/tools.mjs",
     );
+    // Its writes stand in for the end record wherever a trigger asks whether it touched the
+    // harness: recode's cut session wrote its tool chain and called neither check nor practice,
+    // and both lanes stayed shut on 10 October.
+    expect(cut("NEVER CHECKED")).toBe("b-2: no check_harness call");
+    expect(cut("NO PRACTICE")).toBe("b-2: the harness changed and no practice solve ran");
     expect(detail("TOOLS EDITED")).toBe("b-1: agent/tools.mjs");
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
       "b-1: no practice solve ran under hc, the harness measured; the last ran under hb",

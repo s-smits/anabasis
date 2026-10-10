@@ -186,7 +186,6 @@ function harnessTriggers(log: Index): Trigger[] {
       scoring: compared?.scoring ?? [],
       scoredSet: compared?.scoredSet ?? new Set<string>(),
     };
-    const changed = finished?.changed === true;
     const child = text(finished?.harness);
     // pi's `write` and `edit` since 2026-10-09, and `write_file` in the sessions before it.
     const written = [
@@ -194,16 +193,18 @@ function harnessTriggers(log: Index): Trigger[] {
     ];
     const toolFiles = written.filter((path) => path.includes("tools"));
     // A stop writes no end record, so a session it cut says nothing of what it changed: recode's
-    // b-1 wrote its harness for forty minutes and this read none of it (2026-10-10).
-    const cut = finished === null && written.length > 0;
-    const fresh = log.solves.filter((solve) => changed && solve.harness === child && solve.side === TEST);
+    // b-1 wrote its harness for forty minutes and this read none of it (2026-10-10). Its file-tool
+    // calls are what the end record would have said, so they stand in for `changed` wherever a
+    // trigger asks whether this session touched its harness at all.
+    const edited = finished === null ? written.length > 0 : finished.changed === true;
+    const fresh = log.solves.filter((solve) => edited && solve.harness === child && solve.side === TEST);
     const erring = fresh.filter((solve) => solve.errors > 0).length;
     return [
-      ...(changed || cut
+      ...(edited
         ? [
             fired(
               "HARNESS CHANGED",
-              `${session}: ${short(parent)} to ${cut ? "what a stop left unsaved" : short(child)}; written by its file tools: ${written.join(", ") || "nothing"}`,
+              `${session}: ${short(parent)} to ${finished === null ? "what a stop left unsaved" : short(child)}; written by its file tools: ${written.join(", ") || "nothing"}`,
             ),
           ]
         : []),
@@ -215,7 +216,7 @@ function harnessTriggers(log: Index): Trigger[] {
             ),
           ]
         : []),
-      ...(changed && !calls.some(({ tool }) => tool === "check_harness")
+      ...(edited && !calls.some(({ tool }) => tool === "check_harness")
         ? [fired("NEVER CHECKED", `${session}: no check_harness call`)]
         : []),
       ...(fresh.length > 0
@@ -242,7 +243,7 @@ function harnessTriggers(log: Index): Trigger[] {
       ...(toolFiles.length > 0 ? [fired("TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`)] : []),
       ...practiceTriggers(log, {
         build,
-        changed,
+        changed: edited,
         child,
         reference: text(compared?.own.old) || parent,
         round,

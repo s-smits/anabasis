@@ -93,7 +93,7 @@ interface BatteryCaseSlice {
   backendPin: string;
   condition: RunCondition;
   cases: CaseRecord[];
-  bundleSnapshot: Pick<BundleSnapshotFact, "agentHash" | "correctnessModelHash" | "toolTreeDigest">;
+  bundleSnapshot: Pick<BundleSnapshotFact, "agentHash" | "scoringHash" | "toolTreeDigest">;
 }
 
 /** The stored condition name of the one battery a round measures. */
@@ -148,7 +148,7 @@ function discriminationOf(passed: number, scored: number): RunSummary["discrimin
  *  one writer, and the rows come from the run records on disk, never from process memory. */
 async function appendRecordedCaseRows(options: DriveBatteryOptions): Promise<void> {
   const battery = readBatterySlice(options.slugDir, options.runId);
-  const { agentHash, correctnessModelHash, toolTreeDigest } = battery.bundleSnapshot;
+  const { agentHash, scoringHash, toolTreeDigest } = battery.bundleSnapshot;
   const tasks = new Map(options.tasks.map((task) => [task.taskId, task] as const));
   const record = CaseRecordStore.open(options.recordPath);
   try {
@@ -170,10 +170,12 @@ async function appendRecordedCaseRows(options: DriveBatteryOptions): Promise<voi
         builderId: options.builderId,
         slug: options.slug,
         buildInputsHash: battery.buildInputsHash,
-        // The exam this task posed, without the other tasks' bytes, which no solver of it reads.
+        // The exam this task posed: the agent, the scoring program and the task's own bytes, without
+        // the other tasks' or the notes and reference beside the checks, which no solver reads and a
+        // changed byte of which would otherwise open a new fail group for an unchanged exam.
         examHash: hashJsonValue([
           agentHash,
-          correctnessModelHash,
+          scoringHash,
           toolTreeDigest,
           tasks.get(caseResult.taskId) ?? null,
         ]),

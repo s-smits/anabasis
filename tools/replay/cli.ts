@@ -311,6 +311,8 @@ async function replayOne(
     return refused(task.taskId, "public-task-drift");
   }
   const instant = new Date().toISOString();
+  // The verifier's evidence spans the whole replay, so this case's runs are the ones its grading adds.
+  const before = deps.verifier.evidence().length;
   const graded = await gradeCase(
     { ...deps, applicableIds: applicableCheckIds(deps.brief, task) },
     {
@@ -331,6 +333,7 @@ async function replayOne(
     checkRuns: graded.checkRuns,
     toolRuns: deps.verifier
       .evidence()
+      .slice(before)
       .flatMap((run) => (run.subjectId === task.taskId ? [toolRunOf(run)] : [])),
   };
 }

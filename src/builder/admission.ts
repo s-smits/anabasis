@@ -55,7 +55,7 @@ import { awaitingLabel, type Cap, lastReports, latestBuilt, promoted, stopRule }
 import { sizeLines } from "../kernel/size.ts";
 import { ranUnder } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
-import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
@@ -106,6 +106,9 @@ export interface Starting {
   readonly id: string;
   /** The harness it is made against, as `--reference` names it. */
   readonly reference: string;
+  /** The harness it reads, by digest, where the command knows it (`--new`): the untied share is
+   *  then taken from the last comparison of these two and from no other pair's. */
+  readonly fresh?: string | undefined;
   readonly wanted: Wanted;
   /** Who sits in the seats: models that are paid, or a rehearsal's scripts. */
   readonly seats: "paid" | "scripted";
@@ -142,31 +145,44 @@ const said = (rows: readonly (readonly [boolean, string])[]) =>
  *  `promoted` for the campaign's reference harness, `latest`, or a digest. `stood` names the
  *  report the untied share is read from, where the caller knows which comparison stood under the
  *  setting the next will run under, and null says none did (`decide.ts`): a campaign returns to a
- *  budget, and the log's last solves are then another's. */
+ *  budget, and the log's last solves are then another's. `fresh`, a digest, is the harness the
+ *  comparison reads where the command knows it: the share is then the last comparison's of these
+ *  two, since a tie share is of a pair. On t-4 (10 October) a control of the promoted harness's
+ *  programs against the starter tied 7 of 8 tasks, 6 of them answered by neither, and the next
+ *  command, the whole harness against those programs, was refused on that share, which said
+ *  nothing of a harness that answers every task. */
 export function supplyOf(
   events: readonly LogEvent[],
   reference = "promoted",
   stood?: JsonObject | null,
+  fresh?: string,
 ): Supply {
   const sets = taskSets(events);
   const waiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
   const solved = ranUnder(events).findLast(({ under }) => under.side === "test")?.under;
   const setting = solved === undefined ? null : settingId(solved);
+  const reports = lastReports(events);
+  const starter = reports.findLast(({ data }) => isString(data.starter))?.data.starter;
+  // A task the harness to be compared with was valid on in every solve there can only tie again.
+  const kept = reference === "promoted" ? (promoted(events) ?? "starter") : reference;
+  const named = kept === "latest" ? latestBuilt(events) : kept === "starter" ? starter : kept;
+  const ofPair = (data: JsonObject) =>
+    fresh === undefined ||
+    (data.old === named && data.fresh === fresh) ||
+    (data.old === fresh && data.fresh === named);
   const last =
     stood === undefined
-      ? lastReports(events).findLast(
+      ? reports.findLast(
           ({ data }) =>
             Array.isArray(data.versions) &&
             data.versions.length > 0 &&
             asRecord(data.scored) !== null &&
-            data.setting === setting,
+            data.setting === setting &&
+            ofPair(data),
         )?.data
       : (stood ?? undefined);
   const tally = asRecord(last?.scored);
   const versions = Array.isArray(last?.versions) ? last.versions : [];
-  // A task the harness to be compared with was valid on in every solve there can only tie again.
-  const kept = reference === "promoted" ? (promoted(events) ?? "starter") : reference;
-  const named = kept === "latest" ? latestBuilt(events) : kept === "starter" ? last?.starter : kept;
   const side = last?.old === named ? "old" : "fresh";
   const full = last?.[side] === named ? asRecord(last?.valid)?.[side] : null;
   const closed = Array.isArray(full) && isNumber(full.at(-1)) ? Number(full.at(-1)) : 0;
@@ -382,13 +398,16 @@ function entered(
  * its id admits no comparison. A rehearsal is admitted unasked. Where the comparison goes on past the stop rule, the operator's
  * reason is logged under its id, once.
  */
-export function admitComparison(log: string, { id, reference, wanted, seats, own }: Starting): string[] {
+export function admitComparison(
+  log: string,
+  { id, reference, fresh, wanted, seats, own }: Starting,
+): string[] {
   if (seats === "scripted") {
     if (!begun(read(log), id, STARTED)) own();
     return [];
   }
   return entered(log, { id, pastStop: wanted.pastStop, start: STARTED, own }, (events) => {
-    const supply = supplyOf(events, reference);
+    const supply = supplyOf(events, reference, undefined, fresh);
     return { supply, ...admission(supply, wanted) };
   });
 }

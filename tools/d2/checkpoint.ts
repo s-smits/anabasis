@@ -135,6 +135,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   const notes = admitComparison(campaign.log, {
     id,
     reference: values.reference,
+    fresh: fresh.digest,
     wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
     seats: seated === solved ? "paid" : "scripted",
     own: () => {

@@ -162,6 +162,35 @@ describe("what a log holds for the next comparison", () => {
     expect(supplyOf([...stepped, promotion]).untied).toBe(0.25);
   });
 
+  it("takes the share from the last comparison of the pair, where the command names the harness it reads", () => {
+    // t-4 (10 October): the control of the promoted harness's programs against the starter tied
+    // 7 of 8, 6 answered by neither, and the whole harness against those programs was refused on
+    // that share.
+    const control = reported("c-1", {
+      ...tallied(0, 1, here.setting),
+      old: "h0",
+      fresh: "p1",
+      starter: "h0",
+      valid: { old: [6, 0, 2], fresh: [6, 1, 1] },
+    });
+    const log = [...here.events, control];
+    // The same pair again: the share stands, with the reference's closed task taken off.
+    expect(supplyOf(log, "p1", undefined, "h0").untied).toBeCloseTo(0.125, 10);
+    expect(supplyOf(log, "h0", undefined, "p1").untied).toBeCloseTo(0.125, 10);
+    // Another harness against those programs: no comparison of that pair, so no share.
+    expect(supplyOf(log, "p1", undefined, "h1").untied).toBeNull();
+    // With no harness named, the last comparison under the setting stands, as before.
+    expect(supplyOf(log, "p1").untied).toBeCloseTo(0.125, 10);
+    const pair = reported("c-2", {
+      ...tallied(5, 0, here.setting),
+      old: "p1",
+      fresh: "h1",
+      starter: "h0",
+      valid: { old: [6, 1, 1], fresh: [0, 0, 8] },
+    });
+    expect(supplyOf([...log, pair, control], "p1", undefined, "h1").untied).toBeCloseTo(5 / 8, 10);
+  });
+
   it("counts the tasks held out since that comparison, and the ones that wait for a label", () => {
     const before = [...heldOut("v"), ...here.events, reported("b-1", tallied(0, 0, here.setting))];
     expect(supplyOf(before)).toMatchObject({ held: 1, untied: 0, since: 0 });

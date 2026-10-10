@@ -28,7 +28,9 @@ import { runtimeProcess } from "./process.ts";
 const resolvedTools = new Map<string, string>();
 let developerBinDirs: string[] | undefined;
 
-function activeDeveloperBinDirs(): string[] {
+/** Where the active developer directory keeps its tools, and none off Darwin: `usr/bin`, and a full
+ *  Xcode's default toolchain, which holds its compilers. */
+export function activeDeveloperBinDirs(): string[] {
   if (developerBinDirs !== undefined) return developerBinDirs;
   developerBinDirs = [];
   if (runtimeProcess.platform !== "darwin") return developerBinDirs;

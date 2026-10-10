@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { basename, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
   commandDirs,
@@ -227,6 +227,47 @@ describe("a solve's walled commands", () => {
         rmSync(dirs.host, { recursive: true, force: true });
         rmSync(repoRoot, { recursive: true, force: true });
         rmSync(reader, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "keep what Python and make write as temporary in the command's own folder, which goes with it",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-temp-")));
+      const dirs = solveDirs(`temp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      try {
+        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
+        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+        const wall: CommandWall = {
+          base,
+          dirs,
+          toolTree: null,
+          limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
+          cpu: { seconds: 0, unmeasured: 0 },
+        };
+        const own = join(basename(dirs.root), "runs", "run-");
+        // `/usr/bin/python3` and `/usr/bin/make` are xcrun shims, which start their tool with TMPDIR
+        // reset to the user temporary directory: three days of campaigns left 1.56 million Python
+        // temp folders there, outside every solve's cap and its command's end (2026-10-10).
+        const made = await run(wall, "python3 -c 'import tempfile; print(tempfile.mkdtemp())'");
+        expect(made.output).toContain(own);
+        expect(existsSync(made.output.trim())).toBe(false);
+        const recipe = await run(wall, String.raw`printf 'all:\n\t@echo $$TMPDIR\n' > Makefile && make`);
+        expect(recipe.output).toContain(own);
+        // A compiler started by its own path is given the SDK the shim named for it.
+        const built = await run(
+          wall,
+          String.raw`printf '#include <stdio.h>\nint main(void){puts("built");return 0;}\n' > h.c && cc h.c -o h && ./h`,
+        );
+        expect(built.output).toBe("built\n");
+      } finally {
+        await release();
+        rmSync(dirs.host, { recursive: true, force: true });
+        rmSync(repoRoot, { recursive: true, force: true });
       }
     },
     60_000,

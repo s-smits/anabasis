@@ -293,7 +293,8 @@ function darwinCommandProfile(
   const readDenies = [...new Set([...base.deniedReadRoots, ...scratchParent])].sort();
   const readAllows = commandReadAllows(base, readDenies, toolTree);
   // The two shared temporary directories a toolchain writes without asking: the confstr one clang
-  // and Apple's python3 shim use, and `/tmp`, which `mktemp` and most build scripts spell literally.
+  // uses, as Apple's python3 shim does for a command that names it by its path, and `/tmp`, which
+  // `mktemp` and most build scripts spell literally.
   const userTemp = userTempRules(["/tmp"], COMMAND_TEMP_SIBLING_DENY_PATTERNS);
   const profile = [
     "(version 1)",

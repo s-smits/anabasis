@@ -3,16 +3,21 @@
  * the investigation's own directory, which belongs under the ignored `.ana/wri/`.
  *
  *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl
- *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl --out .ana/wri/20261008-truss
+ *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl [--with <log>,<log>]
+ *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl --out .ana/wri/20261008-truss [--with <log>,<log>]
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
  *
+ * - `climb` prints lane 31's columns for the campaign and every log `--with` names, one row each,
+ *   and the paths under the host's `/tmp` one campaign named before another's solve ran them. It
+ *   reads the logs as they stand, so it can be run on campaigns still running.
  * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
  *   the host hash of the last condition beside this checkout's.
  * - `start` writes that as `overview.md`, and the shared instructions with the campaign's row filled
- *   in and two sections left for the primary to write.
+ *   in and two sections left for the primary to write. `--with` names peer campaigns' logs, which a
+ *   lane that reads peers (lane 31) is given read the same way, at `lanes` time, and never reviews.
  * - `lanes` builds one prompt per lane and `launch.md`. With no `--lanes` it opens the lanes a
  *   trigger started and the standing ones; an isolated lane is built only when named. A prompt
  *   built before is kept, and `launch.md` lists every prompt that stands, each once.
@@ -42,6 +47,7 @@ import { writtenTasks } from "#src/kernel/history.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
+import { climbTable, crossings } from "./climb.ts";
 import {
   blankSections,
   filled,
@@ -59,11 +65,12 @@ interface Investigation {
   readonly log: string;
   readonly shared: string;
   readonly seen: Overview;
+  readonly peers: readonly string[];
 }
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const SHARED = "shared-instructions.md";
-const USAGE = "usage: bun tools/wri/wri.ts read | start | lanes | collect | synthesis | grade";
+const USAGE = "usage: bun tools/wri/wri.ts read | climb | start | lanes | collect | synthesis | grade";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -74,6 +81,7 @@ const { values, positionals } = parseArgs({
     bundle: { type: "string" },
     task: { type: "string" },
     answer: { type: "string" },
+    with: { type: "string" },
   },
 });
 
@@ -103,6 +111,9 @@ function overviewText(log: string): string {
 function start(): number {
   const [log, out] = [resolve(needed("log")), resolve(needed("out"))];
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
+  const peers = (values.with?.split(",") ?? []).filter((each) => each !== "").map((each) => resolve(each));
+  const absent = peers.filter((peer) => !existsSync(peer));
+  if (absent.length > 0) throw new Error(`--with names no log at ${absent.join(", ")}`);
   mkdirSync(join(out, "lanes"), { recursive: true });
   const text = overviewText(log);
   const campaign = [
@@ -119,7 +130,7 @@ function start(): number {
     template.replace("{campaign}", () => campaign),
   );
   writeFileSync(join(out, "overview.md"), text);
-  writeFileSync(join(out, "investigation.json"), `${JSON.stringify({ log }, null, 2)}\n`);
+  writeFileSync(join(out, "investigation.json"), `${JSON.stringify({ log, peers }, null, 2)}\n`);
   console.log(text);
   console.log(`wrote ${join(out, SHARED)}: write its two blank sections, then run lanes`);
   return 0;
@@ -127,8 +138,37 @@ function start(): number {
 
 function opened(): Investigation {
   const out = resolve(needed("out"));
-  const { log } = parseJsonAs<{ log: string }>(readFileSync(join(out, "investigation.json"), "utf8"));
-  return { out, log, shared: readFileSync(join(out, SHARED), "utf8"), seen: overview(read(log)) };
+  // An investigation started before `--with` holds no peers.
+  const { log, peers = [] } = parseJsonAs<{ log: string; peers?: string[] }>(
+    readFileSync(join(out, "investigation.json"), "utf8"),
+  );
+  return { out, log, shared: readFileSync(join(out, SHARED), "utf8"), seen: overview(read(log)), peers };
+}
+
+/** Each peer campaign as `read` prints it, under its name and log. Read when the lanes are built,
+ *  so a peer still running is read as it stands then. */
+function peersText(log: string, peers: readonly string[]): string {
+  if (peers.length === 0) return "";
+  const overviews = peers.map((peer) =>
+    [`### ${basename(dirname(peer))}`, `Log: \`${peer}\``, "```", overviewText(peer).trim(), "```"].join(
+      "\n\n",
+    ),
+  );
+  return [climbText(log, peers), ...overviews].join("\n\n");
+}
+
+/** The campaign beside its peers, in lane 31's columns, and the `/tmp` paths one named before
+ *  another's solve ran them (`tools/wri/climb.ts`). */
+function climbText(log: string, peers: readonly string[]): string {
+  const campaigns = [log, ...peers].map((each) => ({ name: basename(dirname(each)), events: read(each) }));
+  const { left, scratch } = crossings(campaigns);
+  return [
+    "### The climb, side by side",
+    climbTable(campaigns),
+    "### Solves that named what another campaign's session left under `/tmp`",
+    left.length > 0 ? left.map((line) => `- ${line}`).join("\n") : "None.",
+    `And ${scratch}.`,
+  ].join("\n\n");
 }
 
 const promptPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-prompt.md`);
@@ -145,7 +185,8 @@ function launchEntry(out: string, lane: Lane): string {
 }
 
 function lanes(): number {
-  const { out, shared, seen } = opened();
+  const { out, log, shared, seen, peers } = opened();
+  const peerOverviews = peersText(log, peers);
   const blank = blankSections(shared);
   if (blank.length > 0) throw new Error(`write these sections of ${SHARED} first: ${blank.join(", ")}`);
   const catalogue = catalogueText();
@@ -162,7 +203,7 @@ function lanes(): number {
     const report = reportPath(out, lane.number);
     writeFileSync(
       promptPath(out, lane.number),
-      `${lanePrompt({ lane, shared, overview: seen, catalogue, owners, report })}\n`,
+      `${lanePrompt({ lane, shared, overview: seen, catalogue, owners, report, peers: peerOverviews })}\n`,
     );
   }
   // The launch list is written whole from the prompts that stand, so a second build cannot list a
@@ -252,6 +293,11 @@ async function main(): Promise<number> {
     return 0;
   }
   if (verb === "grade") return grade();
+  if (verb === "climb") {
+    const peers = (values.with?.split(",") ?? []).filter((each) => each !== "");
+    console.log(climbText(needed("log"), peers));
+    return 0;
+  }
   const step = Object.entries({ start, lanes, collect, synthesis }).find(([name]) => name === verb)?.[1];
   if (step === undefined) throw new Error(USAGE);
   return step();

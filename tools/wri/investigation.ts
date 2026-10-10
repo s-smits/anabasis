@@ -41,6 +41,8 @@ interface PromptParts {
   readonly owners: readonly string[];
   /** Where the session writes its report. */
   readonly report: string;
+  /** The peer campaigns' overviews, for a lane that reads them; "" where none was named. */
+  readonly peers?: string;
 }
 
 const CAMPAIGN_HEADING = "Campaign under review";
@@ -141,7 +143,25 @@ function rowLines({ rows }: Overview): string[] {
 }
 
 /** One lane's prompt. */
-export function lanePrompt({ lane, shared, overview, catalogue, owners, report }: PromptParts): string {
+/** A peer-reading lane's section: the peers' overviews, or what to do where none was named. */
+function peerSection(peers: string): string[] {
+  return [
+    "## Peer campaigns",
+    peers.trim() === ""
+      ? "None were named: read this campaign alone, and say which peer would settle what one campaign cannot."
+      : `Each was read by the same reader as this campaign, and none is under review: compare, and cite each by its name and log.\n\n${peers.trim()}`,
+  ];
+}
+
+export function lanePrompt({
+  lane,
+  shared,
+  overview,
+  catalogue,
+  owners,
+  report,
+  peers = "",
+}: PromptParts): string {
   const clean = shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim();
   const own = overview.triggers.filter((trigger) => trigger.lane === lane.number);
   const context = lane.isolated
@@ -172,6 +192,7 @@ export function lanePrompt({ lane, shared, overview, catalogue, owners, report }
     "## Your lane",
     `**${String(lane.number)}. ${lane.title}.**`,
     lane.body,
+    ...(lane.peers ? peerSection(peers) : []),
     reporting(lane, report, owners),
   ].join("\n\n");
 }

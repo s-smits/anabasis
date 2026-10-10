@@ -1,7 +1,7 @@
 # Whole-run investigation lanes
 
 This file is the whole catalogue: six deterministic rows the primary reviewer settles itself, and
-thirty lanes a paid session can be given, one question each. Read the stance below before any row
+thirty-one lanes a paid session can be given, one question each. Read the stance below before any row
 or lane, because every one of them is written from it. `tools/wri/catalogue.ts` parses this file,
 and `test/wri-catalogue.test.ts` holds it to the reader: every trigger `tools/wri/read.ts` prints
 is named in the `Starts from` paragraph of the lane it starts.
@@ -88,9 +88,9 @@ check id and a count. A report never carries a task's text, an answer, a hidden 
 of a trace: the log holds all of them, and a report is read by people and sessions the walls were
 built to keep them from.
 
-Each lane body opens with exactly one paragraph beginning `Starts from`. The lanes fall into six
+Each lane body opens with exactly one paragraph beginning `Starts from`. The lanes fall into seven
 groups: the exam's instrument (1–6), the tasks (7–12), the harness (13–19), the comparison
-(20–25), the solve, its failure and its cost (26–28), and the review loop (29–30).
+(20–25), the solve, its failure and its cost (26–28), the review loop (29–30), and the climb (31).
 
 ## Deterministic rows A–F
 
@@ -136,7 +136,7 @@ whether it changed anything, whether what it left opens, its practice solves and
 comparison of the harness it left, which a comparison names by its own session (`g-N`). For each Examiner session: how it ended, what it proposed and what stood
 feasible. A session that started and never finished is refused by its round and is named here.
 
-## Lanes 1–30
+## Lanes 1–31
 
 ### The exam's instrument
 
@@ -802,6 +802,86 @@ outcome a task and the gate's reason. The decision it changes is whether the Ref
 may count without a person reading each; it routes to `operator` for the bar and the labels,
 `reviewer-prompt` for rulings made without a probe, and `host` (`src/builder/tools.ts`,
 `src/examiner/session.ts`) for a role told more than it may know.
+
+### The climb
+
+**31. The promotion and the climb after it.**
+
+Starts from `PROMOTED (lane 31)`, `STARTER BARE (lane 31)`, `AFTER THE PROMOTION (lane 31)` and
+`SHARED TEMPORARY FOLDER (lane 31)`. It reads the peer campaigns the primary named with
+`start --with`, each as the reader prints it, and reviews none of them.
+
+The question is whether a promotion measured what the campaign exists to measure, and whether the
+campaign climbed from it. Lane 25 reads the chain and whether a step was repeated; lane 23 reads
+the starter; this lane reads the promotion as one event with its cause and its consequence, and
+it is the lane a person reads before saying a campaign has improved a harness. Read it in five
+parts, and keep them apart in the report: a promotion can follow the rule exactly and still
+measure little.
+
+First the rule. `PROMOTED` gives the harness and its parent, whether the table promoted it (a
+`campaign.move` of `promote` follows) or the operator did (`tools/d2/promote.ts`, which records
+any faults it was promoted `despite`), and the comparisons it rests on, each with its tally, its
+p, its level and the reference against itself. Say which rule the campaign ran under: a level and
+a trigger pinned in its opening terms, or none, so the tree's default, which differs between trees
+(abl175-new, on #175's tree, was read at 0.2; from #183 a step is read in two stages). A first
+reading at or under the trigger buys a repeat on fresh solves, the step and the repeat read
+together must clear the level, and the harness must not lose at the full limit. Set the tally beside its own A/A noise: a step whose
+untied share is inside what the reference does to itself is not a step at any p.
+
+Then what the step measured. `STARTER BARE` names a rest comparison where the reference answered
+none of its solves on more than half its tasks. There the step reads "a harness that carries an
+engine beats one that carries none": real, and the first thing a harness should learn, but it
+says nothing about how good the engine or the guide is, and a second promotion is the first that
+can. Read `VALID BY HARNESS` at each budget: a step that holds at the shortest budget and one that
+holds only at the full limit are different findings. Read lane 13's account of what the Builder
+changed, and lane 19's of the winning solves, by their calls: whether the wins came from the
+change the note claims, from a program the harness ships, or from the solver writing its own.
+
+Then what touched both sides. `SHARED TEMPORARY FOLDER` counts the solves and sessions that named
+a path under the host's `/tmp`, solves by comparison and side, practice apart. The Mac gives every
+process one `/tmp`, so a program one campaign's Builder compiled there is on the path of every
+solve on the host (plan defect H1, 10 October: a reference-side solve of abl175-new's repeat found
+and ran a phreeqc another campaign's Builder had built). It names the programs found under it,
+with the solves that ran them, and the paths more than one solve or session named: two solves that
+write one `/tmp/m.py` at once can each read the other's. A reference solve that runs a program its
+harness never shipped lifts the reference, and a new-harness solve that does so lifts the step;
+say which side each falls on and whether the tally turns on those tasks. Read the load each solve
+started under from its record: a step read while the host ran at twice its cores is read under
+another setting than its repeat.
+
+Then the climb after. `AFTER THE PROMOTION` gives, up to the next promotion or the log's end, the
+settings the table moved (after a promotion it reads the budget rule again on the promoted
+harness's own solves, `src/builder/decide.ts`), the Examiner sessions and what each held out, every
+comparison read against the promoted harness, the controls that put the starter against it, the
+Builder sessions with their parent and how many of their practice tasks were written since, and
+any comparison started and not reported. A climb is these in order: an Examiner session that
+leaves the promoted harness room (tasks it answers on fewer than three solves in four), a control
+that confirms the room, a Builder session from the promoted harness practising on those tasks, and
+a comparison against it. Read the reference's valid share epoch by epoch: if every new task is one
+the promoted harness already answers, the campaign is measuring ties, and lane 22's power says how
+many tasks the next step would need. If the Examiner holds out tasks the promoted harness fails
+for reasons no harness can change, the room is false; lane 8 reads those.
+
+Last the cost: dollars and hours from the opening to the promotion, and from the promotion to the
+next session's end, by role (lane 28's spend). A campaign that spent most of its budget reaching
+a step against a bare starter has little left to climb with.
+
+Where peer campaigns were named, compare before concluding. The prompt opens their section with
+`wri.ts climb`'s table, which sets every campaign in these columns from its log, and with each
+solve, its side named, that ran a path another campaign's Builder or Examiner session named under
+`/tmp` first; a scratch name two solvers chose is only counted. Align them first: the pack, the sweep,
+the seats and efforts, the limits and the tree each ran (row F, and the host line). Then set side
+by side the time and dollars to the first promotion, each rest comparison's tally and noise, the
+tie share, the reference's valid profile, the kind of change that won, the shared-folder exposure
+by side, and how far each got after. A difference in the tree is a candidate cause only where the
+other columns agree; one campaign a tree is one sample, and two runs of one tree that differ as
+much as two trees do say the difference is the campaign's variance. A peer that has not promoted
+yet is read at the same move, not at the same hour. The decision it changes is whether a
+promotion is reported as an improvement, whether the campaign is kept running toward a second
+one, and what the host must fix before the next promotion can be believed; it routes to
+`operator` for the report and the keep or stop, `host` (`src/builder/decide.ts`) for a move
+after a promotion the rule did not make, `examiner-prompt` (`src/examiner/prompt.ts`) for room
+written where there is none, and `environment` for the shared temporary folder and the load.
 
 ## Retired from v1
 

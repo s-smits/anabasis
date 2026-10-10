@@ -51,6 +51,7 @@ import {
   text,
   type Trigger,
 } from "./folds.ts";
+import { promotionTriggers } from "./promotion.ts";
 import { costTriggers, hoursLine, wallTriggers } from "./time.ts";
 
 export interface Row {
@@ -637,6 +638,7 @@ export function overview(events: readonly LogEvent[]): Overview {
       ...solveTriggers(log),
       ...winTriggers(log),
       ...reviewTriggers(log),
+      ...promotionTriggers(log),
     ],
   };
 }

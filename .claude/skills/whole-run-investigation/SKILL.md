@@ -13,10 +13,12 @@ no log, and the host's verifier stays the one owner of every verdict.
 
 It is v1's skill rebuilt for v2. v1's catalogue had nine rows and thirty-eight lanes and was written
 from one fact: the Builder wrote its own exam. v2 took that pen apart, so the catalogue here has six
-rows and thirty lanes: eleven of v1's kept with tuning, nine overhauled, ten new, and thirteen
+rows and thirty lanes from v1: eleven of v1's kept with tuning, nine overhauled, ten new, and thirteen
 removed with the machinery they read. [from-v1.md](references/from-v1.md) accounts for every one.
+Lane 31 was added after the first live promotion (10 October) and reads a promotion and the climb
+after it, beside peer campaigns where they are named.
 
-Five narrower questions need no lanes. Start there when one of them is the whole question.
+Six narrower questions need no lanes. Start there when one of them is the whole question.
 
 | question | command |
 | --- | --- |
@@ -26,6 +28,7 @@ Five narrower questions need no lanes. Start there when one of them is the whole
 | What does a repaired checker move, and does the repair stand? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
 | A report names tasks set aside on rejections: what does it read once they are labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the rejections it draws |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
+| Did a promotion climb, beside the campaigns that ran the same pack, and did one campaign's `/tmp` reach another's solves? | `bun tools/wri/wri.ts climb --log <log> --with <log>,<log>`: one row a campaign, then each solve that named what another campaign's session left |
 
 ## The procedure
 
@@ -35,7 +38,9 @@ holds.
 
 1. **Start.** `wri.ts start --log <log> --out <dir>` folds the log into the six rows and the
    triggers, writes them to `<dir>/overview.md`, and writes `<dir>/shared-instructions.md` with the
-   campaign's row filled in and two sections left blank.
+   campaign's row filled in and two sections left blank. When the campaign promoted a harness and
+   other campaigns ran the same pack, name their logs with `--with <log>,<log>`: lane 31 is given
+   each as `read` prints it, read again when the lanes are built, and compares with them.
    *Check:* read the last line it prints. When the last condition ran under another host hash than
    this checkout's, every statement about source is about another tree: check out the tree that ran,
    or say so in the orientation. Then settle rows A to F yourself, from the log.
@@ -91,6 +96,9 @@ smaller than the build, read the groups in this order, because each rests on the
    what the test could show at its size. Lanes 21 and 22 first.
 3. **The harness (13 to 19).** What changed and whether it could know the exam. Lane 18 first.
 4. **The tasks (7 to 12), the solve (26 to 28), the review loop (29 to 30).**
+5. **The climb (31).** Once a promotion is on record, open it before a person is told the campaign
+   improved a harness: it reads what the promotion rested on and what followed, and it rests on
+   lanes 13, 19, 22 and 25 where they ran.
 
 `--lanes` takes whatever is asked for. A lane named without its trigger opens and is told so by its
 own overview, except an isolated lane, which is refused without its trigger.
@@ -211,7 +219,7 @@ provisional and add two the catalogue did not know to ask.
 
 | file | owns |
 | --- | --- |
-| [references/lanes.md](references/lanes.md) | the stance, the owner table, rows A to F and lanes 1 to 30 |
+| [references/lanes.md](references/lanes.md) | the stance, the owner table, rows A to F and lanes 1 to 31 |
 | [references/from-v1.md](references/from-v1.md) | what became of v1's nine rows and thirty-eight lanes, and what that says about v2's direction |
 | [references/shared-instructions.template.md](references/shared-instructions.template.md) | the preset every open lane carries |
 | [references/synthesis.template.md](references/synthesis.template.md) | the synthesis session's prompt |

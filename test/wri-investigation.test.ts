@@ -51,7 +51,7 @@ describe("an investigation's lanes", () => {
   it("builds a named isolated lane only on its trigger", () => {
     expect(numbers(selected(lanes, fired(5), numbersOf("3-4,5")).isolated)).toEqual([5]);
     expect(() => selected(lanes, fired(4), [19])).toThrow("runs only on its trigger");
-    expect(() => selected(lanes, [], [31])).toThrow("no lane 31");
+    expect(() => selected(lanes, [], [32])).toThrow("no lane 32");
   });
 
   it("refuses shared instructions with a section left blank", () => {
@@ -96,6 +96,16 @@ describe("an investigation's lanes", () => {
     expect(prompt).toContain("FAILS ON ONE CHECK (lane 5)");
     expect(prompt).not.toContain("Why the step.");
     expect(prompt).not.toContain("REFUSED UNREAD");
+  });
+
+  it("gives the lane that reads peers each one named, or says none was, and no other lane either", () => {
+    const parts = { shared, overview: seen, catalogue, owners, report: "/r/31.md" };
+    expect(lane(31).peers).toBe(true);
+    const named = lanePrompt({ ...parts, lane: lane(31), peers: "### buffer-a\n\nLog: `/a/log.jsonl`" });
+    expect(named).toContain("## Peer campaigns");
+    expect(named).toContain("### buffer-a");
+    expect(lanePrompt({ ...parts, lane: lane(31) })).toContain("None were named: read this campaign alone");
+    expect(lanePrompt({ ...parts, lane: lane(4), peers: "### buffer-a" })).not.toContain("## Peer campaigns");
   });
 
   it("holds a report to its shape", () => {

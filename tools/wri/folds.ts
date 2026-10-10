@@ -198,6 +198,10 @@ export const TRIGGERS = {
   "SETTLED BY HAND": 30,
   "REVIEW FAULTS": 30,
   "EARNED WITHOUT A PROBE": 30,
+  "PROMOTED": 31,
+  "STARTER BARE": 31,
+  "AFTER THE PROMOTION": 31,
+  "SHARED TEMPORARY FOLDER": 31,
 } as const;
 
 export const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");

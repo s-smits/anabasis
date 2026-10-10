@@ -566,21 +566,29 @@ function admitsOf(values: Values): string[] {
 
 /**
  * What an operator reads where a campaign ends on its exam: the faults of the checker's last
- * reading, and the command that admits the checks which stand on the operator's word alone. An
- * exam drafted from a prompt always holds such checks, since no engine of the field is installed
- * for it, so a campaign from a prompt waits here once, for that word.
+ * reading, where this run did not just print them, and the command that admits the checks which
+ * stand on the operator's word alone. An exam drafted from a prompt always holds such checks,
+ * since no engine of the field is installed for it, so a campaign from a prompt waits here once,
+ * for that word. A reading made in this run printed its faults a line each as it was made
+ * (`accept.ts`), and until 10 October they were printed here a second time; a run that ends on a
+ * reading an earlier run made is the one that has them to print.
  */
-function examLines(events: readonly LogEvent[], values: Values, ending: string): string[] {
+function examLines(
+  events: readonly LogEvent[],
+  values: Values,
+  ending: string,
+  faults: "printed" | "unprinted",
+): string[] {
   if (ending !== "exam") return [];
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data;
-  const faults = Array.isArray(reading?.faults) ? reading.faults.filter(isString) : [];
+  const found = Array.isArray(reading?.faults) ? reading.faults.filter(isString) : [];
   const admitted = Array.isArray(reading?.admitted) ? reading.admitted : [];
   const authored = (Array.isArray(reading?.rows) ? reading.rows : []).flatMap((row) => {
     const { id, instrument } = asRecord(row) ?? {};
     return isString(id) && instrument === "authored" && !admitted.includes(id) ? [id] : [];
   });
   return [
-    ...faults.map((fault) => `fault: ${fault}`),
+    ...(faults === "printed" ? [] : found.map((fault) => `fault: ${fault}`)),
     ...(authored.length === 0
       ? []
       : [
@@ -672,6 +680,8 @@ export async function harnessBuilder(
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };
+  /** The move this run made last: an exam read here printed its faults as it was read. */
+  let last: Decided["move"] | null = null;
   for (let made = 0; ; made += 1) {
     // A total the operator left as a word is what the campaign runs by from this move on.
     const total = pendingWords(read(log)).findLast(({ word }) => word === "budget");
@@ -697,7 +707,8 @@ export async function harnessBuilder(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
     if (decided.move === "end") {
-      for (const line of examLines(events, values, decided.ending)) console.log(line);
+      const faults = examLines(events, values, decided.ending, last === "accept" ? "printed" : "unprinted");
+      for (const line of faults) console.log(line);
       if (!values["dry-run"]) ended(log, events, decided);
       // What the campaign hands over, once it has an exam to open over (`close.ts`).
       if (!values["dry-run"] && values.handover !== undefined && campaign !== null) {
@@ -741,6 +752,7 @@ export async function harnessBuilder(
         decided.move === "examine" && decided.answers ? [...decided.answers] : undefined,
       ),
     });
+    last = decided.move;
   }
 }
 

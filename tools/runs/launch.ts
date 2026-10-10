@@ -62,7 +62,7 @@
  * named run that is not running is released the same way, so a run that was killed, or stopped
  * before this was done, is cleaned up by stopping it again.
  */
-import { existsSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { solverLast } from "#src/kernel/solves.ts";
@@ -143,7 +143,10 @@ export interface Asked extends Host, Omit<Wanted, "restarted"> {
 }
 
 /** What a launch keeps of a round's start, in `launch-<session>.json` beside its log. The log holds
- *  the host's code by content and no commit, so this is where a round's commit is on record. */
+ *  the host's code by content and no commit, so this is where a round's commit is on record. A run
+ *  of the campaign command keeps one too, as `launch-run-<n>.json` (`tools/d2/harness-builder.ts`):
+ *  until 10 October it kept none, and the flag line of the run that recorded a campaign's setting
+ *  was on no record. */
 export interface Receipt {
   readonly at: string;
   readonly pid: number;
@@ -162,6 +165,26 @@ const kept = (log: string, session: string) => join(dirname(log), `launch-${sess
 export function receiptOf(log: string, session: string): Receipt | null {
   const file = `${kept(log, session)}.json`;
   return existsSync(file) ? parseJsonAs<Receipt>(readFileSync(file, "utf8")) : null;
+}
+
+/** Keep `receipt` as the launch of `session` beside `log`. */
+export function writeReceipt(log: string, session: string, receipt: Receipt): void {
+  writeFileSync(`${kept(log, session)}.json`, `${capturedJsonStringify(receipt, null, 2)}\n`);
+}
+
+/** Every launch whose receipt sits beside `log`, oldest first, less the flags and the env file's
+ *  path a receipt also holds. None for a campaign whose rounds were started by hand. */
+export function launchesOf(log: string) {
+  const folder = dirname(log);
+  return readdirSync(folder)
+    .flatMap((file) => {
+      const session = /^launch-(.+)\.json$/.exec(file)?.[1];
+      const receipt = session === undefined ? null : receiptOf(log, session);
+      if (session === undefined || receipt === null) return [];
+      const { at, commit, dirty, load, cores } = receipt;
+      return [{ session, at, commit, dirty, load, cores }];
+    })
+    .sort((a, b) => a.at.localeCompare(b.at));
 }
 
 const said = (rows: readonly (readonly [boolean, string])[]) =>
@@ -459,7 +482,7 @@ export async function launch(args: readonly string[]): Promise<void> {
     load,
     cores,
   };
-  writeFileSync(`${base}.json`, `${capturedJsonStringify(receipt, null, 2)}\n`);
+  writeReceipt(run.path, session, receipt);
   const ended = await Promise.race([child.exited, Bun.sleep(START_MS).then(() => null)]);
   const early = endedEarly(ended, `${name} ${session}`, base);
   if (early !== null) {

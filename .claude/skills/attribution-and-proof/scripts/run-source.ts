@@ -12,26 +12,10 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitText } from "#skills/main/git.ts";
-import { readdirSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
-import { receiptOf } from "#tools/runs/launch.ts";
+import { launchesOf } from "#tools/runs/launch.ts";
 
 const SHOWN = 3;
-
-/** Every launch whose receipt sits in campaign `folder`, oldest first, less the flags and the env
- *  file's path a receipt also holds. None for a campaign whose rounds were started by hand. */
-export function launchesOf(folder: string) {
-  const log = join(folder, "log.jsonl");
-  return readdirSync(folder)
-    .flatMap((file) => {
-      const session = /^launch-(.+)\.json$/.exec(file)?.[1];
-      const receipt = session === undefined ? null : receiptOf(log, session);
-      if (session === undefined || receipt === null) return [];
-      const { at, commit, dirty, load, cores } = receipt;
-      return [{ session, at, commit, dirty, load, cores }];
-    })
-    .sort((a, b) => a.at.localeCompare(b.at));
-}
 
 /** The remote branches of `repo` that hold `commit`: where an outside reader can open it. None
  *  for a commit never pushed, and for one this repository does not hold. */
@@ -49,7 +33,7 @@ const holds = (repo: string, fix: string, commit: string) =>
 
 /** The lines said of campaign `folder`, read against repository `repo`. */
 export function told(folder: string, repo: string, fixes: readonly string[]): string[] {
-  const launches = launchesOf(folder);
+  const launches = launchesOf(join(folder, "log.jsonl"));
   if (launches.length === 0) {
     return ["no launch receipt: every round here was started by hand, and its commit is on no record"];
   }

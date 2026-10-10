@@ -138,7 +138,8 @@ export const LIMITS: Limits = {
   concurrency: 4,
   diskBytes: 2 * 1024 ** 3,
 };
-const REPO = resolve(import.meta.dir, "..", "..");
+/** The repository a campaign's folder lies in: the worktree whose source the command runs. */
+export const REPO = resolve(import.meta.dir, "..", "..");
 /** The flags that name a stored pack together. */
 const PACK_FLAGS = 4;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */

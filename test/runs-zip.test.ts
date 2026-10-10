@@ -21,7 +21,20 @@ const DIGEST = "ab".repeat(32);
 const LOG = [
   { at: "2026-10-08T12:00:00.000Z", kind: "build.started", data: { session: "r1-1" } },
   { at: "2026-10-08T12:30:00.000Z", kind: "comparison.reported", data: { reading: "no-step" } },
+  { at: "2026-10-08T12:31:00.000Z", kind: "campaign.ended", data: { ending: "stop" } },
 ];
+/** The commit the round's launch ran at, which is not the one its worktree stands at when zipped. */
+const RAN_AT = "c0ffee".repeat(6) + "cafe";
+const RECEIPT = {
+  at: "2026-10-08T11:59:00.000Z",
+  pid: 1,
+  flags: ["--cap", "5"],
+  envFile: null,
+  commit: RAN_AT,
+  dirty: false,
+  load: 1.5,
+  cores: 8,
+};
 
 /** A round's folder as a session leaves it, in a repository of its own, and the run that names it. */
 function round(root: string): Run {
@@ -32,7 +45,7 @@ function round(root: string): Run {
     writeFileSync(join(folder, path), content);
   };
   file("log.jsonl", `${LOG.map((event) => JSON.stringify(event)).join("\n")}\n`);
-  file("launch-b-1.json", "{}");
+  file("launch-b-1.json", JSON.stringify(RECEIPT));
   file("checks/brief.json", "{}");
   file("checks/evaluator.ts", "export const check = 1;\n");
   file(`states/${DIGEST}/agent/tools-spec.json`, "{}");
@@ -128,15 +141,34 @@ describe("the runs zip", () => {
         dirty: true,
       };
       expect(made.runs).toEqual([
-        { name: "r1", log: "tree/r1/log.jsonl", ...told, events: 2, ended: "no-step" },
-        { name: "s1", log: "tree/live/s1.jsonl", ...told, events: 1, ended: "fail" },
+        {
+          name: "r1",
+          log: "tree/r1/log.jsonl",
+          ranAt: [RAN_AT],
+          ...told,
+          events: 3,
+          reading: "no-step",
+          ended: "stop",
+        },
+        {
+          name: "s1",
+          log: "tree/live/s1.jsonl",
+          ranAt: [],
+          ...told,
+          events: 1,
+          reading: "fail",
+          ended: null,
+        },
       ]);
       expect(made.files.map((file) => file.path).filter((path) => path.includes("live"))).toEqual([
         "tree/live/s1.jsonl",
       ]);
       const read = (name: string) => runTextSyncOrThrow(["unzip", "-p", out, `handover/${name}`]);
       expect(read("NOTES.md")).toBe("# What the sender saw\n");
-      expect(read("README.md")).toContain("| tree/r1/log.jsonl |");
+      expect(read("README.md")).toContain(
+        `| tree/r1/log.jsonl | ${RAN_AT.slice(0, 9)} | ${told.commit.slice(0, 9)}, with uncommitted changes | 3 | no-step | stop |`,
+      );
+      expect(read("README.md")).toContain("| tree/live/s1.jsonl | no receipt |");
       expect(read("README.md")).toContain("| brief | the brief the tasks answer | light | 1 file, 0 KB |");
       expect(read("README.md")).toContain("| checker |");
       expect(read("README.md")).toContain("| medium | not at this level |");

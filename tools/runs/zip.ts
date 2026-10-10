@@ -13,7 +13,11 @@
  * With no names, every run log in the repository's worktrees, as the pulse finds them. In the zip a
  * run sits under `<worktree>/<name>/`, beside a README.md of what the level holds, a GUIDE.md of how
  * to read it (`zip-guide.md`), `--note` as NOTES.md and a MANIFEST.json of every file with its size
- * and group, each run's commit and ending, and what was left where it was. Light is refused over
+ * and group, the commit each run's launches ran at (its receipts, `launch.ts`) beside the one its
+ * worktree stands at when zipped, its last reading and its ending, and what was left where it was.
+ * Until 10 October the README gave the worktree's commit as the run's, and the last comparison's
+ * reading as its ending: the five test-host campaigns zipped on 9 October ran at four commits and
+ * were all given one. Light is refused over
  * 2 MB a run, any level over `--max-mb`. Unnamed, the zip is `<names>-<level>.zip` where the command
  * runs.
  *
@@ -28,9 +32,11 @@ import { parseArgs } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
+import { launchesOf } from "./launch.ts";
 import { logEvents, type Run, runs, standing } from "./pulse.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
+const CAMPAIGN_ENDED = "campaign.ended";
 export type Level = (typeof LEVELS)[number];
 
 /** A run folder's groups, the first match first, each with the level that starts to hold it. A
@@ -146,11 +152,11 @@ function readme({ level, made, runs: ran, files, left }: ReturnType<typeof gathe
     "",
     `${plural(ran.length, "run")}, zipped ${made}. GUIDE.md says how to read them and what not to conclude, and MANIFEST.json lists every file with its size and group.`,
     "",
-    "| log | commit | events | ended |",
-    "| --- | --- | --- | --- |",
+    "| log | ran at | worktree now | events | last reading | ended |",
+    "| --- | --- | --- | --- | --- | --- |",
     ...ran.map(
-      ({ log, commit, dirty, events, ended }) =>
-        `| ${log} | ${commit.slice(0, 9)}${dirty ? ", with uncommitted changes" : ""} | ${String(events)} | ${ended ?? "no ending in the log"} |`,
+      ({ log, ranAt, commit, dirty, events, reading, ended }) =>
+        `| ${log} | ${ranAt.map((at) => at.slice(0, 9)).join(", ") || "no receipt"} | ${commit.slice(0, 9)}${dirty ? ", with uncommitted changes" : ""} | ${String(events)} | ${reading ?? "none"} | ${ended ?? "no ending in the log"} |`,
     ),
     "",
     "| group | holds | from level | here |",
@@ -190,13 +196,19 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
     keep(dirname(run.path), join(basename(run.tree), folder), found);
     const log = logEvents(run.path);
     const last = log.findLast(({ kind }) => kind === run.end)?.data;
-    const ended = last?.reading ?? asRecord(last?.ending)?.outcome;
+    const reading = last?.reading ?? asRecord(last?.ending)?.outcome;
+    // A campaign's ending is its log's last event: one that goes on after an ending has none.
+    const ended = log.at(-1)?.kind === CAMPAIGN_ENDED ? log.at(-1)?.data.ending : undefined;
     return {
       name: run.name,
       log: join(basename(run.tree), folder, basename(run.path)),
       worktree: run.tree,
+      // The commit of each launch beside the log, oldest first, which is the source each ran; the
+      // worktree's own commit is where it stands when zipped, which can differ from every one.
+      ranAt: [...new Set(launchesOf(run.path).map(({ commit }) => commit))],
       ...standing(run.tree),
       events: log.length,
+      reading: isString(reading) ? reading : null,
       ended: isString(ended) ? ended : null,
     };
   });

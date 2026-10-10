@@ -71,7 +71,9 @@
  * anything is no ending: the refusal is printed and nothing is recorded.
  *
  * A move is recorded once it is made (`campaign.move`), with the reason the table gave, so the
- * log holds what was decided beside what was done.
+ * log holds what was decided beside what was done. Each run of the command keeps a receipt
+ * beside the log, `launch-run-<n>.json`, as a launch keeps a round's: its flags, the commit the
+ * worktree stands at and the load it started under (`keepReceipt`).
  *
  * **A move that solves waits for the host.** A Builder session and a comparison start once the
  * host's one-minute load is at or under its cores, since a solve's wall counts the clock.
@@ -93,7 +95,7 @@ import { latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { taskStates, taskVersion } from "#src/kernel/task.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
-import { parseArgs } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -102,7 +104,9 @@ import { dirname } from "#src/meta/path.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
-import { campaignLog, openCampaign, packNamed } from "./campaign.ts";
+import { launchesOf, writeReceipt } from "../runs/launch.ts";
+import { standing } from "../runs/pulse.ts";
+import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
 import { PRACTICE, prepareCommand } from "./prepare.ts";
@@ -587,6 +591,29 @@ function examLines(events: readonly LogEvent[], values: Values, ending: string):
   ];
 }
 
+/**
+ * Keep this run of the command on record as a launch keeps a round: `launch-run-<n>.json` beside
+ * the log, with the flags, the commit and the load it started under (`Receipt`, `launch.ts`). The
+ * log holds the host's code by content and no commit, and the opening keeps the terms and not the
+ * flag line, so until 10 October a run under this command was on no record: the flag line of the
+ * run that recorded the setting of the second campaign from a prompt on the test host (120 minutes
+ * and 12 tasks where its flag file named 8 and 6) could not be traced. A rehearsal keeps none,
+ * since its seats are scripts and it runs where it is told.
+ */
+function keepReceipt(log: string, args: readonly string[]): void {
+  mkdirSync(dirname(log), { recursive: true });
+  const runs = launchesOf(log).filter(({ session }) => session.startsWith("run-")).length;
+  writeReceipt(log, `run-${String(runs + 1)}`, {
+    at: new Date().toISOString(),
+    pid: runtimeProcess.pid,
+    flags: [...args],
+    envFile: null,
+    ...standing(REPO),
+    load: HOST.load(),
+    cores: HOST.cores,
+  });
+}
+
 /** Record how the campaign ended, as its last event, unless that is what its last event says. */
 function ended(log: string, events: readonly LogEvent[], decided: Extract<Decided, { move: "end" }>): void {
   const last = events.at(-1);
@@ -641,6 +668,7 @@ export async function harnessBuilder(
     );
   }
   let opening = opened(log, given, paid);
+  if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };

@@ -1428,6 +1428,32 @@ describe("the scored set", () => {
     expect(scoredSet(released, 12, "contract-a")).not.toContain("v3");
   });
 
+  it("takes the newest epoch's tasks first, and fills the rest from the epochs before by hash", () => {
+    // The simulated climb of 10 October: after two promotions a draw over every epoch at once
+    // took two or three tasks the reference failed out of 19, and three comparisons read one win
+    // short. The tasks written since the last promotion are the exam, so they come first, whole.
+    const climbed: LogEvent[] = [
+      ...heldOut(held),
+      { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
+      ...heldOut(["v7", "v8"]),
+    ];
+    const drawn = scoredSet(climbed, 4, "contract-a");
+    expect(drawn.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
+    expect(drawn.slice(2)).toEqual(scoredSet(heldOut(held), 2, "contract-a"));
+    // Within the newest epoch the hash still chooses, so no result does.
+    expect(scoredSet(climbed, 1, "contract-a")).toEqual(scoredSet(heldOut(["v7", "v8"]), 1, "contract-a"));
+    // A target past the held-out count scores them all, newest first.
+    expect(scoredSet(climbed, 12, "contract-a")).toHaveLength(8);
+    // A task released or exhausted in the newest epoch leaves room for an older one.
+    const released: LogEvent[] = [
+      ...climbed,
+      { at, kind: TASK_STATE, data: { version: "v8", state: "released" } } as const,
+    ];
+    const after = scoredSet(released, 4, "contract-a");
+    expect(after[0]).toBe("v7");
+    expect(after.slice(1)).toEqual(scoredSet(heldOut(held), 3, "contract-a"));
+  });
+
   it("is every held-out task where the campaign holds fewer than were asked for", () => {
     expect(scoredSet(heldOut(held), 12, "contract-a").toSorted()).toEqual(held);
     expect(scoredSet([], 12, "contract-a")).toEqual([]);

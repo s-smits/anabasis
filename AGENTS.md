@@ -506,8 +506,8 @@ head comments are the full account. The short form follows.
 harnesses, its setting, its scored tasks, its solves a side, its level, the budgets it will be read
 at, its dollar cap and, where given, its prediction (`--predict`). One continued from its log
 keeps those terms, and one asked for again on other terms is refused. The scored tasks are
-`--target` of the held-out ones, drawn by the contract's hash, less two kinds the draw leaves
-out: a task with no valid answer after two comparisons, until a person labels it
+`--target` of the held-out ones, the newest epoch's first and within an epoch drawn by the
+contract's hash, less two kinds the draw leaves out: a task with no valid answer after two comparisons, until a person labels it
 (`awaitingLabel`), and one both harnesses answered in every solve of two comparisons under the
 setting, which can only tie again or be lost (`exhausted`). A third of the latter stays in by
 the same hash, so that a harness that breaks what the reference answers still shows its losses.

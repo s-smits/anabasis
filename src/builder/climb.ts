@@ -53,24 +53,44 @@ function shareOf(solves: readonly (boolean | null)[]): Share | null {
   return judged.length === 0 ? null : { valid: judged.filter(Boolean).length, solves: judged.length };
 }
 
-/** The epochs of a log, oldest first. A log with no promotion is one epoch. */
-export function epochsOf(events: readonly LogEvent[]): Epoch[] {
+/** Where each epoch starts: the log's opening, then each promotion. */
+function boundsOf(events: readonly LogEvent[]): { index: number; harness: string }[] {
   const promotions = events.flatMap(({ kind, data }, index) =>
     kind === PROMOTED && isString(data.harness) ? [{ index, harness: data.harness }] : [],
   );
+  return [{ index: 0, harness: "starter" }, ...promotions];
+}
+
+/** The task versions that passed their gate in each epoch, oldest epoch first: the tasks written
+ *  under one reference harness, which the comparison draws from newest epoch down (`scoredSet`). */
+export function tasksByEpoch(events: readonly LogEvent[]): string[][] {
+  const bounds = boundsOf(events);
+  return bounds.map(({ index: from }, nth) => {
+    const to = bounds[nth + 1]?.index ?? null;
+    return events.flatMap(({ kind, data }, at) =>
+      at >= from &&
+      (to === null || at < to) &&
+      kind === "task.gate" &&
+      data.outcome === "passed" &&
+      isString(data.version)
+        ? [data.version]
+        : [],
+    );
+  });
+}
+
+/** The epochs of a log, oldest first. A log with no promotion is one epoch. */
+export function epochsOf(events: readonly LogEvent[]): Epoch[] {
   const starter = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
   const conditions = conditionsOf(events);
   const solves = solvesIn(events);
-  const bounds = [{ index: 0, harness: "starter" }, ...promotions];
+  const bounds = boundsOf(events);
+  const byEpoch = tasksByEpoch(events);
   return bounds.map(({ index: from, harness: reference }, nth) => {
     const next = bounds[nth + 1];
     const to = next?.index ?? null;
     const within = (at: number) => at >= from && (to === null || at < to);
-    const tasks = events.flatMap(({ kind, data }, at) =>
-      within(at) && kind === "task.gate" && data.outcome === "passed" && isString(data.version)
-        ? [data.version]
-        : [],
-    );
+    const tasks = byEpoch[nth] ?? [];
     const held = new Set(tasks);
     const builds = events.filter(({ kind }, at) => within(at) && kind === "build.finished");
     const comparisons = events.flatMap(({ kind, data }, at) =>

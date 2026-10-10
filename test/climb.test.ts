@@ -98,13 +98,13 @@ describe("the climb", () => {
         "1",
         "--sessions",
         "1",
-        // Every held-out task is scored. The scored set is drawn by hash from the tasks of every
-        // epoch (`scoredSet`), so a target of 8 over the 19 tasks the third epoch holds drew two or
-        // three the reference fails and left the comparison one win short three times (climb-9,
-        // 10 October): the draw's part in the climb is the operator's open row, and no result of
-        // this test says anything about it.
+        // The target the simulated climb stalled at on 10 October (climb-9): drawn by hash from
+        // the tasks of every epoch at once, 8 over the 19 tasks the third epoch held took two or
+        // three the reference fails and left the comparison one win short three times. The draw
+        // now takes the newest epoch's tasks first (`scoredSet`), and this run is the proof that
+        // the third epoch reads its step at the target a real campaign runs near.
         "--target",
-        "24",
+        "8",
         "--exam-tasks",
         "6",
         "--patience",

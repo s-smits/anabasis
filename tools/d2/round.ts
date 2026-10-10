@@ -19,7 +19,8 @@
  *
  * The sets are the log's (`prepare.ts`): the released tasks are the Builder's practice. The scored
  * set is the tasks `--tasks` names by id, where the operator chooses them, as the first round has
- * it. Without it the set is `--target` of the held-out tasks, drawn by the contract's hash alone.
+ * it. Without it the set is `--target` of the held-out tasks, the newest epoch's first and within an
+ * epoch drawn by the contract's hash alone.
  * Either way it is fixed before any solve, so that no harness's results choose it
  * (`src/builder/round.ts`, `scoredSet`).
  *

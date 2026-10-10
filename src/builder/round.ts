@@ -109,6 +109,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
 import type { RefereeFinding, Ruling } from "../review/referee.ts";
+import { tasksByEpoch } from "./climb.ts";
 import {
   asBudget,
   compared,
@@ -224,17 +225,29 @@ const TASK_STATE = "task.state";
 
 /**
  * The tasks a comparison scores: `target` of the held-out tasks a log holds, or all of them where
- * it holds fewer, drawn by the contract's hash and nothing else (`draw`). The hash is fixed before
- * any task exists, so no result chooses the set, and a task written since takes a place by its own
- * rank and moves no other's. A task with no valid answer on record, after two comparisons that cut
- * no solve of it at a limit, is left out until a person has labelled it (`awaitingLabel`), and so
- * is one both harnesses answered in every solve of two comparisons under the setting, which can
- * only tie again (`exhausted`).
+ * it holds fewer, taken from the newest epoch down and within an epoch drawn by the contract's
+ * hash and nothing else (`draw`). The tasks written since the last promotion are the exam the
+ * reference harness has not answered, so they come first, whole; what room is left is filled
+ * from the epoch before, by the same hash, and so on down, which is the regression check. The
+ * epoch chooses the set and no result does: the hash is fixed before any task exists, and which
+ * epoch a task is in is where it passed its gate (`tasksByEpoch`). Until 10 October the draw was
+ * over every epoch at once, and after two promotions in the simulated climb a target of 8 over
+ * 19 held tasks drew two or three the reference failed, so three comparisons read one win short
+ * and the campaign stopped (`docs/plan.md`, B14). A task with no valid answer on record, after two
+ * comparisons that cut no solve of it at a limit, is left out until a person has labelled it
+ * (`awaitingLabel`), and so is one the reference answered in every solve of two comparisons under
+ * the setting, which can only tie again, but for the third of them the hash keeps (`exhausted`).
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string): string[] {
   const aside = new Set([...awaitingLabel(events), ...exhausted(events)]);
-  const held = taskSets(events).held.filter((version) => !aside.has(version));
-  return draw(held, Math.min(target, held.length), contract);
+  const held = new Set(taskSets(events).held.filter((version) => !aside.has(version)));
+  const count = Math.min(target, held.size);
+  const scored: string[] = [];
+  for (const epoch of tasksByEpoch(events).toReversed()) {
+    const pool = epoch.filter((version) => held.has(version));
+    scored.push(...draw(pool, Math.min(count - scored.length, pool.length), contract));
+  }
+  return scored;
 }
 
 /** The solves still to run: slot by slot over the tasks, the harnesses taking the first place in

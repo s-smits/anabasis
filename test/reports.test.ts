@@ -17,6 +17,7 @@ import {
   pairsReported,
   promoted,
   stopRule,
+  unansweredTwice,
 } from "../src/kernel/reports.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -504,6 +505,21 @@ describe("the tasks that go to a person as possibly infeasible", () => {
       return [...whole.slice(0, -1), ...solved(session, "hard", "base", [P, F]), ...whole.slice(-1)];
     };
     expect(awaitingLabel(lower(lower(start, "b-1"), "b-2"))).toEqual([]);
+  });
+
+  it("go to the Builder as well, cut at a limit or not, while they are held out and no solve answered them", () => {
+    // t-5 (10 October): two tasks no solve answered in two comparisons, every solve of them cut
+    // at 2 told turns, so no person was asked either; the draw released another task.
+    expect(unansweredTwice(once)).toEqual([]);
+    expect(unansweredTwice(twice)).toEqual(["hard"]);
+    const cut = compared(compared(start, "b-1", "h2", "turns-ended"), "b-2", "h3", "turns-ended");
+    expect(unansweredTwice(cut)).toEqual(["hard"]);
+    expect(awaitingLabel(cut)).toEqual([]);
+    // A valid answer anywhere settles it, and a released or refused task is no held-out one.
+    expect(unansweredTwice(compared(twice, "b-3", "h4", P))).toEqual([]);
+    expect(unansweredTwice([...twice, event("task.state", { version: "hard", state: "released" })])).toEqual(
+      [],
+    );
   });
 });
 

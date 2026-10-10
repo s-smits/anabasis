@@ -26,6 +26,7 @@ import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shap
 import { type Paired, pairings, pairsOf } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { passed, ranUnder, solvesIn } from "./solves.ts";
+import { taskSets } from "./task.ts";
 
 /** A comparison's last report, with where the comparison stands in the log: at its first report. */
 interface Reported {
@@ -360,6 +361,28 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
     }
   }
   return [...runs].flatMap(([task, run]) => (run >= UNSOLVED_RUN ? [task] : []));
+}
+
+/**
+ * The held-out tasks no solve has answered in `UNSOLVED_RUN` or more comparisons, cut at a limit
+ * or not: what a Builder has to work on, where it is given them. A proposal for the operator, made
+ * on 10 October after t-5 (subset sum) held four to five such tasks of ten while its last three
+ * Builder sessions passed every practice task and changed nothing, and t-4, t-9 and t-10 stopped
+ * the same way after a promotion. `awaitingLabel` is the question to a person, which leaves out a
+ * task cut at a limit; this leaves nothing out, since a task cut twice is as much beyond the
+ * harness as one answered wrongly twice. A valid answer anywhere on record settles it either way.
+ */
+export function unansweredTwice(events: readonly LogEvent[]): string[] {
+  const ran = ranUnder(events);
+  const feasible = new Set(ran.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])));
+  const runs = new Map<string, number>();
+  for (const report of lastReports(events)) {
+    for (const { task } of pairsReported(events, report)) {
+      if (!feasible.has(task)) runs.set(task, (runs.get(task) ?? 0) + 1);
+    }
+  }
+  const held = new Set(taskSets(events).held);
+  return [...runs].flatMap(([task, run]) => (run >= UNSOLVED_RUN && held.has(task) ? [task] : []));
 }
 
 /**

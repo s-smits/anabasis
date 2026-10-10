@@ -72,7 +72,7 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | 3 | `lanes --out <dir> [--lanes 1-4,7]` | `lanes/NN-prompt.md`, `launch.md` |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
-| lanes 1, 5 | `grade --log <log> --bundle <pack> --task <taskId> --answer <file>` | nothing: one verdict line; Mac only |
+| lanes 1, 5 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line. `--bundle` names a stored pack; a campaign that drafted its exam names none |
 
 One investigation reads one campaign. Two campaigns of one pack, one under a checker and one under
 its repair, are read apart, and lane 6 of the later one joins them.

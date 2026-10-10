@@ -44,6 +44,10 @@ export interface Solve {
    *  start named any (2026-10-09). */
   readonly comparison: string | null;
   readonly wallSeconds: number;
+  /** The model's own turns its start held it to, or null where it was told no bound. A report's
+   *  tally "at its limits" is at this bound, and t-10 on 10 October was read as at 2 turns where
+   *  its solves were told 3: the ladder's rung was taken for the setting. */
+  readonly modelTurns: number | null;
   /** The host's one-minute load when it started, and the cores that is a load on; null where its
    *  start holds none, as before 2026-10-09 for the cores. */
   readonly load: number | null;
@@ -245,6 +249,7 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
     if (kind === "solve.started") {
       const condition = conditions.get(text(data.condition));
       const [minute] = items(data.load);
+      const limits = asRecord(data.limits);
       solves.set(id, {
         id,
         index,
@@ -253,7 +258,8 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
         condition: text(data.condition),
         side: condition?.side ?? "",
         comparison: isString(data.comparison) ? data.comparison : null,
-        wallSeconds: count(asRecord(data.limits)?.wallSeconds),
+        wallSeconds: count(limits?.wallSeconds),
+        modelTurns: isNumber(limits?.modelTurns) ? limits.modelTurns : null,
         load: isNumber(minute) ? minute : null,
         cores: isNumber(data.cores) ? data.cores : null,
         outcome: null,
@@ -422,8 +428,15 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));
   const blocking = refused.flatMap((solve) => strings(log.verdicts.get(solve.id)?.blocking));
-  const [top] = Object.entries(countBy(blocking, (check) => check)).sort(([, a], [, b]) => b - a);
-  const lopsided = top !== undefined && new Set(blocking).size > 1 && top[1] > refused.length / 2;
+  // One check refusing most answers, and no other refusing as many: t-10's one refusal on 10
+  // October was blocked by all four checks, and the first of four equal counts read as a fault
+  // of one check's.
+  const [top, next] = Object.entries(countBy(blocking, (check) => check)).sort(([, a], [, b]) => b - a);
+  const lopsided =
+    top !== undefined &&
+    new Set(blocking).size > 1 &&
+    top[1] > refused.length / 2 &&
+    (next?.[1] ?? 0) < top[1];
   const carried = log.of("task.proposed").filter((data) => isString(data.carried)).length;
   return [
     ...(authored > 0
@@ -491,13 +504,17 @@ export function instrumentTriggers(log: Index): Trigger[] {
  *  spread of the budget (lane 9), the test at each budget (lane 10), and each harness by itself
  *  (`VALID BY HARNESS`, lane 23). */
 function tallyTriggers(compared: readonly Compared[]): Trigger[] {
-  const decided = compared.flatMap(({ session, last }) => {
+  const decided = compared.flatMap(({ session, last, scoring }) => {
     const scored = asRecord(last.scored);
     const [wins, losses, ties] = [count(scored?.wins), count(scored?.losses), count(scored?.ties)];
     const tasks = wins + losses + ties;
+    // The bound its solves were told, named beside "at its limits" so that a ladder's rung is not
+    // taken for it; a log of 8 October told its solves none.
+    const told = scoring.find((solve) => solve.modelTurns !== null)?.modelTurns ?? null;
+    const limits = told === null ? "at its limits" : `at its limits (turns ${String(told)})`;
     return scored === null || tasks === 0
       ? []
-      : [{ session, last, wins, losses, ties, tasks, unsolved: count(scored.unsolved) }];
+      : [{ session, last, wins, losses, ties, tasks, limits, unsolved: count(scored.unsolved) }];
   });
   const tied = decided.filter(({ ties }) => ties > 0);
   // The plan's condition for an objective: more than half of the tasks tie with valid answers on
@@ -518,7 +535,7 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
     RECORDED_UNITS.flatMap((unit) => (isNumber(row[unit]) ? [`${unit} ${String(row[unit])}`] : [])).join(
       ", ",
     );
-  const byBudget = decided.flatMap(({ session, last, wins, losses, ties }) => {
+  const byBudget = decided.flatMap(({ session, last, wins, losses, ties, limits }) => {
     const read = items(last.budgets).flatMap((budget) => {
       const row = asRecord(budget) ?? {};
       // A report written before 2026-10-09 says how many scored tasks a CPU budget could not be
@@ -530,11 +547,11 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
     });
     return read.length === 0
       ? []
-      : [`${session}: ${String(wins)}-${String(losses)}-${String(ties)} at its limits; ${read.join("; ")}`];
+      : [`${session}: ${String(wins)}-${String(losses)}-${String(ties)} ${limits}; ${read.join("; ")}`];
   });
   // Each harness by itself: the tasks by how many of their solves were valid, none first. For the
   // plan's first round the reference harness is the starter, and this is what its gate reads.
-  const byHarness = decided.flatMap(({ session, last }) => {
+  const byHarness = decided.flatMap(({ session, last, limits }) => {
     const census = (found: JsonValue | undefined, at: string) => {
       const valid = asRecord(found);
       const tasks = (side: JsonValue | undefined) =>
@@ -544,7 +561,7 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
       return valid === null ? [] : [`reference ${tasks(valid.old)}, new ${tasks(valid.fresh)} ${at}`];
     };
     const read = [
-      ...census(last.valid, "at its limits"),
+      ...census(last.valid, limits),
       ...items(last.budgets).flatMap((budget) => {
         const row = asRecord(budget) ?? {};
         return census(row.valid, `at ${budgetOf(row)}`);

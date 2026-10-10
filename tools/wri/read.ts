@@ -484,6 +484,10 @@ function solveTriggers(log: Index): Trigger[] {
   // reading. A comparison's report sums what was measured, so a budget or a spread in `cpu` is
   // read low on these solves.
   const cut = done.filter((solve) => solve.unmeasured > 0);
+  // A meter that reads zero on every finished solve measured nothing: it counts only the children
+  // a command waited for, and reads zero under Bubblewrap (AGENTS.md, section 7). On t-10 all 143
+  // solves read 0 on 10 October, and no line said so.
+  const zero = done.length > 0 && done.every((solve) => solve.cpu === 0);
   const cutBy = log.compared.flatMap(({ session, scoring }) => {
     const mine = scoring.filter((solve) => solve.unmeasured > 0).length;
     return mine === 0 ? [] : [`${session}: ${share(mine, scoring.length)} of its solves`];
@@ -530,6 +534,14 @@ function solveTriggers(log: Index): Trigger[] {
               `${share(cut.length, done.length)} finished solves cut a command before its CPU time was read`,
               ...cutBy,
             ].join("; "),
+          ),
+        ]
+      : []),
+    ...(zero
+      ? [
+          fired(
+            "CPU UNMEASURED",
+            `${share(done.length, done.length)} finished solves read 0 CPU seconds: the meter counts only the children a command waited for, and reads zero under Bubblewrap`,
           ),
         ]
       : []),

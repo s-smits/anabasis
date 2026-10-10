@@ -14,19 +14,20 @@
  * v1 check declared kept a tool's operands inside what the check could read, and these checks
  * run no tool.
  */
-import { type Draft, draftFaults } from "#src/examiner/draft.ts";
+import { type Draft, draftFaults, draftOf } from "#src/examiner/draft.ts";
 import { doNothingFaults, readChecker } from "#src/kernel/acceptance.ts";
+import { read } from "#src/kernel/log.ts";
 import { CHECK_PROGRAM_CONTRACT, openVerifier, readBrief } from "#src/kernel/verify.ts";
 import { EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
 import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { join } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
 
 /** A draft as a pack on disk. */
-interface Staged {
+export interface Staged {
   /** The pack, laid out as a stored bundle is. */
   readonly bundle: string;
   /** Its check program, staged without the tasks and the controls, as a verifier opens it. */
@@ -35,6 +36,29 @@ interface Staged {
 
 /** How many characters of the draft's digest name its folder. */
 const NAMED = 16;
+
+/** Where `stageExam` stages `draft` under a campaign's folder, whether or not it has. */
+function examStaged(dir: string, draft: Draft): Staged {
+  const root = join(dir, "exams", hashJsonValue(draft).slice(0, NAMED));
+  return { bundle: join(root, "bundle"), checks: join(root, "checks") };
+}
+
+/**
+ * The exam a campaign's log drafted, where the campaign staged it, for a reader that may write
+ * nothing under the campaign's folder (`tools/wri/wri.ts grade`): null where the log drafted no
+ * exam, so the campaign's pack is a stored one, and refused where the draft was never staged.
+ * On 10 October a lane of t-10's investigation was given `<campaign>/checks`, which only a
+ * campaign over a stored pack has, and stopped on ENOENT.
+ */
+export function stagedExamOf(log: string): Staged | null {
+  const draft = draftOf(read(log));
+  if (draft === null) return null;
+  const staged = examStaged(dirname(log), draft);
+  if (!existsSync(staged.checks)) {
+    throw new Error(`the campaign's drafted exam is not staged at ${staged.checks}`);
+  }
+  return staged;
+}
 
 /** The id of an example task, by its place in the draft. */
 const exampleId = (index: number): string => `ex-${String(index + 1).padStart(3, "0")}`;
@@ -45,9 +69,7 @@ const exampleId = (index: number): string => `ex-${String(index + 1).padStart(3,
  * holds it was staged whole.
  */
 export function stageExam(dir: string, draft: Draft): Staged {
-  const root = join(dir, "exams", hashJsonValue(draft).slice(0, NAMED));
-  const bundle = join(root, "bundle");
-  const checks = join(root, "checks");
+  const { bundle, checks } = examStaged(dir, draft);
   if (existsSync(checks)) return { bundle, checks };
   const model = join(bundle, "correctness-model");
   mkdirSync(model, { recursive: true });

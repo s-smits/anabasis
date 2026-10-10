@@ -7,7 +7,7 @@
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
- *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl --bundle <pack> --task <taskId> --answer <file>
+ *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
  *
  * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
  *   the host hash of the last condition beside this checkout's.
@@ -20,6 +20,10 @@
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
  * - `grade` puts one answer to the campaign's own checker and prints the verdict in one line. It
  *   writes nothing and logs nothing. It needs the pack and its tool tree, and the Mac's verifier wall.
+ *   A campaign over a stored pack names it with `--bundle`, and its checks stand beside the log; a
+ *   campaign that drafted its exam names none, and its exam is read where the campaign staged it
+ *   (`exams/<digest>/`, `tools/d2/exam.ts`). On 10 October t-10's lane 1 was given `<campaign>/checks`
+ *   for a drafted exam and stopped on ENOENT.
  *
  * No verb starts a solve, a session or a round, and none appends to a log.
  */
@@ -34,6 +38,7 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
 import { treeContent } from "#src/solve/harness.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
+import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import {
@@ -211,13 +216,19 @@ function synthesis(): number {
 }
 
 async function grade(): Promise<number> {
-  const [log, bundle, taskId] = [needed("log"), needed("bundle"), needed("task")];
-  // The campaign's staged check program stands beside its log; the tasks an Examiner wrote are in
-  // the log and in no pack.
+  const [log, taskId] = [needed("log"), needed("task")];
+  // The pack and the check program: the stored pack `--bundle` names, whose checks the campaign
+  // staged beside its log, or the exam the log drafted, where the campaign staged it.
+  const staged = values.bundle === undefined ? stagedExamOf(log) : null;
+  if (values.bundle === undefined && staged === null) {
+    throw new Error("name --bundle: the campaign drafted no exam of its own, so its pack is a stored one");
+  }
+  const { bundle, checks } = staged ?? { bundle: needed("bundle"), checks: join(dirname(log), "checks") };
+  // The tasks an Examiner wrote are in the log and in no pack.
   const tasks = [...writtenTasks(read(log)), ...readPack(bundle).tasks];
   const task = tasks.find((each) => each.taskId === taskId);
   if (task === undefined) throw new Error(`neither the log nor the pack holds task ${taskId}`);
-  const verify = openVerifier({ checks: join(dirname(log), "checks"), tools: join(bundle, ".toolchain") });
+  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
   console.log(spelled(await verify(task, capturedJsonParse(readFileSync(needed("answer"), "utf8")))));
   return 0;
 }

@@ -5,12 +5,20 @@
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { type Draft, draftExam, draftFaults, draftOf } from "../src/examiner/draft.ts";
-import { type LogEvent, read } from "../src/kernel/log.ts";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
+import { append, type LogEvent, read } from "../src/kernel/log.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "../src/meta/filesystem.ts";
+import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { draftReading, stageExam } from "../tools/d2/exam.ts";
+import { draftReading, stagedExamOf, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
 
 const TOOL_USE = { stopReason: "toolUse" } as const;
@@ -239,6 +247,31 @@ describe("a draft read without a model", () => {
     // The check program is staged without the tasks and the controls, which hold what is hidden.
     expect(readFileSync(join(staged.checks, "evaluator.ts"), "utf8")).toBe(SOUND.evaluator);
     expect(() => readFileSync(join(staged.checks, "controls.json"), "utf8")).toThrow();
+  });
+
+  it("tells a reader that writes nothing where a campaign staged the exam its log drafted", () => {
+    const drafted = (dir: string) => {
+      mkdirSync(dir, { recursive: true });
+      const log = join(dir, "log.jsonl");
+      append(log, "exam.drafted", {
+        session: "d-1",
+        draft: parseJsonAs<JsonObject>(capturedJsonStringify(SOUND)),
+      });
+      return log;
+    };
+    // Staged by the campaign: the staged pack and checks. Never staged: refused, and not written.
+    const campaign = join(root, "campaign");
+    const log = drafted(campaign);
+    const staged = stageExam(campaign, SOUND);
+    expect(stagedExamOf(log)).toEqual(staged);
+    const unstaged = drafted(join(root, "unstaged"));
+    expect(() => stagedExamOf(unstaged)).toThrow("is not staged at");
+    expect(existsSync(join(root, "unstaged", "exams"))).toBe(false);
+    // A log that drafted nothing has a stored pack, and the reader says so with null.
+    mkdirSync(join(root, "stored"), { recursive: true });
+    const stored = join(root, "stored", "log.jsonl");
+    append(stored, "contract.frozen", { contract: "c", checks: "k" });
+    expect(stagedExamOf(stored)).toBeNull();
   });
 
   it("finds no fault in a sound draft, and tells the faults of one whose check passes everything", async () => {

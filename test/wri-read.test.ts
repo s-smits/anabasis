@@ -229,16 +229,20 @@ describe("the whole-run investigation's reader", () => {
     // A session a stop cut leaves no end record, and its writes are all there is of its harness.
     const stopped = [
       ...events,
-      { at: new Date(START).toISOString(), kind: "build.started" as EventKind, data: { session: "b-2", parent: "hc" } },
+      {
+        at: new Date(START).toISOString(),
+        kind: "build.started" as EventKind,
+        data: { session: "b-2", parent: "hc" },
+      },
       {
         at: new Date(START).toISOString(),
         kind: "build.call" as EventKind,
         data: { session: "b-2", tool: "write", args: { path: "agent/tools.mjs" } },
       },
     ];
-    expect(
-      overview(stopped).triggers.findLast(({ name }) => name === "HARNESS CHANGED")?.detail,
-    ).toBe("b-2: hc to what a stop left unsaved; written by its file tools: agent/tools.mjs");
+    expect(overview(stopped).triggers.findLast(({ name }) => name === "HARNESS CHANGED")?.detail).toBe(
+      "b-2: hc to what a stop left unsaved; written by its file tools: agent/tools.mjs",
+    );
     expect(detail("TOOLS EDITED")).toBe("b-1: agent/tools.mjs");
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
       "b-1: no practice solve ran under hc, the harness measured; the last ran under hb",
@@ -606,5 +610,74 @@ describe("the reader of the load a comparison's solves started under", () => {
     ]);
     expect(idle("LOAD MOVED")).toEqual([]);
     expect(read([["b-1", [30, 34]]])("LOAD MOVED")).toEqual([]);
+  });
+});
+
+describe("the reader of a comparison whose solves were told a bound, on a host whose meter reads zero", () => {
+  // t-10 on 10 October: every solve told 3 of the model's turns, every finished solve's CPU 0, and
+  // one rejection blocked by all four checks.
+  const log: LogEvent[] = [];
+  const put = (kind: EventKind, data: JsonObject) => {
+    log.push({ at: new Date(START + log.length * 1_000).toISOString(), kind, data });
+  };
+  const made = (id: string, harness: string, ending: JsonObject) => {
+    const ran = condition("v1", harness);
+    put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+    put("solve.started", {
+      solve: id,
+      condition: conditionId(ran),
+      limits: { wallSeconds: 100, modelTurns: 3 },
+      comparison: "t-1",
+    });
+    put("solve.call", { solve: id, turn: 1, tool: "submit", isError: false });
+    put("solve.finished", {
+      solve: id,
+      ending,
+      seconds: 5,
+      responseModels: ["m-1"],
+      cpu: { seconds: 0, unmeasured: 0 },
+    });
+  };
+  put("contract.frozen", { contract: "c1", checks: "k1" });
+  put("checker.read", { contract: "c1", checks: "k1", faults: [], rows: [] });
+  put("task.proposed", { version: "v1" });
+  put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
+  put("build.started", { session: "t-1", parent: "hp", tasks: [] });
+  put("build.finished", { session: "t-1", ended: "finished", harness: "hc", changed: true });
+  const terms = { session: "t-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
+  put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
+  made("u1", "hp", { outcome: "fail", kind: "rejected" });
+  put("verdict", { solve: "u1", task: "v1", kind: "fail", blocking: ["check-a", "check-b"] });
+  made("u2", "hc", { outcome: "pass" });
+  put(REPORTED, {
+    ...REPORT,
+    ...terms,
+    solves: 1,
+    level: 0.1,
+    tasks: 1,
+    scored: { ...TESTED, wins: 1, p: 0.5, unsolved: 0 },
+    valid: { old: [1, 0], fresh: [0, 1] },
+    budgets: [{ turns: 2, ...TESTED, ties: 1, valid: { old: [1, 0], fresh: [1, 0] } }],
+    versions: ["v1"],
+    reading: "no-step",
+  });
+  const { triggers } = overview(log);
+  const said = (name: keyof typeof TRIGGERS) => triggers.find((trigger) => trigger.name === name)?.detail;
+
+  it("names the bound the solves were told beside the tally at its limits", () => {
+    expect(said("TALLY BY BUDGET")).toBe("t-1: 1-0-0 at its limits (turns 3); turns 2: 0-0-1");
+    expect(said("VALID BY HARNESS")).toBe(
+      "t-1: reference 1/0, new 0/1 at its limits (turns 3); reference 1/0, new 1/0 at turns 2",
+    );
+  });
+
+  it("reads no check as refusing most answers where every refusing check blocked the same ones", () => {
+    expect(said("FAILS ON ONE CHECK")).toBeUndefined();
+  });
+
+  it("says that a meter reading zero on every finished solve measured nothing", () => {
+    expect(said("CPU UNMEASURED")).toBe(
+      "2 of 2 finished solves read 0 CPU seconds: the meter counts only the children a command waited for, and reads zero under Bubblewrap",
+    );
   });
 });

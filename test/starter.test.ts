@@ -70,10 +70,12 @@ describe("the Starter Built Harness", () => {
       const again = join(dir, "again");
       writeStarter(again);
       expect((await openHarness(again)).digest).toBe(starter.digest);
-      // Its tools file says when a harness has tools of its own, and that is a comment: the Starter
-      // is the harness it was without it.
+      // Its tools file says what a harness's own tools are, and that is a comment: the Starter is the
+      // harness it was without it, and the one it was when the comment said to leave the list empty.
       const file = readFileSync(join(dir, "agent", "tools.ts"), "utf8");
-      expect(file).toStartWith("// Tools of the harness's own, for a harness that leaves the shell out");
+      expect(file).toStartWith(
+        "// Tools of the harness's own, which the solver has beside pi's coding tools",
+      );
       const bare = join(dir, "bare");
       writeHarness(bare, {
         spec: { presets: [...CODING_TOOLS], tools: [] },
@@ -105,13 +107,17 @@ describe("the account of a harness a Builder is handed", () => {
       // One row a part, and the rule that follows from them.
       for (const row of [
         "| agent/tools-spec.json | Which of pi's coding tools the solver has. |",
-        "| .toolchain/ | Every computation the harness adds, as programs the solver runs by name. |",
-        "| agent/BUILT_AGENTS.md | Words: what each program is for and how its result is read. |",
-        "| agent/tools.ts | Tools of the harness's own, for a harness that leaves the shell out. Empty otherwise. |",
+        "| .toolchain/ | Programs, which the solver runs by name from its shell. |",
+        "| agent/BUILT_AGENTS.md | Words: what each program and tool is for and how its result is read. |",
+        "| agent/tools.ts | Tools of the harness's own, which the solver has beside pi's tools. |",
       ]) {
         expect(HARNESS_ACCOUNT).toContain(row);
       }
-      expect(HARNESS_ACCOUNT).toContain("Put a computation in one place.");
+      // The choice between a program and a tool is the Builder's, told what each costs a solve.
+      expect(HARNESS_ACCOUNT).toContain("Which, and how many, is yours to choose");
+      expect(HARNESS_ACCOUNT).toContain("What each route costs a solve");
+      expect(HARNESS_ACCOUNT).not.toContain("same thing built a second time");
+      expect(HARNESS_ACCOUNT).not.toContain("for a harness without the shell");
       expect(HARNESS_ACCOUNT).toContain("It says nothing of\ntime or turns");
       for (const part of ["answer.json", "public/answer-format.json", ...CODING_TOOLS]) {
         expect(HARNESS_ACCOUNT).toContain(part);

@@ -209,9 +209,9 @@ beside it, gives the shapes with a worked example):
 | Part | Purpose |
 | --- | --- |
 | `agent/tools-spec.json` | Selects which of pi's coding tools the solver has |
-| `.toolchain/` | The programs. Every computation a harness adds is a program here, which the solver runs from its shell |
-| `agent/BUILT_AGENTS.md` | The guide: words about the programs, read once a task in the solver's system prompt |
-| `agent/tools.ts` | Tools of the harness's own, for a harness that leaves the shell out. Empty while the solver has the shell |
+| `.toolchain/` | The programs, which the solver runs by name from its shell |
+| `agent/BUILT_AGENTS.md` | The guide: words about the programs and the tools, read once a task in the solver's system prompt |
+| `agent/tools.ts` | Tools of the harness's own, which the solver has beside pi's tools; each call runs alone under the wall. Whether a computation is a program, a tool or both is the Builder's choice, told what each costs a solve (until 10 October a prompt told it to leave the list empty while the solver had the shell, a second limit of the kind section 2 forbids) |
 
 A harness is named by its digest, so a change to any part is another harness, and no solve under
 the old one counts for the new. The **Starter Built Harness** is pi's coding agent as pi releases

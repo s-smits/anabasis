@@ -61,7 +61,7 @@ import {
   symlinkSync,
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
@@ -260,16 +260,28 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
 }
 
 /** How much of its limits a finished solve used, as a sentence after its ending: the seconds from
- *  its start to its end, the verifier's among them, of its time limit, and the model's own turns.
- *  Empty where the log holds no end for the solve. A Builder that is not told this cannot tell a
- *  harness that passes with a minute to spare from one that passes at the limit, and the
- *  comparison is read at budgets shorter than the limit (`docs/plan.md`, Phase 2). */
+ *  its start to its end, the verifier's among them, of its time limit, the model's own turns, and
+ *  the tokens the model read and wrote over them. Empty where the log holds no end for the solve.
+ *  A Builder that is not told this cannot tell a harness that passes with a minute to spare from
+ *  one that passes at the limit, and the comparison is read at budgets shorter than the limit
+ *  (`docs/plan.md`, Phase 2). The tokens are the one measure of what a tool or a program costs a
+ *  solve that the Builder can act on (10 October): a promoted harness's solve read 8,600 to 13,200
+ *  tokens over two turns in t-4, t-9 and t-10, nearly all of it the prompt read twice. */
 export function usedText(events: readonly LogEvent[], solve: string): string {
   const { start, end } = solvesIn(events).find(({ id }) => id === solve) ?? {};
   const limits = limitsIn(start?.limits);
   if (!isNumber(end?.seconds) || !isNumber(end.turns) || limits === null) return "";
   const given = limits.modelTurns === undefined ? "" : ` of ${String(limits.modelTurns)}`;
-  return ` It took ${clockText(end.seconds)} of ${clockText(limits.wallSeconds)} and ${plural(end.turns, "model turn")}${given}.`;
+  const tokens = asRecord(end.tokens);
+  const count = (value: JsonValue | undefined) => (isNumber(value) ? value : 0);
+  const readTokens = ["input", "cacheRead", "cacheWrite"]
+    .map((key) => count(tokens?.[key]))
+    .reduce((sum, n) => sum + n, 0);
+  const counted =
+    tokens === null
+      ? ""
+      : `, and read ${String(readTokens)} tokens and wrote ${String(count(tokens.output))}`;
+  return ` It took ${clockText(end.seconds)} of ${clockText(limits.wallSeconds)} and ${plural(end.turns, "model turn")}${given}${counted}.`;
 }
 
 /** The first call of a solve whose arguments or result hold `quote`, by its number in the trace;
@@ -354,7 +366,7 @@ export function practiceTool(bench: Bench): AgentTool {
     name: "practice",
     label: "Practise",
     description:
-      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time and the model turns it took, the task's record under this harness and under the one you started from, the solve's id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve.",
+      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task's record under this harness and under the one you started from, the solve's id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve.",
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -577,8 +589,9 @@ export function finishTool(bench: Bench): AgentTool {
 }
 
 /** What a harness that opens gives a solver, a line for each of its four parts, and a note where
- *  two parts are doing one part's work: tools of its own beside the shell. A harness kept before
- *  the parts had one purpose each still opens, so this is said and not refused. */
+ *  one part makes another unreachable: programs under a solver with no shell. Until 10 October a
+ *  second note said that tools beside the shell were a program built twice; that was a steer, and
+ *  the account now states what each costs (`HARNESS.md`). */
 function opens(harness: Harness, tools: readonly string[]): string {
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);
@@ -588,11 +601,6 @@ function opens(harness: Harness, tools: readonly string[]): string {
     `Programs: ${programs.join(", ") || "none"}.`,
     `Guide: ${String(harness.guide?.length ?? 0)} characters.`,
     `Tools of its own: ${tools.join(", ") || "none"}.`,
-    ...(tools.length > 0 && presets.includes("bash")
-      ? [
-          "The solver has the shell and tools of the harness's own. A tool that runs what a program does is the same thing twice (HARNESS.md).",
-        ]
-      : []),
     ...(programs.length > 0 && !presets.includes("bash")
       ? ["The solver has no shell, so it can run none of the programs itself."]
       : []),

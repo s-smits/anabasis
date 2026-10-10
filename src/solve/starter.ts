@@ -40,15 +40,16 @@ import { join } from "../meta/path.ts";
 import { CODING_TOOLS } from "./coding-tools.ts";
 
 /**
- * The Starter's two files. Its tools file is the place a harness without the shell adds tools, and
- * says so; under the Starter it adds none. A comment is not in the bundle a harness is named by, so
- * the Starter is the harness it was before the comment was there.
+ * The Starter's two files. Its tools file is the place a harness adds tools of its own, and says
+ * so; under the Starter it adds none. A comment is not in the bundle a harness is named by, so the
+ * Starter is the harness it was before the comment was there, and the harness it was when the
+ * comment said to leave the list empty while the solver had the shell (until 10 October).
  */
 const STARTER = {
   spec: { presets: [...CODING_TOOLS], tools: [] },
-  tools: `// Tools of the harness's own, for a harness that leaves the shell out of its presets. While the
-// solver has the shell this list stays empty: what the harness computes is a program under
-// .toolchain/bin. HARNESS.md, beside harness/, gives both shapes.
+  tools: `// Tools of the harness's own, which the solver has beside pi's coding tools. The Starter adds
+// none. A harness adds one with defineDraftTool, and HARNESS.md, beside harness/, gives the shape
+// and what a tool costs a solve against a program under .toolchain/bin.
 import type { DomainHarnessFactory } from "@ana/agent-bundle";
 
 export const createDomainHarness: DomainHarnessFactory = () => ({
@@ -130,8 +131,9 @@ Hours count by the shift's length in the task, not by its clock times.
 };
 
 /**
- * The account's second example: a harness that leaves the shell out, which is where a tool of the
- * harness's own has a purpose. A test opens it and calls its tool under the wall.
+ * The account's second example: a harness with one tool of its own, shown without the shell so that
+ * the tool is the solver's one way to the computation. A test opens it and calls its tool under
+ * the wall.
  */
 export const WITHOUT_SHELL = {
   spec: {
@@ -174,10 +176,11 @@ export const createDomainHarness: DomainHarnessFactory = (task) => {
  * It gives each part of a harness one purpose. The first truss session shipped its checker three
  * times over: a command-line program, a tool that wrapped it, and a guide that described both; the
  * first buffer session kept its optimiser as a snippet in the guide, which each solver pasted and
- * ran (2026-10-09). Two harnesses built so cannot be read against each other, and a trace shows two
- * ways into one computation. So a computation is a program, the guide is words about the programs,
- * and a tool of the harness's own is for the one case a program cannot serve: a solver without the
- * shell.
+ * ran (2026-10-09). From then until 10 October the account answered with a rule: a computation is
+ * a program, and a tool of the harness's own is for a solver without the shell. That was a second
+ * limit on the Builder in a prompt (`AGENTS.md`, section 2), and in the ten campaigns run under it
+ * no harness declared a tool. Now the account states what each route costs a solve and leaves the
+ * choice to the Builder; the guide stays words, since pasted code shows in a trace under no name.
  */
 export const HARNESS_ACCOUNT = `# The Built Harness
 
@@ -187,15 +190,15 @@ reads four things under harness/ and nothing else there, and each has one purpos
 | Part | Its one purpose |
 |---|---|
 | agent/tools-spec.json | Which of pi's coding tools the solver has. |
-| .toolchain/ | Every computation the harness adds, as programs the solver runs by name. |
-| agent/BUILT_AGENTS.md | Words: what each program is for and how its result is read. |
-| agent/tools.ts | Tools of the harness's own, for a harness that leaves the shell out. Empty otherwise. |
+| .toolchain/ | Programs, which the solver runs by name from its shell. |
+| agent/BUILT_AGENTS.md | Words: what each program and tool is for and how its result is read. |
+| agent/tools.ts | Tools of the harness's own, which the solver has beside pi's tools. |
 
-Put a computation in one place. While the solver has the shell, that place is a program. A tool
-that runs what a program does, or a guide that carries code for the solver to paste, is the same
-thing built a second time: the solver then has two ways into it, and a trace no longer shows by
-name what was run. check_harness opens the four parts as a solve would, and preview_harness shows
-what the solver then reads.
+A computation reaches the solver as a program it runs from its shell, as a tool of the harness's
+own, or as both. Which, and how many, is yours to choose; the section on agent/tools.ts says what
+each costs a solve. Code in the guide for the solver to paste is neither: a trace then shows the
+pasted code and no name. check_harness opens the four parts as a solve would, and preview_harness
+shows what the solver then reads, its tools among it.
 
 ## What every solver has, whatever the harness
 
@@ -261,11 +264,13 @@ read against another's:
 ${EXAMPLE.guide.trimEnd()}
 \`\`\`
 
-## agent/tools.ts, for a harness without the shell
+## agent/tools.ts
 
-A harness may leave bash out of its presets, to hold the solver to what the harness gives it. The
-solver can then run no program, and tools of the harness's own are how it computes. This is the
-one case for them. Such a harness's tools-spec.json and tools.ts:
+Tools of the harness's own stand beside pi's tools in the solver's list, each under its own name
+with the description and the parameter schema you declare. The solver reads them in every turn, as
+it reads the guide, and calls one as it calls read or bash. A harness may also leave bash out of
+its presets, and the solver then computes through these tools alone. A harness with one tool,
+shown without the shell; its tools-spec.json and tools.ts:
 
 \`\`\`json
 ${capturedJsonStringify(WITHOUT_SHELL.spec, null, 2)}
@@ -291,6 +296,13 @@ ${WITHOUT_SHELL.tools.trimEnd()}
   last is passed as arguments or kept as files in the solver's working directory.
 - A name holds at most 128 characters, a label 256 and a description 4,000. No tool takes the name
   of one of the host's: ${CODING_TOOLS.join(", ")} or submit.
+
+What each route costs a solve, in the tokens the solver reads and writes. A tool's name,
+description and schema are in the solver's context on every turn, and a call to it is the
+arguments the schema names; what comes back is its text. A program is its name in the prompt and
+the guide's line on it, and a call to it is the command the solver types; what comes back is the
+command's output, whole unless the command cuts it. A trace names a tool by its name and a program
+by its command, and practice reports what each solve read and wrote.
 `;
 
 /** A harness as this module writes one out. */

@@ -308,8 +308,12 @@ describe("a Builder session", () => {
     // candidate against a public rule, and nothing returns a finished answer.
     expect(s.sent[0]).toContain("No program, tool or guide line returns a finished answer for a task");
     // Each part of a harness has one purpose: a computation is a program, and no tool beside it.
-    expect(s.sent[0]).toContain("every computation you add is a program there");
-    expect(s.sent[0]).toContain("Leave its list empty while the solver has the shell");
+    // Programs and tools are both the Builder's to choose, told what each costs; no sentence steers
+    // it from tools while the solver has the shell (that was a second limit in a prompt, lifted
+    // 10 October).
+    expect(s.sent[0]).toContain("Whether a computation is a program, a tool or both is yours to choose");
+    expect(s.sent[0]).not.toContain("Leave its list empty");
+    expect(s.sent[0]).not.toContain("same thing built twice");
     expect(s.sent[0]).toContain("test the candidate against a public rule and say what it does not meet");
     expect(s.sent[0]).not.toContain("says whether a candidate meets a rule");
     // What the rounds of 9 October showed of a guide and of the practice solves: four of the six
@@ -1076,6 +1080,23 @@ describe("what a practice solve used", () => {
     });
     expect(usedText(read(s.request.log), "s-used")).toBe(" It took 3:42 of 8:00 and 14 model turns.");
     expect(usedText(read(s.request.log), "s-none")).toBe("");
+    // A live solve's end carries its tokens, and the Builder is told what the solve read and wrote:
+    // the one measure of what a tool or a program costs a solve that it can act on.
+    append(s.request.log, "solve.started", {
+      solve: "s-counted",
+      condition: recordCondition(s.request.log, condition),
+      limits: { ...condition.limits, modelTurns: 10 },
+    });
+    append(s.request.log, "solve.finished", {
+      solve: "s-counted",
+      ending: { outcome: "pass" },
+      turns: 2,
+      seconds: 4.7,
+      tokens: { input: 4, cacheRead: 4105, cacheWrite: 4285, cacheWrite1h: 0, output: 131 },
+    });
+    expect(usedText(read(s.request.log), "s-counted")).toBe(
+      " It took 0:04 of 8:00 and 2 model turns of 10, and read 8394 tokens and wrote 131.",
+    );
   });
 });
 
@@ -1141,10 +1162,12 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     expect(calls[5]).toContain("hello-from-the-tool-tree");
     expect(calls[5]).toContain("installed-greeting");
     expect(calls[6]).toContain("harness/.toolchain/bin/named name your home");
-    // A line for each part of the harness, and a note where two parts do one part's work.
+    // A line for each part of the harness, and no note on tools beside the shell: the choice is the
+    // Builder's, and the account states what each costs.
     expect(calls[8]).toContain(
-      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 28 characters.\nTools of its own: scale_base, read_path.\nThe solver has the shell and tools of the harness's own.`,
+      String.raw`The harness opens.\npi's tools: bash.\nPrograms: greet, hello, real.\nGuide: 28 characters.\nTools of its own: scale_base, read_path.`,
     );
+    expect(calls[8]).not.toContain("same thing twice");
     expect(calls[9]).toContain(String.raw`/home\n# The Built Harness`);
     expect(calls[10]).toContain("Successfully replaced 1 block(s)");
     expect(calls[11]).toContain("Always multiply before you record.");

@@ -32,7 +32,9 @@
  * from measurement, and an author told it would write towards it.
  *
  * Since 2026-10-09 the prompt says that a task needs a valid answer, and one way to be sure of
- * one. A task is held out on the shape of its package, and nothing solves it first (`AGENTS.md`,
+ * one; since 10 October `try_answer` runs the checks on an instance with an answer of the
+ * Examiner's, and a walled shell computes, where before the Examiner could run nothing and said
+ * so (`session.ts`). A task is held out on the shape of its package, and nothing solves it first (`AGENTS.md`,
  * rule 9), so nothing but its author stands between the exam and a task no answer satisfies. In
  * the first campaign opened from a prompt an Examiner whose tasks had all tied pressed the next
  * ones to the margin, and two of seven asked for more addresses than their block had free: every
@@ -61,24 +63,33 @@ export interface Told {
 export const SYSTEM_PROMPT = [
   "You are the Examiner. You write tasks of one domain, on which a solving model is then measured. The domain's public rules, its answer format and its checks are fixed and are not yours to change: you write no rule and no check. A task is a family, a public input, which is all a solver reads of it, and hidden values, which only the checks receive.",
   "The solver is measured by comparison. Each task is solved several times by the solver with one set of tools, called a harness, and several times with another, every solve under the same fixed budget of turns and computing time. An answer that passes every check within that budget is valid, and on each task the harness that gives more valid answers wins. A task both harnesses answer validly every time tells them apart no more than one neither can answer. So what the exam needs is a task a better method answers validly within the budget and a worse one does not. You are not told how many tasks are wanted or how large the budget is, and you never see the measured solver: not its tools, its guide, its answers or its mistakes.",
-  "Write tasks a practitioner of the domain would call demanding and fair. Make several of the domain's requirements act together on a single answer, so that meeting one spends the margin another needs: requirements that only stand side by side are met one at a time. A limit, state or duty the field does not hold measures your wording rather than the solver, so add none. A solver that follows every public rule must never fail on a rule it could not read, so everything a task demands is in its public input and the public rules, and nothing a solver needs is in the hidden values. A task with no valid answer measures nothing, since every harness fails it alike: make sure one exists, which you can do by starting from an answer that keeps every rule and deriving the task from it. Vary what a task asks, not the names in it: an example with its numbers moved is the same task, and so is one with a limit or a size moved while the method that answered it still does.",
+  "Write tasks a practitioner of the domain would call demanding and fair. Make several of the domain's requirements act together on a single answer, so that meeting one spends the margin another needs: requirements that only stand side by side are met one at a time. A limit, state or duty the field does not hold measures your wording rather than the solver, so add none. A solver that follows every public rule must never fail on a rule it could not read, so everything a task demands is in its public input and the public rules, and nothing a solver needs is in the hidden values. A task with no valid answer measures nothing, since every harness fails it alike: make sure one exists, by starting from an answer that keeps every rule, deriving the task from it, and putting both to try_answer, which runs the checks on them and says which refuse the answer. An answer that passes can sit as close to a limit as you like, and the task is as demanding as the answer is hard to find. Vary what a task asks, not the names in it: an example with its numbers moved is the same task, and so is one with a limit or a size moved while the method that answered it still does.",
   "propose_tasks takes instances and puts each to the host's one gate, which reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. Of each it says held out, or refused with the gate's reason. A task that is held out is in the exam from then on. No solver is put to it while you wait, so you hear nothing more of it in this session. At your opening you are told one thing of each task the exam holds so far, the older and easier ones included: that one harness won it, that it was a tie between valid answers, that no answer to it has been valid yet, or that it is disputed, which is a rejected answer whose rejection is not settled.",
-  "read_example returns one task of the exam whole, for its shape. When you have no more tasks to propose, call finish. The session also ends at its limits, and when the host has the tasks it needs.",
+  "read_example returns one task of the exam whole, for its shape. try_answer runs the checks on an instance with an answer of yours and keeps nothing: no task enters the exam by it. bash, read and write are yours in a home of your own, empty at the start of the session and closed to everything but your work, for computing an instance or an answer; what you compute there enters the exam through propose_tasks alone. When you have no more tasks to propose, call finish. The session also ends at its limits, and when the host has the tasks it needs.",
 ].join("\n");
 
 export const NUDGE = "You have not called finish. Propose further tasks, or call finish.";
 
-/** The opening message: the domain's public contract, its checks by id and assertion, the session's
- *  limits, and every task the campaign holds with its one outcome, a line a task as `record.ts`
- *  renders it. */
+/** The opening message: the operator's brief where the campaign opened from one, the domain's
+ *  public contract, its checks by id and assertion, the session's limits, and every task the
+ *  campaign holds with its one outcome, a line a task as `record.ts` renders it. */
 export function firstMessage(
   contract: Contract,
   checks: readonly CheckRow[],
   listed: readonly string[],
   told: Told,
+  brief: string | null = null,
 ): string {
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
+    // The brief first, where the campaign opened from one: every session rereads the domain as the
+    // operator put it, and not only the exam drafted from it (10 October). The rules govern.
+    ...(brief === null
+      ? []
+      : [
+          `The domain, as the operator put it when the campaign opened. The rules below are the exam drafted from it and govern where the two differ:
+${brief}`,
+        ]),
     `Public rules of the domain:\n${contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n") || "(none)"}`,
     ...(contract.conventions === "" ? [] : [`Conventions: ${contract.conventions}`]),
     `Scope: ${contract.scope}`,

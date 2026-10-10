@@ -13,10 +13,10 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 type Valid = readonly [number, number, number];
 
 const at = "2026-10-09T00:00:00.000Z";
-const HELD = ["v1", "v2", "v3", "v4", "v5", "v6"];
-const HALF: Valid = [2, 2, 2];
-const ALL: Valid = [0, 0, 6];
-const NONE: Valid = [6, 0, 0];
+const HELD = ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12"];
+const HALF: Valid = [4, 4, 4];
+const ALL: Valid = [0, 0, 12];
+const NONE: Valid = [12, 0, 0];
 const PLAN: Plan = {
   limit: null,
   ladder: [],
@@ -57,7 +57,7 @@ function compared(
   } = {},
 ): LogEvent[] {
   const sides = { old: more.old ?? "start", fresh, starter: "start" };
-  const [wins, losses, ties] = more.tally ?? [2, 2, 2];
+  const [wins, losses, ties] = more.tally ?? [4, 4, 4];
   return [
     event("comparison.started", { session: id, ...sides, noise: more.noise ?? false }),
     event("comparison.reported", {
@@ -211,6 +211,31 @@ describe("what is built and what is compared", () => {
     });
   });
 
+  it("has tasks written before a comparison where the campaign holds fewer than it scores", () => {
+    // Six held of the twelve a comparison scores: the two campaigns on the operator's host (9 and
+    // 10 October) compared on 6 where the setting asked for 12, and came one win short three times.
+    const six = [
+      READ,
+      ...HELD.slice(0, 6).flatMap(heldOut),
+      ...heldOut("p1"),
+      event("task.state", { version: "p1", state: "released" }),
+    ];
+    expect(move([...six, built("b-1", "h1")])).toEqual({
+      move: "examine",
+      room: false,
+      why: "the campaign holds 6 of the 12 tasks a comparison scores, and harness h1 has not been compared under the campaign's setting: the Examiner writes more first",
+    });
+    // Three sessions in a row that hold out none end the campaign on its exam.
+    const idle = ["x-1", "x-2", "x-3"].map((id) =>
+      event("exam.finished", { session: id, held: [], refused: [], proposed: 0 }),
+    );
+    expect(move([...six, built("b-1", "h1"), ...idle])).toMatchObject({ move: "end", ending: "exam" });
+    // Held out to the count, the comparison is made.
+    expect(move([...six, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
+      move: "compare",
+    });
+  });
+
   it("lets a comparison that began go on under its id, before anything else", () => {
     const begun = event("comparison.started", { session: "g-1", old: "start", fresh: "h1", noise: true });
     expect(move([...SET_UP, built("b-1", "h1"), begun, built("b-2", "h2")])).toEqual({
@@ -244,7 +269,7 @@ describe("what is built and what is compared", () => {
 
   it("writes tasks where the next comparison would be short of them", () => {
     // One task untied of six leaves the next comparison about one, where a step takes four.
-    const tied = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "no-step", { tally: [1, 0, 5] })];
+    const tied = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "no-step", { tally: [2, 0, 10] })];
     expect(move([...tied, built("b-2", "h2")])).toEqual({
       move: "examine",
       room: false,
@@ -258,10 +283,10 @@ describe("what is built and what is compared", () => {
       why: "comparison g-1 read no step with room to gain and left too few tasks for the next to untie: harness h1 can only tie again on the tasks the reference harness answered in every solve",
     });
     // Enough to untie, and the Builder builds again.
-    const untied = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "no-step", { tally: [3, 1, 2] })];
+    const untied = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "no-step", { tally: [6, 2, 4] })];
     expect(move(untied)).toMatchObject({ move: "build" });
     // Tasks held out since count whole, and the comparison is admitted.
-    const more = ["v7", "v8", "v9", "v10"].flatMap(heldOut);
+    const more = ["v13", "v14", "v15", "v16"].flatMap(heldOut);
     expect(move([...tied, built("b-2", "h2"), ...more])).toMatchObject({ move: "compare" });
     // Before any session too: t-3 (10 October) built twice on the tasks its Examiner had just
     // written, changed nothing, and stopped before comparing on them.
@@ -277,27 +302,27 @@ describe("what is built and what is compared", () => {
 
 describe("practice, before a Builder session", () => {
   const plan = { ...PLAN, practice: 3 };
-  const lost = compared("g-1", "h1", "no-step", { tally: [1, 3, 2] });
+  const lost = compared("g-1", "h1", "no-step", { tally: [2, 6, 4] });
 
   it("is brought towards the count the campaign names once tasks were held out since the last release", () => {
     // One task is released of the three the campaign names, and nothing was held out since: a
     // release takes half of what is held once, and the Builder builds.
     expect(move(SET_UP, plan)).toMatchObject({ move: "build" });
-    expect(move([...SET_UP, ...heldOut("v7")], plan)).toEqual({
+    expect(move([...SET_UP, ...heldOut("v13")], plan)).toEqual({
       move: "prepare",
       why: "1 of the 3 practice tasks the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds",
     });
     // The same before a later session, after a comparison that read no step with room. A task
     // held out since the comparison is compared on first (below, "what is built").
-    const later = [...SET_UP, built("b-1", "h1"), ...heldOut("v7"), ...lost];
+    const later = [...SET_UP, built("b-1", "h1"), ...heldOut("v13"), ...lost];
     expect(move(later, plan)).toMatchObject({ move: "prepare" });
     // Once it released, the campaign builds: nothing was held out since.
-    const released = event("task.state", { version: "v7", state: "released" });
+    const released = event("task.state", { version: "v13", state: "released" });
     expect(move([...later, released], plan)).toMatchObject({ move: "build" });
   });
 
   it("is left as it is where the count is reached, no count is held, or the setting names the tasks to score", () => {
-    const more = [...SET_UP, ...heldOut("v7")];
+    const more = [...SET_UP, ...heldOut("v13")];
     expect(move(more, { ...PLAN, practice: 1 })).toMatchObject({ move: "build" });
     expect(move(more)).toMatchObject({ move: "build" });
     // Six of the seven held-out tasks are named to score, and half of the one that is left is none.
@@ -316,7 +341,7 @@ describe("practice, before a Builder session", () => {
 });
 
 describe("a step", () => {
-  const stepped = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [4, 0, 2] })];
+  const stepped = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
 
   it("is one draw when read once: the same two are compared again, with the reference against itself", () => {
     expect(move(stepped)).toMatchObject({
@@ -330,7 +355,7 @@ describe("a step", () => {
     const noised = [
       ...SET_UP,
       built("b-1", "h1"),
-      ...compared("g-1", "h1", "step", { tally: [4, 0, 2], noise: true }),
+      ...compared("g-1", "h1", "step", { tally: [8, 0, 4], noise: true }),
     ];
     expect(move(noised)).toEqual({
       move: "compare",
@@ -341,19 +366,19 @@ describe("a step", () => {
     });
     // It is read again once tasks were held out since, and where the one on record is of
     // another reference harness.
-    expect(move([...noised, ...heldOut("v7")])).toMatchObject({ move: "compare", noise: true });
+    expect(move([...noised, ...heldOut("v13")])).toMatchObject({ move: "compare", noise: true });
     const other = [
       ...SET_UP,
       built("b-0", "h0"),
       ...compared("g-0", "h0", "no-step", { old: "other", noise: true }),
       built("b-1", "h1"),
-      ...compared("g-1", "h1", "step", { tally: [4, 0, 2] }),
+      ...compared("g-1", "h1", "step", { tally: [8, 0, 4] }),
     ];
     expect(move(other)).toMatchObject({ move: "compare", noise: true });
   });
 
   it("is promoted when read again at the full limit", () => {
-    const again = [...stepped, ...compared("g-2", "h1", "step", { tally: [5, 0, 1] })];
+    const again = [...stepped, ...compared("g-2", "h1", "step", { tally: [10, 0, 2] })];
     expect(move(again)).toEqual({
       move: "promote",
       harness: "h1",
@@ -367,7 +392,7 @@ describe("a step", () => {
   it("is named for promotion though later sessions left another harness, and one read once is not", () => {
     // A campaign of 9 October: two steps against the starter, then sessions and comparisons went
     // on by hand against that harness, which nobody had promoted.
-    const later = [built("b-2", "h2"), ...compared("b-2", "h2", "no-step", { old: "h1", tally: [2, 2, 2] })];
+    const later = [built("b-2", "h2"), ...compared("b-2", "h2", "no-step", { old: "h1", tally: [4, 4, 4] })];
     const twice = [...stepped, ...compared("g1", "h1", "step", { tally: [4, 0, 3] }), ...later];
     expect(move(twice)).toEqual({
       move: "promote",
@@ -385,7 +410,7 @@ describe("a step", () => {
     // five turns half.
     const named = compared("b-3", "h2", "no-step", {
       old: "h1",
-      tally: [0, 0, 6],
+      tally: [0, 0, 12],
       valid: { old: ALL, fresh: ALL },
       budgets: [row(5, HALF, HALF)],
     });
@@ -404,8 +429,8 @@ describe("a step", () => {
       setting(10),
       ...SET_UP,
       built("b-1", "h1"),
-      ...compared("g-1", "h1", "step", { tally: [4, 0, 2] }),
-      ...compared("g-2", "h1", "step", { tally: [4, 0, 2] }),
+      ...compared("g-1", "h1", "step", { tally: [8, 0, 4] }),
+      ...compared("g-2", "h1", "step", { tally: [8, 0, 4] }),
     ];
     expect(move(short, plan)).toMatchObject({ move: "budget", modelTurns: 40 });
     const full = [...short, setting(40)];
@@ -417,9 +442,9 @@ describe("a step", () => {
       why: "a step read again is read once at the full limit, where it must not lose",
     });
     // It did not lose there: it is promoted. It lost: the campaign returns to its budget and builds.
-    const even = [...full, ...compared("g-3", "h1", "no-step", { tally: [1, 1, 4] })];
+    const even = [...full, ...compared("g-3", "h1", "no-step", { tally: [2, 2, 8] })];
     expect(move(even, plan)).toMatchObject({ move: "promote", harness: "h1" });
-    const lost = [...full, ...compared("g-3", "h1", "no-step", { tally: [0, 2, 4] })];
+    const lost = [...full, ...compared("g-3", "h1", "no-step", { tally: [0, 4, 8] })];
     expect(move(lost, plan)).toMatchObject({ move: "budget", modelTurns: 10 });
     expect(move([...lost, setting(10)], plan)).toEqual({
       move: "build",
@@ -432,8 +457,8 @@ describe("a budget the campaign has stood at before", () => {
   // The first campaign run by one command, on 9 October: the reference answered everything at 12
   // turns and at 2, and nothing at 1.
   const plan = { ...PLAN, limit: 12, ladder: [6, 3, 2, 1] };
-  const full = { tally: [0, 0, 6], valid: { old: ALL, fresh: ALL } } as const;
-  const empty = { tally: [0, 0, 6], valid: { old: NONE, fresh: NONE } } as const;
+  const full = { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } } as const;
+  const empty = { tally: [0, 0, 12], valid: { old: NONE, fresh: NONE } } as const;
   const down = [
     setting(12),
     ...SET_UP,
@@ -462,8 +487,9 @@ describe("a budget the campaign has stood at before", () => {
       room: true,
       why: "comparison g-2 read no step, the reference harness was valid on more than three solves in four, and no shorter budget leaves room: the tasks have to change",
     });
-    // With tasks written since it was made, the same two are compared on them.
-    const more = ["v7", "v8", "v9", "v10"];
+    // With tasks written since it was made, the same two are compared on them: six among eighteen,
+    // of which a draw of twelve scores four on average, which is what a step takes.
+    const more = ["v13", "v14", "v15", "v16", "v17", "v18"];
     expect(move([...back, session("x-1", more), ...more.flatMap(heldOut)], plan)).toMatchObject({
       move: "compare",
       noise: false,
@@ -473,7 +499,7 @@ describe("a budget the campaign has stood at before", () => {
 
   it("goes on writing tasks while each session adds some, and ends where three in a row add none", () => {
     const back = [...down, setting(2)];
-    const few = ["v7", "v8", "v9"].flatMap((version, index) => [
+    const few = ["v13", "v14", "v15"].flatMap((version, index) => [
       session(`x-${String(index + 1)}`, [version]),
       ...heldOut(version),
     ]);
@@ -491,8 +517,8 @@ describe("a budget the campaign has stood at before", () => {
       built("b-1", "h1"),
       ...compared("g-1", "h1", "no-step", { ...full, budgets: [row(2, HALF, HALF)] }),
       setting(2),
-      ...compared("g-2", "h1", "step", { tally: [4, 0, 2] }),
-      ...compared("g-3", "h1", "step", { tally: [4, 0, 2] }),
+      ...compared("g-2", "h1", "step", { tally: [8, 0, 4] }),
+      ...compared("g-3", "h1", "step", { tally: [8, 0, 4] }),
     ];
     expect(move(stepped, plan)).toEqual({
       move: "promote",
@@ -518,26 +544,73 @@ describe("after a promotion", () => {
     setting(40),
     ...SET_UP,
     built("b-1", "h1"),
-    ...compared("g-1", "h1", "step", { tally: [4, 0, 2] }),
-    ...compared("g-2", "h1", "step", { tally: [4, 0, 2], valid: { old: HALF, fresh }, budgets }),
+    ...compared("g-1", "h1", "step", { tally: [8, 0, 4] }),
+    ...compared("g-2", "h1", "step", { tally: [8, 0, 4], valid: { old: HALF, fresh }, budgets }),
     event("harness.promoted", { harness: "h1" }),
   ];
 
   it("sets the budget again from the promoted harness's own solves: the longest at which it fails half", () => {
-    const log = promotedOn([row(20, NONE, [1, 2, 3]), row(10, NONE, [3, 3, 0])], ALL);
+    const log = promotedOn([row(20, NONE, [2, 4, 6]), row(10, NONE, [6, 6, 0])], ALL);
     expect(move(log, plan)).toMatchObject({ move: "budget", modelTurns: 10 });
     // Once that setting is recorded, the Builder builds against the new reference.
     expect(move([...log, setting(10)], plan)).toMatchObject({ move: "build" });
     // Valid on at most half at the limit it ran under, the budget stands.
-    const stays = promotedOn([row(20, NONE, NONE)], [2, 2, 2]);
+    const stays = promotedOn([row(20, NONE, NONE)], [4, 4, 4]);
     expect(move(stays, plan)).toMatchObject({ move: "build" });
   });
 
   it("has the tasks changed, once, where no budget leaves the promoted harness failing half", () => {
-    const log = promotedOn([row(20, NONE, ALL), row(10, NONE, [0, 1, 5])], ALL);
+    const log = promotedOn([row(20, NONE, ALL), row(10, NONE, [0, 2, 10])], ALL);
     expect(move(log, plan)).toMatchObject({ move: "examine", room: true });
-    const written = event("exam.finished", { session: "x-1", held: ["v7"], refused: [], proposed: 1 });
-    expect(move([...log, written, ...heldOut("v7")], plan)).toMatchObject({ move: "build" });
+    const written = event("exam.finished", { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
+    // The tasks written are read by a control before a Builder session is paid for: the starter
+    // against the promoted harness, with the reference against itself, since tasks were held out
+    // since it was last read so. t-4, t-9 and t-10 (10 October) built three times here instead.
+    expect(move([...log, written, ...heldOut("v13")], plan)).toEqual({
+      move: "compare",
+      fresh: "starter",
+      reference: "promoted",
+      noise: true,
+      why: "harness h1 is the reference, and 1 task was held out since the last comparison: the starter is compared with it on them, to read whether they leave it room before a Builder session is paid for",
+    });
+  });
+
+  it("reads the control, and builds where the tasks leave the promoted harness room, on practice brought up from them", () => {
+    const log = promotedOn([row(20, NONE, ALL), row(10, NONE, [0, 2, 10])], ALL);
+    const written = event("exam.finished", { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
+    const control = (
+      reading: string,
+      valid: { old: Valid; fresh: Valid },
+      tally: [number, number, number],
+    ) => [
+      ...log,
+      written,
+      ...heldOut("v13"),
+      ...compared("g-3", "start", reading, { old: "h1", tally, valid, noise: true }),
+    ];
+    // The promoted harness, on the old side, valid on half: room. Practice is brought up by as
+    // many again, the tasks it failed first, and then the Builder builds.
+    const room = control("no-step", { old: HALF, fresh: HALF }, [2, 2, 8]);
+    expect(move(room, { ...plan, practice: 3 })).toMatchObject({
+      move: "prepare",
+      practice: 4,
+      why: "comparison g-3 read room in the tasks held out since the last release: the ones the reference harness failed are released first, up to 3 more practice tasks, before the Builder builds",
+    });
+    expect(move(room, plan)).toEqual({
+      move: "build",
+      why: "comparison g-3 read the starter against harness h1 on the tasks held out since, and they leave it room: the Builder builds",
+    });
+    // The starter winning on the new tasks is room by another name, and no step to repeat.
+    expect(move(control("step", { old: [8, 2, 2], fresh: HALF }, [6, 0, 6]), plan)).toMatchObject({
+      move: "build",
+    });
+    // Valid on every solve: no room, and no shorter budget left, so the tasks have to change again.
+    expect(move(control("no-step", { old: ALL, fresh: HALF }, [0, 0, 12]), plan)).toMatchObject({
+      move: "examine",
+      room: true,
+    });
+    // With no tasks held out since and no control, the Builder builds as before.
+    expect(move([...log, written], plan)).toMatchObject({ move: "build" });
   });
 });
 
@@ -558,7 +631,7 @@ describe("no step", () => {
     const tied = (budgets: readonly JsonObject[]) => [
       setting(40),
       ...first,
-      ...compared("g-1", "h1", "no-step", { tally: [0, 0, 6], valid: full, budgets }),
+      ...compared("g-1", "h1", "no-step", { tally: [0, 0, 12], valid: full, budgets }),
     ];
     // Valid on every solve at 40 and at 20 turns, and on half at 10.
     expect(move(tied([row(20, ALL, ALL), row(10, HALF, ALL)]), plan)).toMatchObject({
@@ -572,30 +645,30 @@ describe("no step", () => {
       setting(40),
       ...first,
       ...compared("g-1", "h1", "no-step", {
-        tally: [0, 0, 6],
-        valid: { old: [2, 0, 4], fresh: [2, 0, 4] },
-        budgets: [row(20, ALL, ALL), row(10, [3, 2, 1], ALL)],
-        extra: { scored: { wins: 0, losses: 0, ties: 6, unsolved: 2 } },
+        tally: [0, 0, 12],
+        valid: { old: [4, 0, 8], fresh: [4, 0, 8] },
+        budgets: [row(20, ALL, ALL), row(10, [6, 4, 2], ALL)],
+        extra: { scored: { wins: 0, losses: 0, ties: 12, unsolved: 2 } },
       }),
     ];
     expect(move(unanswered, plan)).toMatchObject({
       move: "budget",
       why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four, 2 tasks no solve answered left out: at 10 turns it was valid on at most half",
     });
-    const none = tied([row(20, ALL, ALL), row(10, [0, 1, 5], ALL)]);
+    const none = tied([row(20, ALL, ALL), row(10, [0, 2, 10], ALL)]);
     expect(move(none, plan)).toMatchObject({ move: "examine", room: true });
     // With tasks written since, the same two are compared on them.
-    const more = ["v7", "v8", "v9", "v10"].flatMap(heldOut);
+    const more = ["v13", "v14", "v15", "v16", "v17", "v18"].flatMap(heldOut);
     expect(move([...none, ...more], plan)).toMatchObject({ move: "compare", noise: false });
   });
 
   it("reads no room in the tasks neither harness answered", () => {
     // Four tasks answered by both on every solve, and two by nobody: two solves in three were
     // valid, and on the tasks anyone answered, all of them.
-    const mixed = { old: [2, 0, 4], fresh: [2, 0, 4] } as const;
+    const mixed = { old: [4, 0, 8], fresh: [4, 0, 8] } as const;
     const read = (unsolved: number) =>
       compared("g-1", "h1", "no-step", {
-        tally: [0, 0, 6],
+        tally: [0, 0, 12],
         valid: mixed,
         extra: { scored: { wins: 0, losses: 0, ties: 6, unsolved } },
       });
@@ -606,7 +679,7 @@ describe("no step", () => {
   });
 
   it("ends the campaign where the tasks could not be made to leave room", () => {
-    const full = { tally: [0, 0, 6], valid: { old: ALL, fresh: ALL } } as const;
+    const full = { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } } as const;
     const tries = ["g-1", "g-2", "g-3", "g-4"].flatMap((id) => compared(id, "h1", "no-step", full));
     expect(move([...first, ...tries.slice(0, 6)])).toMatchObject({ move: "examine", room: true });
     expect(move([...first, ...tries])).toMatchObject({ move: "end", ending: "no-room" });
@@ -614,7 +687,7 @@ describe("no step", () => {
 
   it("lengthens the budget where neither harness answered, and has other tasks written at the full limit", () => {
     const plan = { ...PLAN, limit: 40, ladder: [20, 10] };
-    const empty = { tally: [0, 0, 6], valid: { old: NONE, fresh: NONE } } as const;
+    const empty = { tally: [0, 0, 12], valid: { old: NONE, fresh: NONE } } as const;
     const at10 = [setting(10), ...first, ...compared("g-1", "h1", "no-step", empty)];
     expect(move(at10, plan)).toMatchObject({ move: "budget", modelTurns: 20 });
     const at40 = [setting(40), ...first, ...compared("g-1", "h1", "no-step", empty)];
@@ -623,11 +696,11 @@ describe("no step", () => {
 
   it("stands at the next longer budget, for other tasks, where an earlier reading showed it to leave no room", () => {
     const plan = { ...PLAN, limit: 40, ladder: [20, 10] };
-    const empty = { tally: [0, 0, 6], valid: { old: NONE, fresh: NONE } } as const;
+    const empty = { tally: [0, 0, 12], valid: { old: NONE, fresh: NONE } } as const;
     // Under 40 turns the reference answered everything, and read at 20 it still did: the rule took 10.
     const read = (at20: Valid) =>
       compared("g-1", "h1", "no-step", {
-        tally: [0, 0, 6],
+        tally: [0, 0, 12],
         valid: { old: ALL, fresh: ALL },
         budgets: [row(20, at20, at20), row(10, NONE, NONE)],
       });
@@ -649,7 +722,7 @@ describe("no step", () => {
     const plan = { ...PLAN, limit: 40, ladder: [20] };
     // Every task tied under 40 turns, so a comparison there would untie none: the budget was set again.
     const tiedAll = compared("g-1", "h1", "no-step", {
-      tally: [0, 0, 6],
+      tally: [0, 0, 12],
       valid: { old: ALL, fresh: ALL },
       budgets: [row(20, HALF, HALF)],
       extra: { untied: 0 },
@@ -675,7 +748,7 @@ describe("no step", () => {
   });
 
   it("compares the new harness with the starter where a step was not read against it", () => {
-    const unread = compared("g-1", "h2", "starter-unread", { old: "h1", tally: [4, 0, 2] });
+    const unread = compared("g-1", "h2", "starter-unread", { old: "h1", tally: [8, 0, 4] });
     const log = [
       ...SET_UP,
       built("b-1", "h1"),
@@ -731,7 +804,7 @@ describe("the budget and the bounds", () => {
       event("solve.started", { solve: id, comparison: "g-1" }),
       event("solve.finished", { solve: id, billed, ending: { outcome: "pass" } }),
     ];
-    const [start, report] = compared("g-1", "h1", "step", { tally: [5, 0, 1] });
+    const [start, report] = compared("g-1", "h1", "step", { tally: [10, 0, 2] });
     const log = [
       ...SET_UP,
       built("b-1", "h1"),
@@ -772,8 +845,8 @@ describe("the budget and the bounds", () => {
 
   it("goes back to no budget the two harnesses were already read at", () => {
     const plan = { ...PLAN, limit: 40, ladder: [20, 10] };
-    const empty = { tally: [0, 0, 6], valid: { old: NONE, fresh: NONE } } as const;
-    const full = { tally: [0, 0, 6], valid: { old: ALL, fresh: ALL } } as const;
+    const empty = { tally: [0, 0, 12], valid: { old: NONE, fresh: NONE } } as const;
+    const full = { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } } as const;
     // Too hard at 10 turns, so 20; at 20 the reference answers everything, and at 10 it had failed
     // half: the rule would go back to 10, where the pair was read already. The tasks change.
     const log = [
@@ -853,11 +926,11 @@ describe("what a campaign runs by", () => {
 
 describe("a promotion by hand", () => {
   it("is the plan's where the harness read a step twice and did not lose at the full limit, and says why where not", () => {
-    const stepped = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [4, 0, 2] })];
+    const stepped = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
     expect(unpromoted(stepped, PLAN, "h1")).toBe(
       "harness h1 has not read a step twice against the reference harness under the campaign's setting",
     );
-    const again = [...stepped, ...compared("g-2", "h1", "step", { tally: [5, 0, 1] })];
+    const again = [...stepped, ...compared("g-2", "h1", "step", { tally: [10, 0, 2] })];
     expect(unpromoted(again, PLAN, "h1")).toBeNull();
     // Another harness of the campaign rests on nothing.
     expect(unpromoted(again, PLAN, "h9")).toContain("harness h9 has not read a step twice");

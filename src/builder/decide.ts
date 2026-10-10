@@ -41,7 +41,19 @@
  *    before a comparison have run, or tasks are written where the comparison would be short of
  *    them.
  * 9. Before a Builder session, practice is brought towards the count the campaign names, where
- *    tasks were held out since the last release.
+ *    tasks were held out since the last release, and brought up again after a control that read
+ *    room: the tasks that leave the reference room are what the Builder has to work on.
+ * 10. Before a comparison the campaign holds as many scorable tasks as a comparison scores, or
+ *    the Examiner writes more first, up to three sessions in a row that add none. On 9 and 10
+ *    October the two campaigns on the operator's host compared on 6 tasks where the setting
+ *    asked for 12, and a harness came one win short of a step three times.
+ * 11. No harness but the reference, and tasks held out since the last comparison: a control, the
+ *    starter compared with the reference on them, before a Builder session is paid for. It reads
+ *    whether the tasks leave the reference room (`roomOf`, on the reference's side), and goes
+ *    through the rows of any comparison from there. On 10 October t-4, t-9 and t-10 each promoted
+ *    a harness, had the Examiner write tasks for room, released one, ran three Builder sessions
+ *    that changed nothing, since every practice solve passed, and stopped: whether the tasks left
+ *    room was never measured.
  *
  * A setting is recorded once and again at each change (`campaign.setting`), and no reading is
  * carried across two. A campaign returns to a budget, so the comparisons under its setting are
@@ -73,7 +85,8 @@ export type Decided =
   /** An Examiner session that drafts the exam of a campaign opened from a prompt (row F53). */
   | { readonly move: "draft"; readonly why: string }
   | { readonly move: "accept"; readonly why: string }
-  | { readonly move: "prepare"; readonly why: string }
+  /** `practice` names the count practice is brought to where it is more than the campaign's. */
+  | { readonly move: "prepare"; readonly why: string; readonly practice?: number }
   /** An Examiner session. `room` asks for tasks that leave a harness room (row F52). `answers`
    *  names the operator's word it follows, where it follows one (`pendingWords`). */
   | {
@@ -110,6 +123,9 @@ const HALF = 1 / 2;
  *  held out no task, and comparisons of one harness that left no room. */
 const DRAFTS = 3;
 const STEP = "step";
+/** What a comparison the table names is of: the last harness a session left, or the starter as a
+ *  control on the reference harness. */
+type Fresh = "latest" | "starter";
 const SETTING = "campaign.setting";
 const ROOM = "room";
 
@@ -161,10 +177,11 @@ function held(report: JsonObject): boolean {
 const budgetSaid = (turns: number | null): string =>
   turns === null ? "the full limit" : plural(turns, "turn");
 
-/** A comparison of the latest harness with the reference one, under the campaign's setting. */
-const compare = (why: string, noise: "noise" | "alone"): Decided => ({
+/** A comparison of the latest harness, or of the starter as a control, with the reference one,
+ *  under the campaign's setting. */
+const compare = (why: string, noise: "noise" | "alone", fresh: Fresh = "latest"): Decided => ({
   move: "compare",
-  fresh: "latest",
+  fresh,
   reference: "promoted",
   noise: noise === "noise",
   why,
@@ -338,16 +355,34 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
  * the operator's host practised on two, two, three and six tasks. The draw is the contract's, and
  * no solve chooses a task. Null where nothing is to release.
  */
-function toPractise({ events, plan }: Ground, supply: ReturnType<typeof supplyOf>): Decided | null {
+function toPractise(ground: Ground, supply: ReturnType<typeof supplyOf>): Decided | null {
+  const { events, plan, all, starter, reference } = ground;
   const { practice } = plan;
   const last = events.findLastIndex(({ kind, data }) => kind === "task.state" && data.state === "released");
-  const since = events.some(
-    ({ kind, data }, index) => index > last && kind === "task.gate" && data.outcome === "passed",
-  );
+  const since = heldSince(events, last) > 0;
   // The tasks the setting names to score are no practice, and a release takes half of the rest.
   const named = events.findLast(({ kind }) => kind === SETTING)?.data.tasks;
   const pool = supply.held - (Array.isArray(named) ? named.length : 0);
-  if (practice === undefined || supply.released >= practice || !since || pool < 2) return null;
+  if (practice === undefined || !since || pool < 2) return null;
+  // After a control that read room, practice is brought up by as many again: the tasks that leave
+  // the reference room are what the Builder has to work on, and the ones it has it passes.
+  const read = all.findLast(({ report }) => report !== null);
+  const refreshed =
+    read !== undefined &&
+    read.report !== null &&
+    read.fresh === starter &&
+    read.old === reference &&
+    read.reported !== null &&
+    read.reported > last &&
+    roomOf(read.report) !== "none";
+  if (supply.released >= practice && !refreshed) return null;
+  if (refreshed) {
+    return {
+      move: "prepare",
+      practice: supply.released + practice,
+      why: `comparison ${read.id} read room in the tasks held out since the last release: the ones the reference harness failed are released first, up to ${plural(practice, "more practice task")}, before the Builder builds`,
+    };
+  }
   return {
     move: "prepare",
     why: `${String(supply.released)} of the ${plural(practice, "practice task")} the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds`,
@@ -503,14 +538,65 @@ function onStep(ground: Ground): Decided | null {
     : build(`harness ${short(latest)} lost at the full limit and is not the reference`);
 }
 
+/**
+ * An Examiner session, where the campaign holds fewer scorable tasks than a comparison scores,
+ * and null where it holds enough. Three sessions in a row that hold out none end the campaign on
+ * its exam (`written`).
+ */
+function toTarget(ground: Ground, before: string): Decided | null {
+  const { plan, scorable, drafts } = ground;
+  const { target } = plan.wanted;
+  if (scorable >= target) return null;
+  return written(drafts, "tasks", {
+    move: "examine",
+    room: false,
+    why: `the campaign holds ${String(scorable)} of the ${plural(target, "task")} a comparison scores, and ${before}: the Examiner writes more first`,
+  });
+}
+
+/** The tasks held out after the log's index `after`. */
+function heldSince(events: readonly LogEvent[], after: number): number {
+  return events.filter(
+    ({ kind, data }, index) => index > after && kind === "task.gate" && data.outcome === "passed",
+  ).length;
+}
+
+/**
+ * The rows where no session has left a harness that is not the reference: before any session,
+ * or after a promotion. Tasks held out since the last comparison are read by a control first,
+ * the starter compared with the reference on them, which says whether they leave the reference
+ * room before a Builder session is paid for; the control's reading then goes through the rows of
+ * any comparison (`afterComparison`): room, and the Builder builds on practice brought up from
+ * those tasks; none, and the budget or the tasks change. A control that reads a step is the
+ * starter winning on the new tasks, which is room by another name, and is not repeated.
+ */
+function onReference(ground: Ground): Decided {
+  const { events, all, here, reference, starter, tasksShort } = ground;
+  const idle = build("no session has left a harness that is not the reference harness");
+  if (reference === null || starter === null || reference === starter) return idle;
+  const last = all.findLast(({ report }) => report !== null);
+  const since = heldSince(events, last?.reported ?? -1);
+  if (since > 0 && tasksShort !== "held") {
+    return (
+      toTarget(ground, `the tasks held out since the last comparison are read by a control`) ??
+      compare(
+        `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it on them, to read whether they leave it room before a Builder session is paid for`,
+        noiseRead(ground) === null ? "noise" : "alone",
+        "starter",
+      )
+    );
+  }
+  const control = pairOf(here, starter, reference).at(-1);
+  if (control === undefined || control !== last?.report) return idle;
+  return afterComparison(ground, control, starter, "starter");
+}
+
 /** The rows that follow from the latest harness and its last comparison with the reference one. */
 function onLatest(ground: Ground): Decided {
   const { events, plan, all, here, reference, latest, tasksShort } = ground;
-  if (latest === null || latest === reference) {
-    return build("no session has left a harness that is not the reference harness");
-  }
+  if (latest === null || latest === reference) return onReference(ground);
   const last = pairOf(here, latest, reference).at(-1);
-  if (last !== undefined) return afterComparison(ground, last, latest);
+  if (last !== undefined) return afterComparison(ground, last, latest, "latest");
   const lastAt = all.at(-1)?.at ?? -1;
   const sessions = events.filter(
     ({ kind, data }, index) =>
@@ -532,12 +618,11 @@ function onLatest(ground: Ground): Decided {
         : "the last comparison left too few tasks for the next to untie",
     );
   }
-  return compare(
+  const why =
     here.length === 0
       ? `harness ${short(latest)} has not been compared under the campaign's setting`
-      : `${plural(sessions, "Builder session")} since the last comparison left harness ${short(latest)}`,
-    noiseRead(ground) === null ? "noise" : "alone",
-  );
+      : `${plural(sessions, "Builder session")} since the last comparison left harness ${short(latest)}`;
+  return toTarget(ground, why) ?? compare(why, noiseRead(ground) === null ? "noise" : "alone");
 }
 
 /**
@@ -563,11 +648,12 @@ function noiseRead({ events, here, reference }: Ground): string | null {
 }
 
 /** The table's rows for the last comparison of the latest harness with the reference one. */
-function afterComparison(ground: Ground, last: JsonObject, latest: string): Decided {
+function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh: Fresh): Decided {
   const { events, all, here, tasksShort, reference } = ground;
   const id = isString(last.session) ? last.session : "";
   const { reading } = last;
-  if (reading === STEP) {
+  const control = fresh === "starter";
+  if (reading === STEP && !control) {
     const noise = noiseRead(ground);
     const again = `comparison ${id} read a step, which is one draw: the same two harnesses are compared again on fresh solves`;
     return noise === null
@@ -595,20 +681,23 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string): Deci
   // A comparison of the same two on tasks written since is the answer to a want of tasks or of
   // room, once: three in a row that still leave none end the campaign.
   const reportedAt = all.find(({ report }) => report === last)?.reported ?? Number.POSITIVE_INFINITY;
-  const since = events.filter(
-    ({ kind, data }, index) => index > reportedAt && kind === "task.gate" && data.outcome === "passed",
-  ).length;
+  const since = heldSince(events, reportedAt);
   const again = tasksShort === null && since > 0;
   if (reading === "not-scored") {
     if (last.capped === true) {
       return end("budget", `comparison ${id} was cut by its dollar cap before it tallied a task`);
     }
     return again
-      ? compare(`comparison ${id} tallied no task, and tasks were written since`, "alone")
+      ? compare(`comparison ${id} tallied no task, and tasks were written since`, "alone", fresh)
       : supplied(ground, last, `comparison ${id} tallied no task`);
   }
   const room = roomOf(last);
-  if (room === ROOM) {
+  if (room === ROOM || (room !== "none" && control && reading === STEP)) {
+    if (control) {
+      return build(
+        `comparison ${id} read the starter against harness ${short(reference ?? "")} on the tasks held out since, and they leave it room: the Builder builds`,
+      );
+    }
     // Tasks written since are compared on before anything is built: t-3 (10 October) had four
     // held out on the supply row and then two sessions that left the harness as it was, and the
     // stop rule, before any comparison on them.
@@ -616,6 +705,7 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string): Deci
       return compare(
         `comparison ${id} read no step with room to gain, and tasks were written since: harness ${short(latest)} is compared on them`,
         "alone",
+        fresh,
       );
     }
     // The plan's supply row before its build row: on tasks the reference harness answered in every
@@ -643,11 +733,11 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string): Deci
       `${plural(unroomed, "comparison")} of harness ${short(latest)} left no room, with tasks written between them: the tasks could not be made to leave room`,
     );
   }
-  return room === "none" ? noRoom(ground, last, since) : tooHard(ground, id, latest, since);
+  return room === "none" ? noRoom(ground, last, since, fresh) : tooHard(ground, id, latest, since, fresh);
 }
 /** After a comparison in which the reference harness answered nearly everything: the budget by the
  *  rule, where the campaign has not stood at it, and else other tasks. */
-function noRoom(ground: Ground, last: JsonObject, since: number): Decided {
+function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): Decided {
   const { turns, tasksShort } = ground;
   const id = isString(last.session) ? last.session : "";
   const rung = budgetBy(last, "old", turns);
@@ -666,7 +756,7 @@ function noRoom(ground: Ground, last: JsonObject, since: number): Decided {
     );
   }
   if (tasksShort === null && since > 0) {
-    return compare(`comparison ${id} left no room, and tasks were written since`, "alone");
+    return compare(`comparison ${id} left no room, and tasks were written since`, "alone", fresh);
   }
   return written(ground.drafts, "room", {
     move: "examine",
@@ -683,7 +773,7 @@ function noRoom(ground: Ground, last: JsonObject, since: number): Decided {
  * campaign run by one command had five Examiner sessions write tasks for a budget of one turn, in
  * which no solver can write an answer and submit it (2026-10-09).
  */
-function tooHard(ground: Ground, id: string, latest: string, since: number): Decided {
+function tooHard(ground: Ground, id: string, latest: string, since: number, fresh: Fresh): Decided {
   const { plan, all, turns, reference, tasksShort } = ground;
   const said = `comparison ${id} read no step, and neither harness was valid on one solve in four`;
   const longer = [...plan.ladder, ...(plan.limit === null ? [] : [plan.limit])]
@@ -709,7 +799,11 @@ function tooHard(ground: Ground, id: string, latest: string, since: number): Dec
     return toBudget(null, `${said}: the budget is lengthened`);
   }
   if (tasksShort === null && since > 0) {
-    return compare(`comparison ${id} left neither harness an answer, and tasks were written since`, "alone");
+    return compare(
+      `comparison ${id} left neither harness an answer, and tasks were written since`,
+      "alone",
+      fresh,
+    );
   }
   return written(ground.drafts, "room", {
     move: "examine",

@@ -372,6 +372,32 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
  * task cut at a limit; this leaves nothing out, since a task cut twice is as much beyond the
  * harness as one answered wrongly twice. A valid answer anywhere on record settles it either way.
  */
+/**
+ * The held-out tasks the reference harness failed in the last reported comparison: a solve under
+ * the comparison's reference side that ended as a fail, and no valid one of its on that task
+ * there. With `unansweredTwice` it is what a release takes before the contract's draw: the tasks
+ * that leave the reference room are the ones a Builder has to work on, and on 10 October t-4,
+ * t-9 and t-10 each ran three sessions after a promotion on practice tasks the promoted harness
+ * passed, and changed nothing. Half of them at most are released at once (`tools/d2/prepare.ts`),
+ * so that the comparison keeps tasks it can untie.
+ */
+export function referenceFailed(events: readonly LogEvent[]): string[] {
+  const last = lastReports(events).at(-1);
+  const old = last?.data.old;
+  if (last === undefined || !isString(old)) return [];
+  const own = ranUnder(events).filter(
+    (solve) => solve.start.comparison === last.session && solve.under.harness === old,
+  );
+  const valid = new Set(own.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])));
+  const failed = new Set(
+    own.flatMap((solve) =>
+      passed(solve) === false && !valid.has(solve.under.task) ? [solve.under.task] : [],
+    ),
+  );
+  const held = new Set(taskSets(events).held);
+  return [...failed].filter((task) => held.has(task));
+}
+
 export function unansweredTwice(events: readonly LogEvent[]): string[] {
   const ran = ranUnder(events);
   const feasible = new Set(ran.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])));

@@ -161,7 +161,10 @@ wall keeps from it.
 
 The tools of each model seat, as its source names them:
 
-- Examiner: `propose_tasks`, `read_example`, `finish`. In the session that drafts an exam:
+- Examiner: `propose_tasks`, `read_example`, `try_answer`, `bash`, `read`, `write`, `finish`.
+  `try_answer` runs the checks on an instance with an answer of the Examiner's own and keeps
+  nothing; the shell is a walled home of its own, empty at the session's start, and nothing in
+  it enters the exam but through `propose_tasks`. In the session that drafts an exam:
   `draft_exam`, `finish`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness`, `reset_harness`, `finish`.
@@ -391,11 +394,17 @@ a comparison's size, the practice tasks, and a solve's wall and prompts until th
 recorded. A term no command named is its move's default. A flag that names another setting than
 the campaign's record is refused with both, as every command refuses it.
 
-Practice follows the supply. One release takes at most half of what is held, so a campaign that
-opens on a few tasks releases fewer than `--practice` names. Before a Builder session the table
-has more released, by the contract's draw, where tasks were held out since the last release. A
-task that a comparison scored before its release keeps that comparison's solves on the exam
-side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
+Practice follows the supply, and the outcomes. One release takes at most half of what is held,
+so a campaign that opens on a few tasks releases fewer than `--practice` names. Before a Builder
+session the table has more released where tasks were held out since the last release, and after
+a control that read room (section 7) it has as many again released. A release takes first the
+tasks no solve answered in two comparisons, then half of the tasks the reference harness failed
+in the last comparison, and the rest by the contract's draw (`tools/d2/prepare.ts`): the tasks
+that leave the reference room are what a Builder has to work on, and until 10 October it
+practised on tasks it passed. A task that a comparison scored before its release keeps that
+comparison's solves on the exam side: a Builder is shown its practice solves only
+(`practiceRan`, `src/kernel/solves.ts`). Before a comparison the campaign holds as many scorable
+tasks as the comparison scores (`--target`), or the Examiner writes more first.
 
 It opens a campaign over a stored pack, or from a prompt (`--prompt "<text>"` or `--prompt-file`,
 with `--solver`): the opening then holds the prompt, and the first move is the draft of row 0.
@@ -587,9 +596,15 @@ rule's budget is a place to look, and the comparison made under it is what count
 one leaves neither harness an answer, the campaign goes to the next longer budget, and where no
 budget leaves room it stands at the shortest that leaves the reference its answers and has the
 Examiner write other tasks. A campaign returns to a budget, and what it read there still stands
-(`under`): no comparison is made twice for one answer. It ends `no-room` after more than three
-comparisons of one harness without room, or three Examiner sessions in a row that held out no
-task. The half, and the two shares of `roomOf`, are the plan's proposal and the operator's to set.
+(`under`): no comparison is made twice for one answer. Where no session has left a harness but
+the reference, as after a promotion, tasks held out since the last comparison are read by a
+control before a Builder session is paid for: the starter compared with the reference on them,
+which says whether they leave the reference room; with room the Builder builds, on practice
+brought up from those tasks, and without it the budget or the tasks change (t-4, t-9 and t-10,
+10 October, each built three times here on practice the promoted harness passed, and stopped
+with the tasks unmeasured). It ends `no-room` after more than three comparisons of one harness
+without room, or three Examiner sessions in a row that held out no task. The half, and the two
+shares of `roomOf`, are the plan's proposal and the operator's to set.
 
 ## 8. Rules
 

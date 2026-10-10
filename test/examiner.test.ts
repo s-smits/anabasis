@@ -18,7 +18,7 @@ import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import type { Task } from "../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { isFunction, type JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, isFunction, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
@@ -162,6 +162,41 @@ describe("an Examiner session", () => {
       proposed: 0,
       note: "Stacked two requirements.",
     });
+  });
+
+  it("runs the checks on an instance with an answer of its own, where the campaign lends it its verifier, and keeps nothing", async () => {
+    const tried = (answer: number) =>
+      call("try_answer", { family: "fixture", public_input: { base: 7 }, hidden: null, answer: { answer } });
+    // Without a verifier the tool is not given; with one, the checks say which refuse the answer.
+    const bare = setup([finish]);
+    await examine(bare.request);
+    expect(bare.sent[0]).not.toContain('{"name":"try_answer"');
+    const s = setup([tried(42), tried(41), finish]);
+    const asked: unknown[] = [];
+    await examine({
+      ...s.request,
+      verify: async (task, answer) => {
+        asked.push([task.taskId, task.publicInput, answer]);
+        return asRecord(answer)?.answer === 42
+          ? { kind: "pass" }
+          : { kind: "fail", blocking: ["check-product"] };
+      },
+    });
+    expect(s.sent[0]).toContain('{"name":"try_answer"');
+    expect(asked).toEqual([
+      ["try", { base: 7 }, { answer: 42 }],
+      ["try", { base: 7 }, { answer: 41 }],
+    ]);
+    expect(JSON.stringify(s.of("exam.call")[0])).toContain("Every applicable check passed this answer");
+    expect(JSON.stringify(s.of("exam.call")[1])).toContain("Refused by check-product.");
+    // A try is no proposal: no task was held out, and no answer entered the log but in the trace.
+    expect(s.of("task.proposed")).toEqual([]);
+    expect(s.of("exam.finished")[0]).toMatchObject({ proposed: 0 });
+    // The Examiner is told it has the tool, and the shell, and what neither does to the exam.
+    expect(s.sent[0]).toContain(
+      "try_answer runs the checks on an instance with an answer of yours and keeps nothing",
+    );
+    expect(s.sent[0]).toContain("bash, read and write are yours in a home of your own");
   });
 
   it("holds an instance out on the shape of its package, and says why another is refused", async () => {

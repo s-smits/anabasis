@@ -51,7 +51,7 @@
 import { draw } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
-import { awaitingLabel, unansweredTwice } from "#src/kernel/reports.ts";
+import { awaitingLabel, referenceFailed, unansweredTwice } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
@@ -169,12 +169,23 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   // a session has to work on, where every released task passes. Proposed on 10 October after
   // t-5 held two such tasks at its release after g-3 and the draw released another, and its
   // three last sessions then passed every practice task and changed nothing (`unansweredTwice`).
-  const first = unansweredTwice(read(log)).filter((version) => pool.includes(version));
+  const sofar = read(log);
+  const unanswered = unansweredTwice(sofar).filter((version) => pool.includes(version));
+  // Then the tasks the reference harness failed in the last comparison, half of them at most, so
+  // that the comparison keeps tasks it can untie (`referenceFailed`).
+  const failed = referenceFailed(sofar).filter(
+    (version) => pool.includes(version) && !unanswered.includes(version),
+  );
+  const first = [...unanswered, ...failed.slice(0, Math.floor(failed.length / 2))];
   const rest = pool.filter((version) => !first.includes(version));
   const chosen = [...first.slice(0, released), ...draw(rest, Math.max(0, released - first.length), seed)];
   for (const version of chosen) {
     append(log, "task.state", { version, state: "released" });
-    const why = first.includes(version) ? ": no solve answered it in two comparisons, and it is" : ":";
+    const why = unanswered.includes(version)
+      ? ": no solve answered it in two comparisons, and it is"
+      : failed.includes(version)
+        ? ": the reference harness failed it in the last comparison, and it is"
+        : ":";
     console.log(`${packages.get(version)?.taskId ?? version}${why} released for practice, and never scored`);
   }
   if (released < missing) {

@@ -71,14 +71,13 @@ import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { Diagnosis } from "../review/diagnoser.ts";
 import type { RefereeFinding } from "../review/referee.ts";
-import { type CommandWall, type SolveDirs, solveDirs } from "../solve/command.ts";
+import { type CommandWall, type SolveDirs, solveDirs, walledBase } from "../solve/command.ts";
 import type { PublicResource } from "../solve/answer.ts";
 import { openHarness } from "../solve/harness.ts";
 import { type PublicTask, publicView } from "../solve/prompt.ts";
 import { HARNESS_ACCOUNT } from "../solve/starter.ts";
 import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from "../solve/run.ts";
 import { mountDiskCap } from "../verify/disk-cap.ts";
-import { solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import { campaignOf } from "./handover.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, shortDigest } from "./past.ts";
@@ -519,14 +518,12 @@ export async function build(request: BuildRequest): Promise<Built> {
   // Before the try: a claim refused because another round's session holds this id cleans up nothing.
   const release = await mountDiskCap({ root: dirs.root, bytes: request.limits.diskBytes });
   try {
-    for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-    const base = solveIsolationPolicy({
-      repoRoot: request.repoRoot,
-      cap: { root: dirs.root, bytes: request.limits.diskBytes },
-    });
-    if ("unsupported" in base) throw new Error(`this host cannot wall a Builder: ${base.unsupported}`);
     const wall: CommandWall = {
-      base,
+      base: walledBase(
+        dirs,
+        { repoRoot: request.repoRoot, diskBytes: request.limits.diskBytes },
+        "a Builder",
+      ),
       dirs,
       toolTree: join(dirs.home, HOME_TOOL_TREE),
       limits: request.limits,

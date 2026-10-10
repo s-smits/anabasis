@@ -265,7 +265,9 @@ describe("a campaign run by its log", () => {
 
   it("compares a step again, waits for the operator's word to promote it, and then has tasks written", async () => {
     const name = `${STEM}-climb`;
-    const flags = [...seeded(name), "--practice", "2", "--solves", "1", "--sessions", "1"];
+    // The seed holds five tasks to score once two are released, and the comparison scores five:
+    // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
+    const flags = [...seeded(name), "--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5"];
     const strayed: string[] = [];
     // Under the new harness every held-out task is answered, and under the reference none.
     const seats: Seats = {
@@ -310,8 +312,23 @@ describe("a campaign run by its log", () => {
       { move: "examine", session: "x-1" },
     ]);
     expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 3 }]);
-    // Against the new reference nothing is built yet: the Builder builds.
-    expect(next).toMatchObject({ move: "build" });
+    // The tasks written are read by a control before a Builder session is paid for: the starter
+    // against the promoted harness, with the reference against itself, since tasks were held out
+    // since it was last read so. Until 10 October the Builder built here, three times, on
+    // practice the promoted harness passed (t-4, t-9, t-10).
+    expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted", noise: true });
+    const after = await harnessBuilder([...flags, "--unattended", "--moves", "1"], seats);
+    expect(of(name, "comparison.started").at(-1)).toMatchObject({
+      session: "g-3",
+      fresh: first?.starter,
+      old: first?.fresh,
+      noise: true,
+    });
+    // The script answers nothing under the reference nor the starter, so the control reads the new
+    // tasks as beyond both, and the table has other tasks written rather than a harness built.
+    expect(of(name, "comparison.reported").at(-1)).toMatchObject({ session: "g-3", reading: "no-step" });
+    expect(after).toMatchObject({ move: "examine" });
+    expect(after.why).toContain("neither harness was valid on one solve in four");
     expect(strayed).toEqual([]);
 
     // A person reads two of the answers that passed in g-1: the draw is by the comparison's id, so
@@ -397,7 +414,9 @@ describe("a campaign run by its log", () => {
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {
     const name = `${STEM}-word`;
-    const flags = [...seeded(name), "--practice", "2", "--solves", "1", "--sessions", "1"];
+    // The seed holds five tasks to score once two are released, and the comparison scores five:
+    // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
+    const flags = [...seeded(name), "--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5"];
     const strayed: string[] = [];
     const scriptedSolves = scriptedSeats(
       { held: { old: "none", fresh: "pass" }, starter: "none" },
@@ -460,7 +479,18 @@ describe("a campaign run by its log", () => {
   it("sets the budget by the rule where the reference left no room, and compares again under it", async () => {
     const name = `${STEM}-budget`;
     const limits = ["--solve-model-turns", "8", "--ladder", "4,1"];
-    const flags = [...seeded(name), "--practice", "2", "--solves", "1", "--sessions", "1", ...limits];
+    const flags = [
+      ...seeded(name),
+      "--practice",
+      "2",
+      "--solves",
+      "1",
+      "--sessions",
+      "1",
+      "--target",
+      "5",
+      ...limits,
+    ];
     const strayed: string[] = [];
     // Every harness answers every task, in two of the model's turns: no room at eight or at four.
     const seats: Seats = {

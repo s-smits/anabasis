@@ -48,7 +48,7 @@ import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
-import { lstatSync, mkdirSync, rmSync } from "../meta/filesystem.ts";
+import { lstatSync, rmSync } from "../meta/filesystem.ts";
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
@@ -56,14 +56,13 @@ import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { mountDiskCap, type ReleaseDiskCap } from "../verify/disk-cap.ts";
-import { solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import {
   createToolDefinitionFromAgentTool,
   wrapToolDefinitions,
 } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "./answer.ts";
 import { codingTools, selectedCodingTools, type SolverTool, wallExec } from "./coding-tools.ts";
-import { type CommandWall, type SolveClock, solveDirs, usedSeconds } from "./command.ts";
+import { type CommandWall, type SolveClock, solveDirs, usedSeconds, walledBase } from "./command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder } from "./harness.ts";
 import { firstTurn, installedPrograms, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
 
@@ -223,12 +222,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   let prompts = 0;
   try {
     release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
-    for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-    const base = solveIsolationPolicy({
-      repoRoot: request.repoRoot,
-      cap: { root: dirs.root, bytes: limits.diskBytes },
-    });
-    if ("unsupported" in base) throw new Error(`this host cannot wall a solve: ${base.unsupported}`);
+    const base = walledBase(dirs, { repoRoot: request.repoRoot, diskBytes: limits.diskBytes }, "a solve");
     const resources = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;

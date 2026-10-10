@@ -24,12 +24,12 @@
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { examine } from "#src/examiner/session.ts";
+import { examineWalled } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { taskSets, taskStates } from "#src/kernel/task.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { openCampaign, packNamed, stayAwake } from "../d2/campaign.ts";
+import { openCampaign, packNamed, REPO, stayAwake } from "../d2/campaign.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 /** An Examiner session's flags and their defaults. A launch parses its flags by the same table
@@ -51,7 +51,7 @@ export const EXAMINE_OPTIONS = {
 
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
  *  with no model stands in for it to read what the command would have asked of one. */
-export async function examineCommand(args: readonly string[], session = examine): Promise<void> {
+export async function examineCommand(args: readonly string[], session = examineWalled): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS });
   const { session: id, examiner } = values;
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
@@ -62,6 +62,9 @@ export async function examineCommand(args: readonly string[], session = examine)
   stayAwake();
   const examined = await session({
     id,
+    repoRoot: REPO,
+    diskBytes: campaign.limits.diskBytes,
+    verify: campaign.verify,
     contract: campaign.contract,
     checks: declared.map((check, index) => ({
       id: check.id,

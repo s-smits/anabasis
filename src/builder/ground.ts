@@ -80,8 +80,12 @@ export interface Ground {
   readonly rest: string;
   /** The reference harness, null before any comparison or promotion has named it. */
   readonly reference: string | null;
+  /** The Starter Built Harness, as the reports name it; null before any comparison reported. */
+  readonly starter: string | null;
   readonly latest: string | null;
   readonly tasksShort: ReturnType<typeof shortOf>;
+  /** The held-out tasks a comparison may score: the ones not waiting for a person's label. */
+  readonly scorable: number;
   /** The Examiner sessions in a row, up to the log's end, that held out no task. */
   readonly drafts: number;
 }
@@ -184,6 +188,8 @@ export function groundOf(events: readonly LogEvent[], plan: Plan): Ground {
   // is the last that tallied under the campaign's own: none, where it has not stood there yet,
   // and then every task is counted whole. A budget set by the rule is set to untie them.
   const stood = here.findLast(({ report }) => asRecord(report?.scored) !== null)?.report ?? null;
+  const starter = all.map(({ report }) => report?.starter).find(isString) ?? null;
+  const supply = supplyOf(events, "promoted", stood);
   return {
     events,
     plan,
@@ -192,9 +198,11 @@ export function groundOf(events: readonly LogEvent[], plan: Plan): Ground {
     here,
     turns,
     rest,
-    reference: promoted(events) ?? all.map(({ report }) => report?.starter).find(isString) ?? null,
+    reference: promoted(events) ?? starter,
+    starter,
     latest: latestBuilt(events),
-    tasksShort: shortOf(supplyOf(events, "promoted", stood), plan.wanted),
+    tasksShort: shortOf(supply, plan.wanted),
+    scorable: supply.held,
     drafts: idleDrafts(events),
   };
 }

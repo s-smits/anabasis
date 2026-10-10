@@ -49,16 +49,21 @@ import { writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
-import type { Task } from "../kernel/verify.ts";
+import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { mkdtempSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, type JsonValue } from "../meta/json-shape.ts";
 import { tmpdir } from "../meta/os.ts";
-import { join } from "../meta/path.ts";
+import { basename, dirname, join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
+import { type CommandWall, type SolveDirs, solveDirs, walledBase } from "../solve/command.ts";
+import { codingTools } from "../solve/coding-tools.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
+import { mountDiskCap } from "../verify/disk-cap.ts";
+import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
+import { openingOf } from "../builder/opening.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 import { heard } from "./record.ts";
 
@@ -90,6 +95,12 @@ export interface ExamRequest {
   /** The backends, built on the home the Examiner's model process keeps its state in. */
   readonly models: (home: string) => Models;
   readonly log: string;
+  /** The campaign's verifier, for `try_answer`: the checks run on an instance with an answer of the
+   *  Examiner's own. Absent, the tool is not given. */
+  readonly verify?: Verifier | undefined;
+  /** The Examiner's shell, where the session has one: `bash`, `read` and `write` in a walled home
+   *  of its own. Absent, the Examiner computes nothing (`examineWalled` gives one). */
+  readonly shell?: CommandWall | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
 }
@@ -119,6 +130,9 @@ interface Desk {
 const SHOWN_CHARS = 20_000;
 const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
+/** What the Examiner's shell is told of its wall, after pi's own description of `bash`. */
+const SHELL_WALLS =
+  " The command runs in your home directory, which is yours for the session and empty at its start. It can write there, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. It has network access. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: a task enters it through propose_tasks alone.";
 
 /** An instance by what a solver and the checks read of it, whatever id it carries. */
 function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
@@ -230,6 +244,58 @@ function exampleTool(desk: Desk): AgentTool {
   });
 }
 
+/** The checks run on one instance with an answer of the Examiner's: which refuse it, or that none
+ *  does. The Examiner wrote tasks it could not know to be feasible: on 10 October the notes of
+ *  nine sessions said in eight that feasibility rested on hand estimates, and two of seven tasks
+ *  of one session asked for more than their input allowed. Nothing of a try is kept but its
+ *  trace: no task, no answer. */
+/** A verdict as the Examiner reads it. */
+function tried(verdict: Verdict): string {
+  if (verdict.kind === "pass") {
+    return "Every applicable check passed this answer: the instance has a valid answer.";
+  }
+  if (verdict.kind === "fail") {
+    return `Refused by ${verdict.blocking.join(", ") || "no check: the answer was missing"}.`;
+  }
+  if (verdict.kind === "faulty") return `Check ${verdict.check} could not decide: ${verdict.reason}`;
+  return `The checks could not run: ${verdict.reason}`;
+}
+
+function tryTool(desk: Desk, verify: Verifier): AgentTool {
+  const { request } = desk;
+  return tool({
+    name: "try_answer",
+    label: "Try an answer",
+    description:
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try keeps nothing: no task enters the exam by it, and no answer is kept. The gate's reading of the instance's package is given first, where it would refuse it.",
+    parameters: Type.Object({
+      family: Type.String({ minLength: 1 }),
+      public_input: Type.Unknown({ description: "What the solver would read of the task." }),
+      hidden: Type.Unknown({ description: "What only the checks receive; null when a task has none." }),
+      answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
+    }),
+    executionMode: "parallel",
+    execute: async (_id, args, signal) => {
+      // SAFETY: a tool's arguments are JSON the provider parsed.
+      const [publicInput, hidden, answer] = [args.public_input, args.hidden ?? null, args.answer] as [
+        JsonValue,
+        JsonValue,
+        JsonValue,
+      ];
+      const instance: Task = { taskId: "try", family: args.family, publicInput, hidden };
+      const packaged = packageGate(request.contract, request.pack(instance));
+      const gate =
+        packaged.outcome === "passed"
+          ? ""
+          : `The gate would refuse this instance: ${packaged.reason}
+`;
+      if (signal?.aborted === true) throw new Error("The session has ended.");
+      const verdict = await verify(instance, answer);
+      return text(`${gate}${tried(verdict)}`);
+    },
+  });
+}
+
 function finishTool(desk: Desk): AgentTool {
   return tool({
     name: "finish",
@@ -275,7 +341,21 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     checks: request.checks.map(({ id }) => id),
     examples: request.examples.map(({ taskId }) => taskId),
   });
-  const tools = [proposeTool(desk), exampleTool(desk), finishTool(desk)];
+  const shell =
+    request.shell === undefined
+      ? []
+      : // SAFETY: pi's wrapper types its tools' parameters `any`; each is one of pi's definitions.
+        (wrapToolDefinitions(codingTools(request.shell, ["bash", "read", "write"])) as AgentTool[]).map(
+          (each) =>
+            each.name === "bash" ? { ...each, description: `${each.description}${SHELL_WALLS}` } : each,
+        );
+  const tools = [
+    proposeTool(desk),
+    exampleTool(desk),
+    ...(request.verify === undefined ? [] : [tryTool(desk, request.verify)]),
+    ...shell,
+    finishTool(desk),
+  ];
   const wall = new AbortController();
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
@@ -293,7 +373,17 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     const models = request.models(home);
     const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
     await runAgentLoop(
-      [user(firstMessage(request.contract, request.checks, heard(before, request.examples), limits))],
+      [
+        user(
+          firstMessage(
+            request.contract,
+            request.checks,
+            heard(before, request.examples),
+            limits,
+            openingOf(before)?.prompt ?? null,
+          ),
+        ),
+      ],
       { messages: system === undefined ? [] : [system], tools },
       {
         model,
@@ -351,4 +441,34 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     seconds: (performance.now() - began) / 1000,
   });
   return { held: desk.held, refused: desk.refused, ended };
+}
+
+/** Where an Examiner session's shell runs: a capped root of its own, as a Builder's. */
+export const examinerDirs = (log: string, id: string): SolveDirs =>
+  solveDirs(`exam-${basename(dirname(log))}-${id}`);
+
+/**
+ * One Examiner session with a shell under the solver's command wall and disk cap: mount, run,
+ * tear down. Until 10 October an Examiner could run nothing, and its notes said that a task's
+ * feasibility rested on hand estimates; with a shell it computes an instance, and with
+ * `try_answer` it knows the instance has a valid answer before it proposes it.
+ */
+export async function examineWalled(
+  request: Omit<ExamRequest, "shell"> & { readonly repoRoot: string; readonly diskBytes: number },
+): Promise<Examined> {
+  const dirs = examinerDirs(request.log, request.id);
+  const release = await mountDiskCap({ root: dirs.root, bytes: request.diskBytes });
+  try {
+    const shell: CommandWall = {
+      base: walledBase(dirs, request, "an Examiner"),
+      dirs,
+      toolTree: null,
+      limits: { shellDefaultSeconds: 120, shellMaxSeconds: 600 },
+      cpu: { seconds: 0, unmeasured: 0 },
+    };
+    return await examine({ ...request, shell });
+  } finally {
+    await release();
+    rmSync(dirs.host, { recursive: true, force: true });
+  }
 }

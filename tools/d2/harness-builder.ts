@@ -468,7 +468,8 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
     return { ...keyIfDefined("admitted", values.admit === undefined ? undefined : admitsOf(values)) };
   }
   if (decided.move === "prepare") {
-    await prepareCommand([...pack, ...flag("practice", values.practice)]);
+    const practice = decided.practice === undefined ? values.practice : String(decided.practice);
+    await prepareCommand([...pack, ...flag("practice", practice)]);
     return {};
   }
   if (decided.move === "budget") {

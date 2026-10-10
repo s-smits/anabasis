@@ -277,11 +277,14 @@ function causeSources(campaign: string): CauseSources {
         });
       }
       for (const call of Array.isArray(record.customCalls) ? record.customCalls : []) {
-        if (!isString(call?.tool) || !isNumber(call.startedAtMs) || !isNumber(call.durationMs)) continue;
+        if (!isString(call?.tool) || !isNumber(call.startedAtMs)) continue;
+        // A call the record settled around, as one the operator's stop cut mid-rehearsal, has no
+        // duration: it held the Builder from its start to the record's end.
+        if (!isNumber(call.durationMs) && call.dispatchOutcome !== "in-flight") continue;
         const at = start + call.startedAtMs;
         calls.push({
           start: at,
-          end: at + call.durationMs,
+          end: isNumber(call.durationMs) ? at + call.durationMs : end,
           where,
           tool: call.tool,
           sequence: textOf(call.sequence),
@@ -295,6 +298,19 @@ function causeSources(campaign: string): CauseSources {
 /** How much of `from`..`to` the interval covers, in ms. */
 const covered = (interval: Interval, from: number, to: number): number =>
   Math.max(0, Math.min(interval.end, to) - Math.max(interval.start, from));
+
+/** How much of `from`..`to` the intervals cover between them, an overlap counted once: calls one
+ *  turn dispatched together ran across the same minutes, and a sum would hold them twice. */
+function unionCovered(intervals: readonly Interval[], from: number, to: number): number {
+  let sum = 0;
+  let reach = from;
+  for (const row of intervals.toSorted((a, b) => a.start - b.start)) {
+    const end = Math.min(row.end, to);
+    sum += Math.max(0, end - Math.max(row.start, reach));
+    reach = Math.max(reach, end);
+  }
+  return sum;
+}
 
 /** One tool's share of a gap, naming its longest call when it made several. */
 function heldBy({ tool, rows, ms }: ToolShare, span: number): string {
@@ -328,16 +344,20 @@ function causeOf(gap: Gap, sources: CauseSources): string {
   const ranked = [...byTool].map(([tool, rows]) => ({
     tool,
     rows,
-    ms: rows.reduce((sum, row) => sum + row.ms, 0),
+    ms: unionCovered(
+      rows.map((row) => row.call),
+      from,
+      to,
+    ),
   }));
+  const named: Call[] = [];
   const held: string[] = [];
-  let sum = 0;
   for (const group of ranked.sort((a, b) => b.ms - a.ms)) {
-    if (2 * sum > to - from) break;
-    sum += group.ms;
+    if (2 * unionCovered(named, from, to) > to - from) break;
+    named.push(...group.rows.map((row) => row.call));
     held.push(heldBy(group, to - from));
   }
-  return 2 * sum > to - from ? held.join("; ") : "unattributed";
+  return 2 * unionCovered(named, from, to) > to - from ? held.join("; ") : "unattributed";
 }
 
 /** One entry per recorded phase change, which is what places any other evidence in a phase: a

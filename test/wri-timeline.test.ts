@@ -240,6 +240,47 @@ describe("run timeline", () => {
     ]);
   });
 
+  // truss-opushmm-20261008T004146905Z: the operator's stop fell inside a rehearsal, which the record
+  // settled around with no duration. It held the Builder from its start to the record's end.
+  it("places a call still in flight when the record settled from its start to the record's end", () => {
+    const dir = epoch({
+      customCalls: [
+        {
+          ...trialCall(1, "t1", "c1", "pass"),
+          startedAtMs: at(12),
+          durationMs: null,
+          dispatchOutcome: "in-flight",
+        },
+      ],
+    });
+    expect(
+      buildTimeline({ campaign: dir, runId: RUN }).stalls?.map((stall) => [stall.minutes, stall.cause]),
+    ).toEqual([
+      [30, "harness_trial seq 1, 28 min (93%, epoch-aa session 1)"],
+      // The record ends at 10:50, five minutes into the fifteen-minute gap.
+      [15, "unattributed"],
+      [10, "unattributed"],
+      [5, "harness_trial seq 1, 5 min (100%, epoch-aa session 1)"],
+    ]);
+  });
+
+  it("counts the minutes two calls of one tool ran across together once, not twice", () => {
+    const shell = (sequence: number) => ({
+      sequence,
+      turn: 1,
+      tool: "bash",
+      action: "execute",
+      target: {},
+      startedAtMs: at(11),
+      durationMs: at(27),
+      dispatchOutcome: "returned" as const,
+    });
+    const dir = epoch({ customCalls: [shell(1), shell(2)] });
+    expect(buildTimeline({ campaign: dir, runId: RUN }).stalls?.[0]?.cause).toBe(
+      "bash 2 calls, 27 min (90%; longest bash seq 1, 27 min; epoch-aa session 1)",
+    );
+  });
+
   it("tallies prompts, hooks, steering and settled iterations from the rows alone", () => {
     const dir = campaign([
       ...RECORDED,

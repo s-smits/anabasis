@@ -50,6 +50,8 @@ interface BatchFixtureOptions {
   failLaunch?: boolean;
   failWorker?: boolean;
   refuseAllowance?: boolean;
+  /** The target source predates the stop flag, so its parser would refuse `--stop-at`. */
+  staleTarget?: boolean;
   args?: string[];
   host?: Context["host"];
 }
@@ -156,6 +158,7 @@ function batchFixture({
   failLaunch = false,
   failWorker = false,
   refuseAllowance = false,
+  staleTarget = false,
   args = [...CUSTOM, "truss"],
   host = { load: 1.5, live: [] },
 }: BatchFixtureOptions = {}) {
@@ -200,6 +203,9 @@ function batchFixture({
       mkdirSync(dir, { recursive: true });
       gitOutput(dir, "init", "-q");
       writeFileSync(join(dir, ".gitignore"), "*\n!/dirty\n");
+      // The target's parser, as far as a timed launch reads it: whether it names the stop flag.
+      mkdirSync(join(dir, "src/run"), { recursive: true });
+      writeFileSync(join(dir, "src/run/launch-arguments.ts"), staleTarget ? "" : '["--stop-at", instant]\n');
     }
     if (argv.some((arg) => arg.endsWith("/probe.ts"))) {
       // The probe runs under the run's frozen environment, whose worker temp root sits outside it.
@@ -288,6 +294,35 @@ describe("one-command run launcher", () => {
         readFileSync(join(import.meta.dir, "../.claude/skills", name), "utf8"),
       );
     }
+  });
+
+  // A source without the flag would exit on it after the timer was armed, leaving a loaded timer
+  // and a run that never opened; the launcher cannot ask the probe, which parses the target's own argv.
+  it("refuses a timed launch of a source whose parser lacks the stop flag, before arming anything", async () => {
+    const fixture = batchFixture({ args: ["truss", "--kill-after-ms", "180000"], staleTarget: true });
+    await expect(
+      launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command),
+    ).rejects.toThrow(
+      "does not accept --stop-at, so its Builder cannot be told when the stop falls; launch it without --kill-after-ms",
+    );
+    expect(
+      fixture.calls.some((args) => args.includes("--deadline") || args.at(-1) === "gate" || isLauncher(args)),
+    ).toBe(false);
+  });
+
+  it("takes down the stop timer it armed when the controller's start is not confirmed", async () => {
+    const fixture = batchFixture({ args: ["truss", "--kill-after-ms", "180000"], failLaunch: true });
+    const [result] = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
+    expect(launched(result).error).toContain("uncertain start");
+    const timer = required(
+      fixture.calls.find((args) => args.includes("--deadline")),
+      "the stop timer launch",
+    );
+    const removal = manager.remove(manager.service(501, `${required(fixture.plans[0], "plan").label}.stop`));
+    expect(fixture.calls).toContainEqual(removal);
+    expect(fixture.calls.findIndex((args) => args.join(" ") === removal.join(" "))).toBeGreaterThan(
+      fixture.calls.indexOf(timer),
+    );
   });
 
   it("launches with no stop argument when no stop timer is armed", async () => {

@@ -18,7 +18,10 @@ import type { CandidateCheckOutcome } from "../src/author/candidate-check.ts";
 import type { HostSession, PiTool } from "../src/backends/pi-session.ts";
 import { builderSessionCapMs } from "../src/run/builder-backend.ts";
 import { ControllerSignalAbort } from "../src/run/controller-abort-clause.ts";
-import { ProviderResourceBudget } from "../src/run/provider-resource-budget.ts";
+import {
+  ProviderResourceBudget,
+  ProviderResourceBudgetExhausted,
+} from "../src/run/provider-resource-budget.ts";
 import { required, scriptedSession, toolDouble } from "./helpers/doubles.ts";
 import {
   ACCEPTED,
@@ -292,6 +295,41 @@ describe("what a failed round leaves", () => {
       expect(sink.settled.map((row) => row.outcome)).toEqual(["signal-terminated"]);
     },
   );
+
+  // The signal's arrival alone relabels nothing: a turn the provider failed had thrown before the
+  // stop came in, and its only prose may be the provider's.
+  it("keeps turn-non-result for a turn the provider failed when the closing signal arrives during disposal", async () => {
+    const providerBudget = new ProviderResourceBudget(10);
+    const open = async () =>
+      scriptedSession(
+        async () => ({ status: "failed", errorMessages: ["boom"] }),
+        () => providerBudget.cancelActiveTurns(new ControllerSignalAbort("SIGTERM")),
+      );
+    const sink = recordSink();
+    await expect(
+      runBuilderSession(INPUT, { ...deps(open, () => ACCEPTED), ...sink, providerBudget }),
+    ).rejects.toThrow(/turn failed \(role builder\).*boom/);
+    expect(sink.settled.map((row) => row.outcome)).toEqual(["turn-non-result"]);
+  });
+
+  // The first stop cause owns the terminal (full-run-deadline.ts): a provider denial recorded before
+  // the signal stays the budget's abort reason, and the retry's admission check rethrows it. The
+  // session was still cut by the signal, and its prose is still its own.
+  it("records signal-terminated when the closing signal follows an earlier provider denial", async () => {
+    const providerBudget = new ProviderResourceBudget(10);
+    const denial = new ProviderResourceBudgetExhausted("builder", 10, 10);
+    const stopped: TurnScript = () => {
+      providerBudget.cancelActiveTurns(denial);
+      providerBudget.cancelActiveTurns(new ControllerSignalAbort("SIGTERM"));
+      return { status: "aborted", errorMessages: ["aborted"] };
+    };
+    const { open } = scriptedOpener([stopped]);
+    const sink = recordSink();
+    await expect(
+      runBuilderSession(INPUT, { ...deps(open, () => ACCEPTED), ...sink, providerBudget }),
+    ).rejects.toThrow(denial.message);
+    expect(sink.settled.map((row) => row.outcome)).toEqual(["signal-terminated"]);
+  });
 
   it.each([
     [

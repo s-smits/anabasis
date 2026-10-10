@@ -747,9 +747,12 @@ What holds in all of them:
    as held or falsified with the count that settled it.
 8. **Report every attempt that started as spent**, the unsuccessful ones included.
 
-A Builder session mounts a disk image and runs on macOS only; a solve runs behind Seatbelt on macOS
-and Bubblewrap on Linux. When the required wall is unavailable the result is a typed non-result,
-never an unconfined run.
+A solve and a Builder session run on either host, behind Seatbelt on macOS and Bubblewrap on Linux:
+nine Builder sessions and 308 solves finished on a Linux test host on 9 October. The disk cap holds
+on macOS, where a sparse image is mounted at the root of each solve and each Builder session. On
+Linux a solve's worker launch mounts a tmpfs of the cap's size, and nothing caps a Builder session,
+whose home lies on the host's disk (`src/verify/disk-cap.ts`). When the required wall is unavailable
+the result is a typed non-result, never an unconfined run.
 
 ## 11. Working in the repository
 

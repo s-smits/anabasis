@@ -14,6 +14,15 @@
  * image took about 1 s, attaching it about 0.2 s, and a `dd` of 200 MB into it stopped at 61 MB with
  * ENOSPC.
  *
+ * That caps a solve. A Builder session (`build`, `src/builder/session.ts`) runs in the host process
+ * and launches no worker: each of its commands runs under the command wall
+ * (`stageCommandIsolation`), which binds the session's home read-write and mounts no tmpfs, since
+ * the home has to survive from one command to the next. So on Linux a Builder session's disk is
+ * uncapped: `mountDiskCap` makes its root and `diskBytes` binds nothing there. Nine Builder sessions
+ * finished so on a Linux test host on 9 October. A capped volume on Linux would take a loop mount or
+ * a quota, neither of which an unprivileged host has, so the gap is stated here rather than closed
+ * (read at 7b387fb, 10 October).
+ *
  * What stays uncapped. On Darwin the command profile in `solve-command-isolation.ts` also lets a
  * command write the user temporary root system toolchains take through `confstr`, and `/tmp`, both
  * outside the root. On Linux the command wall overmounts `/tmp` and the host temporary directory with
@@ -55,8 +64,8 @@ async function trash(path: string): Promise<void> {
 
 /**
  * Create the cap's root and, on Darwin, mount a volume of `cap.bytes` there. Returns the release,
- * which the caller runs once the solve's worker has exited. On Linux the root is only created,
- * because the worker's own launch applies the cap.
+ * which the caller runs once the solve's worker has exited. On Linux the root is only created: a
+ * solve's worker launch applies the cap, and a Builder session's commands run uncapped (above).
  */
 export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
   const root = resolve(cap.root);

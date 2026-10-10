@@ -384,13 +384,25 @@ function coverageView(bundle: Bundle, { family, offset, limit }: InspectParams) 
 
 /** What the static checks found, before any of it is shaped for the page: the files, the merged
  *  validation and module findings, the installed tools, and the two verdicts drawn from them. */
-function readinessState(bundle: Bundle, workspace: string, rehearsal: Bundle, shows: FindingFilter) {
-  const { files, missing } = fileState(workspace);
+function readinessState(
+  bundle: Bundle,
+  workspace: string,
+  rehearsal: Bundle,
+  shows: FindingFilter,
+  own: (path: string) => boolean,
+) {
+  const { files, missing: allMissing } = fileState(workspace);
+  // The verdicts read the files and modules the view shows: a reader told `blocked` by a module
+  // it cannot see has nothing to repair.
+  const missing = allMissing.filter(own);
   const typecheck = typecheckModules(workspace);
   const diagnostics = typecheck.findings.filter(shows);
+  const modules = typecheck.modules.filter((module) => own(module.module));
   const installedTools = installedToolsView(workspace);
-  const modulesClear = typecheck.modules.every((module) => module.present && module.diagnostics === 0);
-  const toolsClear = Array.isArray(installedTools) && installedTools.every((tool) => !("missing" in tool));
+  const modulesClear = modules.every((module) => module.present && module.diagnostics === 0);
+  const toolsClear =
+    !own(BRIEF_FILE) ||
+    (Array.isArray(installedTools) && installedTools.every((tool) => !("missing" in tool)));
   const rehearsalReady =
     rehearsal.brief !== null &&
     rehearsal.battery !== null &&
@@ -403,7 +415,7 @@ function readinessState(bundle: Bundle, workspace: string, rehearsal: Bundle, sh
   return {
     files,
     missing,
-    modules: typecheck.modules,
+    modules,
     findings: [...bundle.findings, ...diagnostics],
     installedTools,
     rehearsalReady,
@@ -420,9 +432,9 @@ function readinessView(
   workspace: string,
   { offset, limit }: InspectParams,
   rehearsal: Bundle,
-  shows: FindingFilter,
+  side: { shows: FindingFilter; own: (path: string) => boolean },
 ) {
-  const state = readinessState(bundle, workspace, rehearsal, shows);
+  const state = readinessState(bundle, workspace, rehearsal, side.shows, side.own);
   const tasks: readonly BuildTask[] = rehearsal.battery?.tasks ?? [];
   const allFamilies = familyRows(tasks);
   const range = windowRange(allFamilies.length, offset, rowLimit(limit));
@@ -508,15 +520,17 @@ function readinessNextAction(
  *  families, without what readiness reads from correctness-model/ — the check groundings, the hidden
  *  rows per check, the controls, the tools the checks run and the correctness model's module. */
 function harnessReadiness(view: ReturnType<typeof readinessView>) {
-  const { brief, tasks, controls: _controls, installedTools: _tools, modules, ...rest } = view;
+  const { brief, tasks, controls: _controls, installedTools: _tools, ...rest } = view;
   const { hiddenChecksByCheckId: _hidden, ...publicTasks } = tasks;
   return {
     ...rest,
     brief: brief === null ? null : { slug: brief.slug, artifactFields: brief.artifactFields },
-    modules: modules.filter(({ module }) => module.startsWith(AGENT_DIR)),
     tasks: publicTasks,
   };
 }
+
+/** The half of the workspace a reader's readiness is about: the Harness Builder's agent/ alone. */
+const agentHalf = (path: string) => path.startsWith(AGENT_DIR);
 
 function readinessResult(binding: HarnessInspectBinding, params: InspectParams) {
   const { workspace, context } = binding;
@@ -530,7 +544,10 @@ function readinessResult(binding: HarnessInspectBinding, params: InspectParams) 
   }
   const bundle = visibleBundle(binding, loadValidatedBundle(workspace, context, "admission"));
   const harness = binding.harnessView === true;
-  const view = readinessView(bundle, workspace, params, rehearsal, harness ? onHarnessSide : () => true);
+  const view = readinessView(bundle, workspace, params, rehearsal, {
+    shows: harness ? onHarnessSide : () => true,
+    own: harness ? agentHalf : () => true,
+  });
   const shown = harness ? harnessReadiness(view) : view;
   const body = binding.contract === undefined ? shown : { ...shown, contract: binding.contract };
   const count = view.findings.totalFindings;

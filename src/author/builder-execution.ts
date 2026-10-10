@@ -204,6 +204,8 @@ export interface BuilderExecutionEvidence {
     | "recorded"
     | "turn-bound"
     | "terminal-refusal"
+    /** A split build's Harness Builder pass ended by handing the correctness model back. */
+    | "handed-back"
     /** The round went `POLICY.loop.stalledTurns` turns without a successful tool call. */
     | "no-progress"
     /** The run's model budget ran out inside the round. */

@@ -98,6 +98,7 @@ export type WorkspaceSeed = "adopted" | "starter" | "resumed";
 const ENDED: Record<RoundEnding, string> = {
   accepted: "Your last submit was accepted.",
   "terminal-refusal": "The last round ended on a final submit refusal.",
+  "handed-back": "The last pass ended when its submit handed the correctness model back to the answer agent.",
   "turn-bound": "The last round reached its turn limit without an accepted submit.",
   "no-progress": `The last round ended after ${POLICY.loop.stalledTurns} turns in a row without a successful tool call.`,
   "budget-limited": "The last round ended when the run's model budget ran out.",
@@ -227,6 +228,8 @@ interface SessionState {
   lastRefusal: ContractFinding[];
   activeTurn: number;
   terminal: boolean;
+  /** The terminal was a split build's hand-back: this pass ended, the submits did not. */
+  handedBack: boolean;
   terminalClause: "no-progress" | "budget-limited" | null;
   submitBound: boolean;
   idleTurns: number;
@@ -362,6 +365,7 @@ function freshSessionState(): SessionState {
     lastRefusal: [],
     activeTurn: 0,
     terminal: false,
+    handedBack: false,
     terminalClause: null,
     submitBound: false,
     idleTurns: 0,
@@ -382,6 +386,7 @@ function settledClosure(state: SessionState): "accepted" | "terminal-refusal" | 
 function settledEnding(state: SessionState): Exclude<RoundEnding, "turn-non-result"> {
   if (state.accepted !== null) return "accepted";
   if (state.terminalClause !== null) return state.terminalClause;
+  if (state.handedBack) return "handed-back";
   return state.terminal && !state.submitBound ? "terminal-refusal" : "turn-bound";
 }
 

@@ -19,6 +19,7 @@ import { type BuilderSessionDeps, checkRoundEntry, runBuilderSession } from "../
 import type { CampaignFeedback } from "../author/campaign-types.ts";
 import { type CandidateCheckContext, loadValidatedBundle } from "../author/candidate-check.ts";
 import { harnessOwned, onHarnessSide } from "../author/feedback-routing.ts";
+import { ANSWER_DIR } from "../author/builder-memory.ts";
 import { PUBLIC_RESOURCES_FILE, PUBLIC_TASKS_FILE } from "../author/split-prompts.ts";
 import { BuilderAuthorFeedback, authorFindingOverview } from "../builder/author-feedback.ts";
 import { type ContractFinding, controllerValidatedFinding } from "../correctness-bundle/brief.ts";
@@ -30,6 +31,7 @@ import { mkdirSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { dirname, join } from "../meta/path.ts";
+import { ANSWER_TOOL_TREE } from "../verify/wall-policy.ts";
 
 export type SplitSide = "harness" | "answer";
 
@@ -114,7 +116,8 @@ export function sideView(report: GateReport, side: SplitSide): GateReport {
 }
 
 /** The Harness Builder's submit. A refusal with nothing of its own to repair hands the correctness
- *  model back and ends the pass; any other refusal keeps only the rows it may read. */
+ *  model back and ends the pass; any other refusal keeps only the rows it may read. The
+ *  controller's steering on its submit is no repair of its own, so it holds no hand-back. */
 function harnessSubmit(submit: Submit, handBack: (findings: ContractFinding[]) => void): Submit {
   return async (request) => {
     const outcome = await submit(request);
@@ -127,9 +130,11 @@ function harnessSubmit(submit: Submit, handBack: (findings: ContractFinding[]) =
     }
     handBack(theirs);
     const detail = `The gate refused these bytes only on the correctness model, so its ${String(theirs.length)} finding${theirs.length === 1 ? " goes" : "s go"} back to the answer agent and this pass ends. You continue once its revised projection is in ${PUBLIC_TASKS_FILE}.`;
+    // The pass ends here without the submit being final: the next pass submits again.
     return {
       ...outcome,
       terminal: true,
+      handedBack: true,
       findings: [controllerValidatedFinding({ code: "split-handed-back", path: "split-build", detail })],
     };
   };
@@ -241,17 +246,30 @@ export async function runSplitBuild(split: SplitBuild): Promise<SessionOutcome> 
   const conversation = new BuilderConversation(split.deps.conversation?.stopAt);
   let returned: ContractFinding[] = [];
   let last: SessionOutcome | null = null;
+  // The answer agent's roots stand before the Harness Builder's first shell: a Linux cell walls
+  // only a root that exists, and the Harness Builder's file tools and shell may not make them.
+  for (const dir of [ANSWER_DIR, ANSWER_TOOL_TREE]) {
+    mkdirSync(join(split.input.workspace, dir), { recursive: true });
+  }
+  // A side's first pass opens on the roster its entry check already recorded, so it records no
+  // second copy of the same session evidence.
+  const { recordSession: _recorded, ...entered } = split.deps;
+  const first = { ...split, deps: entered };
+  let harnessOpened = false;
   try {
     // Both sides through their entry gates first: a roster fault refuses in seconds, not after
     // an answer pass has spent its wall.
     checkRoundEntry(...answerSession(split, conversation, returned));
     checkRoundEntry(...harnessSession(split, 1, () => {}));
     for (let pass = 1; pass <= ANSWER_PASSES; pass += 1) {
-      const answered = await runBuilderSession(...answerSession(split, conversation, returned));
+      const answered = await runBuilderSession(
+        ...answerSession(pass === 1 ? first : split, conversation, returned),
+      );
       if (answered.terminalClause !== null) return answered;
       returned = handOff(split.input.workspace, split.context);
       if (returned.length > 0) continue;
-      const harness = await harnessPass(split, pass);
+      const harness = await harnessPass(harnessOpened ? split : first, pass);
+      harnessOpened = true;
       last = harness.outcome;
       if (harness.handedBack.length === 0) return last;
       returned = harness.handedBack;

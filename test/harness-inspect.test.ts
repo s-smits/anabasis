@@ -14,6 +14,7 @@ import { isRecord, type JsonValue } from "../src/meta/json-shape.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { keyIfDefined, keyIfTruthy } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
+import { GENERATED_TOOLS_FILE } from "../src/meta/bundle-layout.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { loadValidatedBundle } from "../src/author/candidate-check.ts";
@@ -84,7 +85,7 @@ describe("harness_inspect", () => {
   it.concurrent("shows a split build's Harness Builder the findings on agent/ alone, and no coverage", async () => {
     const dir = workspace("[]");
     writeFileSync(join(dir, "agent/tools-spec.json"), JSON.stringify({ tools: "none" }));
-    writeFileSync(join(dir, "agent/tools.ts"), "export const tools: number = 'agent';\n");
+    writeFileSync(join(dir, GENERATED_TOOLS_FILE), "export const tools: number = 'agent';\n");
     writeFileSync(join(dir, "correctness-model/evaluator.ts"), "export const checks: number = 'model';\n");
     const read = async (harnessView: boolean, action: "readiness" | "coverage") => {
       const tool = createHarnessInspectTool({
@@ -113,6 +114,39 @@ describe("harness_inspect", () => {
     expect(await read(true, "coverage")).toContain("Coverage joins the answer agent's checks and controls");
   });
 
+  // The Harness Builder's verdict reads its own half: a correctness-model module it cannot see
+  // cannot block it, or it would read `blocked` with nothing to repair.
+  it.concurrent("reads a split build's Harness Builder readiness from agent/ alone", async () => {
+    const dir = workspace();
+    writeFileSync(join(dir, GENERATED_TOOLS_FILE), "export const tools: number = 1;\n");
+    writeFileSync(join(dir, "correctness-model/evaluator.ts"), "export const checks: number = 'model';\n");
+    const read = async (harnessView: boolean) => {
+      const tool = createHarnessInspectTool({
+        workspace: dir,
+        context: CONTEXT,
+        ...keyIfTruthy("harnessView", harnessView),
+      });
+      const block = (await tool.execute("inspect", { action: "readiness" })).content[0];
+      return parseJsonAs<{
+        staticStatus: string;
+        missing: string[];
+        modules: Array<{ module: string; present: boolean; diagnostics: number }>;
+        findings: { totalFindings: number };
+      }>(block?.type === "text" ? block.text : "{}");
+    };
+    const whole = await read(false);
+    expect(whole.staticStatus).toBe("blocked");
+    expect(whole.modules.map(({ module }) => module)).toEqual([
+      GENERATED_TOOLS_FILE,
+      "correctness-model/evaluator.ts",
+    ]);
+    const harness = await read(true);
+    expect(harness.modules).toEqual([{ module: GENERATED_TOOLS_FILE, present: true, diagnostics: 0 }]);
+    expect(harness.missing).toEqual([]);
+    expect(harness.findings.totalFindings).toBe(0);
+    expect(harness.staticStatus).toBe("static-checks-clear");
+  });
+
   it.concurrent("combines static readiness and chooses one sample trial task per family", async () => {
     const dir = workspace(fence("## Task battery contract", "json"), runtimeProcess.cwd());
     const blocked = await inspect<{
@@ -131,7 +165,7 @@ describe("harness_inspect", () => {
     // turn to compaction needs the count before it has anything that would pass readiness.
     expect(blocked.contract).toBe("Task count: exactly 25 tasks.");
     expect(blocked.staticStatus).toBe("blocked");
-    expect(blocked.missing).toEqual(["correctness-model/evaluator.ts", "agent/tools.ts"]);
+    expect(blocked.missing).toEqual(["correctness-model/evaluator.ts", GENERATED_TOOLS_FILE]);
     expect(blocked.modules.every((module) => !module.present)).toBe(true);
     expect(blocked.tasks).toMatchObject({ count: 5, familiesTotal: 3 });
     expect(blocked.suggestedTrials).toEqual([
@@ -140,7 +174,7 @@ describe("harness_inspect", () => {
       { family: "skill-rest", taskId: "skill-rest-01" },
     ]);
 
-    writeFileSync(join(dir, "agent/tools.ts"), "export const tools: string[] = [];\n");
+    writeFileSync(join(dir, GENERATED_TOOLS_FILE), "export const tools: string[] = [];\n");
     writeFileSync(
       join(dir, "correctness-model/evaluator.ts"),
       'export const checks = { "assignments-match": () => true };\n',
@@ -158,7 +192,7 @@ describe("harness_inspect", () => {
     expect(ready).toMatchObject({
       staticStatus: "static-checks-clear",
       modules: [
-        { module: "agent/tools.ts", present: true, diagnostics: 0 },
+        { module: GENERATED_TOOLS_FILE, present: true, diagnostics: 0 },
         { module: "correctness-model/evaluator.ts", present: true, diagnostics: 0 },
       ],
       findings: { totalFindings: 0 },
@@ -301,7 +335,7 @@ describe("harness_inspect", () => {
       "correctness-model/controls.json": true,
       "correctness-model/evaluator.ts": false,
       "agent/tools-spec.json": true,
-      "agent/tools.ts": false,
+      [GENERATED_TOOLS_FILE]: false,
       "agent/BUILT_AGENTS.md": true,
     });
     expect(body.staticStatus).toBe("blocked");
@@ -549,24 +583,25 @@ describe("harness_inspect", () => {
         }>;
       };
     }
-    const agentModule = (body: TypecheckBody) => body.modules.find((row) => row.module === "agent/tools.ts");
+    const agentModule = (body: TypecheckBody) =>
+      body.modules.find((row) => row.module === GENERATED_TOOLS_FILE);
 
     const dir = workspace();
     expect(agentModule(await inspect<TypecheckBody>(dir, "readiness"))).toEqual({
-      module: "agent/tools.ts",
+      module: GENERATED_TOOLS_FILE,
       present: false,
       diagnostics: 0,
     });
 
-    writeFileSync(join(dir, "agent/tools.ts"), "export const tools: string[] = [1];\n");
+    writeFileSync(join(dir, GENERATED_TOOLS_FILE), "export const tools: string[] = [1];\n");
     const broken = await inspect<TypecheckBody>(dir, "readiness");
     expect(agentModule(broken)?.diagnostics).toBe(1);
     const [first] = broken.findings.groups;
     expect(first?.code.text).toBe("generated-module-types");
-    expect(first?.path.text).toBe("agent/tools.ts");
+    expect(first?.path.text).toBe(GENERATED_TOOLS_FILE);
     expect(first?.detail.text).toMatch(/^agent\/tools\.ts:1:\d+ TS2322: /);
 
-    writeFileSync(join(dir, "agent/tools.ts"), "export const tools: string[] = [];\n");
+    writeFileSync(join(dir, GENERATED_TOOLS_FILE), "export const tools: string[] = [];\n");
     expect(agentModule(await inspect<TypecheckBody>(dir, "readiness"))?.diagnostics).toBe(0);
     // Readiness previews its findings and never pages one: exact paging reads what a gate recorded.
     expect(await inspect(dir, "readiness", undefined, { group: 1, field: "detail" })).toMatchObject({

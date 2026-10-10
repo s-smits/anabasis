@@ -355,11 +355,17 @@ function bindableTaskViews(
     }));
 }
 
-/** A candidate the fingerprint refused, as the findings preview and rehearsal both show. */
+/** A candidate the fingerprint refused, as the findings preview and rehearsal both show. What the
+ *  agent half refused is the Harness Builder's (`markHarnessSide`), as the bundle validators mark
+ *  theirs, so a split build hands back only what the correctness model refused. */
 export function fingerprintRefusal(
-  findings: readonly { code: string; file: string; detail: string }[],
+  findings: readonly { code: string; file: string; detail: string; side: "agent" | "correctness-model" }[],
 ): ContractFinding[] {
-  return findings.map((f) => controllerValidatedFinding({ code: f.code, path: f.file, detail: f.detail }));
+  return findings.map((f) => {
+    const finding = controllerValidatedFinding({ code: f.code, path: f.file, detail: f.detail });
+    if (f.side === "agent") markHarnessSide([finding]);
+    return finding;
+  });
 }
 
 /** Agent code byte-identical to correctness-model code, as `[agent path, correctness-model path]`

@@ -28,6 +28,7 @@ const CURRENT_EXECUTION_OUTCOMES = new Set([
   "recorded",
   "turn-bound",
   "terminal-refusal",
+  "handed-back",
   "no-progress",
   "budget-limited",
   "turn-non-result",

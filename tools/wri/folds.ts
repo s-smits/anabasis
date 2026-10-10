@@ -19,7 +19,7 @@
  */
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { awaitingLabel, lastReports, outcomesOf } from "#src/kernel/reports.ts";
+import { awaitingLabel, billedAll, lastReports, outcomesOf } from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -363,16 +363,26 @@ function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "bu
   });
 }
 
-/** Metered dollars by role, the largest first. */
+/** The events each role's dollars are in, as `billedAll` reads them: what it was billed where it
+ *  ended, and the turns of a session that never ended. */
+const ROLE_EVENTS = {
+  solver: ["solve.started", "solve.finished", "solve.turn"],
+  builder: ["build.started", BUILD_END, "build.turn"],
+  examiner: ["exam.started", EXAM_END, "exam.turn"],
+  referee: ["referee.finding"],
+  diagnoser: ["diagnosis.recorded"],
+} as const;
+
+/** Billed dollars by role, the largest first, counted as the campaign's own budget counts them:
+ *  a session a stop cut has no end record, and its turns were read as nothing. Buffer's Examiner
+ *  session x-1 read 0.00 against $1.68 billed, and the builder's share of the campaign read 71.3%
+ *  where it was 42.2% (2026-10-10). */
 export function spendOf(log: Index): [string, number][] {
-  const spent = (kind: LogEvent["kind"]) => log.of(kind).reduce((sum, data) => sum + count(data.metered), 0);
-  return Object.entries({
-    solver: spent("solve.finished"),
-    builder: spent(BUILD_END),
-    examiner: spent(EXAM_END),
-    referee: spent("referee.finding"),
-    diagnoser: spent("diagnosis.recorded"),
-  }).sort(([, a], [, b]) => b - a);
+  const spent = (kinds: readonly string[]) =>
+    billedAll(log.events.filter(({ kind }) => kinds.includes(kind)));
+  return Object.entries(ROLE_EVENTS)
+    .map(([role, kinds]): [string, number] => [role, spent(kinds)])
+    .sort(([, a], [, b]) => b - a);
 }
 
 /** The answers some check refused: a format fault reached no check and is none. */

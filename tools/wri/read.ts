@@ -193,14 +193,17 @@ function harnessTriggers(log: Index): Trigger[] {
       ...new Set(calls.flatMap(({ tool, args }) => (FILE_WRITERS.has(tool) ? [text(args?.path)] : []))),
     ];
     const toolFiles = written.filter((path) => path.includes("tools"));
+    // A stop writes no end record, so a session it cut says nothing of what it changed: recode's
+    // b-1 wrote its harness for forty minutes and this read none of it (2026-10-10).
+    const cut = finished === null && written.length > 0;
     const fresh = log.solves.filter((solve) => changed && solve.harness === child && solve.side === TEST);
     const erring = fresh.filter((solve) => solve.errors > 0).length;
     return [
-      ...(changed
+      ...(changed || cut
         ? [
             fired(
               "HARNESS CHANGED",
-              `${session}: ${short(parent)} to ${short(child)}; written by its file tools: ${written.join(", ") || "nothing"}`,
+              `${session}: ${short(parent)} to ${cut ? "what a stop left unsaved" : short(child)}; written by its file tools: ${written.join(", ") || "nothing"}`,
             ),
           ]
         : []),
@@ -558,7 +561,7 @@ function solveTriggers(log: Index): Trigger[] {
         ]
       : []),
     ...(total > 0 && leader !== "solver" && most > total / 2
-      ? [fired("SPEND LED BY A ROLE", `${leader}: ${percent(most / total)} of metered dollars`)]
+      ? [fired("SPEND LED BY A ROLE", `${leader}: ${percent(most / total)} of billed dollars`)]
       : []),
   ];
 }
@@ -663,7 +666,7 @@ function rowsOf(log: Index): Row[] {
       lines: [
         `${plural(log.events.length, "event")}, ${log.events[0]?.at ?? ""} to ${log.events.at(-1)?.at ?? ""}`,
         `${plural(log.builds.length, "Builder session")}, ${plural(log.of(EXAM_START).length, "Examiner session")}, ${plural(log.of(REPORTED).length, "report")}`,
-        `metered dollars: ${spendOf(log)
+        `billed dollars: ${spendOf(log)
           .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
           .join(", ")}`,
       ],

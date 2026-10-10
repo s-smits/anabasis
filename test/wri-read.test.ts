@@ -89,7 +89,7 @@ function solve(task: string, harness: string, outcome: "pass" | "rejected" | "la
           },
     seconds: 50,
     responseModels: ["m-1"],
-    metered: 1,
+    billed: 1,
   });
   if (outcome === "rejected") record("verdict", { solve: id, task, kind: "fail", blocking: ["check-a"] });
   return id;
@@ -121,7 +121,7 @@ record("build.call", { session: "b-1", tool: "practice", args: { task: "t1" } })
 // The practice solve runs under the state as it then stood, hb; the edit after it makes hc.
 solve("t1", "hb", "rejected");
 record("build.call", { session: "b-1", tool: "edit", args: { path: "agent/BUILT_AGENTS.md" } });
-record("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true, metered: 2 });
+record("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true, billed: 2 });
 // The round's comparison. The reference harness's answers to v1 and v2 are rejected, one ruled a
 // check defect and one ruled by nobody, and it gives none to v3 and v4 within its limits. The new
 // harness answers all four.
@@ -174,7 +174,7 @@ describe("the whole-run investigation's reader", () => {
     expect(lines).toContain("states: held 4, released 1");
     expect(lines).toContain("4 tasks held out, for a comparison to score; 1 released for practice");
     expect(lines).toContain(
-      "metered dollars: solver 9.00, builder 2.00, examiner 0.00, referee 0.00, diagnoser 0.00",
+      "billed dollars: solver 9.00, builder 2.00, examiner 0.00, referee 0.00, diagnoser 0.00",
     );
     expect(lines).toContain("b-1: hp > hc, ended finished, 0 practice solves, reading no-step");
   });
@@ -226,6 +226,19 @@ describe("the whole-run investigation's reader", () => {
     expect(detail("HARNESS CHANGED")).toBe(
       "b-1: hp to hc; written by its file tools: agent/tools.mjs, agent/BUILT_AGENTS.md",
     );
+    // A session a stop cut leaves no end record, and its writes are all there is of its harness.
+    const stopped = [
+      ...events,
+      { at: new Date(START).toISOString(), kind: "build.started" as EventKind, data: { session: "b-2", parent: "hc" } },
+      {
+        at: new Date(START).toISOString(),
+        kind: "build.call" as EventKind,
+        data: { session: "b-2", tool: "write", args: { path: "agent/tools.mjs" } },
+      },
+    ];
+    expect(
+      overview(stopped).triggers.findLast(({ name }) => name === "HARNESS CHANGED")?.detail,
+    ).toBe("b-2: hc to what a stop left unsaved; written by its file tools: agent/tools.mjs");
     expect(detail("TOOLS EDITED")).toBe("b-1: agent/tools.mjs");
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
       "b-1: no practice solve ran under hc, the harness measured; the last ran under hb",
@@ -457,6 +470,8 @@ describe("the reader of a round compared with another harness than its session s
   put("exam.started", { session: "x-8" });
   put("exam.finished", { session: "x-8", ended: "finished" });
   put("exam.started", { session: "x-9" });
+  // Its turns are what x-9 spent: the end record a stop never wrote held nothing (2026-10-10).
+  for (const turn of [1, 2]) put("exam.turn", { session: "x-9", turn, usage: { cost: { total: 0.25 } } });
   put(REPORTED, {
     ...REPORT,
     ...terms,
@@ -470,7 +485,8 @@ describe("the reader of a round compared with another harness than its session s
     versions: ["v1"],
     reading: "no-step",
   });
-  const { triggers } = overview(log);
+  const seenHere = overview(log);
+  const { triggers } = seenHere;
   const said = (name: keyof typeof TRIGGERS) => triggers.find((trigger) => trigger.name === name)?.detail;
 
   it("reads a quick win against the reference harness, which is what the task was lost under", () => {
@@ -499,6 +515,12 @@ describe("the reader of a round compared with another harness than its session s
 
   it("names an Examiner session that started and never finished", () => {
     expect(said("EXAMINER NEVER FINISHED")).toBe("x-9");
+  });
+
+  it("counts the dollars of that session's turns, which no end record holds", () => {
+    expect(seenHere.rows.flatMap((row) => row.lines)).toContain(
+      "billed dollars: examiner 0.50, solver 0.00, builder 0.00, referee 0.00, diagnoser 0.00",
+    );
   });
 
   it("names a reference harness that loses to itself as it names one that wins: a step either way", () => {

@@ -399,6 +399,10 @@ function sharedOf({ events, plan, opening, values }: Turn) {
               "solve-model-turns",
               values["solve-model-turns"] ?? (opening.limit === null ? undefined : String(opening.limit)),
             ),
+            // The scored tasks are the setting's too, and a Builder session records it as readily
+            // as a comparison: t-2 (10 October) opened with --target 6, its first session recorded
+            // the default, and its comparisons then scored by the record.
+            ...flag("target", values.target),
           ]
         : [],
     cap:
@@ -443,7 +447,6 @@ function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn
       decided.reference,
       ...terms,
       ...flag("defects", values.defects),
-      ...flag("target", recorded === null ? values.target : undefined),
       ...reviewer,
       ...pastStop,
     ],

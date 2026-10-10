@@ -512,7 +512,7 @@ describe("a campaign run by its log", () => {
     const prompt = "Multiplying a base by six, as a fixture.";
     const solver = ["--solver", "claude/claude-opus-5-5"];
     const terms = ["--practice", "2", "--solves", "1", "--solve-minutes", "8", "--practice-solves", "5"];
-    const flags = ["--name", name, ...solver, ...terms];
+    const flags = ["--name", name, ...solver, ...terms, "--target", "5"];
     const exam = {
       domain: "Fixture products",
       scope: "A task gives a base and asks for six times it.",
@@ -611,9 +611,12 @@ describe("a campaign run by its log", () => {
     // second campaign from a prompt, continued so, ran each by its default (2026-10-09).
     const next = await harnessBuilder(["--name", name, "--admit", "check-product", "--moves", "4"], seats);
     expect(of(name, "campaign.opened")).toHaveLength(1);
-    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8 }]);
+    // The Builder session recorded the setting, with the scored tasks the campaign opened with:
+    // t-2 (10 October) opened with --target 6 and its first session recorded the default 12.
+    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 5 }]);
     expect(of(name, "task.state").filter(({ state }) => state === "released")).toHaveLength(2);
     expect(of(name, "comparison.started")).toMatchObject([{ solves: 1 }]);
+    expect(of(name, "comparison.started")[0]?.tasks).toHaveLength(5);
     expect(
       of(name, "campaign.move")
         .slice(2)

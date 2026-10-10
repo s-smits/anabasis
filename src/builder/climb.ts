@@ -11,8 +11,10 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
+import { pairings } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
+import { lastReports, pairsReported } from "../kernel/reports.ts";
 import { passed, solvesIn } from "../kernel/solves.ts";
 import { isString } from "../meta/json-shape.ts";
 
@@ -43,6 +45,21 @@ export interface Epoch {
    *  it: null where no solve of that harness on those tasks is on record. */
   readonly reference_share: Share | null;
   readonly starter_share: Share | null;
+}
+
+/** The regression reading beside a comparison: the newest candidate against the previous one. */
+interface Regression {
+  /** The two candidates by digest, and the reference both were read against. */
+  readonly newest: string;
+  readonly previous: string;
+  readonly against: string;
+  /** The ids of the two comparisons the solves come from, the newest first. */
+  readonly comparisons: readonly [string, string];
+  /** Tasks both comparisons scored, which are the ones read. */
+  readonly shared: number;
+  readonly wins: number;
+  readonly losses: number;
+  readonly ties: number;
 }
 
 const PROMOTED = "harness.promoted";
@@ -133,4 +150,55 @@ export function epochLine(epoch: Epoch): string {
   const readings = epoch.comparisons.map(({ id, reading }) => `${id} ${reading}`).join(", ") || "none";
   const end = epoch.promoted === null ? "open" : `promoted ${epoch.promoted.slice(0, 8)}`;
   return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${end}`;
+}
+
+/**
+ * The newest candidate read against the previous candidate, on the tasks both their comparisons
+ * scored, from the solves those comparisons already made: a reading beside the test and never in
+ * it. A Builder session starts from the harness the last one left and every comparison is made
+ * against the reference, so a candidate worse than the one before it reads as progress for as
+ * long as it still beats the reference (the plan's climb section, C6). The two comparisons are
+ * under one setting, which names the host's code, so the solves paired differ in the harness and
+ * nothing else; no earlier solve is reused in a test for that reason (AGENTS.md, section 7),
+ * and this reading claims no more than the pairing. Null where the log holds no two candidates
+ * read against one reference under one setting.
+ */
+export function regressionOf(events: readonly LogEvent[]): Regression | null {
+  const reports = lastReports(events);
+  const last = reports.at(-1);
+  if (last === undefined || !isString(last.data.fresh) || !isString(last.data.old)) return null;
+  const { fresh: newest, old: against, setting } = last.data;
+  const before = reports
+    .slice(0, -1)
+    .findLast(
+      ({ data }) =>
+        data.old === against &&
+        data.setting === setting &&
+        isString(data.fresh) &&
+        data.fresh !== newest &&
+        data.fresh !== against,
+    );
+  if (before === undefined || !isString(before.data.fresh)) return null;
+  const previousPairs = new Map(pairsReported(events, before).map((pair) => [pair.task, pair]));
+  const counts = { shared: 0, wins: 0, losses: 0, ties: 0 };
+  for (const pair of pairsReported(events, last)) {
+    const other = previousPairs.get(pair.task);
+    if (other === undefined) continue;
+    counts.shared += 1;
+    const won = pairings({ task: pair.task, old: other.fresh, fresh: pair.fresh });
+    counts[won.fresh > won.old ? "wins" : won.fresh < won.old ? "losses" : "ties"] += 1;
+  }
+  return {
+    newest,
+    previous: before.data.fresh,
+    against,
+    comparisons: [last.session, before.session],
+    ...counts,
+  };
+}
+
+/** One line for the view: the reading, and that it is beside the test. */
+export function regressionLine(found: Regression): string {
+  const short = (digest: string) => digest.slice(0, 8);
+  return `regression check: harness ${short(found.newest)} (${found.comparisons[0]}) against the candidate before it, ${short(found.previous)} (${found.comparisons[1]}), both read against ${short(found.against)} under one setting, on the ${String(found.shared)} tasks both scored: ${String(found.wins)} won, ${String(found.losses)} lost, ${String(found.ties)} tied. A reading beside the test: it decides nothing`;
 }

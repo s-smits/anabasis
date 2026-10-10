@@ -962,13 +962,15 @@ describe("what crosses to the Builder", () => {
       [
         edit,
         call("practice", { tasks: ["t-1", "t-2"] }),
+        // Under the reference harness too: what that reads is the wall's to keep (11 October).
+        call("practice", { tasks: ["t-1"], under: "reference" }),
         call("read_trace", { solve: "s-3" }),
         call("read_trace", { solve: "s-3", call: 1 }),
         call("read_opening", {}),
         stop,
         finish,
       ],
-      [{ outcome: "fail", kind: "rejected" }, { outcome: "pass" }],
+      [{ outcome: "fail", kind: "rejected" }, { outcome: "pass" }, { outcome: "pass" }],
       false,
       kept.check,
     );

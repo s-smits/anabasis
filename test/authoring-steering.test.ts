@@ -153,7 +153,8 @@ describe("turn-budget steering", () => {
       attempts: 0,
       activeTurn: 1,
       maxTurns: undefined,
-      elapsedMs: 0,
+      openedAtMs: 0,
+      nowMs: 0,
       stopAt: null,
       ...extra,
     });
@@ -162,11 +163,11 @@ describe("turn-budget steering", () => {
   const facts = (extra: Partial<Parameters<typeof continuePrompt>[0]>) => goal(extra).split("\n\n")[2];
 
   it("restates the request and the round's facts at every boundary, as a Codex goal does", () => {
-    const text = goal({ activeTurn: 3, attempts: 1, maxTurns: 12, elapsedMs: 5_400_000 });
+    const text = goal({ activeTurn: 3, attempts: 1, maxTurns: 12, nowMs: 5_400_000 });
     expect(text).toContain("The user's request, unchanged:\nBuild the thing.");
     expect(text).toContain("only a submit the gate accepts completes it");
     // With no stop the facts are byte for byte what they were before a stop could be stated.
-    expect(facts({ activeTurn: 3, attempts: 1, maxTurns: 12, elapsedMs: 5_400_000 })).toBe(
+    expect(facts({ activeTurn: 3, attempts: 1, maxTurns: 12, nowMs: 5_400_000 })).toBe(
       "This round so far: turn 3, 90 minutes, 1 submit, the last one refused. 9 of 12 turns remain.",
     );
     // An uncapped round states no remaining turns, and a caller without a clock states no minutes.
@@ -174,19 +175,14 @@ describe("turn-budget steering", () => {
   });
 
   // The launcher's timed stop ends the run whatever the round holds; a Builder that is not told
-  // reads the minutes since the round opened as the minutes it has left.
+  // reads the minutes since the round opened as the minutes it has left. Both readings come off the
+  // one instant the facts are stated at.
   it("states the run's stop as one instant beside the round's facts, with the minutes left to it", () => {
     const stopAt = Date.parse("2026-10-08T05:41:15.000Z");
-    const at = stopAt - 63 * 60_000 - 30_000;
-    const realNow = Date.now;
-    Date.now = () => at;
-    try {
-      expect(facts({ activeTurn: 2, elapsedMs: 14_100_000, stopAt })).toBe(
-        "This round so far: turn 2, 235 minutes, no submit yet. Run stop: this run is stopped at 2026-10-08T05:41:15.000Z, 63 min from now, whether or not a candidate has been submitted.",
-      );
-    } finally {
-      Date.now = realNow;
-    }
+    const nowMs = stopAt - 63 * 60_000 - 30_000;
+    expect(facts({ activeTurn: 2, openedAtMs: nowMs - 14_100_000, nowMs, stopAt })).toBe(
+      "This round so far: turn 2, 235 minutes, no submit yet. Run stop: this run is stopped at 2026-10-08T05:41:15.000Z, 63 min from now, whether or not a candidate has been submitted.",
+    );
   });
 
   it("asks for authoring after eight turns or two hours without a submit, and for a batched repair after one", () => {
@@ -194,9 +190,9 @@ describe("turn-budget steering", () => {
     expect(goal({ activeTurn: 7 })).not.toContain("move to authoring now");
     // A Claude session runs as one assistant turn, so elapsed time asks as well; under the two-hour
     // bash install allowance the turn count decides alone.
-    expect(goal({ activeTurn: 1, elapsedMs: 7_200_000 })).toContain("move to authoring now");
-    expect(goal({ activeTurn: 1, elapsedMs: 7_199_000 })).not.toContain("move to authoring now");
-    const repair = goal({ attempts: 1, activeTurn: 30, elapsedMs: 36_000_000 });
+    expect(goal({ activeTurn: 1, nowMs: 7_200_000 })).toContain("move to authoring now");
+    expect(goal({ activeTurn: 1, nowMs: 7_199_000 })).not.toContain("move to authoring now");
+    const repair = goal({ attempts: 1, activeTurn: 30, nowMs: 36_000_000 });
     expect(repair).toContain("Fix what the last refusal named, and batch the fixes");
     expect(repair).not.toContain("move to authoring now");
   });

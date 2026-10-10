@@ -76,6 +76,8 @@ import { collectRows } from "#tools/runs/rows.ts";
 const REPO = resolve(import.meta.dirname, "../../../..");
 const WORKTREE = join(REPO, WORKTREE_SCRIPT);
 const SKILLS = resolve(import.meta.dirname, "../..");
+/** The fullrun flag that carries the stop instant to the Builder. */
+const STOP_FLAG = "--stop-at";
 /** The stop timer and what it imports from the skills tree, relative to `SKILLS`; the first runs. */
 const STOP_TIMER_FILES = [
   "launch-run/scripts/stop.ts",
@@ -392,6 +394,7 @@ async function prepare(
   console.log(`${plan.runId}: preparing ${context.commit.slice(0, 9)} in ${plan.dir}`);
   await command([WORKTREE, "new", plan.branch, plan.dir, context.commit]);
   chmodSync(plan.dir, 0o700);
+  if (options["kill-after-ms"] !== undefined) assertStopAccepted(plan);
   for (const name of ["campaigns", "domains"]) {
     const shared = join(context.sharedRoot, name);
     mkdirSync(shared, { recursive: true });
@@ -559,7 +562,31 @@ function serviceArgv(plan: PreparedRun, manager: ServiceManager, label: string, 
 }
 
 /** What fullrun is told of the stop: the timer's own instant, so the Builder hears when it falls. */
-const stopArgument = (deadline: number): string[] => ["--stop-at", String(deadline)];
+const stopArgument = (deadline: number): string[] => [STOP_FLAG, String(deadline)];
+
+/** A timed launch hands fullrun the stop as `--stop-at`, which the target's own parser has to
+ *  accept (its src/run/launch-arguments.ts): a source without the flag would exit on it after the
+ *  stop timer was armed, so such a launch is refused before the tree is probed or any timer loaded.
+ *  The probe cannot ask, because it parses the argv the target's own options build. */
+function assertStopAccepted(plan: RunPlan): void {
+  const parser = join(plan.dir, "src/run/launch-arguments.ts");
+  if (existsSync(parser) && readFileSync(parser, "utf8").includes(`"${STOP_FLAG}"`)) return;
+  throw new Error(
+    `${plan.runId}: this source does not accept ${STOP_FLAG}, so its Builder cannot be told when the stop falls; launch it without --kill-after-ms`,
+  );
+}
+
+/** Takes down the stop timer armed for a controller whose start was not confirmed, which would
+ *  otherwise fire against a service that is gone. The launch's own error stays the one reported. */
+async function disarmStopTimer(plan: PreparedRun, context: Context, command: Command): Promise<string> {
+  const service = context.manager.service(context.uid, `${plan.label}.stop`);
+  try {
+    await command(context.manager.remove(service));
+    return `removed ${service}`;
+  } catch (error) {
+    return `${service} not removed: ${errorMessage(error)}`;
+  }
+}
 
 /** Arms the operator's stop and returns the argument that tells fullrun when it falls. */
 async function armStopTimer(plan: PreparedRun, killAfterMs: string, context: Context, command: Command) {
@@ -701,9 +728,9 @@ export async function launchBatch(
     console.log(
       `${plan.runId}: launching; log: ${plan.log}\nStop: ${context.manager.terminate(plan.service).join(" ")}`,
     );
+    const killAfter = options["kill-after-ms"];
     try {
       writeReport(plan, "starting", extra);
-      const killAfter = options["kill-after-ms"];
       const stop = killAfter === undefined ? [] : await armStopTimer(plan, killAfter, context, command);
       const fullrun = ["bun", "run", "fullrun", "--", ...plan.argv, ...stop];
       await command(serviceArgv(plan, context.manager, plan.label, plan.log, fullrun));
@@ -718,9 +745,11 @@ export async function launchBatch(
       });
       console.log(`${plan.runId}: opening verified and process running; project ${opened.project}`);
     } catch (error) {
-      writeReport(plan, "start-unconfirmed", { ...extra, error: errorMessage(error) });
+      const stopTimer =
+        killAfter === undefined ? "none armed" : await disarmStopTimer(plan, context, command);
+      writeReport(plan, "start-unconfirmed", { ...extra, error: errorMessage(error), stopTimer });
       console.error(
-        `${plan.runId}: ${errorMessage(error)}\nReceipt: ${reportPath(plan)}\nNo retry or signal was sent.`,
+        `${plan.runId}: ${errorMessage(error)}\nReceipt: ${reportPath(plan)}\nNo retry or signal was sent to the controller; stop timer: ${stopTimer}.`,
       );
       results.push({ runId: plan.runId, error: errorMessage(error), log: plan.log });
       break;

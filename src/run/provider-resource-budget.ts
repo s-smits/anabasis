@@ -250,6 +250,7 @@ export class ProviderResourceBudget {
   private closedCause: ProviderResourceBudgetClosed | null = null;
   private readonly idleWaiters = new Set<() => void>();
   private readonly cancellation = new AbortController();
+  private readonly cancelled: Error[] = [];
 
   /** Explicit controller cancellation; ordinary budget refusal lets active turns finish. */
   get cancellationSignal(): AbortSignal {
@@ -325,9 +326,18 @@ export class ProviderResourceBudget {
     STOP_CAUSES.add(cause);
   }
 
+  /** Cancel the turns in flight. The abort reason stays the first stop cause, so a provider denial
+   *  that already stopped the run keeps the terminal; every cause asked for is kept in
+   *  `cancellations`, where a session reads whether the closing signal was among them. */
   cancelActiveTurns(cause: Error): void {
+    this.cancelled.push(cause);
     this.stopNewReservations(cause);
     this.cancellation.abort(this.stopCause);
+  }
+
+  /** Every cause `cancelActiveTurns` was asked with, in order. */
+  get cancellations(): readonly Error[] {
+    return this.cancelled;
   }
 
   get activeReservations(): number {

@@ -40,8 +40,12 @@ interface GoalState {
   readonly activeTurn: number;
   /** The operator's turn cap; absent, the round has none. */
   readonly maxTurns: number | undefined;
-  /** Zero for a caller that keeps no start time; under a minute is not stated. */
-  readonly elapsedMs: number;
+  /** When the round opened, epoch ms; a caller that keeps no start time passes `nowMs`, and under a
+   *  minute is not stated. */
+  readonly openedAtMs: number;
+  /** The one clock reading the facts are stated at: the minutes so far and the minutes left to the
+   *  stop are read against the same instant. */
+  readonly nowMs: number;
   /** The run's hard stop, epoch ms; null when the run has none. */
   readonly stopAt: number | null;
 }
@@ -50,6 +54,8 @@ const persist =
   "Continue towards this round's goal. The goal persists across turns: ending a turn does not end it, and only a submit the gate accepts completes it.";
 
 const progress = `A turn that changes no file, runs no check and learns nothing that changes the next action made no progress; take the next concrete step instead of restating the plan. ${POLICY.loop.stalledTurns} turns in a row without a successful tool call end the round.`;
+
+const elapsedMs = (goal: GoalState): number => goal.nowMs - goal.openedAtMs;
 
 /** The run's hard stop as one instant and the minutes left to it at `now`. One instant rather than
  *  a remainder, so no restatement can go stale; the minutes are read against it each time. */
@@ -61,7 +67,7 @@ export function stopFact(stopAt: number, now: number): string {
 /** The goal's facts: how far the round has come, and what is left of a cap or of the run when
  *  either has a bound. */
 function goalFacts(goal: GoalState): string {
-  const whole = Math.floor(goal.elapsedMs / 60_000);
+  const whole = Math.floor(elapsedMs(goal) / 60_000);
   const minutes = whole < 1 ? "" : `, ${whole} minute${whole === 1 ? "" : "s"}`;
   const submits =
     goal.attempts === 0
@@ -71,7 +77,7 @@ function goalFacts(goal: GoalState): string {
     goal.maxTurns === undefined
       ? ""
       : ` ${Math.max(0, goal.maxTurns - goal.activeTurn)} of ${goal.maxTurns} turns remain.`;
-  const stop = goal.stopAt === null ? "" : ` ${stopFact(goal.stopAt, Date.now())}`;
+  const stop = goal.stopAt === null ? "" : ` ${stopFact(goal.stopAt, goal.nowMs)}`;
   return `This round so far: turn ${goal.activeTurn}${minutes}, ${submits}.${cap}${stop}`;
 }
 
@@ -84,7 +90,7 @@ function nextAction(goal: GoalState): string {
   if (goal.attempts > 0) {
     return `Fix what the last refusal named, and batch the fixes into one coherent candidate before the next correctness_check or submit; do not submit after each small edit.${stop}`;
   }
-  const long = goal.activeTurn >= NO_SUBMIT_REMINDER_TURNS || goal.elapsedMs >= NO_SUBMIT_REMINDER_MS;
+  const long = goal.activeTurn >= NO_SUBMIT_REMINDER_TURNS || elapsedMs(goal) >= NO_SUBMIT_REMINDER_MS;
   if (long) {
     return `${MOVE_TO_AUTHORING}${stop}`;
   }

@@ -91,6 +91,16 @@ function count(flag: string, value: string): number {
   return parsed;
 }
 
+/** `--stop-at`: an instant still ahead. One already past would be restated to the Builder at every
+ *  turn boundary and half-hour mark as a stop zero minutes away, for as long as the run went on. */
+function instant(flag: string, value: string): number {
+  const parsed = count(flag, value);
+  if (parsed <= Date.now()) {
+    throw new Error(`${flag}: expected an instant after now, in epoch ms, got "${value}"`);
+  }
+  return parsed;
+}
+
 function truth(flag: string, value: string): boolean {
   if (value === "true") return true;
   if (value === "false") return false;
@@ -108,13 +118,12 @@ function sourceIdentity(value: string): NonNullable<FullRunArgs["expectedSource"
   return { commit: value.slice(0, 40), sourceDigest: value.slice(41) };
 }
 
-/** The seven flags that are a plain count. */
+/** The six flags that are a plain count. */
 function counted(
   field:
     | "maxIterations"
     | "maxBatteries"
     | "stopAfterMs"
-    | "stopAt"
     | "maxBuilderTurns"
     | "expectedTasks"
     | "providerTurnBudget",
@@ -147,7 +156,12 @@ const FLAGS = new Map<string, Apply>([
   ["--max-iterations", counted("maxIterations")],
   ["--max-batteries", counted("maxBatteries")],
   ["--stop-after-ms", counted("stopAfterMs")],
-  ["--stop-at", counted("stopAt")],
+  [
+    "--stop-at",
+    (args, value, flag) => {
+      args.stopAt = instant(flag, value);
+    },
+  ],
   ["--max-builder-turns", counted("maxBuilderTurns")],
   ["--expected-tasks", counted("expectedTasks")],
   ["--provider-turn-budget", counted("providerTurnBudget")],

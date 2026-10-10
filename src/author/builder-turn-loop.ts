@@ -194,12 +194,11 @@ function nextTurnPrompt(input: BuilderTurnInput, result: AgentTurnResult): strin
   // `authoringIdentity` hashes the owned paths, so the note names what the controller opened for
   // this round rather than the workspace at large.
   const owned = authoringIdentity(authoring) === authoring.openingIdentity ? "unchanged" : "changed";
-  const { openedAtMs, ...round } = input.round;
   const goal = {
-    ...round,
+    ...input.round,
     attempts: state.attempts,
     activeTurn: state.activeTurn,
-    elapsedMs: Date.now() - openedAtMs,
+    nowMs: Date.now(),
   };
   return [
     continuePrompt(goal),

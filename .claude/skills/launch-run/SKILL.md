@@ -173,7 +173,10 @@ neither a timer nor a stopped run authorises a replacement or changes accounts/c
 For an authorised timed interruption use `--kill-after-ms`. The launcher starts an independent
 launchd operator timer before starting each controller. The timer checks the exact service and
 its loaded worktree plist, sends SIGTERM, gives closure 30 seconds, then uses launchd bootout
-and verifies service absence. Fresh project allocation remains with the controller.
+and verifies service absence. Fresh project allocation remains with the controller. The
+controller is started with the timer's deadline as `--stop-at <epoch ms>`, which the opening
+records and the Builder is told beside its round clock; a source older than that flag refuses it,
+so such a source launches without `--kill-after-ms`.
 
 ```sh
 bun .claude/skills/launch-run/scripts/launch.ts truss --model sol --source <full-sha> --kill-after-ms 180000

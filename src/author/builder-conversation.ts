@@ -49,6 +49,9 @@ export type OpenSession = (tools: readonly PiTool[], systemPrompt: string) => Pr
 type Waiting = { session: HostSession; openedIn: string; previous: PreviousRound };
 
 export class BuilderConversation {
+  /** The run's hard stop, epoch ms, which every round of the conversation is told; null for none. */
+  constructor(readonly stopAt: number | null = null) {}
+
   private waiting: Waiting | null = null;
   /** Set when the run settles; a round still in flight then closes its session when it ends. */
   private closed = false;

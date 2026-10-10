@@ -26,6 +26,7 @@ describe("the condition an operator may ask for", () => {
     [["--withhold-instruments", "true"], { withholdInstruments: true }],
     [["--withhold-instruments", "false"], { withholdInstruments: false }],
     [["--answer-agent", "true"], { answerAgent: true }],
+    [["--stop-at", "1791438075000"], { stopAt: 1_791_438_075_000 }],
     [["--context", "a.md", "--context", "b.md"], { contextPaths: ["a.md", "b.md"] }],
     [["--iteration-budget", "none"], { turnBudget: null }],
     [["--iteration-budget", "4"], { turnBudget: 4 }],
@@ -80,6 +81,8 @@ describe("the condition an operator may ask for", () => {
       digest(["--run", id, "--expected-source", `${commit}:${DIGEST}`, "--project", project]);
     expect(run("run-a", COMMIT, "p-1")).toBe(run("run-b", "c".repeat(40), "p-2"));
     expect(run("run-a", COMMIT, "p-1")).toBe(digest([]));
+    // The stop is an instant, which two launches of one condition never share; the opening records it.
+    expect(digest(["--stop-at", "1791438075000"])).toBe(digest([]));
     expect(digest(["--max-iterations", "1"])).not.toBe(digest([]));
     expect(commandDigest(parseFullRunArgs(MIN), "d".repeat(64))).not.toBe(digest([]));
   });

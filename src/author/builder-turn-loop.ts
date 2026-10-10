@@ -44,10 +44,9 @@ interface BuilderTurnInput {
   turn: number;
   onTurnEvent: (event: AgentTurnEvent) => void;
   checkpoint: () => void;
-  /** The operator's request, which every continuation restates. */
-  kickoff: string;
-  /** The operator's turn cap; absent, the round has none. */
-  maxTurns?: number;
+  /** What every continuation restates of the round: the operator's request, the turn cap (absent,
+   *  none), when the session opened, so elapsed time is read and not only turns, and the run's stop. */
+  round: { kickoff: string; maxTurns: number | undefined; openedAtMs: number; stopAt: number | null };
   observer?: RunObserver;
   turnTimeoutMs?: number;
   attemptGate?: ModelAttemptGate;
@@ -57,8 +56,6 @@ interface BuilderTurnInput {
   /** The owned authoring paths and their identity when the session opened; the next-turn prompt
    *  says when they are still unchanged. */
   authoring: { workspace: string; paths: readonly string[]; openingIdentity: string };
-  /** When the session opened, so the continuation can read elapsed time and not only turns. */
-  openedAtMs: number;
 }
 
 /** The turn's event sink, including at most one liveness checkpoint per minute. */
@@ -197,12 +194,12 @@ function nextTurnPrompt(input: BuilderTurnInput, result: AgentTurnResult): strin
   // `authoringIdentity` hashes the owned paths, so the note names what the controller opened for
   // this round rather than the workspace at large.
   const owned = authoringIdentity(authoring) === authoring.openingIdentity ? "unchanged" : "changed";
+  const { openedAtMs, ...round } = input.round;
   const goal = {
-    kickoff: input.kickoff,
+    ...round,
     attempts: state.attempts,
     activeTurn: state.activeTurn,
-    maxTurns: input.maxTurns,
-    elapsedMs: Date.now() - input.openedAtMs,
+    elapsedMs: Date.now() - openedAtMs,
   };
   return [
     continuePrompt(goal),

@@ -35,6 +35,12 @@ import {
   hasCaseRecord,
 } from "../.claude/skills/whole-run-investigation/classifier/prose-input.ts";
 
+import { runBuilderSession } from "../src/author/builder-session.ts";
+import { ControllerSignalAbort } from "../src/run/controller-abort-clause.ts";
+import { ProviderResourceBudget } from "../src/run/provider-resource-budget.ts";
+import { required } from "./helpers/doubles.ts";
+import { ACCEPTED, INPUT, deps, recordSink, scriptedOpener } from "./helpers/builder-session-script.ts";
+
 const dirs: string[] = [];
 
 const ROWS: ProseRow[] = [
@@ -340,7 +346,7 @@ describe("prose posture classifier", () => {
     expect(gradeEvidence(blurred, "solver").grade).toBe("thin");
   });
 
-  it("reads no posture from a session the controller closed as a typed non-result", async () => {
+  it("reads no posture from a session the controller closed as a provider non-result", async () => {
     // The only row such an epoch captures is the provider's own "You've hit your session limit",
     // and a classifier that reads the transcript alone labels that as Builder reasoning.
     const limit = "You've hit your session limit · resets 8:50pm (Europe/Amsterdam)";
@@ -353,6 +359,29 @@ describe("prose posture classifier", () => {
     expect(result.state).toBe("no-prose");
     expect(result.excludedNonResultRows).toBe(1);
     expect(result.input.totals.nonEvidenceSessions).toBe(1);
+  });
+
+  // The operator's stop ends a session whose prose is the model's own: the ending the session
+  // writer records for it is one this reader keeps, joined here from the writer itself.
+  it("keeps the prose of a session the controller's closing signal ended", async () => {
+    const providerBudget = new ProviderResourceBudget(10);
+    const { open } = scriptedOpener([
+      () => {
+        providerBudget.cancelActiveTurns(new ControllerSignalAbort("SIGTERM"));
+        return { status: "aborted" };
+      },
+    ]);
+    const sink = recordSink();
+    await runBuilderSession(INPUT, { ...deps(open, () => ACCEPTED), ...sink, providerBudget }).catch(
+      () => undefined,
+    );
+    const outcome = required(sink.settled[0], "settled record").outcome;
+    const result = classified(
+      await classifyTarget(writeEpoch(ROWS, [], { outcome }), { embed: fakeEmbed(VECTORS), window: 2 }),
+    );
+    expect(result.evidence.excludedNonResultRows).toBe(0);
+    expect(result.input.totals.nonEvidenceSessions).toBe(0);
+    expect(result.rows).toHaveLength(ROWS.length);
   });
 
   it("says from the tool record whether a correctness_check returned before each submit", () => {

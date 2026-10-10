@@ -558,6 +558,10 @@ function serviceArgv(plan: PreparedRun, manager: ServiceManager, label: string, 
   ];
 }
 
+/** What fullrun is told of the stop: the timer's own instant, so the Builder hears when it falls. */
+const stopArgument = (deadline: number): string[] => ["--stop-at", String(deadline)];
+
+/** Arms the operator's stop and returns the argument that tells fullrun when it falls. */
 async function armStopTimer(plan: PreparedRun, killAfterMs: string, context: Context, command: Command) {
   const deadline = Date.now() + Number(killAfterMs);
   const timer = [process.execPath, "--no-env-file", stageStopTimer(plan.dir), "--worktree", plan.dir];
@@ -581,6 +585,7 @@ async function armStopTimer(plan: PreparedRun, killAfterMs: string, context: Con
   if (Date.now() >= deadline || existsSync(join(plan.dir, STOP_RECEIPT_PATH))) {
     throw new Error(`${plan.runId}: stop deadline elapsed before controller launch`);
   }
+  return stopArgument(deadline);
 }
 
 /** Whether the pass record holds `<commit> --at`: the whole gate passed on a checkout holding
@@ -699,8 +704,8 @@ export async function launchBatch(
     try {
       writeReport(plan, "starting", extra);
       const killAfter = options["kill-after-ms"];
-      if (killAfter !== undefined) await armStopTimer(plan, killAfter, context, command);
-      const fullrun = ["bun", "run", "fullrun", "--", ...plan.argv];
+      const stop = killAfter === undefined ? [] : await armStopTimer(plan, killAfter, context, command);
+      const fullrun = ["bun", "run", "fullrun", "--", ...plan.argv, ...stop];
       await command(serviceArgv(plan, context.manager, plan.label, plan.log, fullrun));
       const opened = await checkOpening(plan, command, { manager: context.manager });
       writeReport(plan, "started", { ...extra, ...opened });
@@ -750,6 +755,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     mainRepo = dirname(commonDir),
     parent = options["output-dir"] ?? dirname(mainRepo),
     passRecord = join(commonDir, "ana-gate-passed");
+  const killAfter = options["kill-after-ms"];
   if (options["dry-run"]) {
     // A dry run fetches nothing, so only a full commit named outright reads the record.
     const commit = /^[0-9a-f]{40}$/.test(options.source) ? options.source : null;
@@ -761,6 +767,8 @@ export async function main(argv: readonly string[]): Promise<number> {
       tasks: Number(options.tasks),
       pins: Object.fromEntries(options.conditions.map((name) => [name, slotEnvironment(name)])),
       gate: plannedGate(options.gate, passRecord, commit),
+      // The instant is the timer's, read when it is armed; this one is as if it were armed now.
+      fullrunStop: killAfter === undefined ? null : stopArgument(Date.now() + Number(killAfter)),
       runs: plans,
     };
     console.log(JSON.stringify(summary, null, 2));

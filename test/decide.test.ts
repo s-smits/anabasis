@@ -413,9 +413,8 @@ describe("a step", () => {
       move: "build",
       why: "comparison b-2 read no step with room to gain: harness h2 did not help",
     });
-    // The budget follows the promoted harness's own solves in the last comparison that holds any,
-    // which is the one it was compared with by name: there it answered nearly everything, and at
-    // five turns half.
+    // A comparison made against it by name before the promotion has read the tasks: where it
+    // answered nearly everything, the tasks change, and no budget rung is taken first.
     const named = compared("b-3", "h2", "no-step", {
       old: "h1",
       tally: [0, 0, 12],
@@ -423,9 +422,9 @@ describe("a step", () => {
       budgets: [row(5, HALF, HALF)],
     });
     expect(move([...twice, ...named, promoted], { ...PLAN, ladder: [5] })).toEqual({
-      move: "budget",
-      modelTurns: 5,
-      why: "harness h1 was promoted, and it was valid on at most half its solves at 5 turns: the budget follows the reference",
+      move: "examine",
+      room: true,
+      why: "comparison b-3 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change",
     });
     // One step is one draw, whatever came after it.
     expect(move([...stepped, ...later])).toMatchObject({ move: "build" });
@@ -493,7 +492,7 @@ describe("a budget the campaign has stood at before", () => {
     expect(move(back, plan)).toEqual({
       move: "examine",
       room: true,
-      why: "comparison g-2 read no step, the reference harness was valid on more than three solves in four, and no shorter budget leaves room: the tasks have to change",
+      why: "comparison g-2 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change",
     });
     // With tasks written since it was made, the same two are compared on them: six among eighteen,
     // of which a draw of twelve scores four on average, which is what a step takes.
@@ -607,17 +606,15 @@ describe("after a promotion", () => {
     event("harness.promoted", { harness: "h1" }),
   ];
 
-  it("sets the budget again from the promoted harness's own solves: the longest at which it fails half", () => {
-    const log = promotedOn([row(20, NONE, [2, 4, 6]), row(10, NONE, [6, 6, 0])], ALL);
-    expect(move(log, plan)).toMatchObject({ move: "budget", modelTurns: 10 });
-    // Once that setting is recorded, the Builder builds against the new reference.
-    expect(move([...log, setting(10)], plan)).toMatchObject({ move: "build" });
-    // Valid on at most half at the limit it ran under, the budget stands.
-    const stays = promotedOn([row(20, NONE, NONE)], [4, 4, 4]);
-    expect(move(stays, plan)).toMatchObject({ move: "build" });
-  });
-
-  it("has the tasks changed, once, where no budget leaves the promoted harness failing half", () => {
+  it("has the tasks changed, once, whatever budget the promoted harness was read at", () => {
+    // Until 10 October the budget rule came first here: a harness valid on at most half at some
+    // rung sent the campaign down the ladder, and t-10 climbed in turns instead of tasks.
+    const rungs = promotedOn([row(20, NONE, [2, 4, 6]), row(10, NONE, [6, 6, 0])], ALL);
+    expect(move(rungs, plan)).toEqual({
+      move: "examine",
+      room: true,
+      why: "harness h1 was promoted: the tasks have to change, to ones it fails",
+    });
     const log = promotedOn([row(20, NONE, ALL), row(10, NONE, [0, 2, 10])], ALL);
     expect(move(log, plan)).toMatchObject({ move: "examine", room: true });
     const written = event("exam.finished", { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
@@ -683,7 +680,7 @@ describe("no step", () => {
     expect(move([...first, ...compared("g-1", "h1", "below-starter")])).toMatchObject({ move: "build" });
   });
 
-  it("sets the budget again where the reference left no room, and has the tasks changed where no budget does", () => {
+  it("has the tasks changed where the reference left no room, and sets the budget only once the Examiner's patience is spent", () => {
     const plan = { ...PLAN, limit: 40, ladder: [20, 10] };
     const full = { old: ALL, fresh: ALL };
     const tied = (budgets: readonly JsonObject[]) => [
@@ -691,11 +688,14 @@ describe("no step", () => {
       ...first,
       ...compared("g-1", "h1", "no-step", { tally: [0, 0, 12], valid: full, budgets }),
     ];
-    // Valid on every solve at 40 and at 20 turns, and on half at 10.
-    expect(move(tied([row(20, ALL, ALL), row(10, HALF, ALL)]), plan)).toMatchObject({
-      move: "budget",
-      modelTurns: 10,
-      why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four: at 10 turns it was valid on at most half",
+    // Valid on every solve at 40 and at 20 turns, and on half at 10: the tasks change first.
+    // Until 10 October the budget came first, and t-10 climbed in turns where it should have
+    // climbed in tasks.
+    const rung = tied([row(20, ALL, ALL), row(10, HALF, ALL)]);
+    expect(move(rung, plan)).toEqual({
+      move: "examine",
+      room: true,
+      why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change",
     });
     // The share leaves out the tasks no solve answered, and the reason says so: recode's g-1
     // (10 October) read three in four where the report's row showed 7 of 12, two tasks unanswered.
@@ -710,11 +710,22 @@ describe("no step", () => {
       }),
     ];
     expect(move(unanswered, plan)).toMatchObject({
+      move: "examine",
+      why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four, 2 tasks no solve answered left out: the tasks have to change",
+    });
+    // Once as many Examiner sessions as the campaign's patience held out nothing, the budget the
+    // rule takes is the fallback, where one is untried; and where none is, the campaign ends.
+    const idle = ["x-1", "x-2", "x-3"].map((id) =>
+      event("exam.finished", { session: id, held: [], refused: [], proposed: 0 }),
+    );
+    expect(move([...rung, ...idle], plan)).toEqual({
       move: "budget",
-      why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four, 2 tasks no solve answered left out: at 10 turns it was valid on at most half",
+      modelTurns: 10,
+      why: "3 Examiner sessions in a row held out no task (comparison g-1 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change), and at 10 turns the reference harness was valid on at most half its solves: the budget is set there",
     });
     const none = tied([row(20, ALL, ALL), row(10, [0, 2, 10], ALL)]);
     expect(move(none, plan)).toMatchObject({ move: "examine", room: true });
+    expect(move([...none, ...idle], plan)).toMatchObject({ move: "end", ending: "no-room" });
     // With tasks written since, the same two are compared on them.
     const more = ["v13", "v14", "v15", "v16", "v17", "v18"].flatMap(heldOut);
     expect(move([...none, ...more], plan)).toMatchObject({ move: "compare", noise: false });
@@ -785,8 +796,14 @@ describe("no step", () => {
       budgets: [row(20, HALF, HALF)],
       extra: { untied: 0 },
     });
-    expect(move([setting(40), ...first, ...tiedAll], plan)).toMatchObject({ move: "budget", modelTurns: 20 });
-    expect(move([setting(40), ...first, ...tiedAll, setting(20)], plan)).toMatchObject({
+    const idle = ["x-1", "x-2", "x-3"].map((id) =>
+      event("exam.finished", { session: id, held: [], refused: [], proposed: 0 }),
+    );
+    expect(move([setting(40), ...first, ...tiedAll, ...idle], plan)).toMatchObject({
+      move: "budget",
+      modelTurns: 20,
+    });
+    expect(move([setting(40), ...first, ...tiedAll, ...idle, setting(20)], plan)).toMatchObject({
       move: "compare",
       why: "harness h1 has not been compared under the campaign's setting",
     });

@@ -148,6 +148,15 @@ describe("an Examiner session", () => {
       "Every solve of a task is held to 3 turns of the solver's own, a turn being one reply with the tool calls in it, and 8 minutes. Both harnesses are measured under that budget",
     );
     expect(told.sent[0]).toContain("it is no target of yours");
+    // Asked for room, it is told the need and no count, share or zone (10 October): the exam's
+    // tasks were answered, and the campaign needs tasks a solver under the budget can fail.
+    expect(s.sent[0]).not.toContain("leave no room");
+    const room = setup([finish]);
+    await examine({ ...room.request, room: true });
+    expect(room.sent[0]).toContain(
+      "The tasks the exam holds leave no room: the reference harness answered nearly all of them within the budget",
+    );
+    expect(room.sent[0]).toContain("Harder is yours to judge from the domain");
     // It is told how a task is scored: a valid answer within the budget, with no objective to rank
     // two of them, and neither the size of the budget nor any count.
     expect(s.sent[0]).toContain("the harness that gives more valid answers wins");

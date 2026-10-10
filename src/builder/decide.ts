@@ -28,16 +28,18 @@
  *    the next comparison would bill by what the last one did, and the stop rule, which ends it
  *    unless the operator said to go on.
  * 4. A comparison that began and has not reported goes on.
- * 5. After a promotion the budget is set again from the promoted harness's own solves.
+ * 5. After a promotion the tasks change, once: the next epoch's are the ones the harness now the
+ *    reference fails, and a comparison against it says whether they do.
  * 6. A step. Read once, it is one draw, and the same two harnesses are compared again with the
  *    reference read against itself. Read again, it is read once at the full limit, where it must
  *    not lose, and then the harness is promoted. A reading at the full limit the two already have
  *    stands for that where it scored every task the step did (`vouches`).
- * 7. No step. Where the reference harness left no room, the budget is set again by the rule, and
- *    where no budget leaves room the tasks have to change. Where neither harness answered, the
- *    campaign goes to the next longer budget: to try it, or, where it is known to leave no room,
- *    to stand there while the tasks change, since at the shorter one nothing is answered whatever
- *    is written. With room, the harness did not help, and the Builder builds again.
+ * 7. No step. Where the reference harness left no room, the tasks have to change, and the budget
+ *    is set again by the rule only once as many Examiner sessions in a row as the campaign's
+ *    patience held out nothing (`harder`). Where neither harness answered, the campaign goes to
+ *    the next longer budget: to try it, or, where it is known to leave no room, to stand there
+ *    while the tasks change, since at the shorter one nothing is answered whatever is written.
+ *    With room, the harness did not help, and the Builder builds again.
  * 8. Nothing new to compare: the Builder builds. Something new: it is compared once the sessions
  *    before a comparison have run, or tasks are written where the comparison would be short of
  *    them.
@@ -63,8 +65,9 @@
  *
  * The budget rule is the plan's: the longest budget, of the one a comparison ran under and the
  * shorter ones it was read at, at which the reference harness was valid on at most half its
- * solves. The three shares it and `roomOf` read by are the plan's proposal and the operator's to
- * set. A reading at a shorter budget is of a solver that was told the longer one, and understates
+ * solves. Since 10 October it is the fallback behind the tasks: the climb the system is for is
+ * on tasks the reference harness fails, and t-10, with the budget first, climbed in turns. The
+ * three shares it and `roomOf` read by are the plan's proposal and the operator's to set. A reading at a shorter budget is of a solver that was told the longer one, and understates
  * a solver told the shorter: on 9 October the starter answered 0 of 10 solves read at two turns,
  * and 10 of 10 once it was told two. So the rule's budget is a place to look, the comparison
  * under it is what counts, and the ladder is walked by what those comparisons show.
@@ -110,22 +113,35 @@ const fewYet = (since: number): string =>
 /** Tasks, for the reason `why`, where a comparison is short of them: the budget first where the
  *  reference harness passes nearly all, as the table has it. */
 function supplied(ground: Ground, last: JsonObject | undefined, why: string): Decided {
-  const { turns, drafts } = ground;
   const none = last !== undefined && roomOf(last) === "none";
-  const rung = last !== undefined && none ? budgetBy(last, "old", turns) : undefined;
-  if (rung === undefined || rung === turns || tried(ground, rung)) {
-    return written(
-      drafts,
-      none ? "room" : "tasks",
-      { move: "examine", room: none, why },
-      ground.plan.patience,
+  return harder(ground, last, { move: "examine", room: none, why }, none ? "room" : "tasks");
+}
+
+/**
+ * Harder tasks before a shorter budget. An Examiner session, for `wants`, while the campaign's
+ * patience for sessions that hold out nothing is not spent; then the budget the rule takes from
+ * `last` where one is untried, as the fallback; then the ending. Until 10 October the budget
+ * came first, and what a campaign climbed was the turn count: t-10's step was a harness that
+ * answered in 2 turns where the starter took 3, on tasks both answered at the full limit. The
+ * climb the system is for is on tasks the reference harness fails, which its Examiner writes
+ * (`docs/plan.md`, "The compute budget").
+ */
+function harder(
+  ground: Ground,
+  last: JsonObject | undefined,
+  examine: Decided,
+  wants: "tasks" | "room",
+): Decided {
+  const { turns, drafts, plan } = ground;
+  if (drafts < plan.patience) return examine;
+  const rung = last !== undefined && wants === "room" ? budgetBy(last, "old", turns) : undefined;
+  if (rung !== undefined && rung !== turns && !tried(ground, rung)) {
+    return toBudget(
+      rung,
+      `${plural(drafts, "Examiner session")} in a row held out no task (${examine.why}), and at ${budgetSaid(rung)} the reference harness was valid on at most half its solves: the budget is set there`,
     );
   }
-  return {
-    move: "budget",
-    modelTurns: rung,
-    why: `${why}, and the reference harness was valid on more than three solves in four: at ${budgetSaid(rung)} it was valid on at most half, so the budget is set again before tasks are written`,
-  };
+  return written(drafts, wants, examine, plan.patience);
 }
 
 /** An Examiner session, unless three in a row have already held out no task.
@@ -415,34 +431,25 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
 
 /** After a promotion the budget rule is applied again, to the promoted harness's own solves: the
  *  budget follows the reference. Null where no promotion waits for it. */
-function afterPromotion({ events, all, settings, turns, reference }: Ground): Decided | null {
+function afterPromotion({ events, all, reference }: Ground): Decided | null {
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   if (reference === null || promotedAt <= events.findLastIndex(({ kind }) => kind === SETTING)) return null;
-  // Its own solves in the last comparison that holds any: as the new harness there, or as the one
-  // a later harness was compared with by name before it was promoted.
-  const read = all.findLast(
+  // Promoted on a comparison it was read in, and never yet the reference side of one: the tasks
+  // change, once, since the ones the campaign holds were answered by the harness now the
+  // reference, and the next epoch's are the ones it fails. A comparison made against it, after
+  // the promotion or by name before it, has read the tasks already, and its rows say what follows. Until 10 October the budget
+  // rule came first here, and the reference's own solves took the campaign down the ladder.
+  const read = all.some(
     ({ fresh, old, report }) => (fresh === reference || old === reference) && report !== null,
   );
-  const report = read?.report ?? null;
-  if (read === undefined || report === null) return null;
-  const ran = settings.findLast(({ comparisons }) => comparisons.includes(read))?.turns ?? null;
-  const rung = budgetBy(report, read.fresh === reference ? "fresh" : "old", ran);
-  if (rung !== undefined) {
-    return rung === turns
-      ? null
-      : {
-          move: "budget",
-          modelTurns: rung,
-          why: `harness ${short(reference)} was promoted, and it was valid on at most half its solves at ${budgetSaid(rung)}: the budget follows the reference`,
-        };
-  }
-  // No budget it was read at leaves the reference failing half its solves: the tasks change, once.
+  const against = all.some(({ old, report }) => old === reference && report !== null);
+  if (!read || against) return null;
   return events.some(({ kind }, index) => kind === "exam.finished" && index > promotedAt)
     ? null
     : {
         move: "examine",
         room: true,
-        why: `harness ${short(reference)} was promoted, and no budget it was read at leaves it failing half its solves: the tasks have to change`,
+        why: `harness ${short(reference)} was promoted: the tasks have to change, to ones it fails`,
       };
 }
 
@@ -707,9 +714,8 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
 /** After a comparison in which the reference harness answered nearly everything: the budget by the
  *  rule, where the campaign has not stood at it, and else other tasks. */
 function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): Decided {
-  const { turns, tasksShort } = ground;
+  const { tasksShort } = ground;
   const id = isString(last.session) ? last.session : "";
-  const rung = budgetBy(last, "old", turns);
   // The share is over the tasks some solve answered (`validAt`): a reader of the report's own
   // valid row sees the unanswered tasks counted in, so the reason names what it left out. On
   // recode's g-1 (10 October) the reason said three in four where the row read 7 of 12, two
@@ -718,24 +724,18 @@ function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): 
   const left =
     isNumber(unsolved) && unsolved > 0 ? `, ${plural(unsolved, "task")} no solve answered left out` : "";
   const nearlyAll = `the reference harness was valid on more than three solves in four${left}`;
-  if (rung !== undefined && rung !== turns && !tried(ground, rung)) {
-    return toBudget(
-      rung,
-      `comparison ${id} read no step, and ${nearlyAll}: at ${budgetSaid(rung)} it was valid on at most half`,
-    );
-  }
   if (tasksShort === null && since > 0) {
     return compare(`comparison ${id} left no room, and tasks were written since`, "alone", fresh);
   }
-  return written(
-    ground.drafts,
-    "room",
+  return harder(
+    ground,
+    last,
     {
       move: "examine",
       room: true,
-      why: `comparison ${id} read no step, ${nearlyAll}, and no shorter budget leaves room: the tasks have to change${fewYet(since)}`,
+      why: `comparison ${id} read no step, and ${nearlyAll}: the tasks have to change${fewYet(since)}`,
     },
-    ground.plan.patience,
+    "room",
   );
 }
 /**

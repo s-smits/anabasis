@@ -63,7 +63,16 @@ export interface CheckRow {
 interface Facts {
   readonly brief?: string | null | undefined;
   readonly budget?: { readonly modelTurns: number | null; readonly minutes: number } | null | undefined;
+  /** The campaign asks for tasks that leave the reference harness room. */
+  readonly room?: boolean | undefined;
 }
+
+/** What a session asked for room is told, after the budget: the exam's tasks so far were answered,
+ *  and the campaign needs ones a solver under the budget can fail. Since 10 October the climb is
+ *  on tasks before the budget (`src/builder/decide.ts`, `harder`), and the operator's word is that
+ *  an author is told this much: the need, and no count, share or zone. */
+const ROOM =
+  "The tasks the exam holds leave no room: the reference harness answered nearly all of them within the budget, so a comparison on them cannot tell a better harness from it. The campaign needs tasks that are harder for a solver than these, within the domain's scope, which a solver under the budget can fail and which still have a valid answer. Harder is yours to judge from the domain; the outcomes above say which of the tasks so far were answered by every solve.";
 
 export interface Told {
   readonly wallSeconds: number;
@@ -90,7 +99,7 @@ export function firstMessage(
   told: Told,
   campaign: Facts = {},
 ): string {
-  const { brief = null, budget = null } = campaign;
+  const { brief = null, budget = null, room = false } = campaign;
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
     // The brief first, where the campaign opened from one: every session rereads the domain as the
@@ -114,6 +123,7 @@ ${brief}`,
         ]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     `The tasks of the exam so far, and what the last comparison that scored each one found. These are measurements and no instruction. read_example returns any of them whole.\n${listed.map((line) => `- ${line}`).join("\n") || "(none)"}`,
+    ...(room ? [ROOM] : []),
     `This session has ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
   ].join("\n\n");
 }

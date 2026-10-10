@@ -600,21 +600,25 @@ answered too many of them in every solve, the Examiner writes tasks first, since
 can only tie again on those (t-2, 10 October: 3-0-2 on 5 tasks, two unchanged sessions and a
 stop), and tasks written since the comparison are compared on before anything is built (t-3, the
 same day: four written, two unchanged sessions and a stop before any comparison on them). A
-comparison without room changes the budget before the tasks: the budget
-rule takes the longest budget, of the one the comparison ran under and the shorter ones it was
-read at (the ladder: by default a half, a quarter and an eighth of the full limit), at which the
-reference harness was valid on at most half its solves. A reading at a shorter budget is of a
-solver that was told the longer one, and understates a solver told the shorter: on 9 October the
-starter answered 0 of 10 solves read at two turns, and 10 of 10 once it was told two. So the
-rule's budget is a place to look, and the comparison made under it is what counts. Where that
-one leaves neither harness an answer, the campaign goes to the next longer budget, and where no
-budget leaves room it stands at the shortest that leaves the reference its answers and has the
-Examiner write other tasks. A campaign returns to a budget, and what it read there still stands
+comparison without room changes the tasks before the budget: the Examiner writes tasks the
+reference harness fails, and a promotion sends it to write them too, since the next epoch's tasks
+are the ones the harness now the reference fails. Until 10 October the budget came first, and
+what t-10 climbed was the turn count: a harness that answered in 2 turns where the starter took
+3, on tasks both answered at the full limit. The budget is the fallback once as many Examiner
+sessions in a row as the campaign's patience held out nothing: the budget rule takes the longest
+budget, of the one the comparison ran under and the shorter ones it was read at (the ladder: by
+default a half, a quarter and an eighth of the full limit), at which the reference harness was
+valid on at most half its solves. A reading at a shorter budget is of a solver that was told the
+longer one, and understates a solver told the shorter: on 9 October the starter answered 0 of 10
+solves read at two turns, and 10 of 10 once it was told two. So the rule's budget is a place to
+look, and the comparison made under it is what counts. Where that one leaves neither harness an
+answer, the campaign goes to the next longer budget, and where no budget leaves room it stands at
+the shortest that leaves the reference its answers and has the Examiner write other tasks. A campaign returns to a budget, and what it read there still stands
 (`under`): no comparison is made twice for one answer. Where no session has left a harness but
 the reference, as after a promotion, tasks held out since the last comparison are read by a
 control before a Builder session is paid for: the starter compared with the reference on them,
 which says whether they leave the reference room; with room the Builder builds, on practice
-brought up from those tasks, and without it the budget or the tasks change (t-4, t-9 and t-10,
+brought up from those tasks, and without it the tasks change again (t-4, t-9 and t-10,
 10 October, each built three times here on practice the promoted harness passed, and stopped
 with the tasks unmeasured). It ends `no-room` after more comparisons of one harness without
 room than its patience, or as many Examiner sessions in a row that held out no task. The half, and the two

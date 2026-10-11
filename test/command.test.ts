@@ -1,14 +1,13 @@
 // A solve's commands, executed under the real command wall on a mounted cap: the home survives
-// between commands, each command's own folder does not, staged input reaches it, neither the
-// host-only folder, the repository, its other worktrees nor a reviewer's Claude home can be read,
-// and no command outlives the shell limits. And a command's own folders: fresh for each, and done without on a full volume,
-// where the command that starts is the one that can empty it.
+// between commands, the folder a command that brings files starts in does not, staged input
+// reaches it, neither the host-only folder, the repository, its other worktrees nor a reviewer's
+// Claude home can be read, the host's folder in the seat cannot be written, and no command outlives
+// the shell limits. And a command still starts on a full volume, where it is the one that can empty
+// it.
 import { describe, expect, it } from "bun:test";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -18,9 +17,9 @@ import { tmpdir } from "../src/meta/os.ts";
 import { basename, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
-  commandDirs,
   type CommandWall,
   heldSeconds,
+  makeSeatDirs,
   reserveSeconds,
   runWalled,
   solveDirs,
@@ -38,16 +37,12 @@ const walled = (base: CommandWall["base"], dirs: CommandWall["dirs"]): CommandWa
   limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
 });
 
-async function run(wall: CommandWall, command: string, stage?: (work: string) => void, timeout?: number) {
+async function run(wall: CommandWall, command: string, stage?: (into: string) => void, timeout?: number) {
   let output = "";
   const onData = (data: Buffer) => {
     output += data.toString("utf8");
   };
-  const result = await runWalled(wall, command, {
-    onData,
-    timeout,
-    stage: ({ work }) => stage?.(work),
-  });
+  const result = await runWalled(wall, command, { onData, timeout, stage });
   return { exitCode: result.exitCode, output };
 }
 
@@ -81,43 +76,6 @@ describe("how long a command may run", () => {
   });
 });
 
-describe("a command's own folders", () => {
-  const full = () => {
-    throw Object.assign(new Error("ENOSPC: no space left on device, mkdtemp"), { code: "ENOSPC" });
-  };
-
-  it("are made fresh under the solve's runs, and are the home where the volume has no room for them", () => {
-    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-dirs-")));
-    const dirs = { root, home: join(root, "home"), runs: join(root, "runs"), host: join(root, "host") };
-    try {
-      mkdirSync(dirs.runs);
-      const made = commandDirs(dirs, "nothing");
-      expect(made.run).toStartWith(join(dirs.runs, "run-"));
-      expect([made.work, made.temp]).toEqual([join(made.run ?? "", "work"), join(made.run ?? "", "tmp")]);
-      expect(existsSync(made.work) && existsSync(made.temp)).toBe(true);
-      expect(commandDirs(dirs, "nothing").run).not.toBe(made.run);
-      // No room for the folders: a command that brings no files starts in the home without them.
-      expect(commandDirs(dirs, "nothing", full)).toEqual({ run: null, work: dirs.home, temp: dirs.home });
-      // One whose files have nowhere to go does not start, and says why.
-      expect(() => commandDirs(dirs, "files", full)).toThrow("ENOSPC");
-      // Room for the first folder and not for the two inside it: nothing half-made is left behind.
-      const half = join(dirs.runs, "run-half");
-      const first = () => {
-        mkdirSync(join(half, "work", "tmp"), { recursive: true });
-        return half;
-      };
-      expect(() => commandDirs(dirs, "nothing", first)).toThrow("EEXIST");
-      expect(existsSync(half)).toBe(false);
-      // Any other failure is the solve's own, not a full volume's.
-      rmSync(dirs.runs, { recursive: true });
-      expect(() => commandDirs(dirs, "nothing")).toThrow("ENOENT");
-      expect(readdirSync(root)).toEqual([]);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("a solve's walled commands", () => {
   it.skipIf(runtimeProcess.platform !== "darwin")(
     "still start on a volume a solver has filled, so that it can empty it",
@@ -126,24 +84,20 @@ describe("a solve's walled commands", () => {
       const dirs = solveDirs(`full-${String(runtimeProcess.pid)}-${String(Date.now())}`);
       const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
       try {
-        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        makeSeatDirs(dirs);
         const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const wall = walled(base, dirs);
-        const inHome = async (command: string) => {
-          let output = "";
-          const onData = (data: Buffer) => {
-            output += data.toString("utf8");
-          };
-          await runWalled(wall, command, { onData, inHome: true });
-          return output;
-        };
         // Four times the cap, so the volume is full whatever the filesystem keeps back.
-        const filled = await inHome("dd if=/dev/zero of=fill bs=1048576 count=64 2>&1; echo dd:$?");
-        expect(filled).not.toContain("dd:0");
+        const filled = await run(wall, "dd if=/dev/zero of=fill bs=1048576 count=64 2>&1; echo dd:$?");
+        expect(filled.output).not.toContain("dd:0");
+        // One that brings files has nowhere to stage them, and fails as the full volume it is.
+        await expect(
+          run(wall, "true", (into) => writeFileSync(join(into, "big"), "x".repeat(1 << 20))),
+        ).rejects.toThrow("ENOSPC");
         // On 2026-10-09 a solve in this state was refused `rm -rf ~/w` fourteen times running.
-        expect(await inHome("rm -f fill && echo freed")).toContain("freed");
-        expect(await inHome("echo again > note && cat note")).toBe("again\n");
+        expect((await run(wall, "rm -f fill && echo freed")).output).toContain("freed");
+        expect((await run(wall, "echo again > note && cat note")).output).toBe("again\n");
       } finally {
         await release();
         rmSync(dirs.host, { recursive: true, force: true });
@@ -164,7 +118,7 @@ describe("a solve's walled commands", () => {
       const dirs = solveDirs(`test-${String(runtimeProcess.pid)}-${String(Date.now())}`);
       const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
       try {
-        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        makeSeatDirs(dirs);
         writeFileSync(join(dirs.host, "config"), "host-canary");
         const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
@@ -175,8 +129,8 @@ describe("a solve's walled commands", () => {
           limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
         };
 
-        const first = await run(wall, 'echo kept > "$HOME/note" && pwd && cat staged', (work) =>
-          writeFileSync(join(work, "staged"), "staged-input"),
+        const first = await run(wall, 'echo kept > "$HOME/note" && pwd && cat staged', (into) =>
+          writeFileSync(join(into, "staged"), "staged-input"),
         );
         expect(first.exitCode).toBe(0);
         expect(first.output).toContain("staged-input");
@@ -232,9 +186,9 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
-  it("refuse a command the repository and its other worktree, and let it write and read its own folder", async () => {
-    // The three reads the wall's probe makes before a seat's first command (`walledBase`), here
-    // as a solver's command would spell them.
+  it("refuse a command the repository, its other worktree and the host's folder in the seat, and let it write and read its own", async () => {
+    // The four steps the wall's probe takes before a seat's first command (`walledBase`), here as a
+    // solver's command would spell them.
     const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reads-")));
     writeFileSync(join(repoRoot, "secret"), "repo-canary");
     const sibling = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-sibling-")));
@@ -242,7 +196,7 @@ describe("a solve's walled commands", () => {
     const dirs = solveDirs(`reads-${String(runtimeProcess.pid)}-${String(Date.now())}`);
     const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
     try {
-      for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+      makeSeatDirs(dirs);
       const base = solveIsolationPolicy({ repoRoot, otherTrees: [sibling] });
       if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
       const wall = walled(base, dirs);
@@ -251,10 +205,15 @@ describe("a solve's walled commands", () => {
         [
           `cat ${join(repoRoot, "secret")} 2>/dev/null || echo repo-refused`,
           `cat ${join(sibling, "package.json")} 2>/dev/null || echo sibling-refused`,
+          `echo x 2>/dev/null > ${join(dirs.kept, "made")} || echo kept-refused`,
+          `ln -s / ${join(dirs.kept, "link")} 2>/dev/null || echo link-refused`,
+          `rmdir ${dirs.kept} 2>/dev/null || echo removal-refused`,
           "echo own-canary > own && cat own",
         ].join("; "),
       );
-      expect(read.output).toBe("repo-refused\nsibling-refused\nown-canary\n");
+      expect(read.output).toBe(
+        "repo-refused\nsibling-refused\nkept-refused\nlink-refused\nremoval-refused\nown-canary\n",
+      );
     } finally {
       await release();
       rmSync(dirs.host, { recursive: true, force: true });
@@ -264,7 +223,7 @@ describe("a solve's walled commands", () => {
   }, 60_000);
 
   it.skipIf(runtimeProcess.platform !== "linux")(
-    "give each command a temporary directory of its own under the solve's volume, and show it nothing another left in the host's",
+    "give a seat a temporary directory of its own under its volume, and each command a /tmp that shows nothing another left in the host's",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-private-tmp-")));
       const dirs = solveDirs(`tmp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
@@ -273,24 +232,25 @@ describe("a solve's walled commands", () => {
       const canary = join("/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
       writeFileSync(canary, "left by the host");
       try {
-        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        makeSeatDirs(dirs);
         const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const wall = walled(base, dirs);
-        // The command's TMPDIR is its own folder under the solve's runs, where the cap counts it,
-        // and the host's /tmp with the canary in it is hidden behind an empty private one.
+        // The seat's TMPDIR is its own folder on its volume, where the cap counts it, and the host's
+        // /tmp with the canary in it is hidden behind an empty private one.
         const first = await run(
           wall,
           `echo "$TMPDIR"; ls /tmp; cat ${canary} 2>&1 || echo unseen; echo first > /tmp/left; echo second > "$TMPDIR/left"`,
         );
-        expect(first.output).toContain(join(basename(dirs.root), "runs", "run-"));
+        expect(first.output).toContain(join(basename(dirs.root), "tmp"));
         expect(first.output).not.toContain("left by the host");
         expect(first.output).toContain("unseen");
-        // What the first command wrote under /tmp and its TMPDIR is gone with it: the next command
-        // starts in a fresh private /tmp and a fresh folder, and the host's /tmp never saw either.
-        const second = await run(wall, 'ls /tmp; ls "$TMPDIR"; cat /tmp/left 2>/dev/null || echo gone');
+        // What the first command wrote under /tmp is gone with it: the next command starts in a
+        // fresh private /tmp, and the host's /tmp never saw it. The seat's TMPDIR keeps what it was
+        // given, as the home does.
+        const second = await run(wall, 'ls /tmp; cat /tmp/left 2>/dev/null || echo gone; cat "$TMPDIR/left"');
         expect(second.output).toContain("gone");
-        expect(second.output).not.toMatch(/^left$/m);
+        expect(second.output).toMatch(/^second$/m);
         expect(existsSync("/tmp/left")).toBe(false);
         expect(readFileSync(canary, "utf8")).toBe("left by the host");
       } finally {
@@ -317,7 +277,7 @@ describe("a solve's walled commands", () => {
       writeFileSync(canary, "left by the host");
       writeFileSync(program, "#!/bin/sh\necho ran\n", { mode: 0o755 });
       try {
-        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        makeSeatDirs(dirs);
         const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const wall = walled(base, dirs);
@@ -345,7 +305,7 @@ describe("a solve's walled commands", () => {
         const [said, made, python] = followed.output.trim().split("\n");
         expect(said).toBe("heredoc");
         expect(made).toMatch(/^\/(?!tmp\/|private\/tmp\/)/);
-        expect(python).toContain(join(basename(dirs.root), "runs", "run-"));
+        expect(python).toContain(join(basename(dirs.root), "tmp"));
       } finally {
         await release();
         rmSync(canary, { force: true });
@@ -358,23 +318,23 @@ describe("a solve's walled commands", () => {
   );
 
   it.skipIf(runtimeProcess.platform !== "darwin")(
-    "keep what Python and make write as temporary in the command's own folder, which goes with it",
+    "keep what Python and make write as temporary in the seat's own folder, on its volume",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-temp-")));
       const dirs = solveDirs(`temp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
       const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
       try {
-        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        makeSeatDirs(dirs);
         const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const wall = walled(base, dirs);
-        const own = join(basename(dirs.root), "runs", "run-");
+        const own = join(basename(dirs.root), "tmp");
         // `/usr/bin/python3` and `/usr/bin/make` are xcrun shims, which start their tool with TMPDIR
         // reset to the user temporary directory: three days of campaigns left 1.56 million Python
         // temp folders there, outside every solve's cap and its command's end (2026-10-10).
         const made = await run(wall, "python3 -c 'import tempfile; print(tempfile.mkdtemp())'");
         expect(made.output).toContain(own);
-        expect(existsSync(made.output.trim())).toBe(false);
+        expect(existsSync(made.output.trim())).toBe(true);
         const recipe = await run(wall, String.raw`printf 'all:\n\t@echo $$TMPDIR\n' > Makefile && make`);
         expect(recipe.output).toContain(own);
         // A compiler started by its own path is given the SDK the shim named for it.

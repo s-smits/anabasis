@@ -810,6 +810,22 @@ Reads are open otherwise. The network is open for a seat and closed for a check.
 - **Tests.** `test/command.test.ts` (321 lines), `test/coding-tools.test.ts`,
   `test/harness-tools.test.ts`, `test/disk-cap.test.ts`.
 - **Lines.** About −200 (*estimate*).
+- **Done** at PR #203 (11 October), with one departure: the seat's commands write its root but for
+  one folder in it, `kept`, which the host alone writes. A root writable whole would let pi's long
+  output, which the host writes while the command runs, follow a link the command made, and a
+  check before the write cannot close that race. Nor does the host stage a command's files where a
+  command can write. A process that outran its command and holds no file on the volume escapes
+  `endHolders` on Darwin, so it could swap the folder for a link between the host's check and its
+  write. So a command's files are staged in a fresh folder under `kept`. The command copies them
+  into a folder it makes under its `TMPDIR`, starts there, and removes that folder when it ends.
+  The probe gains a step: a write in `kept` is refused. The policy is still taken for each command,
+  as a pure function of the seat's folders and its tool tree, because a Builder's `.toolchain`
+  grows during its session and its preview runs another harness's tree on the same seat. It is
+  staged to one profile file a seat. `inHome` goes, as every command that brings nothing starts in
+  the home. The solver's prompt now says `$TMPDIR` is kept for the whole task. A write outside the
+  home but inside the root, such as pi's write to `../escape.txt` from the home, now lands in the
+  seat's own root; the Builder's case reads the refusal one level up. The source loses 64 lines
+  net (268 out, 204 in).
 
 ### W4. The host's own scratch under one closed root
 

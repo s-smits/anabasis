@@ -15,7 +15,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { bashTool, CODING_TOOLS, selectedCodingTools } from "../src/solve/coding-tools.ts";
-import { type CommandWall, solveDirs } from "../src/solve/command.ts";
+import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
 import { harnessTools, openHarness } from "../src/solve/harness.ts";
 import { installedPrograms } from "../src/solve/prompt.ts";
 import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeHarness, writeStarter } from "../src/solve/starter.ts";
@@ -199,7 +199,7 @@ describe("the account of a harness a Builder is handed", () => {
       try {
         writeHarness(dir, EXAMPLE);
         writeHarness(bare, WITHOUT_SHELL);
-        for (const each of [dirs.home, dirs.runs, dirs.host]) mkdirSync(each, { recursive: true });
+        makeSeatDirs(dirs);
         seed(dirs.home);
         const base = solveIsolationPolicy({ repoRoot: dir });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);

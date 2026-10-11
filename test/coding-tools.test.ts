@@ -29,7 +29,7 @@ import {
   selectedCodingTools,
   type WallExec,
 } from "../src/solve/coding-tools.ts";
-import { type CommandWall, shellSeconds, solveDirs } from "../src/solve/command.ts";
+import { type CommandWall, makeSeatDirs, shellSeconds, solveDirs } from "../src/solve/command.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
 const LIMITS = { shellDefaultSeconds: 300, shellMaxSeconds: 900 };
@@ -46,7 +46,7 @@ function plainHome() {
     commands.push(command);
     const work = join(root, `run-${String(runs++)}`);
     mkdirSync(work);
-    options.stage?.({ work, temp: work });
+    options.stage?.(work);
     const child = Bun.spawn(["/bin/sh", "-c", command], { cwd: work, stdout: "pipe", stderr: "pipe" });
     const [out, err] = await Promise.all([
       new Response(child.stdout).arrayBuffer(),
@@ -249,7 +249,7 @@ describe("the coding tools on the command wall", () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));
       const dirs = solveDirs(`coding-${String(runtimeProcess.pid)}-${String(Date.now())}`);
       try {
-        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        makeSeatDirs(dirs);
         const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const limits = { shellDefaultSeconds: 1, shellMaxSeconds: 2 };
@@ -307,8 +307,15 @@ describe("the coding tools on the command wall", () => {
         await bash(`rm -rf ~/.shell-output && ln -s '${repoRoot}' ~/.shell-output`);
         await bash("seq 1 3000");
         expect(readdirSync(repoRoot)).toEqual(["hidden.txt"]);
-        expect(readdirSync(dirs.runs)).toEqual(["long-output"]);
-        expect(readdirSync(join(dirs.runs, "long-output"))).toEqual([]);
+        expect(readdirSync(dirs.kept)).toEqual(["long-output"]);
+        expect(readdirSync(join(dirs.kept, "long-output"))).toEqual([]);
+        // The host's folder is the host's: a command can neither write in it nor put a link there.
+        const kept = join(dirs.kept, "long-output");
+        await bash(
+          `rm -rf '${kept}'; ln -s '${repoRoot}' '${dirs.kept}/elsewhere'; echo x > '${kept}/made'; true`,
+        );
+        expect(readdirSync(dirs.kept)).toEqual(["long-output"]);
+        expect(readdirSync(kept)).toEqual([]);
 
         // A solver that removes its own home still has one for the next command.
         await bash("cd / && rm -rf ~");

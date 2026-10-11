@@ -4,21 +4,24 @@
  * (`stageCommandIsolation`), on pi's local shell backend, which kills the command's process group on
  * a timeout or an abort. Whatever else the command left working on the solve's volume is ended here.
  *
- * A solve owns two directories under the shared scratch parent, which the command wall closes to
- * every command but its own trees:
- * - `root`, the capped volume (`mountDiskCap`), holds `home`, which survives between commands and is
- *   never read back, and `runs`, where each command gets a fresh `run-*` with `work`, where its
- *   caller stages what it reads, and `tmp`, its `TMPDIR`, both removed when it ends. That is v1's
- *   shape (built-bash.ts:293-298), with the runs moved onto the cap.
- * - `host`, beside it and outside the cap, which no command can read: the staged profiles, the
- *   commands' CPU records, and the model backend's own state, such as Claude Code's configuration
- *   and transcripts.
+ * A seat (a solve, a Builder's session, an Examiner's) owns two directories under the shared
+ * scratch parent, which the command wall closes to every seat but its own:
+ * - `root`, the capped volume (`mountDiskCap`), which its commands write whole: `home`, kept between
+ *   commands and never read back, and `tmp`, their `TMPDIR` for the seat's whole life. The one part
+ *   they may not write is `kept`, where the host writes what must not follow a link a command made:
+ *   pi's long output, written while the command runs, and what a command brings, staged before it
+ *   starts.
+ * - `host`, beside it and outside the cap, which no command can read: the staged profile and the
+ *   model backend's own state, such as Claude Code's configuration and transcripts.
  *
- * A command starts in `work` unless its caller asks for the home (`inHome`). A harness's tool call
- * and a file tool's command read files staged for that one command, and start beside them. The
- * solver's own commands start in the home, which is the one working directory pi's coding tools
- * share: until 2026-10-09 they started in `work` too, and nine in ten of them began with `cd ~`
- * (the Starter solves of six campaigns, `docs/transfer.md`).
+ * A command starts in the home, the one working directory pi's coding tools share: until
+ * 2026-10-09 the solver's started in a folder of their own, and nine in ten of them began with
+ * `cd ~` (the Starter solves of six campaigns, `docs/transfer.md`). A command that brings files, a
+ * harness's tool call or a file tool's write, starts in a folder of its own beside a copy of them
+ * (`runWalled`).
+ *
+ * Until 2026-10-11 each command had a fresh folder and `TMPDIR` of its own, under a policy and a
+ * profile file of its own that named them (`docs/simplify.md`, W3).
  *
  * Until 2026-10-11 a shell around the wall read each command's CPU time with `times`, and a solve
  * reported the sum. It counted only the children a command waited for, read zero under
@@ -29,8 +32,8 @@
 import { createLocalBashOperations } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
-import { basename, join, resolve } from "../meta/path.ts";
-import { errorCode, errorMessage } from "../meta/runtime-values.ts";
+import { join, resolve } from "../meta/path.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
 import { endHolders } from "../verify/disk-cap.ts";
 import {
   BUILT_COMMAND_SCRATCH_ROOT,
@@ -41,10 +44,13 @@ import {
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 
 export interface SolveDirs {
-  /** The capped volume's mount point. */
+  /** The capped volume's mount point, which the seat's commands write but for `kept`. */
   readonly root: string;
   readonly home: string;
-  readonly runs: string;
+  /** `TMPDIR`, for the seat's whole life. */
+  readonly temp: string;
+  /** On the volume, and written by the host alone; a command reads it. */
+  readonly kept: string;
   /** Host-only: outside the cap, closed to every command. */
   readonly host: string;
 }
@@ -78,7 +84,8 @@ export interface Walled {
  *  so that seats that start together wait on one probe (`probeWall`). One that did not hold is
  *  dropped, so the next seat probes again. */
 const PROBED = new Map<string, Promise<string | null>>();
-/** What a command writes under its seat's root and reads back, the probe's control. */
+/** What the host stages for the probe's command, which writes it in its own folder and reads it
+ *  back: the probe's control. */
 const PROBE_MARK = "ANA-WALL-PROBE";
 /** The probe's command is held to what v1's probe was: twenty seconds. */
 const PROBE_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
@@ -106,22 +113,15 @@ export interface SolveClock {
   readonly seconds: number;
 }
 
-/** A command's own two directories, for a caller that stages input files before it runs. */
-export interface RunDirs {
-  readonly work: string;
-  readonly temp: string;
-}
-
 interface WalledOptions {
   readonly onData: (data: Buffer) => void;
   readonly signal?: AbortSignal | undefined;
   /** Seconds asked for, held to the limits by `shellSeconds`; pi's backend throws
    *  `timeout:<seconds>` when the command runs past what it was given. */
   readonly timeout?: number | undefined;
-  /** Writes what the command reads into its fresh directories before it starts. */
-  readonly stage?: ((run: RunDirs) => void) | undefined;
-  /** Start the command in the solve's home, not in its own `work`. */
-  readonly inHome?: boolean | undefined;
+  /** Writes what the command brings into `into`, a fresh folder under the seat's `kept`, before it
+   *  starts. */
+  readonly stage?: ((into: string) => void) | undefined;
 }
 
 const SHELL = createLocalBashOperations({ shellPath: "/bin/sh" });
@@ -173,11 +173,22 @@ export function heldSeconds(
 /** The directories of solve `id`, named, not yet made: the runner mounts the cap at `root`. */
 export function solveDirs(id: string): SolveDirs {
   const root = join(BUILT_COMMAND_SCRATCH_ROOT, `solve-${id}`);
-  return { root, home: join(root, "home"), runs: join(root, "runs"), host: `${root}.host` };
+  return {
+    root,
+    home: join(root, "home"),
+    temp: join(root, "tmp"),
+    kept: join(root, "kept"),
+    host: `${root}.host`,
+  };
+}
+
+/** Makes the folders of `dirs` below its root, which the cap's mount made. */
+export function makeSeatDirs(dirs: SolveDirs): void {
+  for (const dir of [dirs.home, dirs.temp, dirs.kept, dirs.host]) mkdirSync(dir, { recursive: true });
 }
 
 /**
- * The base of a wall over `dirs`, with the three folders made: the solver's, the Builder's and the
+ * The base of a wall over `dirs`, with its folders made: the solver's, the Builder's and the
  * Examiner's are built the same way, and until 10 October each spelled it. `who` names the actor
  * in the refusal of a host that cannot wall one.
  *
@@ -187,7 +198,7 @@ export function solveDirs(id: string): SolveDirs {
  * readable in every live run.
  */
 export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
-  for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+  makeSeatDirs(dirs);
   const otherTrees = wall.otherTrees ?? [];
   const base = solveIsolationPolicy({ repoRoot: wall.repoRoot, otherTrees });
   if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);
@@ -206,10 +217,10 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
 /**
  * Whether `wall` holds, by one command launched as every command of a seat is (`runWalled`): a
  * canary the host writes in the repository is refused to it, as is `sibling`'s `package.json`,
- * which every worktree of this repository holds, and a file it writes in its own folder under the
- * seat's root reads back. Null where all three held, and otherwise the command's output, a line a
- * step. The last step is the probe's control: a launch that refuses everything fails it, as one
- * that refuses nothing fails the first.
+ * which every worktree of this repository holds, and a write in the host's folder in the seat; and
+ * a file the host staged for it reaches its own folder, is written there and reads back. Null where
+ * all four held, and otherwise the command's output, a line a step. The last step is the probe's
+ * control: a launch that refuses everything fails it, as one that refuses nothing fails the first.
  *
  * Until 11 October the probe ran v1's launch of its sandboxed model process, which no seat of v2
  * runs, under a policy of its own that only the probe used (`docs/simplify.md`, F5). Nothing is
@@ -232,54 +243,33 @@ export async function probeWall(
     if (theirs !== null && existsSync(theirs)) {
       reads.push({ name: "other worktree's package.json", path: theirs });
     }
+    const written = join(wall.dirs.kept, "probe");
     const command = [
       ...reads.map(
         ({ name, path }) =>
           `if cat ${shellQuote(path)} >/dev/null 2>&1; then echo ${shellQuote(`${name}: read`)}; else echo ${shellQuote(`${name}: refused`)}; fi`,
       ),
-      `echo ${PROBE_MARK} > probe && cat probe || echo 'own folder: not written and read back'`,
+      // `true`, not `:`: dash, Linux's `sh`, ends the script where a special builtin's redirection fails.
+      `if true 2>/dev/null > ${shellQuote(written)}; then echo 'host folder: written'; else echo 'host folder: refused'; fi`,
+      "cat brought > own && cat own || echo 'own folder: not written and read back'",
     ].join("\n");
     let out = "";
     const { exitCode } = await runWalled(wall, command, {
       onData: (data) => {
         out += data.toString();
       },
+      stage: (into) => writeFileSync(join(into, "brought"), `${PROBE_MARK}\n`),
     });
     const lines = out.trim().split("\n");
-    const holds = reads.every(({ name }) => lines.includes(`${name}: refused`)) && lines.includes(PROBE_MARK);
-    return holds ? null : `${out.trim()}\nexit ${String(exitCode)}`;
+    const refused = [...reads.map(({ name }) => name), "host folder"].every((name) =>
+      lines.includes(`${name}: refused`),
+    );
+    return refused && lines.includes(PROBE_MARK) ? null : `${out.trim()}\nexit ${String(exitCode)}`;
   } catch (error) {
     return `the probe did not run: ${errorMessage(error)}`;
   } finally {
     if (folder !== null) rmSync(folder, { recursive: true, force: true });
-  }
-}
-
-/**
- * A command's own folders, made fresh under `runs`: `run` is what is removed when it ends.
- *
- * On a full volume there is no room to make them, and the command that would make room is the one
- * being started. One solve filled its 2 GiB on 2026-10-09 and was then refused `rm -rf ~/w`
- * fourteen times running, each before it started (`ENOSPC` here). So a command that brings nothing
- * starts all the same, with the home as its `work` and its `TMPDIR`: a delete needs neither. One
- * that brings files to stage has nowhere to put them, and fails as the full volume it is.
- */
-export function commandDirs(
-  dirs: SolveDirs,
-  brings: "files" | "nothing",
-  make: (prefix: string) => string = mkdtempSync,
-): RunDirs & { readonly run: string | null } {
-  let run: string | null = null;
-  try {
-    run = make(join(dirs.runs, "run-"));
-    const [work, temp] = [join(run, "work"), join(run, "tmp")];
-    mkdirSync(work);
-    mkdirSync(temp);
-    return { run, work, temp };
-  } catch (error) {
-    if (run !== null) rmSync(run, { recursive: true, force: true });
-    if (brings === "files" || errorCode(error) !== "ENOSPC") throw error;
-    return { run: null, work: dirs.home, temp: dirs.home };
+    rmSync(join(wall.dirs.kept, "probe"), { force: true });
   }
 }
 
@@ -303,29 +293,44 @@ export function networkReach(wall: CommandWall): Promise<NetworkReach> {
   return probe;
 }
 
+/**
+ * Runs `command` on `wall`, in the seat's home, or beside a copy of what it brings (`stage`).
+ *
+ * A command that brings nothing makes nothing to start. One solve filled its 2 GiB on 2026-10-09
+ * and was then refused `rm -rf ~/w` fourteen times running, each before it started, when every
+ * command made a folder of its own first. One that brings files has nowhere to stage them on a
+ * full volume, and fails as the full volume it is.
+ */
 export async function runWalled(
   wall: CommandWall,
   command: string,
   options: WalledOptions,
 ): Promise<{ exitCode: number | null }> {
-  const { run, work, temp } = commandDirs(wall.dirs, options.stage === undefined ? "nothing" : "files");
-  const name = run === null ? "run-on-a-full-volume" : basename(run);
-  const profile = join(wall.dirs.host, `${name}.sb`);
+  const { dirs } = wall;
+  // A solver may remove its own home or its `TMPDIR`, and the next command still has both.
+  for (const dir of [dirs.home, dirs.temp]) mkdirSync(dir, { recursive: true });
+  let into: string | null = null;
   try {
-    options.stage?.({ work, temp });
-    // A solver may remove its own home, and the next command still starts in one.
-    if (options.inHome === true) mkdirSync(wall.dirs.home, { recursive: true });
-    const policy = commandIsolationPolicy(wall.base, {
-      work,
-      home: wall.dirs.home,
-      temp,
-      toolTree: wall.toolTree,
-    });
+    if (options.stage !== undefined) {
+      into = mkdtempSync(join(dirs.kept, "in-"));
+      options.stage(into);
+    }
+    const policy = commandIsolationPolicy(wall.base, { ...dirs, toolTree: wall.toolTree });
+    // A command that brings files starts in a folder it makes for itself under its `TMPDIR`, fills
+    // with a copy of them, and removes when it ends. The folder has to be one it can write, as a
+    // harness's tool may write where it starts and a program it runs may too. And the host writes
+    // nothing a command can write: one that outran its end (`endHolders` ends only what holds the
+    // volume) could swap a folder the host was about to write for a link. So the host stages where
+    // no command can write, and the copy is the command's own, under the wall.
+    const line =
+      into === null
+        ? command
+        : `w=$(mktemp -d "$TMPDIR/in.XXXXXX") || exit\ncp -R ${shellQuote(into)}/. "$w" && cd "$w" && {\n${command}\n}\ns=$?\ncd / && rm -rf "$w"\nexit $s`;
     // The shell pi starts leads the group and waits here on a subshell, so the launch is its child
-    // and the leader is its parent; the exit code is the subshell's.
-    const staged = stageCommandIsolation(policy, profile, command, "$PPID");
-    const cwd = options.inHome === true ? wall.dirs.home : work;
-    return await SHELL.exec(`(\n${staged}\n)`, cwd, {
+    // and the leader is its parent; the exit code is the subshell's. One seat's commands run one at
+    // a time, so they share one profile file.
+    const staged = stageCommandIsolation(policy, join(dirs.host, "command.sb"), line, "$PPID");
+    return await SHELL.exec(`(\n${staged}\n)`, dirs.home, {
       onData: options.onData,
       signal: options.signal,
       timeout: heldSeconds(options.timeout, wall).seconds,
@@ -333,9 +338,8 @@ export async function runWalled(
     });
   } finally {
     // What left the command's group is out of its exit trap's reach, and a command the host killed
-    // never ran that trap. Both still work on the solve's volume, where one command runs at a time.
-    await endHolders(wall.dirs.root);
-    if (run !== null) rmSync(run, { recursive: true, force: true });
-    rmSync(profile, { force: true });
+    // never ran that trap. Both still work on the seat's volume, where one command runs at a time.
+    await endHolders(dirs.root);
+    if (into !== null) rmSync(into, { recursive: true, force: true });
   }
 }

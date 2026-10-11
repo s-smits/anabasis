@@ -20,7 +20,14 @@ import {
 import { homedir, tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CommandWall, probeWall, runWalled, solveDirs, walledBase } from "../src/solve/command.ts";
+import {
+  type CommandWall,
+  makeSeatDirs,
+  probeWall,
+  runWalled,
+  solveDirs,
+  walledBase,
+} from "../src/solve/command.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { guardedAncestors, moveBlockingRules } from "../src/verify/seatbelt-path-guard.ts";
 import { commandIsolationPolicy } from "../src/verify/solve-command-isolation.ts";
@@ -50,7 +57,7 @@ async function inSeat(
   const dirs = solveDirs(`sandbox-${String(runtimeProcess.pid)}-${String(Date.now())}-${String(seats++)}`);
   const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
   try {
-    for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+    makeSeatDirs(dirs);
     const base = solveIsolationPolicy({ repoRoot, otherTrees });
     if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
     const wall: CommandWall = {
@@ -157,7 +164,7 @@ describe("the solve isolation's policy", () => {
 });
 
 describe("the wall's probe", () => {
-  it("holds on this host: the repository and the other worktree refused, its own folder written and read", async () => {
+  it("holds on this host: the repository, the other worktree and the host's folder refused, a staged file written and read", async () => {
     const repoRoot = workRepo();
     const sibling = workRepo();
     writeFileSync(join(sibling, "package.json"), '{\n  "name": "a-sibling"\n}\n');
@@ -174,11 +181,12 @@ describe("the wall's probe", () => {
       );
       expect(base.policyHash).toBe(wall.base.policyHash);
       // The probe writes nothing in a sibling, which another user may own (10 October), leaves
-      // nothing in the repository and nothing in the seat's runs.
+      // nothing in the repository, and nothing in the seat's own folders or the host's in it.
       expect(readdirSync(sibling)).toEqual(["package.json"]);
       expect(readdirSync(bare)).toEqual([]);
       expect(readdirSync(repoRoot)).toEqual([]);
-      expect(readdirSync(wall.dirs.runs)).toEqual([]);
+      expect(readdirSync(wall.dirs.kept)).toEqual([]);
+      expect(readdirSync(wall.dirs.temp)).toEqual([]);
     });
   }, 60_000);
 
@@ -195,6 +203,7 @@ describe("the wall's probe", () => {
         const said = await probeWall(wall, repoRoot, sibling);
         expect(said).toContain("repository canary: read");
         expect(said).toContain("other worktree's package.json: read");
+        expect(said).toContain("host folder: refused");
         // Its own folder still read back: the launch ran, and refused what it should not have read.
         expect(said).toContain("ANA-WALL-PROBE");
         expect(readdirSync(repoRoot)).toEqual([]);
@@ -206,7 +215,7 @@ describe("the wall's probe", () => {
   it("does not hold where its command cannot start", async () => {
     const repoRoot = workRepo();
     await inSeat(repoRoot, [], async (wall) => {
-      rmSync(wall.dirs.runs, { recursive: true, force: true });
+      rmSync(wall.dirs.kept, { recursive: true, force: true });
       expect(await probeWall(wall, repoRoot)).toStartWith("the probe did not run: ");
       expect(readdirSync(repoRoot)).toEqual([]);
     });
@@ -228,7 +237,8 @@ describe("the rename guard", () => {
     if (onDarwin) {
       const scratch = join(tmpdir(), "ana-solve-sandbox-scratch");
       const { profile } = commandIsolationPolicy(base, {
-        work: join(scratch, "work"),
+        root: scratch,
+        kept: join(scratch, "kept"),
         home: join(scratch, "home"),
         temp: join(scratch, "tmp"),
       });

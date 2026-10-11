@@ -760,8 +760,8 @@ function resetTool(bench: Bench, wall: CommandWall): AgentTool {
         {
           onData: (data) => output.push(data),
           signal,
-          stage: ({ work }) =>
-            cpSync(join(bench.request.parent, "agent"), join(work, "agent"), {
+          stage: (into) =>
+            cpSync(join(bench.request.parent, "agent"), join(into, "agent"), {
               recursive: true,
               verbatimSymlinks: true,
             }),

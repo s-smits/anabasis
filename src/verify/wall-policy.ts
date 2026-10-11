@@ -200,7 +200,7 @@ export function darwinPlatformReadRoots(): string[] {
  * and the list applies only to the Built Harness, because the verifier reads a correctness model as
  * its job.
  */
-export const RUN_DATA_DENY_PATTERNS = [
+const RUN_DATA_DENY_PATTERNS = [
   "/correctness-model(/|$)",
   // `domains` is also an ordinary library directory name, for example sympy/polys/domains. A
   // harness domain has one more distinctive join than that: the slug, then one of the bundle or

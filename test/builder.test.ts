@@ -1147,8 +1147,8 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     const s = await setup(
       [
         () => call("bash", { command: `cat '${canary}' 2>&1; echo "read:$?"` }),
-        // pi's write, behind the wall: outside the home it is refused, and a folder is no file.
-        call(WRITE_FILE, { path: "../escape.txt", content: "x" }),
+        // pi's write, behind the wall: outside the seat's root it is refused, and a folder is no file.
+        call(WRITE_FILE, { path: "../../escape.txt", content: "x" }),
         call(WRITE_FILE, { path: "harness/agent", content: "x" }),
         edit,
         call("bash", { command: 'cat "$HOME/harness/agent/BUILT_AGENTS.md"; ls "$HOME/practice"' }),

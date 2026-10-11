@@ -32,11 +32,11 @@ import { createEditToolDefinition } from "../../vendor/pi-coding-agent/core/tool
 import { createReadToolDefinition } from "../../vendor/pi-coding-agent/core/tools/read.ts";
 import { createWriteToolDefinition } from "../../vendor/pi-coding-agent/core/tools/write.ts";
 import { detectSupportedImageMimeType } from "../../vendor/pi-coding-agent/utils/mime.ts";
-import { existsSync, readdirSync, renameSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import { existsSync, readdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { asError } from "../meta/runtime-values.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
-import { type CommandWall, heldSeconds, type RunDirs, runWalled } from "./command.ts";
+import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
 
 /** pi's coding tools, in the order pi lists them. */
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
@@ -48,7 +48,7 @@ export type SolverTool = ToolDefinition;
 /** One walled command with its output whole, which is what a file tool's operations are made of. */
 export type WallExec = (
   command: string,
-  options?: { readonly stage?: (run: RunDirs) => void; readonly signal?: AbortSignal | undefined },
+  options?: { readonly stage?: (into: string) => void; readonly signal?: AbortSignal | undefined },
 ) => Promise<{ exitCode: number | null; output: Buffer }>;
 
 /** The most of a file the file tools read whole. */
@@ -134,9 +134,9 @@ export function fileTools(home: string, exec: WallExec): SolverTool[] {
 
 /**
  * What pi's file tools are made of, each a walled command. A file's bytes travel beside the command
- * and never in it: a write stages them in the command's own folder (`RunDirs.work`, where it
- * starts), and a read is the command's output. Absolute paths only, as pi resolves them before it
- * calls.
+ * and never in it: a write stages them for the command, which starts beside a copy of them
+ * (`runWalled`), and a read is the command's output. Absolute paths only, as pi resolves them
+ * before it calls.
  */
 function fileOperations(exec: WallExec) {
   const said = (output: Buffer, otherwise: string) => output.toString("utf8").trim() || otherwise;
@@ -167,7 +167,7 @@ function fileOperations(exec: WallExec) {
   };
   const writeFile = async (path: string, content: string) => {
     const { exitCode, output } = await exec(`cat content > ${shellQuote(path)}`, {
-      stage: ({ work }) => writeFileSync(join(work, "content"), content, "utf8"),
+      stage: (into) => writeFileSync(join(into, "content"), content, "utf8"),
     });
     if (exitCode !== 0) throw new Error(said(output, `${path} could not be written`));
   };
@@ -213,19 +213,18 @@ function timeoutClause(
  * pi writes a long output whole to a file, from the host's own process, and names the file in its
  * notice. Until 2026-10-09 that file was written straight into the home, under `.shell-output`. A
  * command can make that name a link, and the host's write then followed it to wherever the link
- * led: a file of a solver's choosing, outside every wall. So pi writes under the solve's `runs`,
- * which is on the capped volume and which no command can write, and the file reaches the home by a
- * command of its own, where the wall decides what a link may reach.
+ * led: a file of a solver's choosing, outside every wall. So pi writes under the seat's `kept`,
+ * which is on the capped volume and which no command can write, and a command of its own copies
+ * the file into the home, where the wall decides what a link may reach.
  */
 async function handIn(wall: CommandWall, kept: string, signal?: AbortSignal): Promise<[string, string][]> {
   const handed: [string, string][] = [];
   for (const name of existsSync(kept) ? readdirSync(kept) : []) {
     const from = join(kept, name);
     const shown = `$HOME/${LONG_OUTPUT}`;
-    const moved = await runWalled(wall, `mkdir -p "${shown}" && mv ${shellQuote(name)} "${shown}/"`, {
+    const moved = await runWalled(wall, `mkdir -p "${shown}" && cp ${shellQuote(from)} "${shown}/"`, {
       onData: () => undefined,
       signal,
-      stage: ({ work }) => renameSync(from, join(work, name)),
     }).then(
       ({ exitCode }) => exitCode === 0,
       () => false,
@@ -245,7 +244,7 @@ async function handIn(wall: CommandWall, kept: string, signal?: AbortSignal): Pr
 export function bashTool(wall: CommandWall): SolverTool {
   const { limits } = wall;
   const { home } = wall.dirs;
-  const kept = join(wall.dirs.runs, "long-output");
+  const kept = join(wall.dirs.kept, "long-output");
   // Session variables are off because the wall's environment replaces pi's.
   const options = { exposeSessionEnvironment: false, tempDir: kept };
   const pi = createBashToolDefinition(home, options);
@@ -274,12 +273,10 @@ export function bashTool(wall: CommandWall): SolverTool {
         operations: {
           // pi names the tool's working directory, which is the home the wall starts the command in.
           exec: (line, _cwd, { onData, signal: ended, timeout: held }) =>
-            runWalled(wall, line, { onData, signal: ended, timeout: held, inHome: true }).catch(
-              (error: unknown) => {
-                cut = asError(error).message.startsWith("timeout:");
-                throw error;
-              },
-            ),
+            runWalled(wall, line, { onData, signal: ended, timeout: held }).catch((error: unknown) => {
+              cut = asError(error).message.startsWith("timeout:");
+              throw error;
+            }),
         },
       });
       /** pi's text with each long output's file named where the solver can read it. */

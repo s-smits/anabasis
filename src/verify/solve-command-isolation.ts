@@ -3,18 +3,19 @@
  * A command receives an explicit environment rather than an inherited one, and outbound network is
  * open so it can fetch a toolchain into its private home (operator decision). That is what makes
  * the rest of this file necessary: a solver that can install things needs somewhere to install them
- * that is not the draft it is judged on, so a command may write its work tree, the session HOME and
- * its own private temporary tree, and nothing else. Darwin additionally permits the temporary
- * children system toolchains take without asking, since they resolve their scratch directory
- * through `confstr` and never read `TMPDIR`; product staging paths there are denied separately. The
- * host home and the repository stay closed, except for the runtime and toolchain roots the
- * enclosing solve policy reopens read-only so an installed interpreter can still find itself.
+ * that is not the draft it is judged on, so a command may write its seat's root, which holds the
+ * seat's HOME and its temporary folder, but for the host's own folder in it, and nothing else.
+ * Darwin additionally permits the temporary children system toolchains take without asking, since
+ * they resolve their scratch directory through `confstr` and never read `TMPDIR`; product staging
+ * paths there are denied separately. The host home and the repository stay closed, except for the
+ * runtime and toolchain roots the enclosing solve policy reopens read-only so an installed
+ * interpreter can still find itself.
  */
 import { existsSync, readdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
 import { basename, join } from "../meta/path.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { capturedJsonStringify, hashJsonBytes } from "../meta/json-runtime.ts";
+import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
   LINUX_BWRAP_ID,
   bwrapEnvironmentArgs,
@@ -31,7 +32,6 @@ import { covers, moveBlockingRules, sbRule } from "./seatbelt-path-guard.ts";
 import type { SolveIsolationPolicy } from "./solve-sandbox.ts";
 import {
   BUILT_COMMAND_SCRATCH_DENY,
-  RUN_DATA_DENY_PATTERNS,
   VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
   canonicalForms,
   canonicalRoots,
@@ -45,62 +45,19 @@ import {
 } from "./wall-policy.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
-const BUILT_COMMAND_ISOLATION_PROFILE_ID = "harness-built-command-isolated" as const;
-const BUILT_COMMAND_ISOLATION_FIXTURE = "built-command-seatbelt/v3" as const;
-/** Bubblewrap takes no profile file, only argv, so there is no rule text to record. Re-rendering
- *  the argv would be a second representation that could drift from the one that launched, so the
- *  evidence carries this descriptor and `stageCommandIsolation` stays the single executable form. */
-const LINUX_COMMAND_ISOLATION_DESCRIPTOR =
-  "linux-bwrap command isolation: allow-default host read, protected roots overmounted, one scratch tree read-write, network shared";
-
 /**
- * The one directory every command's scratch tree is created under, which keeps them together for
- * creation and cleanup at mode 0700. One parent does not separate them; the profile does that, by
- * denying the parent and re-allowing the running command's own trees after it, so a sibling's tree
- * is closed by a rule that can be read and tested rather than by nobody having named it.
+ * The one directory every seat's root is made under, which keeps them together for creation and
+ * cleanup at mode 0700. One parent does not separate them; the profile does that, by denying the
+ * parent and re-allowing the running seat's root after it, so another seat's root is closed by a
+ * rule that can be read and tested rather than by nobody having named it.
  */
 export const BUILT_COMMAND_SCRATCH_ROOT = join(tmpdir(), basename(BUILT_COMMAND_SCRATCH_DENY));
-
-/**
- * The bytes the command-isolation policy hash is taken over. The two mechanisms record different
- * fields because they decide different things: Bubblewrap names the mechanism it bound and the
- * network namespace it shares, Seatbelt the patterns and temporary roots its rules close. They stay
- * two closed shapes rather than one shape with optional fields, because an absent optional field
- * would hash identically to one the guard did emit, and two different walls must not claim one
- * identity.
- */
-type CommandIsolationIdentity =
-  | {
-      schema: typeof BUILT_COMMAND_ISOLATION_FIXTURE;
-      profileId: typeof BUILT_COMMAND_ISOLATION_PROFILE_ID;
-      mechanismId: string;
-      sessionPolicyHash: string;
-      default: "allow";
-      scratchRoots: string[];
-      readAllows: string[];
-      readDenies: string[];
-      network: "shared";
-      toolTree: string | null;
-    }
-  | {
-      schema: typeof BUILT_COMMAND_ISOLATION_FIXTURE;
-      profileId: typeof BUILT_COMMAND_ISOLATION_PROFILE_ID;
-      sessionPolicyHash: string;
-      default: "allow";
-      scratchRoots: string[];
-      readAllows: string[];
-      readDenies: string[];
-      readDenyPatterns: string[];
-      userTempRoots: string[];
-      writeDenies: string[];
-      toolTree: string | null;
-    };
 
 /**
  * What the Built shell may not touch inside the shared temporary directories it may now write: the
  * verifier's list, less this shell's own scratch parent. That one is denied by subpath further down
  * instead, because a name-shaped deny matches by basename and so would also match the running
- * command's own tree, whose ancestors are what `getcwd` walks: the shell would start with `error
+ * seat's root, whose ancestors are what `getcwd` walks: the shell would start with `error
  * retrieving current directory` and every command would fail before it ran.
  */
 const COMMAND_TEMP_SIBLING_DENY_PATTERNS = VERIFIER_TEMP_SIBLING_DENY_PATTERNS.filter(
@@ -120,9 +77,9 @@ const COMMAND_TEMP_SIBLING_DENY_PATTERNS = VERIFIER_TEMP_SIBLING_DENY_PATTERNS.f
  * its job. Pointing `HOME` at the work tree instead makes every temporary file a build writes a
  * candidate draft file.
  *
- * `TMPDIR` points at a third writable root created for this one command and removed with it. A
- * toolchain's scratch belongs to the command that made it, and a private tree per command keeps a
- * build's leftovers out of both the draft and the home that an install has to survive in.
+ * `TMPDIR` points at the seat's temporary folder, beside the home on its root. It lasts the seat, as
+ * the home does, and keeps a build's leftovers out of the home that an install has to survive in;
+ * the seat's cap counts them.
  *
  * `hostToolchainEnv` adds the names a toolchain uses to find its own installation, which moving
  * `HOME` otherwise hides — `RUSTUP_HOME` and `PYTHONUSERBASE`, each naming a real directory the
@@ -144,18 +101,15 @@ const TOOL_TREE_MAX_DEPTH = 5;
 const TOOL_TREE_MAX_DIRS = 4000;
 
 interface CommandIsolationPolicy {
-  profileId: typeof BUILT_COMMAND_ISOLATION_PROFILE_ID;
-  /** `darwin-seatbelt/v1` or `linux-bwrap/v1`, carried from the session isolation rather than
-   *  re-decided here, so `stageCommandIsolation` emits the launch this `profile` describes. */
-  mechanismId: string;
-  /** Darwin's exact Seatbelt rules, or Linux's stable Bubblewrap descriptor. The Linux argv stays
-   *  owned by `stageCommandIsolation`; a rendered copy here could disagree with what launched. */
-  profile: string;
-  policyHash: string;
+  /** Darwin's Seatbelt rules, staged as a file. Null on Linux, whose launch is argv alone, built
+   *  from the fields below by `stageCommandIsolation`. */
+  profile: string | null;
   mechanismPath: string;
-  /** The three writable directories — work tree, session home, private temporary tree — in both
-   *  path forms and sorted, so the hashed identity does not move with the order they were built. */
+  /** The seat's root, in both path forms: what a command may write. */
   scratchRoots: string[];
+  /** The host's own folder in the root, in both path forms: what a command may read there and may
+   *  not write. */
+  keptRoots: string[];
   /** Exact host runtimes and toolchains reopened read-only inside a closed home or repository. */
   readAllowRoots: string[];
   /** What stays closed under the open read default. Darwin carries these inside `profile` as
@@ -167,21 +121,18 @@ interface CommandIsolationPolicy {
 }
 
 /**
- * The three directories one command may write.
+ * A seat's folders, as its commands' wall names them: one root a command writes, but for the
+ * host's own folder in it.
  *
- * `work` holds the draft files and is read back afterwards, so anything left there becomes a
- * candidate draft file. `home` is the session's: kept across its commands and never read back, it
- * is where an install lands and where `HOME` points. Opening the network forced the separation,
- * because with one directory an install of several hundred files has nowhere to land that the draft
- * does not then have to carry, breaking the draft's file bound — and it would be gone by the next
- * command anyway, since the work tree is deleted when a command ends.
- *
- * `temp` is this command's private temporary tree, where `TMPDIR` points. It is created before the
- * command and removed with it, so a build's scratch is neither read back as a draft file nor left
- * behind in the home a later command inherits.
+ * `home` is where an install lands and where `HOME` points, kept across the seat's commands. `temp`
+ * is where `TMPDIR` points. `kept` is the host's: it writes there, and a command reads there, what
+ * must not follow a link a command made. pi writes a long output there while the command runs, so
+ * a check before the write could not close that race; a command that cannot write the folder can
+ * make no link in it.
  */
 interface CommandDirectories {
-  work: string;
+  root: string;
+  kept: string;
   home: string;
   temp: string;
   /** The adopted harness's own `.toolchain` tree, read-only and first on PATH; null when the
@@ -273,17 +224,21 @@ function commandReadAllows(
   return [...new Set([...covered, ...own])].sort();
 }
 
-function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[], toolTree: string | null) {
+function darwinCommandProfile(
+  base: SolveIsolationPolicy,
+  scratchRoots: string[],
+  keptRoots: string[],
+  toolTree: string | null,
+) {
   const writeDenies = [...new Set(["/", ...base.deniedWriteRoots])].sort();
   const scratchParent = canonicalForms(BUILT_COMMAND_SCRATCH_ROOT).sort();
-  // Under a deny-default read rule one command's scratch tree stayed private without a rule of its
-  // own. Reads are open now, so the shared parent is denied here and this command's own trees are
-  // re-allowed after it.
+  // Under a deny-default read rule one seat's root stayed private without a rule of its own. Reads
+  // are open now, so the shared parent is denied here and this seat's root is re-allowed after it.
   const readDenies = [...new Set([...base.deniedReadRoots, ...scratchParent])].sort();
   const readAllows = commandReadAllows(base, readDenies, toolTree);
   // The shared temporary directory a toolchain writes without asking: the confstr one clang uses,
   // as Apple's python3 shim does for a command that names it by its path. `/tmp` is no longer
-  // granted. `mktemp` and Python follow `TMPDIR`, which is the command's own folder, and what a
+  // granted. `mktemp` and Python follow `TMPDIR`, which is the seat's own folder, and what a
   // command spells as `/tmp/...` outright landed in a folder every seat of every campaign on the
   // host shares: on 10 October reference solves of two campaigns ran a PHREEQC that a third
   // campaign's Builder had installed under `/tmp` four hours before. Linux gives each command an
@@ -309,14 +264,14 @@ function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[]
     // it with a private tmpfs instead. The same rules then close by name what those directories
     // hold that must stay separate, concurrent verifier workdirs and the product's other staging
     // trees, because each path is known only once it has been created. The parent of every
-    // command's scratch tree is closed by subpath below instead.
+    // seat's root is closed by subpath below instead.
     ...userTemp.rules,
     // Run data is denied by name rather than by place, so one rule covers every earlier run's copy
     // instead of a worktree enumeration that goes stale. It follows the temporary-directory grant
     // so that a copy left under /tmp stays closed too.
     ...runDataDenyRules(),
     // The host's `/tmp`, closed whole: what another seat left there is neither read nor run, and a
-    // command leaves nothing there for the next. The scratch trees are opened again further down,
+    // command leaves nothing there for the next. The seat's root is opened again further down,
     // after it, for a controller whose own temporary directory lies under `/tmp`.
     ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", sharedTmp),
     ...sbRule("deny file-read*", "subpath", readDenies),
@@ -327,16 +282,20 @@ function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[]
     // prints the file while `ls` of its directory and the shell's PATH search over it answer
     // "Operation not permitted". Naming both operations in the allow puts this rule back in charge.
     ...sbRule("allow file-read* file-read-metadata", "subpath", readAllows),
-    // The parent of every command's scratch tree, closed for the same three operations the
-    // temporary grant above opened. `file-read-metadata` is named outright for the same specificity
-    // reason: without it, one command's `stat` of another command's draft file reports its size
-    // while `cat` of the same file is refused.
+    // The parent of every seat's root, closed for the same three operations the temporary grant
+    // above opened. `file-read-metadata` is named outright for the same specificity reason: without
+    // it, one seat's `stat` of another seat's file reports its size while `cat` of the same file is
+    // refused.
     ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", scratchParent),
-    // A command may read and create files under its own trees, and outside them and the shared
+    // A command may read and create files under its seat's root, and outside it and the shared
     // temporary roots above it may create them nowhere. This allow names the same operations as the
     // deny immediately above, which makes order the tie-break, and being later it wins.
     ...sbRule("allow file-read* file-read-metadata", "subpath", scratchRoots),
     ...sbRule("allow file-write*", "subpath", scratchRoots),
+    // But for the host's own folder in it, which a command reads and does not write, by the same
+    // tie-break: later than the allow, this deny wins. A subpath names the folder itself, so a
+    // command can neither remove it nor put a link in its place.
+    ...sbRule("deny file-write*", "subpath", keptRoots),
     // A resolver walks every ancestor of the file it opens, so each ancestor needs `lstat` even
     // where the directory itself stays closed. Without this, `node t.js` fails on the scratch
     // parent and no script on disk runs at all.
@@ -345,38 +304,39 @@ function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[]
     ...moveBlockingRules(base.deniedReadRoots),
     "",
   ].join("\n");
-  return {
-    profile,
-    identity: {
-      schema: BUILT_COMMAND_ISOLATION_FIXTURE,
-      profileId: BUILT_COMMAND_ISOLATION_PROFILE_ID,
-      sessionPolicyHash: base.policyHash,
-      default: "allow",
-      scratchRoots,
-      readAllows,
-      readDenies,
-      readDenyPatterns: [...RUN_DATA_DENY_PATTERNS, ...COMMAND_TEMP_SIBLING_DENY_PATTERNS],
-      userTempRoots: userTemp.roots,
-      writeDenies,
-      toolTree,
-    } satisfies CommandIsolationIdentity,
-  };
+  return { profile, readAllows };
 }
 
+/** The wall a seat's commands run under. It is a pure function of the seat's folders and its tool
+ *  tree, and taken for each command, because a Builder's tool tree grows during its session and its
+ *  preview runs another harness's under the same seat. */
 export function commandIsolationPolicy(
   base: SolveIsolationPolicy,
   dirs: CommandDirectories,
 ): CommandIsolationPolicy {
-  const scratchRoots = canonicalRoots([dirs.work, dirs.home, dirs.temp]);
   const toolTree = dirs.toolTree ?? null;
-  const linux = base.mechanismId === LINUX_BWRAP_ID;
+  const shared = {
+    mechanismPath: base.mechanismPath,
+    scratchRoots: canonicalRoots([dirs.root]),
+    keptRoots: canonicalRoots([dirs.kept]),
+    environment: commandIsolationEnvironment(dirs),
+  };
+  if (base.mechanismId !== LINUX_BWRAP_ID) {
+    const { profile, readAllows } = darwinCommandProfile(
+      base,
+      shared.scratchRoots,
+      shared.keptRoots,
+      toolTree,
+    );
+    return { ...shared, profile, readAllowRoots: readAllows, readDenies: [] };
+  }
   /*
    * What the Linux command wall overmounts, now that its reads open by default: the session's
    * denied roots, which are the verified repository and the operator home; the shared temporary
    * directory; and the peer checkouts `runDataDenyPaths` finds. The temporary directory holds every
-   * other command's scratch tree and every concurrent verification's staged workdir, so it is
-   * hidden whole and this command's own tree is bound back inside it — a separation the Darwin
-   * profile spends two rules on only because a Seatbelt deny cannot be reopened by a mount.
+   * other seat's root and every concurrent verification's staged workdir, so it is hidden whole
+   * and this seat's root is bound back inside it — a separation the Darwin profile spends two rules
+   * on only because a Seatbelt deny cannot be reopened by a mount.
    *
    * `TMPDIR` points at a tree bound back inside the overmount, so hiding the shared directory costs
    * a toolchain nothing. `/tmp` is hidden the same way even when the host's temporary directory is
@@ -384,39 +344,14 @@ export function commandIsolationPolicy(
    * build script spelling `/tmp` a private directory rather than the read-only root bind, where a
    * `mkdir` answers "Read-only file system".
    */
-  const readDenies = linux
-    ? [
-        ...new Set([...base.deniedReadRoots, tmpdir(), "/tmp", ...runDataDenyPaths(base.deniedReadRoots)]),
-      ].sort()
-    : [];
-  const readAllowRoots = linux ? commandReadAllows(base, readDenies, toolTree) : [];
-  const { profile, identity } = linux
-    ? {
-        profile: LINUX_COMMAND_ISOLATION_DESCRIPTOR,
-        identity: {
-          schema: BUILT_COMMAND_ISOLATION_FIXTURE,
-          profileId: BUILT_COMMAND_ISOLATION_PROFILE_ID,
-          mechanismId: base.mechanismId,
-          sessionPolicyHash: base.policyHash,
-          default: "allow",
-          scratchRoots,
-          readAllows: readAllowRoots,
-          readDenies,
-          network: "shared",
-          toolTree,
-        } satisfies CommandIsolationIdentity,
-      }
-    : darwinCommandProfile(base, scratchRoots, toolTree);
+  const readDenies = [
+    ...new Set([...base.deniedReadRoots, tmpdir(), "/tmp", ...runDataDenyPaths(base.deniedReadRoots)]),
+  ].sort();
   return {
-    profileId: BUILT_COMMAND_ISOLATION_PROFILE_ID,
-    mechanismId: base.mechanismId,
-    profile,
-    policyHash: hashJsonBytes(identity),
-    mechanismPath: base.mechanismPath,
-    scratchRoots,
-    readAllowRoots: linux ? readAllowRoots : identity.readAllows,
+    ...shared,
+    profile: null,
+    readAllowRoots: commandReadAllows(base, readDenies, toolTree),
     readDenies,
-    environment: commandIsolationEnvironment(dirs),
   };
 }
 
@@ -431,8 +366,8 @@ export function shellQuote(value: string): string {
  *
  * The profile is staged as a file rather than passed with `-p` because its rules contain newlines
  * and would otherwise have to survive a second round of shell quoting. `profileFile` must sit
- * outside the scratch tree and every other writable location, since a command that could rewrite
- * the rules would be choosing the wall a later command in the same case runs under. `exec` replaces
+ * outside the seat's root and every other writable location, since a command that could rewrite
+ * the rules would be choosing the wall a later command in the same seat runs under. `exec` replaces
  * the outer shell, so nothing of the controller's process survives into the command beyond the file
  * descriptors pi opened to capture its output.
  *
@@ -445,22 +380,23 @@ export function stageCommandIsolation(
   command: string,
   leader: "$$" | "$PPID",
 ): string {
-  if (policy.mechanismId === LINUX_BWRAP_ID) {
+  if (policy.profile === null) {
     // bwrap rules are argv with no newlines, so the launch inlines rather than staging a file, and
     // every argument is quoted so a scratch path with a space cannot split into two. The order is
     // itself the policy, as on Darwin: the host opens for reading, the protected paths are
-    // overmounted, the scratch trees are bound back writable, and only then do the host root and
-    // the overmounts over product trees go read-only, so a write there fails with EROFS instead of
-    // landing on the host or vanishing into an overmount. The two overmounts holding a scratch
-    // tree, `/tmp` and the host tmpdir, stay writable, as Darwin lets `mktemp` through. Each
-    // remount touches one mount, which is why the overmounts are named beside the root and why the
-    // scratch binds, mounted earlier, are unaffected.
+    // overmounted, the seat's root is bound back writable and the host's folder in it read-only
+    // over that, and only then do the host root and the overmounts over product trees go
+    // read-only, so a write there fails with EROFS instead of landing on the host or vanishing into
+    // an overmount. The two overmounts holding the seat's root, `/tmp` and the host tmpdir, stay
+    // writable, as Darwin lets `mktemp` through. Each remount touches one mount, which is why the
+    // overmounts are named beside the root and why the binds, mounted earlier, are unaffected.
     const argv = [
       policy.mechanismPath,
       ...bwrapOpenReadArgs({ network: true }),
       ...bwrapTmpfsDenies(policy.readDenies),
       ...bwrapReadBinds(policy.readAllowRoots),
       ...bwrapWriteBinds(policy.scratchRoots),
+      ...bwrapReadBinds(policy.keptRoots),
       ...bwrapReadonlyRemounts([
         "/",
         ...policy.readDenies.filter((deny) => !policy.scratchRoots.some((root) => covers(deny, root))),

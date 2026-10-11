@@ -22,7 +22,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, relative } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CommandWall, solveDirs } from "../src/solve/command.ts";
+import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
 import { guideOf, harnessTools, openHarness } from "../src/solve/harness.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
@@ -39,7 +39,7 @@ async function withWall(body: (wall: CommandWall) => Promise<void>, toolTree: st
   const dirs = solveDirs(`harness-${String(runtimeProcess.pid)}-${String(Date.now())}`);
   const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
   try {
-    for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+    makeSeatDirs(dirs);
     const base = solveIsolationPolicy({ repoRoot });
     if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
     await body({

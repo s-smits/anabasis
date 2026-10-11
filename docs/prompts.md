@@ -21,7 +21,7 @@ AUDIT: the five success factors of Anabasis v2
 Authority. Read-only. You change no file, open no pull request, start no run,
 append to no log and post nothing. You report. The operator decides.
 
-Tree. s-smits/anabasis-v2 at <commit>, on <branch>. Read AGENTS.md whole
+Tree. s-smits/anabasis at <commit>, on <branch>. Read AGENTS.md whole
 first, then the files named below. State every fact with the commit you read
 it at. Where this tree and main disagree, say which you read.
 

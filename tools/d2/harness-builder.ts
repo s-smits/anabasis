@@ -701,8 +701,9 @@ export async function harnessBuilder(
   let campaign = packed(given) ? await openCampaign(packNamed(given)) : null;
   const paid = seats.seated === solved ? "paid" : "scripted";
   // A flag of this command that names another setting than the campaign's is refused with both,
-  // as every command refuses it. The model's turns are the budget, which moves by the rule, and
-  // the scored tasks are the record's where it names them.
+  // as every command refuses it, and the scored tasks are the record's where it names them. The
+  // model's turns are one of them: until 11 October the record's stood in for the flag, from when
+  // a ladder moved the budget (`docs/simplify.md`, A1), so another number ran at the record's.
   const recorded = recordedSetting(read(log));
   if (recorded !== null) {
     settingAsked(
@@ -710,7 +711,7 @@ export async function harnessBuilder(
         solver: given.solver,
         "solver-effort": given["solver-effort"],
         "solve-minutes": given["solve-minutes"],
-        "solve-model-turns": recorded.modelTurns === null ? undefined : String(recorded.modelTurns),
+        "solve-model-turns": given["solve-model-turns"],
         tasks: recorded.tasks?.join(","),
         target: recorded.tasks === null ? given.target : String(recorded.target),
       },

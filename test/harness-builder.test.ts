@@ -511,6 +511,13 @@ describe("a campaign run by its log", () => {
     expect(first).not.toHaveProperty("budgets");
     expect(of(name, "campaign.setting").map(({ modelTurns }) => modelTurns)).toEqual([8]);
     expect(next).toMatchObject({ move: "end", ending: "no-room" });
+    // Another number of the model's turns is another setting, and is refused as every command
+    // refuses it: until 11 October the record's stood in for the flag, and it ran at the record's.
+    await expect(
+      harnessBuilder([...flags.slice(0, -2), "--solve-model-turns", "5", "--moves", "0"], seats),
+    ).rejects.toThrow(
+      "--solve-model-turns 5 names another setting than the campaign's, which was recorded as --solve-model-turns 8",
+    );
     expect(strayed).toEqual([]);
     // `--ladder` is no flag of the campaign's since 11 October.
     await expect(harnessBuilder([...flags, "--ladder", "4,1", "--moves", "0"], seats)).rejects.toThrow(

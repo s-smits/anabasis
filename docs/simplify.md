@@ -1015,6 +1015,7 @@ operator's home or in another seat's root.
 - **What changes.** "Where v2 stands" in `docs/plan.md` is a history written at #91 and again at
   #168. It moves to a file of its own beside `docs/v1.md`. The plan keeps the process, the fix
   plan with its level column, the climb plan and the decisions.
+- **Done** at PR #209 (11 October): `docs/plan-history.md`, 24.3 kB, and a pointer of three lines where the section stood; the plan from 234.3 kB to 210.8 kB.
 
 ### T4. Sections 6 and 7 of `AGENTS.md`, written once more
 

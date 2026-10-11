@@ -12,6 +12,7 @@ time. It holds no queue and no status. Those have other owners:
 | What is designed, in what order, and how far each part has got | the plan of record; `docs/plan.md` is the repository's copy |
 | What came over from v1, and what was replaced or dropped | `docs/transfer.md` |
 | What v1 measured, and why it did not climb | `docs/v1.md` |
+| Where v2 stood at PR #91 and PR #168, with the three reviews of 9 October | `docs/plan-history.md` |
 | What the code does today | the source at the stack's head, and the head comment of each module |
 | How a procedure is carried out: stacking, launching, reading a run, wording a claim | the skill that owns it, under `.claude/skills/` (sections 10 and 11) |
 | How code is written here so that it passes its checks the first time | `tools/oxlint/HABITS.md` (section 12) |

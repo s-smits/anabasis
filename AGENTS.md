@@ -1019,19 +1019,27 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run test -- <paths...>` | The suite through its wrapper. Never bare `bun test` |
 | `bun run simplify` | The whole-tree scans, as a census to read |
 | `bun run not-slop` | The ledger of answered findings: status, `-- answer <id> "<why>"`, `-- prune` |
-| `bun run commit:check` | By hand before a commit: author email, format and lint of staged files, the slop report, the secret scan |
+| `bun run gate` | The gate in one command: a frozen install, the format check, typecheck, the strict lint and the suite. `-- --static` runs the tests one import from what HEAD changed in place of the suite |
+| `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
+| `bun run commit:check` | What the pre-commit hook runs, and by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
 | `bun run runs <verb>` | `pulse`, `stop`, `rehearse`, `seed`, `replay`, `zip`, `view` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
+| `bun run land -- <pull request>` | Proves every commit a landing would publish where it sits; `--sanitize` posts each verdict, `--merge` also merges ("The stack and pull requests") |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
 
-There is no composed gate script and no installed Git hook. The gate is what CI runs, in this
-order, and you run it yourself before delivery. Then read a strict lint for the files you changed:
+The gate is what CI runs, and `bun run gate` runs it: CI's Darwin job in one command, cheapest
+step first. The strict lint fails on everything a plain one does, so it runs once. Run it before
+any delivery a push does not cover.
 
-```sh
-bun run typecheck && bun run lint && bun run format:check && bun run test
-bun run lint -- --strict
-```
+**Keep the hooks enabled.** `bun run hooks:install` sets them up once per clone; without it a
+commit goes unchecked and a push ungated, and nothing says so (`git config core.hooksPath` tells
+which). The pre-commit runs `bun run commit:check`. The pre-push gates the work a push adds
+(`tools/runtime/pre-push.ts`): each new commit gets the static steps and its nearby tests over a
+checkout of its own, and the pushed head holding the newest of them the whole gate. A push of
+documentation alone gets `git diff --check`. A pass is remembered by commit id, and a failure names
+the commit, the step and the `--fixup` that repairs it; its log is under
+`git rev-parse --git-path ana-gate`.
 
 Run one suite at a time; two overlapping suites each take about twice as long. While editing, run
 the owning test files only: `bun run test -- test/compare.test.ts`. The wrapper refuses a named
@@ -1080,11 +1088,23 @@ before it merged. What it comes to:
 - **One worktree a pull request**, from the top, pinned by commit, with its own
   `bun install --frozen-lockfile`. Never branch in a worktree a run was launched from. Never use
   `git stash`: it is shared between worktrees.
-- **Every commit passes alone.** Fold a fix into the unpublished commit it corrects. Run
-  `bun run commit:check` before each commit.
+- **Every commit passes alone.** Fold a fix into the unpublished commit it corrects. The
+  pre-commit hook runs `bun run commit:check`; run it by hand where the hooks are not installed.
 - **Push your own branch**, never `main`, never with `--no-verify`. A rewrite of a published
-  branch takes `--force-with-lease` on the head you last saw.
-- **Merging is the operator's call**, and so is a restack of the whole stack.
+  branch takes `--force-with-lease` on the head you last saw. Keep the hooks enabled
+  (`bun run hooks:install`). The pre-push hook gates the commits along each pushed head's first
+  parents that no remote-tracking ref holds. One whose patch the replaced branch held is a
+  rebase's replay, left to `bun run land`. A history brought in through a merge's other parent was
+  made elsewhere and is only counted; the merge itself is gated. v1's hook gated every commit new
+  to the remote, which for PR #141 meant 448 commits, 444 of them v2's history merged in.
+- **Merging is the operator's call**, and so is a restack of the whole stack. A stack lands
+  through `bun run land -- <top> --merge` (`tools/runtime/land.ts`), never through a local merge
+  pushed to `main`, which leaves the pull requests open. It reads the chain of bases down to
+  `main`, requires each head to contain the one beneath it, and proves every commit it would
+  publish over its own checkout, the top's head with the whole gate. `--sanitize` stops there and
+  posts each verdict as the status `ana/commit`. `--merge` also waits for `ci.yml` on the top's
+  head, posts `ana/stack-gate` on every head, and merges bottom-up, each pull request based on
+  `main` just before its merge and pinned to its gated head.
 
 A commit's subject is one imperative sentence that states the finished change: "Refuse a
 comparison on a checker nobody has read". Its body says what was wrong and what happens instead,

@@ -1,6 +1,6 @@
 ---
 name: stack-pr
-description: "Put a change on the one open stack of Anabasis v2 pull requests: find the real top, keep local work while moving to it, decide between appending and a new pull request, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish, write the body, and repair your own children when a parent moves. Use when asked to open, append to, stack, restack, rebase, hop to the latest head, or land a pull request, or when a push or a base turns out stale. v1's stack-hop and setup-pr in one."
+description: "Put a change on the one open stack of Anabasis v2 pull requests: find the real top, keep local work while moving to it, decide between appending and a new pull request, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the gating pre-push hook, write the body, repair your own children when a parent moves, and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
 ---
 
 # Stack a pull request
@@ -100,9 +100,12 @@ A subject line is an imperative sentence that states the finished change, as the
 "Remember Seatbelt support only when its files settled before the read". The body says what and
 why. It never narrates a revert.
 
-Before each commit, `bun run commit:check`. v2 installs no hook, so this is the hook: it refuses
-a placeholder author and a credential-shaped line, and runs the formatter and the linter over
-the staged files. Run `/simplify` over a source diff first. A whole-suite run rewrites
+Keep the hooks enabled: `bun run hooks:install`, once per clone, and every worktree shares it.
+The pre-commit hook runs `bun run commit:check`, which refuses a placeholder author and a
+credential-shaped line and runs the formatter and the linter over the staged files; where the
+hooks are not installed, run it by hand before each commit. Run `/simplify` over a source diff
+first: the repository's `.claude/skills/simplify`, with `bun run simplify` for the whole-tree
+scans. A whole-suite run rewrites
 `test/.test-timings.json`; restore it with `git checkout -- test/.test-timings.json` unless the
 pull request is about test timing.
 
@@ -117,10 +120,12 @@ passing on one platform says nothing of the other.
 
 | job | steps |
 | --- | --- |
-| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run typecheck`, `bun run lint`, `bun run format:check`, `bun run test` |
+| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run test` |
 | Linux (Ubuntu 24.04 VM) | install `bubblewrap`, `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, `bun install --frozen-lockfile`, `bun run test` |
 
-Judge the linter by its exit code, never by its last lines.
+`bun run gate` runs the Darwin job's steps in one command, cheapest first; `-- --static` runs the
+tests one import from what HEAD changed in place of the suite. Judge every step by its exit code,
+never by its last lines.
 
 Where the runners do not run, each job is run by hand at the pushed head, and the body says
 where and with what counts. What that has cost so far:
@@ -149,6 +154,28 @@ git push --force-with-lease=refs/heads/<branch>:<old-sha> origin HEAD:refs/heads
 
 When a push is refused, do not try another spelling: hand the operator the one ready line.
 Never pass `--no-verify`, and never push to `main`.
+
+The pre-push hook gates what the push adds, over a scratch checkout of each commit, so the
+working tree may hold anything. What it adds is the commits along each pushed head's first
+parents that no remote-tracking ref of the clone holds. Of those, a commit whose patch the
+replaced branch held is a replay a rebase carried, and `bun run land` proves it where it sits; a
+commit changing only `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/` or a `.md` under `.claude/` is
+documentation; every other gets the static steps and its nearby tests, and the lowest pushed head
+holding the newest of them the whole gate. A push of documentation alone gets `git diff --check`.
+A history brought in through a merge's other parent is counted and left alone, and the merge is
+gated: 444 of v2's commits came into this repository that way on 11 October, and v1's hook, which
+gated every commit new to the remote, could not pass one of them. To push another repository's
+history as a branch of its own, fetch it as a remote first, so that its commits are already held.
+
+A pass is remembered by commit id in the common Git directory, so a push its lease refused goes
+out again without paying twice, and after a failure the commits beneath the fix keep their passes.
+A failure ends on one line naming the commit and the step, with its log. The fix goes into that
+commit, and the push goes again:
+
+```sh
+git commit --fixup=<sha>
+GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1
+```
 
 ```sh
 gh pr create --base <parent branch> --head <branch> --title "<title>" --body-file <file>
@@ -189,9 +216,34 @@ hop to the top, or a new pull request, never authorises it.
 
 ## 9. Land
 
-Merging is the operator's call. A stack lands through GitHub, bottom-up, each pull request into
-its own base, so each ends Merged; a local merge pushed to `main` leaves them open. Nothing is
-tagged or versioned by a session unless asked.
+Merging is the operator's call. Nothing is tagged or versioned by a session unless asked. A stack
+lands through GitHub, so each pull request ends Merged; a local merge pushed to `main` leaves them
+open (98 of them on 21 September in v1). The command is `tools/runtime/land.ts`:
+
+```sh
+bun run land -- <top>                 # prove it here; nothing is written to GitHub
+bun run land -- <top> --sanitize      # and post each commit's verdict as ana/commit
+bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
+```
+
+It reads the chain of bases from the named pull request down to `main` and refuses a head that
+does not contain the one beneath it, or a bottom that does not contain `main`'s head: only then
+does the last merge leave `main` at exactly the top's tree. Then it proves every commit along the
+top's first parents above `main`, the replays the pre-push left among them, each over its own
+checkout: the static steps and nearby tests, and the whole gate on the top's head. A pass already
+recorded is not run again. `--jobs N` runs up to N static passes at once; the whole gate runs
+alone.
+
+A failure names the commit and the pull request it sits on. Fold the fix into that commit, replay
+the pull requests above it (section 8), push them together, and land again: the commits below the
+fix keep their passes.
+
+`--merge` dispatches `ci.yml` on the top's head before the proof when no run is there, and waits
+for it after; a failed run is not dispatched again. It then reads every head again, posts
+`ana/stack-gate` on each, and merges bottom-up, each pull request based on `main` just before its
+merge and pinned to its gated head. A merge GitHub refuses stops the landing, says which merged,
+and sets `ana/stack-gate` back to pending on every head left open. Test `land` against a fake `gh`
+only (`test/land.test.ts`); never against this repository.
 
 ## Report
 

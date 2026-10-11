@@ -1,0 +1,10 @@
+#!/bin/sh
+# The commit's checks, before Git records it: tools/runtime/commit-check.sh, which
+# `bun run commit:check` runs by hand. Installed with `bun run hooks:install`, which points this
+# clone's core.hooksPath here once; its worktrees share the setting.
+set -eu
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-commit: bun is not on PATH, so the commit's checks could not run. Nothing was committed." >&2
+  exit 1
+fi
+exec sh "$(dirname "$0")/../tools/runtime/commit-check.sh"

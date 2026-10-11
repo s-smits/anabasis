@@ -63,54 +63,82 @@ none.
                        THE LOG   one append-only file a campaign; every state is a view of it
 ```
 
-### What it is measured by
+### The five success factors
 
-Three numbers say whether the system works. Every session, every pull request and every run is
-judged against them, and a change that moves none of them has to say what it moves instead. The
-exact definitions, the recorded values and the bars are the plan's (`docs/plan.md`, "Goal and the
-three numbers"); this is what each one means.
+Anabasis v2 is a training loop in which the thing trained is a harness and the loss is measured
+by running a fixed model. Read that way its success factors are the ones every learning system
+has: a training signal that carries information, a held-out set the learner cannot see, an
+evaluation no noisier than the effect it looks for, labels that are correct, and a result that
+transfers. Every session, pull request and run is judged against the five below, and a change
+that moves none of them says what it moves instead. Each is a question, how it is measured and
+its bar; the recorded values are the plan's (`docs/plan.md`, "Goal and the five factors"), and
+nowhere else.
 
-**M1. Does it climb?** Count how many times a campaign replaced its reference harness with a
-better one. Today: at most once in any campaign, on Linux and on the Mac. Bar: twice in one
-campaign, with the starter losing more pairs each time; then the same in a second domain.
+**1. Supply: is there gradient?** A comparison registers a difference only on a task where one
+harness answers and the other does not. A task the reference solves in every attempt is a solved
+example, and one nobody has solved is an unlearnable one: neither carries signal, and a scored
+set made of them reads "no room" whatever the new harness is. The informative tasks lie between:
+the reference answers them sometimes, or never while another harness has. In most learning the
+data is fixed and the model moves; here the solver is fixed and the Examiner keeps the exam at
+its frontier, told one outcome a task and nothing else. Measured as the informative tasks in a
+comparison's scored set. Bar: at least four before each comparison starts. It binds first,
+because every other number is undefined without it.
 
-**M2. Does it fool itself?** Solve the same tasks with the same harness twice, treat the two runs
-as rivals, and count how often the test crowns a winner anyway. A winner there is a lie, since
-nothing changed. `--noise` on a checkpoint does this: the reference is solved twice as often, its
-first solves of each task are one side and its later ones the other, and the pairs are tallied and
-tested as a real comparison's are (`src/builder/round.ts`). The test is built to lie about one
-time in ten; the same control gives the tie share, which is the floor a real comparison has to
-beat. Today: 0 lies in 6 controls, which only says the rate is under about 39%. Bar: 0 in the
-next 10. Two limits of the measure, known: six or ten controls bound the rate loosely, and the
-later half runs after the earlier, so a drift of the host or the provider reads as a lie.
+**2. Climb: does the learner improve?** The one quantity the system exists to move is the
+reference harness. A promotion, a harness that beats the reference on held-out tasks by more
+than chance allows, twice, on fresh solves, is one step of descent; a climb is several. Measured
+as promotions a campaign, with the pairs the starter loses in each epoch beside it, which rise as
+the reference improves. Bar: two promotions in one real campaign, the starter losing more pairs
+after the second than after the first, then the same in a second domain. One step shows that the
+loop can move; two show that it can move from where it moved to.
 
-**M3. Are the referees right?** When a check rejects an answer, the Referee says whether the
-rejection was fair. A person labels the same rejections blind, and the two are compared. Today:
-no labels yet (two packets wait). Bar: at least 10 labels a kind; the Referee catches 3 in 4 bad
-rejections and voids at most 1 in 10 good ones; and 3 passes a comparison are read by a person,
-since no seat reads an answer that passed. How it runs (`src/review/referee.ts`,
-`src/review/agreement.ts`, `tools/d2/settle.ts`):
+**3. Honesty: what is the false-positive rate of the test?** A sign test at level 0.10 is
+designed to crown a winner between two equal harnesses about one time in ten, and the design
+value is a claim until it is measured on the real solver, whose variance is unknown: the same
+harness fails a task once and passes it next time. The measurement is an A/A test. With
+`--noise` on a checkpoint the reference is solved twice as often; its earlier solves of each
+task are one side and its later solves the other, and the two are tallied and tested as a
+comparison is (`src/builder/round.ts`). A step there is a false positive by construction. Bar: no
+step in the ten controls after the six on record. Two limits are known: ten controls still bound
+the rate loosely, and the later side always runs after the earlier, so a drift of the host or the
+provider reads as a lie. The same control gives the tie share, the floor a real comparison has to
+beat before its wins mean anything.
 
-- *When.* Once for each answer a check rejects inside a comparison, before the rejection counts.
-  Never on a pass, a solve a limit cut, or a crash. First the host replays the checks on the
-  logged answer: a verdict that does not repeat is a check defect ruled by the host, no model.
-- *In.* The task with its hidden values, the public rules, the answer, the rejecting checks with
-  the fields each reads, the check program's source, a valid answer for the task where one is
-  on record, and a probe: change one field, rerun the checks, see what flips. Never the harness,
-  the trace or anything the Builder wrote.
-- *Out.* One ruling, logged as `referee.finding`. `earned` must name the rule the answer breaks
-  and the field that breaks it, both cited by a rejecting check; `check-defect` must cite a probe
-  that decided both sides on a field the check reads; `unclear` is what is left. A ruling without
-  its evidence is refused. `earned` counts as a loss; the other two set the task aside for both
-  harnesses, so a broken check scores nobody. The reasons reach the log and never the Builder.
-- *The person.* The set-aside rejections go into a packet; the operator labels each blind with
-  the same three words, and a label stands over a ruling. `agreement` then reads a three-by-three
-  table of label against ruling and the two rates above.
+**4. Verdicts: are the labels correct?** Validity is decided by a check program nobody has
+audited against the field, and a check that rejects a right answer is label noise: in v1, 36 of
+47 rehearsal misses came from a faulty check or instrument. The Referee is the noise filter
+(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison,
+before the rejection counts, and never on a pass, a solve a limit cut or a crash; first the host
+replays the checks on the logged answer, and a verdict that does not repeat is a check defect
+ruled by the host. It reads the task with its hidden values, the public rules, the answer, the
+rejecting checks with the fields each reads, the check program's source, a valid answer for the
+task where one is on record, and a probe that changes one field and reruns the checks; never the
+harness, the trace or anything the Builder wrote. It records one ruling (`referee.finding`):
+`earned` must name the rule broken and the field that breaks it, both cited by a rejecting check;
+`check-defect` must cite a probe that decided both sides on a field the check reads; `unclear` is
+what is left, and a ruling without its evidence is refused. `earned` counts as a loss; the other
+two set the task aside for both harnesses, so a broken check scores nobody. The Referee is a
+model and is measured by agreement with a person who labels the same rejections blind
+(`tools/d2/settle.ts`, `src/review/agreement.ts`): a three-by-three table of label against
+ruling, read as two rates. Bar: on at least ten labels a kind, three in four of the rejections a
+person calls a check defect caught, at most one in ten of those a person calls earned voided, and
+three passes a comparison read by a person, since no seat reads an answer that passed.
 
-Four numbers nobody has set say what a working system is worth, and the plan keeps the question
-open: by how much a harness raises the solver's share of valid answers on held-out tasks; whether
-it holds on tasks written after the harness was frozen; what a promotion costs in dollars and
-sessions; and in how many domains the first three hold.
+**5. Worth: how large is the effect, does it transfer, and what did it cost?** A significant
+step is not necessarily a useful one. Three numbers from one report say what a promotion is
+worth: the effect size, the reference's share of valid answers on held-out tasks against the new
+harness's at the full limit; transfer, the same harness on tasks written after it was frozen,
+which is the only reading that separates learning the domain from learning the exam; and the
+cost, in dollars and Builder sessions, of a promotion. None has a bar. Setting the three is the
+operator's decision, and until it is made no promotion is called a result worth having.
+
+Left out on purpose: the wall between the two sides is a correctness property, tested in the
+suite as a byte-identical message under a changed hidden value, and is not optimised; the
+Builder's practice results are excluded by rule 1, since a learner's score on its own training
+set is the overfitting signal and not the metric; cost stands inside factor 5, since a cheap
+system that does not climb has no cost worth reporting. The five are ordered by where they bind:
+without supply there is no gradient, without climb no result, without honesty and verdicts no
+result that can be believed, and without worth none that can be used.
 
 ### Two sides and one wall
 

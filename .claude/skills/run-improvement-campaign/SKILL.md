@@ -17,9 +17,11 @@ climb. The loop exists to find what stands between the campaign and its next lin
 lift it with one change, and confirm from the log that the chain moved.
 
 A pass that cannot name the link it worked on has not been a pass of this loop, and a link is
-named by the number it holds: M1, whether the campaign climbs; M2, whether the test crowns a
-winner between two copies of one harness; M3, whether a person agrees with the Referee
-(`AGENTS.md`, "What it is measured by"). Say which one before choosing a change.
+named by the success factor it holds (`AGENTS.md`, "The five success factors"): supply, whether
+the scored set holds tasks the reference fails; climb, whether the reference improves; honesty,
+whether the test crowns a winner between two copies of one harness; verdicts, whether a person
+agrees with the Referee; worth, how large the gain is, whether it transfers, and what it cost.
+Say which one before choosing a change.
 
 ## Resume
 

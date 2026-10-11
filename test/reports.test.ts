@@ -821,4 +821,30 @@ describe("the billed dollars a cap counts", () => {
       ),
     ).toBe(6.5);
   });
+
+  it("include the turns and compactions of a solve or a session with no end in the total, and of a solve of the comparison in its cap", () => {
+    const usage = (total: number) => ({ input: 1, output: 1, cost: { total } });
+    const compacted = (kind: EventKind, id: JsonObject, total: number) =>
+      event(kind, { ...id, tokensBefore: 9, seconds: 1, error: null, usages: [usage(total)] });
+    const log = [
+      // A solve of g-1 killed after one turn and one compaction of pi's loop.
+      event("solve.started", { solve: "s-k", comparison: "g-1" }),
+      event("solve.turn", { solve: "s-k", usage: usage(1) }),
+      compacted("solve.compacted", { solve: "s-k" }, 2),
+      // A finished solve's compaction is in its sum, and is not counted again.
+      ...paid("s-f", 4, "g-1"),
+      compacted("solve.compacted", { solve: "s-f" }, 8),
+      // A Builder session of round b-1 killed after a turn and a compaction.
+      event("build.started", { session: "b-1" }),
+      event("build.turn", { session: "b-1", usage: usage(0.5) }),
+      compacted("build.compacted", { session: "b-1" }, 0.25),
+    ];
+    expect(billedAll(log)).toBeCloseTo(3 + 4 + 0.75, 10);
+    expect(billedFor(log.slice(0, 3), "g-1")).toBe(3);
+    expect(billedFor(log, "g-1")).toBe(7);
+    expect(billedFor(log, "g-2")).toBe(0);
+    // A Builder session's own turns count under its id once its end sums them: a live session's
+    // practice cap reads its practice solves alone (`practiceLeft`).
+    expect(billedFor(log, "b-1")).toBe(0);
+  });
 });

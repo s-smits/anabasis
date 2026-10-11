@@ -48,9 +48,11 @@
  *
  * `cap` is the comparison's dollar cap. Before each solve the dollars the log holds as billed for
  * the comparison are summed (`billedFor`): its own solves and their rulings, and in a round the
- * session's spend as well. The solve is not started when a reserve for it and for each solve still
- * running would take the sum past the cap. A lane that cannot start a solve while others are in
- * flight steps aside, since what they bill may be under their reserve; when none is in flight and
+ * session's spend as well; a solve of the comparison with no end on record, killed in an earlier
+ * run or still running, by what its turns and compactions have metered (until 11 October not at
+ * all, so a comparison gone on after a kill was held to its finished solves). The solve is not
+ * started when a reserve for it and for each solve still running would take the sum past the cap.
+ * A lane that cannot start a solve while others are in flight steps aside, since what they bill may be under their reserve; when none is in flight and
  * the next solve still cannot start, the cap is reached. A comparison the cap cuts short of its
  * test reads `not-scored` and is finished: its tally would be of the tasks that happened to come
  * first. A session is stopped by its own limits and not by the cap, which holds its

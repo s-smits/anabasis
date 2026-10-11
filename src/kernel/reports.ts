@@ -22,12 +22,19 @@
  *
  * Nothing here decides a comparison or makes a solve.
  */
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { draw, objectiveRuleIn, type Paired, pairsOf, TRIGGER, triggered } from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
 import { taskSets } from "./task.ts";
+
+/** A session or a solve that began and has no end on record: the comparison its start names (a
+ *  solve's), and the dollars its turns and compactions metered (`unfinished`). */
+interface Unfinished {
+  readonly comparison: JsonValue | undefined;
+  dollars: number;
+}
 
 /** A comparison's last report, with where the comparison stands in the log: at its first report. */
 interface Reported {
@@ -128,13 +135,13 @@ const BILLED: ReadonlySet<string> = new Set([
   "referee.finding",
   "diagnosis.recorded",
 ]);
-/** Each kind of start its turns are billed by where no end is on record, with the field that
- *  names the session or the solve in all three events. */
-const TURNS = [
-  { started: "build.started", finished: BUILD_FINISHED, turn: "build.turn", id: "session" },
-  { started: "exam.started", finished: "exam.finished", turn: "exam.turn", id: "session" },
-  { started: "draft.started", finished: "draft.finished", turn: "draft.turn", id: "session" },
-  { started: "solve.started", finished: "solve.finished", turn: "solve.turn", id: "solve" },
+/** Each kind of start whose turns and compactions are billed where no end is on record, with the
+ *  field that names the session or the solve in all four events. */
+const METERED = [
+  { of: "build", id: "session" },
+  { of: "exam", id: "session" },
+  { of: "draft", id: "session" },
+  { of: "solve", id: "solve" },
 ] as const;
 
 /** Whether a cap can hold anything: its dollars and its reserve are numbers above nothing. One
@@ -651,8 +658,10 @@ export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
  * (a round), everything billed from that session's start to its end, which is the session's own
  * turns, its practice solves and their reviewers. What another comparison or session billed since
  * is not this one's, so a comparison gone on from its log after others ran is held to its own
- * spend. A solve still running has written no sum yet, which is what a cap's reserve is for
- * (`src/builder/round.ts`).
+ * spend. A solve of the comparison with no end on record, killed or still running, is counted by
+ * what its turns and compactions have metered so far (`unfinished`); a solve still running is held
+ * besides at a cap's reserve, which is what its sum may come to (`src/builder/round.ts`). A
+ * Builder session's own turns are counted once its end sums them, as `practiceLeft` reads them.
  */
 export function billedFor(events: readonly LogEvent[], id: string): number {
   const { session, comparison } = billedParts(events, id);
@@ -661,42 +670,56 @@ export function billedFor(events: readonly LogEvent[], id: string): number {
 
 /** Every billed dollar a log holds, whoever billed it: what a campaign's total budget is held
  *  against (`docs/plan.md`, row F49). A start the log holds no end of was killed before it could
- *  sum its turns, and is billed by them (`unfinishedTurns`). */
+ *  sum its turns, and is billed by what it metered (`unfinished`). */
 export function billedAll(events: readonly LogEvent[]): number {
   const summed = events.reduce(
     (sum, { kind, data }) => (BILLED.has(kind) && isNumber(data.billed) ? sum + data.billed : sum),
     0,
   );
-  return summed + unfinishedTurns(events);
+  return unfinished(events).reduce((sum, { dollars }) => sum + dollars, summed);
+}
+
+/** The backend's price of one usage, `cost.total`, or nothing where it holds none. */
+function costOf(usage: JsonValue | undefined): number {
+  const total = asRecord(asRecord(usage)?.cost)?.total;
+  return isNumber(total) ? total : 0;
 }
 
 /**
- * The dollars of every turn of a session or a solve that began and never ended on record: the run
- * was killed from outside, so no `finished` event summed them, and the cap and the total read 0
+ * Every session and solve that began and never ended on record, with the dollars it metered: the
+ * run was killed from outside, so no `finished` event summed them, and the cap and the total read 0
  * for what was spent. A turn's `usage.cost.total` is the backend's price of that turn, and the
  * sum over a session's or a solve's turns is what its end carries as `billed`: equal to five
  * decimals on every session and solve of t-2 (10 October). t-5's b-1, killed at its seventh turn
  * the same day, had metered 0.12 dollars that nothing summed, and three solves of its g-1 were
- * cut the same way.
+ * cut the same way. A compaction of pi's loop is billed in the end's sum too, and its summary's
+ * price is on its `*.compacted` event (`loopCompaction`, `src/solve/run.ts`); until 11 October
+ * the turns alone were counted here, and only by the campaign's total, so a comparison gone on
+ * after a kill was held to its finished solves.
  */
-function unfinishedTurns(events: readonly LogEvent[]): number {
-  let dollars = 0;
-  for (const { started, finished, turn, id } of TURNS) {
-    const ended = new Set(events.flatMap(({ kind, data }) => (kind === finished ? [data[id]] : [])));
-    const begun = new Set(
-      events.flatMap(({ kind, data }) => (kind === started && !ended.has(data[id]) ? [data[id]] : [])),
-    );
+function unfinished(events: readonly LogEvent[]): Unfinished[] {
+  return METERED.flatMap(({ of, id }) => {
+    const ended = new Set(events.flatMap(({ kind, data }) => (kind === `${of}.finished` ? [data[id]] : [])));
+    const open = new Map<JsonValue | undefined, Unfinished>();
     for (const { kind, data } of events) {
-      if (kind !== turn || !begun.has(data[id])) continue;
-      const total = asRecord(asRecord(data.usage)?.cost)?.total;
-      if (isNumber(total)) dollars += total;
+      if (kind === `${of}.started` && !ended.has(data[id])) {
+        open.set(data[id], { comparison: data.comparison, dollars: 0 });
+      }
+      const found = open.get(data[id]);
+      if (found === undefined) continue;
+      if (kind === `${of}.turn`) found.dollars += costOf(data.usage);
+      if (kind === `${of}.compacted` && Array.isArray(data.usages)) {
+        found.dollars += data.usages.reduce((sum: number, usage) => sum + costOf(usage), 0);
+      }
     }
-  }
-  return dollars;
+    return [...open.values()];
+  });
 }
 
 /** The same sum in its two parts: what the Builder session under `id` billed, and what the
- *  comparison under it did. A reader of a round tells them apart (`src/builder/handover.ts`). */
+ *  comparison under it did. A reader of a round tells them apart (`src/builder/handover.ts`). A
+ *  solve with no end on record whose start names the comparison is in the second part
+ *  (`unfinished`). */
 export function billedParts(events: readonly LogEvent[], id: string) {
   const own = new Set(solvesIn(events).flatMap((solve) => (solve.start.comparison === id ? [solve.id] : [])));
   const at = (kind: string) => events.findIndex((event) => event.kind === kind && event.data.session === id);
@@ -707,6 +730,9 @@ export function billedParts(events: readonly LogEvent[], id: string) {
     const inSession = opened !== -1 && index >= opened && (closed === -1 || index <= closed);
     if (inSession) billed.session += data.billed;
     else if (isString(data.solve) && own.has(data.solve)) billed.comparison += data.billed;
+  }
+  for (const { comparison, dollars } of unfinished(events)) {
+    if (comparison === id) billed.comparison += dollars;
   }
   return billed;
 }

@@ -187,8 +187,6 @@ describe("the climb", () => {
         "6",
         "--patience",
         "3",
-        // The operator's word, given once, for the promotions (AGENTS.md, section 3).
-        "--unattended",
       ];
       let written = 0;
       const seats: Seats = {

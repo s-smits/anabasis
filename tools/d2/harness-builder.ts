@@ -4,7 +4,7 @@
  *   bun tools/d2/harness-builder.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss \
  *     --budget 400 --builder claude/claude-opus-5-5 --examiner claude/claude-opus-5-5 \
- *     --reviewer claude/claude-opus-5-5 --solve-model-turns 40 [--moves 1] [--dry-run] [--unattended]
+ *     --reviewer claude/claude-opus-5-5 --solve-model-turns 40 [--moves 1] [--dry-run] [--attended]
  *
  *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
  *     --solver claude/claude-sonnet-5-5 --budget 60 --builder ... --examiner ... --reviewer ...
@@ -27,7 +27,7 @@
  *
  *   draft the exam      tools/d1b/draft.ts, under `d-N`, for a campaign that opened from a prompt
  *   read the exam       tools/c/accept.ts, with the checks `--admit` names, which is the operator's
- *                       word for each, and with `--freeze` under `--unattended`
+ *                       word for each, and with `--freeze` unless `--attended`
  *   set the tasks apart tools/d2/prepare.ts
  *   an Examiner session tools/d1b/examine.ts, under the next free id `x-N`
  *   a Builder session   tools/d2/session.ts, under `b-N`
@@ -53,11 +53,11 @@
  * the campaign ends on its budget. A cap was typed for each move until now, and nothing summed
  * them.
  *
- * **Three moves were the operator's each time**, and still are unless `--unattended` gives the
- * word once for the campaign (row F29): the freeze of an exam whose reading holds no fault, the
- * promotion of a step read twice and not lost at the full limit, which otherwise stops the
- * command with the promotion to make, and going on past the stop rule, which takes
- * `--past-stop "<why>"` either way.
+ * **A campaign runs unattended** (row F29; the operator, 12 October): it freezes an exam whose
+ * reading holds no fault and promotes a step read twice and not lost at the full limit. Under
+ * `--attended` both wait for the operator's word, and a promotion stops the command with the
+ * promotion to make. Going on past the stop rule takes `--past-stop "<why>"` either way. Until
+ * 12 October the command waited unless `--unattended` gave the word once for the campaign.
  *
  * **A word the operator leaves** (`word.ts`, row F50) is read at each move's boundary: a stop
  * ends the campaign there, other tasks are written first, and another total is what the campaign
@@ -191,7 +191,7 @@ const OPTIONS = {
   handover: { type: "string" },
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
-  unattended: { type: "boolean", default: false },
+  attended: { type: "boolean", default: false },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
@@ -495,11 +495,7 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
   const pack = packOf(values);
   const { builder, examiner } = opening.seats;
   if (decided.move === "accept") {
-    await acceptCommand([
-      ...pack,
-      ...flag("admit", values.admit),
-      ...(values.unattended ? ["--freeze"] : []),
-    ]);
+    await acceptCommand([...pack, ...flag("admit", values.admit), ...(values.attended ? [] : ["--freeze"])]);
     return { ...keyIfDefined("admitted", values.admit === undefined ? undefined : admitsOf(values)) };
   }
   if (decided.move === "prepare") {
@@ -788,9 +784,9 @@ export async function harnessBuilder(
       return decided;
     }
     if (values["dry-run"] || made >= most) return decided;
-    if (decided.move === "promote" && !values.unattended) {
+    if (decided.move === "promote" && values.attended) {
       console.log(
-        `a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${decided.harness} --yes, or run this command with --unattended`,
+        `under --attended a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${decided.harness} --yes, or run this command without --attended`,
       );
       return decided;
     }

@@ -27,7 +27,7 @@ set -m
 nice -n 19 bun --env-file=<file> tools/d2/harness-builder.ts \
   --name <name> <the pack's four flags, or --prompt-file <file> --solver <model>> \
   --budget <dollars> --builder <model> --examiner <model> --reviewer <model> \
-  [--solve-model-turns N] [--sessions N] [--level 0.1 --trigger 0.25] [--unattended] \
+  [--solve-model-turns N] [--sessions N] [--level 0.1 --trigger 0.25] [--attended] \
   > <dir>/launch.out 2> <dir>/launch.err &
 ```
 
@@ -38,9 +38,9 @@ again. A flag that names another setting than the campaign's record is refused w
 setting does not change, and another setting is another campaign (`tools/d2/setting.ts`).
 
 `--dry-run` prints the next move and makes none: it answers "is this campaign ready for its next
-move, and which is it?". `--moves N` makes at most that many. `--unattended` is the operator's
-word, given once, for the freeze of an exam whose reading holds no fault and for the promotion the
-rule names; a session never adds it of its own accord.
+move, and which is it?". `--moves N` makes at most that many. A campaign runs unattended: it
+freezes an exam whose reading holds no fault and promotes the harness the rule names without
+waiting. `--attended` makes both wait for the operator's word; add it only when the operator asks.
 
 Three things about the shell line:
 

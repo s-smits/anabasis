@@ -124,7 +124,7 @@ nothing, and is printed beside the reading when the comparison ends.
 
 ```sh
 bun run runs pulse [<name>]
-bun run runs view <name> [--level N] [--trigger N] [--target N] [--past-stop "<why>"]
+bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]
 ```
 
 The pulse says what each run gained since the last look. The first sign of model work is a
@@ -133,7 +133,7 @@ process is gone before `comparison.reported`" is a run to read in its `.err`.
 
 The view prints the campaign as its log reads: the set-up, what each Examiner session, Builder
 session and comparison handed over, and the climb. Its last line is the one move the table names
-for this log (`decide`, `src/builder/decide.ts`), asked with the four flags above and, for those
+for this log (`decide`, `src/builder/decide.ts`), asked with the five flags above and, for those
 it does not name, the terms the campaign's opening keeps: what the campaign command would make
 next. The view starts nothing.
 

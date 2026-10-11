@@ -456,7 +456,7 @@ D2). The other verbs over a campaign's log:
 ```text
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
-bun run runs view <name> [--level N] [--trigger N] [--target N] [--past-stop "<why>"]
+bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]
 bun run runs pulse | stop <name> | replay | seed | zip
 ```
 

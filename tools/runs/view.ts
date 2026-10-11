@@ -1,5 +1,5 @@
 /**
- * `bun run runs view <name> [--level N] [--trigger N] [--target N] [--past-stop "<why>"]`
+ * `bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]`
  *
  * A campaign as its log reads: the set-up, what each step handed over, the climb, and the move
  * that comes next. It is the one reading of `src/builder/handover.ts`, printed whole for the
@@ -7,7 +7,7 @@
  *
  * Its last line is the one move the plan's decision table names on this log (`decide`,
  * `src/builder/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
- * The table is asked with the four flags of the campaign command that bear on it, and with the
+ * The table is asked with the five flags of the campaign command that bear on it, and with the
  * terms its opening keeps for those it does not name (`campaign.opened`, `src/builder/opening.ts`),
  * so that the view and `tools/d2/harness-builder.ts` name one move on one log. Until 11 October
  * the view also listed every move a launch would be admitted for, and that list named a promotion
@@ -28,6 +28,7 @@ import { type Campaign, campaignOf, type Handover } from "#src/builder/handover.
 import { shortDigest } from "#src/builder/past.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
+import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
 import { logEvents, runs } from "./pulse.ts";
 
@@ -36,6 +37,7 @@ const VIEW_OPTIONS = {
   level: { type: "string" },
   trigger: { type: "string" },
   target: { type: "string" },
+  practice: { type: "string" },
   "past-stop": { type: "string" },
 } as const;
 
@@ -131,14 +133,14 @@ export function view(args: readonly string[]): void {
   const run = runs().find((found) => found.tree === tree && found.name === name);
   if (name === undefined || run === undefined) {
     throw new Error(
-      `usage: bun run runs view <name> [--level N] [--trigger N] [--target N] [--past-stop "<why>"]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
+      `usage: bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
     );
   }
   const events = logEvents(run.path);
   const opening = openingOf(events);
   // Each term as this view is asked it, then as the opening keeps it, then the tree's default: the
   // scored tasks are the record's where it names them (`planOf`).
-  const term = (flag: "level" | "trigger" | "target", fallback?: string) =>
+  const term = (flag: "level" | "trigger" | "target" | "practice", fallback?: string) =>
     values[flag] ?? opening?.terms[flag] ?? fallback;
   const target = term("target");
   const lines = viewLines(name, campaignOf(events));
@@ -152,6 +154,10 @@ export function view(args: readonly string[]): void {
         trigger: Number(term("trigger", COMPARISON_OPTIONS.trigger.default)),
         target: target === undefined ? undefined : Number(target),
         pastStop: values["past-stop"],
+        // The practice tasks the campaign is brought to, as the command passes them: without a
+        // count the table releases nothing, and the view said `build` where the command made
+        // `prepare` (found by review, 11 October).
+        practice: Number(term("practice", String(PRACTICE))),
       },
       opening,
     ),

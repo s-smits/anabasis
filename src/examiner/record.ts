@@ -1,7 +1,7 @@
 /**
  * What an Examiner is told of the tasks its campaign holds: one outcome each, and counts by family.
  *
- * An Examiner session starts with no memory, and since 2026-10-09 it is put to no solver either: a
+ * An Examiner session starts a new conversation, and since 2026-10-09 it is put to no solver either: a
  * task is held out on the shape of its package (`src/kernel/task.ts`), so nothing a session does
  * tells its author whether a task was any good. What tells it is the comparisons. The plan has the
  * author see every task of the campaign, the pack's and the ones earlier sessions wrote, the older

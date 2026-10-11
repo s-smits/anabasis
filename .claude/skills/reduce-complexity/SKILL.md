@@ -5,7 +5,7 @@ description: "Measure whether a change made the tree simpler, on numbers rather 
 
 # Reduce complexity
 
-`/simplify` is the method: read the callers, fold into the owner, delete before you add. This
+[simplify](../simplify/SKILL.md) (`/simplify`) is the method: read the callers, fold into the owner, delete before you add. This
 skill is the instrument. It answers one question — did that actually make the tree smaller, or
 only move the mass — and it answers it the same way twice, so two passes are comparable.
 
@@ -18,7 +18,8 @@ missing; this skill measures what the concept costs, never the decision it chang
 reports a large fall here and nothing about what the component still decides has shown that it is
 smaller, not that it is better.
 
-All three scripts are v1's, adapted, so a correction to either copy carries to the other. They are
+All three scripts are v1's, adapted; v1's copies read back with
+`git show 5bc9988:.claude/skills/reduce-complexity/scripts/<name>`, and no other copy runs. They are
 Python and shell where the rest of `.claude` is bun TypeScript, because a port keeps that transfer
 and a rewrite would not.
 
@@ -26,13 +27,13 @@ and a rewrite would not.
 
 ```sh
 python3 .claude/skills/reduce-complexity/scripts/stack-complexity.py origin/main HEAD
-python3 .claude/skills/reduce-complexity/scripts/stack-complexity.py origin/main '#164' '#172'
+python3 .claude/skills/reduce-complexity/scripts/stack-complexity.py origin/main '#<bottom>' '#<top>'
 python3 .claude/skills/reduce-complexity/scripts/stack-complexity.py --repo /abs/worktree --per-file origin/main HEAD
 ```
 
 It reads every revision through git plumbing, so it needs no worktree, touches nothing and runs
-anywhere in the repository. A `#164` argument is a pull request number, resolved through `gh` and
-fetched if this checkout has not seen it.
+anywhere in the repository. A `#<n>` argument is a pull request number in the repository this checkout's `origin` names,
+resolved through `gh` and fetched if this checkout has not seen it.
 
 | group | measures | what a rise means |
 | --- | --- | --- |
@@ -59,7 +60,8 @@ the branch, so nothing warns you, and the branch is credited with everything mai
 ### Comparing pull requests
 
 Name the stack bottom-to-top and every PR gets a column, so you can see which one moved a measure
-instead of only that the stack did. Over #164 and #172, from the commit below them:
+instead of only that the stack did. Over #164 and #172 of `s-smits/anabasis-v2`, where v2 was built
+before it moved to this repository, from the commit below them:
 
 ```
 measure                        c97d945        #164        #172         net

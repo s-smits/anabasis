@@ -966,6 +966,7 @@ launch request authorises one command and no second run beside it. The skills ow
 | Starting or stopping a run | `launch-run` |
 | Wording a claim afterwards | `attribution-and-proof` |
 | Doubting a reading, or asking what a fail was | `whole-run-investigation` |
+| Reading the harnesses a campaign keeps, before a promotion or a handover | `harness-audit` |
 | Handing runs, or a question, to someone outside | `zip-run`, `oracle-handover` |
 
 What holds in all of them:

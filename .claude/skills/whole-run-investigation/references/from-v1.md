@@ -4,8 +4,8 @@ v1's whole-run investigation had nine deterministic rows and thirty-eight lanes,
 runs. This file says what became of each, and what the account shows about where v2 is going. Read
 it when a v1 archive names a lane this catalogue lacks, or before proposing a lane v1 already tried.
 
-v1's catalogue is `.claude/skills/whole-run-investigation/references/review-angles.md` in
-`s-smits/anabasis`, read at `3f93d06`.
+v1's catalogue reads back with
+`git show 3f93d06:.claude/skills/whole-run-investigation/references/review-angles.md`.
 
 ## The count
 

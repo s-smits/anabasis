@@ -113,6 +113,7 @@ on 2026-10-09: the first rehearsal on a seed should write these as its predictio
 | `--reference <a built digest> --held none:pass` | `step`, sixteen solves | after a promotion the starter is solved on no task: until 11 October a step was held to it, a third arm (`docs/simplify.md`, B2) |
 | fewer than two tasks held out | refused by the comparison's admission; `no-step` at best if run | at a trigger of 0.25 a first reading takes two untied tasks, all won |
 | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
+| `--campaign --held none:pass --starter pass --supply 40` over a seed of a campaign that drafted its exam | a step read twice and a promotion at each epoch, three in 21 moves on t-10's seed (11 October) | the scripted Examiner proposes copies of the source's answered tasks once the source's own are spent; every epoch goes through the same rows: the reference's room, other tasks, the control, a session, a step and its repeat |
 
 `check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
 ruling of a check defect to count one.

@@ -33,7 +33,7 @@ bun tools/d2/prepare.ts <pack flags> --name sim-<what> --practice 2
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --session r-1 \
   --solves 1 --target 4 --minutes 10 --turns 10 \
-  [--tasks <task ids>] [--held old:new] [--starter pass|fail|none]
+  [--tasks <task ids>] [--held old:new] [--starter pass|fail|none] [--supply N]
 ```
 
 The flags are `tools/d2/round.ts`'s, less the three that name a model. The pack flags are the

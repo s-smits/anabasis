@@ -13,7 +13,13 @@
  * `--moves` are made. Over a stored pack no script sits in the Examiner's seat, so a rehearsal
  * that comes to need tasks written stops there and says so; over a drafted exam the Examiner is
  * scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
- * cut, in their order, until none is left.
+ * cut, in their order, until none is left; with `--supply N` it then proposes up to N further
+ * instances copied from the source's answered tasks, each with a copy mark in its public input so
+ * that it is another instance, which the script answers as it answers the task it copies. That is
+ * how a climb of more than one epoch is rehearsed: the Examiner of a source that climbed once
+ * wrote tasks for one epoch, and a rehearsal with `--held none:pass --starter pass --supply 30`
+ * goes round the table again, from the promoted harness through other tasks, the control, a
+ * session and a step read twice, until the supply is spent (11 October).
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's wall and disk cap, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
@@ -84,13 +90,18 @@ interface Script {
   readonly starter: End;
 }
 
-/** What a seed of a drafted exam gives the scripts: the answers, and the source's later tasks. */
+/** What a seed of a drafted exam gives the scripts: the answers, the source's later tasks, and
+ *  the answered tasks a `--supply` copies. */
 interface DraftedSource {
   readonly graded: Control[];
   readonly later: Task[];
+  readonly answered: Task[];
 }
 
-const OWN = new Set(["held", "starter", "no-comparison", "campaign"]);
+/** The key a copied instance carries in its public input: which task it copies, and its number. */
+const COPY = "rehearsal_copy";
+
+const OWN = new Set(["held", "starter", "supply", "no-comparison", "campaign"]);
 
 /** The flags that name a stored pack together (`packNamed`). */
 const PACK_FLAGS = 3;
@@ -210,7 +221,10 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         // One scripted to answer a task with no answer on record gives none and is named at the
         // end as strayed: until 10 October it ended the campaign, and a rehearsal of the control
         // after a promotion (`onReference`) fell at the first task no solve had ever answered.
-        const answer = wanted === "none" ? null : asRecord(answers.get(task.taskId)?.[wanted]);
+        // A copied instance (`--supply`) is answered as the task it copies.
+        const copied = asRecord(asRecord(task.publicInput)?.[COPY])?.of;
+        const known = answers.get(task.taskId) ?? (isString(copied) ? answers.get(copied) : undefined);
+        const answer = wanted === "none" ? null : asRecord(known?.[wanted]);
         const missing = wanted !== "none" && answer === null;
         if (missing) {
           strayed.push(
@@ -284,17 +298,34 @@ function draftedSource(name: string): DraftedSource {
   const later = proposalsOf(source).flatMap(({ version, task, session }) =>
     task !== null && session !== null && !held.has(version) ? [task] : [],
   );
-  return { graded: [...packControls(staged.bundle), ...passes], later };
+  const passed = new Set(passes.map(({ taskId }) => taskId));
+  const answered = proposalsOf(source).flatMap(({ task }) =>
+    task !== null && passed.has(task.taskId) ? [task] : [],
+  );
+  return { graded: [...packControls(staged.bundle), ...passes], later, answered };
 }
 
 /**
  * An Examiner session scripted from the source campaign's: each proposes the next tasks the
  * source's sessions wrote after the cut, as many as the host asks for, and finishes; one with
- * none left finishes with none, which the campaign reads as a session that held out no task.
+ * none left proposes copies of the source's answered tasks while `--supply` lasts, and then
+ * finishes with none, which the campaign reads as a session that held out no task.
  */
-function scriptedExaminer(later: Task[]): typeof examine {
+function scriptedExaminer(later: Task[], answered: readonly Task[], supply: number): typeof examine {
+  let copies = 0;
   return (request) => {
-    const batch = later.splice(0, request.limits.tasks).map(({ family, publicInput, hidden }) => ({
+    const own = later.splice(0, request.limits.tasks);
+    const copied: Task[] = [];
+    while (own.length + copied.length < request.limits.tasks && copies < supply && answered.length > 0) {
+      const source = answered[copies % answered.length];
+      if (source === undefined) break;
+      copies += 1;
+      copied.push({
+        ...source,
+        publicInput: { ...asRecord(source.publicInput), [COPY]: { of: source.taskId, n: copies } },
+      });
+    }
+    const batch = [...own, ...copied].map(({ family, publicInput, hidden }) => ({
       family,
       public_input: publicInput,
       hidden: hidden ?? null,
@@ -319,6 +350,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     options: {
       held: { type: "string", default: "none:pass" },
       starter: { type: "string", default: "none" },
+      supply: { type: "string", default: "0" },
       "no-comparison": { type: "boolean", default: false },
       campaign: { type: "boolean", default: false },
       id: { type: "string" },
@@ -346,7 +378,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     !isString(values.name)
   ) {
     throw new Error(
-      "usage: bun run runs rehearse <the flags of tools/d2/round.ts, of tools/d2/checkpoint.ts, of tools/d2/session.ts with --no-comparison, or of tools/d2/harness-builder.ts with --campaign, that name no model> [--held old:new] [--starter pass|fail|none]",
+      "usage: bun run runs rehearse <the flags of tools/d2/round.ts, of tools/d2/checkpoint.ts, of tools/d2/session.ts with --no-comparison, or of tools/d2/harness-builder.ts with --campaign, that name no model> [--held old:new] [--starter pass|fail|none] [--supply N]",
     );
   }
   const stored = isString(root) && isString(sweep) && isString(bundle) ? { root, sweep, bundle } : null;
@@ -364,7 +396,12 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   if (values.campaign === true) {
     await harnessBuilder(flags, {
       seated: seats,
-      ...keyIfDefined("examine", drafted === null ? undefined : scriptedExaminer(drafted.later)),
+      ...keyIfDefined(
+        "examine",
+        drafted === null
+          ? undefined
+          : scriptedExaminer(drafted.later, drafted.answered, Number(values.supply)),
+      ),
     });
   } else if (isString(values.id)) await checkpointCommand(flags, seats);
   else if (

@@ -1,12 +1,13 @@
 #!/bin/sh
-# v1's pre-commit (.githooks/pre-commit), run by hand as `bun run commit:check` before a commit; v2
-# installs no hook yet. Two refusals, both about facts a commit records permanently: an author who
-# cannot be attributed, and a credential-shaped literal. Between them sit the formatter, the linter
-# and an advisory slop report over the staged source. This is the last moment either is still cheap
-# to fix: once a commit reaches a remote, rewriting history does not un-publish it.
+# The commit's checks, v1's pre-commit ported: `.githooks/pre-commit` runs this before every commit
+# once `bun run hooks:install` has pointed the clone there, and `bun run commit:check` runs it by
+# hand. Two refusals, both about facts a commit records permanently: an author who cannot be
+# attributed, and a credential-shaped literal. Between them sit the formatter, the linter and an
+# advisory slop report over the staged source. This is the last moment either is still cheap to
+# fix: once a commit reaches a remote, rewriting history does not un-publish it.
 #
-# The scan reads added lines only, as the hook did: re-reporting a line that is already committed
-# teaches the operator to skip the check.
+# The scan reads added lines only: re-reporting a line that is already committed teaches the
+# operator to skip the check.
 set -eu
 
 # An email under an RFC 2606 reserved domain can never resolve to a GitHub account, so the commit

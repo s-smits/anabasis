@@ -121,11 +121,28 @@ describe("the disk cap", () => {
       const parent = mkdtempSync(join(tmpdir(), "ana-disk-cap-"));
       const lsof = join(parent, "lsof");
       writeFileSync(lsof, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
-      expect(await endHolders(parent, { lsof, boundMs: 200 })).toBe(
+      expect(await endHolders(parent, { lsof, ps: "/bin/ps", boundMs: 200 })).toBe(
         "no listing of what holds it came within 200 ms",
       );
       rmSync(parent, { recursive: true, force: true });
     },
+  );
+
+  // `ps` of a process stuck in the kernel waited with it and held its controller (2026-10-11).
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "says a volume is stalled when a killed holder's state does not answer",
+    async () => {
+      const parent = mkdtempSync(join(tmpdir(), "ana-disk-cap-"));
+      const [lsof, ps] = [join(parent, "lsof"), join(parent, "ps")];
+      // A pid above the kernel's ceiling: the kill finds no process, and the holder stays listed.
+      writeFileSync(lsof, "#!/bin/sh\necho 1000000\n", { mode: 0o755 });
+      writeFileSync(ps, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
+      expect(await endHolders(parent, { lsof, ps, boundMs: 200 })).toBe(
+        "1 of its holders stayed in uninterruptible wait for 10000 ms after SIGKILL",
+      );
+      rmSync(parent, { recursive: true, force: true });
+    },
+    20_000,
   );
 
   it.skipIf(runtimeProcess.platform !== "darwin")(
@@ -136,7 +153,7 @@ describe("the disk cap", () => {
       await mountDiskCap({ root, bytes: CAP_BYTES });
       const lsof = join(parent, "lsof");
       writeFileSync(lsof, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
-      await expect(releaseDiskCap(root, { lsof, boundMs: 200 })).rejects.toThrow(
+      await expect(releaseDiskCap(root, { lsof, ps: "/bin/ps", boundMs: 200 })).rejects.toThrow(
         `the volume at ${root} is left attached: no listing`,
       );
       expect(spawnSync("/sbin/mount", []).stdout).toContain(root);

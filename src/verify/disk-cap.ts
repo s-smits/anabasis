@@ -35,16 +35,22 @@ interface DiskCap {
   readonly bytes: number;
 }
 
-/** What lists the processes holding a file on a volume, and how long its answer may take. A test
- *  names one that never answers. */
+/** What lists the processes holding a file on a volume and reads a holder's state, and how long
+ *  either answer may take. A test names one that never answers. */
 interface HolderListing {
   lsof: string;
+  ps: string;
   boundMs: number;
 }
 
-/** `lsof` reads the kernel's tables and stats only the mountpoint: it answered in 0.1 s at a host
- *  load near 20 (2026-10-11). So a listing that runs past the bound is one the volume holds up. */
-const LSOF: HolderListing = { lsof: "/usr/sbin/lsof", boundMs: 30_000 };
+/**
+ * `lsof` and `ps` read the kernel's tables: `lsof` answered in 0.1 s at a host load near 20. Both
+ * walk every process, though, and one stuck in the kernel holds the walk: on 2026-10-11 a volume
+ * left half unmounted made every `lsof`, `ps -A` and `ps -p` of a stuck pid on the host sit in
+ * uninterruptible wait, and each controller that ran one, from every command's end, stopped there.
+ * So neither is awaited past the bound, and a listing that runs past it reads as a stalled volume.
+ */
+const LSOF: HolderListing = { lsof: "/usr/sbin/lsof", ps: "/bin/ps", boundMs: 30_000 };
 
 /** How long a killed holder may stay in uninterruptible wait, as one in the middle of a write does,
  *  before its volume counts as stalled. */
@@ -192,7 +198,12 @@ export async function endHolders(root: string, listing: HolderListing = LSOF): P
   for (;;) {
     const holders = await holdersOf(root, listing);
     if (holders === null) return `no listing of what holds it came within ${String(listing.boundMs)} ms`;
-    const waiting = holders.filter((pid) => stateOf(pid).startsWith("U"));
+    // `ps` state, `U` first for uninterruptible wait. A `ps` of a process stuck in the kernel waits
+    // with it, so a state that does not come within the bound reads as that wait.
+    const states = await Promise.all(
+      holders.map((pid) => answered([listing.ps, "-o", "stat=", "-p", String(pid)], listing.boundMs)),
+    );
+    const waiting = states.filter((state) => state === null || state.trim().startsWith("U"));
     if (waiting.length === 0) return null;
     if (Date.now() >= until) {
       return `${String(waiting.length)} of its holders stayed in uninterruptible wait for ${String(STALL_MS)} ms after SIGKILL`;
@@ -204,17 +215,7 @@ export async function endHolders(root: string, listing: HolderListing = LSOF): P
 /** The pids holding a file on the volume at `root` but this process, or null when the listing did
  *  not answer within its bound. A listing stuck on the volume cannot be killed, and is left behind. */
 async function holdersOf(root: string, listing: HolderListing): Promise<number[] | null> {
-  const listed = Bun.spawn([listing.lsof, "-t", "+f", "--", root], {
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<null>((done) => {
-    timer = setTimeout(() => done(null), listing.boundMs);
-  });
-  const answer = await Promise.race([new Response(listed.stdout).text(), late]);
-  clearTimeout(timer);
+  const answer = await answered([listing.lsof, "-t", "+f", "--", root], listing.boundMs);
   if (answer === null) return null;
   return answer
     .split("\n")
@@ -222,12 +223,15 @@ async function holdersOf(root: string, listing: HolderListing): Promise<number[]
     .filter((pid) => pid > 1 && pid !== runtimeProcess.pid);
 }
 
-/** A process's `ps` state, `U` first for uninterruptible wait; empty for one that is gone. `ps`
- *  reads the kernel's process table and no volume. */
-function stateOf(pid: number): string {
-  const ps = Bun.spawnSync(["/bin/ps", "-o", "stat=", "-p", String(pid)], {
-    stdout: "pipe",
-    stderr: "ignore",
+/** What `argv` prints, or null when it has not finished within `boundMs`. A child stuck in the
+ *  kernel cannot be killed, and is left behind. */
+async function answered(argv: readonly string[], boundMs: number): Promise<string | null> {
+  const child = Bun.spawn([...argv], { stdin: "ignore", stdout: "pipe", stderr: "ignore" });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((done) => {
+    timer = setTimeout(() => done(null), boundMs);
   });
-  return ps.stdout.toString().trim();
+  const answer = await Promise.race([new Response(child.stdout).text(), late]);
+  clearTimeout(timer);
+  return answer;
 }

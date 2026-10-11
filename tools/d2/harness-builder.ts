@@ -660,6 +660,26 @@ function ended(log: string, events: readonly LogEvent[], decided: Extract<Decide
 }
 
 /**
+ * What a move records of its start: when it began, and for a move that solves the host's load
+ * then. A Builder session's practice solves and a comparison's solves are held to a wall, so
+ * neither starts into a loaded host (`quiet`), and a rehearsal's seats are scripts, whose times
+ * nobody compares. The event is written when the move ends and carries the reason from when it
+ * was decided, which a reader took for the end's (the runs session's note, 10 October); and a
+ * solve's times are the host's as much as the solver's, since a wall counts the clock, and the
+ * load the wait read was on no record (eight campaigns on one host of 12 cores held its load
+ * between 14 and 26 that night).
+ */
+async function startOf(decided: Decided, values: Values, seats: Seats): Promise<JsonObject> {
+  const began = new Date().toISOString();
+  const solves = decided.move === "build" || decided.move === "compare";
+  if (!solves) return { began };
+  const host = seats.host ?? HOST;
+  const waits = !values.loaded && (seats.host !== undefined || seats.seated === solved);
+  const load = waits ? await quiet(host, decidedLine(decided).split(":")[0] ?? decided.move) : host.load();
+  return { began, load, cores: host.cores };
+}
+
+/**
  * `bun tools/d2/harness-builder.ts`, and under a rehearsal's seats the same loop with a script in
  * each model seat. It returns the last thing move 7 said: the campaign's ending, or the move that
  * would be made next.
@@ -746,19 +766,7 @@ export async function harnessBuilder(
       );
       return decided;
     }
-    // A Builder session's practice solves and a comparison's solves are held to a wall: neither
-    // starts into a loaded host. A rehearsal's seats are scripts, whose times nobody compares.
-    const solves = decided.move === "build" || decided.move === "compare";
-    const host = seats.host ?? HOST;
-    const waits = solves && !values.loaded && (seats.host !== undefined || seats.seated === solved);
-    // When the move began, and for a move that solves the host's load then: the event is written
-    // when the move ends and carries the reason from when it was decided, which a reader took for
-    // the end's (the runs session's note, 10 October); and a solve's times are the host's as much
-    // as the solver's, since a wall counts the clock, and the load the wait read was on no record
-    // (eight campaigns on one host of 12 cores held its load between 14 and 26 that night).
-    const began = new Date().toISOString();
-    const waited = waits ? await quiet(host, decidedLine(decided).split(":")[0] ?? decided.move) : null;
-    const load = solves ? (waited ?? host.load()) : undefined;
+    const started = await startOf(decided, values, seats);
     let left: JsonObject;
     try {
       left = await make(decided, { events, plan, opening, values, seats });
@@ -776,9 +784,7 @@ export async function harnessBuilder(
     append(log, "campaign.move", {
       move: decided.move,
       why: decided.why,
-      began,
-      ...keyIfDefined("load", load),
-      ...keyIfDefined("cores", load === undefined ? undefined : host.cores),
+      ...started,
       ...left,
       ...keyIfDefined(
         "answers",

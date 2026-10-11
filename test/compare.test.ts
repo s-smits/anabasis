@@ -40,6 +40,15 @@ describe("the sign test", () => {
     expect(signP(0, 0)).toBe(1);
   });
 
+  it("reads a tally of over a thousand untied tasks by its tail, where the first term alone would be 0", () => {
+    // Until 11 October the recurrence started at 0.5 to the untied count, 0 from 1,075 on, and
+    // every tally there read 0, as certain a step as could be.
+    expect(signP(0, 1100)).toBeCloseTo(1, 10);
+    expect(signP(1100, 0)).toBeLessThan(1e-300);
+    expect(signP(560, 540)).toBeGreaterThan(0.25);
+    expect(signP(600, 550)).toBeCloseTo(0.0742, 3);
+  });
+
   it("counts a task once by how often each harness was valid, and leaves ties out of the test", () => {
     expect(tally(pairs(6, 1, 17))).toEqual({ wins: 6, losses: 1, ties: 17 });
     expect(scored(pairs(6, 1, 17)).p).toBe(0.0625);

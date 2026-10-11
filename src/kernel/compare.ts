@@ -94,6 +94,8 @@ export interface Used {
 /** The trigger a first reading has to clear to buy the repeat, where no flag or opening names one
  *  (`--trigger`): 2-0, 4-1, 5-2 and 7-3 clear it, and 1-0 does not. */
 export const TRIGGER = 0.25;
+/** The exponent of the power of two by which the sign test's terms are brought down (`signP`). */
+const SHIFT = 512;
 /** How two valid answers on one task are set against each other: by the quantity the check program
  *  computes of each, lower or higher being better, where the two differ by more than `margin` of
  *  the larger magnitude. */
@@ -143,17 +145,34 @@ export interface Sides {
   readonly objective?: ObjectiveRule | undefined;
 }
 
-/** The chance of at least `wins` wins among `wins + losses` untied tasks, were either harness as
- *  likely to win each. No untied task is no evidence, and reads 1. */
+/**
+ * The chance of at least `wins` wins among `wins + losses` untied tasks, were either harness as
+ * likely to win each. No untied task is no evidence, and reads 1.
+ *
+ * Each term is a binomial coefficient times 2^-untied. Until 11 October the recurrence started at
+ * 0.5^untied, which is 0 from 1,075 untied tasks on, and every tally there read 0: 0 to 1,100 as
+ * certain a step as 1,100 to 0. The power is now kept apart, and the terms are divided by
+ * 2^SHIFT whenever one passes it. A power of two scales a number exactly, so up to 1,022 untied
+ * tasks every result is the one the old recurrence gave, to the bit; a real comparison scores 8
+ * to 24 tasks.
+ */
 export function signP(wins: number, losses: number): number {
   const untied = wins + losses;
-  let term = 0.5 ** untied;
-  let tail = 0;
+  let [term, tail, power] = [1, 0, -untied];
   for (let k = 0; k <= untied; k += 1) {
     if (k >= wins) tail += term;
     term = (term * (untied - k)) / (k + 1);
+    if (term > 2 ** SHIFT) {
+      [term, tail, power] = [term / 2 ** SHIFT, tail / 2 ** SHIFT, power + SHIFT];
+    }
   }
-  return Math.min(1, tail);
+  // The power is applied in steps, so that a factor too small for a number does not take a result
+  // that is not.
+  while (power < -SHIFT) {
+    tail /= 2 ** SHIFT;
+    power += SHIFT;
+  }
+  return Math.min(1, tail * 2 ** power);
 }
 
 /** A report's tally, where it holds one. */

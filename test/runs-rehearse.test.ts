@@ -313,6 +313,22 @@ describe("a rehearsal's seats", () => {
     expect(strayed.at(-1)).toBe(
       's-5: t-3 under the reference harness was scripted to give no answer and ended {"outcome":"pass"}',
     );
+    // Both endings a blocked submit leads to are held, and a rejection is not one of them: a
+    // scripted campaign's solve stops where the script runs out, a live one is asked to its turns.
+    const ends = strayed.length;
+    const ran = async (kind: "no-answer" | "turns-ended" | "rejected") => {
+      const quiet = campaignOver(folder, { outcome: "fail", kind });
+      await silent(quiet.campaign, { builder: undefined, reference: FIXTURE }).solve(
+        pack("t-3"),
+        old,
+        undefined,
+      );
+    };
+    await ran("no-answer");
+    await ran("turns-ended");
+    expect(strayed).toHaveLength(ends);
+    await ran("rejected");
+    expect(strayed.at(-1)).toEndWith('ended {"outcome":"fail","kind":"rejected"}');
     // Where the starter is the reference harness, as it is until a promotion, it is scripted as
     // that side of the comparison, by `--held`'s first word; `--starter` scripts it only as a
     // third harness. And a seat hands on the comparison it solves for.

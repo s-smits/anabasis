@@ -9,7 +9,7 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { heard, SAID } from "../src/examiner/record.ts";
+import { comparisonSummary, heard, SAID } from "../src/examiner/record.ts";
 import { SYSTEM_PROMPT } from "../src/examiner/prompt.ts";
 import { claimed, type ExamRequest, examine, keepHome, lastNote, seedHome } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
@@ -376,7 +376,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     side: "test",
   });
 
-  it("is one outcome a task: one harness won, a tie between valid answers, no valid answer yet, or disputed", async () => {
+  const compared = async (objective = false) => {
     const s = setup([propose(1, 2, 3, 4, 5), finish, finish, finish, finish]);
     await examine({ ...s.request, limits: { ...LIMITS, proposals: 6 } });
     const [won, tied, unsolved, practice, aside] = [1, 2, 3, 4, 5].map((base) =>
@@ -396,7 +396,12 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         solves += 1;
         const solve = `s-${String(solves)}`;
         append(s.log, "solve.started", { solve, condition: id, comparison: "b-1" });
-        append(s.log, "verdict", { solve, kind: pass ? "pass" : "fail", answer: { answer: SOLVER } });
+        append(s.log, "verdict", {
+          solve,
+          kind: pass ? "pass" : "fail",
+          answer: { answer: SOLVER },
+          objective: harness === "h1" ? 2 : 1,
+        });
         append(s.log, "solve.finished", { solve, ending: { outcome: pass ? "pass" : "fail" } });
       }
     };
@@ -413,15 +418,41 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       reading: "no-step",
       old: "h1",
       fresh: "h2",
+      starter: "h1",
       solves: 2,
       setting: settingId(condition("any", "any")),
       versions: [won ?? "", tied ?? "", unsolved ?? "", packed],
       aside: [aside ?? ""],
       scored: { wins: 2, losses: 0, ties: 2 },
+      objective: objective ? { direction: "lower", margin: 0.01 } : null,
     });
     append(s.log, "task.state", { version: practice ?? "", state: "released" });
     // Every task the campaign holds, the pack's first: the session is handed them in that order.
     const tasks = [EXAMPLE, ...writtenTasks(read(s.log))];
+    return { s, tasks };
+  };
+
+  it("gives task outcomes and aggregate comparison counts without solver content", async () => {
+    const { s, tasks } = await compared();
+    const recorded = read(s.log);
+    const row =
+      "4 tasks; reference valid 3/8 solves; other valid 6/8 solves; solve pairings: both pass 6, both fail 4, reference only 0, other only 6; other harness task wins 2, losses 0, ties 2; objective decided 0 tasks.";
+    expect(comparisonSummary(recorded)[1]).toBe(row);
+    expect(comparisonSummary(recorded)[0]).toContain("aside 1");
+    expect(comparisonSummary(recorded)[0]).toContain("not independent observations");
+    expect(comparisonSummary([])).toEqual([]);
+    expect(
+      comparisonSummary(
+        recorded.map((event) =>
+          event.kind === "verdict"
+            ? {
+                ...event,
+                data: { ...event.data, answer: { secret: "changed-answer" }, blocking: ["changed-check"] },
+              }
+            : event,
+        ),
+      ),
+    ).toEqual(comparisonSummary(recorded));
     // The reference harness is h1, the comparison's old side: the author hears how it did on
     // each task, and nothing of h2.
     // Beside the outcome, one fact that names no side: whether a valid answer to the task is on
@@ -446,15 +477,57 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(opening).toContain(
       "- x-1-002 (family fixture): the reference harness answered it validly in every solve",
     );
-    // Which harness won, how many solves failed and what a solver answered are not the author's.
+    // The aggregate counts name no harness and carry no answer or trace.
     expect(opening).not.toContain("h2");
     expect(opening).not.toContain(SOLVER);
+    expect(opening).toContain("Comparison summary:");
+    expect(opening).toContain(row);
     expect(opening).not.toContain("too easy");
     // Every one of them can be read whole, an earlier session's as the pack's.
     expect(s.of("exam.started")[1]).toMatchObject({
       session: "x-2",
       examples: tasks.map(({ taskId }) => taskId),
     });
+  });
+
+  it("reads the current reference on either side and ignores unscored reports and later releases", async () => {
+    const { s } = await compared();
+    const before = comparisonSummary(read(s.log));
+    append(s.log, "comparison.reported", {
+      session: "b-2",
+      old: "h1",
+      fresh: "h2",
+      scored: { wins: 0, losses: 0, ties: 0 },
+      versions: [],
+      reading: "not-scored",
+    });
+    append(s.log, "task.state", { version: taskVersion(s.request.pack(EXAMPLE)), state: "released" });
+    expect(comparisonSummary(read(s.log))).toEqual(before);
+    append(s.log, "harness.promoted", { harness: "h2" });
+    expect(comparisonSummary(read(s.log))[1]).toBe(
+      "4 tasks; reference valid 6/8 solves; other valid 3/8 solves; solve pairings: both pass 6, both fail 4, reference only 6, other only 0; other harness task wins 0, losses 2, ties 2; objective decided 0 tasks.",
+    );
+    append(s.log, "harness.promoted", { harness: "h3" });
+    expect(comparisonSummary(read(s.log))).toEqual([]);
+  });
+
+  it("reports quality wins even when both harnesses passed", async () => {
+    const { s } = await compared(true);
+    expect(comparisonSummary(read(s.log))[1]).toContain(
+      "task wins 3, losses 0, ties 1; objective decided 1 tasks",
+    );
+  });
+
+  it("keeps the starter as reference when an experimental control was compared first", async () => {
+    const { s } = await compared();
+    const events = read(s.log);
+    const report = events.find(({ kind }) => kind === "comparison.reported");
+    if (report === undefined) throw new Error("comparison fixture has no report");
+    const control = {
+      ...report,
+      data: { ...report.data, session: "control", old: "programs-only", fresh: "h2" },
+    };
+    expect(comparisonSummary([control, ...events])).toEqual(comparisonSummary(events));
   });
 
   it("opens the next session with what the last one said at its finish, and nothing of a session that said nothing", async () => {

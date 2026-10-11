@@ -78,7 +78,7 @@ import { hostScratch } from "../verify/wall-policy.ts";
 import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { openingOf } from "../builder/opening.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
-import { heard } from "./record.ts";
+import { comparisonSummary, heard } from "./record.ts";
 
 interface ExamLimits {
   readonly wallSeconds: number;
@@ -433,6 +433,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
           firstMessage(request.contract, request.checks, heard(before, request.examples), limits, {
             brief: openingOf(before)?.prompt,
             budget: request.budget,
+            comparison: comparisonSummary(before),
             lastNote: lastNote(before),
           }),
         ),

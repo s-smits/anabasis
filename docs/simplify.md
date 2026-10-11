@@ -660,6 +660,13 @@ preflight, the command, and a row of the table.
 - **Mends.** F7.
 - **Tests.** `test/handover.test.ts` (4 mentions).
 - **Lines.** About −110 (*estimate*).
+- **Done** at PR #199 (11 October), as written, with the imports and the one constant only
+  `nextMoves` read (`STEP`). The view still parses a launch's flags, since the table reads
+  `--level`, `--trigger`, `--past-stop` and the setting's; the move list's case of
+  `test/handover.test.ts` goes whole (5 cases), the view's case says that no move but the
+  table's is printed, and the rehearsal of `test/checker-commands.test.ts` reads a launch's
+  refusals from the launcher alone. The source loses 135 lines (153 out, 18 in); AGENTS.md section 4, the
+  `launch-run` and `run-improvement-campaign` skills say the same.
 
 #### D2. The launcher starts nothing
 

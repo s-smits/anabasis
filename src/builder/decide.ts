@@ -4,7 +4,7 @@
  * A campaign is a loop of moves over one log (`docs/plan.md`, "The process"): the exam is read,
  * tasks are written, a Builder builds, two harnesses are compared, and then something has to say
  * what comes next. Until 2026-10-09 a session said it, by a skill's walk of eight links and with
- * the operator, and the source only named the moves that may start (`nextMoves`, `handover.ts`).
+ * the operator, and the source only named the moves that may start.
  * This is the plan's decision table as one function: it takes the log and the campaign's plan and
  * returns one move with its reason, or an ending.
  *

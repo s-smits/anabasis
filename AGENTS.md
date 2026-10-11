@@ -253,8 +253,8 @@ Older comments and `docs/plan.md`'s list of terms use "Harness Builder" for the 
 copy that use.
 
 The Harness Builder's controller is in the repository in three parts. The campaign's state is
-one reading of its log (`campaignOf`, `src/builder/handover.ts`): each step's handover and the
-moves that may start next, which `bun run runs view <name>` prints. The move that follows is one
+one reading of its log (`campaignOf`, `src/builder/handover.ts`): each step's handover, which
+`bun run runs view <name>` prints. The move that follows is one
 function of the log and the campaign's opening (`decide`, `src/builder/decide.ts`): the plan's
 decision table, which returns one move with its reason, or an ending. And one command makes that
 move by the command an operator would run, reads the log again, and goes on until the campaign
@@ -283,7 +283,7 @@ What the Harness Builder reads of each step is its handover, never its content:
 | Builder session | The harness version it left, practice solves used, fails open or repaired, and the cost |
 | Comparison | Its terms, the tally and the reading, each harness's share of valid answers, rejections ruled or set aside, and the cost |
 | Rulings and labels | Counts by kind, and whether the bar for the reviewer is cleared |
-| Next move | What may start now, what is refused, and why |
+| Next move | The one move the plan's table names, and its reason |
 
 All of it is in the log already. One limit holds whatever is built: the Harness Builder may read
 every step, and what it passes to the Builder stays the closed list of section 1. An overarching

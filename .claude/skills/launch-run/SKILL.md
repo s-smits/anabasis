@@ -61,21 +61,17 @@ tasks by how many of their solves were valid, and the command prints it. For the
 reference harness is the starter, so that line is what gate G0 reads: where the starter is valid
 on nearly every solve, the tasks leave a harness nothing to add, and the Examiner writes others.
 
-## What may start now
+## What comes next
 
 ```sh
-bun run runs view <name> --cap <dollars> [the flags the launch would be given]
+bun run runs view <name> [the flags the launch would be given]
 ```
 
 The view prints the campaign as its log reads: the set-up, what each Examiner session, Builder
-session and comparison handed over, and the moves that may start next. A round, a checkpoint and a
-session by itself are answered by the admission the launcher asks, so the view's refusals and
-notes are the ones a launch from this log would be given. It also says what only the whole
-campaign shows: that there is nothing to compare, that a comparison waits for a person's labels,
-that a harness has read a step and is the operator's to promote, and that the stop rule has
-stopped the campaign. What the host or an id refuses is the launcher's alone. The view launches
-nothing. Its last line is the one move the plan's table names for this log (`decide`,
-`src/builder/decide.ts`), which is what `bun tools/d2/harness-builder.ts` would make next.
+session and comparison handed over, and the climb. Its last line is the one move the plan's table
+names for this log (`decide`, `src/builder/decide.ts`), which is what
+`bun tools/d2/harness-builder.ts` would make next. Whether a launch of a move is admitted, and
+why not, is the launcher's to say (`--dry-run`). The view launches nothing.
 
 ## What comes before a comparison
 

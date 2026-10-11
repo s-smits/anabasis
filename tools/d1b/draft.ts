@@ -12,20 +12,22 @@
  *
  * The session stops at a draft that stands, at `--tries` drafts put to the reading, or at its
  * minutes and turns. No solve runs, so it takes no flag for a solver and costs the Examiner's
- * own turns.
+ * own turns. The Examiner has a shell in a walled home of its own (`draftWalled`), under the disk
+ * cap of a campaign's solves, closed to this repository and its other worktrees.
  *
  * What stands is not frozen. Its checks are their author's own computation, which the acceptance
  * reading lists as faults until the operator admits each by name (`tools/c/accept.ts --admit`).
  *
- * Not run here: see `../d2/campaign.ts`. It needs the verifier's wall and a model login.
+ * Not run here: see `../d2/campaign.ts`. It needs the verifier's wall, the command wall and a model
+ * login.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { openingOf } from "#src/builder/opening.ts";
-import { type Drafted, draftExam } from "#src/examiner/draft.ts";
+import { type Drafted, draftWalled } from "#src/examiner/draft.ts";
 import { read } from "#src/kernel/log.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { campaignLog, examinerSession, stayAwake } from "../d2/campaign.ts";
+import { campaignLog, examinerSession, LIMITS, REPO, stayAwake, worktreesOf } from "../d2/campaign.ts";
 import { draftReading } from "../d2/exam.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
@@ -40,9 +42,9 @@ const OPTIONS = {
   jobs: { type: "string", default: "4" },
 } as const;
 
-/** `bun tools/d1b/draft.ts`. `session` runs the Examiner's session: `draftExam`, unless a caller
+/** `bun tools/d1b/draft.ts`. `session` runs the Examiner's session: `draftWalled`, unless a caller
  *  with no model stands in for it. */
-export async function draftCommand(args: readonly string[], session = draftExam): Promise<Drafted> {
+export async function draftCommand(args: readonly string[], session = draftWalled): Promise<Drafted> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { name, session: id, examiner } = values;
   if (name === undefined || id === undefined || examiner === undefined) {
@@ -58,6 +60,9 @@ export async function draftCommand(args: readonly string[], session = draftExam)
   stayAwake();
   const drafted = await session({
     id,
+    repoRoot: REPO,
+    otherTrees: worktreesOf(REPO),
+    diskBytes: LIMITS.diskBytes,
     prompt,
     reading: (draft) => draftReading(dirname(log), draft, Number(values.jobs)),
     model: modelNamed(examiner),

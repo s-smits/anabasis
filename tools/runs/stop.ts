@@ -23,7 +23,7 @@
  */
 import { EXAMINE } from "#src/builder/admission.ts";
 import { sessionDirs, spent } from "#src/builder/session.ts";
-import { examinerDirs } from "#src/examiner/session.ts";
+import { examinerDirs } from "#src/examiner/shell.ts";
 import { existsSync, rmSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname } from "#src/meta/path.ts";
@@ -61,11 +61,12 @@ export function family(table: string, pid: number): number[] {
  * go. A seed's log begins as its source's, and what that run has open is the source's to hold.
  *
  * An Examiner session has a capped root as a Builder's: left out here, the root of the one a stop
- * cut stayed mounted and had to be released by hand (buffer x-1, 2026-10-10).
+ * cut stayed mounted and had to be released by hand (buffer x-1, 2026-10-10). A session that drafts
+ * an exam has had one since 11 October.
  */
 export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
-  const open = (role: "solve" | "build" | "exam", key: "solve" | "session") => {
+  const open = (role: "solve" | "build" | "exam" | "draft", key: "solve" | "session") => {
     const ended = new Set(
       events.flatMap(({ kind, data }) => (kind === `${role}.finished` ? [data[key]] : [])),
     );
@@ -78,6 +79,7 @@ export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
     ...open("solve", "solve").map((id) => solveDirs(id)),
     ...open("build", "session").map((id) => sessionDirs(run.path, id)),
     ...open("exam", "session").map((id) => examinerDirs(run.path, id)),
+    ...open("draft", "session").map((id) => examinerDirs(run.path, id)),
   ];
 }
 

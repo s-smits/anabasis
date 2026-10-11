@@ -164,6 +164,8 @@ const LONG_CONTEXT = new Set([
   "claude-sonnet-5-5",
 ]);
 
+/** The live queries of this process, by the caller's session id: two sessions that run at once need
+ *  two ids, or the second one's turns go into the first one's query. */
 const sessions = new Map<string, Session>();
 
 /**
@@ -316,6 +318,9 @@ async function runTurn(
 ): Promise<TurnEnd> {
   const key = options.sessionId;
   if (key === undefined) throw new Error("the Claude backend needs a sessionId: one per Claude Code query");
+  // An abort listener never fires for a signal that has already aborted, so until 11 October a turn
+  // asked under one launched Claude Code and ran its query to the end.
+  if (options.signal?.aborted === true) throw new Error(`session ${key} was aborted before its turn`);
   const { results } = extractAllToolResults(context.messages.map((message) => ({ ...message })));
   let session = sessions.get(key);
   if (results.length > 0) {

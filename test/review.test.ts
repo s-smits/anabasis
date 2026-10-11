@@ -2,12 +2,13 @@
 // three rulings with a check-defect standing only on a probe that decided both sides and reached the
 // named check, its replay of the checks before any reading, and the Diagnoser reading only earned
 // fails on released tasks, against a pass under the same condition, quoting what it read or abstaining.
-import { afterAll, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import {
   createModels,
   fauxAssistantMessage,
   fauxProvider,
   fauxToolCall,
+  type SimpleStreamOptions,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import type { Contract } from "../src/kernel/contract.ts";
@@ -81,6 +82,7 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
   writeFileSync(join(checks, "evaluator.ts"), "// span <= 10\n");
   const sent: string[] = [];
   const signals: (AbortSignal | undefined)[] = [];
+  const sessions: (string | undefined)[] = [];
   const faux = fauxProvider({
     models: [
       {
@@ -91,9 +93,10 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
     ],
   });
   faux.setResponses(
-    responses.map((message) => (context: TranscriptContext, options?: { signal?: AbortSignal }) => {
+    responses.map((message) => (context: TranscriptContext, options?: SimpleStreamOptions) => {
       sent.push(JSON.stringify(context));
       signals.push(options?.signal);
+      sessions.push(options?.sessionId);
       return message;
     }),
   );
@@ -102,7 +105,7 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
   const reader: Reader = { model: faux.getModel(), effort: "medium", models: () => models };
   const log = join(scratch, "log.jsonl");
   const record = (kind: EventKind, data: JsonObject) => append(log, kind, data);
-  return { checks, log, reader, sent, signals, record, calls: () => sent.length };
+  return { checks, log, reader, sent, signals, sessions, record, calls: () => sent.length };
 }
 
 describe("the probe", () => {
@@ -356,6 +359,23 @@ describe("the Referee", () => {
     await referee(s.reader, fail(s));
     expect(s.signals).toHaveLength(1);
     expect(s.signals[0]?.aborted).toBe(true);
+  });
+
+  // The Claude backend keeps one live query a session id, and a comparison rules its rejections in
+  // parallel: two readings begun in one millisecond shared a query until 11 October.
+  it("gives two readings begun in the same millisecond two session ids", async () => {
+    const unclear = ruling({ ruling: "unclear", reason: "Not settled.", probes: [] });
+    const [a, b] = [setup([unclear]), setup([unclear])];
+    failed(a.record);
+    failed(b.record);
+    const clock = spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 9, 11));
+    try {
+      await Promise.all([referee(a.reader, fail(a)), referee(b.reader, fail(b))]);
+    } finally {
+      clock.mockRestore();
+    }
+    expect([a.sessions.length, b.sessions.length]).toEqual([1, 1]);
+    expect(a.sessions[0]).not.toBe(b.sessions[0]);
   });
 });
 

@@ -359,6 +359,21 @@ describe("the Claude backend", () => {
     ).toEqual(["Read the three files.", "Again."]);
   });
 
+  // An abort listener never fires for a signal that has already aborted, so a turn asked under one
+  // launched Claude Code and ran its query to the end.
+  it("starts no query for a turn whose signal has already aborted", async () => {
+    replay(TEXT);
+    solve.abort();
+    const refused = await turn([opening]);
+    expect(refused.stopReason).toBe("aborted");
+    expect(refused.errorMessage).toContain("was aborted before its turn");
+    const launches = readFileSync(join(home, "launch.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .filter((line) => line.includes('"argv"'));
+    expect(launches).toEqual([]);
+  });
+
   it("refuses a later prompt with no live query to hold the conversation", async () => {
     replay(TEXT);
     const answer = await turn([opening]);

@@ -135,9 +135,12 @@ describe("the disk cap", () => {
       const parent = mkdtempSync(join(tmpdir(), "ana-disk-cap-"));
       const [lsof, ps] = [join(parent, "lsof"), join(parent, "ps")];
       // A pid above the kernel's ceiling: the kill finds no process, and the holder stays listed.
+      // The listing must answer inside the bound and `ps` must not, so the bound sits well above a
+      // shell's start on a loaded host (200 ms failed there three times on 11 October) and well
+      // below `ps`'s 5 s.
       writeFileSync(lsof, "#!/bin/sh\necho 1000000\n", { mode: 0o755 });
       writeFileSync(ps, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
-      expect(await endHolders(parent, { lsof, ps, boundMs: 200 })).toBe(
+      expect(await endHolders(parent, { lsof, ps, boundMs: 2_000 })).toBe(
         "1 of its holders stayed in uninterruptible wait for 10000 ms after SIGKILL",
       );
       rmSync(parent, { recursive: true, force: true });

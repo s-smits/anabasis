@@ -1039,6 +1039,14 @@ operator's home or in another seat's root.
 - **After** A, B and D. "A campaign's commands" loses the launcher and the round. "How a
   comparison is read" loses the budget, the noise arm in the table and two readings. Both are
   written again whole, since each was patched a sentence a pull request.
+- **Done** at PR #213 (11 October), after A, B, D2 and E: both sections written again whole in
+  the present, with four subsections in section 6 (the campaign command, what the log records of
+  a campaign's conditions, what refuses a move, defaults and a first flag line) and the decision
+  table's order as a numbered list in section 7; the dated notes on what each rule replaced go to
+  `docs/simplify.md` and `docs/plan-history.md` by one pointer. The round stays, since D3 is
+  deferred. One correction on the way: the stop rule's second kind of move is a whole session
+  that left its harness as it was where a practice solve of it failed, as `stopRule` has read it
+  since row F52, where the section said any unchanged session.
 
 ### T5. The repository's own lint rules
 

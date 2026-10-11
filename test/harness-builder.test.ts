@@ -277,7 +277,7 @@ describe("a campaign run by its log", () => {
     expect(next).toMatchObject({ move: "accept" });
   });
 
-  it("compares a step again, waits for the operator's word to promote it, and then has tasks written", async () => {
+  it("compares a step again, waits under --attended to promote it, promotes it unattended, and then has tasks written", async () => {
     const name = `${STEM}-climb`;
     // The seed holds five tasks to score once two are released, and the comparison scores five:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
@@ -314,8 +314,9 @@ describe("a campaign run by its log", () => {
         return examine({ ...request, ...script });
       },
     };
-    // Set-up, one session, the comparison and its repeat: then the promotion is the operator's.
-    const waits = await harnessBuilder(flags, seats);
+    // Set-up, one session, the comparison and its repeat: under `--attended` the promotion is then
+    // the operator's.
+    const waits = await harnessBuilder([...flags, "--attended"], seats);
     expect(waits).toMatchObject({ move: "promote" });
     // Each comparison was made under the campaign's trigger, and the move records the command.
     for (const made of of(name, MOVED).filter(({ move }) => move === "compare")) {
@@ -336,9 +337,9 @@ describe("a campaign run by its log", () => {
     expect(of(name, "comparison.started").map(({ noise }) => noise)).toEqual([false, false]);
     expect(of(name, "harness.promoted")).toEqual([]);
 
-    // With the word given once for the campaign, the harness is promoted. No budget leaves the
+    // Run as a campaign runs by default, the harness is promoted. No budget leaves the
     // promoted harness failing half its solves, so the tasks have to change: an Examiner session.
-    const next = await harnessBuilder([...flags, "--unattended", "--moves", "2"], seats);
+    const next = await harnessBuilder([...flags, "--moves", "2"], seats);
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
     expect(of(name, MOVED).slice(5)).toMatchObject([
       { move: "promote", harness: first?.fresh },
@@ -350,7 +351,7 @@ describe("a campaign run by its log", () => {
     // practice the promoted harness passed (t-4, t-9, t-10).
     expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted" });
     expect(next).not.toHaveProperty("noise");
-    const after = await harnessBuilder([...flags, "--unattended", "--moves", "1"], seats);
+    const after = await harnessBuilder([...flags, "--moves", "1"], seats);
     expect(of(name, "comparison.started").at(-1)).toMatchObject({
       session: "g-3",
       fresh: first?.starter,

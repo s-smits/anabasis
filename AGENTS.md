@@ -315,10 +315,12 @@ Write "a person" only for a duty in the list above. Four more were the operator'
 reads (`campaign.setting`, `harness.promoted`), the stop rule refuses the next comparison
 (section 7), and the next step is named by a table and launched by one command (section 4).
 
-Two of the seven can be given once for a campaign in place of each time: `--unattended` on that
-command freezes an exam whose reading holds no fault, and promotes the harness the rule names.
-It is the operator's flag, and a session never adds it of its own accord. Whether it becomes the
-default is the operator's open decision (`docs/plan.md`, row F29).
+Two of the seven are given once, for every campaign: the campaign command freezes an exam whose
+reading holds no fault, and promotes the harness the rule names, without waiting. A campaign runs
+unattended to a typed ending, as a goal runs until it is met (operator, 12 October, deciding
+`docs/plan.md` row F29). `--attended` takes both back to the operator's word for one campaign.
+Admitting a check that has a fault, and going on past the stop rule, still take the word each time
+(`--admit`, `--past-stop`).
 
 The operator types nothing into a Builder session. Every message a Builder reads is built by the
 host from the contract, the practice tasks, the practice results and the tallies.
@@ -482,11 +484,10 @@ flags.
 The last row is the Harness Builder's controller, which runs a campaign move after move. It asks
 `decide` for the one move that follows (section 7, "What follows a reading"), prints it with its
 reason, makes it by the command of its row, and reads the log again, until the campaign ends or
-`--moves N` are made. `--dry-run` prints the move and makes none. `--unattended` is the
-operator's word, given once, for the freeze of an exam whose reading holds no fault and for the
-promotion the rule names (section 3); without it a campaign runs once every fault of its checks
-is admitted, and a step read twice is reported and not promoted, so that the campaign waits
-there for `promote.ts`.
+`--moves N` are made. `--dry-run` prints the move and makes none. A campaign freezes an exam
+whose reading holds no fault and promotes the harness the rule names without waiting (section 3).
+Under `--attended` it runs only once every fault of its checks is admitted, and it reports a step
+read twice without promoting it, waiting there for `promote.ts`.
 
 The skill `launch-run` says how it is started: niced, in a process group of its own, with its
 output in two files and the key in Bun's own `--env-file`. A move that solves waits for the
@@ -628,7 +629,7 @@ bun tools/d2/harness-builder.ts --name t-9 --prompt-file <file> --budget 6 --res
   --builder claude-api/claude-sonnet-5-5 --examiner claude-api/claude-sonnet-5-5 \
   --reviewer claude-api/claude-sonnet-5-5 --solver claude-api/claude-sonnet-5-5 --solver-effort high \
   --solve-minutes 8 --solve-model-turns 10 --solves 2 --target 8 --practice 3 \
-  --minutes 20 --turns 60 --practice-solves 6 --exam-tasks 10 --unattended
+  --minutes 20 --turns 60 --practice-solves 6 --exam-tasks 10
 ```
 
 What these commands and flags replaced, and when, is in `docs/simplify.md` (packages A, B and
@@ -968,6 +969,12 @@ launch request authorises one command and no second run beside it. The skills ow
 | Doubting a reading, or asking what a fail was | `whole-run-investigation` |
 | Reading the harnesses a campaign keeps, before a promotion or a handover | `harness-audit` |
 | Handing runs, or a question, to someone outside | `zip-run`, `oracle-handover` |
+
+`/goal` (`.claude/commands/goal.md`, kept from v1) carries one objective of the operator's across a
+session's turns. It states the contract, measures the position on evidence and names the next step,
+until every result has current evidence or one action needs new authority. The product runs the same
+way without a command: a campaign goes on to a typed ending (section 3), and each Builder
+continuation restates its goal (`src/builder/prompt.ts`).
 
 What holds in all of them:
 

@@ -2,7 +2,7 @@
 // command wall's scratch roots inside it, and a write past the cap. The Seatbelt rules are
 // path-based, so the case runs a command under the real command profile to show they still let it
 // write its three roots once those sit on the mounted volume. On Linux nothing caps a seat's disk
-// (`src/verify/disk-cap.ts`): the sized tmpfs in solve-sandbox.test.ts is the probe's launch.
+// (`src/verify/disk-cap.ts`).
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -26,7 +26,7 @@ describe("the disk cap", () => {
       try {
         const dirs = { work: join(root, "work"), home: join(root, "home"), temp: join(root, "tmp") };
         for (const dir of Object.values(dirs)) mkdirSync(dir);
-        const base = solveIsolationPolicy({ repoRoot, cap: { root, bytes: CAP_BYTES } });
+        const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const policy = commandIsolationPolicy(base, dirs);
         const command = [

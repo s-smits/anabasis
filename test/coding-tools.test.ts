@@ -250,7 +250,7 @@ describe("the coding tools on the command wall", () => {
       const dirs = solveDirs(`coding-${String(runtimeProcess.pid)}-${String(Date.now())}`);
       try {
         for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: 16 * 1024 * 1024 } });
+        const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const limits = { shellDefaultSeconds: 1, shellMaxSeconds: 2 };
         const wall: CommandWall = { base, dirs, toolTree: null, limits };

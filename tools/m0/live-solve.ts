@@ -205,7 +205,7 @@ async function shown(
   const cap = { root: dirs.root, bytes: LIMITS.diskBytes };
   const release = await mountDiskCap(cap);
   try {
-    const base = walledBase(
+    const base = await walledBase(
       dirs,
       { repoRoot: REPO, otherTrees: worktreesOf(REPO), diskBytes: cap.bytes },
       "a solve",

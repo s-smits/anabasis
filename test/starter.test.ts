@@ -201,10 +201,7 @@ describe("the account of a harness a Builder is handed", () => {
         writeHarness(bare, WITHOUT_SHELL);
         for (const each of [dirs.home, dirs.runs, dirs.host]) mkdirSync(each, { recursive: true });
         seed(dirs.home);
-        const base = solveIsolationPolicy({
-          repoRoot: dir,
-          cap: { root: dirs.root, bytes: 16 * 1024 * 1024 },
-        });
+        const base = solveIsolationPolicy({ repoRoot: dir });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const wall: CommandWall = {
           base,

@@ -766,6 +766,13 @@ Reads are open otherwise. The network is open for a seat and closed for a check.
   probe, and `test/command.test.ts` gains the three reads. #185's Linux case already goes
   through the command wall.
 - **Lines.** About −370.
+- **Done** at PR #197 (11 October), as written, with three differences: the policy's `profile`
+  (the Seatbelt text and the Linux descriptor) goes too, since only `isolationArgv` read it;
+  the probe is one command, which prints each read's outcome and then writes and reads back
+  under the seat's folder; and with the cap gone from the policy, a tree has one policy, so the
+  probe runs once a process where the cap's root put it in every seat's hash before.
+  `bwrapIsolationArgs` stays, since `bwrapBaselineArgs` builds on it. The source loses 559 lines
+  net (685 out, 126 in); the tests are rewritten at about the same length.
 
 ### W3. One policy a seat, built once
 

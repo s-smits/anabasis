@@ -226,7 +226,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   let prompts = 0;
   try {
     release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
-    const base = walledBase(
+    const base = await walledBase(
       dirs,
       { repoRoot: request.repoRoot, otherTrees: request.otherTrees, diskBytes: limits.diskBytes },
       "a solve",

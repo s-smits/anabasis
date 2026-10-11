@@ -292,14 +292,6 @@ export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSu
   }
 }
 
-/** The whole-machine exposure both bwrap callers open with: a cleared environment, the host root
- *  bound at `/` — writable for the solve sandbox, read-only for the workshop guest — and the
- *  namespace's own `/proc` and `/dev`. One owner rather than two copies that agree until someone
- *  edits one: the guest's copy is hashed into `sandboxPlanDigest`, so drift changes an identity. */
-export function bwrapWholeRootArgs(rootBind: "--dev-bind" | "--ro-bind"): string[] {
-  return ["--clearenv", rootBind, "/", "/", "--proc", "/proc", "--dev", "/dev"];
-}
-
 /**
  * Isolation common to every Bubblewrap launch: a user namespace, a new session, no inherited
  * capabilities, and separate IPC, UTS and cgroup namespaces. Only network isolation is left to the

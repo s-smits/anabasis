@@ -1,7 +1,7 @@
 // A solve's commands, executed under the real command wall on a mounted cap: the home survives
 // between commands, each command's own folder does not, staged input reaches it, neither the
-// host-only folder, the repository nor a reviewer's Claude home can be read, and no command outlives
-// the shell limits. And a command's own folders: fresh for each, and done without on a full volume,
+// host-only folder, the repository, its other worktrees nor a reviewer's Claude home can be read,
+// and no command outlives the shell limits. And a command's own folders: fresh for each, and done without on a full volume,
 // where the command that starts is the one that can empty it.
 import { describe, expect, it } from "bun:test";
 import {
@@ -29,6 +29,14 @@ import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
 const CAP_BYTES = 16 * 1024 * 1024;
+
+/** A wall over a mounted seat, with no tool tree and 30 seconds a command. */
+const walled = (base: CommandWall["base"], dirs: CommandWall["dirs"]): CommandWall => ({
+  base,
+  dirs,
+  toolTree: null,
+  limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
+});
 
 async function run(wall: CommandWall, command: string, stage?: (work: string) => void, timeout?: number) {
   let output = "";
@@ -119,14 +127,9 @@ describe("a solve's walled commands", () => {
       const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
       try {
         for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
+        const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall: CommandWall = {
-          base,
-          dirs,
-          toolTree: null,
-          limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
-        };
+        const wall = walled(base, dirs);
         const inHome = async (command: string) => {
           let output = "";
           const onData = (data: Buffer) => {
@@ -163,7 +166,7 @@ describe("a solve's walled commands", () => {
       try {
         for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
         writeFileSync(join(dirs.host, "config"), "host-canary");
-        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
+        const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const wall: CommandWall = {
           base,
@@ -229,6 +232,37 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
+  it("refuse a command the repository and its other worktree, and let it write and read its own folder", async () => {
+    // The three reads the wall's probe makes before a seat's first command (`walledBase`), here
+    // as a solver's command would spell them.
+    const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reads-")));
+    writeFileSync(join(repoRoot, "secret"), "repo-canary");
+    const sibling = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-sibling-")));
+    writeFileSync(join(sibling, "package.json"), '{ "name": "sibling-canary" }');
+    const dirs = solveDirs(`reads-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+    const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+    try {
+      for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+      const base = solveIsolationPolicy({ repoRoot, otherTrees: [sibling] });
+      if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+      const wall = walled(base, dirs);
+      const read = await run(
+        wall,
+        [
+          `cat ${join(repoRoot, "secret")} 2>/dev/null || echo repo-refused`,
+          `cat ${join(sibling, "package.json")} 2>/dev/null || echo sibling-refused`,
+          "echo own-canary > own && cat own",
+        ].join("; "),
+      );
+      expect(read.output).toBe("repo-refused\nsibling-refused\nown-canary\n");
+    } finally {
+      await release();
+      rmSync(dirs.host, { recursive: true, force: true });
+      rmSync(repoRoot, { recursive: true, force: true });
+      rmSync(sibling, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it.skipIf(runtimeProcess.platform !== "linux")(
     "give each command a temporary directory of its own under the solve's volume, and show it nothing another left in the host's",
     async () => {
@@ -240,14 +274,9 @@ describe("a solve's walled commands", () => {
       writeFileSync(canary, "left by the host");
       try {
         for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
+        const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall: CommandWall = {
-          base,
-          dirs,
-          toolTree: null,
-          limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
-        };
+        const wall = walled(base, dirs);
         // The command's TMPDIR is its own folder under the solve's runs, where the cap counts it,
         // and the host's /tmp with the canary in it is hidden behind an empty private one.
         const first = await run(
@@ -289,14 +318,9 @@ describe("a solve's walled commands", () => {
       writeFileSync(program, "#!/bin/sh\necho ran\n", { mode: 0o755 });
       try {
         for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
+        const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall: CommandWall = {
-          base,
-          dirs,
-          toolTree: null,
-          limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
-        };
+        const wall = walled(base, dirs);
         const closed = await run(
           wall,
           [
@@ -341,14 +365,9 @@ describe("a solve's walled commands", () => {
       const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
       try {
         for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
+        const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-        const wall: CommandWall = {
-          base,
-          dirs,
-          toolTree: null,
-          limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
-        };
+        const wall = walled(base, dirs);
         const own = join(basename(dirs.root), "runs", "run-");
         // `/usr/bin/python3` and `/usr/bin/make` are xcrun shims, which start their tool with TMPDIR
         // reset to the user temporary directory: three days of campaigns left 1.56 million Python

@@ -28,20 +28,17 @@
  */
 import { createLocalBashOperations } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import type { Limits } from "../kernel/condition.ts";
-import { mkdirSync, mkdtempSync, rmSync } from "../meta/filesystem.ts";
-import { basename, join } from "../meta/path.ts";
-import { errorCode } from "../meta/runtime-values.ts";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import { basename, join, resolve } from "../meta/path.ts";
+import { errorCode, errorMessage } from "../meta/runtime-values.ts";
 import { endHolders } from "../verify/disk-cap.ts";
 import {
   BUILT_COMMAND_SCRATCH_ROOT,
   commandIsolationPolicy,
+  shellQuote,
   stageCommandIsolation,
 } from "../verify/solve-command-isolation.ts";
-import {
-  probeHostSolveReadDeny,
-  type SolveIsolationPolicy,
-  solveIsolationPolicy,
-} from "../verify/solve-sandbox.ts";
+import { type SolveIsolationPolicy, solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 
 export interface SolveDirs {
   /** The capped volume's mount point. */
@@ -77,8 +74,14 @@ export interface Walled {
   readonly diskBytes: number;
 }
 
-/** The policies this process has probed and found to hold, by their hash: once a process. */
-const PROBED = new Set<string>();
+/** The probe of each policy this process has started, by its hash: once a process, and the promise
+ *  so that seats that start together wait on one probe (`probeWall`). One that did not hold is
+ *  dropped, so the next seat probes again. */
+const PROBED = new Map<string, Promise<string | null>>();
+/** What a command writes under its seat's root and reads back, the probe's control. */
+const PROBE_MARK = "ANA-WALL-PROBE";
+/** The probe's command is held to what v1's probe was: twenty seconds. */
+const PROBE_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
 
 /**
  * Whether a package index is reached from inside the wall: `reached` where a command run as a
@@ -179,34 +182,77 @@ export function solveDirs(id: string): SolveDirs {
  * in the refusal of a host that cannot wall one.
  *
  * The wall is a test and no convention (`AGENTS.md`, rule 3): before its first use in a process
- * each policy is probed, a canary read in the repository and in its first other worktree, and a
- * read that gets through refuses the wall, with the probe's own lines. Until 10 October the probe
- * ran in the test suite alone, and a sibling worktree's log was readable in every live run. The
- * ancestor-rename guard is reported and refuses nothing here: on the Linux container it fails
- * while every read-deny holds, and a run on such a host is a run under a wall that reads deny.
+ * each policy is probed (`probeWall`), and a probe that does not hold refuses the wall with its own
+ * lines. Until 10 October the probe ran in the test suite alone, and a sibling worktree's log was
+ * readable in every live run.
  */
-export function walledBase(dirs: SolveDirs, wall: Walled, who: string): SolveIsolationPolicy {
+export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
   const otherTrees = wall.otherTrees ?? [];
-  const cap = { root: dirs.root, bytes: wall.diskBytes };
-  const base = solveIsolationPolicy({ repoRoot: wall.repoRoot, otherTrees, cap });
+  const base = solveIsolationPolicy({ repoRoot: wall.repoRoot, otherTrees });
   if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);
-  if (!PROBED.has(base.policyHash)) {
-    const probe = probeHostSolveReadDeny({ repoRoot: wall.repoRoot, otherTrees, cap });
-    const holds =
-      probe.available &&
-      probe.deniedReadRefused &&
-      probe.siblingReadRefused !== false &&
-      probe.controlReadSucceeded &&
-      probe.discriminationReadSucceeded;
-    if (!holds) {
-      throw new Error(
-        `the wall does not hold on this host, so ${who} is not started:\n${probe.evidence.join("\n")}`,
-      );
-    }
-    PROBED.add(base.policyHash);
+  const probe =
+    PROBED.get(base.policyHash) ??
+    probeWall({ base, dirs, toolTree: null, limits: PROBE_LIMITS }, wall.repoRoot, otherTrees[0]);
+  PROBED.set(base.policyHash, probe);
+  const said = await probe;
+  if (said !== null) {
+    if (PROBED.get(base.policyHash) === probe) PROBED.delete(base.policyHash);
+    throw new Error(`the wall does not hold on this host, so ${who} is not started:\n${said}`);
   }
   return base;
+}
+
+/**
+ * Whether `wall` holds, by one command launched as every command of a seat is (`runWalled`): a
+ * canary the host writes in the repository is refused to it, as is `sibling`'s `package.json`,
+ * which every worktree of this repository holds, and a file it writes in its own folder under the
+ * seat's root reads back. Null where all three held, and otherwise the command's output, a line a
+ * step. The last step is the probe's control: a launch that refuses everything fails it, as one
+ * that refuses nothing fails the first.
+ *
+ * Until 11 October the probe ran v1's launch of its sandboxed model process, which no seat of v2
+ * runs, under a policy of its own that only the probe used (`docs/simplify.md`, F5). Nothing is
+ * written in the sibling, which another user may own: a rehearsal as the campaign user refused
+ * every solve on EACCES in the root-owned main tree when the probe wrote a canary there (10 October).
+ */
+export async function probeWall(
+  wall: CommandWall,
+  repoRoot: string,
+  sibling?: string,
+): Promise<string | null> {
+  let folder: string | null = null;
+  try {
+    folder = mkdtempSync(join(resolve(repoRoot), ".ana-wall-probe-"));
+    const canary = join(folder, "canary.txt");
+    writeFileSync(canary, `${PROBE_MARK}\n`, { mode: 0o600 });
+    // A sibling without the file proves nothing by refusing it, so it is not tried.
+    const theirs = sibling === undefined ? null : join(resolve(sibling), "package.json");
+    const reads = [{ name: "repository canary", path: canary }];
+    if (theirs !== null && existsSync(theirs)) {
+      reads.push({ name: "other worktree's package.json", path: theirs });
+    }
+    const command = [
+      ...reads.map(
+        ({ name, path }) =>
+          `if cat ${shellQuote(path)} >/dev/null 2>&1; then echo ${shellQuote(`${name}: read`)}; else echo ${shellQuote(`${name}: refused`)}; fi`,
+      ),
+      `echo ${PROBE_MARK} > probe && cat probe || echo 'own folder: not written and read back'`,
+    ].join("\n");
+    let out = "";
+    const { exitCode } = await runWalled(wall, command, {
+      onData: (data) => {
+        out += data.toString();
+      },
+    });
+    const lines = out.trim().split("\n");
+    const holds = reads.every(({ name }) => lines.includes(`${name}: refused`)) && lines.includes(PROBE_MARK);
+    return holds ? null : `${out.trim()}\nexit ${String(exitCode)}`;
+  } catch (error) {
+    return `the probe did not run: ${errorMessage(error)}`;
+  } finally {
+    if (folder !== null) rmSync(folder, { recursive: true, force: true });
+  }
 }
 
 /**

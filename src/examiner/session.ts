@@ -484,7 +484,7 @@ export async function examineWalled(request: Omit<ExamRequest, "shell"> & Walled
   const release = await mountDiskCap({ root: dirs.root, bytes: request.diskBytes });
   try {
     const shell: CommandWall = {
-      base: walledBase(dirs, request, "an Examiner"),
+      base: await walledBase(dirs, request, "an Examiner"),
       dirs,
       toolTree: null,
       limits: { shellDefaultSeconds: 120, shellMaxSeconds: 600 },

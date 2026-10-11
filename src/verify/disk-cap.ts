@@ -10,13 +10,13 @@
  * ENOSPC. On Linux nothing caps a solve, a Builder session or an Examiner session: each runs its
  * commands under the command wall (`stageCommandIsolation`), which binds the seat's root from
  * the host's disk read-write and mounts no tmpfs there, since the root has to survive from one
- * command to the next. The sized tmpfs of `bytes` is in `isolationArgv` (`solve-sandbox.ts`),
- * the launch of v1's sandboxed model process, which in v2 only the wall's probe makes
- * (`docs/simplify.md`, F5 and F6; read 11 October). So on Linux `mountDiskCap` makes the root
- * and `diskBytes` binds nothing there: nine Builder sessions and 308 solves finished so on a
- * Linux test host on 9 October. A capped volume on Linux would take a loop mount or a quota,
- * neither of which an unprivileged host has, so the gap is stated here and in AGENTS.md section
- * 10 rather than closed, and a campaign on Linux is bounded by its dollar total and its walls.
+ * command to the next. v1 mounted a sized tmpfs of `bytes` in the launch of its sandboxed model
+ * process, which v2 does not make; until 11 October only the wall's probe made it
+ * (`docs/simplify.md`, F5, F6 and W2). So on Linux `mountDiskCap` makes the root and `diskBytes`
+ * binds nothing there: nine Builder sessions and 308 solves finished so on a Linux test host on
+ * 9 October. A capped volume on Linux would take a loop mount or a quota, neither of which an
+ * unprivileged host has, so the gap is stated here and in AGENTS.md section 10 rather than closed,
+ * and a campaign on Linux is bounded by its dollar total and its walls.
  *
  * What stays uncapped. On Darwin the command profile in `solve-command-isolation.ts` also lets a
  * command write the user temporary root system toolchains take through `confstr`, outside the root;
@@ -29,7 +29,7 @@ import { mkdirSync, rmSync, statSync } from "../meta/filesystem.ts";
 import { dirname, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
-export interface DiskCap {
+interface DiskCap {
   /** The one directory the solve's writable roots (work, home, temp) all sit inside. */
   readonly root: string;
   readonly bytes: number;

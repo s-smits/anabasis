@@ -524,7 +524,7 @@ export async function build(request: BuildRequest): Promise<Built> {
   const release = await mountDiskCap({ root: dirs.root, bytes: request.limits.diskBytes });
   try {
     const wall: CommandWall = {
-      base: walledBase(
+      base: await walledBase(
         dirs,
         { repoRoot: request.repoRoot, otherTrees: request.otherTrees, diskBytes: request.limits.diskBytes },
         "a Builder",

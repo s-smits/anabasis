@@ -862,13 +862,14 @@ A solve and a Builder session run on either host, behind Seatbelt on macOS and B
 nine Builder sessions and 308 solves finished on a Linux test host on 9 October. The disk cap holds
 on macOS, where a sparse image is mounted at the root of each solve and each Builder session. On
 Linux nothing caps a solve, a Builder session or an Examiner session: each runs its commands
-under the command wall, which binds its root from the host's disk, and the sized tmpfs is in a
-launch (`isolationArgv`, `src/verify/solve-sandbox.ts`) that only the wall's probe makes; the
-head comment of `src/verify/disk-cap.ts` says so (`docs/simplify.md`, F6). When the required wall is unavailable
-the result is a typed non-result, never an unconfined run. Each wall is probed once a process
-before its first use, with a canary read in the repository and a read of its first other
-worktree's `package.json`, which the probe never writes, and a read that gets through refuses the start with the probe's lines (`walledBase`,
-`src/solve/command.ts`); until 10 October the probe ran in the test suite alone.
+under the command wall, which binds its root from the host's disk and mounts no tmpfs there; the
+head comment of `src/verify/disk-cap.ts` says so (`docs/simplify.md`, F6). When the required wall
+is unavailable the result is a typed non-result, never an unconfined run. Each wall is probed once
+a process before its first use, by one command launched as a seat's commands are (`runWalled`): a
+canary in the repository and its first other worktree's `package.json`, which the probe never
+writes, are refused to it, and a file it writes in its own folder reads back. A probe that does not
+hold refuses the start with its lines (`walledBase`, `src/solve/command.ts`); until 10 October the
+probe ran in the test suite alone, and until 11 October it ran v1's launch, which no seat runs.
 
 ## 11. Working in the repository
 

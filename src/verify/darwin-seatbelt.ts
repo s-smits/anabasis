@@ -36,7 +36,7 @@ import { sbRule } from "./seatbelt-path-guard.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
 export const DARWIN_SEATBELT_ID = "darwin-seatbelt/v1" as const;
-export const DARWIN_SANDBOX_EXEC = "/usr/bin/sandbox-exec";
+const DARWIN_SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 const DARWIN_SYSTEM_PROFILE = "/System/Library/Sandbox/Profiles/system.sb";
 
 export interface DarwinSeatbeltRuntime {

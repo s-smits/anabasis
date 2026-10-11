@@ -30,7 +30,7 @@
  *
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
  * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
- * campaign has recorded none or `--new-setting` changes it. The solves a side, the level, the
+ * campaign has recorded none. The solves a side, the level, the
  * Referee and the cap are a round's, with a round's defaults (`round.ts`), and
  * `--cap` is required as it is there. With no `--reviewer`, every
  * rejection waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.

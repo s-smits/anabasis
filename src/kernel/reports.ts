@@ -40,15 +40,9 @@ interface Reported {
  *  between valid answers, that no solve of the last comparison gave a valid answer, or that a
  *  rejection of an answer to it is not settled. Never which harness, and never a count. */
 /** What a task's author hears of it: how the reference harness did on it in the last comparison
- *  that scored it (every solve valid, some, none), or that it was set aside, is no longer scored,
- *  or was compared under an earlier setting only. */
-export type Outcome =
-  | "reference-every"
-  | "reference-some"
-  | "reference-none"
-  | "disputed"
-  | "exhausted"
-  | "earlier-setting";
+ *  that scored it (every solve valid, some, none), or that it was set aside or is no longer
+ *  scored. */
+export type Outcome = "reference-every" | "reference-some" | "reference-none" | "disputed" | "exhausted";
 
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
  *  (`billedFor`), and what each solve is held at before it starts. */
@@ -203,8 +197,7 @@ export function roomOf(report: JsonObject): "none" | "too-hard" | "room" {
  * F48; `patienceOf`).
  *
  * A move that counts is one of two. The first is a harness a Builder session changed, compared
- * with one reference under the campaign's setting, where the comparison tallied a task and left
- * room (`roomOf`). Such a pair counts once, where it first reported, and reads as its last
+ * with one reference, where the comparison tallied a task and left room (`roomOf`). Such a pair counts once, where it first reported, and reads as its last
  * comparison: a step its repeat does not read again was one draw, and three repeats of one
  * harness are one harness that showed no gain. On 9 October one harness compared with the starter
  * three times, each time on more tasks, stopped a campaign. The second is a whole session that
@@ -216,9 +209,11 @@ export function roomOf(report: JsonObject): "none" | "too-hard" | "room" {
  *
  * What does not count: a comparison of two harnesses no session made, which a control and a
  * reading of the reference against itself are; one stopped on its check defects, cut by its cap,
- * or with every task set aside, which tested nothing; one that left no room, whose answer is
- * another budget or other tasks and no other harness; and whatever stands before the last
- * comparison under another setting, since no comparison is read across two. A harness set against
+ * or with every task set aside, which tested nothing; and one that left no room, whose answer is
+ * other tasks and no other harness. Until 2026-10-11 whatever stood before the last comparison
+ * under another setting id was left out too, and the id names the host's code, so a tree moved to
+ * a new commit between two comparisons read the campaign's moves from the second
+ * (`docs/simplify.md`, A4). A harness set against
  * the starter after it was compared with another reference is that comparison's reading against
  * the starter (`starter-unread`), and no move of its own.
  */
@@ -242,8 +237,6 @@ export function stopRule(events: readonly LogEvent[]) {
       isString(data.fresh) &&
       built.has(data.fresh),
   );
-  const setting = tallied.at(-1)?.data.setting;
-  const from = (tallied.findLast(({ data }) => data.setting !== setting)?.index ?? -1) + 1;
   // The campaign's trigger as its opening records it (`--trigger`, a term kept as a string), or
   // `TRIGGER`.
   const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.trigger;
@@ -255,7 +248,6 @@ export function stopRule(events: readonly LogEvent[]) {
   const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
   for (const { index, data } of tallied) {
     const { old, fresh, starter } = data;
-    if (index < from) continue;
     if (old !== starter) referenced.add(fresh);
     else if (referenced.has(fresh)) continue;
     const pair = `${isString(fresh) ? fresh : ""} ${isString(old) ? old : ""}`;
@@ -269,7 +261,7 @@ export function stopRule(events: readonly LogEvent[]) {
   }
   const practised = practiceRan(events);
   const idle = events.flatMap(({ kind, data }, index) => {
-    if (kind !== BUILD_FINISHED || data.changed !== false || CUT.has(data.ended) || index < from) return [];
+    if (kind !== BUILD_FINISHED || data.changed !== false || CUT.has(data.ended)) return [];
     const began = events.findLastIndex(
       (event, at) => at < index && event.kind === "build.started" && event.data.session === data.session,
     );
@@ -395,13 +387,12 @@ export function unsolved({ old, fresh }: Paired): boolean {
  */
 export function exhausted(events: readonly LogEvent[]): string[] {
   const reports = lastReports(events);
-  const setting = reports.at(-1)?.data.setting;
   // The reference harness: the one last promoted, or the one the first report was made against.
   const reference = promoted(events) ?? reports[0]?.data.old;
   const runs = new Map<string, number>();
   // Its own answers, on whichever side it stood: the old one of a comparison made against it,
   // the fresh one where it was read as the new harness before its promotion.
-  for (const report of reports.filter(({ data }) => data.setting === setting)) {
+  for (const report of reports) {
     const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
     if (side === null) continue;
     for (const pair of pairsReported(events, report)) {
@@ -554,27 +545,24 @@ export function unansweredTwice(events: readonly LogEvent[]): string[] {
  * one the reference answered read as "won" (`docs/simplify.md`, F3). A task no comparison has
  * scored has no outcome.
  *
- * An outcome is of a setting: on 10 October t-10's five tasks tied at 10 turns and read "won" at
- * 3 without a byte of them changing, and the Examiner that heard "won" was told no budget. A task
- * whose last report stands under another setting than the last report's is `earlier-setting`: it
- * was compared, and not under the budget the campaign now compares at.
+ * An outcome is the last report's of the task, whatever the setting id the report carries: a
+ * campaign runs at one setting (`tools/d2/setting.ts`), and the id names the host's code too,
+ * which a tree moved to a new commit changes. Until 2026-10-11 a task whose last report carried
+ * another id than the last report's was `earlier-setting` (`docs/simplify.md`, A4).
  */
 export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
   const outcomes = new Map<string, Outcome>();
   const spent = new Set(exhausted(events));
-  const reports = lastReports(events);
-  const setting = reports.at(-1)?.data.setting;
-  for (const report of reports) {
-    const now = report.data.setting === setting;
+  for (const report of lastReports(events)) {
     for (const pair of pairsReported(events, report)) {
       const valid = pair.old.filter(Boolean).length;
       const reference: Outcome =
         valid === pair.old.length ? "reference-every" : valid === 0 ? "reference-none" : "reference-some";
       const outcome = spent.has(pair.task) ? "exhausted" : reference;
-      outcomes.set(pair.task, now ? outcome : "earlier-setting");
+      outcomes.set(pair.task, outcome);
     }
     const aside = Array.isArray(report.data.aside) ? report.data.aside.filter(isString) : [];
-    for (const task of aside) outcomes.set(task, now ? "disputed" : "earlier-setting");
+    for (const task of aside) outcomes.set(task, "disputed");
   }
   return outcomes;
 }

@@ -172,7 +172,10 @@ describe("the stop rule", () => {
     expect(stopRule(read)).toEqual({ checkpoints: 2, sinceStep: 0, stop: false });
   });
 
-  it("counts under one setting: what was compared under an earlier one is cut, with all before it", () => {
+  it("counts across the setting ids the reports carry: a campaign runs at one setting", () => {
+    // Until 2026-10-11 whatever stood before the last comparison under another setting id was
+    // cut. The id names the host's code too, so a tree moved to a new commit between two
+    // comparisons began the count again (`docs/simplify.md`, A4).
     const earlier = [
       event("build.started", { session: "b-0" }),
       ...solved(undefined, "p1", "h2", [false]),
@@ -183,12 +186,12 @@ describe("the stop rule", () => {
     ];
     expect(stopRule(earlier)).toMatchObject({ checkpoints: 3, sinceStep: 3, stop: true });
     expect(stopRule([...earlier, flat("b-3", "h4", { setting: "s2" })])).toEqual({
-      checkpoints: 1,
-      sinceStep: 1,
-      stop: false,
+      checkpoints: 4,
+      sinceStep: 4,
+      stop: true,
     });
-    // A harness compared again under the new setting counts there: no comparison is read across two.
-    expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toMatchObject({ checkpoints: 1 });
+    // A harness compared again is one harness, whatever id its two comparisons carry.
+    expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toMatchObject({ checkpoints: 3 });
   });
 
   it("counts no comparison that left no room, by the reference's share of valid solves and the new harness's", () => {
@@ -449,8 +452,11 @@ describe("the outcome an Examiner hears of a task", () => {
     );
   });
 
-  it("is of the setting the last comparison was made under: a task compared under an earlier one only says so", () => {
-    // t-10 on 10 October: five tasks tied at 10 turns and read "won" at 3 without changing.
+  it("is each task's last report's, whatever setting id the report carries", () => {
+    // Until 2026-10-11 a task whose last report carried another setting id than the last report's
+    // read `earlier-setting`: t-10 on 10 October tied five tasks at 10 turns and read them "won"
+    // at 3 without changing. A campaign runs at one setting since, and the id names the host's
+    // code too, which a tree moved to a new commit changes: a report under another id is read.
     const shorter = (task: string, harness: string): Condition => {
       const ran = condition(task, harness);
       return { ...ran, limits: { ...ran.limits, modelTurns: 3 } };
@@ -485,10 +491,10 @@ describe("the outcome an Examiner hears of a task", () => {
     ];
     expect(outcomesOf(shortened)).toEqual(
       new Map([
-        ["won", "earlier-setting"],
+        ["won", "reference-none"],
         ["tied", "reference-none"],
-        ["unsolved", "earlier-setting"],
-        ["aside", "earlier-setting"],
+        ["unsolved", "reference-none"],
+        ["aside", "disputed"],
       ]),
     );
   });
@@ -688,7 +694,7 @@ describe("the tasks the reference harness exhausted", () => {
   ];
   const start = [read, ...["e1", "e2", "e3", "open"].flatMap(heldOut)];
 
-  it("are the ones the reference answered in every solve of two comparisons under the setting, but for a third kept by the contract's hash", () => {
+  it("are the ones the reference answered in every solve of two comparisons, but for a third kept by the contract's hash", () => {
     const once = compared(start, "b-1", "h2", SETTING);
     expect(exhausted(once)).toEqual([]);
     // All four: `open` too, which the new harness failed once and the reference never did, since
@@ -702,9 +708,10 @@ describe("the tasks the reference harness exhausted", () => {
     const heard = outcomesOf(twice);
     expect([...heard.values()].filter((outcome) => outcome === "exhausted")).toHaveLength(2);
     expect(heard.get("open") === "reference-every" || heard.get("open") === "exhausted").toBe(true);
-    // Under another setting the count starts again: a report there holds no pair of this setting's
-    // solves, and the earlier reports are not read. A released task is no held-out one.
-    expect(exhausted(compared(twice, "b-3", "h4", "other"))).toEqual([]);
+    // A report under another setting id counts with the rest: the id names the host's code too,
+    // and a campaign runs at one setting. Until 2026-10-11 the count started again there, and a
+    // tree moved to a new commit drew every closed task again. A released task is no held-out one.
+    expect(exhausted(compared(twice, "b-3", "h4", "other"))).toEqual(spent);
     const released = [...twice, event("task.state", { version: spent[0] ?? "", state: "released" })];
     expect(exhausted(released)).not.toContain(spent[0]);
   });

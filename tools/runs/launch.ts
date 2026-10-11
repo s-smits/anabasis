@@ -33,10 +33,9 @@
  * `src/kernel/size.ts`): the smallest results that clear its level, and the plan's power at it.
  * They say when the cap holds a reserve for fewer solves than the comparison's test makes.
  * The setting it would run under is the campaign's recorded one (`tools/d2/setting.ts`): a flag
- * that names another is refused here as the command would refuse it, unless `--new-setting` is
- * passed. The notes say when that setting is not the one the log's last test-side solves ran
- * under, since no tally on record then speaks for it. A launch that names no `--solver` solves as
- * the stored cycle's own, which it does not open, and says nothing of the solver.
+ * that names another is refused here as the command would refuse it. A launch that names no
+ * `--solver` solves as the stored cycle's own, which it does not open, and says nothing of the
+ * solver.
  *
  * A session with no comparison scores nothing, so it meets the session's own admission
  * (`sessionAdmission`): its cap, a checker that has been read, and the stop rule. An Examiner
@@ -96,14 +95,7 @@ import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import { CHECKPOINT_OPTIONS } from "../d2/checkpoint.ts";
 import { EXAMINE_OPTIONS } from "../d1b/examine.ts";
 import { capRead, ROUND_OPTIONS, SESSION_OPTIONS } from "../d2/round.ts";
-import {
-  firstRecord,
-  type NamedSetting,
-  recordedSetting,
-  restarts,
-  SETTING_OPTIONS,
-  settingAsked,
-} from "../d2/setting.ts";
+import { firstRecord, recordedSetting, SETTING_OPTIONS, settingAsked } from "../d2/setting.ts";
 import {
   BUILDER,
   CHECKPOINT,
@@ -143,15 +135,11 @@ export interface Host {
   readonly missing: string | null;
   /** Why the command would refuse this session's id (`spent`, `claimed`), or null. */
   readonly spent: string | null;
-  /** Who the command's solves would be by and what they would be held to, as its four flags name
-   *  them (`tools/d2/setting.ts`), and who the log's last test-side solve was by, null before any. */
-  readonly named: NamedSetting;
-  readonly ran: ReturnType<typeof solverLast>;
 }
 
 /** What a comparison's launch is asked for beside it: what the comparison wants, as its flags name
  *  it, and whether its id is free. */
-export interface Asked extends Host, Omit<Wanted, "restarted"> {
+export interface Asked extends Host, Wanted {
   /** Why the comparison's id is taken (`reportedAs`), or null. */
   readonly reported: string | null;
   /** Whether the log holds this comparison's own start (`begun`): it was admitted when it began,
@@ -252,7 +240,7 @@ function flagOf(args: readonly string[], name: string): string | undefined {
 /** Why a round or a checkpoint should not be launched, and what its reader should know when it is:
  *  the comparison's own admission on this log, then what only its id and this host can refuse. */
 export function preflight(supply: Supply, asked: Asked) {
-  const { refusals, notes } = admission(supply, { ...asked, restarted: restarts(asked.named, asked.ran) });
+  const { refusals, notes } = admission(supply, asked);
   // A comparison that began is not asked again, here as in the command: a checkpoint that set a
   // task aside and was stopped could not be launched again while the launcher asked the whole
   // check of it a second time (the third review, row F45).
@@ -342,7 +330,6 @@ export function settingFlagged(values: Readonly<Record<string, Loose>>, events: 
       "solve-model-turns": text(values["solve-model-turns"]),
       tasks: text(values.tasks),
       target: text(values.target),
-      "new-setting": values["new-setting"] === true,
     },
     recordedSetting(events),
   );
@@ -427,7 +414,6 @@ export function askedFlagged(values: Readonly<Record<string, Loose>>, events: re
     level: Number(values.level),
     trigger: Number(values.trigger),
     builds: true,
-    restarted: restarts(setting.named, ran),
   };
   return { setting, ran, reference: String(values.reference), comparison, session };
 }
@@ -473,8 +459,6 @@ export async function launch(args: readonly string[]): Promise<void> {
     missing: isString(envFile) && !existsSync(envFile) ? envFile : null,
     // A checkpoint runs no session, so no id of one can be spent on it.
     spent: checking ? null : (examining ? claimed : alone ? sessionTaken : spent)(events ?? [], session),
-    named: asked.setting.named,
-    ran: asked.ran,
   };
   const { refusals, notes } = examining
     ? examPreflight(events, host)

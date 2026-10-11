@@ -41,7 +41,6 @@ const WANTED: Wanted = {
   trigger: 0.25,
   builds: true,
   cap: { dollars: 600, reserve: 10 },
-  restarted: [],
 };
 const LIMITS = {
   wallSeconds: 7200,
@@ -117,7 +116,7 @@ describe("what a log holds for the next comparison", () => {
     });
   });
 
-  it("takes the untied share from the last comparison that tallied a task under the log's last setting", () => {
+  it("takes the untied share from the last comparison that tallied a task, whatever setting id it carries", () => {
     // Six of the eight tasks closed by the reference in the last one: two to win.
     const closed = (count: number) => ({ valid: { old: [8 - count, 0, count], fresh: [0, 0, 8] } });
     const log = [
@@ -129,9 +128,11 @@ describe("what a log holds for the next comparison", () => {
       reported("b-4", { scored: { wins: 0, losses: 0, ties: 0 }, versions: [], setting: here.setting }),
     ];
     expect(supplyOf(log).untied).toBe(0.25);
-    // A comparison made under other limits says nothing of the solver the log's last solves were.
+    // A setting id names the host's code too, and a campaign runs at one setting: solves under
+    // another id, as after a tree moved to a new commit, leave the share where it was. Until
+    // 2026-10-11 they read no share, and the next comparison counted every task.
     const moved = [...log, ...longer.events];
-    expect(supplyOf(moved).untied).toBeNull();
+    expect(supplyOf(moved).untied).toBe(0.25);
     expect(
       supplyOf([...moved, reported("b-5", { ...tallied(4, 0, longer.setting), ...closed(4) })]).untied,
     ).toBe(0.5);
@@ -189,11 +190,11 @@ describe("what a log holds for the next comparison", () => {
     const log = [...here.events, control];
     // The same pair again: the reference closed two tasks, and six may be won, the ones nobody
     // answered among them.
-    expect(supplyOf(log, "p1", undefined, "h0").untied).toBeCloseTo(7 / 8, 10);
-    expect(supplyOf(log, "h0", undefined, "p1").untied).toBeCloseTo(6 / 8, 10);
+    expect(supplyOf(log, "p1", "h0").untied).toBeCloseTo(7 / 8, 10);
+    expect(supplyOf(log, "h0", "p1").untied).toBeCloseTo(6 / 8, 10);
     // Another harness against those programs: no comparison of that pair, so no share.
-    expect(supplyOf(log, "p1", undefined, "h1").untied).toBeNull();
-    // With no harness named, the last comparison under the setting stands, as before.
+    expect(supplyOf(log, "p1", "h1").untied).toBeNull();
+    // With no harness named, the last comparison stands, as before.
     expect(supplyOf(log, "p1").untied).toBeCloseTo(7 / 8, 10);
     const pair = reported("c-2", {
       ...tallied(5, 0, here.setting),
@@ -202,7 +203,7 @@ describe("what a log holds for the next comparison", () => {
       starter: "h0",
       valid: { old: [6, 1, 1], fresh: [0, 0, 8] },
     });
-    expect(supplyOf([...log, pair, control], "p1", undefined, "h1").untied).toBeCloseTo(7 / 8, 10);
+    expect(supplyOf([...log, pair, control], "p1", "h1").untied).toBeCloseTo(7 / 8, 10);
   });
 
   it("counts the tasks held out since that comparison, and the ones that wait for a label", () => {
@@ -291,11 +292,6 @@ describe("whether a comparison may start", () => {
       expect.stringContaining("12 scored tasks, the 1 held out since counted whole, leave about 1.0 untied"),
     ]);
     expect(admission({ ...allTied, since: 2 }, WANTED).refusals).toEqual([]);
-    // A comparison asked for under another setting than the log's last solves counts every task,
-    // since the share on record is that other setting's, and says what the caller found of it.
-    const other = admission(tied, { ...WANTED, restarted: ["the tallies on record are another setting's"] });
-    expect(other.refusals).toEqual([]);
-    expect(other.notes.at(-1)).toBe("the tallies on record are another setting's");
   });
 
   it("refuses a comparison with no dollar cap, and says when the cap reserves too few solves", () => {

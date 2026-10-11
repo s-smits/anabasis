@@ -475,12 +475,13 @@ The setting of a campaign is recorded once in its log, as the event `campaign.se
 `--solver-effort`, `--solve-minutes`, `--solve-model-turns`), and which tasks
 are scored (`--tasks` or `--target`). The first command that begins a comparison records what it
 names, with the defaults for the rest. From then on a command that names nothing runs under the
-record, and one whose flag names another is refused, by the command and by the launcher, unless
-`--new-setting` gives the operator's word that the campaign's setting changes there. A campaign
-whose solves were made before a setting was recorded has one all the same, the one its last
-test-side solves ran under, and the first record is held to it in the same way (`firstRecord`).
-A solver that is another model, at another effort or under other limits is another solver, and no
-solve on record then counts.
+record, and one whose flag names another is refused, by the command and by the launcher: the
+setting does not change, and another setting is another campaign. Until 11 October
+`--new-setting` changed it, and every fold then read the log by setting id, which names the
+host's code too, so a tree moved to a new commit between two comparisons began the stop rule,
+the exhausted tasks and the Examiner's outcomes again (`docs/simplify.md`, A4). A campaign whose
+solves were made before a setting was recorded has one all the same, the one its last test-side
+solves ran under, and the first record is held to it (`firstRecord`).
 
 Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.10
 (`--level`) and trigger 0.25 (`--trigger`), an objective margin of 0.01 (`--margin`), a stop past 3 tasks with a check defect (`--defects`), a patience of 6 (`--patience`),

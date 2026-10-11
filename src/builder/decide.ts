@@ -54,8 +54,8 @@
  *    that changed nothing, since every practice solve passed, and stopped: whether the tasks left
  *    room was never measured.
  *
- * A setting is recorded once and again at each change (`campaign.setting`), and no reading is
- * carried across two (`here`, `ground.ts`).
+ * A setting is recorded once (`campaign.setting`, `tools/d2/setting.ts`) and does not change, so
+ * every comparison of the log is read (`ground.ts`).
  *
  * A campaign runs at one budget, the one its setting names (`AGENTS.md`, section 1). Until 11
  * October the table also walked a ladder of shorter budgets: a comparison was read again at each
@@ -223,7 +223,7 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
     );
   }
   const ground = groundOf(events, plan);
-  const open = ground.here.find(({ report }) => report === null);
+  const open = ground.all.find(({ report }) => report === null);
   if (open !== undefined) {
     return {
       move: "compare",
@@ -334,8 +334,8 @@ function toPractise(ground: Ground, supply: ReturnType<typeof supplyOf>): Decide
  * nothing says what one bills, and it starts.
  */
 function afforded(ground: Ground, next: Extract<Decided, { move: "compare" }>): Decided {
-  const { events, plan, here } = ground;
-  const last = here.findLast(({ report }) => report !== null && report.capped !== true);
+  const { events, plan, all } = ground;
+  const last = all.findLast(({ report }) => report !== null && report.capped !== true);
   if (plan.left == null || last === undefined) return next;
   const sides = (noise: boolean): number => (noise ? 3 : 2);
   const was = billedParts(events, last.id).comparison;
@@ -382,14 +382,14 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
   const step = onStep({ ...groundOf(events, plan), latest: harness });
   if (step?.move === "promote") return null;
   return step === null
-    ? `harness ${short(harness)} has not read a step and its repeat against the reference harness under the campaign's setting`
+    ? `harness ${short(harness)} has not read a step and its repeat against the reference harness`
     : step.why;
 }
 
 /** After a promotion the tasks change, once. Null where no promotion waits for it. */
 function afterPromotion({ events, all, reference }: Ground): Decided | null {
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  if (reference === null || promotedAt <= events.findLastIndex(({ kind }) => kind === SETTING)) return null;
+  if (reference === null || promotedAt === -1) return null;
   // Promoted on a comparison it was read in, and never yet the reference side of one: the tasks
   // change, once, since the ones the campaign holds were answered by the harness now the
   // reference, and the next epoch's are the ones it fails. A comparison made against it, after
@@ -413,10 +413,10 @@ function afterPromotion({ events, all, reference }: Ground): Decided | null {
  * and the harness is promoted. Null where the latest harness has read no step twice.
  */
 function onStep(ground: Ground): Decided | null {
-  const { plan, here, reference, latest } = ground;
+  const { plan, all, reference, latest } = ground;
   if (latest === null || latest === reference) return null;
   const { level, trigger } = plan.wanted;
-  if (!readTwice(pairOf(here, latest, reference), level, trigger)) return null;
+  if (!readTwice(pairOf(all, latest, reference), level, trigger)) return null;
   return {
     move: "promote",
     harness: latest,
@@ -462,7 +462,7 @@ function heldSince(events: readonly LogEvent[], after: number): number {
  * starter winning on the new tasks, which is room by another name, and is not repeated.
  */
 function onReference(ground: Ground): Decided {
-  const { events, all, here, reference, starter, tasksShort } = ground;
+  const { events, all, reference, starter, tasksShort } = ground;
   const idle = build("no session has left a harness that is not the reference harness");
   if (reference === null || starter === null || reference === starter) return idle;
   const last = all.findLast(({ report }) => report !== null);
@@ -477,16 +477,16 @@ function onReference(ground: Ground): Decided {
       )
     );
   }
-  const control = pairOf(here, starter, reference).at(-1);
+  const control = pairOf(all, starter, reference).at(-1);
   if (control === undefined || control !== last?.report) return idle;
   return afterComparison(ground, control, starter, "starter");
 }
 
 /** The rows that follow from the latest harness and its last comparison with the reference one. */
 function onLatest(ground: Ground): Decided {
-  const { events, plan, all, here, reference, latest, tasksShort } = ground;
+  const { events, plan, all, reference, latest, tasksShort } = ground;
   if (latest === null || latest === reference) return onReference(ground);
-  const last = pairOf(here, latest, reference).at(-1);
+  const last = pairOf(all, latest, reference).at(-1);
   if (last !== undefined) return afterComparison(ground, last, latest, "latest");
   const lastAt = all.at(-1)?.at ?? -1;
   const sessions = events.filter(
@@ -495,7 +495,7 @@ function onLatest(ground: Ground): Decided {
   ).length;
   const needed = all.length === 0 ? 1 : plan.sessions;
   // Under a setting no comparison has run in yet, the harness is read there at once.
-  if (here.length > 0 && sessions < needed) {
+  if (all.length > 0 && sessions < needed) {
     return build(
       `${String(sessions)} of ${plural(needed, "Builder session")} before the next comparison have run`,
     );
@@ -510,7 +510,7 @@ function onLatest(ground: Ground): Decided {
     );
   }
   const why =
-    here.length === 0
+    all.length === 0
       ? `harness ${short(latest)} has not been compared under the campaign's setting`
       : `${plural(sessions, "Builder session")} since the last comparison left harness ${short(latest)}`;
   return toTarget(ground, why) ?? compare(why, noiseRead(ground) === null ? "noise" : "alone");
@@ -527,8 +527,8 @@ function onLatest(ground: Ground): Decided {
  * the budget for a repeat of two sides and not of three, four comparisons after the reference
  * had been read against itself on the same tasks.
  */
-function noiseRead({ events, here, reference }: Ground): string | null {
-  const read = here.findLast(
+function noiseRead({ events, all, reference }: Ground): string | null {
+  const read = all.findLast(
     ({ noise, old, report }) => noise && old === reference && report !== null && report.capped !== true,
   );
   const since = events.some(
@@ -540,7 +540,7 @@ function noiseRead({ events, here, reference }: Ground): string | null {
 
 /** The table's rows for the last comparison of the latest harness with the reference one. */
 function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh: Fresh): Decided {
-  const { events, all, here, tasksShort, reference } = ground;
+  const { events, all, tasksShort, reference } = ground;
   const id = isString(last.session) ? last.session : "";
   const { reading } = last;
   const control = fresh === "starter";
@@ -627,7 +627,7 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
     }
     return build(`comparison ${id} read no step with room to gain: harness ${short(latest)} did not help`);
   }
-  const unroomed = pairOf(here, latest, reference).filter(
+  const unroomed = pairOf(all, latest, reference).filter(
     (report) => report.reading !== STEP && roomOf(report) !== ROOM,
   ).length;
   if (unroomed > ground.plan.patience) {

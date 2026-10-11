@@ -570,7 +570,7 @@ describe("a campaign", () => {
     // limit, and a harness no comparison measured is refused the word alone.
     const refused = promote("--harness", digest, "--yes");
     expect(refused).toContain(
-      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not read a step and its repeat against the reference harness under the campaign's setting`,
+      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not read a step and its repeat against the reference harness`,
     );
     expect(refused).toContain("not promoted: a step is promoted once it was read again");
     expect(promotions()).toEqual([]);
@@ -666,12 +666,12 @@ describe("a campaign", () => {
       "--solve-minutes 5 names another setting than the campaign's, which was recorded as --solve-minutes 8";
     await expect(roundCommand([...flags, "--solve-minutes", "5"], seats)).rejects.toThrow(other);
     expect(checkpoint("--solve-minutes", "5").stderr.toString()).toContain(other);
-    // On the operator's word it is the campaign's from here on, once the command begins.
+    // No word changes it: `--new-setting` is no flag since 2026-10-11, and another setting is
+    // another campaign.
     await expect(roundCommand([...flags, "--solve-minutes", "5", "--new-setting"], seats)).rejects.toThrow(
-      "name --builder",
+      "--new-setting",
     );
-    expect(seen).toEqual([480, 40, 300, 0]);
-    // Nothing began, so nothing was recorded: the campaign's setting is still the eight minutes.
+    expect(seen).toEqual([480, 40]);
     const kept = read(campaign.log).filter(({ kind }) => kind === "campaign.setting");
     expect(kept.map(({ data }) => data.minutes)).toEqual([8]);
     expect(read(campaign.log).some(({ data }) => data.session === "z-4")).toBe(false);
@@ -758,10 +758,6 @@ describe("a campaign", () => {
     const rest = await refused(roundCommand([...named, "--session", "z-1"]));
     expect(rest).toContain("the log holds no held-out task to score");
     expect(rest).not.toContain(refusal);
-    // So it is on the operator's word that the setting is new.
-    expect(await refused(roundCommand([...flags, "--session", "z-1", "--new-setting"]))).not.toContain(
-      refusal,
-    );
     expect(read(campaign.log).some(({ kind }) => kind === "campaign.setting")).toBe(false);
   });
 });

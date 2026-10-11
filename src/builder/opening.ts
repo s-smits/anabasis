@@ -143,7 +143,6 @@ export function planOf(
       target: isNumber(named) ? named : (beside.target ?? TARGET),
       level: beside.level,
       trigger: beside.trigger,
-      restarted: [],
     },
     left:
       opening?.budget == null

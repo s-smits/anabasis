@@ -28,7 +28,6 @@ import {
   settingFlagged,
   start,
 } from "../tools/runs/launch.ts";
-import { LIMITS } from "../tools/d2/campaign.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
 
 /** A campaign whose checker was read with no fault and is not frozen. */
@@ -57,8 +56,6 @@ const ASKED: Asked = {
   running: [],
   missing: null,
   spent: null,
-  named: { solver: undefined, limits: LIMITS },
-  ran: null,
 };
 
 describe("a launch's preflight", () => {
@@ -70,7 +67,6 @@ describe("a launch's preflight", () => {
       trigger: 0.25,
       builds: true,
       cap: ASKED.cap,
-      restarted: [],
     };
     expect(preflight(SETS, ASKED)).toEqual(admission(SETS, wanted));
     // Both are said at once: what the log refuses, then what the host does.
@@ -247,25 +243,8 @@ describe("a launch's reading of the setting", () => {
     expect(() => settingFlagged({ "solve-minutes": "5" }, log)).toThrow(
       "--solve-minutes 5 names another setting than the campaign's",
     );
-    expect(settingFlagged({ "solve-minutes": "5", "new-setting": true }, log).record).toMatchObject({
-      minutes: 5,
-    });
     // An Examiner's --tasks is how many tasks it may write, and no scored set: nothing is refused.
     expect(settingFlagged({ examiner: "claude/claude-opus-5-5", tasks: "6" }, log).tasks).toBeUndefined();
-  });
-
-  it("says in a note when that setting is not the one the log's last solves ran under", () => {
-    const ran = { model: "p/m", effort: "high", limits: LIMITS };
-    const longer = { solver: undefined, limits: { ...LIMITS, wallSeconds: 4 * 3600 } };
-    const told = "are another setting's";
-    expect(preflight(SETS, { ...ASKED, ran }).notes.join("\n")).not.toContain(told);
-    expect(preflight(SETS, { ...ASKED, named: longer, ran }).notes.at(-1)).toContain(told);
-    // The share on record is then another setting's, and every task is counted whole.
-    const tied = { ...SETS, held: 12, untied: 0.1 };
-    expect(preflight(tied, { ...ASKED, ran }).refusals).toHaveLength(1);
-    expect(preflight(tied, { ...ASKED, named: longer, ran }).refusals).toEqual([]);
-    // An Examiner session solves nothing, so nothing of the kind is said of it.
-    expect(examPreflight([], { ...ASKED, named: longer, ran }).notes.join("\n")).not.toContain(told);
   });
 });
 

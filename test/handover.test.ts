@@ -31,7 +31,6 @@ const WANTED: Wanted = {
   trigger: 0.25,
   builds: true,
   cap: { dollars: 600, reserve: 10 },
-  restarted: [],
 };
 const ASKED = { reference: "promoted", comparison: WANTED, session: { cap: WANTED.cap } };
 const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-handover-")));

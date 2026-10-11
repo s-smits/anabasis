@@ -575,6 +575,7 @@ harnesses answered at the full limit (t-10, `docs/handover-2026-10-10.md`).
 - **Tests.** `test/setting.test.ts` (15), `test/decide.test.ts` (3), `test/admission.test.ts`
   (2), `test/reports.test.ts` (3), `test/campaign.test.ts` (2), `test/runs-launch.test.ts` (2).
 - **Lines.** About −100 (*estimate*).
+- **Done** at PR #198 (11 October), as written, with one addition: the setting filter of `supplyOf` and the `stood` report `groundOf` passed it go too, and `Ground.here` is `all`. The filters read the setting id, which names the host's code, so a tree moved to a new commit between two comparisons had begun the stop rule, the exhausted tasks, the untied share and the Examiner's outcomes again.
 
 ### Package B. A comparison without its extras
 

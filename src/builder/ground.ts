@@ -1,21 +1,20 @@
 /**
- * What move 7 reads its rows from: a campaign's plan, and its log as comparisons by setting.
+ * What move 7 reads its rows from: a campaign's plan, and its log as comparisons.
  *
  * The table (`decide.ts`) asks one question after another of the same reading of the log, which
- * is made here once: every comparison in the order it began, the ones under the campaign's
- * setting, the reference harness and the last one a session left, and what the next comparison
- * would be short of. It adds no fold of its own beside the owners it reads: the supply
- * (`admission.ts`), the reports and the reference (`reports.ts`).
+ * is made here once: every comparison in the order it began, the reference harness and the last
+ * one a session left, and what the next comparison would be short of. It adds no fold of its own
+ * beside the owners it reads: the supply (`admission.ts`), the reports and the reference
+ * (`reports.ts`).
  *
- * A setting is recorded once and again at each change (`campaign.setting`), and no reading is
- * carried across two: the comparisons under the campaign's setting are the ones since its last
- * record. Until 11 October a campaign walked a ladder of shorter budgets and returned to one, so
- * every stretch of the log that stood under a setting was read; a campaign runs at one budget
- * since (`docs/simplify.md`, package A).
+ * A campaign runs at one setting, recorded once (`campaign.setting`, `tools/d2/setting.ts`), so
+ * every comparison of the log is read. Until 11 October a setting could be set again, and a
+ * campaign walked a ladder of shorter budgets and returned to one, so the comparisons since the
+ * last record were read apart (`docs/simplify.md`, package A).
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
-import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
+import { isString, type JsonObject } from "../meta/json-shape.ts";
 import { shortOf, supplyOf, type Wanted } from "./admission.ts";
 
 /** What a campaign was set to run by: what move 7 reads beside the log. */
@@ -31,7 +30,7 @@ export interface Plan {
    *  the caller holds a count. */
   readonly practice?: number | undefined;
   /** The size a comparison is asked for at, as its admission reads it. */
-  readonly wanted: Pick<Wanted, "target" | "level" | "trigger" | "restarted">;
+  readonly wanted: Pick<Wanted, "target" | "level" | "trigger">;
   /** The operator's reason to go on past the stop rule, where one was given. */
   readonly pastStop?: string | undefined;
   /** Whether the campaign opened from a prompt: its exam is then drafted, and no pack holds it. */
@@ -61,8 +60,6 @@ export interface Ground {
   readonly events: readonly LogEvent[];
   readonly plan: Plan;
   readonly all: readonly Compared[];
-  /** The comparisons under the campaign's setting: the ones since its last record. */
-  readonly here: readonly Compared[];
   /** The reference harness, null before any comparison or promotion has named it. */
   readonly reference: string | null;
   /** The Starter Built Harness, as the reports name it; null before any comparison reported. */
@@ -76,7 +73,6 @@ export interface Ground {
 }
 
 const STARTED = "comparison.started";
-const SETTING = "campaign.setting";
 
 /** Every comparison of a log, in the order they began. One a log of 8 October holds by its report
  *  alone stands where it first reported. */
@@ -130,20 +126,12 @@ export function idleDrafts(events: readonly LogEvent[]): number {
 /** What the rows on the comparisons are read from, for a log and its plan. */
 export function groundOf(events: readonly LogEvent[], plan: Plan): Ground {
   const all = comparisonsOf(events);
-  // The comparisons since the last record of the setting: a log with no record is one setting.
-  const recorded = events.findLastIndex(({ kind }) => kind === SETTING);
-  const here = all.filter(({ at }) => at > recorded);
-  // The share of tasks a comparison left untied was measured under its setting, so the one read
-  // is the last that tallied under the campaign's own: none, where it has not stood there yet,
-  // and then every task is counted whole. A budget set by the rule is set to untie them.
-  const stood = here.findLast(({ report }) => asRecord(report?.scored) !== null)?.report ?? null;
   const starter = all.map(({ report }) => report?.starter).find(isString) ?? null;
-  const supply = supplyOf(events, "promoted", stood);
+  const supply = supplyOf(events);
   return {
     events,
     plan,
     all,
-    here,
     reference: promoted(events) ?? starter,
     starter,
     latest: latestBuilt(events),

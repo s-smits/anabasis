@@ -23,7 +23,7 @@ const PLAN: Plan = {
   // The plan's three, which these rows were written against; the default is six (`PATIENCE`).
   patience: 3,
   unprepared: false,
-  wanted: { target: 12, level: 0.1, trigger: 0.25, restarted: [] },
+  wanted: { target: 12, level: 0.1, trigger: 0.25 },
 };
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
 const heldOut = (version: string) => [
@@ -802,7 +802,7 @@ describe("what a campaign runs by", () => {
       sessions: 2,
       patience: 6,
       unprepared: false,
-      wanted: { target: 12, level: 0.1, trigger: 0.25, restarted: [] },
+      wanted: { target: 12, level: 0.1, trigger: 0.25 },
       left: { dollars: 360, reserve: 10 },
       prompted: false,
     });
@@ -821,7 +821,7 @@ describe("what a campaign runs by", () => {
       patience: 6,
       unprepared: true,
       // The setting on record names twelve tasks to score, which stands over the caller's nine.
-      wanted: { target: 12, level: 0.2, trigger: 0.3, restarted: [] },
+      wanted: { target: 12, level: 0.2, trigger: 0.3 },
       left: null,
       prompted: false,
       pastStop: "why",
@@ -833,13 +833,14 @@ describe("a promotion by hand", () => {
   it("is the plan's where the harness read a step and its repeat, and says why where not", () => {
     const stepped = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
     expect(unpromoted(stepped, PLAN, "h1")).toBe(
-      "harness h1 has not read a step and its repeat against the reference harness under the campaign's setting",
+      "harness h1 has not read a step and its repeat against the reference harness",
     );
     const again = [...stepped, ...compared("g-2", "h1", "step", { tally: [10, 0, 2] })];
     expect(unpromoted(again, PLAN, "h1")).toBeNull();
     // Another harness of the campaign rests on nothing.
     expect(unpromoted(again, PLAN, "h9")).toContain("harness h9 has not read a step and its repeat");
-    // A step read under an earlier setting is none under the campaign's.
-    expect(unpromoted([...again, setting(10)], PLAN, "h1")).toContain("has not read a step and its repeat");
+    // A record of the setting after the step changes nothing: a campaign runs at one setting, and
+    // until 2026-10-11 a step read before a second record was none under the campaign's.
+    expect(unpromoted([...again, setting(10)], PLAN, "h1")).toBeNull();
   });
 });

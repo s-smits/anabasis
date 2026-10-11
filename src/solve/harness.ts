@@ -24,14 +24,7 @@ import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readlinkSync,
-  realpathSync,
-  writeFileSync,
-} from "../meta/filesystem.ts";
+import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -135,18 +128,6 @@ function located(module: string, dir: string): string {
   return places
     .reduce((text, place) => text.replaceAll(place, "<harness>"), module)
     .replace(BUNDLED_PATH, "");
-}
-
-/**
- * The guide a kept harness state holds, as a solver under it read it, or null where the state holds
- * none. For a reader of a solve that has the state's folder and no use for its tools. Read only
- * where it is a file of the state's own: a state is kept with its links as they were, and a guide
- * linked to a host file is refused where the harness is opened (`openHarness`), so it is not read
- * here either.
- */
-export function guideOf(dir: string): string | null {
-  const file = join(dir, `${AGENT_DIR}${GUIDE_FILE}`);
-  return existsSync(file) && lstatSync(file).isFile() ? readFileSync(file, "utf8") : null;
 }
 
 export async function openHarness(dir: string): Promise<Harness> {

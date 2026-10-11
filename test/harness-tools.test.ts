@@ -25,12 +25,13 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, relative } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
-import { guideOf, harnessTools, openHarness } from "../src/solve/harness.ts";
+import { harnessTools, openHarness } from "../src/solve/harness.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
-const C07 = "/Users/air/Developer/anabasis-cycles-4c67fc/hb-bundles/veryhard-hb-4c67fc-c07";
+/** v1's sweep 4c67fc bundle c07, where a host keeps one: `ANA_C07_BUNDLE` names its folder. */
+const C07 = runtimeProcess.env.ANA_C07_BUNDLE ?? "";
 const CAP_BYTES = 64 * 1024 * 1024;
 const TASK = { taskId: "t-1", family: "fixture", publicInput: { base: 7 } };
 const darwin = runtimeProcess.platform === "darwin";
@@ -219,16 +220,10 @@ describe("a v1 harness state", () => {
       mkdirSync(join(borrowed, "node_modules"));
       symlinkSync(elsewhere, join(borrowed, "node_modules", "sixfold"));
       await expect(openHarness(borrowed)).rejects.toThrow("index.cjs, which is outside the harness");
-      const honestGuide = tools("honest-guide", "");
       const guide = tools("guide", "");
       rmSync(join(guide, "agent", "BUILT_AGENTS.md"));
       symlinkSync(secret, join(guide, "agent", "BUILT_AGENTS.md"));
       await expect(openHarness(guide)).rejects.toThrow("agent/BUILT_AGENTS.md links outside the harness");
-      // A reader of a kept state reads the guide the solver read, and never through such a link.
-      expect(guideOf(guide)).toBeNull();
-      expect(guideOf(honestGuide)).toBe(readFileSync(join(FIXTURE, "agent", "BUILT_AGENTS.md"), "utf8"));
-      rmSync(join(honestGuide, "agent", "BUILT_AGENTS.md"));
-      expect(guideOf(honestGuide)).toBeNull();
       // Its own files and a package installed under it still bundle.
       const honest = tools("honest", 'import six from "sixfold";\nexport const SIX = six;');
       const sixfold = join(honest, "node_modules", "sixfold");
@@ -303,7 +298,7 @@ describe("a v1 harness state", () => {
     120_000,
   );
 
-  it.skipIf(!darwin || !existsSync(C07))(
+  it.skipIf(!darwin || C07 === "" || !existsSync(C07))(
     "lists the sweep's c07 domain tools as its model received them",
     async () => {
       // Opened as the live driver opens it, by a path relative to this process: the shell runs each

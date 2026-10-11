@@ -8,6 +8,12 @@ node_modules
 __pycache__/
 # A test fixture's scratch inside the checkout, at any depth (v1's tests named theirs this way).
 **/.ana-scratch-*/
+# The wall probe's canary folder, which the probe removes and a killed process may leave
+# (`probeWall`, `src/solve/command.ts`).
+/.ana-wall-probe-*/
+# The suite's recorded file timings: each checkout learns its own order from its first run
+# (`tools/runtime/test-suite.ts`).
+/test/.test-timings.json
 # v1's local state, which a checkout of this repository from before 11 October 2026 still holds
 # on disk: run outputs, Builder-written domains, operator notes, runtime pins and the UI build.
 # v2 reads none of it.

@@ -106,8 +106,7 @@ credential-shaped line and runs the formatter and the linter over the staged fil
 hooks are not installed, run it by hand before each commit. Run `/simplify` over a source diff
 first: the repository's `.claude/skills/simplify`, with `bun run simplify` for the whole-tree
 scans. A whole-suite run rewrites
-`test/.test-timings.json`; restore it with `git checkout -- test/.test-timings.json` unless the
-pull request is about test timing.
+`test/.test-timings.json`, which Git ignores.
 
 Keep the change small in total. Prefer deleting an owner to adding one, and when the pull
 request claims to simplify, give the net source lines in the body. Test growth is not the

@@ -437,7 +437,6 @@ function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn
   const terms =
     decided.id === undefined
       ? [
-          ...(decided.noise ? ["--noise"] : []),
           ...flag("solves", values.solves),
           ...flag("level", values.level),
           // The trigger is the table's and no term of the start: it goes on the command, new or

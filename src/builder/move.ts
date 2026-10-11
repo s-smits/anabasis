@@ -26,13 +26,12 @@ export type Decided =
     }
   | { readonly move: "build"; readonly why: string }
   /** A comparison of `fresh` with `reference`, which is `promoted`, `starter` or a digest. `id`
-   *  names one that began and goes on. `noise` reads the reference against itself beside it. */
+   *  names one that began and goes on. */
   | {
       readonly move: "compare";
       readonly why: string;
       readonly fresh: string;
       readonly reference: string;
-      readonly noise: boolean;
       readonly id?: string | undefined;
     }
   | { readonly move: "promote"; readonly why: string; readonly harness: string }
@@ -52,13 +51,13 @@ export const end = (ending: Ending, why: string): Decided => ({ move: "end", end
 export const build = (why: string): Decided => ({ move: "build", why });
 export const short = (digest: string): string => digest.slice(0, 8);
 
-/** A comparison of the latest harness, or of the starter as a control, with the reference one,
- *  under the campaign's setting. */
-export const compare = (why: string, noise: "noise" | "alone", fresh: Fresh = "latest"): Decided => ({
+/** A comparison of the latest harness, or of the starter as a control, with the reference one.
+ *  The reference against itself is the operator's `--noise` on a checkpoint since 2026-10-11,
+ *  and no move of the table (`docs/simplify.md`, B1). */
+export const compare = (why: string, fresh: Fresh = "latest"): Decided => ({
   move: "compare",
   fresh,
   reference: "promoted",
-  noise: noise === "noise",
   why,
 });
 
@@ -76,7 +75,7 @@ export function decidedLine(decided: Decided): string {
     build: () => "a Builder session",
     compare: () =>
       decided.move === "compare"
-        ? `a comparison of ${named(decided.fresh)} with ${named(decided.reference)}${decided.noise ? ", and the reference against itself" : ""}`
+        ? `a comparison of ${named(decided.fresh)} with ${named(decided.reference)}`
         : "",
     promote: () => (decided.move === "promote" ? `promote harness ${short(decided.harness)}` : ""),
     end: () => (decided.move === "end" ? `the campaign ends (${decided.ending})` : ""),

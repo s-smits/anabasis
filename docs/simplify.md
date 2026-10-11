@@ -593,6 +593,7 @@ harnesses answered at the full limit (t-10, `docs/handover-2026-10-10.md`).
   report's `noise`.
 - **Tests.** `test/decide.test.ts` (23 mentions), `test/harness-builder.test.ts` (5).
 - **Lines.** About −60 (*estimate*).
+- **Done** at PR #200 (11 October), as written. `afforded` still reads three sides off a comparison the operator asked for with `--noise`, since the next bills two.
 
 #### B2. The starter's tally is a line of the report (D4)
 

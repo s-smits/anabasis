@@ -626,8 +626,9 @@ promoted, and one that names a digest is made against that harness and promotes 
 
 **What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
 prints it as its last line. A step is one draw: the same two harnesses are compared again. The
-reference is read against itself beside the first comparison under a setting and stands for the
-ones after it, until the reference is another harness or tasks were held out since (`noiseRead`). A step read twice, where the new harness won at least as many tasks as it lost
+reference against itself is the operator's `--noise` on a checkpoint, and no move of the table:
+until 11 October the table read it beside the first comparison of a setting, and read only
+whether it was made (`docs/simplify.md`, B1). A step read twice, where the new harness won at least as many tasks as it lost
 against the starter, names the harness to promote (`unpromoted` says why another is not). No step with room sends the
 Builder to build again, once the next comparison has tasks to untie: where the reference harness
 answered too many of them in every solve, the Examiner writes tasks first, since a changed harness

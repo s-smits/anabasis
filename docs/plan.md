@@ -80,7 +80,7 @@ One campaign is a loop of seven moves over one log. Code admits and chooses ever
 
 | What the report shows | What it means | The next move |
 | --- | --- | --- |
-| A reading at or under the trigger (2-0 at 0.25) | One draw | Compare the same two harnesses again on fresh solves, with the reference against itself beside it, unless that reading already stands under the setting, for this reference and with no task held out since (`noiseRead`). A step read once is such a reading |
+| A reading at or under the trigger (2-0 at 0.25) | One draw | Compare the same two harnesses again on fresh solves. Until 11 October the reference was read against itself beside it, once a setting (`noiseRead`); that is the operator's `--noise` on a checkpoint since (`docs/simplify.md`, B1). A step read once is such a reading |
 | The step and its repeat together clear the level (4-0 at 0.10) | A step | Read it once at the full limit, where it must not lose. Promote the harness, have tasks written that it fails (since 10 October; the budget rule was first), read them by the control, and build against the new reference |
 | No step, and the reference is valid on more than three solves in four | The tasks leave no room at this budget | Write tasks that leave room (F52). The budget rule is the fallback, once as many Examiner sessions in a row as the campaign's patience held out nothing (since 10 October; the order was the reverse) |
 | No step, and neither harness is valid on one solve in four | The tasks are too hard, or the budget too short | Lengthen the budget. Otherwise write other tasks |

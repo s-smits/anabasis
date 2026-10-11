@@ -203,13 +203,13 @@ describe("what is built and what is compared", () => {
     });
   });
 
-  it("compares the first harness after one session, with the reference read against itself", () => {
-    expect(move([...SET_UP, built("b-1", "h1")])).toMatchObject({
-      move: "compare",
-      fresh: "latest",
-      reference: "promoted",
-      noise: true,
-    });
+  it("compares the first harness after one session, the two harnesses alone", () => {
+    // The reference against itself is the operator's `--noise` on a checkpoint since
+    // 2026-10-11, and no move of the table: the table read only whether one was made, never what
+    // it read, and it cost half as many solves again beside every first comparison.
+    const first = move([...SET_UP, built("b-1", "h1")]);
+    expect(first).toMatchObject({ move: "compare", fresh: "latest", reference: "promoted" });
+    expect(first).not.toHaveProperty("noise");
   });
 
   it("has tasks written before a comparison where the campaign holds fewer than it scores", () => {
@@ -244,7 +244,6 @@ describe("what is built and what is compared", () => {
       id: "g-1",
       fresh: "h1",
       reference: "start",
-      noise: true,
       why: "comparison g-1 began and has not reported: it goes on from its log",
     });
   });
@@ -257,15 +256,7 @@ describe("what is built and what is compared", () => {
       why: "1 of 3 Builder sessions before the next comparison have run",
     });
     const ready = [...after, built("b-2", "h2"), built("b-3", "h3"), built("b-4", "h4")];
-    expect(move(ready, three)).toMatchObject({ move: "compare", fresh: "latest", noise: true });
-    // The reference was read against itself once under this setting, and is not again.
-    const noised = [
-      ...SET_UP,
-      built("b-1", "h1"),
-      ...compared("g-1", "h1", "no-step", { noise: true }),
-      built("b-2", "h2"),
-    ];
-    expect(move(noised)).toMatchObject({ move: "compare", noise: false });
+    expect(move(ready, three)).toMatchObject({ move: "compare", fresh: "latest" });
   });
 
   it("writes tasks where the next comparison would be short of them", () => {
@@ -305,10 +296,7 @@ describe("what is built and what is compared", () => {
     expect(move(untied)).toMatchObject({ move: "build" });
     expect(
       move([...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "no-step", { tally: [6, 2, 4] })]),
-    ).toMatchObject({
-      move: "compare",
-      noise: true,
-    });
+    ).toMatchObject({ move: "compare" });
     // Tasks held out since count whole, and the comparison is admitted.
     const more = ["v13", "v14", "v15", "v16"].flatMap(heldOut);
     expect(move([...tied, built("b-2", "h2"), ...more], small)).toMatchObject({ move: "compare" });
@@ -318,7 +306,6 @@ describe("what is built and what is compared", () => {
       move: "compare",
       fresh: "latest",
       reference: "promoted",
-      noise: false,
       why: "comparison g-1 read no step with room to gain, and tasks were written since: harness h1 is compared on them",
     });
   });
@@ -367,38 +354,20 @@ describe("practice, before a Builder session", () => {
 describe("a step", () => {
   const stepped = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
 
-  it("is one draw when read once: the same two are compared again, with the reference against itself", () => {
-    expect(move(stepped)).toMatchObject({
+  it("is one draw when read once: the same two are compared again", () => {
+    expect(move(stepped)).toEqual({
       move: "compare",
       fresh: "latest",
       reference: "promoted",
-      noise: true,
+      why: "comparison g-1 cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together",
     });
-    // Where the reference was read against itself under this setting, on the tasks the campaign
-    // holds, that reading stands and the repeat solves the two harnesses alone.
+    // A comparison the operator asked for with the reference against itself changes no move.
     const noised = [
       ...SET_UP,
       built("b-1", "h1"),
       ...compared("g-1", "h1", "step", { tally: [8, 0, 4], noise: true }),
     ];
-    expect(move(noised)).toEqual({
-      move: "compare",
-      fresh: "latest",
-      reference: "promoted",
-      noise: false,
-      why: "comparison g-1 cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together. The reference was read against itself under this setting in comparison g-1, on the tasks the campaign holds",
-    });
-    // It is read again once tasks were held out since, and where the one on record is of
-    // another reference harness.
-    expect(move([...noised, ...heldOut("v13")])).toMatchObject({ move: "compare", noise: true });
-    const other = [
-      ...SET_UP,
-      built("b-0", "h0"),
-      ...compared("g-0", "h0", "no-step", { old: "other", noise: true }),
-      built("b-1", "h1"),
-      ...compared("g-1", "h1", "step", { tally: [8, 0, 4] }),
-    ];
-    expect(move(other)).toMatchObject({ move: "compare", noise: true });
+    expect(move(noised)).toEqual(move(stepped));
   });
 
   it("is promoted when read again", () => {
@@ -481,13 +450,11 @@ describe("after a promotion", () => {
     });
     const written = event("exam.finished", { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
     // The tasks written are read by a control before a Builder session is paid for: the starter
-    // against the promoted harness, with the reference against itself, since tasks were held out
-    // since it was last read so. t-4, t-9 and t-10 (10 October) built three times here instead.
+    // against the promoted harness. t-4, t-9 and t-10 (10 October) built three times here instead.
     expect(move([...log, written, ...heldOut("v13")])).toEqual({
       move: "compare",
       fresh: "starter",
       reference: "promoted",
-      noise: true,
       why: "harness h1 is the reference, and 1 task was held out since the last comparison: the starter is compared with it on them, to read whether they leave it room before a Builder session is paid for",
     });
   });
@@ -588,7 +555,6 @@ describe("no step", () => {
     const more = ["v13", "v14", "v15", "v16", "v17", "v18"].flatMap(heldOut);
     expect(move([...tied, ...more])).toMatchObject({
       move: "compare",
-      noise: false,
       why: "comparison g-1 left no room, and tasks were written since",
     });
     // One session wrote one task: too few for the next comparison yet (a first reading takes two
@@ -719,7 +685,7 @@ describe("the budget and the bounds", () => {
 
   it("ends before a comparison that what is left would not hold, by what the last one billed", () => {
     // A step read once, by a comparison of two sides whose solves billed 1.00 in all: the repeat
-    // reads the reference against itself as well, three sides, and would bill about 1.50.
+    // solves two sides again, and would bill about 1.00.
     const solve = (id: string, billed: number) => [
       event("solve.started", { solve: id, comparison: "g-1" }),
       event("solve.finished", { solve: id, billed, ending: { outcome: "pass" } }),
@@ -734,14 +700,21 @@ describe("the budget and the bounds", () => {
       ...(report === undefined ? [] : [report]),
     ];
     const left = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.4 } });
-    expect(move(log, left(1.45))).toEqual({
+    expect(move(log, left(0.95))).toEqual({
       move: "end",
       ending: "budget",
-      why: "$1.45 of the campaign's budget are left, and comparison g-1 billed $1.00 for 2 sides under this setting: the next solves 3 and would bill about $1.50, so it would be cut before it reports",
+      why: "$0.95 of the campaign's budget are left, and comparison g-1 billed $1.00 for 2 sides: the next solves 2 and would bill about $1.00, so it would be cut before it reports",
     });
-    expect(move(log, left(1.5))).toMatchObject({ move: "compare", noise: true });
+    expect(move(log, left(1))).toMatchObject({ move: "compare" });
+    // A comparison the operator asked for with the reference against itself solved three sides,
+    // and the next two: a third less.
+    const noised = log.map((each) =>
+      each.kind === "comparison.started" ? { ...each, data: { ...each.data, noise: true } } : each,
+    );
+    expect(move(noised, left(0.66))).toMatchObject({ move: "end", ending: "budget" });
+    expect(move(noised, left(0.67))).toMatchObject({ move: "compare" });
     // A campaign with no total, as a rehearsal's, is held to none.
-    expect(move(log)).toMatchObject({ move: "compare", noise: true });
+    expect(move(log)).toMatchObject({ move: "compare" });
     // Under a setting no comparison has reported in, nothing says what one bills, and it starts.
     expect(move([...SET_UP, built("b-1", "h1")], left(0.5))).toMatchObject({ move: "compare" });
     // A comparison that began goes on under what is left: its solves so far stand in the log.

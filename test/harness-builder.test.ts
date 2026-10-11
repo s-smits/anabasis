@@ -258,9 +258,9 @@ describe("a campaign run by its log", () => {
     const [first, repeat] = of(name, "comparison.reported");
     expect(first).toMatchObject({ reading: "step", scored: { wins: 5, losses: 0, ties: 0 } });
     expect(repeat).toMatchObject({ reading: "step", old: first?.old, fresh: first?.fresh });
-    // The setting's first comparison read the reference against itself beside the test, and that
-    // reading stands for the repeat, which solves the two harnesses alone.
-    expect(of(name, "comparison.started").map(({ noise }) => noise)).toEqual([true, false]);
+    // The table reads the reference against itself in no comparison since 2026-10-11: that is the
+    // operator's `--noise` on a checkpoint.
+    expect(of(name, "comparison.started").map(({ noise }) => noise)).toEqual([false, false]);
     expect(of(name, "harness.promoted")).toEqual([]);
 
     // With the word given once for the campaign, the harness is promoted. No budget leaves the
@@ -273,16 +273,16 @@ describe("a campaign run by its log", () => {
     ]);
     expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 3 }]);
     // The tasks written are read by a control before a Builder session is paid for: the starter
-    // against the promoted harness, with the reference against itself, since tasks were held out
-    // since it was last read so. Until 10 October the Builder built here, three times, on
+    // against the promoted harness. Until 10 October the Builder built here, three times, on
     // practice the promoted harness passed (t-4, t-9, t-10).
-    expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted", noise: true });
+    expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted" });
+    expect(next).not.toHaveProperty("noise");
     const after = await harnessBuilder([...flags, "--unattended", "--moves", "1"], seats);
     expect(of(name, "comparison.started").at(-1)).toMatchObject({
       session: "g-3",
       fresh: first?.starter,
       old: first?.fresh,
-      noise: true,
+      noise: false,
     });
     // The script answers nothing under the reference nor the starter, so the control reads the new
     // tasks as beyond both, and the table has other tasks written rather than a harness built.
@@ -293,8 +293,7 @@ describe("a campaign run by its log", () => {
 
     // A person reads two of the answers that passed in g-1: the draw is by the comparison's id, so
     // asked again it is the same two; the labels are recorded once a label stands on each, and
-    // once only. g-1 held 5 passes, the new harness's, and the noise arm's are the reference's,
-    // which answered none.
+    // once only. g-1 held 5 passes, the new harness's; the reference answered none.
     const pack = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name];
     const passes = join(REPO, ".ana", "d2", name, "settle-g-1", "passes", "passes.json");
     await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
@@ -650,7 +649,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, "comparison.reported")).toMatchObject([
       { reading: "step", scored: { wins: 5, losses: 0, ties: 0 } },
     ]);
-    expect(next).toMatchObject({ move: "compare", noise: false });
+    expect(next).toMatchObject({ move: "compare" });
     expect(strayed).toEqual([]);
 
     // A term named again is recorded again, and a flag that names another setting than the

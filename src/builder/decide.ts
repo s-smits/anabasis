@@ -31,8 +31,10 @@
  * 5. After a promotion the tasks change, once: the next epoch's are the ones the harness now the
  *    reference fails, and a comparison against it says whether they do.
  * 6. A step. A reading under the trigger is one draw, and the same two harnesses are compared
- *    again with the reference read against itself. The two read together clear the level
- *    (`readTwice`), and then the harness is promoted.
+ *    again. The two read together clear the level (`readTwice`), and then the harness is
+ *    promoted. Until 11 October the repeat read the reference against itself as well, once a
+ *    setting; the table read only whether that was made and never what it read, and it is the
+ *    operator's `--noise` on a checkpoint since (`docs/simplify.md`, B1).
  * 7. No step. Where the reference harness left no room, or neither harness answered, the tasks
  *    have to change: an Examiner session, until as many in a row as the campaign's patience held
  *    out nothing. With room, the harness did not help, and the Builder builds again.
@@ -230,7 +232,6 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
       id: open.id,
       fresh: open.fresh,
       reference: open.old,
-      noise: open.noise,
       why: `comparison ${open.id} began and has not reported: it goes on from its log`,
     };
   }
@@ -329,21 +330,23 @@ function toPractise(ground: Ground, supply: ReturnType<typeof supplyOf>): Decide
  * it billed bought no reading: on 9 October the second campaign from a prompt had $1.45 left,
  * began the repeat of a step whose first reading had billed $1.00 for two sides, and was cut
  * after $1.06 of the three sides the repeat has. What a comparison will bill is read from the
- * last one that reported under the campaign's setting, by the sides each solves: two, and three
- * where the reference is read against itself. Under a setting no comparison has reported in,
- * nothing says what one bills, and it starts.
+ * last one that reported, by the sides each solves: two, and three where the operator read the
+ * reference against itself. Where no comparison has reported, nothing says what one bills, and it
+ * starts.
  */
 function afforded(ground: Ground, next: Extract<Decided, { move: "compare" }>): Decided {
   const { events, plan, all } = ground;
   const last = all.findLast(({ report }) => report !== null && report.capped !== true);
   if (plan.left == null || last === undefined) return next;
+  // A comparison the operator asked for with the reference against itself (`--noise`, a
+  // checkpoint) solved three sides, and the table's next solves two.
   const sides = (noise: boolean): number => (noise ? 3 : 2);
   const was = billedParts(events, last.id).comparison;
-  const expected = (was * sides(next.noise)) / sides(last.noise);
+  const expected = (was * 2) / sides(last.noise);
   if (plan.left.dollars >= expected) return next;
   return end(
     "budget",
-    `$${plan.left.dollars.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)} for ${String(sides(last.noise))} sides under this setting: the next solves ${String(sides(next.noise))} and would bill about $${expected.toFixed(2)}, so it would be cut before it reports`,
+    `$${plan.left.dollars.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)} for ${String(sides(last.noise))} sides: the next solves 2 and would bill about $${expected.toFixed(2)}, so it would be cut before it reports`,
   );
 }
 
@@ -472,7 +475,6 @@ function onReference(ground: Ground): Decided {
       toTarget(ground, `the tasks held out since the last comparison are read by a control`) ??
       compare(
         `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it on them, to read whether they leave it room before a Builder session is paid for`,
-        noiseRead(ground) === null ? "noise" : "alone",
         "starter",
       )
     );
@@ -513,29 +515,7 @@ function onLatest(ground: Ground): Decided {
     all.length === 0
       ? `harness ${short(latest)} has not been compared under the campaign's setting`
       : `${plural(sessions, "Builder session")} since the last comparison left harness ${short(latest)}`;
-  return toTarget(ground, why) ?? compare(why, noiseRead(ground) === null ? "noise" : "alone");
-}
-
-/**
- * The comparison in which the reference harness was read against itself under the campaign's
- * setting, on the tasks the campaign still holds, or null. That reading is the noise every
- * comparison there has to exceed, and one stands for the setting: a second is a third of a
- * comparison's solves for a second draw of the same share. It is read again once the reference
- * is another harness or tasks were held out since, since either changes what it is a share of.
- * Until 2026-10-09 any earlier one under the setting stood, whatever harness it was of, and a
- * step's repeat read it again whatever stood: on that day the second campaign from a prompt had
- * the budget for a repeat of two sides and not of three, four comparisons after the reference
- * had been read against itself on the same tasks.
- */
-function noiseRead({ events, all, reference }: Ground): string | null {
-  const read = all.findLast(
-    ({ noise, old, report }) => noise && old === reference && report !== null && report.capped !== true,
-  );
-  const since = events.some(
-    ({ kind, data }, index) =>
-      read !== undefined && index > read.at && kind === "task.gate" && data.outcome === "passed",
-  );
-  return read === undefined || since ? null : read.id;
+  return toTarget(ground, why) ?? compare(why);
 }
 
 /** The table's rows for the last comparison of the latest harness with the reference one. */
@@ -555,21 +535,15 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
       move: "compare",
       fresh: "latest",
       reference: "starter",
-      noise: false,
       why: `comparison ${id} cleared its level and the starter was not solved on its tasks: the new harness is compared with the starter`,
     };
   }
   // A reading that clears the trigger buys the repeat and promotes nothing: the two are then read
   // together (`readTwice`). Until 10 October only a step bought one.
   if (!control && triggered(last, ground.plan.wanted.trigger)) {
-    const noise = noiseRead(ground);
-    const again = `comparison ${id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`;
-    return noise === null
-      ? compare(`${again}, with the reference read against itself`, "noise")
-      : compare(
-          `${again}. The reference was read against itself under this setting in comparison ${noise}, on the tasks the campaign holds`,
-          "alone",
-        );
+    return compare(
+      `comparison ${id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`,
+    );
   }
   // A comparison of the same two on tasks written since is the answer to a want of tasks or of
   // room, once: three in a row that still leave none end the campaign.
@@ -581,7 +555,7 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
       return end("budget", `comparison ${id} was cut by its dollar cap before it tallied a task`);
     }
     return again
-      ? compare(`comparison ${id} tallied no task, and tasks were written since`, "alone", fresh)
+      ? compare(`comparison ${id} tallied no task, and tasks were written since`, fresh)
       : supplied(ground, last, `comparison ${id} tallied no task`);
   }
   const room = roomOf(last);
@@ -607,7 +581,6 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
     if (again) {
       return compare(
         `comparison ${id} read no step with room to gain, and tasks were written since: harness ${short(latest)} is compared on them`,
-        "alone",
         fresh,
       );
     }
@@ -645,7 +618,7 @@ function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): 
   const id = isString(last.session) ? last.session : "";
   const nearlyAll = "the reference harness was valid on more than three solves in four";
   if (tasksShort === null && since > 0) {
-    return compare(`comparison ${id} left no room, and tasks were written since`, "alone", fresh);
+    return compare(`comparison ${id} left no room, and tasks were written since`, fresh);
   }
   return written(
     ground.drafts,
@@ -669,11 +642,7 @@ function tooHard(ground: Ground, id: string, since: number, fresh: Fresh): Decid
   const { tasksShort } = ground;
   const said = `comparison ${id} read no step, and neither harness was valid on one solve in four`;
   if (tasksShort === null && since > 0) {
-    return compare(
-      `comparison ${id} left neither harness an answer, and tasks were written since`,
-      "alone",
-      fresh,
-    );
+    return compare(`comparison ${id} left neither harness an answer, and tasks were written since`, fresh);
   }
   return written(
     ground.drafts,

@@ -17,9 +17,7 @@
  * The order it asks in:
  *
  * 0. The operator's word, where one was left and nothing has acted on it: a stop ends the
- *    campaign there, and a word for other tasks has them written once the exam stands. Then
- *    the provider: as many Builder or Examiner sessions in a row as `CRASHES` that it failed end
- *    the campaign on its environment, which its command goes on from when run again.
+ *    campaign there, and a word for other tasks has them written once the exam stands.
  * 1. The exam. A campaign that opened from a prompt has it drafted, three drafts at most. A
  *    checker nobody has read is read, and one whose reading holds a fault that nobody froze ends
  *    the campaign: the exam was not accepted. It is read again where the operator's command
@@ -27,8 +25,10 @@
  * 2. The tasks. A pack's tasks are taken in, practice is released, and a campaign with no task
  *    has some written.
  * 3. The budget, which ends the campaign where less is left than one solve is held at, or than
- *    the next comparison would bill by what the last one did, and the stop rule, which ends it
- *    unless the operator said to go on.
+ *    the next comparison would bill by what the last one did; then the provider, where as many
+ *    Builder or Examiner sessions in a row as `CRASHES` crashed before they held out a task or
+ *    changed a harness, which ends it on its environment, to go on from when run again; and the
+ *    stop rule, which ends it unless the operator said to go on.
  * 4. A comparison that began and has not reported goes on.
  * 5. After a promotion the tasks change, once: the next epoch's are the ones the harness now the
  *    reference fails, and a comparison against it says whether they do.
@@ -167,15 +167,6 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
       answers: words.filter(({ at }) => at <= stop.at).map(({ at }) => at),
     };
   }
-  // The provider's failure is the environment's ending and no reading of the exam or the room:
-  // the campaign goes on from its log once its command is run again (`crashedRun`).
-  const crashes = crashedRun(events);
-  if (crashes.count >= CRASHES) {
-    return end(
-      "environment",
-      `${plural(crashes.count, "session")} in a row crashed (${crashes.crash ?? "the provider gave no reason"}): nothing was written or built by them. Run the command again by the campaign's name once the provider is back`,
-    );
-  }
   if (plan.prompted === true && draftOf(events) === null) return drafting(events);
   const supply = supplyOf(events);
   if (supply.faults === null) {
@@ -210,6 +201,16 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
     return end(
       "budget",
       `$${left.dollars.toFixed(2)} of the campaign's budget are left, and one solve is held at $${String(left.reserve)}`,
+    );
+  }
+  // The provider's failure is the environment's ending and no reading of the exam or the room:
+  // the campaign goes on from its log once its command is run again (`crashedRun`). It is read
+  // after the budget, so that a campaign out of both is not told to run again.
+  const crashes = crashedRun(events);
+  if (crashes.count >= CRASHES) {
+    return end(
+      "environment",
+      `${plural(crashes.count, "session")} in a row crashed (${crashes.crash ?? "the provider gave no reason"}): none held out a task or changed a harness. Run the command again by the campaign's name once the provider is back`,
     );
   }
   if (supply.held + supply.awaiting + supply.exhausted + supply.released === 0) {

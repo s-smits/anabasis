@@ -780,8 +780,24 @@ describe("the budget and the bounds", () => {
     expect(move(dead)).toEqual({
       move: "end",
       ending: "environment",
-      why: "3 sessions in a row crashed (limit reached): nothing was written or built by them. Run the command again by the campaign's name once the provider is back",
+      why: "3 sessions in a row crashed (limit reached): none held out a task or changed a harness. Run the command again by the campaign's name once the provider is back",
     });
+    // A session that held a task out and then lost a turn to the provider is crashed with its
+    // tasks held: it moved the campaign, breaks the run of crashes, and is no idle session.
+    const held = event(EXAM, {
+      session: "x-9",
+      held: ["v9"],
+      refused: [],
+      proposed: 1,
+      ended: "crashed",
+      crash: "limit reached",
+    });
+    expect(
+      move([READ, crashed(EXAM, "x-1"), held, crashed(EXAM, "x-2"), crashed(EXAM, "x-3")]),
+    ).toMatchObject({
+      move: "examine",
+    });
+    expect(move([READ, idle("x-1"), idle("x-2"), held, idle("x-3")])).toMatchObject({ move: "examine" });
     // Run again after that ending, the count starts afresh: the next session is tried.
     const ended = event("campaign.ended", { ending: "environment", why: "3 sessions in a row crashed" });
     expect(move([...dead, ended])).toMatchObject({ move: "examine" });

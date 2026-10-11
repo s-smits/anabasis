@@ -120,16 +120,23 @@ export function pairOf(comparisons: readonly Compared[], fresh: string, old: str
  *  session the provider failed is not idle: it was given no chance to write (`crashedRun`). */
 export function idleDrafts(events: readonly LogEvent[]): number {
   const sessions = events
-    .filter(({ kind, data }) => kind === "exam.finished" && data.ended !== "crashed")
+    .filter(({ kind, data }) => kind === "exam.finished" && (data.ended !== "crashed" || moved(data)))
     .toReversed();
-  const wrote = sessions.findIndex(({ data }) => Array.isArray(data.held) && data.held.length > 0);
+  const wrote = sessions.findIndex(({ data }) => moved(data));
   return wrote === -1 ? sessions.length : wrote;
 }
 
+/** Whether a session moved the campaign whatever its ending: an Examiner's held a task out, or a
+ *  Builder's changed its harness. A session that did and then lost a turn to the provider is
+ *  `crashed` with its tasks held (`exam.finished.held` is written whatever `ended` says). */
+function moved(data: JsonObject): boolean {
+  return (Array.isArray(data.held) && data.held.length > 0) || data.changed === true;
+}
+
 /** The Builder and Examiner sessions in a row, up to the log's end and since the campaign last
- *  ended, that the provider failed, with what the last crash said. Such a session held out no
- *  task and left no harness because its provider refused it, not because the domain gave it
- *  nothing: on 11 October six Examiner sessions of one campaign crashed in a row on a provider's
+ *  ended, that the provider failed before they held out a task or changed a harness, with what
+ *  the last crash said. Such a session held out no task and left no harness because its provider
+ *  refused it, not because the domain gave it nothing: on 11 October six Examiner sessions of one campaign crashed in a row on a provider's
  *  session limit, each under a new id within minutes, and the campaign ended `no-room` with "the
  *  tasks could not be written", where the account was out (buffer pr193 on the operator's host);
  *  another lost a Builder session the same way (buffer-a). The table ends such a campaign on its
@@ -142,7 +149,7 @@ export function crashedRun(events: readonly LogEvent[]) {
     .slice(since + 1)
     .filter(({ kind }) => kind === "exam.finished" || kind === "build.finished")
     .toReversed();
-  const whole = sessions.findIndex(({ data }) => data.ended !== "crashed");
+  const whole = sessions.findIndex(({ data }) => data.ended !== "crashed" || moved(data));
   const count = whole === -1 ? sessions.length : whole;
   const crash = sessions[0]?.data.crash;
   return { count, crash: count > 0 && isString(crash) ? crash : null };

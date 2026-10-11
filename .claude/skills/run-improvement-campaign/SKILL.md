@@ -188,7 +188,6 @@ rulings, the load.
 
 ```sh
 bun tools/wri/wri.ts read --log <log>          # the rows, the triggers, the host line
-bun run runs compare <name> [<name> ...]       # rounds made apart, set side by side
 ```
 
 The report holds the reading at the budget the solves were told, the tally over tasks, each
@@ -269,7 +268,7 @@ and the next command. Name no account and no credential path in anything that is
 | choose | one link, one owner, one falsifier | stack-pr when the change is source |
 | prove | a dry run of the launch | system-path-simulation: a replay for a reader, a rehearsal for a round |
 | predict | `--predict`, before the first solve | further rows in the local notes |
-| launch | launch-run, under the load rule | model-condition-comparison when two launches are meant as arms |
+| launch | launch-run, under the load rule | a checkpoint when two harnesses are meant as arms |
 | read | the report, the reader, every prediction resolved | attribution-and-proof before a claim; whole-run-investigation when a reading is in doubt |
 | decide | lifted, held or unreached; one move | oracle-handover when the question is one the repository's own evidence cannot settle |
 

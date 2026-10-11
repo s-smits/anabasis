@@ -107,7 +107,7 @@ Then put the seed through the readers a real run meets, since a join can break a
 
 ```sh
 bun run runs pulse --once sim-<what>
-bun run runs compare sim-<what>
+bun run runs view sim-<what>
 bun tools/wri/wri.ts read --log .ana/d2/sim-<what>/log.jsonl
 ```
 

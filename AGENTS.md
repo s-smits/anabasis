@@ -453,7 +453,7 @@ bun run runs launch [--env-file FILE] [--loaded] [--dry-run] [--no-comparison] <
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
 bun run runs view <name> [the flags of a launch]
-bun run runs pulse | stop <name> | compare | replay | seed | zip
+bun run runs pulse | stop <name> | replay | seed | zip
 ```
 
 The launcher refuses, among others: a log with no held-out task; a comparison that would leave
@@ -840,7 +840,6 @@ launch request authorises one command and no second run beside it. The skills ow
 | Starting or stopping a run | `launch-run` |
 | Wording a claim afterwards | `attribution-and-proof` |
 | Doubting a reading, or asking what a fail was | `whole-run-investigation` |
-| Setting recorded rounds side by side | `model-condition-comparison` |
 | Handing runs, or a question, to someone outside | `zip-run`, `oracle-handover` |
 
 What holds in all of them:
@@ -894,7 +893,7 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (section 12.8).
 | `bun run not-slop` | The ledger of answered findings: status, `-- answer <id> "<why>"`, `-- prune` |
 | `bun run commit:check` | By hand before a commit: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
-| `bun run runs <verb>` | `pulse`, `launch`, `stop`, `rehearse`, `seed`, `compare`, `replay`, `zip` |
+| `bun run runs <verb>` | `pulse`, `launch`, `stop`, `rehearse`, `seed`, `replay`, `zip`, `view` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (section 12.10) |
 

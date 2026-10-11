@@ -61,7 +61,7 @@ and why the next was not needed.
    repeated.
 9. **A cleared condition lands in its owning test.** The rehearsal is how a broken join is found.
    The test in `test/` that fails without the fix is what keeps it found.
-10. **Clean up.** A seed is listed by the pulse and matched by `runs compare` and `runs replay`.
+10. **Clean up.** A seed is listed by the pulse and read by `runs replay`.
     Move it to the Trash when its question is answered: `/usr/bin/trash .ana/d2/sim-<what>`.
 
 ## What a rehearsal walks, and what it cannot say

@@ -166,12 +166,6 @@ export interface Receipt {
 /** Where a launch of `session` keeps its receipt and its output, less the extension. */
 const kept = (log: string, session: string) => join(dirname(log), `launch-${session}`);
 
-/** The receipt of the launch of `session` beside `log`, or null for a round started by hand. */
-export function receiptOf(log: string, session: string): Receipt | null {
-  const file = `${kept(log, session)}.json`;
-  return existsSync(file) ? parseJsonAs<Receipt>(readFileSync(file, "utf8")) : null;
-}
-
 /** Keep `receipt` as the launch of `session` beside `log`. */
 export function writeReceipt(log: string, session: string, receipt: Receipt): void {
   writeFileSync(`${kept(log, session)}.json`, `${capturedJsonStringify(receipt, null, 2)}\n`);
@@ -184,9 +178,11 @@ export function launchesOf(log: string) {
   return readdirSync(folder)
     .flatMap((file) => {
       const session = /^launch-(.+)\.json$/.exec(file)?.[1];
-      const receipt = session === undefined ? null : receiptOf(log, session);
-      if (session === undefined || receipt === null) return [];
-      const { at, commit, dirty, load, cores } = receipt;
+      // A receipt is beside the log for a launch, and none for a round started by hand.
+      if (session === undefined || !existsSync(`${kept(log, session)}.json`)) return [];
+      const { at, commit, dirty, load, cores } = parseJsonAs<Receipt>(
+        readFileSync(`${kept(log, session)}.json`, "utf8"),
+      );
       return [{ session, at, commit, dirty, load, cores }];
     })
     .sort((a, b) => a.at.localeCompare(b.at));

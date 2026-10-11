@@ -10,7 +10,7 @@ before building anything.
 | Is a run alive, and what did it last do? | `bun run runs pulse --once <name>` | the pulse's own state file |
 | Is there supply for a comparison, and what can it show? | `bun run runs launch --dry-run <the comparison's flags>` | nothing |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line | nothing |
-| Under what did two rounds run, and do they compare? | `bun run runs compare <name> ...` | nothing |
+| Under what did a campaign's comparisons run? | `bun run runs view <name>` | nothing |
 | Does the checker stand on its controls? | `bun tools/c/accept.ts <pack flags> --name <campaign>` | its reading, as `checker.read` |
 | What would a solver of this task be shown? | `bun tools/m0/live-solve.ts <pack flags> --task <id>`, without `--live` | nothing |
 | What does the host still hold of a run? | `bun run runs stop <name>` without `--yes`, which names its process and the roots it left; `mount \| grep ana-built-bash` for every run's | nothing |

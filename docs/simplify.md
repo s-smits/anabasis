@@ -970,6 +970,7 @@ operator's home or in another seat's root.
   `test/runs-compare.test.ts` (353 lines), the skill `model-condition-comparison`.
 - **Why.** `AGENTS.md` section 9: "Results are never compared across campaigns, and never across
   two settings." Two harnesses are set side by side by a checkpoint.
+- **Done** at PR #206 (11 October), as written. The skills that named the verb point at a checkpoint or `runs view`.
 
 ### R2. The pulse keeps what the campaign command reads
 

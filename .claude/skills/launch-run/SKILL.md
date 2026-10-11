@@ -264,5 +264,5 @@ reads `closed`.
   provider's words. A comparison stops once the provider has written nothing for the solves of
   three tasks in a row, writes no report, and goes on from its log when launched again under the
   same id: wait for the reset the provider names, or pass another `--env-file`.
-- One round a command. A model pair is two commands, and what makes two rounds a comparison is
-  model-condition-comparison's to say.
+- One round a command. Two rounds made apart are no comparison: two harnesses are set side by
+  side by a checkpoint, under one condition.

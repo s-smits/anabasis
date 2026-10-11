@@ -35,8 +35,9 @@ that and no more. It does not say:
 
 - **Match the identities.** Every solve has a `condition.recorded`: contract, harness, task,
   solver model and effort, compaction, limits, the host's code by content. Two solves compare
-  when their conditions differ in the one thing compared. `bun run runs compare` says what two
-  rounds were given differently, and calls rounds under different contracts `not-comparable`.
+  when their conditions differ in the one thing compared. Two harnesses are set side by side by
+  a checkpoint, under one condition; rounds made apart are not compared (`AGENTS.md`, section 9,
+  and `docs/simplify.md`, R1: `bun run runs compare` went on 11 October).
 - **Count no solve twice.** Solves of two rounds were made apart, each under its own hour of
   the host. Setting them side by side is a description. A pair is made by one comparison.
 - **Keep the counts apart**: valid answers; rejected answers, by ruling (earned, a check defect,

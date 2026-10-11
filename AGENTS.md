@@ -162,7 +162,9 @@ checks that refused an answer, and none of the Referee's reasons. Section 8 stat
 ### What changed from v1
 
 v1 is this repository's history before v2 took it over on 11 October 2026. Its last tree is
-`5bc9988`, and `git show 5bc9988:<path>` reads any v1 file. Much of `src/meta`, `src/verify`,
+`5bc9988`, and `git show 5bc9988:<path>` reads a v1 file. v1 was itself built in a private
+repository, harness-builder-v4, and published here as a squashed history, so a v1 commit that
+`docs/transfer.md` cites, such as `7af7315`, is not in this one. Much of `src/meta`, `src/verify`,
 `tools/loc` and `tools/oxlint` was copied from it at `3f93d06`, so its words still appear in
 comments. A comment there that cites "AGENTS.md rule N" means v1's file, whose rules were
 numbered otherwise. The design around the copied code is different.

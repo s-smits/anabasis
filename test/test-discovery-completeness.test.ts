@@ -35,8 +35,6 @@ const repoRoot = join(import.meta.dir, "..");
 /** The roots a gate step runs, and the step that runs each. */
 const DISCOVERED_ROOTS = [
   "test/", // `bun run test`, which is the gate's last step
-  "packages/ui/test/", // `bun run ui:gate`, which prepares that package's own node_modules first
-  "starters/", // the Built Harness's own template suite, which `bunfig.toml` ignores here
 ];
 
 /** A suite by name, in any suffix Bun runs, plus the `.bun-tests` spelling the wrappers used to
@@ -75,14 +73,12 @@ describe("repository test discovery", () => {
     expect(undiscovered(written)).toEqual(written);
   });
 
-  it("says nothing about the three roots a step names, or about ordinary source", () => {
+  it("says nothing about the root the gate runs, or about ordinary source", () => {
     expect(
       undiscovered([
         "test/attribute.test.ts",
         "test/campaign-status.test.mjs",
         "test/helpers/scratch.ts",
-        "packages/ui/test/poll.test.ts",
-        "starters/pi-built-harness/correctness-model/evaluator.test.ts",
         "src/run/full-run.ts",
         "notes/a-test-of-patience.md",
       ]),

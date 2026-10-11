@@ -116,7 +116,7 @@ decision falls.
 | Every limit of a solve and of a session | How a task is solved |
 | The condition a solve runs under, and its identity | What a new task asks, within the contract |
 | Whether an answer is valid | Whether a rejection was right (a ruling, with its required evidence) |
-| The comparison, the tally and the test | Why a practice solve failed (advice only) |
+| The comparison, the tally and the test | Why a practice solve failed, read from its trace |
 | What crosses the wall | Which failure to work on, and what to change |
 | The dollar cap and what is charged to it | |
 | The log: what is recorded, and its order | |

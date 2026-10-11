@@ -205,7 +205,7 @@ Not built: pooling across comparisons; a host-written diagnosis table; a step ru
 
 **Predictions for the night of 10 October, resolved by the counts.** C reads a step against the starter at 0.10 in its first two comparisons: likely. C promotes tonight: one in three. C's room Examiner finds room on buffer: less than even; if not, buffer is saturated on validity and R1 is the test. A and B: a first-comparison step plausible, and after any promotion both go down the budget ladder and show nothing about room. The 0.20 arm lands a 3-0 in fewer than half its comparisons; the re-read of all five campaigns at both levels flips at most 1 in 5 readings. The share of unchanged Builder sessions after a no-step under #140 is under a half.
 
-**It works when** M1 is at least 2 promotions in one real campaign with the starter losing more pairs each epoch; M2 is at 0 steps over the next ten controls; M3 is at its bar on at least 10 labels a kind (the diagnoses withdrawn at PR #205). Then the same in a second domain. Until then every claim says "a step at 0.20, N tasks, this setting, provisional on the Mac until H1".
+**It works when** M1 is at least 2 promotions in one real campaign with the starter losing more pairs each epoch; M2 is at 0 steps over the next ten controls; M3 is at its bar on at least 10 labels a kind (the diagnoses withdrawn at PR #205). Then the same in a second domain. Until then every claim says "a step at 0.10 past a trigger of 0.25, N tasks, this setting, provisional on the Mac until H1".
 
 ## Fix plan
 

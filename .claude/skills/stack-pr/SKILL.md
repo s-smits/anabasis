@@ -5,10 +5,13 @@ description: "Put a change on the one open stack of Anabasis v2 pull requests: f
 
 # Stack a pull request
 
-v2's work is one linear stack of open pull requests, each based on the branch below it. Several
-sessions write to it at once. This skill is the order of operations that keeps a change on the
-stack without losing local work, without touching another session's branch, and with every
-commit able to stand alone.
+Until 11 October v2's work was one linear stack of open pull requests, each based on the branch
+below it; PRs #219 and #221 merged the whole of it into `main` that day. A new subject is now a
+pull request on `main`, and a stack forms again only where one pull request depends on another
+that has not merged: there "the top" below is that pull request's branch, and elsewhere it is
+`origin/main`. Several sessions write at once. This skill is the order of operations that keeps a
+change on the stack without losing local work, without touching another session's branch, and
+with every commit able to stand alone.
 
 ## 1. Read the stack, every time
 

@@ -49,6 +49,10 @@ export function solveIsolationPolicy(input: {
    *  command ran in was denied, and a shell in one worktree read a sibling's `.ana` log, every
    *  hidden value of that campaign in it, on the Linux container (an Examiner's shell, by hand). */
   otherTrees?: readonly string[];
+  /** A stored pack's root and bundle, denied with it by path. Until 11 October v1's run-data names
+   *  closed them (`/correctness-model`, `/domains/<slug>/…`) on Darwin, and on Linux a scan for
+   *  folders carrying those names beside a denied root (docs/simplify.md, F10 and W5). */
+  packRoots?: readonly string[];
   runtime?: OsIsolationRuntime;
   readAllowRoots?: readonly string[];
 }): SolveIsolationPolicy | { unsupported: string } {
@@ -56,7 +60,12 @@ export function solveIsolationPolicy(input: {
   if (!support.ok || support.mechanismDigest === null) {
     return { unsupported: support.reason ?? "the OS isolation mechanism is unavailable" };
   }
-  const reads = canonicalRoots([input.repoRoot, ...(input.otherTrees ?? []), homedir()]);
+  const reads = canonicalRoots([
+    input.repoRoot,
+    ...(input.otherTrees ?? []),
+    ...(input.packRoots ?? []),
+    homedir(),
+  ]);
   const writes = [...reads];
   const allowedReads = canonicalRoots([...nodeRuntimeReadRoots(), ...(input.readAllowRoots ?? [])]).filter(
     (path) => reads.some((root) => covers(root, path)),

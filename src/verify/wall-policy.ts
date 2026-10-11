@@ -14,7 +14,7 @@
  */
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "../meta/filesystem.ts";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync } from "../meta/filesystem.ts";
 import { activeDeveloperBinDirs } from "../meta/host-tool.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { keysIf } from "../meta/optional-key.ts";
@@ -76,21 +76,6 @@ export const DARWIN_SYSTEM_READ_ROOTS: readonly string[] = [
   "/usr",
   "/var/select",
 ].flatMap(canonicalForms);
-
-/**
- * The one run-data name every wall denies, the Builder's own cells included.
- *
- * The rest of `RUN_DATA_DENY_PATTERNS` is Built-Harness-only: a verifier reads a correctness model
- * as its job, and a Builder's workspace lives at `campaigns/<slug>/`, so denying `/campaigns/`
- * inside a Builder cell would deny that cell its own tree. Hidden expectations need a denial for
- * authoring and solve alike, because only the protected verifier owns their use and Builder cells
- * may write Darwin's shared temporary directory, where a staged copy would sit readable beneath an
- * allowed path.
- */
-const HIDDEN_TASKS_DENY_PATTERN = String.raw`/hidden-tasks\.json$`;
-
-/** The directory names that mark a checkout as one of these, carrying run data of its own. */
-const RUN_DATA_NAMES = ["domains", "campaigns", "correctness-model"];
 
 /** The host-level half of verifier toolchain access: the environment homes and install roots that
  *  exist under `home` at the moment the verifier host is built. A host reads them once and hands
@@ -203,78 +188,6 @@ export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.H
  *  move the policy hash and discard exit-0 verdicts for a wall that never changed. */
 export function darwinPlatformReadRoots(): string[] {
   return [...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)), ...darwinToolchainInstallRoots()];
-}
-
-/**
- * The directory and file names that mean run data, wherever on the host they sit.
- *
- * What these close is a sibling worktree's `domains/<slug>/correctness-model/tasks.json` and
- * `evaluator.ts`: runs repeat a slug, so a neighbouring checkout holds this very task family's
- * tasks and verifier source. An allow list shuts the neighbour by shutting everything, and then has
- * to grow a toolchain enumeration that never quite reaches a compiler. A path-name pattern closes
- * the copies instead, covering earlier runs, archives and temporary copies without enumerating
- * where any of them are, while `/usr`, `/opt` and a home toolchain stay open. Codex takes the same
- * route for the paths it must keep shut under an open read default.
- *
- * Each pattern is anchored on a path separator so a directory called `my-domains` does not match,
- * and the list applies only to the Built Harness, because the verifier reads a correctness model as
- * its job.
- */
-const RUN_DATA_DENY_PATTERNS = [
-  "/correctness-model(/|$)",
-  // `domains` is also an ordinary library directory name, for example sympy/polys/domains. A
-  // harness domain has one more distinctive join than that: the slug, then one of the bundle or
-  // evidence roots, which is what this pattern requires and a bare `/domains/` would not.
-  "/domains/[^/]+/(agent|correctness-model|runs)(/|$)",
-  "/campaigns/",
-  String.raw`/\.env($|\.)`,
-  HIDDEN_TASKS_DENY_PATTERN,
-] as const;
-
-/**
- * The run-data denies as SBPL rules, for a profile whose read default is open.
- *
- * The pattern list is a parameter rather than a constant because the directory names above are
- * Built-Harness-only, and because two of them are ordinary dictionary words: denying `/domains/`
- * inside a Builder cell makes `import sympy` fail on `sympy/polys/domains`, a third-party package
- * that is neither run data nor the cell's own tree.
- */
-export function runDataDenyRules(patterns: readonly string[] = RUN_DATA_DENY_PATTERNS): string[] {
-  return patterns.map((pattern) => `(deny file-read* file-read-metadata (regex #"${pattern}"))`);
-}
-
-/**
- * The same run-data class as above, named as paths, for a wall that cannot match a name.
- *
- * Bubblewrap confines by mount rather than by rule, so `RUN_DATA_DENY_PATTERNS` has no Linux
- * counterpart: a tmpfs hides a path, and there is nothing with which to hide a directory name. What
- * those patterns close is a peer checkout of this same system, so the Linux wall closes the same
- * class by hiding those checkouts whole. A checkout counts as one when it sits beside a denied root
- * and carries a run-data directory of its own; the scan is one `readdir` per parent directory and
- * never descends, which lets an operator home stay open while the trees inside it that hold run
- * data do not.
- *
- * A checkout created after the command launched is not covered: the host mount is live, so a
- * directory appearing later appears inside the namespace too. That window lasts the command's
- * lifetime and has no Darwin equivalent, because a Seatbelt deny is evaluated on every open.
- */
-export function runDataDenyPaths(deniedRoots: readonly string[]): string[] {
-  const denied = new Set(deniedRoots);
-  const found = new Set<string>();
-  for (const parent of new Set(deniedRoots.map((root) => dirname(root)))) {
-    let entries: string[];
-    try {
-      entries = readdirSync(parent);
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const path = join(parent, entry);
-      if (denied.has(path)) continue;
-      if (RUN_DATA_NAMES.some((name) => existsSync(join(path, name)))) found.add(path);
-    }
-  }
-  return [...found].sort(compareCodeUnits);
 }
 
 /** The one line a Darwin system command answers with, asked once per process: undefined on another

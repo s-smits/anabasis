@@ -35,8 +35,6 @@ import {
   canonicalRoots,
   darwinToolchainInstallRoots,
   hostToolchainEnv,
-  runDataDenyPaths,
-  runDataDenyRules,
   toolchainPathDirs,
   traversalMetadataRules,
   hostRoots,
@@ -195,11 +193,10 @@ function commandReadAllows(
     ...nodeRuntimeReadRoots(),
     ...darwinToolchainInstallRoots(),
   ]).filter((path) => readDenies.some((root) => covers(root, path)));
-  // The adopted bundle's tool tree is a symlink into the candidate workspace under `campaigns/`,
-  // which the run-data pattern denies by name, so without this the Builder's own install answers
-  // `command not found`. Allowing it by path after the pattern denies restores that one tree and
-  // leaves the rest of the workspace closed, which a wider relaxation of the pattern would not. A
-  // tree a Builder has yet to install is left out, as bwrap refuses to bind a missing path.
+  // The harness's tool tree lies under a closed root, the campaign's states in the repository, so
+  // without this the Builder's own install answers `command not found`. Allowing it by path after
+  // the root's deny restores that one tree and leaves the rest of the root closed. A tree a Builder
+  // has yet to install is left out, as bwrap refuses to bind a missing path.
   const own = toolTree === null || !existsSync(toolTree) ? [] : canonicalForms(toolTree);
   return [...new Set([...covered, ...own])].sort();
 }
@@ -230,9 +227,9 @@ function darwinCommandProfile(
   const profile = [
     "(version 1)",
     // The same read posture as the session that owns this command and as the Builder's authoring
-    // wall: open by default, with the repository tree, the protected home roots and run data
-    // wherever it sits closed. All of it arrives through `wall-policy.ts`, so there is no second
-    // list here to fall out of step.
+    // wall: open by default, with the repository and its worktrees, a stored pack and the home
+    // closed. All of it arrives through `solveIsolationPolicy`, so there is no second list here to
+    // fall out of step.
     "(allow default)",
     // The same network posture, and the same spelling, as the Builder's authoring wall, so a
     // command can install what its task needs.
@@ -245,10 +242,6 @@ function darwinCommandProfile(
     // it with a private tmpfs instead. What the host keeps there, every seat's root and its own
     // scratch, is closed by subpath below.
     ...userTemp.rules,
-    // Run data is denied by name rather than by place, so one rule covers every earlier run's copy
-    // instead of a worktree enumeration that goes stale. It follows the temporary-directory grant
-    // so that a copy left under /tmp stays closed too.
-    ...runDataDenyRules(),
     // The host's `/tmp`, closed whole: what another seat left there is neither read nor run, and a
     // command leaves nothing there for the next. The seat's root is opened again further down,
     // after it, for a controller whose own temporary directory lies under `/tmp`.
@@ -311,8 +304,8 @@ export function commandIsolationPolicy(
   }
   /*
    * What the Linux command wall overmounts, now that its reads open by default: the session's
-   * denied roots, which are the verified repository and the operator home; the shared temporary
-   * directory; and the peer checkouts `runDataDenyPaths` finds. The temporary directory holds every
+   * denied roots, which are the repository, its other worktrees, a stored pack and the operator
+   * home; and the shared temporary directory. The temporary directory holds every
    * other seat's root and every concurrent verification's staged workdir, so it is hidden whole
    * and this seat's root is bound back inside it — a separation the Darwin profile spends two rules
    * on only because a Seatbelt deny cannot be reopened by a mount.
@@ -323,9 +316,7 @@ export function commandIsolationPolicy(
    * build script spelling `/tmp` a private directory rather than the read-only root bind, where a
    * `mkdir` answers "Read-only file system".
    */
-  const readDenies = [
-    ...new Set([...base.deniedReadRoots, tmpdir(), "/tmp", ...runDataDenyPaths(base.deniedReadRoots)]),
-  ].sort();
+  const readDenies = [...new Set([...base.deniedReadRoots, tmpdir(), "/tmp"])].sort();
   return {
     ...shared,
     profile: null,

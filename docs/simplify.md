@@ -862,6 +862,16 @@ Reads are open otherwise. The network is open for a seat and closed for a check.
 - **Tests.** A wall test on each system: a file under a pack's `correctness-model` is refused to
   a solve's command, with the pack in a folder that carries none of the three names beside it.
 - **Lines.** About −70 (*estimate*).
+- **Done** at PR #210 (11 October), as written. `tools/d2/campaign.ts` and `tools/m0/live-solve.ts`
+  name the pack's root and bundle; a campaign that opened from a prompt names none, as its exam
+  lies under `.ana` in the repository. A solve, an examination and a Builder's session pass them to
+  `solveIsolationPolicy`, which closes them with the repository, its other worktrees and the home.
+  On the Mac nothing a command sees changes: the home is closed whole, and every pack lies under
+  it. On Linux a pack outside the home is now closed by its path. `test/command.test.ts` puts a
+  pack in the temporary directory, its hidden file under `fixture/workspace/correctness-model`: a
+  command is refused it on both systems, and on Darwin reads it where the policy names no pack,
+  which shows that no folder's name closes it. The Linux half was not run here. The source loses
+  62 lines net (115 out, 53 in).
 
 ### W6. A check runs under the same wall, with the network closed
 

@@ -70,13 +70,16 @@ export interface CommandWall {
   readonly clock?: SolveClock | undefined;
 }
 
-/** What a wall denies and caps: the repository the command runs in, its other worktrees, and
- *  the disk a solve, a session or an Examiner may fill. */
+/** What a wall denies and caps: the repository the command runs in, its other worktrees, the
+ *  stored pack a campaign opened over, and the disk a solve, a session or an Examiner may fill. */
 export interface Walled {
   readonly repoRoot: string;
   /** The repository's other worktrees (`worktreesOf`, `tools/d2/campaign.ts`); none where the
    *  caller knows of none, as a test does. */
   readonly otherTrees?: readonly string[] | undefined;
+  /** The stored pack's root and bundle, which hold the exam's hidden values; none where the
+   *  campaign opened from a prompt, whose exam lies in the repository. */
+  readonly packRoots?: readonly string[] | undefined;
   readonly diskBytes: number;
 }
 
@@ -200,7 +203,7 @@ export function makeSeatDirs(dirs: SolveDirs): void {
 export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   makeSeatDirs(dirs);
   const otherTrees = wall.otherTrees ?? [];
-  const base = solveIsolationPolicy({ repoRoot: wall.repoRoot, otherTrees });
+  const base = solveIsolationPolicy({ repoRoot: wall.repoRoot, otherTrees, packRoots: wall.packRoots ?? [] });
   if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);
   const probe =
     PROBED.get(base.policyHash) ??

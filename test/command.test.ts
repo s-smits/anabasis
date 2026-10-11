@@ -1,12 +1,13 @@
 // A solve's commands, executed under the real command wall on a mounted cap: the home survives
 // between commands, the folder a command that brings files starts in does not, staged input
-// reaches it, neither the host-only folder, the repository, its other worktrees nor a reviewer's
-// Claude home can be read, the host's folder in the seat cannot be written, and no command outlives
-// the shell limits. And a command still starts on a full volume, where it is the one that can empty
-// it.
+// reaches it, neither the host-only folder, the repository, its other worktrees, a stored pack nor
+// a reviewer's Claude home can be read, the host's folder in the seat cannot be written, and no
+// command outlives the shell limits. And a command still starts on a full volume, where it is the
+// one that can empty it.
 import { describe, expect, it } from "bun:test";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -14,7 +15,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { basename, join } from "../src/meta/path.ts";
+import { basename, dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
   type CommandWall,
@@ -220,6 +221,35 @@ describe("a solve's walled commands", () => {
       rmSync(dirs.host, { recursive: true, force: true });
       rmSync(repoRoot, { recursive: true, force: true });
       rmSync(sibling, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("refuse a command a stored pack by the pack's path, which no folder's name stands in for", async () => {
+    // A pack laid out as the buffer pack is, its hidden values under `correctness-model`.
+    const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-pack-repo-")));
+    const pack = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-pack-")));
+    const bundle = join(pack, "fixture", "workspace");
+    const hidden = join(bundle, "correctness-model", "expected.json");
+    mkdirSync(dirname(hidden), { recursive: true });
+    writeFileSync(hidden, "pack-canary\n");
+    const dirs = solveDirs(`pack-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+    const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+    try {
+      makeSeatDirs(dirs);
+      const readUnder = async (packRoots: string[]) => {
+        const base = solveIsolationPolicy({ repoRoot, packRoots });
+        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+        return (await run(walled(base, dirs), `cat ${hidden} 2>/dev/null || echo pack-refused`)).output;
+      };
+      expect(await readUnder([pack, bundle])).toBe("pack-refused\n");
+      // Left out of the policy, the same file is read on Darwin, where the temporary directory is
+      // open: its folder's name closes nothing. Linux hides the whole temporary directory.
+      if (runtimeProcess.platform === "darwin") expect(await readUnder([])).toBe("pack-canary\n");
+    } finally {
+      await release();
+      rmSync(dirs.host, { recursive: true, force: true });
+      rmSync(repoRoot, { recursive: true, force: true });
+      rmSync(pack, { recursive: true, force: true });
     }
   }, 60_000);
 

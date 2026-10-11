@@ -90,9 +90,11 @@ export interface SolveRequest {
   readonly models: (home: string) => Models;
   readonly verify: Verifier;
   readonly log: string;
-  /** The repository, closed to every command, and its other worktrees, closed with it. */
+  /** The repository, closed to every command, and its other worktrees and the stored pack, closed
+   *  with it (`Walled`). */
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
+  readonly packRoots?: readonly string[] | undefined;
   /** The comparison the solve is made for, by its id, which every attempt's start then names. A
    *  comparison counts the solves that name it and no other (`src/kernel/compare.ts`); a practice
    *  solve names none. */
@@ -228,7 +230,12 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
     const base = await walledBase(
       dirs,
-      { repoRoot: request.repoRoot, otherTrees: request.otherTrees, diskBytes: limits.diskBytes },
+      {
+        repoRoot: request.repoRoot,
+        otherTrees: request.otherTrees,
+        packRoots: request.packRoots,
+        diskBytes: limits.diskBytes,
+      },
       "a solve",
     );
     const resources = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);

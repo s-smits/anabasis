@@ -185,6 +185,7 @@ async function main(): Promise<number> {
       log,
       repoRoot: REPO,
       otherTrees: worktreesOf(REPO),
+      packRoots: [root, bundle],
     });
     return readBack(log, ending.outcome, row.ending.outcome);
   } finally {

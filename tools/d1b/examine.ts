@@ -69,6 +69,7 @@ export async function examineCommand(args: readonly string[], session = examineW
     id,
     repoRoot: REPO,
     otherTrees: campaign.trees,
+    packRoots: campaign.packRoots,
     diskBytes: campaign.limits.diskBytes,
     verify: campaign.verify,
     // The budget every solve is held to now: the recorded setting's turns, or the opening's full

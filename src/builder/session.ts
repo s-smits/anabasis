@@ -147,9 +147,11 @@ export interface BuildRequest {
   /** The backends, built on the home the Builder's model process keeps its state in. */
   readonly models: (home: string) => Models;
   readonly log: string;
-  /** The repository, closed to every command, and its other worktrees, closed with it. */
+  /** The repository, closed to every command, and its other worktrees and the stored pack, closed
+   *  with it (`Walled`). */
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
+  readonly packRoots?: readonly string[] | undefined;
   /** One solve of a released task under the test condition, with the harness frozen in `harness`
    *  and digested as `digest`. The caller builds the condition and records it (`recordCondition`),
    *  and hands `kill` to the solve, which the session aborts when it ends. A throw ends the session. */
@@ -523,7 +525,12 @@ export async function build(request: BuildRequest): Promise<Built> {
     const wall: CommandWall = {
       base: await walledBase(
         dirs,
-        { repoRoot: request.repoRoot, otherTrees: request.otherTrees, diskBytes: request.limits.diskBytes },
+        {
+          repoRoot: request.repoRoot,
+          otherTrees: request.otherTrees,
+          packRoots: request.packRoots,
+          diskBytes: request.limits.diskBytes,
+        },
         "a Builder",
       ),
       dirs,

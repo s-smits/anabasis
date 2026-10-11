@@ -310,6 +310,9 @@ export async function openCampaign(args: CampaignArgs) {
   const tools = join(bundle, ".toolchain");
   const verify = openVerifier({ checks, tools });
   const trees = worktreesOf(REPO);
+  // A stored pack's root and bundle, closed to every command as the repository is. A campaign
+  // opened from a prompt drafted its exam under `.ana` here, inside the repository.
+  const packRoots = args.root === undefined ? [] : [args.root, bundle];
   const limits = args.limits ?? LIMITS;
   const { conditionOf, setting } = recordedUnder({ contract, tools, limits });
   const pack = (task: Task): TaskPackage => packageOf(checks, task);
@@ -345,6 +348,7 @@ export async function openCampaign(args: CampaignArgs) {
       log: written,
       repoRoot: REPO,
       otherTrees: trees,
+      packRoots,
       ...keyIfDefined("kill", kill),
       ...keyIfDefined("comparison", comparison),
     });
@@ -353,6 +357,7 @@ export async function openCampaign(args: CampaignArgs) {
   return {
     repo: REPO,
     trees,
+    packRoots,
     log,
     states: join(dir, "states"),
     memory: join(dir, "memory"),

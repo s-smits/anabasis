@@ -565,17 +565,21 @@ many as it lost (`readTwice`, `src/kernel/compare.ts`). A reading under the trig
 stop rule as a move that showed a gain. Both terms are recorded in the campaign's opening, so a
 campaign reads by its own rule whatever the tree's default.
 
-**The reading** is one of seven words (`Reading`, `src/builder/comparison.ts`):
+**The reading** is one of five words (`Reading`, `src/builder/comparison.ts`):
 
 | Reading | Meaning |
 | --- | --- |
-| `step` | The test cleared its level, with at least as many wins as losses against the starter |
+| `step` | The test cleared its level |
 | `no-step` | A test was made and did not clear its level |
-| `below-starter` | The new harness beat a promoted reference and still loses to the starter |
-| `starter-unread` | The test cleared its level, and the starter's own solves are incomplete |
 | `not-scored` | No task was tallied, or the cap cut the test short. Nothing was tested |
 | `check-defects` | The comparison stopped on its check defects |
 | `no-change` | The session left nothing new to compare |
+
+Until 11 October a step against a promoted reference also solved the starter on the tallied
+tasks, and read `below-starter` with fewer wins than losses there and `starter-unread` while
+the starter lacked a solve; a log of before holds the two words (`docs/simplify.md`, B2). The
+starter is the control the tasks written after a promotion are read with (section 7, what
+follows a reading).
 
 `not-scored` and `no-step` are different results. Eight rounds on 8 October scored no task and
 were recorded as `no-step` eight times, for over 220 dollars, before the two were named apart.
@@ -628,8 +632,7 @@ promoted, and one that names a digest is made against that harness and promotes 
 prints it as its last line. A step is one draw: the same two harnesses are compared again. The
 reference against itself is the operator's `--noise` on a checkpoint, and no move of the table:
 until 11 October the table read it beside the first comparison of a setting, and read only
-whether it was made (`docs/simplify.md`, B1). A step read twice, where the new harness won at least as many tasks as it lost
-against the starter, names the harness to promote (`unpromoted` says why another is not). No step with room sends the
+whether it was made (`docs/simplify.md`, B1). A step read twice names the harness to promote (`unpromoted` says why another is not). No step with room sends the
 Builder to build again, once the next comparison has tasks to untie: where the reference harness
 answered too many of them in every solve, the Examiner writes tasks first, since a changed harness
 can only tie again on those (t-2, 10 October: 3-0-2 on 5 tasks, two unchanged sessions and a

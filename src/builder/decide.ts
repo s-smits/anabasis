@@ -530,14 +530,6 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
       `comparison ${id} stopped on its check defects: the check program needs its author before more is spent`,
     );
   }
-  if (reading === "starter-unread") {
-    return {
-      move: "compare",
-      fresh: "latest",
-      reference: "starter",
-      why: `comparison ${id} cleared its level and the starter was not solved on its tasks: the new harness is compared with the starter`,
-    };
-  }
   // A reading that clears the trigger buys the repeat and promotes nothing: the two are then read
   // together (`readTwice`). Until 10 October only a step bought one.
   if (!control && triggered(last, ground.plan.wanted.trigger)) {

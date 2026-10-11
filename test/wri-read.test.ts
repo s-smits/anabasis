@@ -275,8 +275,6 @@ describe("the whole-run investigation's reader", () => {
       "NO VALID ANSWER",
       "AWAITING A LABEL",
       "CUT BY ITS CAP",
-      "STARTER UNREAD",
-      "BELOW THE STARTER",
       "VALID BY HARNESS",
       "EXAMINER NEVER FINISHED",
       "STEP NOT REPEATED",
@@ -329,6 +327,8 @@ describe("the whole-run investigation's reader", () => {
     expect(later()("NOTHING SCORED")).toBe(
       "g-4: no task was scored, of 4 asked for; the report reads not-scored",
     );
+    // A report of before 2026-10-11 may read `below-starter`, with the tally against the starter
+    // beside it: no trigger reads either since.
     record(REPORTED, {
       ...REPORT,
       ...started("g-5", "hp", "hd"),
@@ -337,8 +337,8 @@ describe("the whole-run investigation's reader", () => {
       versions: HELD,
       reading: "below-starter",
     });
-    expect(later()("BELOW THE STARTER")).toBe(
-      "g-5: 1 won and 3 lost against the starter; the report reads below-starter",
+    expect(overview(events).triggers.some((trigger) => trigger.detail.includes("against the starter"))).toBe(
+      false,
     );
   });
 
@@ -374,9 +374,6 @@ describe("the whole-run investigation's reader", () => {
     const said = later();
     expect(overview(events).triggers.find(({ name }) => name === "SETTLED BY HAND")?.detail).toBe(
       "b-1: 2 rejections labelled, 1 a check defect, 1 task disputed and 1 restored; the comparison's own report read no-step, the settled one reads starter-unread",
-    );
-    expect(overview(events).triggers.find(({ name }) => name === "STARTER UNREAD")?.detail).toBe(
-      "b-1: its test clears its level and the starter has not its solves on every tallied task",
     );
     // The comparison's own report still says what its set-aside tasks could move, and nothing of
     // it waits for a person any more.

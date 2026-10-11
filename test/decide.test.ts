@@ -622,7 +622,10 @@ describe("no step", () => {
     });
   });
 
-  it("compares the new harness with the starter where a step was not read against it", () => {
+  it("reads a step against a promoted reference as one, with no starter to hold it to", () => {
+    // Until 2026-10-11 a step against a promoted reference was held to the starter's solves on
+    // the tallied tasks, and `starter-unread` sent the new harness to the starter in a comparison
+    // of its own. A log of before may hold the reading, and the table reads it as no step.
     const unread = compared("g-1", "h2", "starter-unread", { old: "h1", tally: [8, 0, 4] });
     const log = [
       ...SET_UP,
@@ -632,7 +635,17 @@ describe("no step", () => {
       built("b-2", "h2"),
       ...unread,
     ];
-    expect(move(log)).toMatchObject({ move: "compare", fresh: "latest", reference: "starter" });
+    expect(move(log)).not.toMatchObject({ reference: "starter" });
+    const stepped = [
+      ...log.slice(0, -unread.length),
+      ...compared("g-1", "h2", "step", { old: "h1", tally: [8, 0, 4] }),
+    ];
+    expect(move(stepped)).toMatchObject({
+      move: "compare",
+      fresh: "latest",
+      reference: "promoted",
+      why: "comparison g-1 cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together",
+    });
   });
 });
 

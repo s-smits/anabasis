@@ -11,8 +11,8 @@
  * Every campaign starts from it (`docs/plan.md`, Terms and Phase 0). The Builder forks it in its
  * first session, since a session copies the harness it starts from whole. It is the first
  * reference harness: a new harness is compared with it until a step is promoted. And it stays the
- * fixed lower reference after that: a step against a promoted reference also needs at least as
- * many wins as losses against the starter (`src/builder/round.ts`). How the starter does by
+ * control after that: once another harness is promoted, the tasks written for it are read by the
+ * starter against it (`src/builder/decide.ts`). How the starter does by
  * itself, read from the first comparison, is what says whether the tasks leave a harness room to
  * add anything.
  *

@@ -32,11 +32,7 @@
  * by name, so a mistyped label is not read as no label. A comparison is settled once: run again
  * with the same file it says what it said, and with other labels it is refused.
  *
- * A settling makes no solve. Where the reference harness is a promoted one and the labels leave a
- * test that clears its level, the starter was not solved for it and the reading is
- * `starter-unread`: compare the new harness with the starter in a comparison of its own
- * (`checkpoint.ts --reference starter --new <digest>`). A comparison against the starter itself,
- * as the first round is, has nothing more to solve.
+ * A settling makes no solve.
  *
  * Labels made beside a log that holds the Referee's rulings are not blind and measure nothing of
  * the Referee: its bar is cleared on labels drawn before it reads (`tools/c/rejections.ts`). A task

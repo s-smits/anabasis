@@ -109,17 +109,13 @@ on 2026-10-09: the first rehearsal on a seed should write these as its predictio
 | `--held pass:pass` | `no-step`, `valid` 0/0/4 twice | four ties between valid answers: the tasks leave a harness nothing to add |
 | `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; twice in a row and each task waits for a person's label |
 | `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
-| the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and against the starter there is nothing more to solve |
-| `--reference <a built digest> --held none:pass` | `step`, with `against` 4-0 | after a promotion a step is held to the starter, which is solved because the test cleared and answers nothing |
-| the same with `--starter pass` | `step`, with `against` 0-0-4 | against the starter every task ties between valid answers, and as many wins as losses is enough |
-| the same with `--held fail:pass`, then `settle.ts` with every label `earned` | `starter-unread` | a settling makes no solve, so the new harness is compared with the starter in a checkpoint of its own |
+| the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and a settling makes no solve |
+| `--reference <a built digest> --held none:pass` | `step`, sixteen solves | after a promotion the starter is solved on no task: until 11 October a step was held to it, a third arm (`docs/simplify.md`, B2) |
 | fewer than two tasks held out | refused at launch; `no-step` at best if run | at a trigger of 0.25 a first reading takes two untied tasks, all won |
 | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
 
 `check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
-ruling of a check defect to count one. So is `below-starter`: a script ends every solve of a side
-alike, and losing to the starter while beating the reference harness takes a side that is valid
-only some of the time.
+ruling of a check defect to count one.
 
 ## What the first rehearsals settled
 

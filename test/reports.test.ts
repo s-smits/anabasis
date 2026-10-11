@@ -288,15 +288,16 @@ describe("the stop rule", () => {
     expect(stopRule(round)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
   });
 
-  it("counts a harness set against the starter once: as the reference, and not as the guard after another", () => {
+  it("counts each pair of a harness and a reference once, the starter as a reference among them", () => {
     const versus = (id: string, old: string, reading: string) =>
       reported(id, reading, "h2", { old, starter: "base" });
     // While the starter is the reference, a comparison with it is the checkpoint.
     expect(stopRule([...sessions, versus("b-1", "base", "no-step")])).toMatchObject({ checkpoints: 1 });
-    // After a comparison with another reference left the starter unread, the comparison with the
-    // starter is that one's reading against it, and no second checkpoint.
-    const guarded = [...sessions, versus("b-1", "h1", "starter-unread"), versus("g-1", "base", "no-step")];
-    expect(stopRule(guarded)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
+    // A harness compared with another reference and then with the starter is two pairs. Until
+    // 2026-10-11 the second was read as the first's reading against the starter
+    // (`starter-unread`), which no comparison makes since.
+    const both = [...sessions, versus("b-1", "h1", "no-step"), versus("g-1", "base", "no-step")];
+    expect(stopRule(both)).toEqual({ checkpoints: 2, sinceStep: 2, stop: false });
   });
 });
 

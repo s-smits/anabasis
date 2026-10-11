@@ -212,10 +212,9 @@ export function roomOf(report: JsonObject): "none" | "too-hard" | "room" {
  * or with every task set aside, which tested nothing; and one that left no room, whose answer is
  * other tasks and no other harness. Until 2026-10-11 whatever stood before the last comparison
  * under another setting id was left out too, and the id names the host's code, so a tree moved to
- * a new commit between two comparisons read the campaign's moves from the second
- * (`docs/simplify.md`, A4). A harness set against
- * the starter after it was compared with another reference is that comparison's reading against
- * the starter (`starter-unread`), and no move of its own.
+ * a new commit between two comparisons read the campaign's moves from the second; and a harness
+ * set against the starter after it was compared with another reference was read as no move of
+ * its own, a reading the comparison no longer makes (`docs/simplify.md`, A4 and B2).
  */
 /** The campaign's patience as its opening records it (`--patience`), or `PATIENCE`. */
 export function patienceOf(events: readonly LogEvent[]): number {
@@ -242,14 +241,10 @@ export function stopRule(events: readonly LogEvent[]) {
   const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.trigger;
   const parsed = isString(named) ? Number(named) : Number.NaN;
   const trigger = Number.isFinite(parsed) ? parsed : TRIGGER;
-  /** The harnesses already compared with a reference that is not the starter. */
-  const referenced = new Set<unknown>();
   /** Each pair of a harness and a reference, where it first reported and as it last read. */
   const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
   for (const { index, data } of tallied) {
-    const { old, fresh, starter } = data;
-    if (old !== starter) referenced.add(fresh);
-    else if (referenced.has(fresh)) continue;
+    const { old, fresh } = data;
     const pair = `${isString(fresh) ? fresh : ""} ${isString(old) ? old : ""}`;
     // A reading under the trigger showed a gain too: it bought the repeat (11 October).
     const step = data.reading === STEP || triggered(data, trigger);

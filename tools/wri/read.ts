@@ -266,7 +266,6 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
   const fragile = signP(Math.max(0, informative - 1), 1) > level;
   const asked = last.tasks;
   const lacking = items(last.short).length;
-  const against = asRecord(last.against);
   return [
     ...(scored !== null && tasks === 0
       ? [
@@ -295,22 +294,6 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
         ]
       : []),
     ...(lacking > 0 ? [fired("SET SHORT", `${session}: ${String(lacking)} short of solves`)] : []),
-    ...(against !== null && count(against.wins) < count(against.losses)
-      ? [
-          fired(
-            "BELOW THE STARTER",
-            `${session}: ${String(count(against.wins))} won and ${String(count(against.losses))} lost against the starter; the report reads ${text(last.reading)}`,
-          ),
-        ]
-      : []),
-    ...(last.reading === "starter-unread"
-      ? [
-          fired(
-            "STARTER UNREAD",
-            `${session}: its test clears its level and the starter has not its solves on every tallied task`,
-          ),
-        ]
-      : []),
   ];
 }
 

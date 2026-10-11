@@ -35,7 +35,8 @@
 import { plural } from "../meta/text.ts";
 import type { Handover, PracticeFail } from "./handover.ts";
 
-/** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. */
+/** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. The
+ *  last two are readings a comparison made until 2026-10-11, which a log of before holds. */
 const READ = new Map([
   ["step", "a step"],
   ["no-step", "no step"],

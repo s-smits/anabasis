@@ -608,6 +608,7 @@ harnesses answered at the full limit (t-10, `docs/handover-2026-10-10.md`).
 - **Tests.** `test/round.test.ts`, `test/reports.test.ts` (3), `test/handover.test.ts` (2),
   `test/decide.test.ts` (2), `test/wri-read.test.ts` (5).
 - **Lines.** About −90 (*estimate*).
+- **Done** at PR #201 (11 October), as written, with one addition: the report's `against` goes too, since no comparison solves the starter as a third side, and the investigation's `BELOW THE STARTER` and `STARTER UNREAD` triggers with it; the Builder's words for the two readings stay (`src/builder/past.ts`), for a log of before.
 
 #### B3. No prediction flag
 

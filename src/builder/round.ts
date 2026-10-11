@@ -23,13 +23,11 @@
  * later comparison read against it (`docs/plan.md`, What we will not do).
  *
  * The Starter Built Harness is the reference harness until a step is promoted
- * (`src/solve/starter.ts`), and a comparison with it has nothing more to solve. Once the operator
- * has promoted another reference, the starter is a fixed lower reference and no side of the sign
- * test. It is then solved only when the comparison reads a step, to test that the step also holds
- * against it: a step needs at least as many wins as losses against the starter, and one with fewer
- * reads `below-starter`. The test is held to the starter only once every tallied task has its
- * solves under it; until then the reading is `starter-unread`, whether a kill, the cap or a
- * settling left it so.
+ * (`src/solve/starter.ts`). Once the operator has promoted another reference, the starter is the
+ * control the table reads the tasks with after a promotion (`decide.ts`), and no side of a
+ * comparison between two others. Until 2026-10-11 a step against a promoted reference also
+ * solved the starter on the tallied tasks, a third arm read by no move but the one that
+ * completed it (`docs/simplify.md`, B2).
  *
  * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
  * gave a valid answer in every solve, in some and in none. For the starter this is what the
@@ -55,8 +53,7 @@
  * flight steps aside, since what they bill may be under their reserve; when none is in flight and
  * the next solve still cannot start, the cap is reached. A comparison the cap cuts short of its
  * test reads `not-scored` and is finished: its tally would be of the tasks that happened to come
- * first. One the cap cuts in the starter's solves has its test whole, and reports it as
- * `starter-unread`. A session is stopped by its own limits and not by the cap, which holds its
+ * first. A session is stopped by its own limits and not by the cap, which holds its
  * practice solves alone: none starts that the cap has no reserve for (`practiceLeft`, `tools.ts`).
  *
  * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
@@ -574,7 +571,7 @@ function write(
  * checkpoint after several sessions, and with `noise` its gate G2.
  */
 export async function checkpoint(request: CheckpointRequest): Promise<Report> {
-  const { log, id, old, fresh, starter, solves } = request;
+  const { log, id, old, fresh, solves } = request;
   // A comparison that reported is finished, and run again it says what it said.
   const before = reported(read(log), id);
   if (before !== null) return before;
@@ -615,14 +612,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   ];
   await work.ruleLeft();
   if (!(await work.solveAll(fixed.tasks, arms))) return stopped();
-  let found = compared(log, fixed, NO_LABELS);
-  if (found.reading === "starter-unread") {
-    // The test cleared its level, so the starter is solved on the tallied tasks to hold it to.
-    // Whatever stops those solves, the test stands and is reported: a cap that cut the starter
-    // short leaves the reading where it was, unread against the starter.
-    await work.solveAll(found.versions, [{ under: starter, needed: solves }]);
-    found = compared(log, fixed, NO_LABELS);
-  }
+  const found = compared(log, fixed, NO_LABELS);
   const told = { ...head, ...found, disputed: disputed(), capped: work.capped(), settled: null };
   return write(asked, told, beside());
 }
@@ -669,9 +659,7 @@ export async function round(request: RoundRequest): Promise<Report> {
  * refused, and so is a settling with no label at all, which would close the comparison to the
  * labels still to come.
  *
- * A settling makes no solve. Where the labels leave a test that clears its level and the starter
- * was never solved for it, the reading is `starter-unread`, and the new harness is compared with
- * the starter in a comparison of its own.
+ * A settling makes no solve.
  *
  * The comparison is read as its own report found it (`asReported`), so the labels settle the same
  * reading whether they come at once or after later comparisons have solved the same tasks.

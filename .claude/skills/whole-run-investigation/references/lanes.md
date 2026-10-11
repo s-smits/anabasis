@@ -589,8 +589,7 @@ to `operator`, and to `host` (`src/kernel/compare.ts`) only for an arithmetic fa
 
 **23. The starter.**
 
-Starts from `VALID BY HARNESS (lane 23)`, `BELOW THE STARTER (lane 23)` and
-`STARTER UNREAD (lane 23)`.
+Starts from `VALID BY HARNESS (lane 23)`.
 
 The question is whether the tasks leave a harness room to add anything to the starter. The
 Starter Built Harness is pi's coding agent with nothing added: pi's four coding tools, no guide
@@ -603,13 +602,12 @@ starter's own result, and the plan's first gate is read off it. A starter valid 
 solve has tasks too easy to show an improvement, and they are replaced before another session is
 paid for: v1's solver wrote its own search and passed, and twelve firmware tasks passed faster
 with the simulator withheld. The Examiner writes tasks where the starter is valid on about half
-its solves. After a promotion the
-starter is a fixed lower reference and no side of the sign test: a comparison that clears its
-level solves the starter on the same tasks, and reads a step only with at least as many wins as
-losses against it. `BELOW THE STARTER` names a harness that beat the reference and lost to the
-starter. `STARTER UNREAD` names a test that cleared its level with a tallied task the starter has
-not its solves on, which a settling, a stop or the cap can leave: the new harness is then
-compared with the starter in a comparison of its own. Read which tasks the starter answers that
+its solves. After a promotion the starter is the control: the tasks written for the promoted
+harness are read by the starter against it before a Builder session is paid for, which is where
+the plan reads whether the starter loses more each epoch. Until 11 October a step against a
+promoted reference also solved the starter on the tallied tasks and read `below-starter` or
+`starter-unread` off it; a report of before holds the words and its `against`, and no trigger
+reads them. Read which tasks the starter answers that
 a harness does not, by the solves' endings and never their text. The decision it changes is
 whether a step is believed, and at the first gate whether the tasks are replaced; it routes to
 `operator`, and to `harness/guide` or `harness/tools` where a harness loses to the starter.

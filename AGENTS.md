@@ -132,8 +132,9 @@ Six consequences guide a change:
    ending, a limit and how much of it is used. It does not tell the agent what to write. A v1
    campaign that was told a three-stage course changed only its published magnitudes for four test
    sets in a row.
-2. **Give an author no target.** The Examiner is told one outcome for each task and no zone, share
-   or count. v1 measured why: an author told a zone, a share or a count wrote towards it, and one
+2. **Give an author no target.** The Examiner is told one outcome for each task and aggregate
+   counts from the last scored comparison involving the current reference, with no target zone,
+   share or count. v1 measured why: an author told a zone, a share or a count wrote towards it, and one
    told each answer's distance from its limit moved the limits. Since 10 October it is told the
    budget every solve is held to, as a fact and not a target: a task that tells two harnesses
    apart is one a better method answers within that budget and a worse one does not, which
@@ -171,7 +172,7 @@ wall keeps from it.
 
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
-| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, and one outcome for each task of the campaign; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, and what the host's reading found in each draft | A target, a harness's name, a count of solves. It makes no solve of the exam's | `src/examiner/` |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, aggregate validity and win/loss/tie counts from the last scored comparison involving the current reference, what the last session said at its `finish`, and the home that session left; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, and what the host's reading found in each draft | A target, a harness's name, its answers or traces. It makes no solve of the exam's | `src/examiner/` |
 | **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
@@ -510,9 +511,12 @@ Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves
 until one is; a Builder session of 240 minutes, 300 turns and 24 practice solves; a solve of
 120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
 names a number. An Examiner session ends when the Examiner calls `finish` a second time, or a
-first time once the host has the tasks it asked for (`--exam-tasks`): a first `finish` short of
-them is declined once, with the need and no count, since every live session of 9 and 10 October
-proposed one batch of one to three tasks in three turns and finished.
+first time once the host has the tasks it asked for: what the campaign is short of a comparison's
+target and of its practice (`examTasks`, `tools/d2/harness-builder.ts`), or `--exam-tasks` where
+the operator names a count. A first `finish` short of them is declined once, with the need and
+no count, since every live session of 9 and 10 October proposed one batch of one to three tasks
+in three turns and finished. The session's home is carried whole into the next session's, and
+what it said at its `finish` opens the next (11 October).
 
 Two of them need a word for a small campaign. The reserve is what one solve is held at before it
 starts, and a campaign ends where less of its total is left than that: set `--reserve` to about
@@ -546,9 +550,11 @@ terms, and one asked for again on other terms is refused. The scored tasks are `
 held-out ones, the newest epoch's first and within an epoch drawn by the contract's hash, less
 two kinds the draw leaves out: a task with no valid answer after two comparisons, until a person
 labels it (`awaitingLabel`), and one the reference harness answered in every solve of two
-comparisons, which can only tie again or be lost (`exhausted`). A third of the latter stays in by
-the same hash, so that a harness that breaks what the reference answers still shows its losses.
-The Examiner is told such a task is exhausted.
+comparisons, on whichever side it stood, which can only tie again or be lost (`exhausted`); a task
+the objective told two valid answers apart on is not closed, since the next harness can still win
+it. A third of the closed ones stays in by a hash of its own, so that a harness that breaks what
+the reference answers still shows its losses. The Examiner is told such a task is exhausted, in
+those words.
 
 **Fresh solves.** Each scored task is solved under each harness, afresh, the two harnesses taking
 the first place in turn. A solve counts only when its start names the comparison. No earlier solve
@@ -675,9 +681,11 @@ prints it as its last line. In the order the table asks:
    tasks first, since a changed harness can only tie again on those. No step without room, or
    where neither harness answered, sends the Examiner for other tasks: there is no shorter budget
    to fall back to.
-9. Nothing new to compare: the Builder builds. Something new: it is compared once the sessions
-   before a comparison have run, or tasks are written first where the comparison would be short
-   of them.
+9. Nothing new to compare: the Builder builds, once the campaign holds as many scorable tasks as
+   a comparison scores; before any comparison the Examiner writes the rest first, so that the
+   release before the first session has them to draw practice from. Something new: it is
+   compared once the sessions before a comparison have run, or tasks are written first where the
+   comparison would be short of them.
 
 The campaign ends `no-room` after more comparisons of one harness without room than its
 patience, or as many Examiner sessions in a row that held out no task where they were asked for

@@ -87,6 +87,7 @@
  */
 import { type draftExam, draftOf } from "#src/examiner/draft.ts";
 import type { examine } from "#src/examiner/session.ts";
+import { supplyOf } from "#src/builder/admission.ts";
 import { decide } from "#src/builder/decide.ts";
 import { type Decided, decidedLine } from "#src/builder/move.ts";
 import type { Plan } from "#src/builder/ground.ts";
@@ -333,6 +334,22 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
   return named;
 }
 
+/**
+ * The held-out tasks an Examiner session is asked for where no flag names them: what the campaign
+ * is short of a comparison's target, and what the next release will take for practice, since a
+ * release before a Builder session takes held-out tasks. Undefined where the campaign is short of
+ * neither, as after a comparison that left no room, and the command's default stands. Until
+ * 11 October the count was the command's literal default, 12 new tasks, whatever the campaign
+ * held: the buffer campaigns of that day were short 9 and asked for 12, and the sentence that
+ * declines a first `finish`, "the host does not yet have the tasks it needs", was tied to it.
+ */
+function examTasks({ events, plan }: Turn): string | undefined {
+  const supply = supplyOf(events);
+  const short = Math.max(0, plan.wanted.target - supply.held);
+  const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
+  return short + practice > 0 ? String(short + practice) : undefined;
+}
+
 /** The next free id under `prefix`, as `b-3` after `b-1` and `b-2`. */
 function nextId(events: readonly LogEvent[], prefix: string): string {
   const taken = events.flatMap(({ data }) => {
@@ -527,7 +544,10 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
       [
         ...pack,
         ...seat,
-        ...flag("tasks", values["exam-tasks"]),
+        ...flag("tasks", values["exam-tasks"] ?? examTasks(turn)),
+        // The wall every solve is held to, as the campaign's terms hold it, for the budget fact
+        // the Examiner is told before a setting is on record.
+        ...flag("solve-minutes", values["solve-minutes"]),
         ...flag("proposals", values["exam-proposals"]),
         ...flag("minutes", values["exam-minutes"]),
         ...flag("turns", values["exam-turns"]),

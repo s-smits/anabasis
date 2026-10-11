@@ -19,7 +19,12 @@
  * has no shell and reads no file.
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
- * an earlier session already wrote is not taken again, whatever id it would get.
+ * an earlier session already wrote is not taken again, whatever id it would get; the home a
+ * session computed in is carried whole into the next session's (`examineWalled`, `keep`), and
+ * what a session said at its `finish` opens the next (`lastNote`). Until 11 October both went
+ * with the session: on that day the two buffer sessions each spent their first minutes fetching
+ * and compiling the same engine and writing an optimiser around it, and the next session would
+ * have started from nothing.
  *
  * The session ends at `finish`, at its wall or its turns, or when the host has the tasks it was
  * asked for. A turn of its own the provider failed ends it crashed, with what the provider said.
@@ -50,9 +55,9 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
-import { rmSync } from "../meta/filesystem.ts";
+import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { basename, dirname } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -73,7 +78,7 @@ import { hostScratch } from "../verify/wall-policy.ts";
 import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { openingOf } from "../builder/opening.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
-import { heard } from "./record.ts";
+import { comparisonSummary, heard } from "./record.ts";
 
 interface ExamLimits {
   readonly wallSeconds: number;
@@ -112,6 +117,10 @@ export interface ExamRequest {
   /** The Examiner's shell, where the session has one: `bash`, `read` and `write` in a walled home
    *  of its own. Absent, the Examiner computes nothing (`examineWalled` gives one). */
   readonly shell?: CommandWall | undefined;
+  /** Where the campaign keeps an Examiner's home between sessions: the folder the last session's
+   *  home was copied to whole, and the next session's home is seeded from. Absent, nothing is
+   *  carried, as a test may want. */
+  readonly keep?: string | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
 }
@@ -338,6 +347,13 @@ function finishTool(desk: Desk): AgentTool {
   });
 }
 
+/** What the last Examiner session that finished said at its `finish`, or null where none did. */
+export function lastNote(events: readonly LogEvent[]): string | null {
+  const note = events.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data
+    .note;
+  return isString(note) && note.trim() !== "" ? note : null;
+}
+
 /** Why no Examiner session starts under `id` on this log, or null. A session's id prefixes its
  *  tasks' ids. A launcher asks before it starts one. */
 export function claimed(events: readonly LogEvent[], id: string): string | null {
@@ -353,7 +369,7 @@ async function toolsOf(desk: Desk): Promise<AgentTool[]> {
   // What the shell is told of its wall, after pi's own description of `bash`; the network as the
   // wall's probe found it (`networkReach`).
   const network = request.shell === undefined ? "unreached" : await networkReach(request.shell);
-  const walls = ` The command runs in your home directory, which is yours for the session and empty at its start. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: a task enters it through propose_tasks alone.`;
+  const walls = ` The command runs in your home directory, which is yours for the session and holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: a task enters it through propose_tasks alone.`;
   const shell =
     request.shell === undefined
       ? []
@@ -417,6 +433,8 @@ export async function examine(request: ExamRequest): Promise<Examined> {
           firstMessage(request.contract, request.checks, heard(before, request.examples), limits, {
             brief: openingOf(before)?.prompt,
             budget: request.budget,
+            comparison: comparisonSummary(before),
+            lastNote: lastNote(before),
           }),
         ),
       ],
@@ -499,9 +517,27 @@ export async function examineWalled(request: Omit<ExamRequest, "shell"> & Walled
       toolTree: null,
       limits: { shellDefaultSeconds: 120, shellMaxSeconds: 600 },
     };
-    return await examine({ ...request, shell });
+    if (request.keep !== undefined) seedHome(dirs.home, request.keep);
+    try {
+      return await examine({ ...request, shell });
+    } finally {
+      if (request.keep !== undefined) keepHome(dirs.home, request.keep);
+    }
   } finally {
     await release();
     rmSync(dirs.host, { recursive: true, force: true });
   }
+}
+
+/** The next session's home, seeded with what the campaign keeps of the last one's. */
+export function seedHome(home: string, keep: string): void {
+  if (existsSync(keep)) cpSync(keep, home, { recursive: true });
+}
+
+/** The campaign's copy of a session's home, made whole when the session ends and replacing the
+ *  one before: it is the exam side's, under the campaign's folder beside the log, which every
+ *  wall closes. No link is followed, as the Builder's carry follows none. */
+export function keepHome(home: string, keep: string): void {
+  rmSync(keep, { recursive: true, force: true });
+  if (existsSync(home)) cpSync(home, keep, { recursive: true });
 }

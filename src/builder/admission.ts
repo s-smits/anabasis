@@ -65,15 +65,14 @@ import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shap
 /** What a log holds for the next comparison. */
 export interface Supply {
   /** The held-out tasks that may be scored, those that wait for a person's label and are left
-   *  out, those both harnesses answered in every solve of two comparisons and are left out
-   *  (`exhausted`), and the tasks released for practice. */
+   *  out, those the reference harness answered in every solve of two comparisons and are left
+   *  out (`exhausted`), and the tasks released for practice. */
   readonly held: number;
   readonly awaiting: number;
   readonly exhausted: number;
   readonly released: number;
-  /** The share of its tallied tasks the last comparison left for the next to untie, under the
-   *  setting of the log's last test-side solve and against the harness the next is made with;
-   *  null before any such comparison. */
+  /** The share of its tallied tasks the last comparison left for the next to untie, against the
+   *  harness the next is made with; null before any such comparison. */
   readonly untied: number | null;
   /** The tasks held out since that comparison tallied. */
   readonly since: number;
@@ -299,7 +298,7 @@ export function admission(supply: Supply, wanted: Wanted) {
       ],
       [
         supply.exhausted > 0,
-        `${String(supply.exhausted)} held-out task(s) were answered by both harnesses in every solve of two comparisons under this setting and are not scored: they can only tie again`,
+        `${String(supply.exhausted)} held-out task(s) were answered by the reference harness in every solve of two comparisons, with no objective telling two valid answers apart, and are not scored: they can only tie again or be lost`,
       ],
       [wanted.builds && supply.released === 0, "no task is released: the Builder has nothing to practise on"],
       [

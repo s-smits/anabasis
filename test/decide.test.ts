@@ -193,6 +193,23 @@ describe("a word the operator left", () => {
 describe("what is built and what is compared", () => {
   it("builds while no session has left a harness that is not the reference", () => {
     expect(move(SET_UP)).toMatchObject({ move: "build" });
+    // Short of the tasks a comparison scores, the Examiner writes first, before the first session
+    // is paid for: the buffer campaigns of 11 October built on three practice tasks and then
+    // waited on an Examiner session between the session and the comparison.
+    const six = [
+      READ,
+      ...HELD.slice(0, 6).flatMap(heldOut),
+      ...heldOut("p1"),
+      event("task.state", { version: "p1", state: "released" }),
+    ];
+    expect(move(six)).toEqual({
+      move: "examine",
+      why: "the campaign holds 6 of the 12 tasks a comparison scores, and no comparison has run yet: the Examiner writes more first",
+    });
+    // Once a comparison has run, the rows that read it decide, whatever is held.
+    expect(move([...six, built("b-1", "h1"), ...compared("g-1", "h1", "no-step")])).toMatchObject({
+      move: "build",
+    });
     // A session that left the harness as it was, having practised on nothing, leaves nothing to
     // compare and had nothing to work on: the tasks change before another session is paid for.
     expect(move([...SET_UP, built("b-1", "start", { changed: false })])).toMatchObject({

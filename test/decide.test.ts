@@ -119,6 +119,18 @@ describe("the exam and the tasks, before anything is built", () => {
     });
     expect(move([crashed, fell(1), crashed], plan)).toMatchObject({ move: "end", ending: "exam" });
     expect(move([crashed, crashed], plan)).toMatchObject({ move: "draft" });
+    // Run again once the campaign ended on its environment, it drafts again: the crashes count
+    // since that ending, and the drafts put before it still count.
+    const ended = event("campaign.ended", { ending: "environment", why: "no draft was put" });
+    expect(move([crashed, crashed, crashed, ended], plan)).toMatchObject({ move: "draft" });
+    expect(move([crashed, crashed, crashed, ended, crashed, crashed, crashed], plan)).toMatchObject({
+      ending: "environment",
+    });
+    expect(move([fell(2), crashed, crashed, ended], plan)).toEqual({
+      move: "draft",
+      why: "2 drafts did not stand at the host's reading, and 1 more may be put",
+    });
+    expect(move([fell(2), ended, fell(1)], plan)).toMatchObject({ ending: "exam" });
     // A draft that stood is the exam, and it is read like any other.
     const stood = event("exam.drafted", { session: "d-1", draft: { domain: "a field" } });
     expect(move([fell(1), stood], plan)).toMatchObject({ move: "accept" });

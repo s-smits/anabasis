@@ -5,7 +5,7 @@
 export const runtimeProcess = globalThis.process;
 
 /** Argument parsing for the repository's own command entrypoints; Bun 1.4 has no equivalent. */
-export { parseArgs } from "node:util";
+export { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 
 /**
  * The runtime executable and `Bun.spawn`, captured at controller import, before any generated

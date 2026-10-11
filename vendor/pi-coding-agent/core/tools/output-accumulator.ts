@@ -1,13 +1,10 @@
-// Copied from pi coding-agent v1.0.0 (github.com/earendil-works/pi, a13d35a, MIT, see LICENSE):
-// packages/coding-agent/src/core/tools/output-accumulator.ts. One departure: a `tempDir` option
-// for where the full output is kept, which upstream fixes at the host temporary directory, open
-// to every later solve's reads. The built shell keeps it in the session home instead.
-// Strict compiler options force the `!` on indexed reads and the `| undefined` on optional fields.
-import { randomBytes } from "node:crypto";
-import { createWriteStream, type WriteStream } from "node:fs";
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// packages/coding-agent/src/core/tools/output-accumulator.ts, verbatim but for
+// the compiler: this repository's strict options force the `!` on indexed reads and the `| undefined` on optional fields.
+// Departure: `tempDir`, where the full output of a cut command goes (see utils/output-files.ts).
+import type { WriteStream } from "node:fs";
 import { open } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createOutputFileStream } from "../../utils/output-files.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, type TruncationResult, truncateTail } from "./truncate.ts";
 
 export interface OutputAccumulatorOptions {
@@ -27,11 +24,6 @@ export interface FullOutput {
 	content: string;
 	/** Whether `content` omits part of the output. */
 	truncated: boolean;
-}
-
-function defaultTempFilePath(prefix: string, dir: string = tmpdir()): string {
-	const id = randomBytes(8).toString("hex");
-	return join(dir, `${prefix}-${id}.log`);
 }
 
 function byteLength(text: string): number {
@@ -261,8 +253,9 @@ export class OutputAccumulator {
 		if (this.tempFilePath) {
 			return;
 		}
-		this.tempFilePath = defaultTempFilePath(this.tempFilePrefix, this.tempDir);
-		this.tempFileStream = createWriteStream(this.tempFilePath);
+		const { path, stream } = createOutputFileStream(this.tempFilePrefix, ".log", this.tempDir);
+		this.tempFilePath = path;
+		this.tempFileStream = stream;
 		for (const chunk of this.rawChunks) {
 			this.tempFileStream.write(chunk);
 		}

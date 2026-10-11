@@ -1,114 +1,60 @@
 ---
 name: zip-run
-description: Zip one recorded Harness Builder run for handover at a chosen depth (--light, --medium, --verbose). Use when the operator asks to zip, bundle, archive or send a run, its traces, its logs or "everything the model saw", or names a size cap. One script, three cumulative levels, a README and MANIFEST inside every zip.
+description: "Zip recorded Anabasis v2 runs for handover at a chosen depth (--light, --medium, --verbose). Use when the operator asks to zip, bundle, archive or send a run, a round, its log, its harness or \"everything the model saw\", or names a size cap. One command, three cumulative levels, any number of runs, a README, a reading guide and a MANIFEST inside every zip."
 ---
 
 # Zip a run
 
-One command produces the bundle; the level decides how deep it reaches.
+One command makes the bundle, and the level decides how deep it reaches.
 
 ```sh
-bun .claude/skills/zip-run/scripts/zip-run.ts <run-dir | campaign-dir> --light|--medium|--verbose \
-  [--run <runId>] [--out <zip>] [--max-mb N] [--json]
+bun run runs zip [<name> ...] --light|--medium|--verbose [--out <zip>] [--max-mb N] [--note <file>]
 ```
 
-`<run-dir>` is the launched worktree (holds `.scratch/quick-run/launch.json`, for example
-`~/Developer/hb4-run-<runId>`). Its `campaigns/` tree
-also carries campaigns copied from other runs, so the script keys on `launch.json`'s `runId` and
-takes the one campaign whose `controller/<runId>/opening.json` exists. A campaign directory is
-accepted directly, and `--run` names the run when it holds more than one. The batteries are the
-ones `batteryRunDirs` matches by this run's canonical iteration ids, so a sibling run whose id merely
-starts with this one never enters, and `MANIFEST.json` records the controller's strict reading of
-the run (`controller`, `controllerError`) without letting a refusal stop the handover. The zip lands at `--out`, default
-`./<runId>-<level>.zip`; put it in the session scratchpad and send it with `SendUserFile`.
+A name is a round (`.ana/d2/<name>/`) or a live solve (`.ana/live/<name>.jsonl`) in any worktree of
+the repository, matched as `bun run runs pulse` matches it: `abl25` takes the four rounds whose
+names hold it. No name takes every run. The zip lands at `--out`, by default
+`./<names>-<level>.zip`; put it in the session scratchpad and send it with `SendUserFile`.
 
 ## Pick the level from the request
 
-| operator says | level | measured on the Sol truss run of 2026-09-12 (11 epochs, 450 cases) |
+| operator says | level | measured on the twenty runs of 2026-10-08 |
 | --- | --- | --- |
-| "traces", "reasoning", "logs", "under 2 MB", handover to a reviewing model | `--light` | 1.34 MB, 544 files |
-| "what each case did", "tool calls", "verifier and Judge output", "the whole evaluator" | `--medium` | 6.9 MB, 3,020 files |
-| "everything", "everything the model saw", "full tool outputs" | `--verbose` | 44 MB, 45,149 files |
+| "the log", "what happened", "under 2 MB", handover to a reviewing model | `--light` | 4.7 MB, 188 files (1.7 MB for one arm's four rounds) |
+| "why was this answer refused", "the checker", "what the harness installed" | `--medium` | 5.7 MB, 342 files |
+| "everything", "what the model was told", "the prompts" | `--verbose` | 11.0 MB, 1,712 files |
 
-A run bundle of 20 MB or more is verbose by definition. If a lighter request produces that, the
-level is wrong, not the cap. `--light` fails when the zip exceeds 2 MB; `--max-mb` sets any other
-cap. When a cap fails, drop the largest group the script prints or choose a lighter level; do not
-strip files by hand inside the zip.
+Light is refused over 2 MB a run, and `--max-mb` sets any other cap. When a cap refuses, name fewer
+runs or choose a lighter level. Do not strip files by hand inside a zip.
 
 ## What each level holds
 
-Levels are cumulative. Every level includes `README.md` (levels, groups, what was left out,
-then the level's reading guidelines) and `MANIFEST.json` (every file with byte size and group,
-run id, campaign, source commit). The guidelines are presets in `readme/<level>.md`: when to
-choose that level, the reading order, what the bundle cannot answer, and what not to conclude
-from it. Edit the preset, not the script, to change what a recipient is told.
+Levels are cumulative. A v2 run is its log, so every level holds each run's whole `log.jsonl`: every
+gate, session, turn, tool call, verdict and reading.
 
-**light**: how the run started and ended, what each round decided, and what the Builder was thinking.
+- **light** adds what the log names by digest only: each harness a session kept
+  (`states/<digest>/`, less a checker copy) and the brief.
+- **medium** adds the checker (`checks/`, and the `correctness-model/` a harness holds when its
+  Builder was given one) and the toolchain's own files (`states/tree-*`).
+- **verbose** adds whatever else the round's folder holds, and the tracked `src`, `tools`, `docs`
+  and `package.json` of each worktree at its commit. The prompts are rendered by that source and are
+  not in the log.
 
-- `launch/`: `launch.json`, `stop.json`, `probe.json`, `fullrun.log`.
-- `controller/`: `opening.json`, `terminal.json`.
-- campaign ledgers: `epochs.json`, `budget.json`, `case-record.jsonl`, `isolation/*.json`.
-- `claims/`, `difficulty-decisions/`, `analysis/` (rebuild advice packets, epoch reviews,
-  admissions), `promotions/`, `safeguards/`.
-- `epochs/<epoch>/`: `builder-prose.jsonl` (reasoning per turn), `builder-execution.json` (tool
-  tallies, failed calls, submits), `builder-session.json`, `backends.json`, `campaign.json`.
-- `versions/<version>/`: `version.json`, `conformance.json`, `claim-stages.json`, `agent/`
-  (tools.ts, tools-spec.json, BUILT_AGENTS.md), `correctness-model/brief.json` and `evaluator.ts`.
-- `versions/<version>/runs/<runId>/`: `battery.json`, `run-manifest.json`, `backends.json`, and
-  `cases/<case>/case-result.json` only.
+Never held, at any level: installed packages, caches and built bundles (`node_modules`,
+`.bundle-snapshots`, a pip target), a link, and a file named like a secret. `MANIFEST.json` names
+each under `left`. No file is left for its size, since a long round's log is the run: the command
+prints each group's size, and the cap is the whole zip's.
 
-**medium** adds the per-case and per-check material.
+## What goes with it
 
-- `cases/<case>/`: `trace.json` (Built Harness turns and tool calls with argument digests and
-  result previews), `verifier.json`, `judge.json`, `public-task.json`,
-  `final-submission.json`, `artifact.json`.
-- `runs/<runId>/judge/`: census sample, bait corpus, controls, standing.
-- whole `correctness-model/`: `tasks.json` with hidden expectations, `controls.json`,
-  `reference/`, evaluator tests.
-- `epochs/<epoch>/`: `builder-path-record.jsonl` (every guarded file access), `trials/` and the
-  `NN-<slug>/` preview receipts (`census.json`, `conformance.json`, `solvability.json`,
-  `iteration.json`), `verifier-workshop.jsonl`.
+`README.md` opens every zip: the runs with their commit and ending, the groups with their sizes and
+what was left. `GUIDE.md` is `tools/runs/zip-guide.md` as it stands: how to read a bundle, in what
+order, what it cannot answer and what not to conclude from it. Edit the guide, not the script, to
+change what a recipient is told. `MANIFEST.json` lists every file with its size and group.
 
-**verbose** adds everything the models saw and everything the host recorded, minus binaries.
+Pass your own reading with `--note`: it rides as `NOTES.md`, and the guide tells the recipient to
+check it against the log. Say there what the README cannot know: which runs were still going, which
+arm differs from which and by what commit, and which readings you do not believe yet.
 
-- `observability/<runId>.jsonl`: every start prompt the Builder, Built Harness and Judge
-  received, in full (44 MB uncompressed on the Sol run: 256 solver prompts, 745 Judge prompts,
-  11 Builder prompts).
-- `controller/verifier-lifetime/`: `intent.json`, `spawned.json`, `settlement.json` per verifier
-  process (13,702 processes on the Sol run).
-- every remaining case file: `built-runtime.json`, `built-registration.json`,
-  `draft-checkpoints.json`.
-- `epochs/<epoch>/workspace/` and `.oss/` metadata: the Builder's authoring tree, `STARTER.md`,
-  generated scripts. `.toolchain/`, `.oss/downloads/`, `.oss/build/`, `node_modules/`,
-  `.bundle-snapshots/` (preview candidates; the accepted ones are under `versions/`) and any
-  file over 8 MB are excluded and listed under `excluded` in the manifest.
-- `controller.sqlite`.
-- `transcripts/`: full session transcripts with complete tool outputs, when the backend left
-  them on disk. Claude-backed runs keep them under
-  `~/.claude/projects/<epoch workspace path with / replaced by ->/*.jsonl`; the script finds
-  those per epoch. Codex-backed runs keep rollouts only if the frozen `CODEX_HOME`
-  (`.scratch/quick-run/codex/sessions/`) retained them; the Sol run of 2026-09-12 did not, so
-  its verbose bundle carries no Codex rollouts and the README says so. Do not go looking in
-  `~/.codex/sessions` for them: rollouts there with the run workspace as `cwd` are later review
-  sessions, not the Builder.
-
-Never included at any level: installed toolchain binaries, dependency trees, `.git`, provider
-`auth.json`, `.DS_Store`.
-
-## After zipping
-
-Report the zip path, the compressed size, the file count and the group table the script prints.
-Name what was left out in one line; the README inside repeats it. When the operator asked for a
-size, say whether the cap held. If a verbose request finds no transcripts, say that the run
-recorded prompts, reasoning and tool-call previews but not full tool outputs, and where that
-limit comes from (Codex rollouts not retained under the frozen home).
-
-## Focused check
-
-`test/zip-run-script.test.ts` builds a synthetic run tree and proves the three levels select
-and exclude the named groups, that `--light` reports its cap, and that `launch.json`'s `runId`
-selects the campaign among copied ones.
-
-```sh
-scripts/worktree.sh run <dir> bun run test -- test/zip-run-script.test.ts
-```
+A run with "no ending in the log" was still running when zipped, or is of a kind that reports none.
+A worktree "with uncommitted changes" ran source the zip's commit does not fully name.

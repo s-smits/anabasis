@@ -30,10 +30,5 @@ export function campaignDir(repoRoot: string, slug: string): string {
  * Spelled inline as `join(…, "domains", slug)`, the two are indistinguishable.
  */
 export function defaultProductDir(repoRoot: string, slug: string): string {
-  return join(productRoot(repoRoot), slug);
-}
-
-/** The product tree of one checkout, one directory per project. */
-export function productRoot(repoRoot: string): string {
-  return join(repoRoot, "domains");
+  return join(repoRoot, "domains", slug);
 }

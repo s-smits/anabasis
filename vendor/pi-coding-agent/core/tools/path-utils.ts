@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.0.0 (github.com/earendil-works/pi, a13d35a, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/core/tools/path-utils.ts, verbatim.
 import { accessSync, constants } from "node:fs";
 import { access } from "node:fs/promises";

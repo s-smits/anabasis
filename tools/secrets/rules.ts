@@ -1,9 +1,6 @@
-// What may not enter git history. This is a third credential vocabulary beside
-// src/backends/scrub-env.ts (what may not reach a child process env) and
-// src/backends/diagnostic-redaction.ts (what may not reach a log line): the three refuse at
-// different boundaries and this one is the widest, since a repository keeps what it is given
-// in its history. test/secret-scan.test.ts checks the connection between these rules:
-// the credential formats covered by its runtime-redaction cases must be caught here too.
+// What may not enter git history, v1's tools/secrets/rules.ts. v1 had two narrower vocabularies
+// beside it, an env scrub and a log redactor; v2 builds each child's environment from an allowlist
+// instead, so this is its only one.
 //
 // The rules read VALUE SHAPES, not names. A name-only rule ("a line mentioning PASSWORD") fires on
 // the prose and the tests that discuss credentials. Repeated false alarms make it harder to

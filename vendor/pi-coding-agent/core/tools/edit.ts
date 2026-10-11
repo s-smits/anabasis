@@ -1,5 +1,6 @@
-// Copied from pi coding-agent v1.0.0 (github.com/earendil-works/pi, a13d35a, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/core/tools/edit.ts. Departure: the TUI renderers are left out, since no terminal UI draws these calls.
+// Without them the definition takes no render state, so EditRenderState drops out of its type.
 // Strict compiler options force the `!` on indexed reads and the `| undefined` on optional fields.
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { constants } from "fs";

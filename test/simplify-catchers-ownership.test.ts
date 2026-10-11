@@ -7,7 +7,12 @@
  * while reporting nothing, and each test places its fixture in the tree on purpose.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import {
+  expectedLines,
+  fixedSource,
+  reportedLines,
+  reportedMessages,
+} from "./helpers/oxlint-rule-fixture.ts";
 
 /** Report the fixture's own `// REPORT` lines and nothing else, from a named place in the tree. */
 async function pins(rule: string, fixture: string, count: number, at = "src/run/fixture.ts"): Promise<void> {
@@ -57,7 +62,7 @@ const LIFETIME = `
 declare const argv: string[];
 
 export function run() {
-  const child = Bun.spawn({ cmd: argv }); // REPORT a third owner of process lifetime
+  const child = Bun.spawn({ cmd: argv }); // REPORT a second owner of process lifetime
   child.kill();
   return child.exitCode;
 }
@@ -306,11 +311,29 @@ describe("the simplify ownership catchers", () => {
     await pins("no-alias-restating-return", ALIASES, 1);
   });
 
-  it("reads a file that spawns a child and kills it", async () => {
+  it("reads a file that spawns a child and kills it, and names the owner and its reader that are in the tree", async () => {
     await pins("no-lifetime-outside-owner", LIFETIME, 1);
+    const [message] = await reportedMessages(
+      "ana",
+      "no-lifetime-outside-owner",
+      LIFETIME,
+      "src/run/fixture.ts",
+    );
+    expect(message).toContain("`stageCommandIsolation` (src/verify/solve-command-isolation.ts)");
+    expect(message).toContain(
+      "`killProcessGroup` or `terminateAndReapProcessGroupId` (src/meta/subprocess.ts)",
+    );
   });
 
-  it("says nothing about a launch owner, a bare spawn, a liveness probe, or a reaper of found pids", async () => {
+  it("says nothing about the launch owner, its reader, a bare spawn, a liveness probe, or a reaper of found pids", async () => {
+    expect(
+      await reportedLines(
+        "ana",
+        "no-lifetime-outside-owner",
+        LIFETIME,
+        "src/verify/solve-command-isolation.ts",
+      ),
+    ).toStrictEqual([]);
     expect(
       await reportedLines("ana", "no-lifetime-outside-owner", LIFETIME, "src/meta/subprocess.ts"),
     ).toStrictEqual([]);

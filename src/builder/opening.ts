@@ -57,7 +57,6 @@ export interface Opening {
  *  an Examiner session's tasks, proposals, minutes and turns. */
 export const TERMS = [
   "solve-minutes",
-  "solve-turns",
   "target",
   "solves",
   "level",

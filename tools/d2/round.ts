@@ -48,7 +48,7 @@
  *
  * Who solves, what a solve is held to and which tasks are scored are the campaign's setting, which
  * its log records once (`setting.ts`). A round that names none of it runs under the record, and
- * one whose `--solver`, `--solve-minutes`, `--solve-turns`, `--solve-model-turns`, `--tasks` or
+ * one whose `--solver`, `--solve-minutes`, `--solve-model-turns`, `--tasks` or
  * `--target` name another is refused, unless `--new-setting` says the campaign's setting changes
  * here. The first comparison of a campaign records what it names, with the stored cycle's own
  * solver and the sweep's limits for the rest. `--minutes` and `--turns` are the Builder session's

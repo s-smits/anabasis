@@ -532,7 +532,6 @@ export async function build(request: BuildRequest): Promise<Built> {
       dirs,
       toolTree: join(dirs.home, HOME_TOOL_TREE),
       limits: request.limits,
-      cpu: { seconds: 0, unmeasured: 0 },
     };
     const network = await networkReach(wall);
     return await session(request, dirs, (bench) => walledTools(bench, wall, network));

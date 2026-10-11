@@ -21,7 +21,6 @@ import {
   pairsOf,
   scored,
   type Sides,
-  spread,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
@@ -79,9 +78,6 @@ export interface Report {
   /** Each harness by itself at the full limit, over `versions`. Null when nothing was compared, and
    *  in a report written before 2026-10-09. */
   readonly valid: Valid | null;
-  /** How far the use of turns, CPU seconds and seconds moved between repeated solves of one harness
-   *  on one task. Null when nothing was compared. */
-  readonly spread: ReturnType<typeof spread> | null;
   /** The mean billed dollars of a counted solve under each harness; null where the log holds none. */
   readonly billed: { readonly old: number | null; readonly fresh: number | null } | null;
   /** The new harness against the starter, over the tallied tasks the starter has its solves on.
@@ -156,7 +152,6 @@ const REPORT_KEYS = [
   "starter",
   "scored",
   "valid",
-  "spread",
   "billed",
   "against",
   "noise",
@@ -178,7 +173,6 @@ export const NO_LABELS: ReadonlyMap<string, Ruling> = new Map();
 export const NOTHING = {
   scored: null,
   valid: null,
-  spread: null,
   billed: null,
   against: null,
   noise: null,
@@ -318,7 +312,6 @@ export function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, 
   return {
     scored: { ...tested, unsolved: pairs.filter(unsolved).length },
     valid: validOf(pairs, fixed.solves),
-    spread: spread(pairs),
     billed: { old: mean("old"), fresh: mean("fresh") },
     against,
     noise: fixed.noise

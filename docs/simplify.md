@@ -561,6 +561,7 @@ harnesses answered at the full limit (t-10, `docs/handover-2026-10-10.md`).
 - **The condition.** `limits` keeps its field for the prompt count, so a condition's form does
   not move. A `solve.finished` written before this holds `cpu`, and nothing reads it afterwards.
 - **Lines.** About −170 (*estimate*).
+- **Done** at PR #196 (11 October), as written, with one addition: `Used` keeps the billed dollars alone, since nothing read a pair's turns or seconds once `within` and `spread` were gone; `Recorded` holds no `turns`, and a record on the log with another count than `LIMITS.turns` is refused.
 
 #### A4. A setting is recorded once and does not change
 

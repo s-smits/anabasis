@@ -211,7 +211,6 @@ describe("the account of a harness a Builder is handed", () => {
           dirs,
           toolTree: join(dir, ".toolchain"),
           limits: { shellDefaultSeconds: 60, shellMaxSeconds: 60 },
-          cpu: { seconds: 0, unmeasured: 0 },
         };
         const said = (result: { content: { type: string; text?: string }[] }) =>
           result.content.map((part) => part.text ?? "").join("");

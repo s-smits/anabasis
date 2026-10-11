@@ -19,7 +19,6 @@ const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
 /** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
 const REPORT = {
   scored: TESTED,
-  spread: null,
   billed: null,
   against: null,
   noise: null,
@@ -144,7 +143,8 @@ const OWN = {
   ...REPORT,
   ...round,
   scored: { wins: 2, losses: 0, ties: 0, p: 0.25, unsolved: 0 },
-  // A report written before 2026-10-11 holds the same test at each shorter budget; no trigger reads it.
+  // A report written before 2026-10-11 holds the same test at each shorter budget and the spread
+  // of what repeated solves used; no trigger reads either.
   budgets: [{ turns: 4, wins: 1, losses: 0, ties: 1, p: 0.5 }],
   spread: { turns: { tasks: 2, median: 2, most: 3 }, cpu: null, seconds: { tasks: 2, median: 1, most: 1 } },
   noise: { wins: 0, losses: 0, ties: 2, p: 1 },
@@ -211,11 +211,11 @@ describe("the whole-run investigation's reader", () => {
     expect(detail("CHAIN")).toBe("b-1 hp>hc no-step");
   });
 
-  it("reads the budget from what a comparison measured: the spread, and its own noise", () => {
-    // The report's rows at shorter budgets, which were read until 2026-10-11, start no trigger.
+  it("reads the budget from what a comparison measured: its own noise", () => {
+    // The report's rows at shorter budgets and its spread, which were read until 2026-10-11, start
+    // no trigger.
     expect(seen.triggers.some((trigger) => trigger.detail.includes("turns 4"))).toBe(false);
-    // Turns doubled between two solves of one harness on one task at the median; seconds did not move.
-    expect(detail("USE OF THE BUDGET SPREADS")).toBe("b-1: turns x2.0 at the median and x3.0 at most");
+    expect(seen.triggers.some((trigger) => trigger.detail.includes("at the median"))).toBe(false);
     expect(detail("REFERENCE AGAINST ITSELF")).toBe(
       "b-1: 0 won, 0 lost and 2 tied between two samples of the reference harness",
     );
@@ -278,7 +278,6 @@ describe("the whole-run investigation's reader", () => {
       "STARTER UNREAD",
       "BELOW THE STARTER",
       "VALID BY HARNESS",
-      "CPU UNMEASURED",
       "EXAMINER NEVER FINISHED",
       "STEP NOT REPEATED",
       "SETTLED BY HAND",
@@ -516,12 +515,8 @@ describe("the reader of a round compared with another harness than its session s
     expect(said("NON-RESULTS")).toEndWith("r-1: 1 under the reference harness, 0 under the others");
   });
 
-  it("counts the solves whose CPU is a floor, and reads no starved solve off one", () => {
-    expect(said("CPU UNMEASURED")).toBe(
-      "1 of 3 finished solves cut a command before its CPU time was read; r-1: 1 of 3 of its solves",
-    );
-    // One CPU second in a hundred would read as a solve that waited, were the floor a reading.
-    expect(said("LONG SOLVE, LITTLE CPU")).toBeUndefined();
+  it("reads no CPU figure off a solve: a log of 9 October holds one, and no trigger starts from it", () => {
+    expect(seen.triggers.some((trigger) => trigger.name.includes("CPU"))).toBe(false);
   });
 
   it("names an Examiner session that started and never finished", () => {
@@ -677,11 +672,5 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
 
   it("reads no check as refusing most answers where every refusing check blocked the same ones", () => {
     expect(said("FAILS ON ONE CHECK")).toBeUndefined();
-  });
-
-  it("says that a meter reading zero on every finished solve measured nothing", () => {
-    expect(said("CPU UNMEASURED")).toBe(
-      "2 of 2 finished solves read 0 CPU seconds: the meter counts only the children a command waited for, and reads zero under Bubblewrap",
-    );
   });
 });

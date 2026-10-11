@@ -159,6 +159,10 @@ describe("the flags a launch passes on", () => {
       "tools/d2/session.ts would refuse these flags: Unexpected argument 'tools/d2/session.ts'.",
     );
     expect(flagsRefused("tools/d2/session.ts", own)).toBeNull();
+    // The prompts a solve is given are no flag of any command since 2026-10-11 (`LIMITS.turns`).
+    expect(flagsRefused("tools/d2/checkpoint.ts", ["--id", "g2", "--solve-turns", "2"])).toBe(
+      "tools/d2/checkpoint.ts would refuse these flags: Unknown option '--solve-turns'",
+    );
     expect(flagsRefused("tools/d2/round.ts", [...own, "--predict", "p"])).toBeNull();
     expect(flagsRefused("tools/d2/checkpoint.ts", ["--name", "r1", "--id", "g2", "--cap", "1"])).toBeNull();
     expect(
@@ -231,11 +235,8 @@ describe("a launch's reading of the setting", () => {
   it("refuses a wall the command itself would refuse, before anything starts", async () => {
     const flags = ["--name", "no-such-campaign", "--session", "b-1"];
     await expect(launch([...flags, "--solve-minutes", "0"])).rejects.toThrow(
-      "--solve-minutes 0 --solve-turns 24: a solve's wall and its turns are whole numbers of at least one",
+      "--solve-minutes 0: a solve's wall is a whole number of minutes, at least one",
     );
-    await expect(
-      launch(["--name", "no-such-campaign", "--id", "g2", "--solve-turns", "2.5"]),
-    ).rejects.toThrow("--solve-minutes 120 --solve-turns 2.5");
   });
 
   it("holds a comparison's flags to the campaign's record, and none of an Examiner session's", () => {

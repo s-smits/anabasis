@@ -211,7 +211,7 @@ Set against this plan, the stack stands as follows. The table says how each item
 - **What the launcher counts.** A task held out since the last comparison counts whole, and no more tasks are counted than the reference harness left to win (PRs #63, #67).
 - **The solver's tools.** v1's draft tools and the answer writer are gone. In 209 solves on record nobody restored or inspected a draft, and on truss 38 of 41 answers were typed into the writer straight after a command had printed them (PR #70).
 - **An account of a harness for the Builder.** A session is handed `HARNESS.md` with a worked example. The first buffer Builder had written three tool files only to read the tool interface's source (PR #70).
-- **Unmeasured CPU.** A command cut at its limit leaves its CPU unmeasured, and a task with such a valid solve is left out of a CPU budget's test (PRs #69, #70).
+- **Unmeasured CPU.** A command cut at its limit leaves its CPU unmeasured, and a task with such a valid solve is left out of a CPU budget's test (PRs #69, #70). Withdrawn on 11 October with the meter itself (`docs/simplify.md`, A3, PR #196): a solve reports no CPU figure.
 - **Two more packs.** Buffer and recode were laid out beside truss, six tasks each, by a script kept outside the repository (PR #57).
 - **Reviews.** The author's own review of the rewrite found six defects and an independent one nineteen more. All are patched, each with a test (PR #55).
 - **Told time, and a command handed back.** Every tool result ends with the solve time used, and a command that would run into the last minute is cut there. Five of six failed practice solves had submitted an answer the solver's own check had refused, stopping early or out of time (PR #72).

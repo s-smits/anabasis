@@ -126,7 +126,6 @@ describe("a solve's walled commands", () => {
           dirs,
           toolTree: null,
           limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
-          cpu: { seconds: 0, unmeasured: 0 },
         };
         const inHome = async (command: string) => {
           let output = "";
@@ -171,7 +170,6 @@ describe("a solve's walled commands", () => {
           dirs,
           toolTree: null,
           limits: { shellDefaultSeconds: 1, shellMaxSeconds: 2 },
-          cpu: { seconds: 0, unmeasured: 0 },
         };
 
         const first = await run(wall, 'echo kept > "$HOME/note" && pwd && cat staged', (work) =>
@@ -199,8 +197,7 @@ describe("a solve's walled commands", () => {
         expect(left.exitCode).toBe(0);
         await Bun.sleep(100);
         expect(() => runtimeProcess.kill(Number(left.output), 0)).toThrow("ESRCH");
-        // The leader was spared: it wrote the command's CPU record after the reaping.
-        expect(wall.cpu.unmeasured).toBe(0);
+        // The leader was spared: the command's exit code reported after the reaping.
         // A job in a process group of its own is out of that trap's reach once the shell that started
         // it has gone, and GNU `timeout` makes one: a solver's three searches under it ran on after
         // their command returned (2026-10-09). It still works on the solve's volume.
@@ -250,7 +247,6 @@ describe("a solve's walled commands", () => {
           dirs,
           toolTree: null,
           limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
-          cpu: { seconds: 0, unmeasured: 0 },
         };
         // The command's TMPDIR is its own folder under the solve's runs, where the cap counts it,
         // and the host's /tmp with the canary in it is hidden behind an empty private one.
@@ -300,7 +296,6 @@ describe("a solve's walled commands", () => {
           dirs,
           toolTree: null,
           limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
-          cpu: { seconds: 0, unmeasured: 0 },
         };
         const closed = await run(
           wall,
@@ -353,7 +348,6 @@ describe("a solve's walled commands", () => {
           dirs,
           toolTree: null,
           limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
-          cpu: { seconds: 0, unmeasured: 0 },
         };
         const own = join(basename(dirs.root), "runs", "run-");
         // `/usr/bin/python3` and `/usr/bin/make` are xcrun shims, which start their tool with TMPDIR

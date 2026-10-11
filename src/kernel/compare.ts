@@ -72,7 +72,7 @@
  * 9 October the starter answered 0 of 10 solves read at two turns and 10 of 10 once it was told
  * two, so the shorter readings said nothing of a campaign run at them, and they went with the
  * ladder of budgets that read them (`docs/simplify.md`, A1 and A2). What a solve used of its
- * turns, its seconds and the CPU of its commands is still measured and reported (`Used`, `spread`).
+ * turns and its seconds is in its `solve.finished`, read by the investigation (`tools/wri/`).
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
@@ -83,40 +83,17 @@ import type { LogEvent } from "./log.ts";
 import { ended, passed, ranUnder, verdictsOf } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
-/** What one counted solve used, as its `solve.finished` holds it: null where the log has none. */
+/** What one counted solve cost, as its `solve.finished` holds it: billed dollars, null where the
+ *  log has none. Until 2026-10-11 it also held the model's turns, the prompts, the CPU seconds of
+ *  the solve's commands and the attempt's seconds, for the readings at shorter budgets and the
+ *  spread between repeated solves, both gone with them (`docs/simplify.md`, A2 and A3). */
 export interface Used {
-  /** The model's turns. */
-  readonly turns: number | null;
-  /** The prompts the solver was given: null for a solve logged before 2026-10-09. */
-  readonly prompts: number | null;
-  /** CPU seconds of the solve's commands that ended measured. */
-  readonly cpu: number | null;
-  /** How many of its commands ended with their CPU unmeasured: one cut at its limit or by the wall
-   *  takes its record with it (`src/solve/command.ts`). With any, `cpu` is a lower bound of what the
-   *  solve used and not the amount, which is why no budget is given in it. Left out where there
-   *  was none. */
-  readonly unmeasured?: number;
-  readonly seconds: number | null;
-  /** Billed dollars. */
   readonly billed: number | null;
 }
 
 /** The trigger a first reading has to clear to buy the repeat, where no flag or opening names one
  *  (`--trigger`): 2-0, 4-1, 5-2 and 7-3 clear it, and 1-0 does not. */
 export const TRIGGER = 0.25;
-/** What a solve's use is reported in: the model's turns, the CPU seconds of its commands, and the
- *  whole attempt's seconds as the host timed it. */
-export const MEASURED = ["turns", "cpu", "seconds"] as const;
-
-/** How far repeated solves of one harness on one task differ in a unit: over the tasks and sides
- *  with two measured solves or more, the largest use divided by the smallest, as the median of
- *  those ratios and the largest. Null where no task has two. */
-interface Spread {
-  readonly tasks: number;
-  readonly median: number;
-  readonly most: number;
-}
-
 /** How two valid answers on one task are set against each other: by the quantity the check program
  *  computes of each, lower or higher being better, where the two differ by more than `margin` of
  *  the larger magnitude. */
@@ -140,7 +117,7 @@ export interface Paired {
   };
   /** Each of those solves as the log names it, in the same order. */
   readonly solves?: { readonly old: readonly string[]; readonly fresh: readonly string[] };
-  /** What each of those solves used of its limits, in the same order. */
+  /** What each of those solves cost, in the same order. */
   readonly used?: { readonly old: readonly Used[]; readonly fresh: readonly Used[] };
 }
 
@@ -320,38 +297,6 @@ export function scored(pairs: readonly Paired[]): Tally & { readonly p: number }
   return { ...counts, p: signP(counts.wins, counts.losses) };
 }
 
-/**
- * How far the use of each measured figure moved between repeated solves of one harness on one
- * task. It is what decides the unit a budget is given in: a unit whose use doubles between two
- * solves of the same harness splits them at random under any budget near it (`docs/plan.md`,
- * Phase 0). CPU is reported beside the two units, and is none. A solve that used none of a figure
- * is left out of that figure's ratio.
- */
-export function spread(pairs: readonly Paired[]): Record<(typeof MEASURED)[number], Spread | null> {
-  const of = (unit: (typeof MEASURED)[number]): Spread | null => {
-    const ratios = pairs
-      .flatMap(({ used }) => [used?.old ?? [], used?.fresh ?? []])
-      .flatMap((side) => {
-        const spent = side.flatMap((each) => {
-          const value = each[unit];
-          return value !== null && value > 0 ? [value] : [];
-        });
-        return spent.length < 2 ? [] : [Math.max(...spent) / Math.min(...spent)];
-      })
-      .sort((a, b) => a - b);
-    const middle = ratios[Math.floor(ratios.length / 2)];
-    const most = ratios.at(-1);
-    return middle === undefined || most === undefined
-      ? null
-      : {
-          tasks: ratios.length,
-          median: ratios.length % 2 === 1 ? middle : ((ratios[ratios.length / 2 - 1] ?? middle) + middle) / 2,
-          most,
-        };
-  };
-  return { turns: of("turns"), cpu: of("cpu"), seconds: of("seconds") };
-}
-
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of
  *  the seed and itself, so a draw replays from the log that records its seed, and a version added
  *  to the pool moves no other's rank. The seed is to be fixed before the pool exists, the frozen
@@ -416,17 +361,7 @@ export function pairsOf(events: readonly LogEvent[], versions: readonly string[]
     const own = under(old);
     const [before, after] = old === fresh ? [own.slice(0, halves), own.slice(halves)] : [own, under(fresh)];
     const used = (solves: typeof counted) =>
-      solves.map(({ end }): Used => {
-        const { seconds: cpu, unmeasured } = asRecord(end.cpu) ?? {};
-        return {
-          turns: isNumber(end.turns) ? end.turns : null,
-          prompts: isNumber(end.prompts) ? end.prompts : null,
-          cpu: isNumber(cpu) ? cpu : null,
-          ...keyIfDefined("unmeasured", isNumber(unmeasured) && unmeasured > 0 ? unmeasured : undefined),
-          seconds: isNumber(end.seconds) ? end.seconds : null,
-          billed: isNumber(end.billed) ? end.billed : null,
-        };
-      });
+      solves.map(({ end }): Used => ({ billed: isNumber(end.billed) ? end.billed : null }));
     const measured = (solves: typeof counted) =>
       solves.map(({ id }) => {
         const checker = verdicts?.get(id)?.checker;

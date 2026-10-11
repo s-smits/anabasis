@@ -343,11 +343,6 @@ describe("a round", () => {
         scored: { ...tested, unsolved: 0 },
         // Each harness by itself: the reference answered no task validly, the new one all, twice.
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
-        spread: {
-          turns: { tasks: 8, median: 1, most: 1 },
-          cpu: null,
-          seconds: { tasks: 8, median: 1, most: 1 },
-        },
         billed: { old: BILLED, fresh: BILLED },
         against: tested,
         noise: null,
@@ -1152,8 +1147,6 @@ describe("a checkpoint with no session", () => {
     const report = await checkpoint(s.compare("g0"));
     expect(report).toMatchObject({
       scored: { wins: 0, losses: 0, ties: 4 },
-      // Between two solves of one arm on one task the turns moved by a quarter at most.
-      spread: { turns: { tasks: 8, median: 1.125, most: 1.25 } },
       billed: { old: BILLED, fresh: BILLED },
       reading: NO_STEP,
     });

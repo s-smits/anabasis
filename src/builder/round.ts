@@ -43,10 +43,10 @@
  * to exceed. It should read no step, and it decides nothing here. The later solves run after the
  * test's own are done, so that second tally also holds whatever the later hour moved.
  *
- * The report holds how far the use of turns, CPU seconds and seconds moved between repeated
- * solves of one harness on one task (`spread`). Until 2026-10-11 it also read the same solves at
- * shorter budgets (`within`), which read a solver told the longer one; a comparison is read at the
- * one budget its solves were told (`docs/simplify.md`, A2).
+ * Until 2026-10-11 the report also read the same solves at shorter budgets (`within`), which read
+ * a solver told the longer one, and how far the use of each unit moved between repeated solves
+ * (`spread`); a comparison is read at the one budget its solves were told (`docs/simplify.md`,
+ * A2 and A3).
  *
  * `cap` is the comparison's dollar cap. Before each solve the dollars the log holds as billed for
  * the comparison are summed (`billedFor`): its own solves and their rulings, and in a round the

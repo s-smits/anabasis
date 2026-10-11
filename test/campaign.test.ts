@@ -616,9 +616,9 @@ describe("a campaign", () => {
     expect(unnamed.setting(unnamed.test)).toBe(plain.setting(plain.test));
     const longer = await openCampaign({
       ...ARGS,
-      ...settingNamed({ "solve-minutes": "240", "solve-turns": "48" }),
+      ...settingNamed({ "solve-minutes": "240" }),
     });
-    expect(longer.limits).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
+    expect(longer.limits).toEqual({ ...LIMITS, wallSeconds: 14_400 });
     expect(longer.setting(longer.test)).not.toBe(plain.setting(plain.test));
     const turned = await openCampaign({ ...ARGS, ...settingNamed({ "solve-model-turns": "40" }) });
     expect(turned.setting(turned.test)).not.toBe(plain.setting(plain.test));
@@ -636,7 +636,7 @@ describe("a campaign", () => {
       "z-4",
     ];
     // A wall the owner refuses is refused by each command before a campaign is opened.
-    const refused = "--solve-minutes 0 --solve-turns 24: a solve's wall and its turns are whole numbers";
+    const refused = "--solve-minutes 0: a solve's wall is a whole number of minutes";
     await expect(roundCommand([...flags, "--solve-minutes", "0"])).rejects.toThrow(refused);
     const checkpoint = (...more: string[]) =>
       Bun.spawnSync({
@@ -745,7 +745,7 @@ describe("a campaign", () => {
       SERVED,
     ];
     const refusal = "the campaign's log records no setting yet, and this command names another";
-    const was = `which was --solver ${priceKey(model)} --solver-effort ${effort} --solve-minutes 8 --solve-turns 24 --solve-model-turns 15`;
+    const was = `which was --solver ${priceKey(model)} --solver-effort ${effort} --solve-minutes 8 --solve-model-turns 15`;
     /** What a command refused with, or nothing where it ran. */
     const refused = (ran: Promise<unknown>) => ran.then(() => "", errorMessage);
     // A round and a session by itself, each started by hand with the setting left out.

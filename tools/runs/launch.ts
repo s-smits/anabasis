@@ -339,7 +339,6 @@ export function settingFlagged(values: Readonly<Record<string, Loose>>, events: 
       solver: text(values.solver),
       "solver-effort": text(values["solver-effort"]),
       "solve-minutes": text(values["solve-minutes"]),
-      "solve-turns": text(values["solve-turns"]),
       "solve-model-turns": text(values["solve-model-turns"]),
       tasks: text(values.tasks),
       target: text(values.target),

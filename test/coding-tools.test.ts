@@ -103,7 +103,6 @@ describe("the solver's coding tools", () => {
       dirs,
       toolTree: null,
       limits: LIMITS,
-      cpu: { seconds: 0, unmeasured: 0 },
     };
     const ours = bashTool(wall);
     const pi = createBashToolDefinition(dirs.home);
@@ -254,7 +253,7 @@ describe("the coding tools on the command wall", () => {
         const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: 16 * 1024 * 1024 } });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const limits = { shellDefaultSeconds: 1, shellMaxSeconds: 2 };
-        const wall: CommandWall = { base, dirs, toolTree: null, limits, cpu: { seconds: 0, unmeasured: 0 } };
+        const wall: CommandWall = { base, dirs, toolTree: null, limits };
         const tools = new Map(
           codingTools(wall, ["read", "bash", "edit", "write"]).map((tool) => [tool.name, tool]),
         );
@@ -296,12 +295,6 @@ describe("the coding tools on the command wall", () => {
         const failed = await bash("echo partial; exit 3");
         expect(failed.isError).toBe(true);
         expect(text(failed)).toBe("partial\n\n\nCommand exited with code 3");
-
-        // The three timed-out commands took their CPU record with them; a finished one leaves its own.
-        expect(wall.cpu.unmeasured).toBe(3);
-        const before = wall.cpu.seconds;
-        await bash("i=0; while [ $i -lt 2000 ]; do i=$((i+1)); done", 2);
-        expect(wall.cpu.seconds).toBeGreaterThan(before);
 
         // A cut command's full output stays in this wall's home, where the solver can read it back.
         const cut = text(await bash("seq 1 3000"));

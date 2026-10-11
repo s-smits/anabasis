@@ -211,8 +211,7 @@ async function shown(
       "a solve",
     );
     const files = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
-    const cpu = { seconds: 0, unmeasured: 0 };
-    const wall = { base, dirs, toolTree: harness.toolTree, limits: LIMITS, cpu };
+    const wall = { base, dirs, toolTree: harness.toolTree, limits: LIMITS };
     const tools = await solverTools(request, harness, wall, openDesk());
     const prompt = systemPrompt({
       tools,

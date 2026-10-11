@@ -55,9 +55,8 @@ model's own turns, and tell the solver so, name `--solve-model-turns` once: a so
 them all without an answer ends `turns-ended`, and every tool result says which turn the solver
 is in. Without the flag the turns are not limited. Until 11 October `--budget turns=40` read the
 same solves again at a shorter budget, which is a reading of a solver told the longer one; the
-flag is refused since (`docs/simplify.md`, A2). CPU is still measured and reported for every
-solve, as a figure and no unit; the investigation's reader counts the solves whose CPU a cut
-command left unmeasured (`CPU UNMEASURED`). The report holds each harness by itself, as the
+flag is refused since (`docs/simplify.md`, A2), and so is `--solve-turns`, the prompts a solve
+is given, which are every solve's (A3). The report holds each harness by itself, as the
 tasks by how many of their solves were valid, and the command prints it. For the first round the
 reference harness is the starter, so that line is what gate G0 reads: where the starter is valid
 on nearly every solve, the tasks leave a harness nothing to add, and the Examiner writes others.
@@ -169,7 +168,7 @@ ran under, since what the earlier comparisons measured was then another setting'
 
 Who solves, what a solve is held to and which tasks are scored are the campaign's, and its log
 records them once (`tools/d2/setting.ts`): `--solver`, `--solver-effort`, `--solve-minutes`,
-`--solve-turns`, `--solve-model-turns`, and `--tasks` or `--target`. The first comparison of a
+`--solve-model-turns`, and `--tasks` or `--target`. The first comparison of a
 campaign records what it names, with the stored cycle's own solver, the sweep's limits and twelve
 tasks by the draw for the rest. After that, name none of them: a command runs under the record.
 One that names another is refused, by the launcher and by the command, and says both. To change

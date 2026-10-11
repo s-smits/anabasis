@@ -97,7 +97,7 @@ interface CampaignArgs {
    *  and `--solver-effort` (`setting.ts`). */
   readonly solver?: { readonly model: string; readonly effort: ThinkingLevel } | undefined;
   /** What every solve of this command is held to, when not `LIMITS`: a command's `--solve-minutes`
-   *  and `--solve-turns` (`setting.ts`). */
+   *  and `--solve-model-turns` (`setting.ts`). */
   readonly limits?: Limits | undefined;
   /** A log of this command's own for the solves it makes, when not the campaign's: the trial solve
    *  of a handed-over harness (`close.ts --solve`), which the campaign's readings never count. The
@@ -143,7 +143,8 @@ const PROGRAMS_OF = "programs-of:";
 /** The sweep's `config.yaml` and its solves' `maxTurns`, with a disk cap the sweep did not have, as
  *  `live-solve.ts` has them, but four solves at a time where a parity solve runs alone. Concurrency
  *  is part of a condition, so a campaign's solves and a parity solve are not under the same one.
- *  These are a campaign's limits until a command names a longer wall or more turns (`setting.ts`). */
+ *  These are a campaign's limits until a command names another wall or the model's turns
+ *  (`setting.ts`); the prompts, `turns`, are every solve's (v1's cap on nudges). */
 export const LIMITS: Limits = {
   wallSeconds: 7200,
   turns: 24,

@@ -5,7 +5,6 @@
  *   --solver claude/claude-sonnet-5-5   the model that solves in the stored cycle's place
  *   --solver-effort high                its effort, read beside --solver and not without it
  *   --solve-minutes 120                 the wall of one solve
- *   --solve-turns 24                    the prompts a solver is given before a solve stops without an answer
  *   --solve-model-turns 40              the model's own turns a solve is given, told to the solver; no default
  *   --tasks a,b,c                       the scored tasks, by id, where the operator chooses them
  *   --target 12                         otherwise: so many of the held-out tasks, by the contract's draw
@@ -38,9 +37,11 @@
  * held to 15 of its own turns; a first command there that left the flag out would have recorded a
  * campaign with no such limit, and solved under it, without a word.
  *
- * `--solve-turns` counts prompts, of which every finished solve of the first rounds was given one,
- * so it bound no solve; it is v1's cap on nudges and stays that. The model's own turns are the
- * budget told to the solver and enforced, which seconds cannot be on a loaded host.
+ * The prompts a solver is given before a solve stops without an answer are v1's cap on nudges,
+ * `LIMITS.turns`, the same for every solve: every finished solve of the first rounds was given
+ * one, so the cap bound no solve, and until 2026-10-11 `--solve-turns` named it and the record
+ * held it (`docs/simplify.md`, A3). A record that holds another count is refused. The model's own
+ * turns are the budget told to the solver and enforced, which seconds cannot be on a loaded host.
  *
  * What does not follow the setting is the campaign's own: a task's state and the harnesses it
  * keeps. The concurrency and the disk cap stay the sweep's: neither is what a harder task runs out
@@ -73,7 +74,6 @@ export interface Recorded {
   /** Who solves in the stored cycle's place; null for the cycle's own model at its effort. */
   readonly solver: { readonly model: string; readonly effort: string } | null;
   readonly minutes: number;
-  readonly turns: number;
   /** The model's own turns a solve is given; null where they are not limited. */
   readonly modelTurns: number | null;
   /** The scored tasks by id, where the operator named them; null for `target` of the held-out
@@ -87,7 +87,6 @@ interface SettingFlags {
   readonly solver?: string | undefined;
   readonly "solver-effort"?: string | undefined;
   readonly "solve-minutes"?: string | undefined;
-  readonly "solve-turns"?: string | undefined;
   readonly "solve-model-turns"?: string | undefined;
   readonly tasks?: string | undefined;
   readonly target?: string | undefined;
@@ -123,7 +122,6 @@ export const SETTING_OPTIONS = {
   solver: { type: "string" },
   "solver-effort": { type: "string" },
   "solve-minutes": { type: "string" },
-  "solve-turns": { type: "string" },
   "solve-model-turns": { type: "string" },
   "new-setting": { type: "boolean", default: false },
 } as const;
@@ -134,7 +132,6 @@ export const SETTING_OPTIONS = {
 export const SETTING_DEFAULTS = {
   "solver-effort": "high",
   "solve-minutes": "120",
-  "solve-turns": "24",
 } as const;
 const TARGET = 12;
 
@@ -152,7 +149,6 @@ const PARTS: readonly {
       solver === null ? null : `--solver ${solver.model} --solver-effort ${solver.effort}`,
   },
   { of: "minutes", flag: "--solve-minutes", said: ({ minutes }) => `--solve-minutes ${String(minutes)}` },
-  { of: "turns", flag: "--solve-turns", said: ({ turns }) => `--solve-turns ${String(turns)}` },
   {
     of: "modelTurns",
     flag: "--solve-model-turns",
@@ -184,10 +180,10 @@ export function targetNamed(flag: string): number {
  */
 export function settingNamed(values: SettingFlags): NamedSetting {
   const given = { ...SETTING_DEFAULTS, ...defined(values) };
-  const [minutes, turns] = [Number(given["solve-minutes"]), Number(given["solve-turns"])];
-  if (!Number.isInteger(minutes) || minutes < 1 || !Number.isInteger(turns) || turns < 1) {
+  const minutes = Number(given["solve-minutes"]);
+  if (!Number.isInteger(minutes) || minutes < 1) {
     throw new Error(
-      `--solve-minutes ${given["solve-minutes"]} --solve-turns ${given["solve-turns"]}: a solve's wall and its turns are whole numbers of at least one`,
+      `--solve-minutes ${given["solve-minutes"]}: a solve's wall is a whole number of minutes, at least one`,
     );
   }
   const named = given["solve-model-turns"];
@@ -205,7 +201,6 @@ export function settingNamed(values: SettingFlags): NamedSetting {
     limits: {
       ...LIMITS,
       wallSeconds,
-      turns,
       ...commandSeconds(wallSeconds),
       ...keyIfDefined("modelTurns", modelTurns),
     },
@@ -219,7 +214,6 @@ function defined(values: SettingFlags): SettingFlags {
     ...keyIfDefined("solver", values.solver),
     ...keyIfDefined("solver-effort", values["solver-effort"]),
     ...keyIfDefined("solve-minutes", values["solve-minutes"]),
-    ...keyIfDefined("solve-turns", values["solve-turns"]),
     ...keyIfDefined("solve-model-turns", values["solve-model-turns"]),
     ...keyIfDefined("tasks", values.tasks),
     ...keyIfDefined("target", values.target),
@@ -227,12 +221,11 @@ function defined(values: SettingFlags): SettingFlags {
 }
 
 /** A record as the flags that name it. */
-function flagsOf({ solver, minutes, turns, modelTurns, tasks, target }: Recorded): SettingFlags {
+function flagsOf({ solver, minutes, modelTurns, tasks, target }: Recorded): SettingFlags {
   return {
     ...keyIfDefined("solver", solver?.model),
     ...keyIfDefined("solver-effort", solver?.effort),
     "solve-minutes": String(minutes),
-    "solve-turns": String(turns),
     ...keyIfDefined("solve-model-turns", modelTurns === null ? undefined : String(modelTurns)),
     ...keyIfDefined("tasks", tasks?.join(",")),
     target: String(target),
@@ -245,7 +238,6 @@ function recordOf(values: SettingFlags): Recorded {
   return {
     solver: solver === undefined ? null : { model: solver.model, effort: solver.effort },
     minutes: limits.wallSeconds / 60,
-    turns: limits.turns,
     modelTurns: limits.modelTurns ?? null,
     tasks: values.tasks === undefined ? null : values.tasks.split(","),
     target: targetNamed(values.target ?? String(TARGET)),
@@ -257,9 +249,15 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
   const { solver, minutes, turns, modelTurns, tasks, target } =
     events.findLast(({ kind }) => kind === KIND)?.data ?? {};
   const by = asRecord(solver);
+  // A record written before 2026-10-11 holds the prompts a solve was given, which every solve is
+  // given alike since (`LIMITS.turns`); one that held another count ran under another setting.
+  if (isNumber(turns) && turns !== LIMITS.turns) {
+    throw new Error(
+      `the campaign's setting was recorded with ${String(turns)} prompts a solve, and this source gives every solve ${String(LIMITS.turns)}: no tally on record speaks for it. Run it from the commit it was recorded at`,
+    );
+  }
   const whole =
     isNumber(minutes) &&
-    isNumber(turns) &&
     isNumber(target) &&
     (modelTurns === null || isNumber(modelTurns)) &&
     (tasks === null || (Array.isArray(tasks) && tasks.every(isString))) &&
@@ -268,7 +266,6 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
   return {
     solver: isString(by?.model) && isString(by.effort) ? { model: by.model, effort: by.effort } : null,
     minutes,
-    turns,
     modelTurns,
     tasks: Array.isArray(tasks) ? tasks.filter(isString) : null,
     target,
@@ -349,7 +346,7 @@ export function restarts(named: Solving, ran: ReturnType<typeof solverLast>): st
   if (ran === null) return [];
   const { solver, limits } = named;
   const held = (to: Limits) =>
-    `${String(to.wallSeconds / 60)} minutes and ${String(to.turns)} turns${
+    `${String(to.wallSeconds / 60)} minutes${
       to.modelTurns === undefined ? "" : `, with ${String(to.modelTurns)} model turns`
     }`;
   const costs = `the tallies, the tie share and the cost of a solve on record are another setting's, and say little of this comparison (${DOCUMENTED})`;
@@ -359,9 +356,7 @@ export function restarts(named: Solving, ran: ReturnType<typeof solverLast>): st
           `solves here are ${solver.model} at ${solver.effort}, and the log's last test-side solves were ${ran.model} at ${ran.effort}: ${costs}`,
         ]
       : []),
-    ...(limits.wallSeconds !== ran.limits.wallSeconds ||
-    limits.turns !== ran.limits.turns ||
-    limits.modelTurns !== ran.limits.modelTurns
+    ...(limits.wallSeconds !== ran.limits.wallSeconds || limits.modelTurns !== ran.limits.modelTurns
       ? [
           `a solve here is held to ${held(limits)}, and the log's last test-side solves ran under ${held(ran.limits)}: ${costs}`,
         ]
@@ -384,7 +379,7 @@ export function firstRecord(
   const { limits } = ran;
   const was = [
     `--solver ${ran.model} --solver-effort ${ran.effort}`,
-    `--solve-minutes ${String(limits.wallSeconds / 60)} --solve-turns ${String(limits.turns)}`,
+    `--solve-minutes ${String(limits.wallSeconds / 60)}`,
     ...(limits.modelTurns === undefined ? [] : [`--solve-model-turns ${String(limits.modelTurns)}`]),
   ].join(" ");
   return `the campaign's log records no setting yet, and this command names another than its last test-side solves ran under, which was ${was}. Name that setting, which is then recorded as the campaign's, or pass --new-setting to record what this command names, which opens a new condition that no tally on record speaks for (${DOCUMENTED})`;

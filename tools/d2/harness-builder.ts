@@ -168,7 +168,6 @@ const OPTIONS = {
   solver: SETTING_OPTIONS.solver,
   "solver-effort": SETTING_OPTIONS["solver-effort"],
   "solve-minutes": SETTING_OPTIONS["solve-minutes"],
-  "solve-turns": SETTING_OPTIONS["solve-turns"],
   "solve-model-turns": SETTING_OPTIONS["solve-model-turns"],
   // With no default of their own: one no command has named is the comparison's to default, and
   // one a command named is the opening's to keep (`TERMS`).
@@ -410,7 +409,6 @@ function sharedOf({ events, plan, opening, values }: Turn) {
             ...flag("solver", values.solver ?? opening.solver?.model),
             ...flag("solver-effort", values["solver-effort"] ?? opening.solver?.effort),
             ...flag("solve-minutes", values["solve-minutes"]),
-            ...flag("solve-turns", values["solve-turns"]),
             ...flag(
               "solve-model-turns",
               values["solve-model-turns"] ?? (opening.limit === null ? undefined : String(opening.limit)),
@@ -692,7 +690,6 @@ export async function harnessBuilder(
         solver: given.solver,
         "solver-effort": given["solver-effort"],
         "solve-minutes": given["solve-minutes"],
-        "solve-turns": given["solve-turns"],
         "solve-model-turns": recorded.modelTurns === null ? undefined : String(recorded.modelTurns),
         tasks: recorded.tasks?.join(","),
         target: recorded.tasks === null ? given.target : String(recorded.target),

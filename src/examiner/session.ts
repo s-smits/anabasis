@@ -488,7 +488,6 @@ export async function examineWalled(request: Omit<ExamRequest, "shell"> & Walled
       dirs,
       toolTree: null,
       limits: { shellDefaultSeconds: 120, shellMaxSeconds: 600 },
-      cpu: { seconds: 0, unmeasured: 0 },
     };
     return await examine({ ...request, shell });
   } finally {

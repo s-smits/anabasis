@@ -299,24 +299,21 @@ not label a task from the count alone. The decision it changes is the label each
 gets; it routes to `operator` for the label, `pack/evaluator` where the rejections are a check's
 fault, and `examiner/task` for an instance whose own limits exclude every answer.
 
-**9. Whether validity separates, and in which unit.**
+**9. Whether validity separates.**
 
-Starts from `TIES BETWEEN VALID ANSWERS (lane 9)` and `USE OF THE BUDGET SPREADS (lane 9)`.
+Starts from `TIES BETWEEN VALID ANSWERS (lane 9)`.
 
-The question is whether a valid answer within the budget tells two harnesses apart, and whether
-the budget's unit is steady enough to be a budget. `TIES BETWEEN VALID ANSWERS` fires on a
+The question is whether a valid answer within the budget tells two harnesses apart.
+`TIES BETWEEN VALID ANSWERS` fires on a
 comparison where more than half of the tallied tasks tie with valid answers on both sides. That
 is the plan's condition for building an objective (`docs/plan.md`, Phase 3): until it holds, no
 objective is built, and where it holds the question is whether the objective would separate the
-same solves (`objective.decided` in a report of a check program that declares one).
-`USE OF THE BUDGET SPREADS` reads the report's `spread`: over the tasks with two measured solves
-under one harness, the largest use of a unit divided by the smallest, at the median and at most.
-A unit whose use doubles between two solves of the same harness on the same task splits them at
-random under any budget near it. Read the three units side by side, turns, CPU seconds and
-seconds, and say which moved least. Seconds move with the host's load, which each
-`solve.started` and `solve.finished` records. Do not read a spread from fewer than a handful of
-tasks as settled. The decision it changes is the budget's unit and size, and whether Phase 3 is
-built; it routes to `operator`.
+same solves (`objective.decided` in a report of a check program that declares one). A report
+written before 11 October also holds `spread`, how far the use of turns, CPU seconds and seconds
+moved between repeated solves of one harness on one task, which decided the budget's unit; the
+unit is the model's turns, and no trigger reads it since. Seconds move with the host's load,
+which each `solve.started` and `solve.finished` records. The decision it changes is whether
+Phase 3 is built; it routes to `operator`.
 
 **10. Ties and the budget.**
 
@@ -662,7 +659,7 @@ an Examiner session, or a stop; it routes to `operator`.
 **26. Solver process and walls.**
 
 Starts from `WALL-BOUND MISSES (lane 26)`, `WALL SHARE (lane 26)`, `HOST LOADED (lane 26)`,
-`LOAD MOVED (lane 26)`, `LONG SOLVE, LITTLE CPU (lane 26)` and `CPU UNMEASURED (lane 26)`.
+`LOAD MOVED (lane 26)`.
 
 The question is how the solver spent its walls, and whether a miss measured the task or the
 wall. The limits are the host's, in the condition: the solve's wall, the turn cap, the shell's
@@ -672,22 +669,20 @@ used: v1 found it the measure that moves on every battery and leads a fail, 18.6
 in truss batteries that went on to fail a case, and that it said the opposite in firmware, where
 fails at 1.5% of the wall were not the solver's. So read the median share under the parent and
 the child on the scored set, and say whether the child's solves got shorter, longer or the same
-on the tasks both passed. Read `cpu.seconds` against `seconds` and the load at start and end: a
-long solve with little CPU waited on the machine or the provider, and on 7 October wall time ran
-2.3 times CPU time under load. A wall counts the clock, so a loaded host holds less work in it.
+on the tasks both passed. Read `seconds` against the load at start and end: on 7 October wall
+time ran 2.3 times CPU time under load. A wall counts the clock, so a loaded host holds less
+work in it.
 `HOST LOADED` names a comparison whose solves started, at the median, under a load over the
 host's cores, where the log holds the cores (from 9 October). `LOAD MOVED` gives each
 comparison's median load where the busiest ran under twice the calmest or more: on 9 October one
 harness answered the same tasks in a median of 105 s under a load of 31 and of 40 s under a load
-of 6, so a step and its repeat, or two readings at one wall, were not made under one budget. A command cut at its timeout or by an abort ends with its CPU
-time unmeasured, and the solve's `cpu.seconds` is then the sum of the others: a floor and no
-reading. `CPU UNMEASURED` counts those solves, and for each comparison the share of its solves
-among them, since its report sums what was measured and so reads a spread in `cpu` low on
-exactly the solves that ran longest. For that reason no budget is given in CPU seconds since
-9 October, and a report from before may hold a count of tasks a CPU budget left `unread`. A turn
-is one outer prompt over an unbounded tool loop, so the turn cap is a runaway guard and the calls
-are the work: every finished solve of the first three rounds on 9 October was given one prompt,
-and a budget in `prompts`, which was a unit until then, read what the full limit read. Since
+of 6, so a step and its repeat, or two readings at one wall, were not made under one budget. A
+`solve.finished` written before 11 October holds the CPU seconds of the solve's commands
+(`cpu`), which the meter read only of the children a command waited for, as a floor where a
+command was cut, and as zero under Bubblewrap; no trigger reads it since, and no budget was
+given in it after 9 October. The prompts a solve is given are v1's cap on nudges and every
+solve's: every finished solve of the first three rounds on 9 October was given one, and a
+budget in `prompts`, which was a unit until then, read what the full limit read. Since
 11 October a comparison is read at the one budget its solves were told. The decision it changes is whether a
 wall-bound miss is the task's or the wall's, and whether a gain shows first in time; it routes
 to `environment` for load, `harness/guide` when the guide sends the solver into work the wall

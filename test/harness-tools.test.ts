@@ -47,7 +47,6 @@ async function withWall(body: (wall: CommandWall) => Promise<void>, toolTree: st
       dirs,
       toolTree,
       limits: { shellDefaultSeconds: 60, shellMaxSeconds: 60 },
-      cpu: { seconds: 0, unmeasured: 0 },
     });
   } finally {
     await release();

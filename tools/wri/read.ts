@@ -478,21 +478,6 @@ function wallTriggers(log: Index): Trigger[] {
 function solveTriggers(log: Index): Trigger[] {
   const done = log.solves.filter((solve) => solve.outcome !== null);
   const missed = done.filter((solve) => solve.outcome === "fail");
-  const starved = done.filter(
-    (solve) => solve.cpu !== null && solve.seconds > 60 && solve.cpu < solve.seconds * 0.02,
-  );
-  // A solve with a command cut before its CPU time was read has a floor for its CPU and no
-  // reading. A comparison's report sums what was measured, so a budget or a spread in `cpu` is
-  // read low on these solves.
-  const cut = done.filter((solve) => solve.unmeasured > 0);
-  // A meter that reads zero on every finished solve measured nothing: it counts only the children
-  // a command waited for, and reads zero under Bubblewrap (AGENTS.md, section 7). On t-10 all 143
-  // solves read 0 on 10 October, and no line said so.
-  const zero = done.length > 0 && done.every((solve) => solve.cpu === 0);
-  const cutBy = log.compared.flatMap(({ session, scoring }) => {
-    const mine = scoring.filter((solve) => solve.unmeasured > 0).length;
-    return mine === 0 ? [] : [`${session}: ${share(mine, scoring.length)} of its solves`];
-  });
   // An Examiner session writes its ending as a Builder's does; one with a start and no ending
   // was cut, or is still running.
   const examined = new Set(log.of(EXAM_END).map((data) => text(data.session)));
@@ -526,26 +511,6 @@ function solveTriggers(log: Index): Trigger[] {
   const [[leader, most] = ["", 0]] = spend;
   return [
     ...wallTriggers(log),
-    ...(starved.length > 0 ? [fired("LONG SOLVE, LITTLE CPU", plural(starved.length, "solve"))] : []),
-    ...(cut.length > 0
-      ? [
-          fired(
-            "CPU UNMEASURED",
-            [
-              `${share(cut.length, done.length)} finished solves cut a command before its CPU time was read`,
-              ...cutBy,
-            ].join("; "),
-          ),
-        ]
-      : []),
-    ...(zero
-      ? [
-          fired(
-            "CPU UNMEASURED",
-            `${share(done.length, done.length)} finished solves read 0 CPU seconds: the meter counts only the children a command waited for, and reads zero under Bubblewrap`,
-          ),
-        ]
-      : []),
     ...(non.length > 0
       ? [
           fired(

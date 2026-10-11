@@ -471,8 +471,8 @@ stop rule and the campaign's setting. What only a host or an id can refuse stays
 launcher. A rehearsal is exempt by name: its seats are scripts, which are paid nothing.
 
 The setting of a campaign is recorded once in its log, as the event `campaign.setting`
-(`tools/d2/setting.ts`): who solves and under which limits, which five flags name (`--solver`,
-`--solver-effort`, `--solve-minutes`, `--solve-turns`, `--solve-model-turns`), and which tasks
+(`tools/d2/setting.ts`): who solves and under which limits, which four flags name (`--solver`,
+`--solver-effort`, `--solve-minutes`, `--solve-model-turns`), and which tasks
 are scored (`--tasks` or `--target`). The first command that begins a comparison records what it
 names, with the defaults for the rest. From then on a command that names nothing runs under the
 record, and one whose flag names another is refused, by the command and by the launcher, unless
@@ -587,11 +587,13 @@ needs its owner before more is spent.
 
 **The budget.** The binding unit is the model's own turns, told to the solver on every tool result
 and enforced (`--solve-model-turns`; a solve that uses them without an answer ends `turns-ended`).
-A time limit on each command bounds a turn. CPU seconds are reported and bind nothing: the meter
-counts only the children a command waited for and reads zero under Bubblewrap. A comparison is
-read at the one budget its solves were told. Until 11 October `--budget turns=40` read the same
-solves again at a shorter budget, which is a reading of a solver told the longer one; it went
-with the ladder (`docs/simplify.md`, A2), and the report holds what each solve used (`spread`).
+A time limit on each command bounds a turn. The prompts a solver is given before a solve stops
+with no answer are every solve's, v1's cap on nudges (`LIMITS.turns`), and bound no solve on
+record. A comparison is read at the one budget its solves were told. Until 11 October
+`--budget turns=40` read the same solves again at a shorter budget, which is a reading of a
+solver told the longer one, and the CPU seconds of a solve's commands were reported beside the
+turns: the meter counted only the children a command waited for and read zero under Bubblewrap.
+Both went with the ladder (`docs/simplify.md`, A2 and A3).
 
 **Beside the test.** The report holds how each harness did by itself (`valid`: on how many tasks
 every solve, some or none were valid). `--noise` reads the

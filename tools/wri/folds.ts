@@ -62,12 +62,6 @@ export interface Solve {
   outcome: string | null;
   kind: string | null;
   seconds: number;
-  /** The CPU seconds of its commands, or null where the log holds none whole: a command cut at its
-   *  timeout or by an abort ends unmeasured (`src/solve/command.ts`), and the sum of the others is
-   *  then a floor and no reading. */
-  cpu: number | null;
-  /** How many of its commands ended with their CPU time unmeasured. */
-  unmeasured: number;
   readonly calls: string[];
   errors: number;
   /** Whether the provider named the model that served it. */
@@ -130,10 +124,6 @@ export interface Index {
 
 /** A pass under this share of its wall, on few calls, is the lead v1 read for a published recipe. */
 export const SMALL_WALL_SHARE = 0.05;
-/** The median ratio between the largest and the smallest use of a unit, over repeated solves of
- *  one harness on one task, from which a budget in that unit splits two such solves about as often
- *  as not. */
-const SPREAD_WORTH_A_LINE = 1.5;
 const DEFECT = "check-defect";
 export const TEST = "test";
 export const BUILD_END = "build.finished";
@@ -164,7 +154,6 @@ export const TRIGGERS = {
   "NO VALID ANSWER": 8,
   "AWAITING A LABEL": 8,
   "TIES BETWEEN VALID ANSWERS": 9,
-  "USE OF THE BUDGET SPREADS": 9,
   "TIED TASKS": 10,
   "PASSES AT A SMALL WALL SHARE": 11,
   "OUTCOMES BY SESSION": 12,
@@ -200,8 +189,6 @@ export const TRIGGERS = {
   "HOST LOADED": 26,
   "LOAD MOVED": 26,
   "WALL-BOUND MISSES": 26,
-  "LONG SOLVE, LITTLE CPU": 26,
-  "CPU UNMEASURED": 26,
   "NON-RESULTS": 27,
   "SOLVE NEVER FINISHED": 27,
   "EXAMINER NEVER FINISHED": 27,
@@ -268,8 +255,6 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
         outcome: null,
         kind: null,
         seconds: 0,
-        cpu: null,
-        unmeasured: 0,
         calls: [],
         errors: 0,
         attested: false,
@@ -282,12 +267,9 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
     }
     if (solve !== undefined && kind === "solve.finished") {
       const ending = asRecord(data.ending);
-      const cpu = asRecord(data.cpu);
       solve.outcome = text(ending?.outcome);
       solve.kind = isString(ending?.kind) ? ending.kind : null;
       solve.seconds = count(data.seconds);
-      solve.unmeasured = count(cpu?.unmeasured);
-      solve.cpu = isNumber(cpu?.seconds) && solve.unmeasured === 0 ? cpu.seconds : null;
       solve.attested = items(data.responseModels).length > 0;
     }
   }
@@ -526,15 +508,6 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
   // both sides. A tie holds as many valid answers under each harness, so one that is not unsolved
   // is such a tie.
   const validTies = decided.filter(({ ties, unsolved, tasks }) => (ties - unsolved) * 2 > tasks);
-  const spreading = decided.flatMap(({ session, last }) => {
-    const units = Object.entries(asRecord(last.spread) ?? {}).flatMap(([unit, value]) => {
-      const [middle, most] = [asRecord(value)?.median, asRecord(value)?.most];
-      return isNumber(middle) && isNumber(most) && middle >= SPREAD_WORTH_A_LINE
-        ? [`${unit} x${middle.toFixed(1)} at the median and x${most.toFixed(1)} at most`]
-        : [];
-    });
-    return units.length === 0 ? [] : [`${session}: ${units.join(", ")}`];
-  });
   // Each harness by itself: the tasks by how many of their solves were valid, none first. For the
   // plan's first round the reference harness is the starter, and this is what its gate reads.
   const byHarness = decided.flatMap(({ session, last, limits }) => {
@@ -562,7 +535,6 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
           ),
         ]
       : []),
-    ...(spreading.length > 0 ? [fired("USE OF THE BUDGET SPREADS", spreading.join("; "))] : []),
     ...(tied.length > 0
       ? [
           fired(

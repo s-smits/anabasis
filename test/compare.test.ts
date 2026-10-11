@@ -4,13 +4,11 @@ import { describe, expect, it } from "bun:test";
 import {
   decidedByObjective,
   draw,
-  MEASURED,
   objectiveRuleIn,
   pairings,
   pairsOf,
   scored,
   signP,
-  spread,
   tally,
 } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, fieldsApart, settingId } from "../src/kernel/condition.ts";
@@ -27,15 +25,6 @@ const pairs = (wins: number, losses: number, ties: number) => [
   ...Array.from({ length: losses }, (_, i) => ({ task: `l${String(i)}`, old: [P, P, P], fresh: [P, F, P] })),
   ...Array.from({ length: ties }, (_, i) => ({ task: `t${String(i)}`, old: [P, F, P], fresh: [F, P, P] })),
 ];
-/** What a solve used, where a case names only some of it. */
-const used = (turns: number | null, cpu: number | null = null, seconds: number | null = null) => ({
-  turns,
-  prompts: null,
-  cpu,
-  seconds,
-  billed: null,
-});
-
 describe("the sign test", () => {
   it("passes the plan's smallest wins at 0.10 and nothing one win short of them", () => {
     const smallest = [
@@ -153,29 +142,6 @@ describe("a task's pairings", () => {
   });
 });
 
-describe("what repeated solves used", () => {
-  const timed = [
-    {
-      task: "a",
-      old: [P, P],
-      fresh: [P, P],
-      used: { old: [used(20, 900), used(22, 400)], fresh: [used(8, 300), used(10, 350)] },
-    },
-    { task: "b", old: [P, F], fresh: [P, F], used: { old: [used(6), used(24)], fresh: [used(7), used(24)] } },
-  ];
-
-  it("says how far the use of a unit moved between repeated solves of one harness on one task", () => {
-    // Turns: 22/20, 10/8, 24/6 and 24/7. CPU seconds: 900/400 and 350/300, on task `a` alone.
-    const moved = spread(timed);
-    expect(moved.turns).toEqual({ tasks: 4, median: (1.25 + 24 / 7) / 2, most: 4 });
-    expect(moved.cpu).toEqual({ tasks: 2, median: (350 / 300 + 2.25) / 2, most: 2.25 });
-    expect(moved.seconds).toBeNull();
-    expect(spread([{ task: "c", old: [P], fresh: [P] }]).turns).toBeNull();
-    // The three figures are reported; none is a budget the same solves are read again at.
-    expect(MEASURED).toEqual(["turns", "cpu", "seconds"]);
-  });
-});
-
 describe("a draw", () => {
   const pool = ["v1", "v2", "v3", "v4", "v5", "v6"];
 
@@ -241,9 +207,10 @@ describe("the pairs a comparison reads from the log", () => {
     expect(fieldsApart(base, { ...base, limits: { ...base.limits, turns: 80 } })).toEqual(["limits"]);
   });
 
-  it("counts every pass and fail of a held-out task under either harness, with what each used", () => {
+  it("counts every pass and fail of a held-out task under either harness, with what each cost", () => {
     const log = [
       ...held,
+      // An end of 9 October, with the figures a solve reported then; what a pair keeps of it is the cost.
       ...solve(base, "pass", {
         turns: 20,
         prompts: 2,
@@ -261,7 +228,7 @@ describe("the pairs a comparison reads from the log", () => {
       // A third harness's solve of the task is no side of this comparison.
       ...solve({ ...base, harness: "starter", solverTools: "starter" }, "fail"),
     ];
-    const none = { turns: null, prompts: null, cpu: null, seconds: null, billed: null };
+    const none = { billed: null };
     const counted = pairsOf(log, ["v1", "v0"], sides);
     // Each counted solve is named: the non-result and the stronger side's solve, s-2 and s-4, are
     // not among them, and neither is the starter's.
@@ -279,13 +246,9 @@ describe("the pairs a comparison reads from the log", () => {
           old: [P, F],
           fresh: [P, P],
           solves: { old: ["s-1", "s-5"], fresh: ["s-3", "s-6"] },
-          used: {
-            old: [
-              { turns: 20, prompts: 2, cpu: 90, seconds: 600, billed: 6.5 },
-              { ...none, seconds: 900 },
-            ],
-            fresh: [{ ...none, turns: 9, seconds: 300 }, none],
-          },
+          // What each solve cost; its turns, prompts, CPU and seconds stay in the log's events
+          // for the investigation and are no part of a pair since 2026-10-11.
+          used: { old: [{ billed: 6.5 }, none], fresh: [none, none] },
         },
         other,
       ],

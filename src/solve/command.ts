@@ -20,25 +20,21 @@
  * share: until 2026-10-09 they started in `work` too, and nine in ten of them began with `cd ~`
  * (the Starter solves of six campaigns, `docs/transfer.md`).
  *
- * Each command's CPU time is its waited-for descendants' user and system time, as the host's shell
- * around the wall reads it with `times` once the walled launch exits. A command killed at its
- * timeout or by an abort takes that shell with it, so it is counted as unmeasured rather than as
- * zero, and a process that outlived its command is in neither. v1 read CPU per run, not per solve,
- * from `rusage.py`. That is Darwin's reading, where the launch replaces itself with the command. On
- * Linux the launch is bubblewrap, whose child's usage did not reach this shell: a loop that read
- * 0.46 s without it read 0 under it (bubblewrap 0.11.0, 2026-10-09). Campaigns run on Darwin, and a
- * CPU figure from a Linux host is not one.
+ * Until 2026-10-11 a shell around the wall read each command's CPU time with `times`, and a solve
+ * reported the sum. It counted only the children a command waited for, read zero under
+ * Bubblewrap, and a command cut at its limit took the record with it, so the figure was a floor
+ * on the host that runs campaigns and nothing on the other; no budget was given in it since
+ * 9 October, and it went with the readings at shorter budgets (`docs/simplify.md`, A3).
  */
 import { createLocalBashOperations } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import type { Limits } from "../kernel/condition.ts";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "../meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, rmSync } from "../meta/filesystem.ts";
 import { basename, join } from "../meta/path.ts";
 import { errorCode } from "../meta/runtime-values.ts";
 import { endHolders } from "../verify/disk-cap.ts";
 import {
   BUILT_COMMAND_SCRATCH_ROOT,
   commandIsolationPolicy,
-  shellQuote,
   stageCommandIsolation,
 } from "../verify/solve-command-isolation.ts";
 import {
@@ -66,8 +62,6 @@ export interface CommandWall {
   readonly toolTree: string | null;
   /** The condition's; every command is held to them here, whoever launches it. */
   readonly limits: ShellLimits;
-  /** The CPU seconds of the solve's commands so far, and how many ended unmeasured. */
-  readonly cpu: { seconds: number; unmeasured: number };
   /** The solve's own time, which its commands are held to near its end (`heldSeconds`). A Builder's
    *  wall has none: its session ends when its model's turn does. */
   readonly clock?: SolveClock | undefined;
@@ -243,15 +237,15 @@ export function commandDirs(
   }
 }
 
-/** The reach of the wall `wall` stands for, probed once a process (`NetworkReach`). The probe's
- *  CPU is charged to no solve, and a probe that fails to run reads as unreached. */
+/** The reach of the wall `wall` stands for, probed once a process (`NetworkReach`). A probe that
+ *  fails to run reads as unreached. */
 export function networkReach(wall: CommandWall): Promise<NetworkReach> {
   const key = wall.base.policyHash;
   const known = REACH.get(key);
   if (known !== undefined) return known;
   const probe = (async (): Promise<NetworkReach> => {
     let out = "";
-    await runWalled({ ...wall, cpu: { seconds: 0, unmeasured: 0 } }, REACH_COMMAND, {
+    await runWalled(wall, REACH_COMMAND, {
       onData: (data) => {
         out += data.toString();
       },
@@ -271,7 +265,6 @@ export async function runWalled(
   const { run, work, temp } = commandDirs(wall.dirs, options.stage === undefined ? "nothing" : "files");
   const name = run === null ? "run-on-a-full-volume" : basename(run);
   const profile = join(wall.dirs.host, `${name}.sb`);
-  const times = join(wall.dirs.host, `${name}.times`);
   try {
     options.stage?.({ work, temp });
     // A solver may remove its own home, and the next command still starts in one.
@@ -282,10 +275,11 @@ export async function runWalled(
       temp,
       toolTree: wall.toolTree,
     });
-    // The shell pi starts leads the group and waits here for `times`, so the launch is its child.
+    // The shell pi starts leads the group and waits here on a subshell, so the launch is its child
+    // and the leader is its parent; the exit code is the subshell's.
     const staged = stageCommandIsolation(policy, profile, command, "$PPID");
     const cwd = options.inHome === true ? wall.dirs.home : work;
-    return await SHELL.exec(`(\n${staged}\n)\ns=$?\ntimes > ${shellQuote(times)}\nexit $s`, cwd, {
+    return await SHELL.exec(`(\n${staged}\n)`, cwd, {
       onData: options.onData,
       signal: options.signal,
       timeout: heldSeconds(options.timeout, wall).seconds,
@@ -295,24 +289,7 @@ export async function runWalled(
     // What left the command's group is out of its exit trap's reach, and a command the host killed
     // never ran that trap. Both still work on the solve's volume, where one command runs at a time.
     await endHolders(wall.dirs.root);
-    const seconds = childSeconds(times);
-    if (seconds === null) wall.cpu.unmeasured++;
-    else wall.cpu.seconds += seconds;
     if (run !== null) rmSync(run, { recursive: true, force: true });
     rmSync(profile, { force: true });
-    rmSync(times, { force: true });
   }
-}
-
-/** The children's user and system seconds from a `times` record, its second line; null when the
- *  shell that writes it did not live to. */
-function childSeconds(path: string): number | null {
-  let text: string;
-  try {
-    text = readFileSync(path, "utf8");
-  } catch {
-    return null;
-  }
-  const spans = [...text.matchAll(/(\d+)m([\d.]+)s/g)].map(([, m, s]) => Number(m) * 60 + Number(s));
-  return spans.length === 4 ? (spans[2] ?? 0) + (spans[3] ?? 0) : null;
 }

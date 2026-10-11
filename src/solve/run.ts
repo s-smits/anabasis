@@ -121,8 +121,6 @@ export interface Played {
   readonly broken: string | null;
   /** The harness's digest, null when it did not open. */
   readonly harness: string | null;
-  /** The CPU time of the solve's commands, the solver's and the harness's (`command.ts`). */
-  readonly cpu: { readonly seconds: number; readonly unmeasured: number };
   readonly turns: readonly AssistantMessage[];
   /** The prompts the solver was given: the opening one and each nudge. It is what the turn cap
    *  counts (`Limits.turns`), where `turns` holds the model's own turns, of which one prompt may
@@ -189,7 +187,6 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     reportedCost: isNumber(reportedCost) ? reportedCost : null,
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
     harness: played.harness,
-    cpu: played.cpu,
     homeBytes: played.homeBytes,
     seconds: (performance.now() - started) / 1000,
     load: loadavg(),
@@ -226,7 +223,6 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   let crash: string | null = null;
   let broken: string | null = null;
   let digest: string | null = null;
-  const cpu = { seconds: 0, unmeasured: 0 };
   let prompts = 0;
   try {
     release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
@@ -239,7 +235,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;
     const clock: SolveClock = { started: null, seconds: limits.wallSeconds };
-    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, cpu, clock };
+    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, clock };
     const defined = await solverTools(request, harness, commandWall, desk).catch(brokenHarness);
     const prompt = systemPrompt({
       tools: defined,
@@ -301,7 +297,6 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     crash,
     broken,
     harness: digest,
-    cpu,
     turns,
     prompts,
     summaries,

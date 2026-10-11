@@ -77,7 +77,6 @@ function starterTools() {
     dirs: { ...solveDirs("s1"), home: HOME },
     toolTree: null,
     limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900 },
-    cpu: { seconds: 0, unmeasured: 0 },
   };
   const exec = async () => ({ exitCode: 0, output: Buffer.alloc(0) });
   const [read, edit, write] = fileTools(HOME, exec);

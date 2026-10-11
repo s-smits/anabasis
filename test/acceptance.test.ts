@@ -11,10 +11,12 @@ import {
   doNothingFaults,
   frozenChecker,
   type Graded,
+  readChecker,
   regraded,
   runControls,
   runDoNothing,
 } from "../src/kernel/acceptance.ts";
+import type { Contract } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import type { Brief, Task, Verifier } from "../src/kernel/verify.ts";
 import { asRecord, isNumber, type JsonObject } from "../src/meta/json-shape.ts";
@@ -252,6 +254,31 @@ describe("the do-nothing answer", () => {
     ]);
     const strict: Verifier = async () => ({ kind: "fail", blocking: ["mass"] });
     expect(doNothingFaults(await runDoNothing(strict, [roof, mast], {}, 2))).toEqual([]);
+  });
+});
+
+describe("a reading of a checker", () => {
+  /** A checker read over two tasks under `answerFormat`, with checks that pass every answer. */
+  const readUnder = (answerFormat: JsonObject) => {
+    const contract: Contract = { answerFormat, conventions: "", rules: [], scope: "" };
+    const passes: Verifier = async () => ({ kind: "pass" });
+    const given = { brief, contract, tasks: [roof, mast], controls: [], stored: [], found: everyTool };
+    return readChecker({ ...given, verify: passes, width: 2 });
+  };
+  const mass = (field: JsonObject) => ({ type: "object", properties: { mass: field }, required: ["mass"] });
+
+  it("lists a do-nothing answer the checks let pass, and one the format refuses, as faults of its own", async () => {
+    const passed = await readUnder(mass({ type: "string" }));
+    expect(passed.faults.filter((fault) => fault.startsWith("the do-nothing"))).toEqual([
+      "the do-nothing answer was not rejected on roof-1: pass",
+      "the do-nothing answer was not rejected on mast-1: pass",
+    ]);
+    const unformed = await readUnder(mass({ type: "string", pattern: "^[0-9]+$" }));
+    expect(unformed.rejected).toEqual([]);
+    expect(unformed.faults.filter((fault) => fault.startsWith("the do-nothing"))).toEqual([
+      `the do-nothing answer {"mass":""} does not follow the answer format (${unformed.unformed ?? ""}), so no check was seen to refuse it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values and first choices, and reads no other keyword`,
+    ]);
+    expect(unformed.unformed).toContain("pattern");
   });
 });
 

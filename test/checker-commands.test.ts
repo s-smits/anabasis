@@ -49,6 +49,8 @@ const SEED = `sim-${NAME}`;
 /** Two campaigns over a pack with something wrong: a tool no path holds, and controls gone stale. */
 const LOST = `${NAME}-lost`;
 const STALE = `${NAME}-stale`;
+/** A campaign whose answer format holds a pattern the smallest value its schema yields misses. */
+const UNFORMED = `${NAME}-unformed`;
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const EVALUATOR = `export const checks = {
   "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),
@@ -71,8 +73,9 @@ afterAll(() => {
   rmSync(accepted, { recursive: true, force: true });
   rmSync(carried, { recursive: true, force: true });
   rmSync(prepared, { recursive: true, force: true });
-  for (const name of [SOURCE, SEED]) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
-  for (const name of [LOST, STALE]) rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
+  for (const name of [SOURCE, SEED, LOST, STALE, UNFORMED]) {
+    rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
+  }
 });
 
 /** One stored solve as v1 left it: its result, its trace, its answer and what its record tool took. */
@@ -470,6 +473,30 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     const kinds = new Set(read(join(prepared, LOG)).map(({ kind }) => kind));
     expect([...kinds].sort()).toEqual(["task.gate", "task.proposed"]);
     expect(prepare("t-9").said).toContain("--tasks t-9: the campaign holds no task of that id");
+  });
+
+  it("names a do-nothing answer the format refuses as a fault, and freezes nothing over it", () => {
+    // The same sweep, its stored solves started under a format whose one string holds digits only.
+    const digits = join(root, "digits");
+    for (const part of ["runs", "grades"]) cpSync(join(root, part), join(digits, part), { recursive: true });
+    const started = new Bun.Glob("runs/**/built-runtime.json").scanSync({ cwd: digits, absolute: true });
+    for (const file of started) {
+      writeFileSync(
+        file,
+        readFileSync(file, "utf8").replace('"type":"string"', '"type":"string","pattern":"^[0-9]+$"'),
+      );
+    }
+    const flags = { root: digits, sweep: "s", bundle, name: UNFORMED, ...ADMIT };
+    const unformed = command("tools/c/accept.ts", flags, "--freeze");
+    expect(unformed.said).toContain(
+      'fault: the do-nothing answer {"answer":""} does not follow the answer format (',
+    );
+    expect(unformed.said).toContain("not frozen: the reading holds a fault");
+    expect(unformed.code).toBe(1);
+    const log = read(join(REPO, ".ana", "d2", UNFORMED, LOG));
+    expect(log.flatMap((event) => (event.kind === "checker.read" ? [event.data.faults] : []))).toEqual([
+      [expect.stringMatching(/^the do-nothing answer /)],
+    ]);
   });
 
   // The plan's checkpoint as its commands walk it (`docs/plan.md`, Phase 5): two Builder sessions,

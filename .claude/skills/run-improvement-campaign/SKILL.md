@@ -274,12 +274,12 @@ and the next command. Name no account and no credential path in anything that is
 | step | every pass | when its trigger holds |
 | --- | --- | --- |
 | walk | the pulse, the reader, the table above | whole-run-investigation, lane 25, on a campaign with two comparisons or more |
-| choose | one link, one owner, one falsifier | stack-pr when the change is source |
+| choose | one link, one owner, one falsifier | stack-pr when the change is source, with simplify over its diff |
 | prove | a dry run of the campaign command | system-path-simulation: a replay for a reader, a rehearsal for a campaign |
 | predict | `--predict`, before the first solve | further rows in the local notes |
 | launch | launch-run, under the load rule | a checkpoint when two harnesses are meant as arms |
 | read | the report, the reader, every prediction resolved | attribution-and-proof before a claim; whole-run-investigation when a reading is in doubt |
-| decide | lifted, held or unreached; one move | oracle-handover when the question is one the repository's own evidence cannot settle |
+| decide | lifted, held or unreached; one move | harness-audit before the operator promotes or hands over; oracle-handover when the question is one the repository's own evidence cannot settle |
 
 A step whose trigger did not hold is recorded as not triggered, so a skill left out is a
 decision and not an omission.

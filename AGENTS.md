@@ -1062,7 +1062,7 @@ and #221 merged the whole of it into `main` that day. A new subject is now a pul
 pull request depends on another that has not merged: there the top is that pull request's branch,
 and elsewhere it is `main`. Several sessions write at once. v2 was built in `s-smits/anabasis-v2`
 until 11 October 2026, when it took over this repository, v1's: a pull request number in text
-written before then, up to #234, is that repository's, while this one's own run to #140 for v1
+written before then, up to #235, is that repository's, while this one's own run to #140 for v1
 and go on from there. New text that cites one of v2's names it `anabasis-v2#N`. A cited v2 hash
 that does not resolve here was on one of that repository's pull-request branches, rewritten
 before it merged. What it comes to:

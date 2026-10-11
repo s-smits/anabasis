@@ -281,10 +281,16 @@ function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[]
   // re-allowed after it.
   const readDenies = [...new Set([...base.deniedReadRoots, ...scratchParent])].sort();
   const readAllows = commandReadAllows(base, readDenies, toolTree);
-  // The two shared temporary directories a toolchain writes without asking: the confstr one clang
-  // uses, as Apple's python3 shim does for a command that names it by its path, and `/tmp`, which
-  // `mktemp` and most build scripts spell literally.
-  const userTemp = userTempRules(["/tmp"], COMMAND_TEMP_SIBLING_DENY_PATTERNS);
+  // The shared temporary directory a toolchain writes without asking: the confstr one clang uses,
+  // as Apple's python3 shim does for a command that names it by its path. `/tmp` is no longer
+  // granted. `mktemp` and Python follow `TMPDIR`, which is the command's own folder, and what a
+  // command spells as `/tmp/...` outright landed in a folder every seat of every campaign on the
+  // host shares: on 10 October reference solves of two campaigns ran a PHREEQC that a third
+  // campaign's Builder had installed under `/tmp` four hours before. Linux gives each command an
+  // empty `/tmp` of its own; a Seatbelt rule cannot, so Darwin closes it, and such a write is
+  // refused where Linux would keep it private.
+  const userTemp = userTempRules([], COMMAND_TEMP_SIBLING_DENY_PATTERNS);
+  const sharedTmp = [...new Set(canonicalForms("/tmp"))].sort();
   const profile = [
     "(version 1)",
     // The same read posture as the session that owns this command and as the Builder's authoring
@@ -296,7 +302,7 @@ function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[]
     // command can install what its task needs.
     "(allow network*)",
     ...sbRule("deny file-write*", "subpath", writeDenies),
-    // The writes outside the scratch tree a toolchain takes without asking. Both open one level
+    // The writes outside the scratch tree a toolchain takes without asking. They open one level
     // down, directories included, because a `mktemp -d` there has a name only the tool knows, so
     // the grant cannot be narrower without refusing the tool outright. That leaves another tenant's
     // tree under the same root open, which is the Darwin wall's stated limit; the Linux path closes
@@ -309,6 +315,10 @@ function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[]
     // instead of a worktree enumeration that goes stale. It follows the temporary-directory grant
     // so that a copy left under /tmp stays closed too.
     ...runDataDenyRules(),
+    // The host's `/tmp`, closed whole: what another seat left there is neither read nor run, and a
+    // command leaves nothing there for the next. The scratch trees are opened again further down,
+    // after it, for a controller whose own temporary directory lies under `/tmp`.
+    ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", sharedTmp),
     ...sbRule("deny file-read*", "subpath", readDenies),
     ...traversalMetadataRules(readAllows),
     // Seatbelt prefers the rule naming the more specific operation over the one naming the family,

@@ -19,8 +19,8 @@
  * 10 rather than closed, and a campaign on Linux is bounded by its dollar total and its walls.
  *
  * What stays uncapped. On Darwin the command profile in `solve-command-isolation.ts` also lets a
- * command write the user temporary root system toolchains take through `confstr`, and `/tmp`, both
- * outside the root. On Linux the command wall overmounts `/tmp` and the host temporary directory with
+ * command write the user temporary root system toolchains take through `confstr`, outside the root;
+ * `/tmp` it closes. On Linux the command wall overmounts `/tmp` and the host temporary directory with
  * writable tmpfs of the kernel's default size, which is memory rather than disk. Those are the
  * remaining paths a solve's commands can fill. The worker itself, host code under an allow-default
  * wall, writes outside the root as well.

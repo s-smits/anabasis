@@ -279,6 +279,66 @@ describe("a solve's walled commands", () => {
   );
 
   it.skipIf(runtimeProcess.platform !== "darwin")(
+    "close the host's /tmp to a command: what another seat left there is neither read nor run, and a command leaves nothing there",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-closed-tmp-")));
+      const dirs = solveDirs(`closed-tmp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
+      const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+      // What another campaign's Builder left in /tmp on 10 October: a file, and a program a later
+      // solve of a third campaign ran.
+      const canary = join("/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
+      const program = join("/tmp", `ana-h1-program-${String(runtimeProcess.pid)}`);
+      const left = join("/tmp", `ana-h1-left-${String(runtimeProcess.pid)}`);
+      writeFileSync(canary, "left by the host");
+      writeFileSync(program, "#!/bin/sh\necho ran\n", { mode: 0o755 });
+      try {
+        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: CAP_BYTES } });
+        if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+        const wall: CommandWall = {
+          base,
+          dirs,
+          toolTree: null,
+          limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
+          cpu: { seconds: 0, unmeasured: 0 },
+        };
+        const closed = await run(
+          wall,
+          [
+            `cat ${canary} 2>/dev/null || echo unseen`,
+            `${program} 2>/dev/null || echo unrun`,
+            `echo x > ${left} 2>/dev/null || echo unwritten`,
+            `mkdir ${left}.d 2>/dev/null || echo unmade`,
+          ].join("; "),
+        );
+        expect(closed.output).not.toContain("left by the host");
+        expect(closed.output).not.toMatch(/^ran$/m);
+        for (const word of ["unseen", "unrun", "unwritten", "unmade"]) expect(closed.output).toContain(word);
+        expect(existsSync(left)).toBe(false);
+        expect(existsSync(`${left}.d`)).toBe(false);
+        // The temporary files a tool takes without naming /tmp still work: the shell's here-document,
+        // Python's tempfile in the command's own folder, and `mktemp`, which on Darwin takes the user
+        // temporary directory the wall still grants, under a name of its own choosing.
+        const followed = await run(
+          wall,
+          "cat <<'EOF'\nheredoc\nEOF\nmktemp -d\npython3 -c 'import tempfile; print(tempfile.mkdtemp())'",
+        );
+        const [said, made, python] = followed.output.trim().split("\n");
+        expect(said).toBe("heredoc");
+        expect(made).toMatch(/^\/(?!tmp\/|private\/tmp\/)/);
+        expect(python).toContain(join(basename(dirs.root), "runs", "run-"));
+      } finally {
+        await release();
+        rmSync(canary, { force: true });
+        rmSync(program, { force: true });
+        rmSync(dirs.host, { recursive: true, force: true });
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it.skipIf(runtimeProcess.platform !== "darwin")(
     "keep what Python and make write as temporary in the command's own folder, which goes with it",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-temp-")));

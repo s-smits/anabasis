@@ -213,26 +213,9 @@ export function sweepOf(level: number): number {
   return sweep;
 }
 
-// Two other readings of a tally, kept for a later ablation and deciding nothing. Both are functions
-// of a report's wins, losses and ties, so any recorded comparison can be read under them unpaid.
-// On the 22 comparisons on record on 10 October each read the same 13 steps as the sign test at 0.20.
-//
-// The trinomial test (Bian, McAleer and Wong, 2011) reads the ties as evidence: a tie is as likely
-// as the tally's share of ties, a win as likely as a loss, and p is how often wins lead by this
-// much. 3-0-9 reads 0.071 and 2-0-10 reads 0.134, where the sign test reads 0.125 and 0.25. Bar 0.10.
-//   function trinomialP({ wins, losses, ties }: Tally): number {
-//     const n = wins + losses + ties, u = (wins + losses) / n; // u: the share of untied tasks
-//     let tail = 0;
-//     for (let k = 0, c = 1; k <= n; c = (c * (n - k)) / (k + 1), k += 1) { // k of n tasks untied
-//       const need = Math.max(0, Math.ceil((k + wins - losses) / 2)); // wins that give the lead
-//       if (need <= k) tail += c * u ** k * (1 - u) ** (n - k) * signP(need, k - need);
-//     }
-//     return Math.min(1, tail);
-//   }
-// The chance the new harness is the better one: the chance its share of untied wins is over a half,
-// every share as likely as another beforehand. 3-0 reads 0.938, 4-1 0.891, 2-0 0.875. Bar 0.90, which
-// takes 3-0 and refuses 4-1; at 0.95 it is the sign test at 0.10.
-//   const betterP = (wins: number, losses: number) => 1 - signP(wins + 1, losses);
+// Two other readings of a tally, the trinomial test and the chance that the new harness is the
+// better one, decide nothing and are not built: their formulas and what they read of the recorded
+// comparisons are in `docs/plan.md`, "Statistical power and cost" (row C3).
 
 /** Which of two valid answers' measures is the better by more than the rule's margin: 1 for the
  *  first, -1 for the second, 0 where neither is or one is missing. */

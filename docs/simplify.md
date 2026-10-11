@@ -1063,7 +1063,7 @@ Each has no reader or no effect (*read*). They go with the package named, or alo
 | Four temporary names with no maker | `VERIFIER_TEMP_SIBLING_DENY_PATTERNS` | spelled in `wall-policy.ts` alone | W1 |
 | `src/meta/completed-json.ts` | 60 lines | no importer | alone |
 | `src/meta/campaign-root.ts` | v1's `campaigns/` root | imported by one lint rule and two tests | T5 |
-| The trinomial test as a comment | `src/kernel/compare.ts` | the plan's own row C3 | alone |
+| The trinomial test as a comment | `src/kernel/compare.ts` | the plan's own row C3 | alone; done at PR #212 (11 October) |
 | `--solve-turns` | `tools/d2/setting.ts` | "bound no solve", its head comment | A3 |
 | `anchor.drawn`, `anchor.scored`, `exam.word` | `EVENT_KINDS` | no writer; kept readable by section 5 of `AGENTS.md` | stay |
 

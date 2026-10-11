@@ -39,6 +39,7 @@ const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
 const STEM = `test-hb-${String(runtimeProcess.pid)}`;
 const OPENED = "campaign.opened";
+const MOVED = "campaign.move";
 const TASKS = fixtureTasks(7);
 const scripted = scriptedModel;
 const GRADED = gradedOf(TASKS);
@@ -55,14 +56,15 @@ afterAll(() => {
 
 /** A campaign's folder marked as a seed, which is where a scripted solve may be written, and the
  *  flags that name it. */
-function seeded(name: string): string[] {
+function seeded(name: string, under = root): string[] {
   names.push(name);
   const folder = join(REPO, ".ana", "d2", name);
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "seed.json"), `${JSON.stringify({ from: null, events: 0 })}\n`);
   // The fixture's one check is its author's own arithmetic, which stands on the operator's word.
   const admitted = ["--admit", "check-product"];
-  return ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name, ...admitted];
+  const pack = ["--root", under, "--sweep", "s", "--cycle", "c01", "--bundle", join(under, "bundle")];
+  return [...pack, "--name", name, ...admitted];
 }
 
 /** What a campaign's log holds of one kind, in order. */
@@ -125,7 +127,7 @@ describe("a campaign run by its log", () => {
     // Each move records when it began, and a move that solves the load the host had then: the
     // Builder session's is the quiet one the wait ended on, and the moves that solve nothing read
     // the host not at all.
-    const moves = of(name, "campaign.move");
+    const moves = of(name, MOVED);
     expect(moves.every(({ began }) => isString(began))).toBe(true);
     expect(moves.map(({ move, load, cores }) => [move, load ?? null, cores ?? null])).toEqual([
       ["accept", null, null],
@@ -134,7 +136,7 @@ describe("a campaign run by its log", () => {
       ["examine", null, null],
       ["examine", null, null],
     ]);
-    expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([
+    expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
       ["prepare", null],
       ["build", "b-1"],
@@ -271,10 +273,10 @@ describe("a campaign run by its log", () => {
     const waits = await harnessBuilder(flags, seats);
     expect(waits).toMatchObject({ move: "promote" });
     // Each comparison was made under the campaign's trigger, and the move records the command.
-    for (const made of of(name, "campaign.move").filter(({ move }) => move === "compare")) {
+    for (const made of of(name, MOVED).filter(({ move }) => move === "compare")) {
       expect(made.args).toEqual(expect.arrayContaining(["--trigger", "0.5", "--level", "0.1"]));
     }
-    expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([
+    expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
       ["prepare", null],
       ["build", "b-1"],
@@ -293,7 +295,7 @@ describe("a campaign run by its log", () => {
     // promoted harness failing half its solves, so the tasks have to change: an Examiner session.
     const next = await harnessBuilder([...flags, "--unattended", "--moves", "2"], seats);
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
-    expect(of(name, "campaign.move").slice(5)).toMatchObject([
+    expect(of(name, MOVED).slice(5)).toMatchObject([
       { move: "promote", harness: first?.fresh },
       { move: "examine", session: "x-1" },
     ]);
@@ -446,12 +448,7 @@ describe("a campaign run by its log", () => {
     const log = read(join(REPO, ".ana", "d2", name, LOG_FILE));
     const at = log.findIndex(({ kind }) => kind === "campaign.word");
     expect(log.at(-1)).toMatchObject({ kind: "campaign.ended", data: { ending: "operator", answers: [at] } });
-    expect(of(name, "campaign.move").map(({ move }) => move)).toEqual([
-      "accept",
-      "prepare",
-      "build",
-      "compare",
-    ]);
+    expect(of(name, MOVED).map(({ move }) => move)).toEqual(["accept", "prepare", "build", "compare"]);
 
     // Run again, the campaign goes on: the word was heard once. A word for other tasks and one
     // for another total are each acted on at the next move, and named by what acted on them.
@@ -463,10 +460,86 @@ describe("a campaign run by its log", () => {
       why: "the operator asked for other tasks: the step was too easy",
     });
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 50 } });
+    // Two totals left before one boundary: the newest stands there and at the next, and the record
+    // answers both, so the older is never applied after it.
+    wordCommand(["--name", name, "--budget", "10"]);
+    wordCommand(["--name", name, "--budget", "100"]);
+    await harnessBuilder([...flags, "--moves", "0"], seats);
+    expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
+    await harnessBuilder([...flags, "--moves", "0"], seats);
+    expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");
     expect(strayed).toEqual([]);
+  });
+
+  it("goes on with a comparison that began at another margin than the default, under the margin it began with", async () => {
+    // A pack whose check program declares an objective, so that the comparison fixes its margin.
+    const under = join(root, "objective");
+    layOutPack(under, join(under, "bundle"), TASKS, FIXTURE);
+    const model = join(under, "bundle", "correctness-model");
+    const brief = parseJsonAs<JsonObject>(readFileSync(join(model, "brief.json"), "utf8"));
+    const objective = { quantity: "the answer", direction: "lower" };
+    writeFileSync(join(model, "brief.json"), JSON.stringify({ ...brief, objective }));
+    const evaluator = readFileSync(join(model, "evaluator.ts"), "utf8");
+    writeFileSync(
+      join(model, "evaluator.ts"),
+      `${evaluator}export const objective = (req) => Number(req.artifact.answer);\n`,
+    );
+    const name = `${STEM}-margin`;
+    const flags = [
+      ...seeded(name, under).slice(0, -2),
+      "--admit",
+      "check-product,objective",
+      "--practice",
+      "2",
+      "--solves",
+      "1",
+      "--sessions",
+      "1",
+      "--target",
+      "5",
+      "--margin",
+      "0.2",
+    ];
+    const strayed: string[] = [];
+    const scriptedSolves = scriptedSeats(
+      { held: { old: "none", fresh: "pass" }, starter: "none" },
+      GRADED,
+      strayed,
+    );
+    // The comparison's first solve throws, as a host that failed under it would: the comparison
+    // has begun, and the campaign ends on its environment.
+    let failed = false;
+    const seats: Seats = {
+      seated: (campaign, given) => {
+        const seat = scriptedSolves(campaign, given);
+        return {
+          ...seat,
+          solve: (task, harness, kill, comparison) => {
+            if (comparison !== undefined && !failed) {
+              failed = true;
+              throw new Error("the host failed under the solve");
+            }
+            return seat.solve(task, harness, kill, comparison);
+          },
+        };
+      },
+    };
+    await expect(harnessBuilder(flags, seats)).rejects.toThrow("the host failed under the solve");
+    expect(of(name, "comparison.started")).toMatchObject([
+      { session: "g-1", objective: { direction: "lower", margin: 0.2 } },
+    ]);
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "compare" }]);
+    // Run again, it goes on under the margin it began with, and reads its step.
+    await harnessBuilder([...flags, "--moves", "1"], seats);
+    expect(of(name, MOVED).at(-1)?.args).toEqual(expect.arrayContaining(["--margin", "0.2"]));
+    expect(of(name, "comparison.reported")).toMatchObject([
+      { session: "g-1", reading: "step", scored: { wins: 5, losses: 0, ties: 0 } },
+    ]);
+    // The solves in flight when the host failed were killed, and solved again: no other strayed.
+    expect(strayed.filter((line) => !line.includes('"kind":"killed"'))).toEqual([]);
   });
 
   it("has the tasks changed where the reference left no room, and ends once the Examiner's patience is spent", async () => {
@@ -503,7 +576,7 @@ describe("a campaign run by its log", () => {
         }),
     };
     const next = await harnessBuilder([...flags, "--moves", "10"], seats);
-    expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([
+    expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
       ["prepare", null],
       ["build", "b-1"],
@@ -516,6 +589,13 @@ describe("a campaign run by its log", () => {
     expect(first).not.toHaveProperty("budgets");
     expect(of(name, "campaign.setting").map(({ modelTurns }) => modelTurns)).toEqual([8]);
     expect(next).toMatchObject({ move: "end", ending: "no-room" });
+    // Another number of the model's turns is another setting, and is refused as every command
+    // refuses it: until 11 October the record's stood in for the flag, and it ran at the record's.
+    await expect(
+      harnessBuilder([...flags.slice(0, -2), "--solve-model-turns", "5", "--moves", "0"], seats),
+    ).rejects.toThrow(
+      "--solve-model-turns 5 names another setting than the campaign's, which was recorded as --solve-model-turns 8",
+    );
     expect(strayed).toEqual([]);
     // `--ladder` is no flag of the campaign's since 11 October.
     await expect(harnessBuilder([...flags, "--ladder", "4,1", "--moves", "0"], seats)).rejects.toThrow(
@@ -619,7 +699,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, "checker.read").at(-1)?.faults).toEqual([
       "check-product is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit check-product)",
     ]);
-    expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([
+    expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
       ["draft", "d-1"],
       ["accept", null],
     ]);
@@ -637,7 +717,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, "comparison.started")).toMatchObject([{ solves: 1 }]);
     expect(of(name, "comparison.started")[0]?.tasks).toHaveLength(5);
     expect(
-      of(name, "campaign.move")
+      of(name, MOVED)
         .slice(2)
         .map(({ move, session }) => [move, session ?? null]),
     ).toEqual([

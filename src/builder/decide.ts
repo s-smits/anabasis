@@ -127,9 +127,18 @@ function written(drafts: number, wants: "tasks" | "room", examine: Decided, pati
  *  as a session, so that a campaign does not draft against a dead provider without end. Where
  *  every session crashed and no draft was put, the ending is the environment's, with what the
  *  last crash said: on 10 October three sessions crashed in one second before any model call
- *  (Claude Code refused to run as root), and the campaign ended on an exam nobody had read. */
+ *  (Claude Code refused to run as root), and the campaign ended on an exam nobody had read. A
+ *  session that crashed before it put a draft counts only since the campaign last ended, as the
+ *  crashes of `crashedRun` do: until 11 October the three that ended it on its environment ended
+ *  it so again at once when it was run again, and it could not go on once the provider was back.
+ *  The drafts put count over the whole log. */
 function drafting(events: readonly LogEvent[]): Decided {
-  const sessions = events.filter(({ kind }) => kind === "draft.finished");
+  const since = events.findLastIndex(({ kind }) => kind === "campaign.ended");
+  const sessions = events.filter(
+    ({ kind, data }, at) =>
+      kind === "draft.finished" &&
+      (at > since || data.ended !== "crashed" || (isNumber(data.tries) && data.tries > 0)),
+  );
   const tries = sessions.reduce((sum, { data }) => sum + (isNumber(data.tries) ? data.tries : 0), 0);
   if (tries >= DRAFTS || sessions.length >= DRAFTS) {
     const crash = sessions.at(-1)?.data.crash;

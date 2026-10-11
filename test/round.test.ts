@@ -14,6 +14,7 @@ import { predicted, toLabel } from "../src/builder/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
+  firstStageOf,
   type RoundRequest,
   round,
   scoredSet,
@@ -1443,6 +1444,89 @@ describe("the scored set", () => {
   it("is every held-out task where the campaign holds fewer than were asked for", () => {
     expect(scoredSet(heldOut(held), 12, "contract-a").toSorted()).toEqual(held);
     expect(scoredSet([], 12, "contract-a")).toEqual([]);
+  });
+
+  describe("of a repeat", () => {
+    const pair = { old: { dir: "", digest: "h0" }, fresh: { dir: "", digest: "h1" } };
+    /** Comparison `id` of h1 with h0 on `tasks`, begun and reported at `wins` to `losses`. */
+    const compared = (id: string, tasks: readonly string[], wins: number, losses: number): LogEvent[] => [
+      {
+        at,
+        kind: "comparison.started",
+        data: {
+          session: id,
+          old: "h0",
+          fresh: "h1",
+          starter: "h0",
+          setting: "s",
+          solves: 2,
+          level: 0.1,
+          tasks,
+        },
+      },
+      {
+        at,
+        kind: "comparison.reported",
+        data: {
+          session: id,
+          old: "h0",
+          fresh: "h1",
+          scored: { wins, losses, ties: tasks.length - wins - losses },
+        },
+      },
+    ];
+    const eight = ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"];
+
+    it("draws the tasks its first stage did not score first, and that stage's where too few others are held", () => {
+      const first = scoredSet(heldOut(eight), 4, "contract-a");
+      const events = [...heldOut(eight), ...compared("g-1", first, 2, 0)];
+      const taken = firstStageOf(events, { id: "g-2", ...pair }, 0.25);
+      expect(taken).toEqual(first);
+      const repeat = scoredSet(events, 4, "contract-a", taken);
+      expect(repeat.filter((version) => first.includes(version))).toEqual([]);
+      expect(repeat).toEqual(
+        scoredSet(heldOut(eight.filter((version) => !first.includes(version))), 4, "contract-a"),
+      );
+      // Six held: the two others first, then two of the first stage's by the same hash.
+      const six = heldOut(eight.slice(0, 6));
+      const drawn = scoredSet(six, 4, "contract-a");
+      const filled = scoredSet(six, 4, "contract-a", drawn);
+      expect(filled.slice(0, 2).toSorted()).toEqual(
+        eight.slice(0, 6).filter((version) => !drawn.includes(version)),
+      );
+      expect(filled.slice(2)).toEqual(scoredSet(heldOut(drawn), 2, "contract-a"));
+      // A repeat is no first stage of itself: run again once it has reported, it names the same tasks.
+      const reported = [...events, ...compared("g-2", repeat, 1, 0)];
+      expect(firstStageOf(reported, { id: "g-2", ...pair }, 0.25)).toEqual(first);
+    });
+
+    it("draws the set the first stage drew where the campaign holds exactly the target", () => {
+      const four = heldOut(eight.slice(0, 4));
+      const first = scoredSet(four, 4, "contract-a");
+      const events = [...four, ...compared("g-1", first, 2, 0)];
+      expect(scoredSet(events, 4, "contract-a", firstStageOf(events, { id: "g-2", ...pair }, 0.25))).toEqual(
+        first,
+      );
+    });
+
+    it("leaves a first stage's draw as it was, and takes nothing last after a reading under no trigger", () => {
+      const events = heldOut(eight);
+      expect(firstStageOf(events, { id: "g-1", ...pair }, 0.25)).toEqual([]);
+      expect(scoredSet(events, 4, "contract-a", [])).toEqual(scoredSet(events, 4, "contract-a"));
+      const first = scoredSet(events, 4, "contract-a");
+      // 2 to 1 reads p 0.5, over the trigger: the next comparison is no repeat.
+      expect(
+        firstStageOf([...events, ...compared("g-1", first, 2, 1)], { id: "g-2", ...pair }, 0.25),
+      ).toEqual([]);
+      // Another pair's comparison buys this pair no repeat.
+      const other = { ...pair, fresh: { dir: "", digest: "h2" } };
+      expect(
+        firstStageOf([...events, ...compared("g-1", first, 2, 0)], { id: "g-2", ...other }, 0.25),
+      ).toEqual([]);
+      // A repeat that reported is the pair's last reading: the comparison after it is no repeat of it.
+      const twice = [...events, ...compared("g-1", first, 2, 0), ...compared("g-2", first, 0, 0)];
+      expect(firstStageOf(twice, { id: "g-3", ...pair }, 0.25)).toEqual([]);
+    });
   });
 
   it("keeps a task whose solves were cut at their limits, which says the budget was short", async () => {

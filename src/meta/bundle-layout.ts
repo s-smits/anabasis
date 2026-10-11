@@ -15,7 +15,9 @@
  * evaluation half and inside a staged exam is the model directory; `GUIDE_FILE` is the name pi's
  * project context gives the guide, with `AGENT_DIR` in front of it on disk. Each was spelled in
  * three files on 10 October, below the per-file floor in every one of them, and
- * `identity-without-owner` reported both.
+ * `identity-without-owner` reported both. `TOOL_TREE_DIR` is bare for the same reason: it sits at
+ * the root of a harness, and `src/builder/tools.ts` spelled it five times there until a strict lint
+ * reported it on 11 October.
  *
  * Tests keep spelling the literals, and no file under `test/` imports this module. A fixture that
  * built its tree from the same constant as the code under test would follow a rename and pass
@@ -48,3 +50,6 @@ export const TOOLS_SPEC_FILE = "agent/tools-spec.json";
 
 /** The generated tool implementations the Built Harness calls. */
 export const GENERATED_TOOLS_FILE = "agent/tools.ts";
+
+/** A harness's installed programs, at its root: the tree the solver's shell finds them in. */
+export const TOOL_TREE_DIR = ".toolchain";

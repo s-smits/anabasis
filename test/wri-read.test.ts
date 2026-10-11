@@ -251,16 +251,16 @@ describe("the whole-run investigation's reader", () => {
       "b-1: hp to hc; written by its file tools: agent/tools.mjs, agent/BUILT_AGENTS.md",
     );
     // A session a stop cut leaves no end record, and its writes are all there is of its harness.
-    const stopped = [
+    const stopped: LogEvent[] = [
       ...events,
       {
         at: new Date(START).toISOString(),
-        kind: "build.started" as EventKind,
+        kind: "build.started",
         data: { session: "b-2", parent: "hc", tasks: ["t1"] },
       },
       {
         at: new Date(START).toISOString(),
-        kind: "build.call" as EventKind,
+        kind: "build.call",
         data: { session: "b-2", tool: "write", args: { path: "agent/tools.mjs" } },
       },
     ];

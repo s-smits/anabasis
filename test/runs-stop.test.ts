@@ -40,8 +40,15 @@ describe("a stop", () => {
       append(path, "exam.started", { session: "x-1" });
       append(path, "exam.finished", { session: "x-1" });
       append(path, "exam.started", { session: "x-2" });
+      // A session that drafts an exam has one too since 11 October.
+      append(path, "draft.started", { session: "d-1" });
       const left = (run: Parameters<typeof leftOpen>[0]) => leftOpen(run).map((dirs) => basename(dirs.root));
-      expect(left({ path })).toEqual(["solve-s-2", "solve-build-r1-b-2", "solve-exam-r1-x-2"]);
+      expect(left({ path })).toEqual([
+        "solve-s-2",
+        "solve-build-r1-b-2",
+        "solve-exam-r1-x-2",
+        "solve-exam-r1-d-1",
+      ]);
       // A seed of that run where it stands. The solve and the session the run has open are still
       // the run's, and may be live: a stop of the seed names only what the seed started.
       const copy = join(root, "sim-r1", "log.jsonl");

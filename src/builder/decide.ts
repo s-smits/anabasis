@@ -70,9 +70,9 @@
  * solves, a step read twice under a rung was read once more at the full limit, and the campaign
  * returned to rungs it had stood at. Every step a rung read on record was on tasks both
  * harnesses answered at the full limit, which measures a solver's set-up time and not its
- * method (t-10, `docs/handover-2026-10-10.md`), and the two ways to room are the tasks (#167)
- * and the objective (#184). The ladder went with `docs/simplify.md`, package A. The two shares
- * `roomOf` reads by are the plan's proposal and the operator's to set.
+ * method (t-10, the handover of 10 October in `docs/plan-history.md`), and the two ways to room
+ * are the tasks (#167) and the objective (#184). The ladder went with `docs/simplify.md`, package
+ * A. The two shares `roomOf` reads by are the plan's proposal and the operator's to set.
  */
 import { readTwice, triggered } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";

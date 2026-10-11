@@ -1,10 +1,12 @@
 // An exam drafted from a prompt: the shape the host holds a draft to before anything runs, the
-// session that puts drafts to the host's reading (`src/examiner/draft.ts`), and that reading on a
-// staged draft with the real verifier (`tools/d2/exam.ts`).
+// session that puts drafts to the host's reading (`src/examiner/draft.ts`), its shell in a walled
+// home of its own (`src/examiner/shell.ts`), and that reading on a staged draft with the real
+// verifier (`tools/d2/exam.ts`).
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
-import { type Draft, draftExam, draftFaults, draftOf } from "../src/examiner/draft.ts";
+import { type Draft, draftExam, draftFaults, draftOf, draftWalled } from "../src/examiner/draft.ts";
+import { examinerDirs } from "../src/examiner/shell.ts";
 import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import {
   existsSync,
@@ -17,7 +19,7 @@ import {
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { join, resolve } from "../src/meta/path.ts";
 import { draftReading, stagedExamOf, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
 
@@ -64,14 +66,19 @@ setDefaultTimeout(120_000);
 
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-/** A model that makes `calls` in order, a turn each. */
-function scripted(calls: readonly (readonly [string, JsonObject])[]) {
+/** A model that makes `calls` in order, a turn each; what it was sent goes to `sent`, where named. */
+function scripted(calls: readonly (readonly [string, JsonObject])[], sent: string[] = []) {
   const faux = fauxProvider({
     models: [
       { id: "script", contextWindow: 200_000, cost: { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } },
     ],
   });
-  faux.setResponses(calls.map(([name, given]) => fauxAssistantMessage(fauxToolCall(name, given), TOOL_USE)));
+  faux.setResponses(
+    calls.map(([name, given]) => (context) => {
+      sent.push(JSON.stringify(context));
+      return fauxAssistantMessage(fauxToolCall(name, given), TOOL_USE);
+    }),
+  );
   const models = createModels();
   models.setProvider(faux.provider);
   return { model: faux.getModel(), models: () => models };
@@ -234,6 +241,98 @@ describe("the session that drafts", () => {
         ...scripted([]),
       }),
     ).rejects.toThrow("session d-1 is in the log already");
+  });
+});
+
+describe("the session that drafts, in a walled home of its own", () => {
+  /** The repository this suite runs in, which the wall closes to the Examiner's commands. */
+  const repo = resolve(import.meta.dir, "..");
+  const outside = join(repo, "drafted-outside.txt");
+
+  it("runs a command in its home, reads what it wrote, and puts a draft that stands", async () => {
+    const log = join(root, "walled.jsonl");
+    const sent: string[] = [];
+    const drafted = await draftWalled({
+      id: "d-1",
+      prompt: "A fixture.",
+      reading: async () => [],
+      effort: "high",
+      limits: LIMITS,
+      log,
+      repoRoot: repo,
+      diskBytes: 64 * 1024 ** 2,
+      ...scripted(
+        [
+          ["bash", { command: "echo noted > note.txt" }],
+          ["read", { path: "note.txt" }],
+          // The hostile cases: the repository's own file, and a write beside it.
+          [
+            "bash",
+            { command: `cat ${join(repo, "package.json")} >/dev/null 2>&1 && echo read || echo refused` },
+          ],
+          ["bash", { command: `(echo x > ${outside}) 2>/dev/null && echo written || echo refused` }],
+          ["draft_exam", args(SOUND)],
+        ],
+        sent,
+      ),
+    });
+    expect(drafted).toEqual({ stands: true, tries: 1, ended: "stands" });
+    // The session's calls are in the log as the session's own, in order.
+    const calls = of(log, "draft.call");
+    expect(calls.map(({ tool }) => tool)).toEqual(["bash", "read", "bash", "bash", "draft_exam"]);
+    expect(calls.map(({ isError }) => isError)).toEqual([false, false, false, false, false]);
+    expect(calls.slice(1, 4).map(({ text }) => text)).toEqual(["noted", "refused", "refused"]);
+    expect(existsSync(outside)).toBe(false);
+    expect(draftOf(read(log))).toEqual(SOUND);
+    // The host's folder of the capped root goes with the session.
+    expect(existsSync(examinerDirs(log, "d-1").host)).toBe(false);
+    // The Examiner is told what the shell is, that its home starts empty, what the probe found of
+    // the network, and how the exam is entered; and nothing about what to do with it.
+    const told = sent[0] ?? "";
+    expect(told).toContain("empty at its start");
+    expect(told).toContain("but no repository or private data");
+    expect(told).toMatch(/It has (no )?network access: a package index (was|could not be) reached/);
+    expect(told).toContain(
+      "Nothing in your home enters the exam: a draft enters it through draft_exam alone.",
+    );
+    expect(told).not.toMatch(/research/i);
+  });
+
+  it("mounts and starts nothing for a run that was stopped before its session began", async () => {
+    const log = join(root, "stopped-first.jsonl");
+    const sent: string[] = [];
+    const drafting = draftWalled({
+      id: "d-1",
+      prompt: "A fixture.",
+      reading: async () => [],
+      effort: "high",
+      limits: LIMITS,
+      log,
+      repoRoot: repo,
+      diskBytes: 64 * 1024 ** 2,
+      kill: AbortSignal.abort(),
+      ...scripted([["draft_exam", args(SOUND)]], sent),
+    });
+    await expect(drafting).rejects.toThrow("session d-1 was stopped before it began");
+    expect(existsSync(log)).toBe(false);
+    expect(existsSync(examinerDirs(log, "d-1").root)).toBe(false);
+    expect(sent).toEqual([]);
+  });
+
+  it("is told of no shell where it has none", async () => {
+    const log = join(root, "unwalled.jsonl");
+    const sent: string[] = [];
+    await draftExam({
+      id: "d-1",
+      prompt: "A fixture.",
+      reading: async () => [],
+      effort: "high",
+      limits: LIMITS,
+      log,
+      ...scripted([["draft_exam", args(SOUND)]], sent),
+    });
+    expect(sent[0]).not.toContain("Nothing in your home enters the exam");
+    expect(sent[0]).not.toContain('"bash"');
   });
 });
 

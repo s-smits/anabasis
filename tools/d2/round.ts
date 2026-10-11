@@ -293,10 +293,19 @@ export function sessionNamed(
 /**
  * The scored set a command's flags name, by task version: the tasks `--tasks` lists by id, each a
  * task of the pack or of a session, or `--target` of the held-out tasks by the contract's draw
- * (`scoredSet`). Whether each is a held-out task is the comparison's to refuse.
+ * (`scoredSet`), which takes `last` last: a repeat's first stage's tasks, which a checkpoint
+ * names (`firstStageOf`) and a round, never a repeat, does not. Whether each is a held-out task
+ * is the comparison's to refuse.
  */
-export function scoredNamed(campaign: Campaign, tasks: string | undefined, target: number): string[] {
-  if (tasks === undefined) return scoredSet(read(campaign.log), target, contractHash(campaign.contract));
+export function scoredNamed(
+  campaign: Campaign,
+  tasks: string | undefined,
+  target: number,
+  last: readonly string[] = [],
+): string[] {
+  if (tasks === undefined) {
+    return scoredSet(read(campaign.log), target, contractHash(campaign.contract), last);
+  }
   const packages = [...campaign.packages()];
   return tasks.split(",").map((taskId) => {
     const found = packages.find(([, task]) => task.taskId === taskId);

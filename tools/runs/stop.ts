@@ -23,7 +23,7 @@
  */
 import { EXAMINE } from "#src/builder/admission.ts";
 import { sessionDirs, spent } from "#src/builder/session.ts";
-import { examinerDirs } from "#src/examiner/session.ts";
+import { examinerDirs } from "#src/examiner/shell.ts";
 import { existsSync, rmSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname } from "#src/meta/path.ts";
@@ -32,7 +32,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
-import { BUILDER, logEvents, processes, type Run, runs, writers } from "./pulse.ts";
+import { BUILDER, DRAFT, logEvents, processes, type Run, runs, writers } from "./pulse.ts";
 import { seedCut } from "./seed.ts";
 
 /** The value of `--name` among a running process's arguments, or undefined. */
@@ -61,11 +61,12 @@ export function family(table: string, pid: number): number[] {
  * go. A seed's log begins as its source's, and what that run has open is the source's to hold.
  *
  * An Examiner session has a capped root as a Builder's: left out here, the root of the one a stop
- * cut stayed mounted and had to be released by hand (buffer x-1, 2026-10-10).
+ * cut stayed mounted and had to be released by hand (buffer x-1, 2026-10-10). A session that drafts
+ * an exam has had one since 11 October.
  */
 export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
-  const open = (role: "solve" | "build" | "exam", key: "solve" | "session") => {
+  const open = (role: "solve" | "build" | "exam" | "draft", key: "solve" | "session") => {
     const ended = new Set(
       events.flatMap(({ kind, data }) => (kind === `${role}.finished` ? [data[key]] : [])),
     );
@@ -78,6 +79,7 @@ export function leftOpen(run: Pick<Run, "path" | "seed">): SolveDirs[] {
     ...open("solve", "solve").map((id) => solveDirs(id)),
     ...open("build", "session").map((id) => sessionDirs(run.path, id)),
     ...open("exam", "session").map((id) => examinerDirs(run.path, id)),
+    ...open("draft", "session").map((id) => examinerDirs(run.path, id)),
   ];
 }
 
@@ -115,11 +117,12 @@ export async function stop(args: readonly string[]): Promise<void> {
     // A campaign command names no session: the one it was inside is in its log, and its id is
     // spent whichever role it was. A word costs none, and both campaigns stopped by signal on
     // 10 October lost a session that was running (b-1 and x-1).
-    const cut = ranAs(EXAMINE)
-      ? "An Examiner session's id names one session: the next takes another --session"
-      : ranAs(BUILDER)
-        ? "A campaign goes on from its log under the same --name, and the session it was inside has spent its id. A word left with tools/d2/word.ts ends a campaign at its next move boundary and spends none"
-        : byHand;
+    const cut =
+      ranAs(EXAMINE) || ranAs(DRAFT)
+        ? "An Examiner session's id names one session: the next takes another --session"
+        : ranAs(BUILDER)
+          ? "A campaign goes on from its log under the same --name, and the session it was inside has spent its id. A word left with tools/d2/word.ts ends a campaign at its next move boundary and spends none"
+          : byHand;
     console.log(
       `  stopped, its log as it was. ${cut ?? "A round or a checkpoint goes on from it when started again under the same id"}`,
     );

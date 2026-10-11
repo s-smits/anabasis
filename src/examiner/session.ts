@@ -15,8 +15,8 @@
  * which the Examiner's own turns were $2.01. What a task's author hears instead comes from the
  * comparisons, one outcome a task, at the next session's opening (`record.ts`).
  *
- * What the Examiner is never given: a harness, a solver's trace or answer, a check's program. It
- * has no shell and reads no file.
+ * What the Examiner is never given: a harness, a solver's trace or answer, a check's program. Its
+ * shell, where it has one, is a walled home of its own (`shell.ts`), closed to the repository.
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
  * an earlier session already wrote is not taken again, whatever id it would get.
@@ -54,26 +54,16 @@ import { rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { basename, dirname } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
-import {
-  type CommandWall,
-  networkReach,
-  type SolveDirs,
-  solveDirs,
-  type Walled,
-  walledBase,
-} from "../solve/command.ts";
-import { codingTools } from "../solve/coding-tools.ts";
+import type { CommandWall, Walled } from "../solve/command.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
-import { mountDiskCap } from "../verify/disk-cap.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
-import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { openingOf } from "../builder/opening.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 import { heard } from "./record.ts";
+import { examinerShell, inExaminerWall } from "./shell.ts";
 
 interface ExamLimits {
   readonly wallSeconds: number;
@@ -350,22 +340,11 @@ export function claimed(events: readonly LogEvent[], id: string): string | null 
  *  session has one, with what it is told of its wall, and `finish`. */
 async function toolsOf(desk: Desk): Promise<AgentTool[]> {
   const { request } = desk;
-  // What the shell is told of its wall, after pi's own description of `bash`; the network as the
-  // wall's probe found it (`networkReach`).
-  const network = request.shell === undefined ? "unreached" : await networkReach(request.shell);
-  const walls = ` The command runs in your home directory, which is yours for the session and empty at its start. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: a task enters it through propose_tasks alone.`;
-  const shell =
-    request.shell === undefined
-      ? []
-      : // SAFETY: pi's wrapper types its tools' parameters `any`; each is one of pi's definitions.
-        (wrapToolDefinitions(codingTools(request.shell, ["bash", "read", "write"])) as AgentTool[]).map(
-          (each) => (each.name === "bash" ? { ...each, description: `${each.description}${walls}` } : each),
-        );
   return [
     proposeTool(desk),
     exampleTool(desk),
     ...(request.verify === undefined ? [] : [tryTool(desk, request.verify)]),
-    ...shell,
+    ...(await examinerShell(request.shell, "a task enters it through propose_tasks alone")),
     finishTool(desk),
   ];
 }
@@ -479,29 +458,12 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   return { held: desk.held, refused: desk.refused, ended };
 }
 
-/** Where an Examiner session's shell runs: a capped root of its own, as a Builder's. */
-export const examinerDirs = (log: string, id: string): SolveDirs =>
-  solveDirs(`exam-${basename(dirname(log))}-${id}`);
-
 /**
- * One Examiner session with a shell under the solver's command wall and disk cap: mount, run,
- * tear down. Until 10 October an Examiner could run nothing, and its notes said that a task's
- * feasibility rested on hand estimates; with a shell it computes an instance, and with
- * `try_answer` it knows the instance has a valid answer before it proposes it.
+ * One Examiner session with a shell under the solver's command wall and disk cap (`shell.ts`).
+ * Until 10 October an Examiner could run nothing, and its notes said that a task's feasibility
+ * rested on hand estimates; with a shell it computes an instance, and with `try_answer` it knows
+ * the instance has a valid answer before it proposes it.
  */
-export async function examineWalled(request: Omit<ExamRequest, "shell"> & Walled): Promise<Examined> {
-  const dirs = examinerDirs(request.log, request.id);
-  const release = await mountDiskCap({ root: dirs.root, bytes: request.diskBytes });
-  try {
-    const shell: CommandWall = {
-      base: await walledBase(dirs, request, "an Examiner"),
-      dirs,
-      toolTree: null,
-      limits: { shellDefaultSeconds: 120, shellMaxSeconds: 600 },
-    };
-    return await examine({ ...request, shell });
-  } finally {
-    await release();
-    rmSync(dirs.host, { recursive: true, force: true });
-  }
+export function examineWalled(request: Omit<ExamRequest, "shell"> & Walled): Promise<Examined> {
+  return inExaminerWall(request, (shell) => examine({ ...request, shell }));
 }

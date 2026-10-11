@@ -1,0 +1,15 @@
+#!/bin/sh
+# Gates what a push adds, on the repository's own gate, before anything leaves this clone.
+# tools/runtime/pre-push.ts holds the method in its head comment. Installed with
+# `bun run hooks:install`, which points this clone's core.hooksPath here once; its worktrees share
+# the setting.
+set -eu
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-push: bun is not on PATH, so the gate could not run. Nothing was pushed." >&2
+  exit 1
+fi
+# Git exports repository-local variables to a hook. The suite's fixtures run nested `git init`s,
+# which would follow an inherited GIT_DIR into this repository instead of their own directories.
+# shellcheck disable=SC2046
+unset $(git rev-parse --local-env-vars)
+exec bun "$(dirname "$0")/../tools/runtime/pre-push.ts" "$@"

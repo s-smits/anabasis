@@ -42,12 +42,18 @@ export const examinerDirs = (log: string, id: string): SolveDirs =>
 /**
  * The shell's three tools where the session has one, and none where it has not. `bash` carries
  * what the session is told of its wall, after pi's own description: the network as the wall's probe
- * found it (`networkReach`), and `enters`, how something of the session does enter the exam.
+ * found it (`networkReach`), `enters`, how something of the session does enter the exam, and
+ * `home`, what the home holds at the session's start: nothing, or what a task-writing session
+ * carries over from the campaign's last (`keepHome`, `src/examiner/session.ts`).
  */
-export async function examinerShell(shell: CommandWall | undefined, enters: string): Promise<AgentTool[]> {
+export async function examinerShell(
+  shell: CommandWall | undefined,
+  enters: string,
+  home = "empty at its start",
+): Promise<AgentTool[]> {
   if (shell === undefined) return [];
   const network = await networkReach(shell);
-  const walls = ` The command runs in your home directory, which is yours for the session and empty at its start. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
+  const walls = ` The command runs in your home directory, which is yours for the session and ${home}. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
   // SAFETY: pi's wrapper types its tools' parameters `any`; each is one of pi's definitions.
   return (wrapToolDefinitions(codingTools(shell, ["bash", "read", "write"])) as AgentTool[]).map((each) =>
     each.name === "bash" ? { ...each, description: `${each.description}${walls}` } : each,

@@ -9,16 +9,25 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { heard } from "../src/examiner/record.ts";
+import { comparisonSummary, heard, SAID } from "../src/examiner/record.ts";
 import { SYSTEM_PROMPT } from "../src/examiner/prompt.ts";
-import { claimed, type ExamRequest, examine } from "../src/examiner/session.ts";
+import { claimed, type ExamRequest, examine, keepHome, lastNote, seedHome } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import type { Task } from "../src/kernel/verify.ts";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { asRecord, isFunction, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -162,7 +171,9 @@ describe("an Examiner session", () => {
     expect(s.sent[0]).toContain("the harness that gives more valid answers wins");
     // It is told that a task needs a valid answer, and that it may derive the task from one.
     expect(s.sent[0]).toContain("A task with no valid answer measures nothing");
-    expect(s.sent[0]).not.toContain("objective");
+    // The contract declares none, so the opening names none; the system prompt says what one
+    // would do.
+    expect(s.sent[0]).not.toContain("Objective:");
     // How many tasks are wanted is not the Examiner's to know: no prompt and no tool text says 24.
     expect((s.sent[0] ?? "").replace(/"timestamp":\d+/g, "")).not.toContain("24");
     // It writes no control and is put to no solver, and its prompt promises neither.
@@ -401,7 +412,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     side: "test",
   });
 
-  it("is one outcome a task: one harness won, a tie between valid answers, no valid answer yet, or disputed", async () => {
+  const compared = async (objective = false) => {
     const s = setup([propose(1, 2, 3, 4, 5), finish, finish, finish, finish]);
     await examine({ ...s.request, limits: { ...LIMITS, proposals: 6 } });
     const [won, tied, unsolved, practice, aside] = [1, 2, 3, 4, 5].map((base) =>
@@ -421,7 +432,12 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         solves += 1;
         const solve = `s-${String(solves)}`;
         append(s.log, "solve.started", { solve, condition: id, comparison: "b-1" });
-        append(s.log, "verdict", { solve, kind: pass ? "pass" : "fail", answer: { answer: SOLVER } });
+        append(s.log, "verdict", {
+          solve,
+          kind: pass ? "pass" : "fail",
+          answer: { answer: SOLVER },
+          objective: harness === "h1" ? 2 : 1,
+        });
         append(s.log, "solve.finished", { solve, ending: { outcome: pass ? "pass" : "fail" } });
       }
     };
@@ -438,30 +454,58 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       reading: "no-step",
       old: "h1",
       fresh: "h2",
+      starter: "h1",
       solves: 2,
       setting: settingId(condition("any", "any")),
       versions: [won ?? "", tied ?? "", unsolved ?? "", packed],
       aside: [aside ?? ""],
       scored: { wins: 2, losses: 0, ties: 2 },
+      objective: objective ? { direction: "lower", margin: 0.01 } : null,
     });
     append(s.log, "task.state", { version: practice ?? "", state: "released" });
     // Every task the campaign holds, the pack's first: the session is handed them in that order.
     const tasks = [EXAMPLE, ...writtenTasks(read(s.log))];
+    return { s, tasks };
+  };
+
+  it("gives task outcomes and aggregate comparison counts without solver content", async () => {
+    const { s, tasks } = await compared();
+    const recorded = read(s.log);
+    const row =
+      "4 tasks; reference valid 3/8 solves; other valid 6/8 solves; solve pairings: both pass 6, both fail 4, reference only 0, other only 6; other harness task wins 2, losses 0, ties 2; objective decided 0 tasks.";
+    expect(comparisonSummary(recorded)[1]).toBe(row);
+    expect(comparisonSummary(recorded)[0]).toContain("aside 1");
+    expect(comparisonSummary(recorded)[0]).toContain("not independent observations");
+    expect(comparisonSummary([])).toEqual([]);
+    expect(
+      comparisonSummary(
+        recorded.map((event) =>
+          event.kind === "verdict"
+            ? {
+                ...event,
+                data: { ...event.data, answer: { secret: "changed-answer" }, blocking: ["changed-check"] },
+              }
+            : event,
+        ),
+      ),
+    ).toEqual(comparisonSummary(recorded));
     // The reference harness is h1, the comparison's old side: the author hears how it did on
     // each task, and nothing of h2.
+    // Beside the outcome, one fact that names no side: whether a valid answer to the task is on
+    // record at all, a solve's under either harness or the author's own try.
     expect(heard(read(s.log), tasks)).toEqual([
-      "e-1 (family fixture): the reference harness answered it validly in some solves of the last comparison and not in others",
-      "x-1-001 (family fixture): the reference harness answered it validly in no solve of the last comparison",
-      "x-1-002 (family fixture): the reference harness answered it validly in every solve of the last comparison",
-      "x-1-003 (family fixture): the reference harness answered it validly in no solve of the last comparison",
+      "e-1 (family fixture): the reference harness answered it validly in some solves of the last comparison and not in others; a valid answer to it is on record",
+      "x-1-001 (family fixture): the reference harness answered it validly in no solve of the last comparison; a valid answer to it is on record",
+      "x-1-002 (family fixture): the reference harness answered it validly in every solve of the last comparison; a valid answer to it is on record",
+      "x-1-003 (family fixture): the reference harness answered it validly in no solve of the last comparison; no valid answer to it is on record",
       "x-1-004 (family fixture): in use as practice, and so never scored",
-      "x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled",
+      "x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled; no valid answer to it is on record",
     ]);
 
     await examine({ ...s.request, id: "x-2", examples: tasks });
     const opening = s.sent[3] ?? "";
     expect(opening).toContain(
-      "The tasks of the exam so far, and what the last comparison that scored each one found",
+      "The tasks of the exam so far, what the last comparison that scored each one found, and whether a valid answer to it is on record",
     );
     expect(opening).toContain(
       "- e-1 (family fixture): the reference harness answered it validly in some solves",
@@ -469,15 +513,100 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(opening).toContain(
       "- x-1-002 (family fixture): the reference harness answered it validly in every solve",
     );
-    // Which harness won, how many solves failed and what a solver answered are not the author's.
+    // The aggregate counts name no harness and carry no answer or trace.
     expect(opening).not.toContain("h2");
     expect(opening).not.toContain(SOLVER);
+    expect(opening).toContain("Comparison summary:");
+    expect(opening).toContain(row);
     expect(opening).not.toContain("too easy");
     // Every one of them can be read whole, an earlier session's as the pack's.
     expect(s.of("exam.started")[1]).toMatchObject({
       session: "x-2",
       examples: tasks.map(({ taskId }) => taskId),
     });
+  });
+
+  it("reads the current reference on either side and ignores unscored reports and later releases", async () => {
+    const { s } = await compared();
+    const before = comparisonSummary(read(s.log));
+    append(s.log, "comparison.reported", {
+      session: "b-2",
+      old: "h1",
+      fresh: "h2",
+      scored: { wins: 0, losses: 0, ties: 0 },
+      versions: [],
+      reading: "not-scored",
+    });
+    append(s.log, "task.state", { version: taskVersion(s.request.pack(EXAMPLE)), state: "released" });
+    expect(comparisonSummary(read(s.log))).toEqual(before);
+    append(s.log, "harness.promoted", { harness: "h2" });
+    expect(comparisonSummary(read(s.log))[1]).toBe(
+      "4 tasks; reference valid 6/8 solves; other valid 3/8 solves; solve pairings: both pass 6, both fail 4, reference only 6, other only 0; other harness task wins 0, losses 2, ties 2; objective decided 0 tasks.",
+    );
+    append(s.log, "harness.promoted", { harness: "h3" });
+    expect(comparisonSummary(read(s.log))).toEqual([]);
+  });
+
+  it("reports quality wins even when both harnesses passed", async () => {
+    const { s } = await compared(true);
+    expect(comparisonSummary(read(s.log))[1]).toContain(
+      "task wins 3, losses 0, ties 1; objective decided 1 tasks",
+    );
+  });
+
+  it("keeps the starter as reference when an experimental control was compared first", async () => {
+    const { s } = await compared();
+    const events = read(s.log);
+    const report = events.find(({ kind }) => kind === "comparison.reported");
+    if (report === undefined) throw new Error("comparison fixture has no report");
+    const control = {
+      ...report,
+      data: { ...report.data, session: "control", old: "programs-only", fresh: "h2" },
+    };
+    expect(comparisonSummary([control, ...events])).toEqual(comparisonSummary(events));
+  });
+
+  it("opens the next session with what the last one said at its finish, and nothing of a session that said nothing", async () => {
+    const s = setup([propose(1), finish, finish]);
+    await examine(s.request);
+    expect(lastNote(read(s.log))).toBe("Stacked two requirements.");
+    const next = setup([finish, finish]);
+    expect(lastNote(read(next.log))).toBeNull();
+    await examine({ ...next.request, log: s.log, id: "x-2" });
+    const opening = next.sent[0] ?? "";
+    expect(opening).toContain(
+      "What the last Examiner session of this campaign said at its finish, in its own words:",
+    );
+    expect(opening).toContain(String.raw`in its own words:\nStacked two requirements.`);
+    // A first session, with no finished one before it, is told nothing of the kind.
+    expect(s.sent[0]).not.toContain("said at its finish");
+    // The exhausted line says what the fold does: the reference's own solves, and the kept third.
+    expect(SAID.exhausted).toContain(
+      "the reference harness answered it validly in every solve of two comparisons",
+    );
+    expect(SAID.exhausted).not.toContain("both harnesses");
+  });
+
+  it("carries a session's home whole into the next session's, replacing what was kept before", () => {
+    const root = mkdtempSync(join(tmpdir(), "examiner-home-"));
+    const [first, keep, second] = [join(root, "first"), join(root, "keep"), join(root, "second")];
+    mkdirSync(join(first, "w"), { recursive: true });
+    writeFileSync(join(first, "w", "model.py"), "print(1)\n");
+    writeFileSync(join(first, "stale.txt"), "old\n");
+    // A first session finds nothing kept, and leaves its home whole.
+    mkdirSync(second, { recursive: true });
+    seedHome(second, keep);
+    expect(readdirSync(second)).toEqual([]);
+    keepHome(first, keep);
+    seedHome(second, keep);
+    expect(readFileSync(join(second, "w", "model.py"), "utf8")).toBe("print(1)\n");
+    expect(existsSync(join(second, "stale.txt"))).toBe(true);
+    // The next carry replaces the kept copy: what a session deleted stays deleted.
+    rmSync(join(second, "stale.txt"));
+    keepHome(second, keep);
+    expect(existsSync(join(keep, "stale.txt"))).toBe(false);
+    expect(existsSync(join(keep, "w", "model.py"))).toBe(true);
+    rmSync(root, { recursive: true, force: true });
   });
 
   it("says a task is not yet compared, leaves a refused one out, and says when a check was at fault", async () => {
@@ -487,11 +616,13 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     const tasks = writtenTasks(read(s.log));
     expect(tasks.map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-1-002", "x-1-003"]);
     expect(heard(read(s.log), tasks)).toEqual([
-      "x-1-001 (family fixture): not yet compared",
+      "x-1-001 (family fixture): not yet compared; no valid answer to it is on record",
       "x-1-003 (family fixture): disputed: a check was at fault on an answer to it",
     ]);
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
-    expect(heard([], [EXAMPLE])).toEqual(["e-1 (family fixture): not yet compared"]);
+    expect(heard([], [EXAMPLE])).toEqual([
+      "e-1 (family fixture): not yet compared; no valid answer to it is on record",
+    ]);
     expect(heard([], [])).toEqual([]);
   });
 });

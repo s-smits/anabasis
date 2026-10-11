@@ -8,8 +8,10 @@
  * The Examiner writes task instances against the pack's contract and check program. Each is put to
  * the one gate, the shape of its package, and is a held-out task when it passes
  * (`src/examiner/session.ts`). The session is shown every task the campaign holds, the pack's own
- * and the ones earlier sessions wrote, and the opening message says one outcome of each: one
- * harness won it, a tie between valid answers, no valid answer yet, or disputed.
+ * and the ones earlier sessions wrote, and the opening message says one outcome of each: how the
+ * reference harness did on it in the last comparison that scored it, disputed, or no longer
+ * scored, and whether a valid answer to it is on record (`src/examiner/record.ts`). The home the
+ * last session computed in, and what it said at its finish, are carried into this one.
  *
  * No solve runs, so the session takes no flag for a solver, its limits or a reviewer, and costs
  * the Examiner's own turns. Until 2026-10-09 it put each instance to a stronger solver and to the
@@ -17,8 +19,10 @@
  *
  * The session stops at `--tasks` held-out tasks, at `--proposals` instances put to the gate, at
  * its minutes and turns, or when the Examiner calls `finish`, which it may at any count: on
- * 10 October every session held out two to four tasks and finished of its own accord. `--tasks` is the host's and is never told to the Examiner. It defaults to
- * the scored set's size: asking for many at once is what v1 found dilutes them, a probe grown to
+ * 10 October every session held out two to four tasks and finished of its own accord. `--tasks` is
+ * the host's and is never told to the Examiner. The campaign command names it from what the
+ * campaign is short of (`examTasks`, `tools/d2/harness-builder.ts`); run by hand it defaults to a
+ * scored set's size, 12. Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`docs/plan.md`).
  *
  * Not run here: see `campaign.ts`.
@@ -29,6 +33,7 @@ import { openingOf } from "#src/builder/opening.ts";
 import { read } from "#src/kernel/log.ts";
 import { taskSets, taskStates } from "#src/kernel/task.ts";
 import { readBrief } from "#src/kernel/verify.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { openCampaign, packNamed, REPO, stayAwake } from "../d2/campaign.ts";
 import { recordedSetting } from "../d2/setting.ts";
@@ -48,6 +53,9 @@ const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
+  /** The wall of one solve, in minutes, as the campaign command names it from the campaign's
+   *  terms: the budget fact the Examiner is told, where no setting is on record yet. */
+  "solve-minutes": { type: "string" },
 } as const;
 
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
@@ -69,12 +77,22 @@ export async function examineCommand(args: readonly string[], session = examineW
     packRoots: campaign.packRoots,
     diskBytes: campaign.limits.diskBytes,
     verify: campaign.verify,
-    // The budget every solve is held to now: the recorded setting's turns, or the opening's full
-    // limit before a setting is recorded, and the campaign's wall.
+    // The budget every solve is held to now: the recorded setting's turns and minutes, or before
+    // a setting is recorded the opening's full limit and the wall the command names
+    // (`--solve-minutes`, which the campaign command gives from the campaign's terms), and the
+    // campaign's default wall where nothing names one. Until 11 October the minutes were the
+    // default wall whatever the setting or the terms said: the buffer sessions of that day were
+    // told 120 minutes where every solve ran under 8.
     budget: {
       modelTurns: recordedSetting(sofar)?.modelTurns ?? openingOf(sofar)?.limit ?? null,
-      minutes: Math.round(campaign.limits.wallSeconds / 60),
+      minutes:
+        recordedSetting(sofar)?.minutes ??
+        (values["solve-minutes"] === undefined
+          ? Math.round(campaign.limits.wallSeconds / 60)
+          : Number(values["solve-minutes"])),
     },
+    // The home the last session left, carried whole into this one, beside the log.
+    keep: join(dirname(campaign.log), "examiner-home"),
     contract: campaign.contract,
     checks: declared.map((check, index) => ({
       id: check.id,

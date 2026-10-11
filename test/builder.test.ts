@@ -272,14 +272,6 @@ describe("a Builder session", () => {
       {
         ...s.request,
         referee: async () => earned,
-        diagnose: async () => ({
-          owner: "harness",
-          cause: "The guide never says to multiply.",
-          falsifier: "A later solve that multiplies and still answers 41.",
-          firstDivergence: "margin of s-3",
-          contrastSuccess: null,
-          confidence: "low",
-        }),
       },
       s,
       s.walled,
@@ -328,13 +320,12 @@ describe("a Builder session", () => {
     // The solver's public resources, in the home as one file, which the opening message names.
     expect(readFileSync(join(s.home, "resources.json"), "utf8")).toContain('"maxSpan": 12');
     expect(s.sent[0]).toContain("are in resources.json");
-    // The practice result: endings, records under both harnesses, the diagnosis, the budget.
+    // The practice result: endings, records under both harnesses, the budget. Until 2026-10-11 a
+    // Diagnoser's reading of the fail came too (`docs/simplify.md`, E1).
     const practised = s.sent[2] ?? "";
     expect(practised).toContain("t-1: fail (rejected). Solve s-3.");
     expect(practised).toContain("passed 0 of 1. Under the harness you started from: 0 of 1.");
-    expect(practised).toContain(
-      "Diagnosis (owner harness, confidence low): The guide never says to multiply.",
-    );
+    expect(practised).not.toContain("Diagnosis");
     expect(practised).toContain("t-2: pass. Solve s-4.");
     expect(practised).toContain("1 practice solve left.");
     // The trace, listed and then one call whole.
@@ -438,7 +429,6 @@ describe("a Builder session", () => {
       [call("practice", { tasks: ["t-2"] }), call("practice", { tasks: ["t-2"] }), finish],
       [{ outcome: "fail", kind: "rejected" }],
     );
-    let diagnosed = 0;
     const built = await session(
       {
         ...s.request,
@@ -450,17 +440,12 @@ describe("a Builder session", () => {
           reason: REASON,
           probes: [1],
         }),
-        diagnose: async () => {
-          diagnosed += 1;
-          return { abstain: "never asked" };
-        },
       },
       s,
       s.walled,
     );
     expect(s.sent[1]).toContain("The Referee ruled this fail a check defect: it does not count");
     expect(s.sent[2]).toContain("t-2 is no longer a practice task");
-    expect(diagnosed).toBe(0);
     expect(s.sent.join("\n")).not.toContain(CHECK);
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 1, disputed: ["v2"], changed: false });
     expect(built).toMatchObject({ changed: false, dir: null, harness: s.digest });
@@ -953,8 +938,8 @@ describe("what crosses to the Builder", () => {
    * context its model was sent, which holds its system prompt, its tools' descriptions, the
    * opening, every tool result and every continuation, and every file of its home. The host's
    * clock and the scratch's own path are taken out, since two runs differ in them and neither is
-   * the exam's. `leak` has the Diagnoser name the check that refused, which is a held-out detail in
-   * a Builder's message.
+   * the exam's. `leak` puts the check that refused into a practice solve's trace, which a Builder
+   * pages: a held-out detail in a Builder's message.
    */
   async function read_(kept: Kept, leak: "sealed" | "leaking" = "sealed"): Promise<string> {
     const stop = fauxAssistantMessage("I think that is enough.");
@@ -965,7 +950,8 @@ describe("what crosses to the Builder", () => {
         // Under the reference harness too: what that reads is the wall's to keep (11 October).
         call("practice", { tasks: ["t-1"], under: "reference" }),
         call("read_trace", { solve: "s-3" }),
-        call("read_trace", { solve: "s-3", call: 1 }),
+        // The leaking case pages the call the leak put the check into.
+        call("read_trace", { solve: "s-3", call: leak === "leaking" ? 2 : 1 }),
         call("read_opening", {}),
         stop,
         finish,
@@ -1029,14 +1015,20 @@ describe("what crosses to the Builder", () => {
           reason: kept.reason,
           probes: [],
         }),
-        diagnose: async () => ({
-          owner: "solver",
-          cause: leak === "leaking" ? `Its answer failed ${kept.check}.` : "It never multiplied.",
-          falsifier: "A later solve that multiplies and still answers 41.",
-          firstDivergence: "margin of s-3",
-          contrastSuccess: null,
-          confidence: "low",
-        }),
+        practise: async (task, dir, harness, kill) => {
+          const made = await s.request.practise(task, dir, harness, kill);
+          if (leak === "leaking") {
+            append(log, "solve.call", {
+              solve: made.solve,
+              turn: 2,
+              tool: "bash",
+              args: { command: "cat verdict" },
+              isError: false,
+              text: `refused by ${kept.check}`,
+            });
+          }
+          return made;
+        },
       },
       s,
       s.walled,
@@ -1061,11 +1053,11 @@ describe("what crosses to the Builder", () => {
 
   it("is byte-identical whatever a hidden value, a check, a ruling or the task that was won is", async () => {
     const [one, other] = [await read_(ONE), await read_(OTHER)];
-    // The session read what a Builder may: its tasks, the fail and its diagnosis, the trace, the
-    // opening again, the continuation, and the comparison as a tally.
+    // The session read what a Builder may: its tasks, the fail, the trace, the opening again, the
+    // continuation, and the comparison as a tally.
     expect(one).toContain("Solve s-3.");
     expect(one).toContain("- s-1, t-1, harness");
-    expect(one).toContain("It never multiplied.");
+    expect(one).toContain("result: margin of s-3");
     expect(one).toContain("1 won, 0 lost, 1 tied, which reads no step.");
     expect(one).toContain("You have not called finish");
     expect(one).toContain("practice/t-1.json");
@@ -1077,7 +1069,7 @@ describe("what crosses to the Builder", () => {
     expect(one === other).toBe(true);
   }, 60_000);
 
-  // The nearest hostile case: a reviewer whose words name the check that refused. The Diagnoser is
+  // The nearest hostile case: a solve's trace that names the check that refused. The solver is
   // shown no check, so this cannot happen by its seat; it stands in for any path that would put a
   // held-out detail into a message, and the comparison above then fails.
   it("is not, once a held-out detail reaches one message", async () => {

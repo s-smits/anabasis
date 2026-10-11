@@ -40,7 +40,6 @@ import { billedAll, promoted } from "#src/kernel/reports.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import { DIAGNOSIS_LABELS, diagnosesAgreement } from "#src/review/agreement.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -187,30 +186,11 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       passes.comparisons === 0
         ? "- No answer that passed was read by anyone: a pass is the checks' word alone."
         : `- Answers that passed: a person read ${String(passes.read)} of the ${String(passes.of)} in ${plural(passes.comparisons, "comparison")}, drawn by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and changes no tally.`,
-      diagnosesLine(events),
     ].join("\n"),
     "## Work and spend",
     `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a budget of $${String(budget.dollars)}`}.`,
     "",
   ].join("\n\n");
-}
-
-/** What the Diagnoser said of the campaign's practice fails, and what a person's blind labels of
- *  them say of its lean (`settle.ts --diagnoses`). A diagnosis enters no verdict. */
-function diagnosesLine(events: readonly LogEvent[]): string {
-  const labelled = events.findLast(({ kind }) => kind === "diagnosis.labelled")?.data.labels;
-  const labels = new Map(
-    Object.entries(asRecord(labelled) ?? {}).flatMap(([solve, label]) => {
-      const known = DIAGNOSIS_LABELS.find((each) => each === label);
-      return known === undefined ? [] : [[solve, known] as const];
-    }),
-  );
-  const found = diagnosesAgreement(events, labels);
-  if (found.recorded === 0) return "- No practice fail was diagnosed.";
-  const lean = `the Diagnoser named the solver in ${String(found.solver)} of ${String(found.recorded)} ${found.recorded === 1 ? "diagnosis" : "diagnoses"}`;
-  return found.labelled === 0
-    ? `- Diagnoses: ${lean}; no person has labelled one, so its lean is unmeasured.`
-    : `- Diagnoses: ${lean}; a person labelled ${String(found.labelled)} blind and agreed with ${String(found.agreed)}. A diagnosis is the Builder's lead and enters no verdict.`;
 }
 
 /** The public contract as a solver reads it, for whoever takes the harness over. */

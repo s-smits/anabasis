@@ -250,6 +250,8 @@ describe("a campaign's reading", () => {
     const c = campaign();
     c.setUp();
     const [open] = c.built("b-1", STARTER, HA, ["fail"]);
+    // A reading of the fail by a Diagnoser, as a log of before 2026-10-11 holds one, is no part of
+    // the fail since (`docs/simplify.md`, E1).
     c.record("diagnosis.recorded", {
       solve: open ?? "",
       owner: "solver",
@@ -270,7 +272,6 @@ describe("a campaign's reading", () => {
         kind: "rejected",
         standing: "open",
         under: null,
-        diagnosis: { owner: "solver", confidence: "low", cause: "It guessed." },
       },
     ]);
     // One pass under a later harness is weak evidence, a second repairs, and a later fail under a
@@ -280,11 +281,11 @@ describe("a campaign's reading", () => {
     c.solved("p1", HB, "pass");
     expect(fails()[0]).toMatchObject({ standing: "repaired", under: HB });
     const again = c.solved("p1", STARTER, "fail");
-    c.record("diagnosis.recorded", { solve: again, abstain: "no contrast" });
     expect(fails()).toMatchObject([
       { solve: open, standing: "failing-again", under: STARTER },
-      { solve: again, standing: "open", under: null, diagnosis: "abstained" },
+      { solve: again, standing: "open", under: null },
     ]);
+    expect(fails()[1]).not.toHaveProperty("diagnosis");
     // A later pass under the fail's own harness says nothing of a repair: the same bytes flip.
     c.solved("p1", STARTER, "pass");
     c.solved("p1", STARTER, "pass");
@@ -307,20 +308,18 @@ describe("the Builder's filter over that reading", () => {
     });
     c.solved("p1", HB, "pass");
     const { fails } = campaignOf(c.events());
+    // A Diagnoser's reading in a log of before is not told (`docs/simplify.md`, E1).
     expect(failsTold(fails, TASKS)).toEqual([
-      `- ${open ?? ""}, t-1, harness aaaaaaaa: fail (rejected); open: passed once under harness bbbbbbbb. Diagnosis (owner solver, confidence low): It guessed.`,
+      `- ${open ?? ""}, t-1, harness aaaaaaaa: fail (rejected); open: passed once under harness bbbbbbbb.`,
     ]);
     // A task this session may not practise on is no line of its opening.
     expect(failsTold(fails, new Map([["p9", "t-9"]]))).toEqual([]);
     c.solved("p1", HB, "pass");
     expect(failsTold(campaignOf(c.events()).fails, TASKS)[0]).toContain("; repaired under harness bbbbbbbb.");
     const again = c.solved("p1", STARTER, "fail");
-    c.record("diagnosis.recorded", { solve: again, abstain: "no contrast" });
     const told = failsTold(campaignOf(c.events()).fails, TASKS);
     expect(told[0]).toContain("; failing again under harness 00000000.");
-    expect(told[1]).toBe(
-      `- ${again}, t-1, harness 00000000: fail (rejected); open. The Diagnoser abstained.`,
-    );
+    expect(told[1]).toBe(`- ${again}, t-1, harness 00000000: fail (rejected); open.`);
   });
 
   it("tells each comparison as its tally and its reading, with no task and no other count", () => {

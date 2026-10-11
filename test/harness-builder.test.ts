@@ -319,40 +319,9 @@ describe("a campaign run by its log", () => {
       { session: "g-1", of: 5, labels: { [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "wrong" } },
     ]);
 
-    // A person reads the Diagnoser's accounts the same way: the fails it diagnosed are drawn by
-    // the contract's hash, the packet holds the case and no diagnosis, and the labels are
-    // recorded once. The rehearsal's Builder practises nothing and its seats script no reviewer,
-    // so two diagnoses are written here as a Diagnoser writes them, naming two of g-1's solves:
-    // a live Diagnoser reads practice solves only, and the draw reads solve ids.
-    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
-    const [one = "", two = ""] = of(name, "solve.started").flatMap(({ solve }) =>
-      isString(solve) ? [solve] : [],
-    );
-    append(log, "diagnosis.recorded", {
-      solve: one,
-      owner: "solver",
-      cause: "It guessed.",
-      confidence: "low",
-    });
-    append(log, "diagnosis.recorded", {
-      solve: two,
-      owner: "harness",
-      cause: "The guide.",
-      confidence: "low",
-    });
-    const diagnoses = join(REPO, ".ana", "d2", name, "settle-diagnoses", "diagnoses", "diagnoses.json");
-    await settleCommand([...pack, "--diagnoses", "5"]);
-    const entries = parseJsonAs<JsonObject>(readFileSync(diagnoses, "utf8"));
-    expect(Object.keys(entries).toSorted()).toEqual([one, two].toSorted());
-    const packet = readFileSync(
-      join(REPO, ".ana", "d2", name, "settle-diagnoses", "diagnoses", `${one}.json`),
-      "utf8",
-    );
-    expect(packet).toContain('"rules"');
-    expect(packet).not.toContain("It guessed.");
-    writeFileSync(diagnoses, JSON.stringify({ [one]: "harness", [two]: "harness" }));
-    await settleCommand([...pack, "--diagnoses", "5"]);
-    expect(of(name, "diagnosis.labelled")).toMatchObject([{ of: 2 }]);
+    // Until 2026-10-11 a person read a Diagnoser's accounts the same way (`--diagnoses`); the seat
+    // went, and the flag with it (`docs/simplify.md`, E1).
+    await expect(settleCommand([...pack, "--diagnoses", "5"])).rejects.toThrow("--diagnoses");
 
     // What the campaign hands over: the promoted harness as a folder that stands by itself, the
     // public rules, and the closing report. It is written outside the repository and once.
@@ -383,9 +352,7 @@ describe("a campaign run by its log", () => {
       `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2. In g-2 it won 5, lost 0 and tied 0`,
     );
     expect(report).toContain("| g-1 |");
-    expect(report).toContain(
-      "Diagnoses: the Diagnoser named the solver in 1 of 2 diagnoses; a person labelled 2 blind and agreed with 1.",
-    );
+    expect(report).not.toContain("Diagnos");
     expect(report).toContain("The campaign has not ended");
     // No task is named in it, and no check.
     expect(report).not.toContain("t-1");

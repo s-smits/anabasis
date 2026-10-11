@@ -72,9 +72,8 @@ What crosses from the exam side to the build side is a closed list:
 - the contract's public rules, its scope and conventions, the answer format and, where the check
   program declares one, the objective: the quantity and which way is better;
 - the public part of each **released** (practice) task;
-- for a practice solve: its ending's outcome and kind, the solver's trace, the Diagnoser's
-  reading and, where the contract states an objective, the measure the verifier took of a valid
-  answer;
+- for a practice solve: its ending's outcome and kind, the solver's trace and, where the
+  contract states an objective, the measure the verifier took of a valid answer;
 - for each comparison: the tally and the reading, with no task named.
 
 Nothing else crosses: no held-out task, no trace of one, no check, no hidden value, no list of the
@@ -171,11 +170,10 @@ wall keeps from it.
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
 | **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, and one outcome for each task of the campaign; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, and what the host's reading found in each draft | A target, a harness's name, a count of solves. It makes no solve of the exam's | `src/examiner/` |
-| **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, diagnoses, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
+| **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
 | **Referee** (model) | Rules each rejection `earned`, `check-defect` or `unclear` before it counts | The verifier's side only: the task with hidden values, the rules, the answer, the refusing checks, the check program | The harness, the solver's trace, the Builder | `src/review/referee.ts` |
-| **Diagnoser** (model) | Names the first wrong step of one failed practice solve, and what would refute that | The public task, the public rules, the answer, the trace, the guide the solve ran under and how much of its limits it used, for released tasks only | Hidden values, the check program, which checks refused | `src/review/diagnoser.ts` |
 | **Host** (code) | Everything in the first column of section 2 | The log | n/a | `src/kernel/`, `tools/` |
 | **Operator** (person) | See below | Every report and refusal | n/a | n/a |
 
@@ -190,7 +188,10 @@ The tools of each model seat, as its source names them:
   `check_harness`, `preview_harness`, `reset_harness`, `finish`.
 - Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`.
 - Referee: `probe_check`, `read_check_program`, `record_ruling`.
-- Diagnoser: `read_trace`, `record_diagnosis`.
+
+Until 11 October a Diagnoser named the first wrong step of each failed practice solve for the
+Builder; 20 of 20 of its readings named the solver, and the seat went (`docs/simplify.md`, E1).
+A log of before keeps its `diagnosis.*` events.
 
 ### What waits for the operator
 
@@ -293,7 +294,7 @@ harnesses passed 75 of 75 of its own tasks and 2 of 23 of a shared set.
 
 A session that runs the loop stands where the controller stands, so the limit binds it. It
 reads handovers from the log, it types nothing into a Builder session, and its reports reach no
-Builder, Examiner, Referee or Diagnoser. The controller's own reasons (`campaign.move`,
+Builder, Examiner or Referee. The controller's own reasons (`campaign.move`,
 `campaign.ended`) are the operator's to read and enter no seat's message.
 
 The Builder's side is meant to be one conversation for the whole campaign, kept by compaction as
@@ -666,7 +667,7 @@ shares of `roomOf` are the plan's proposal and the operator's to set.
 Cite a rule by its number in a pull request or a review.
 
 1. **The comparison decides, and nothing else does.** A harness is better when a comparison reads
-   a step. A practice result, a Builder's account, a diagnosis, a reviewer's opinion and a passing
+   a step. A practice result, a Builder's account, a reviewer's opinion and a passing
    test suite say nothing about which harness is better, and none of them may set or adjust a
    reading.
 
@@ -796,8 +797,8 @@ events in a campaign's log  >  a fold over the log  >  source and tests  >  a co
   runs and writes its events, and nothing about a model.
 - A test suite that passes on one operating system says nothing of the other. The OS wall has two
   mechanisms, Seatbelt and Bubblewrap, and each is exercised only on its own platform.
-- A Referee's ruling and a Diagnoser's account are a model's output. Keep them apart from the
-  verifier's verdict and from a fact of the environment.
+- A Referee's ruling is a model's output. Keep it apart from the verifier's verdict and from a
+  fact of the environment.
 - A session report or a subagent's report is a lead. Check a finding against the source before
   acting on it or repeating it.
 
@@ -1427,7 +1428,7 @@ src/builder/    a Builder session, its tools, prompt, notes and what it is told 
                 it (word)
 src/examiner/   an Examiner session, its prompt, and the outcomes it is told; the session that drafts
                 an exam from a prompt (draft)
-src/review/     the Referee, the Diagnoser, the probe, agreement with hand labels
+src/review/     the Referee, the probe, agreement with hand labels
 src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read
 src/backends/   the three model backends as one pi collection, and compaction
 src/meta/       the owners of every runtime surface (section 12.8)

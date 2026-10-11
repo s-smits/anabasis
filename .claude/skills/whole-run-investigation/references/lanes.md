@@ -26,7 +26,7 @@ the pen apart, and each part has its own way of going wrong.
   their records and the reviewers' readings of its practice fails. It never sees a check or a
   held-out task.
 - **The host** owns the conditions, the limits, the one gate, the draw of the scored set and the
-  comparison. The Referee and the Diagnoser advise it. It decides nothing about promotion: the
+  comparison. The Referee advises it. It decides nothing about promotion: the
   reference harness is the one the campaign started with until the operator names another.
 - **A person** rules where no reviewer has: a rejection the Referee did not rule a true fail sets
   its task aside until someone has labelled it, and a task with no valid answer on record, after
@@ -445,8 +445,8 @@ Starts from `NO PRACTICE (lane 16)`, `FINAL BYTES NEVER PRACTISED (lane 16)` and
 
 The question is what the Builder did with each practice verdict before it stopped. Read the
 session's `build.call` rows in order: edits, `check_harness`, `practice` and what each practice
-returned, the task's record under this harness and under the parent, the Referee's ruling and the
-Diagnoser's reading of a fail. A session that edited after its last practice was measured on
+returned, the task's record under this harness and under the parent, and the Referee's ruling of
+a fail. A session that edited after its last practice was measured on
 bytes it never tried; one that never practised was measured on belief. The trigger reads this by
 digest: a practice solve's condition names the state it ran under, so the harness that was
 measured either is one of those states or is not, whichever tool made the last edit. The Builder is told one
@@ -467,18 +467,19 @@ Starts from `PRACTICE FAILS (lane 17)`.
 The question is whether a fail that was the solver's led to a change that answered it. v1's climb
 step was a fail, a harness change that answers it and the same task passing; in its record a fail
 led to a change once in six chances, and its second blocker was that an earned fail was not
-followed up. For each practice fail ruled earned, follow it: what the Diagnoser named as owner
-and first divergence, what the Builder changed next (the part, from `build.call`), whether the
+followed up. For each practice fail ruled earned, follow it: what the Builder changed next (the
+part, from `build.call`), whether the
 same task was practised again under the changed harness and how it came out there. A pass on the
 next solve after a fail with no edit between them is a flip and answers nothing: the trigger
 counts the later passes under changed bytes apart from those under the same bytes. A fail ruled a
 check defect is not the Builder's to build around and leaves practice; one the Builder built
 around anyway is a harness fitted to the exam's fault. Keep the count honest: fails, of which
-ruled earned, of which followed by an edit to the part the diagnosis named, of which passed
-after. The decision it changes is whether the session produced a change with a reason, which is
-the only kind worth a round's solves; it routes to `harness/guide` or `harness/tools` for a fail
-left standing, `reviewer-prompt` (`src/review/diagnoser.ts`) when the diagnosis could not be
-acted on, and `builder-prompt` when it was ignored.
+ruled earned, of which followed by an edit, of which passed after. Until 11 October a Diagnoser
+named an owner and a first divergence for each earned fail, and a log of before holds its
+readings (`diagnosis.recorded`): 20 of 20 named the solver, and the seat went
+(`docs/simplify.md`, E1). The decision it changes is whether the session produced a change with a
+reason, which is the only kind worth a round's solves; it routes to `harness/guide` or
+`harness/tools` for a fail left standing, and `builder-prompt` when the fail was ignored.
 
 **18. Exposure: what the Builder could see.**
 
@@ -512,7 +513,7 @@ tool's computation from the task's public input, the solver's own working, a lin
 or nothing in the trace at all. A value that arrives whole in the first turn, on a task the
 solver worked at under the reference harness and missed, came from somewhere the trace does not show. Freeze the
 table, win by win with the step and the source's kind, before reading lanes 15 and 18. This lane
-reads traces of scored tasks, which no Builder and no Diagnoser may see: its report stays with
+reads traces of scored tasks, which no Builder may see: its report stays with
 the primary, names solves and steps, and quotes nothing. The decision it changes is whether a
 win is the harness solving or the harness knowing; it routes to `harness/tools`, `harness/guide`
 or `host`, by where the value came from.
@@ -714,8 +715,9 @@ not open.
 Starts from `SILENCE (lane 28)` and `SPEND LED BY A ROLE (lane 28)`.
 
 The question is where the hours and the dollars went, and what each long silence was. Every
-`solve.finished`, `build.finished`, `exam.finished`, `referee.finding` and
-`diagnosis.recorded` carries tokens, metered and billed dollars and, where a backend reports it,
+`solve.finished`, `build.finished`, `exam.finished` and `referee.finding` (and, in a log of
+before 11 October, `diagnosis.recorded`) carries tokens, metered and billed dollars and, where a
+backend reports it,
 its own cost. Sum them by role and by round, and set billed beside metered: they differ by cache
 pricing and by what a backend reports. v1 found review took 54% of firmware's spend and changed
 nothing measurable, and that a gate took 31% of its Builder's time where the verifying tool was
@@ -731,23 +733,19 @@ chose.
 
 **29. Triage: the harness, the rules or the solver.**
 
-Starts from `DIAGNOSES (lane 29)` and `REPLAY MOVED THE VERDICT (lane 29)`.
+Starts from `REPLAY MOVED THE VERDICT (lane 29)`.
 
-The question is whether the reviewers agreed on which side failed, and whether the successor
-repaired that side. A practice fail is first ruled by the Referee: earned, a check defect, or
-unclear. An earned fail goes to the Diagnoser, which names an owner, the harness, the public
-rules or the solver, with a cause, a first divergence and what would refute it, or abstains. Set
-the two readings side by side for each fail and say where they disagree: a fail the Referee
-ruled earned and the Diagnoser laid to the public rules is one the two read differently. The
+The question is which side each practice fail was on, and whether the successor repaired that
+side. A practice fail is ruled by the Referee: earned, a check defect, or unclear. The
 Referee's replay runs the checks again on the logged answer; a replay whose verdict differs from
-the logged one is a check that does not repeat. Then
-read what the Builder changed after each diagnosis and whether it was the owner named. An
-abstention is useful and is counted, not charged. The Diagnoser reads practice fails only: a
-held-out task's fail is never diagnosed, because the reading would carry the task to the Builder; confirm
-none was. The decision it changes is whether the next change goes to the harness or to the
-exam's owner; it routes to `reviewer-prompt` (`src/review/referee.ts`,
-`src/review/diagnoser.ts`) for readings that cannot both be right, `pack/evaluator` for a check
-that does not repeat, and `harness/guide` or `harness/tools` for a repair on the wrong side.
+the logged one is a check that does not repeat. Then read what the Builder changed after each
+earned fail and whether it was the side that failed. Until 11 October a Diagnoser named an owner
+for each earned fail, the harness, the public rules or the solver, and a log of before holds
+its readings beside the rulings; 20 of 20 named the solver, and the seat went
+(`docs/simplify.md`, E1). The decision it changes is whether the next change goes to the harness
+or to the exam's owner; it routes to `reviewer-prompt` (`src/review/referee.ts`) for a ruling
+that cannot be right, `pack/evaluator` for a check that does not repeat, and `harness/guide` or
+`harness/tools` for a repair on the wrong side.
 
 **30. Rulings, labels and what each role was told.**
 
@@ -777,7 +775,7 @@ person is unmeasured until its rulings are set against labels made before it rea
 compare: count its earned rulings as a reviewer's, and those made without a probe as restating
 the check. Count the rulings that recur: the same check ruled a defect across sessions is a
 repair owed, and lane 6 reads whether one was made. Then read what each role was told. The
-Builder is told a task's record, a ruling's kind and a diagnosis, and never a check's id or a
+Builder is told a task's record and a ruling's kind, and never a check's id or a
 reviewer's failure text: confirm it from what `build.call` returned. The Examiner is told one
 outcome a task and the gate's reason. The decision it changes is whether the Referee's rulings
 may count without a person reading each; it routes to `operator` for the bar and the labels,

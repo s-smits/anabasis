@@ -31,10 +31,11 @@
  * that home is refused, with how to write it instead. A compiled program is not read for it: a path
  * built into one is as often a build's record as the place it runs from.
  *
- * `practice` is where the two reviewers meet the Builder. A fail goes to the Referee first; a fail
- * it rules a check defect does not count and its task leaves the session, and an earned fail goes on
- * to the Diagnoser. What comes back names the ending, the task's record and the Diagnoser's
- * reading, and never a check, a verdict's detail or the Referee's reasons. A practice solve that
+ * `practice` is where the Referee meets the Builder. A fail goes to it; a fail it rules a check
+ * defect does not count and its task leaves the session. What comes back names the ending and the
+ * task's record, and never a check, a verdict's detail or the Referee's reasons. Until 11 October
+ * an earned fail went on to a Diagnoser, whose reading came back too; 20 of 20 of its readings
+ * named the solver, and it went (`docs/simplify.md`, E1). A practice solve that
  * could not be run at all, the verifier failing to decide for one, ends the session: its error can
  * name a check, so it is kept for the host and the Builder is told only that the session ends.
  */
@@ -63,12 +64,11 @@ import {
   symlinkSync,
 } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
-import type { Diagnosis } from "../review/diagnoser.ts";
 import { callList, callsOf, callText, closingOf, solveOf } from "../review/trace.ts";
 import { openDesk, text, tool } from "../solve/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../solve/coding-tools.ts";
@@ -320,32 +320,6 @@ export function usedText(events: readonly LogEvent[], solve: string): string {
   return ` It took ${clockText(end.seconds)} of ${clockText(limits.wallSeconds)} and ${plural(end.turns, "model turn")}${given}${counted}.`;
 }
 
-/** The first call of a solve whose arguments or result hold `quote`, by its number in the trace;
- *  null where no call does, as when the quote is of the answer or of the solver's own words. */
-function callQuoted(calls: readonly JsonObject[], quote: string): number | null {
-  const squash = (value: string) => value.replace(/\s+/g, " ").trim();
-  const wanted = squash(quote);
-  const found = calls.findIndex(
-    (call) =>
-      squash(isString(call.text) ? call.text : "").includes(wanted) ||
-      squash(capturedJsonStringify(call.args ?? null)).includes(wanted),
-  );
-  return found === -1 ? null : found + 1;
-}
-
-/** A diagnosis as the Builder reads it. The first divergence is a quotation, which is how the
- *  Diagnoser is held to what it saw, so it reads as raw output; the cause is its sentence. The
- *  quotation is given with the call it stands in, which `read_trace` opens. */
-function diagnosisText(diagnosis: Diagnosis, calls: readonly JsonObject[]): string {
-  if ("abstain" in diagnosis) return `The Diagnoser abstained: ${diagnosis.abstain}`;
-  const call = callQuoted(calls, diagnosis.firstDivergence);
-  return [
-    `Diagnosis (owner ${diagnosis.owner}, confidence ${diagnosis.confidence}): ${diagnosis.cause}`,
-    `It would be refuted by: ${diagnosis.falsifier}`,
-    `Where the solve first went wrong, quoted from ${call === null ? "its trace" : `call ${String(call)} of its trace`}: ${diagnosis.firstDivergence}`,
-  ].join("\n");
-}
-
 /** One practice solve and what the reviewers read of its fail. Throws only what the solve itself
  *  threw: a reviewer that fails is noted for the host and the solve stands. */
 async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: AbortSignal) {
@@ -365,16 +339,11 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
           "The Referee ruled this fail a check defect: it does not count, and the task leaves this session's practice.",
         );
       } else if (finding.ruling === "unclear") {
-        lines.push(
-          "The Referee could not settle whether this fail counts, so it is counted and not diagnosed.",
-        );
-      } else if (request.diagnose !== undefined) {
-        const diagnosis = await request.diagnose(solve, task, kill);
-        lines.push(diagnosisText(diagnosis, callsOf(solveOf(read(request.log), solve))));
+        lines.push("The Referee could not settle whether this fail counts, so it is counted.");
       }
     } catch (error) {
       bench.faults.push(`${solve}: ${errorMessage(error)}`);
-      lines.push("The reviewers did not finish reading this fail.");
+      lines.push("The Referee did not finish reading this fail.");
     }
   }
   return { task, solve, ending, lines };

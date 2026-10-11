@@ -1,8 +1,8 @@
 /**
  * One reviewer session: pi's agent loop over a packet and a few host tools, ended by the tool that
- * records the reviewer's one answer. The Referee and the Diagnoser both run here. Neither touches a
- * file the solver can reach, so nothing is walled: their tools read the host's records and run the
- * verifier, which walls its own checks.
+ * records the reviewer's one answer. The Referee runs here, as the Diagnoser did until 11 October
+ * (`docs/simplify.md`, E1). It touches no file the solver can reach, so nothing is walled: its
+ * tools read the host's records and run the verifier, which walls its own checks.
  *
  * v1 ran a reader as one provider turn over a fixed packet (`src/review/review-reader.ts` at
  * 7af7315). Here it is a loop, since the Referee's probes and reads are calls the model chooses, and

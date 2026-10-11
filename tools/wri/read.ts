@@ -529,12 +529,6 @@ function solveTriggers(log: Index): Trigger[] {
 
 /** Lanes 29 and 30: the review loop. */
 function reviewTriggers(log: Index): Trigger[] {
-  const diagnoses = [...log.diagnoses.values()];
-  const abstained = diagnoses.filter((data) => isString(data.abstain)).length;
-  const owners = countBy(
-    diagnoses.filter((data) => isString(data.owner)),
-    (data) => text(data.owner),
-  );
   const moved = [...log.rulings].filter(([solve, data]) => {
     const replay = asRecord(data.replay);
     return replay !== null && replay.kind !== log.verdicts.get(solve)?.kind;
@@ -553,14 +547,6 @@ function reviewTriggers(log: Index): Trigger[] {
     (data) => data.ruling === "earned" && items(data.probes).length === 0 && count(data.turns) > 0,
   ).length;
   return [
-    ...(diagnoses.length > 0
-      ? [
-          fired(
-            "DIAGNOSES",
-            `${String(diagnoses.length)}, ${String(abstained)} abstained; owners: ${tally(owners)}`,
-          ),
-        ]
-      : []),
     ...(moved > 0 ? [fired("REPLAY MOVED THE VERDICT", plural(moved, "ruling"))] : []),
     ...(standing > 0
       ? [

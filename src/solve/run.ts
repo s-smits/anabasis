@@ -139,7 +139,7 @@ export interface Played {
 const RERUNS = 3;
 /** The text of a result or a turn the trace keeps: more than pi's own tools return of an output
  *  (50 KB), so the trace holds what the solver read. At 4 KB it held the head of a long result, and
- *  whoever read a fail afterwards, a person or the Diagnoser, read less than the solver had. v1 cut
+ *  whoever read a fail afterwards read less than the solver had. v1 cut
  *  its traces the same way and its own investigation named that as a loss. */
 const TRACE_TEXT_BYTES = 64 * 1024;
 const backoff = (rerun: number) => Bun.sleep(30_000 * 2 ** (rerun - 1));

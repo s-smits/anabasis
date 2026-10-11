@@ -4,8 +4,7 @@
  *
  * The folds (`indexOf`) read the log once into what the lanes ask of it: each solve with what it
  * ran under and how it ended, each Builder session with the window of the log that is its round,
- * each comparison with the solves it could count, and the last verdict, ruling and diagnosis of
- * each solve. `TRIGGERS` names every trigger a reader can print and the lane it starts, and
+ * each comparison with the solves it could count, and the last verdict and ruling of each solve. `TRIGGERS` names every trigger a reader can print and the lane it starts, and
  * `fired` makes one. Lanes 1 to 6 read the exam's instrument, which is the pack author's, and
  * lanes 7 to 12 the tasks, which are the Examiner's and the pack's; both sit here, below the
  * lanes of the build side and the host, which `read.ts` keeps with the rows and the overview.
@@ -112,7 +111,6 @@ export interface Index {
   readonly solves: readonly Solve[];
   readonly verdicts: ReadonlyMap<string, JsonObject>;
   readonly rulings: ReadonlyMap<string, JsonObject>;
-  readonly diagnoses: ReadonlyMap<string, JsonObject>;
   readonly states: ReadonlyMap<string, string>;
   readonly builds: readonly Build[];
   readonly compared: readonly Compared[];
@@ -194,7 +192,6 @@ export const TRIGGERS = {
   "SESSION CRASHED": 27,
   "SILENCE": 28,
   "SPEND LED BY A ROLE": 28,
-  "DIAGNOSES": 29,
   "REPLAY MOVED THE VERDICT": 29,
   "SET ASIDE AND UNSETTLED": 30,
   "READING MOVES WITH THE SET-ASIDE": 30,
@@ -320,7 +317,6 @@ export function indexOf(events: readonly LogEvent[]): Index {
     solves,
     verdicts: last("verdict"),
     rulings: last("referee.finding"),
-    diagnoses: last("diagnosis.recorded"),
     states,
     builds,
     compared: comparedOf(events, { solves, builds }),
@@ -359,6 +355,7 @@ const ROLE_EVENTS = {
   builder: ["build.started", BUILD_END, "build.turn"],
   examiner: ["exam.started", EXAM_END, "exam.turn"],
   referee: ["referee.finding"],
+  // A seat until 11 October (`docs/simplify.md`, E1): a log of before holds what it billed.
   diagnoser: ["diagnosis.recorded"],
 } as const;
 

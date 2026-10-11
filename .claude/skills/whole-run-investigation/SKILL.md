@@ -117,7 +117,7 @@ edited copy keeps them unless the primary deletes them on purpose.
   repeats them.
 - **Isolated lanes run alone.** Lanes 5 and 19 freeze a result before they read anything that could
   lead it, so neither is given the orientation, the moved variable or another lane's trigger.
-- **No report reaches a Builder, an Examiner, a Referee or a Diagnoser.** Lane 19 reads traces of
+- **No report reaches a Builder, an Examiner or a Referee.** Lane 19 reads traces of
   scored tasks, and several lanes read hidden values: a finding handed to a session that writes the
   harness or the tasks is the leak lane 18 looks for.
 - **A `pack/` finding is a decision, never a patch.** No session of v2 writes or repairs a check.

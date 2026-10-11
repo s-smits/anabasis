@@ -86,8 +86,7 @@
  * harness it started from, the reference harness itself, or one no solve can open, is reported as
  * no change.
  *
- * A held-out task is never diagnosed and its trace never shown: the Diagnoser's reading goes to
- * the Builder, and a reading of a scored solve would carry the task to it.
+ * A held-out task's trace is never shown: it would carry the task to the Builder.
  *
  * Nothing here decides what happens next. `reading` (`compared`, `comparison.ts`) says how the
  * plan's rules read the tallies; the stop rule reads the reports (`src/kernel/reports.ts`), and

@@ -22,7 +22,7 @@ import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, type Ran, solvesIn } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
 
 /** A failed practice solve, and where it stands now by the task's later solves. */
@@ -36,11 +36,6 @@ export interface PracticeFail {
   readonly standing: "open" | "passed-once" | "repaired" | "failing-again";
   /** The later harness the standing rests on; null while it is open. */
   readonly under: string | null;
-  /** What the Diagnoser read of it: null where it read nothing. */
-  readonly diagnosis:
-    | { readonly owner: string; readonly confidence: string; readonly cause: string }
-    | "abstained"
-    | null;
 }
 
 /** What an Examiner session handed over. `ended` is null while it runs, or where it never ended. */
@@ -139,15 +134,6 @@ function standing(
   return { standing: under.length >= REPAIRED_AFTER ? "repaired" : "passed-once", under: last };
 }
 
-/** The Diagnoser's last reading of a solve, as a fail carries it. */
-function diagnosed(read: JsonObject | undefined): PracticeFail["diagnosis"] {
-  if (read === undefined) return null;
-  const { owner, confidence, cause } = read;
-  return isString(owner) && isString(confidence) && isString(cause)
-    ? { owner, confidence, cause }
-    : "abstained";
-}
-
 /** Every failed practice solve on a released task, each with where it stands, and the place in the
  *  log its solve started at (`practiceRan`, `src/kernel/solves.ts`). */
 function practiceFails(events: readonly LogEvent[]): (PracticeFail & { readonly started: number })[] {
@@ -167,7 +153,6 @@ function practiceFails(events: readonly LogEvent[]): (PracticeFail & { readonly 
         harness: solve.under.harness,
         kind: text(solve.ending?.kind),
         ...standing(solve, practice),
-        diagnosis: diagnosed(last("diagnosis.recorded", solve.id)),
         started: solve.started,
       },
     ];

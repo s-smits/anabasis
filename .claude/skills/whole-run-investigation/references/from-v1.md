@@ -47,7 +47,7 @@ The question stands as v1 asked it. The triggers, the records and the owners are
 | 4. Operating guide and roster truth | 14 | Read from `solve.call`. The round's prompt is the host's and is checked against the condition. |
 | 7. Valid-alternative rejection challenge | 5 | Still isolated, still frozen before the evaluator is read. `wri.ts grade` puts the corpus to the campaign's checker; the corpus goes to the checker's owner as accept controls. |
 | 8. Public disclosure and one-recipe | 11 | The same lead: passes at a small wall share in one call sequence. Kept apart from lane 15. |
-| 15. Harness-versus-evaluation triage hand-off | 29 | The two readers are the Referee and the Diagnoser. A scored fail is never diagnosed, and the lane confirms it. |
+| 15. Harness-versus-evaluation triage hand-off | 29 | The reader is the Referee; a Diagnoser read beside it until 11 October. A scored fail is never read by either, and the lane confirms it. |
 | 22. Solver process and walls | 26 | The limits are the host's, in the condition. Wall share is read by harness on the scored set. |
 | 23. Trace challenge | 19 | Still isolated. It reads wins: tasks the parent failed and the child passed. |
 | 24. Time, spend and provider waits | 28 | Every finishing event carries metered and billed dollars. No cap is proposed: the operator declined one. |
@@ -103,7 +103,7 @@ archive alone.
 **No Judge and no Epoch Reviewer.**
 
 - **12. Epoch Reviewer standing duties.** Nothing is authored inside a round, so nothing is reviewed
-  before it. The Referee and the Diagnoser are read in lanes 29 and 30.
+  before it. The Referee is read in lanes 29 and 30.
 - **16. Judge disagreement adjudication** and **32. Judge pass decidability.** No session reads a
   pass. Lane 1 is standing for that reason and is the weaker substitute: it samples, where the Judge
   read every one.

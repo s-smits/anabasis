@@ -69,7 +69,6 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import type { Diagnosis } from "../review/diagnoser.ts";
 import type { RefereeFinding } from "../review/referee.ts";
 import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../solve/command.ts";
 import type { PublicResource } from "../solve/answer.ts";
@@ -160,10 +159,8 @@ export interface BuildRequest {
     digest: string,
     kill: AbortSignal,
   ) => Promise<Practised>;
-  /** The reviewers, when the caller has a reader for them. Without a Referee nothing is diagnosed,
-   *  since the Diagnoser reads only what the Referee ruled earned. `kill` is for their readers. */
+  /** The Referee, when the caller has a reader for it. `kill` is for its reader. */
   readonly referee?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<RefereeFinding>;
-  readonly diagnose?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<Diagnosis>;
   /** The dollar cap the session's spend is held to, where its solves are paid for: a round's own,
    *  or the session's where it runs with no comparison after it. No practice solve starts that a
    *  reserve for it would take past the cap (`practiceTool`). */

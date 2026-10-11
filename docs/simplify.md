@@ -933,6 +933,7 @@ operator's home or in another seat's root.
 - **If the operator keeps it.** Its measure is then the labels of #182, and this package waits
   for ten of them.
 - **Lines.** About −500 (*estimate*).
+- **Done** at PR #205 (11 October), as written. The wall test's hostile case leaks through a practice solve's trace in place of a diagnosis. `src/review/trace.ts` loses `stringOf` and `turnsOf`, which only the Diagnoser read.
 
 ### E2. A Builder's home is carried whole
 

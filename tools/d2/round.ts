@@ -39,7 +39,7 @@
  * session left, and the starter while none has. After a comparison without a step the Builder
  * continues from its latest harness, and the operator may send it back to an earlier one.
  *
- * `--reviewer` gives the Builder the Referee and the Diagnoser on its practice fails, and the
+ * `--reviewer` gives the Builder the Referee on its practice fails, and the
  * comparison the Referee on every rejected answer. A rejection counts only once it is ruled a true
  * fail. One ruled a check defect or unclear, and with no reviewer every one, sets its task aside
  * until a person has labelled it (`tools/d2/settle.ts`). The comparison is read at the one budget
@@ -286,7 +286,6 @@ export function sessionNamed(
       ? {}
       : {
           referee: (solve, task, kill) => reviewers.referee(solve, packageOf(task.version), kill),
-          diagnose: (solve, task, kill) => reviewers.diagnose(solve, packageOf(task.version), kill),
         }),
   };
 }

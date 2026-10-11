@@ -275,6 +275,23 @@ export function decidedByObjective(pairs: readonly Paired[]): number {
   ).length;
 }
 
+/** Whether the objective told two valid answers of one task apart: a pairing of two valid answers
+ *  that one side won by more than the margin. Such a task is not closed by the reference's
+ *  validity alone, since a harness that answers it validly can still win or lose it (`exhausted`,
+ *  `reports.ts`). False where the pair carries no objective. */
+export function separatedByObjective(pair: Paired): boolean {
+  const { objective } = pair;
+  if (objective === undefined) return false;
+  return pair.fresh.some(
+    (freshValid, f) =>
+      freshValid &&
+      pair.old.some(
+        (oldValid, o) =>
+          oldValid && better(objective, objective.fresh[f] ?? null, objective.old[o] ?? null) !== 0,
+      ),
+  );
+}
+
 /** Each task once: won by the harness that wins more of its pairings, and tied otherwise. A task
  *  solved more often under one harness than the other is refused, since the harness with more
  *  solves has more chances. */

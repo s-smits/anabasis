@@ -24,7 +24,15 @@
  */
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { draw, objectiveRuleIn, type Paired, pairsOf, TRIGGER, triggered } from "./compare.ts";
+import {
+  draw,
+  objectiveRuleIn,
+  type Paired,
+  pairsOf,
+  separatedByObjective,
+  TRIGGER,
+  triggered,
+} from "./compare.ts";
 import type { LogEvent } from "./log.ts";
 import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
 import { taskSets } from "./task.ts";
@@ -43,13 +51,17 @@ interface Reported {
   readonly data: JsonObject;
 }
 
-/** What a task's author may hear of it: that one of the two harnesses won it, that it was a tie
- *  between valid answers, that no solve of the last comparison gave a valid answer, or that a
- *  rejection of an answer to it is not settled. Never which harness, and never a count. */
 /** What a task's author hears of it: how the reference harness did on it in the last comparison
- *  that scored it (every solve valid, some, none), or that it was set aside or is no longer
- *  scored. */
-export type Outcome = "reference-every" | "reference-some" | "reference-none" | "disputed" | "exhausted";
+ *  that scored it (every solve valid, some, none); that the last comparison that scored it was
+ *  made between two other harnesses, so nothing of the reference's own is on record for it; that
+ *  it was set aside; or that it is no longer scored. */
+export type Outcome =
+  | "reference-every"
+  | "reference-some"
+  | "reference-none"
+  | "earlier-reference"
+  | "disputed"
+  | "exhausted";
 
 /** One comparison's reading of a task, as the comparison's last report tallied it. */
 interface TalliedIn {
@@ -64,6 +76,8 @@ interface TalliedIn {
   readonly reference: "old" | "fresh" | null;
   /** Whether a solve of the task in this comparison ended at a limit (`AT_A_LIMIT`). */
   readonly cut: boolean;
+  /** Whether the objective told two valid answers apart in this comparison (`separatedByObjective`). */
+  readonly separated: boolean;
 }
 
 /**
@@ -476,7 +490,15 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
       const { index, session } = report;
       const { task, old, fresh } = pair;
       order += 1;
-      of(task).tallied.push({ index, order, old, fresh, reference: side, cut: cut.has(made(session, task)) });
+      of(task).tallied.push({
+        index,
+        order,
+        old,
+        fresh,
+        reference: side,
+        cut: cut.has(made(session, task)),
+        separated: separatedByObjective(pair),
+      });
     }
     const aside = Array.isArray(report.data.aside) ? report.data.aside.filter(isString) : [];
     for (const task of aside) {
@@ -491,9 +513,13 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
 
 /**
  * The held-out tasks the reference harness answered validly in every solve of `UNSOLVED_RUN` or
- * more comparisons under the campaign's last setting, but for a third of them: exhausted, and
- * left out of the scored set from then on (`scoredSet`), until the setting or the reference
- * changes. Such a task can only tie again at that budget or be lost, and every one in the set is
+ * more comparisons, on whichever side it stood, but for a third of them: exhausted, and left out
+ * of the scored set (`scoredSet`). The fold is read again against whatever harness is the
+ * reference at the time, so a promotion re-derives it at once: the comparisons the promoted
+ * harness won before its promotion count. Such a task can only tie again at that budget or be
+ * lost, unless the comparison carried an objective that told two valid answers of it apart
+ * (`separated`): a task the objective still separates is not closed, since the next harness can
+ * win it (11 October; until then the rule read validity alone). Every one in the set is
  * a task a step cannot be read on: on the operator's host (9 and 10 October) a harness came one
  * win short of a step three times with most of its tasks tied, and t-10's promoted harness and
  * the starter tied 10 of 10 twice. Until 10 October both harnesses had to answer the task, so a
@@ -509,9 +535,9 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
 export function exhausted(events: readonly LogEvent[]): string[] {
   const spent = inOrder(
     taskRecords(events).flatMap(({ version, held, tallied }) => {
-      const runs = tallied.filter(({ reference, old, fresh }) => {
+      const runs = tallied.filter(({ reference, old, fresh, separated }) => {
         const own = reference === "old" ? old : reference === "fresh" ? fresh : [];
-        return own.length > 0 && own.every(Boolean);
+        return own.length > 0 && own.every(Boolean) && !separated;
       });
       return runs.length >= UNSOLVED_RUN && held ? [[version, runs[0]?.order ?? 0]] : [];
     }),
@@ -521,6 +547,14 @@ export function exhausted(events: readonly LogEvent[]): string[] {
     draw(spent, Math.ceil(spent.length / 3), `${isString(contract) ? contract : ""}:kept`),
   );
   return spent.filter((task) => !kept.has(task));
+}
+
+/** The task versions a valid answer is on record for: a solve's, under any harness and at any
+ *  limits, or the one the host saw the author's `try_answer` pass before the proposal. The one
+ *  fact an author may hear beside a task's outcome that names no side: a task the reference
+ *  answers in no solve is then told apart from one nobody has answered (11 October). */
+export function feasibleTasks(events: readonly LogEvent[]): Set<string> {
+  return new Set(taskRecords(events).flatMap(({ version, feasible }) => (feasible ? [version] : [])));
 }
 
 export function awaitingLabel(events: readonly LogEvent[]): string[] {
@@ -643,11 +677,16 @@ export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
       const last = tallied.at(-1);
       if (last === undefined && asideAt === -1) return [];
       if (last === undefined || asideAt > last.index) return [[version, "disputed"]];
+      if (spent.has(version)) return [[version, "exhausted"]];
+      if (last.reference === null) return [[version, "earlier-reference"]];
       const own = last.reference === "fresh" ? last.fresh : last.old;
       const valid = own.filter(Boolean).length;
-      const reference: Outcome =
-        valid === own.length ? "reference-every" : valid === 0 ? "reference-none" : "reference-some";
-      return [[version, spent.has(version) ? "exhausted" : reference]];
+      return [
+        [
+          version,
+          valid === own.length ? "reference-every" : valid === 0 ? "reference-none" : "reference-some",
+        ],
+      ];
     }),
   );
 }

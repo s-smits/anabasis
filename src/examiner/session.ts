@@ -19,7 +19,12 @@
  * shell, where it has one, is a walled home of its own (`shell.ts`), closed to the repository.
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
- * an earlier session already wrote is not taken again, whatever id it would get.
+ * an earlier session already wrote is not taken again, whatever id it would get; the home a
+ * session computed in is carried whole into the next session's (`examineWalled`, `keep`), and
+ * what a session said at its `finish` opens the next (`lastNote`). Until 11 October both went
+ * with the session: on that day the two buffer sessions each spent their first minutes fetching
+ * and compiling the same engine and writing an optimiser around it, and the next session would
+ * have started from nothing.
  *
  * The session ends at `finish`, at its wall or its turns, or when the host has the tasks it was
  * asked for. A turn of its own the provider failed ends it crashed, with what the provider said.
@@ -50,9 +55,9 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
-import { rmSync } from "../meta/filesystem.ts";
+import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -62,7 +67,7 @@ import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import { openingOf } from "../builder/opening.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
-import { heard } from "./record.ts";
+import { comparisonSummary, heard } from "./record.ts";
 import { examinerShell, inExaminerWall } from "./shell.ts";
 
 interface ExamLimits {
@@ -102,6 +107,10 @@ export interface ExamRequest {
   /** The Examiner's shell, where the session has one: `bash`, `read` and `write` in a walled home
    *  of its own. Absent, the Examiner computes nothing (`examineWalled` gives one). */
   readonly shell?: CommandWall | undefined;
+  /** Where the campaign keeps an Examiner's home between sessions: the folder the last session's
+   *  home was copied to whole, and the next session's home is seeded from. Absent, nothing is
+   *  carried, as a test may want. */
+  readonly keep?: string | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
 }
@@ -338,6 +347,13 @@ function finishTool(desk: Desk): AgentTool {
   });
 }
 
+/** What the last Examiner session that finished said at its `finish`, or null where none did. */
+export function lastNote(events: readonly LogEvent[]): string | null {
+  const note = events.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data
+    .note;
+  return isString(note) && note.trim() !== "" ? note : null;
+}
+
 /** Why no Examiner session starts under `id` on this log, or null. A session's id prefixes its
  *  tasks' ids. A launcher asks before it starts one. */
 export function claimed(events: readonly LogEvent[], id: string): string | null {
@@ -354,7 +370,13 @@ async function toolsOf(desk: Desk): Promise<AgentTool[]> {
     proposeTool(desk),
     exampleTool(desk),
     ...(request.verify === undefined ? [] : [tryTool(desk, request.verify)]),
-    ...(await examinerShell(request.shell, "a task enters it through propose_tasks alone")),
+    ...(await examinerShell(
+      request.shell,
+      "a task enters it through propose_tasks alone",
+      request.keep === undefined
+        ? undefined
+        : "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first",
+    )),
     finishTool(desk),
   ];
 }
@@ -406,6 +428,8 @@ export async function examine(request: ExamRequest): Promise<Examined> {
           firstMessage(request.contract, request.checks, heard(before, request.examples), limits, {
             brief: openingOf(before)?.prompt,
             budget: request.budget,
+            comparison: comparisonSummary(before),
+            lastNote: lastNote(before),
           }),
         ),
       ],
@@ -475,5 +499,25 @@ export async function examine(request: ExamRequest): Promise<Examined> {
  * the instance has a valid answer before it proposes it.
  */
 export function examineWalled(request: Omit<ExamRequest, "shell"> & Walled): Promise<Examined> {
-  return inExaminerWall(request, (shell) => examine({ ...request, shell }));
+  return inExaminerWall(request, async (shell) => {
+    if (request.keep !== undefined) seedHome(shell.dirs.home, request.keep);
+    try {
+      return await examine({ ...request, shell });
+    } finally {
+      if (request.keep !== undefined) keepHome(shell.dirs.home, request.keep);
+    }
+  });
+}
+
+/** The next session's home, seeded with what the campaign keeps of the last one's. */
+export function seedHome(home: string, keep: string): void {
+  if (existsSync(keep)) cpSync(keep, home, { recursive: true });
+}
+
+/** The campaign's copy of a session's home, made whole when the session ends and replacing the
+ *  one before: it is the exam side's, under the campaign's folder beside the log, which every
+ *  wall closes. No link is followed, as the Builder's carry follows none. */
+export function keepHome(home: string, keep: string): void {
+  rmSync(keep, { recursive: true, force: true });
+  if (existsSync(home)) cpSync(home, keep, { recursive: true });
 }

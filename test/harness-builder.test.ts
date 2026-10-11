@@ -74,11 +74,56 @@ const of = (name: string, kind: string): JsonObject[] =>
   );
 
 describe("a campaign run by its log", () => {
+  it("asks the Examiner for what the campaign is short of, before the first session, and tells it the campaign's wall", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-short`;
+    // Seven tasks in the pack, two released: five held of a target of eight, and two practice
+    // tasks of the three the campaign names. The session is asked for three and one, and the
+    // Examiner is told nothing of the number. The wall is the campaign's term, and until
+    // 11 October the Examiner was told the default of two hours whatever the term said.
+    const flags = [
+      ...seeded(name),
+      "--patience",
+      "1",
+      "--target",
+      "8",
+      "--practice",
+      "3",
+      "--solve-minutes",
+      "7",
+    ];
+    const asked: { tasks: number; minutes: number | undefined }[] = [];
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+      examine: (request) => {
+        asked.push({ tasks: request.limits.tasks, minutes: request.budget?.minutes });
+        return examine({
+          ...request,
+          ...scripted([
+            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: "Nothing to add." }],
+          ]),
+        });
+      },
+    };
+    const ending = await harnessBuilder(flags, seats);
+    expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
+      ["accept", null],
+      ["prepare", null],
+      ["examine", "x-1"],
+    ]);
+    expect(asked).toEqual([{ tasks: 4, minutes: 7 }]);
+    expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 4 } }]);
+    expect(ending).toMatchObject({ move: "end", ending: "exam" });
+  });
+
   it("runs from set-up to an ending on one command, with every move on record: a session with nothing to work on sends it to the Examiner", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-idle`;
-    // A patience of two, so that the ending is reached in two idle Examiner sessions.
-    const flags = [...seeded(name), "--patience", "2"];
+    // A patience of two, so that the ending is reached in two idle Examiner sessions; a target of
+    // five, the pack's held-out tasks, so that the first move builds: a campaign short of its
+    // target has tasks written before the first session (11 October).
+    const flags = [...seeded(name), "--patience", "2", "--target", "5"];
     const strayed: string[] = [];
     const solves = scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed);
     // A Builder that finishes with the harness as it was, having practised on nothing: it had
@@ -156,7 +201,7 @@ describe("a campaign run by its log", () => {
         patience: 2,
         seats: { builder: null, examiner: null, reviewer: null },
         // The level is pinned whether or not a command named it: this tree's default.
-        terms: { level: "0.1", practice: "2", trigger: "0.25" },
+        terms: { level: "0.1", practice: "2", target: "5", trigger: "0.25" },
       },
     ]);
     // The ending is the log's last event, and run again the command says it and adds nothing.

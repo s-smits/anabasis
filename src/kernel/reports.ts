@@ -44,6 +44,48 @@ interface Reported {
  *  scored. */
 export type Outcome = "reference-every" | "reference-some" | "reference-none" | "disputed" | "exhausted";
 
+/** One comparison's reading of a task, as the comparison's last report tallied it. */
+interface TalliedIn {
+  /** The index of the report in the log. */
+  readonly index: number;
+  /** Its place among every pair of every report, in the order the reports are read. */
+  readonly order: number;
+  /** Each side's counted solves: valid or not, as the pair holds them. */
+  readonly old: readonly boolean[];
+  readonly fresh: readonly boolean[];
+  /** The side the campaign's reference harness stood on, or null where it was neither. */
+  readonly reference: "old" | "fresh" | null;
+  /** Whether a solve of the task in this comparison ended at a limit (`AT_A_LIMIT`). */
+  readonly cut: boolean;
+}
+
+/**
+ * What a log holds of one task, for every reader of its state: the five folds below are
+ * predicates over it. Until 11 October each read the log for itself, and their arithmetic was
+ * mended four times (`docs/simplify.md`, C1). Filled by `taskRecords`, which is why its fields
+ * are not read-only.
+ */
+interface TaskRecord {
+  readonly version: string;
+  /** Whether the task is held out now. */
+  readonly held: boolean;
+  /** The last event at which a person kept it held (`task.state`), or -1. */
+  keptAt: number;
+  /** Whether a solve on record gave it a valid answer, under any harness and at any limits. */
+  answered: boolean;
+  /** `answered`, or its proposal says the host saw its author's answer pass (11 October). */
+  feasible: boolean;
+  /** Each comparison whose last report tallied it, in the order the comparisons reported. */
+  readonly tallied: TalliedIn[];
+  /** The last report that set it aside on a rejection, or -1, and its place among every pair
+   *  and every task set aside, as `TalliedIn.order` counts them, where it was first set aside. */
+  asideAt: number;
+  asideOrder: number;
+  /** What the solves under the reference side of the last reported comparison did with it, and
+   *  the place of its first failed solve there among the log's solves. */
+  readonly lastOld: { valid: boolean; failed: boolean; failedAt: number };
+}
+
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
  *  (`billedFor`), and what each solve is held at before it starts. */
 export interface Cap {
@@ -363,6 +405,76 @@ export function unsolved({ old, fresh }: Paired): boolean {
  * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
  * and a refused task is no held-out task.
  */
+/** Versions in the order their places give, as the readers of 10 October listed them: by the first
+ *  pair or solve that put a task on the list. */
+function inOrder(placed: readonly (readonly [string, number])[]): string[] {
+  return placed.toSorted((one, other) => one[1] - other[1]).map(([version]) => version);
+}
+
+/** Every task a log holds a state, a solve or a report of, each as `TaskRecord` reads it. */
+function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
+  const held = new Set(taskSets(events).held);
+  const reports = lastReports(events);
+  // The reference harness: the one last promoted, or the one the first report was made against.
+  const reference = promoted(events) ?? reports[0]?.data.old;
+  const last = reports.at(-1);
+  const records = new Map<string, TaskRecord>();
+  const of = (version: string): TaskRecord => {
+    const found = records.get(version);
+    if (found !== undefined) return found;
+    const made: TaskRecord = {
+      version,
+      held: held.has(version),
+      keptAt: -1,
+      answered: false,
+      feasible: false,
+      tallied: [],
+      asideAt: -1,
+      asideOrder: Number.POSITIVE_INFINITY,
+      lastOld: { valid: false, failed: false, failedAt: Number.POSITIVE_INFINITY },
+    };
+    records.set(version, made);
+    return made;
+  };
+  for (const [index, { kind, data }] of events.entries()) {
+    if (!isString(data.version)) continue;
+    if (kind === "task.state" && data.state === "held") of(data.version).keptAt = index;
+    if (kind === "task.proposed" && data.feasible === true) of(data.version).feasible = true;
+  }
+  const made = (comparison: string, task: string) => `${comparison} ${task}`;
+  const cut = new Set<string>();
+  for (const [at, solve] of ranUnder(events).entries()) {
+    const { task, harness } = solve.under;
+    const { comparison } = solve.start;
+    const valid = passed(solve);
+    if (valid === true) Object.assign(of(task), { answered: true, feasible: true });
+    if (isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)) cut.add(made(comparison, task));
+    if (valid !== null && last !== undefined && comparison === last.session && harness === last.data.old) {
+      const { lastOld } = of(task);
+      if (valid) lastOld.valid = true;
+      else Object.assign(lastOld, { failed: true, failedAt: Math.min(lastOld.failedAt, at) });
+    }
+  }
+  let order = 0;
+  for (const report of reports) {
+    const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
+    for (const pair of pairsReported(events, report)) {
+      const { index, session } = report;
+      const { task, old, fresh } = pair;
+      order += 1;
+      of(task).tallied.push({ index, order, old, fresh, reference: side, cut: cut.has(made(session, task)) });
+    }
+    const aside = Array.isArray(report.data.aside) ? report.data.aside.filter(isString) : [];
+    for (const task of aside) {
+      order += 1;
+      const record = of(task);
+      record.asideAt = report.index;
+      record.asideOrder = Math.min(record.asideOrder, order);
+    }
+  }
+  return [...records.values()];
+}
+
 /**
  * The held-out tasks the reference harness answered validly in every solve of `UNSOLVED_RUN` or
  * more comparisons under the campaign's last setting, but for a third of them: exhausted, and
@@ -381,22 +493,15 @@ export function unsolved({ old, fresh }: Paired): boolean {
  * (`outcomesOf`).
  */
 export function exhausted(events: readonly LogEvent[]): string[] {
-  const reports = lastReports(events);
-  // The reference harness: the one last promoted, or the one the first report was made against.
-  const reference = promoted(events) ?? reports[0]?.data.old;
-  const runs = new Map<string, number>();
-  // Its own answers, on whichever side it stood: the old one of a comparison made against it,
-  // the fresh one where it was read as the new harness before its promotion.
-  for (const report of reports) {
-    const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
-    if (side === null) continue;
-    for (const pair of pairsReported(events, report)) {
-      const own = pair[side];
-      if (own.length > 0 && own.every(Boolean)) runs.set(pair.task, (runs.get(pair.task) ?? 0) + 1);
-    }
-  }
-  const held = new Set(taskSets(events).held);
-  const spent = [...runs].flatMap(([task, run]) => (run >= UNSOLVED_RUN && held.has(task) ? [task] : []));
+  const spent = inOrder(
+    taskRecords(events).flatMap(({ version, held, tallied }) => {
+      const runs = tallied.filter(({ reference, old, fresh }) => {
+        const own = reference === "old" ? old : reference === "fresh" ? fresh : [];
+        return own.length > 0 && own.every(Boolean);
+      });
+      return runs.length >= UNSOLVED_RUN && held ? [[version, runs[0]?.order ?? 0]] : [];
+    }),
+  );
   const contract = events.find(({ kind }) => kind === "checker.read")?.data.contract;
   const kept = new Set(
     draw(spent, Math.ceil(spent.length / 3), `${isString(contract) ? contract : ""}:kept`),
@@ -405,39 +510,12 @@ export function exhausted(events: readonly LogEvent[]): string[] {
 }
 
 export function awaitingLabel(events: readonly LogEvent[]): string[] {
-  const kept = new Map<string, number>();
-  for (const [index, { kind, data }] of events.entries()) {
-    if (kind === "task.state" && data.state === "held" && isString(data.version)) {
-      kept.set(data.version, index);
-    }
-  }
-  const ran = ranUnder(events);
-  // A valid answer on record settles a task for good: a solve's, or the one the host saw its
-  // author's `try_answer` pass before the proposal, which the proposal says (11 October).
-  const feasible = new Set([
-    ...ran.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])),
-    ...events.flatMap(({ kind, data }) =>
-      kind === "task.proposed" && data.feasible === true && isString(data.version) ? [data.version] : [],
-    ),
-  ]);
-  const made = (comparison: string, task: string) => `${comparison} ${task}`;
-  const cut = new Set(
-    ran.flatMap((solve) => {
-      const { comparison } = solve.start;
-      return isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)
-        ? [made(comparison, solve.under.task)]
-        : [];
+  return inOrder(
+    taskRecords(events).flatMap(({ version, feasible, keptAt, tallied }) => {
+      const runs = tallied.filter(({ index, cut }) => !feasible && index >= keptAt && !cut);
+      return runs.length >= UNSOLVED_RUN ? [[version, runs[0]?.order ?? 0]] : [];
     }),
   );
-  const runs = new Map<string, number>();
-  for (const report of lastReports(events)) {
-    for (const { task } of pairsReported(events, report)) {
-      const counted =
-        !feasible.has(task) && report.index >= (kept.get(task) ?? -1) && !cut.has(made(report.session, task));
-      if (counted) runs.set(task, (runs.get(task) ?? 0) + 1);
-    }
-  }
-  return [...runs].flatMap(([task, run]) => (run >= UNSOLVED_RUN ? [task] : []));
 }
 
 /**
@@ -459,20 +537,11 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
  * so that the comparison keeps tasks it can untie.
  */
 export function referenceFailed(events: readonly LogEvent[]): string[] {
-  const last = lastReports(events).at(-1);
-  const old = last?.data.old;
-  if (last === undefined || !isString(old)) return [];
-  const own = ranUnder(events).filter(
-    (solve) => solve.start.comparison === last.session && solve.under.harness === old,
-  );
-  const valid = new Set(own.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])));
-  const failed = new Set(
-    own.flatMap((solve) =>
-      passed(solve) === false && !valid.has(solve.under.task) ? [solve.under.task] : [],
+  return inOrder(
+    taskRecords(events).flatMap(({ version, held, lastOld }) =>
+      held && lastOld.failed && !lastOld.valid ? [[version, lastOld.failedAt]] : [],
     ),
   );
-  const held = new Set(taskSets(events).held);
-  return [...failed].filter((task) => held.has(task));
 }
 
 /**
@@ -514,16 +583,13 @@ export function releaseOrder(
 }
 
 export function unansweredTwice(events: readonly LogEvent[]): string[] {
-  const ran = ranUnder(events);
-  const feasible = new Set(ran.flatMap((solve) => (passed(solve) === true ? [solve.under.task] : [])));
-  const runs = new Map<string, number>();
-  for (const report of lastReports(events)) {
-    for (const { task } of pairsReported(events, report)) {
-      if (!feasible.has(task)) runs.set(task, (runs.get(task) ?? 0) + 1);
-    }
-  }
-  const held = new Set(taskSets(events).held);
-  return [...runs].flatMap(([task, run]) => (run >= UNSOLVED_RUN && held.has(task) ? [task] : []));
+  return inOrder(
+    taskRecords(events).flatMap((record) =>
+      !record.answered && record.held && record.tallied.length >= UNSOLVED_RUN
+        ? [[record.version, record.tallied[0]?.order ?? 0]]
+        : [],
+    ),
+  );
 }
 
 /**
@@ -546,20 +612,21 @@ export function unansweredTwice(events: readonly LogEvent[]): string[] {
  * another id than the last report's was `earlier-setting` (`docs/simplify.md`, A4).
  */
 export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
-  const outcomes = new Map<string, Outcome>();
   const spent = new Set(exhausted(events));
-  for (const report of lastReports(events)) {
-    for (const pair of pairsReported(events, report)) {
-      const valid = pair.old.filter(Boolean).length;
+  const first = ({ tallied, asideOrder }: TaskRecord) =>
+    Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
+  const records = taskRecords(events).toSorted((one, other) => first(one) - first(other));
+  return new Map(
+    records.flatMap(({ version, tallied, asideAt }): [string, Outcome][] => {
+      const last = tallied.at(-1);
+      if (last === undefined && asideAt === -1) return [];
+      if (last === undefined || asideAt > last.index) return [[version, "disputed"]];
+      const valid = last.old.filter(Boolean).length;
       const reference: Outcome =
-        valid === pair.old.length ? "reference-every" : valid === 0 ? "reference-none" : "reference-some";
-      const outcome = spent.has(pair.task) ? "exhausted" : reference;
-      outcomes.set(pair.task, outcome);
-    }
-    const aside = Array.isArray(report.data.aside) ? report.data.aside.filter(isString) : [];
-    for (const task of aside) outcomes.set(task, "disputed");
-  }
-  return outcomes;
+        valid === last.old.length ? "reference-every" : valid === 0 ? "reference-none" : "reference-some";
+      return [[version, spent.has(version) ? "exhausted" : reference]];
+    }),
+  );
 }
 
 /**

@@ -646,6 +646,14 @@ nine lines.
   five) and `test/admission.test.ts` pass unchanged. The second removes the share.
 - **On the recorded logs.** Replay: no move changes after the first commit, by construction.
 - **Lines.** About −120 (*estimate*).
+- **Done in its first commit** at PR #202 (11 October): one fold, `taskRecords`, and the five
+  readers as predicates over it, each with its name, result and order as it was (replayed over
+  the 18 logs on this host: 108 readings, none differs). The lines went the other way, +67: the
+  five readers' own walks were 87 lines, and the one fold with its two interfaces and the order
+  the release reads is 154. The second commit is not made: the untied share `supplyOf` reads is a
+  report's `valid` counts, which needs no solve on record, and a count of the tasks the
+  reference did not close would change what a comparison is refused on and every fixture of
+  `test/admission.test.ts`; it waits for a live refusal that the share got wrong.
 
 ### Package D. The campaign command is the one way to start a move (D7)
 

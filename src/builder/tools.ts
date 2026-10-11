@@ -66,6 +66,7 @@ import {
 import { TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { containsPath } from "../meta/path-containment.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { pooled } from "../meta/pool.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
@@ -199,11 +200,21 @@ function dropUnlinked(states: string, dir: string): void {
 
 /** A copy of `harness/.toolchain` beside the states, for a frozen harness to link to; the last one
  *  kept while the tree's stamp holds. A truss tree is 316 MB, which a copy at every freeze spent
- *  again on each check and practice. Null when the harness has no tree. */
+ *  again on each check and practice. Null when the harness has no tree.
+ *
+ *  The tree is the directory itself, inside the home. Until 11 October a Builder could make it a
+ *  link, and the freeze copied what the link named, the repository with its logs among what it
+ *  could name, into the tree every later solve reads. */
 function keptTree(bench: Bench): string | null {
   const own = join(bench.home, HOME_TOOL_TREE);
-  if (!existsSync(own)) return null;
-  const real = realpathSync(own);
+  const found = lstatSync(own, { throwIfNoEntry: false });
+  if (found === undefined) return null;
+  const real = found.isSymbolicLink() ? null : realpathSync(own);
+  if (real === null || !containsPath(real, realpathSync(bench.home))) {
+    throw new Error(
+      `${HOME_TOOL_TREE} is a link, or lies outside your home: the programs are installed in the directory itself, which is copied whole when the harness is frozen`,
+    );
+  }
   const stamp = toolTreeStamp(real);
   if (bench.tree?.stamp === stamp) return bench.tree.dir;
   if (bench.tree !== undefined && bench.tree !== null) dropUnlinked(bench.request.states, bench.tree.dir);

@@ -10,11 +10,13 @@
  * they resolve their scratch directory through `confstr` and never read `TMPDIR`; product staging
  * paths there are denied separately. The host home and the repository stay closed, except for the
  * runtime and toolchain roots the enclosing solve policy reopens read-only so an installed
- * interpreter can still find itself.
+ * interpreter can still find itself, and for the tool tree, which a tree inside the seat's root
+ * has to really lie inside that root to be (`commandReadAllows`, 11 October).
  */
-import { existsSync, readdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
+import { existsSync, readdirSync, realpathSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
-import { basename, join } from "../meta/path.ts";
+import { containsPath } from "../meta/path-containment.ts";
+import { basename, join, resolve } from "../meta/path.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
@@ -185,11 +187,18 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
  * explicitly, as no list above names it: it lies under the repository or a stored pack, both closed
  * whole. Both operating systems use this list, and Darwin emits it after the denials so the later,
  * more specific rule decides.
+ *
+ * A tool tree inside the seat's root, the Builder's `harness/.toolchain`, is one the seat's own
+ * commands write, and it is reopened only where its real path lies inside that root too. Until
+ * 11 October its real path was reopened wherever it led, so a Builder that linked
+ * `harness/.toolchain` to the repository, another worktree, a pack or the operator's home read
+ * that root through the wall. A tree outside the seat's root is the host's or a pack's, a kept
+ * state's link to the tree beside it or a stored bundle's, and is reopened with what it links to.
  */
 function commandReadAllows(
   base: SolveIsolationPolicy,
   readDenies: readonly string[],
-  toolTree: string | null,
+  dirs: Pick<CommandDirectories, "root" | "toolTree">,
 ): string[] {
   const covered = canonicalRoots([
     ...base.allowedReadRoots,
@@ -200,7 +209,11 @@ function commandReadAllows(
   // without this the Builder's own install answers `command not found`. Allowing it by path after
   // the root's deny restores that one tree and leaves the rest of the root closed. A tree a Builder
   // has yet to install is left out, as bwrap refuses to bind a missing path.
-  const own = toolTree === null || !existsSync(toolTree) ? [] : canonicalForms(toolTree);
+  const toolTree = dirs.toolTree ?? null;
+  const tree = toolTree === null || !existsSync(toolTree) ? null : resolve(toolTree);
+  const seated = tree !== null && canonicalForms(dirs.root).some((root) => containsPath(tree, root));
+  const escapes = seated && !containsPath(realpathSync(tree), realpathSync(dirs.root));
+  const own = tree === null || escapes ? [] : canonicalForms(tree);
   return [...new Set([...covered, ...own])].sort();
 }
 
@@ -208,7 +221,7 @@ function darwinCommandProfile(
   base: SolveIsolationPolicy,
   scratchRoots: string[],
   keptRoots: string[],
-  toolTree: string | null,
+  dirs: Pick<CommandDirectories, "root" | "toolTree">,
 ) {
   const writeDenies = [...new Set(["/", ...base.deniedWriteRoots])].sort();
   // The seats' parent and the host's own scratch beside it. Under a deny-default read rule one
@@ -216,7 +229,7 @@ function darwinCommandProfile(
   // here and this seat's root is re-allowed after them.
   const closed = hostRoots();
   const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].sort();
-  const readAllows = commandReadAllows(base, readDenies, toolTree);
+  const readAllows = commandReadAllows(base, readDenies, dirs);
   // The shared temporary directory a toolchain writes without asking: the confstr one clang uses,
   // as Apple's python3 shim does for a command that names it by its path. `/tmp` is no longer
   // granted. `mktemp` and Python follow `TMPDIR`, which is the seat's own folder, and what a
@@ -294,7 +307,6 @@ export function commandIsolationPolicy(
   base: SolveIsolationPolicy,
   dirs: CommandDirectories,
 ): CommandIsolationPolicy {
-  const toolTree = dirs.toolTree ?? null;
   const shared = {
     mechanismPath: base.mechanismPath,
     network: base.network,
@@ -303,12 +315,7 @@ export function commandIsolationPolicy(
     environment: commandIsolationEnvironment(dirs),
   };
   if (base.mechanismId !== LINUX_BWRAP_ID) {
-    const { profile, readAllows } = darwinCommandProfile(
-      base,
-      shared.scratchRoots,
-      shared.keptRoots,
-      toolTree,
-    );
+    const { profile, readAllows } = darwinCommandProfile(base, shared.scratchRoots, shared.keptRoots, dirs);
     return { ...shared, profile, readAllowRoots: readAllows, readDenies: [] };
   }
   /*
@@ -329,7 +336,7 @@ export function commandIsolationPolicy(
   return {
     ...shared,
     profile: null,
-    readAllowRoots: commandReadAllows(base, readDenies, toolTree),
+    readAllowRoots: commandReadAllows(base, readDenies, dirs),
     readDenies,
   };
 }

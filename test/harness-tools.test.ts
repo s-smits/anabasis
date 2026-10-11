@@ -13,7 +13,9 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -103,7 +105,7 @@ describe("a v1 harness state", () => {
     }
   });
 
-  it("changes its digest with any file or mode in the tool tree, as with the module", async () => {
+  it("changes its digest with any file or mode in the tool tree, as with the module, whatever its times say", async () => {
     const dir = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-harness-tree-")));
     try {
       cpSync(FIXTURE, dir, { recursive: true });
@@ -116,9 +118,20 @@ describe("a v1 harness state", () => {
       writeFileSync(join(bin, "tool"), "#!/bin/sh\necho two\n");
       digests.push((await openHarness(dir)).digest);
       chmodSync(join(bin, "tool"), 0o755);
+      // Its times in whole seconds, as `tar` and `cp -p` leave them.
+      const then = new Date("2026-10-01T00:00:00Z");
+      utimesSync(join(bin, "tool"), then, then);
       digests.push((await openHarness(dir)).digest);
-      expect(new Set(digests).size).toBe(3);
-      expect(digests[2]).toBe((await openHarness(dir)).digest);
+      // A rewrite of the same size with its modification time set back: until 11 October the tree's
+      // stamp held, and its content was read from before it. The wait puts the change time past
+      // the coarse clock a file system stamps it with.
+      const settled = statSync(join(bin, "tool")).ctimeMs + 20;
+      while (Date.now() < settled) await Bun.sleep(5);
+      writeFileSync(join(bin, "tool"), "#!/bin/sh\necho six\n");
+      utimesSync(join(bin, "tool"), then, then);
+      digests.push((await openHarness(dir)).digest);
+      expect(new Set(digests).size).toBe(4);
+      expect(digests[3]).toBe((await openHarness(dir)).digest);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

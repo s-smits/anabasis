@@ -12,7 +12,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
-import { type Bench, endingText, record, usedText } from "../src/builder/tools.ts";
+import { type Bench, endingText, HOME_TOOL_TREE, record, usedText } from "../src/builder/tools.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -694,6 +694,33 @@ describe("a Builder session", () => {
     renameSync(s.request.states, moved);
     const reopened = await openHarness(join(moved, s.ran[1]?.digest ?? ""));
     expect(reopened.digest).toBe(s.ran[1]?.digest ?? "");
+  });
+
+  it("freezes no tool tree that is a link out of its home, and copies nothing it names", async () => {
+    // Until 11 October the freeze copied what the link named into the tree every later solve reads.
+    const tree = (s: { home: string }) => join(s.home, HOME_TOOL_TREE);
+    const s = await setup(
+      [
+        () => {
+          const outside = join(dirname(s.home), "outside");
+          mkdirSync(outside);
+          writeFileSync(join(outside, "secret.txt"), "OUTSIDE-CANARY\n");
+          rmSync(tree(s), { recursive: true });
+          symlinkSync(outside, tree(s));
+          return call("practice", { tasks: ["t-1"] });
+        },
+        finish,
+      ],
+      [],
+      true,
+    );
+    await session(s.request, s, s.walled);
+    expect(JSON.stringify(s.of(BUILD_CALL)[0])).toContain(
+      "the harness does not open: harness/.toolchain is a link, or lies outside your home",
+    );
+    expect(s.ran).toHaveLength(0);
+    const copies = readdirSync(s.request.states).filter((name) => name.startsWith("tree-"));
+    expect(copies.filter((name) => existsSync(join(s.request.states, name, "secret.txt")))).toEqual([]);
   });
 
   it("ends when a practice solve could not be run, and does not show the Builder why", async () => {

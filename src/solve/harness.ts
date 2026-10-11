@@ -222,12 +222,16 @@ export function treeContent(dir: string) {
 const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeContent> }>();
 
 /** What a tool tree is read under: a file in it added, removed, resized, rewritten or with its mode
- *  changed changes it. It is what the runner's own moved-files check trusts (`run.ts`, `treeStamp`). */
+ *  changed changes it. It is what the runner's own moved-files check trusts (`run.ts`, `treeStamp`).
+ *  It holds each entry's change time with its modification time: `tar` and `cp -p` set the
+ *  modification time back, so until 11 October a rewrite of the same size under them kept the stamp
+ *  and a freeze reused the copy from before it. No process can set the change time back, and
+ *  hashing the content, which the stamp stands in for, reads a tree of 316 MB. */
 export function toolTreeStamp(real: string): string {
   return hashJsonValue(
     pathsUnder(real).map((path) => {
       const stat = lstatSync(join(real, path));
-      return [path, stat.size, stat.mtimeMs, stat.mode, stat.ino];
+      return [path, stat.size, stat.mtimeMs, stat.ctimeMs, stat.mode, stat.ino];
     }),
   );
 }

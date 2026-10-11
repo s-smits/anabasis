@@ -15,9 +15,11 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { homedir, tmpdir } from "../src/meta/os.ts";
+import { containsPath } from "../src/meta/path-containment.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
@@ -29,10 +31,15 @@ import {
   walledBase,
 } from "../src/solve/command.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
+import { LINUX_BWRAP_ID } from "../src/verify/linux-bwrap.ts";
 import { guardedAncestors, moveBlockingRules } from "../src/verify/seatbelt-path-guard.ts";
 import { commandIsolationPolicy } from "../src/verify/solve-command-isolation.ts";
 import { userTempRules } from "../src/verify/wall-policy.ts";
-import { HOST_SOLVE_ISOLATION_PROFILE_ID, solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
+import {
+  HOST_SOLVE_ISOLATION_PROFILE_ID,
+  type SolveIsolationPolicy,
+  solveIsolationPolicy,
+} from "../src/verify/solve-sandbox.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
 const CAP_BYTES = 16 * 1024 * 1024;
@@ -115,6 +122,49 @@ describe("the solve isolation's policy", () => {
       false,
     );
     expect(policy.profileId).toBe(HOST_SOLVE_ISOLATION_PROFILE_ID);
+  });
+
+  it("reopens a tool tree with what it links to, but for one in the seat's root that links out of it", () => {
+    // Until 11 October the tree's real path was reopened wherever a link led, so a Builder that
+    // linked `harness/.toolchain` to the repository read it through the wall. A tree the host or a
+    // pack provides keeps its link. The policy is built by hand, as it is a pure function of its
+    // roots and runs where no wall does.
+    const repoRoot = realpathSync(workRepo());
+    const base: SolveIsolationPolicy = {
+      profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
+      policyHash: "fixture",
+      deniedReadRoots: [repoRoot],
+      deniedWriteRoots: [repoRoot],
+      allowedReadRoots: [],
+      mechanismPath: "/usr/bin/bwrap",
+      mechanismId: LINUX_BWRAP_ID,
+      network: true,
+    };
+    // A kept state names its tree by the link the host writes, to a tree beside it.
+    const states = join(repoRoot, ".ana", "d2", "c", "states");
+    const keptTree = join(states, "kept", ".toolchain");
+    mkdirSync(join(states, "tree-abc", "bin"), { recursive: true });
+    mkdirSync(join(states, "kept"));
+    symlinkSync(join("..", "tree-abc"), keptTree);
+    const seat = realpathSync(workRepo());
+    const home = join(seat, "home");
+    const homeTree = join(home, "harness", ".toolchain");
+    mkdirSync(join(home, "harness"), { recursive: true });
+    const dirs = { root: seat, kept: join(seat, "kept"), home, temp: join(seat, "tmp") };
+    const allows = (toolTree: string) => commandIsolationPolicy(base, { ...dirs, toolTree }).readAllowRoots;
+    expect(allows(keptTree)).toContain(join(states, "tree-abc"));
+    // A stored bundle whose tree is a link to one elsewhere is reopened with its target, as before.
+    const bundleTree = join(realpathSync(workRepo()), "bundle", ".toolchain");
+    mkdirSync(join(bundleTree, ".."));
+    mkdirSync(join(repoRoot, "shared-tree"));
+    symlinkSync(join(repoRoot, "shared-tree"), bundleTree);
+    expect(allows(bundleTree)).toContain(join(repoRoot, "shared-tree"));
+    mkdirSync(homeTree);
+    expect(allows(homeTree)).toContain(homeTree);
+    rmSync(homeTree, { recursive: true });
+    symlinkSync(repoRoot, homeTree);
+    const opened = allows(homeTree);
+    expect(opened.filter((path) => containsPath(path, repoRoot) || containsPath(path, home))).toEqual([]);
   });
 
   it("refuses to create an isolation policy on an unsupported platform", () => {

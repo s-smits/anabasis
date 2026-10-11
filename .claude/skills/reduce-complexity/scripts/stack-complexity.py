@@ -5,19 +5,21 @@ Whether a branch bought its behaviour with more machinery or less. It reads ever
 git plumbing, so it needs no second worktree and never touches the working tree.
 
     python3 stack-complexity.py origin/main HEAD
-    python3 stack-complexity.py origin/main '#164' '#172'
+    python3 stack-complexity.py origin/main '#<bottom>' '#<top>'
     python3 stack-complexity.py --repo /abs/worktree --per-file origin/main HEAD
 
 Name two revisions for a before and after, or a whole stack bottom-to-top for a column each: that
-answers which PR in the stack moved a measure, which a single before-and-after hides. A `#164`
-argument is a pull request number, resolved through `gh` and fetched if the local repository has
+answers which PR in the stack moved a measure, which a single before-and-after hides. A `#<n>`
+argument is a pull request number in the repository the checkout's `origin` names, resolved
+through `gh` and fetched if the local repository has
 not seen it, so a stack can be named the way the operator names it.
 
 The first revision is read as `first...last` — the point they diverged — so work landed on the base
 since the branch was cut is not charged to the branch. `--literal-base` compares the tips as given.
 
-This is v1's instrument, adapted: the same code, so a correction to either copy carries to the
-other. What is v1's and not v2's was replaced rather than dropped — v2 has no cyclomatic baseline
+This is v1's instrument, adapted; v1's copy reads back with
+`git show 5bc9988:.claude/skills/reduce-complexity/scripts/stack-complexity.py`, and no other copy
+runs. What is v1's and not v2's was replaced rather than dropped — v2 has no cyclomatic baseline
 and no document a model reads whole, and it has two standing exemption ledgers v1 had not written.
 
 Measures, grouped by the question each answers. "Source" is what `tools/loc/source-policy.ts`

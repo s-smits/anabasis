@@ -12,6 +12,7 @@ time. It holds no queue and no status. Those have other owners:
 | What is designed, in what order, and how far each part has got | the plan of record; `docs/plan.md` is the repository's copy |
 | What came over from v1, and what was replaced or dropped | `docs/transfer.md` |
 | What v1 measured, and why it did not climb | `docs/v1.md` |
+| A prompt handed whole to another session: an audit, a review | `docs/prompts.md` |
 | Where v2 stood at PR #91 and PR #168, with the three reviews of 9 October | `docs/plan-history.md` |
 | What the code does today | the source at the stack's head, and the head comment of each module |
 | How a procedure is carried out: stacking, launching, reading a run, wording a claim | the skill that owns it, under `.claude/skills/` (sections 10 and 11) |
@@ -1178,7 +1179,7 @@ tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans
 tools/runtime/  the lint and test wrappers, the commit check
 tools/loc/      the size and unused-export policy
 vendor/         pi-coding-agent and pi-claude-bridge, copied
-docs/           the plan, the transfer ledger, the account of v1
+docs/           the plan, the transfer ledger, the account of v1, the helper prompts
 .claude/skills/ the procedures (section 10), stack-pr, and main/ with the skill scripts' argument
                 parser and git helper
 .ana/           campaign logs and kept harnesses; ignored, and never edited by hand

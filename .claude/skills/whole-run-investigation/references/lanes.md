@@ -394,7 +394,7 @@ the ones the Builder described. Every state a session left is kept by digest und
 `states/`. A campaign's first parent is the stored sweep's harness and stands in the sweep's root,
 outside the campaign's folder: where that root is not on this machine, say the diff could not be
 made. Diff the two part by part: the guide, the tool spec, the tools module, the config, the tool
-tree.
+tree; `harness-versions.ts --diff` of [harness-audit](../../harness-audit/SKILL.md) counts it.
 Describe each change by its kind and size; quote no line. The note is in `harness.version`: say
 whether what it claims is what changed. When the final state did not open, the round measured the
 last state the session practised with, and the note describes edits that were never measured:

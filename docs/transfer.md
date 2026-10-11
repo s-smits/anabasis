@@ -119,10 +119,22 @@ What the investigation of the two folders found, beyond the stop:
   holds that program's own pass report. The only named condition, `programs-of:<harness>`, hands the
   solver engine, judge and search together, and the reference Starter `08079533` carries no engine,
   so the first comparison — the round's largest part, about 72 solves and $24 to $33 billed — would
-  return a near-determined step that names no cause. A condition that separates the three, or a
-  Builder prompt that forbids a program returning answers it has judged
-  (`src/builder/prompt.ts`), is wanted before the next paid move. This is the binding constraint and
-  no patch in this stack touches it.
+  return a near-determined step that names no cause. Settled by the operator on 10 October in favour
+  of the prompt over a recorded condition, and narrowed in open #172: the judge and the search were
+  separately permitted and so composable, and the rule now names the composition — a part may search
+  or it may judge, the solver carries a candidate between them, and output the solver can submit
+  unchanged is a finished answer however it was reached. A condition that separates the three and
+  records which a harness holds was the other way, and is not written. What the rule guards is a
+  harness that answers for its solver; it does not make the comparison attributable, since a
+  separated search and test is still an engine against a Starter that has none, one turn longer.
+  Whether a harness obeyed it is read by `ANSWER FROM A PROGRAM` (`tools/wri/read.ts`, lane 19):
+  the solves whose one shell call was followed by `submit` with no write of their own, per Builder
+  session's practice and per comparison, with the reference side beside the new one as the control.
+  The first reader, a shell call last before `submit`, told nothing: these solvers do everything
+  through the shell, `answer.json` included, and 57 of the 68 reference solves of the #107 buffer
+  campaign read that way under a Starter with no engine. Of the 132 reference solves of the #107
+  buffer and recode campaigns none was one call and a submit; recode's built harnesses were, in 24
+  of 40 measured solves and 21 of 22 practice solves, every one a pass, and buffer's in none.
 - **That engine came from the campaign before it.** Three executables in the harness are
   byte-identical (SHA-256) to files the previous campaign's Builder built under `/tmp/pq` at 00:45
   and 01:17 local, twelve hours before this campaign opened — the shared folder of the finding

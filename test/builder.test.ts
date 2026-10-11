@@ -311,6 +311,11 @@ describe("a Builder session", () => {
     expect(s.sent[0]).not.toContain("same thing built twice");
     expect(s.sent[0]).toContain("test the candidate against a public rule and say what it does not meet");
     expect(s.sent[0]).not.toContain("says whether a candidate meets a rule");
+    // The judge and the search were separately permitted and so composable, and the harness of
+    // 10 October composed them behind one program every solve ran from the shell. The rule now
+    // names the composition, and gives the test a reader can apply to a harness (transfer.md).
+    expect(s.sent[0]).toContain("Nor does any one of them both propose a candidate and judge it");
+    expect(s.sent[0]).toContain("Output the solver can submit unchanged is a finished answer");
     // What the rounds of 9 October showed of a guide and of the practice solves: four of the six
     // harnesses that went to a comparison told the solver that time was short, and both truss
     // sessions spent their last solve before their last change. The prompt states each of these

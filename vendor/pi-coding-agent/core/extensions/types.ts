@@ -1,4 +1,4 @@
-// Copied from pi coding-agent v1.0.4 (github.com/earendil-works/pi, 7c10bd43, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/core/extensions/types.ts, only the members the copied tools read, in
 // upstream's own words. Left out: the extension runtime (UI, modes, model registry, loadout, exposure,
 // namespaces, annotations, executeTool and the renderers), which nothing here hosts. ReadonlySessionManager

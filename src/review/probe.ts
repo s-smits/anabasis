@@ -22,8 +22,9 @@ import { Type } from "typebox";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
-import type { JsonValue } from "../meta/json-shape.ts";
+import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
+import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
 
 /** review-probe.ts:57: each probe runs every applicable check, so eight keep a review from becoming
@@ -35,7 +36,7 @@ const VALUE_MAX_CHARS = 4_000;
 
 /** One change to an answer, as a tool is sent it: a field replaced whole by `value`, JSON text, or
  *  one passage of a text field rewritten by `find` and `replace`. */
-export interface Change {
+interface Change {
   readonly path: string;
   readonly value?: string | undefined;
   readonly find?: string | undefined;
@@ -43,13 +44,13 @@ export interface Change {
 }
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
-export interface ProbeEdit {
+type ProbeEdit = {
   readonly find: string;
   readonly replace: string;
-}
+};
 
 /** What one probe ran and what the checks said. */
-export interface ProbeRow {
+export type ProbeRow = {
   /** 1-based, and what a ruling cites. */
   readonly id: number;
   readonly path: string;
@@ -61,7 +62,7 @@ export interface ProbeRow {
   readonly changed: Verdict;
   /** Checks whose verdict the one changed field moved. */
   readonly moved: readonly string[];
-}
+};
 
 /** review-probe.ts:95-100: both sides decided, so the comparison carries information. A check that
  *  throws or times out settles with no blocking checks, which reads exactly like "nothing moved". */
@@ -91,8 +92,8 @@ export function withReplacedField(answer: JsonValue, path: string, value: JsonVa
   const copy: JsonValue = capturedStructuredClone(answer);
   // SAFETY: the path resolves in `answer`, so each step of its clone is an array or a record holding
   // the next key, and an array takes its position as a string key too.
-  const parent = keys.reduce<unknown>((at, key) => (at as Record<string, unknown>)[key], copy);
-  (parent as Record<string, JsonValue>)[leaf] = value;
+  const parent = keys.reduce((at, key) => at[key] as JsonObject, copy as JsonObject);
+  parent[leaf] = value;
   return copy;
 }
 
@@ -104,7 +105,7 @@ export function withReplacedField(answer: JsonValue, path: string, value: JsonVa
  */
 export function editedPassage(answer: JsonValue, path: string, edit: ProbeEdit): string | null {
   const field = resolveJsonPath(answer, path).value;
-  if (typeof field !== "string") return null;
+  if (!isString(field)) return null;
   const at = field.indexOf(edit.find);
   return edit.find === "" || at === -1 || at !== field.lastIndexOf(edit.find)
     ? null
@@ -113,12 +114,10 @@ export function editedPassage(answer: JsonValue, path: string, edit: ProbeEdit):
 
 function sideText(label: string, verdict: Verdict): string {
   const detail =
-    verdict.kind === "fail"
-      ? verdict.blocking.length === 0
-        ? ""
-        : `, blocked by ${verdict.blocking.join(", ")}`
-      : verdict.kind === "pass"
-        ? ""
+    verdict.kind === "pass" || (verdict.kind === "fail" && verdict.blocking.length === 0)
+      ? ""
+      : verdict.kind === "fail"
+        ? `, blocked by ${verdict.blocking.join(", ")}`
         : `: ${verdict.kind === "faulty" ? `${verdict.check} ${verdict.reason}` : verdict.reason}`;
   return `  ${label}: ${verdict.kind}${detail}`;
 }
@@ -135,7 +134,7 @@ function rowText(row: ProbeRow): string {
     sideText("changed", row.changed),
     row.moved.length === 0
       ? `  no check changed its verdict for this replacement. That alone does not show ${row.path} is unread: a check that reads it may simply decide the new value the same way`
-      : `  ${String(row.moved.length)} check(s) moved: ${row.moved.join(", ")}`,
+      : `  ${plural(row.moved.length, "check")} moved: ${row.moved.join(", ")}`,
     ...(conclusive(row) ? [] : ["  inconclusive: a side reached no verdict, so this probe is not evidence"]),
   ].join("\n");
 }
@@ -146,7 +145,7 @@ function rowText(row: ProbeRow): string {
  * passage that is not there exactly once, or a change that changes nothing. A probe and a reject
  * control are both an answer with one fact moved, and this is what holds each to one.
  */
-export function changedAnswer(answer: JsonValue, change: Change): JsonValue {
+function changedAnswer(answer: JsonValue, change: Change): JsonValue {
   const edit =
     change.find === undefined || change.replace === undefined
       ? null
@@ -193,12 +192,12 @@ export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows:
     parameters: Type.Object({
       path: Type.String({
         description:
-          "A rooted path to an existing leaf of the answer, spelled as the checks spell theirs: `$.layout.members[0].area`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
+          "A rooted path to an existing leaf of the answer, spelled as the checks spell theirs: `$.items[0].value`. Array positions are bracketed; a key holding a dot or a slash is quoted: `$.files['src/main.cpp']`.",
       }),
       value: Type.Optional(
         Type.String({
           description:
-            'The replacement value as JSON text, e.g. `0.0001`, `"bolted"` or `null`. One field only. Omit it when you send `find` and `replace`.',
+            'The replacement value as JSON text, e.g. `0.0001`, `"high"` or `null`. One field only. Omit it when you send `find` and `replace`.',
         }),
       ),
       find: Type.Optional(

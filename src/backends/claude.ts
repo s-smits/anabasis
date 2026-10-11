@@ -16,6 +16,13 @@
  * directory and git state into its prompt. A nudge is a further user message into the same query, where v1 resumed the session in a
  * fresh one (`provider.ts:525-560`); the model reads the same history either way.
  *
+ * One of the sweep's options is not kept. Its solver read Claude Code's own system prompt with the
+ * harness's appended (`provider.ts:439-442`), and so did a v2 solver until 2026-10-09. That prompt is
+ * a coding assistant's, about a repository and Claude Code's own tools, none of which a session
+ * here has: every tool is pi's, served through the MCP server. So every session, a solver's, a
+ * Builder's, an Examiner's and a reviewer's alike, is sent its own prompt and nothing before it. A
+ * solver's is pi coding-agent's (`src/solve/prompt.ts`).
+ *
  * One difference is left, and it reaches no model: v1 spawned its worker with an empty environment
  * (`pi-built-process.ts:529-533`) and spread that into Claude Code's (`provider.ts:420`); here HOME, the
  * solve's own, PATH and TMPDIR are set as well.
@@ -56,19 +63,50 @@ import {
 import { updateUsage } from "../../vendor/pi-claude-bridge/usage.ts";
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
-import { keyIfDefined, keyIfTruthy } from "../meta/optional-key.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { dirname, join } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
-export const CLAUDE_PROVIDER = "claude";
+const CLAUDE_PROVIDER = "claude";
+/**
+ * The same backend on an Anthropic API key in place of a Claude Code login: the same CLI, the same
+ * models and the same prompt, billed to the key's account. It is a provider of its own, so that
+ * which account spends is named on the command line (`--solver claude-api/<model>`) and stands in
+ * every condition and every price key the log holds. A key in the host's environment never moves
+ * a solve asked of `claude`: the CLI is handed one credential, the one its provider names.
+ */
+export const CLAUDE_API_PROVIDER = "claude-api";
+/** What each of the two is called, and the one variable that holds its credential: in the host's
+ *  environment, where pi reads it, and in the CLI's, where Claude Code does. */
+const ACCOUNTS = new Map([
+  [
+    CLAUDE_PROVIDER,
+    {
+      name: "Claude Code (Agent SDK)",
+      holds: "Claude Code OAuth token",
+      variable: "CLAUDE_CODE_OAUTH_TOKEN",
+    },
+  ],
+  [
+    CLAUDE_API_PROVIDER,
+    {
+      name: "Claude Code (Agent SDK), on an API key",
+      holds: "Anthropic API key",
+      variable: "ANTHROPIC_API_KEY",
+    },
+  ],
+]);
 const API = "claude-agent-sdk";
+
 /** turn-translation.ts:19-20. */
 const SERVER = "custom-tools";
 const TOOL_PREFIX = `mcp__${SERVER}__`;
 /** The CLI's own tools the solver is given, all server-side: pi-built-child.ts:193-196, under the
  *  `webSearch: true` every Claude profile set (`src/backends/pi-built.ts:136`). */
 const CLI_TOOLS = ["WebSearch"];
+/** How long a closing query waits on its interrupt. One answered mid-turn in 16 ms. */
+const INTERRUPT_MS = 1000;
 /** provider.ts:222-224: the bridge's table, for a level the model's own map does not name. */
 const EFFORTS: Readonly<Partial<Record<ThinkingLevel, EffortLevel>>> = {
   minimal: "low",
@@ -112,7 +150,9 @@ const FINAL_STOPS: ReadonlyMap<string, TurnEnd> = new Map([
  * The models the sweep asked Claude Code for by their long-context id, which is what gives them a
  * million-token window on a subscription token; the CLI serves a bare id at its own default window,
  * under which a 300K compaction window is clamped. v1 measured each (`vendor/pi-claude-bridge/models.ts:17-50`
- * at 7af7315, under the `plan: "pro"` settings of `provider.ts:60`); every other model went bare.
+ * at 7af7315, under the `plan: "pro"` settings of `provider.ts:60`); every other model went bare. Opus
+ * 5.5 and Sonnet 5.5 came after; on 2026-10-08 the CLI served each a million tokens under its
+ * `[1m]` id.
  */
 const LONG_CONTEXT = new Set([
   "claude-opus-5",
@@ -120,6 +160,8 @@ const LONG_CONTEXT = new Set([
   "claude-fable-5",
   "claude-fable-5-1",
   "claude-sonnet-5",
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
 ]);
 
 const sessions = new Map<string, Session>();
@@ -129,6 +171,13 @@ const sessions = new Map<string, Session>();
  * Claude Code reports it, which the meter's billed dollars are held to.
  */
 export const REPORTED_COST = "claude-code-total-cost";
+
+/**
+ * The diagnostic a turn carries for each compaction Claude Code ran before it: `details.tokensBefore`
+ * and `details.seconds`, from the CLI's `compact_boundary`, as v1's `onCompaction` read it
+ * (`vendor/pi-claude-bridge/provider.ts:247` at 7af7315).
+ */
+export const CLAUDE_COMPACTED = "claude-code-compaction";
 
 /**
  * How Claude Code fits a full context: its own auto-compaction at a window of this many tokens, or not
@@ -156,6 +205,9 @@ export interface ClaudeOptions {
   /** Claude Code's HOME, which holds its configuration and transcripts: one per solve, outside the
    *  command wall, so no command reads them and no host Claude state reaches the query. */
   readonly home: string;
+  /** Whether the CLI's WebSearch stands beside the session's tools. Left out, it does, as it did for
+   *  the sweep's solver. */
+  readonly webSearch?: boolean;
 }
 
 /**
@@ -168,7 +220,8 @@ const BARE_WINDOW = 200_000;
 /**
  * The compaction a condition pins for a Claude solve on `modelId`, in the words the CLI's own
  * settings use. A window the id's served context cannot hold is refused, where the CLI would clamp it
- * without a word: `claude-opus-5-5` goes bare, so a 300K window there ran at 200K.
+ * without a word: a bare id such as `claude-haiku-4-5` is served 200K, under which a 300K window
+ * would run.
  */
 export function claudeCompactionMode(compaction: ClaudeCompaction, modelId: string): string {
   if (compaction === "off") return "off";
@@ -179,6 +232,11 @@ export function claudeCompactionMode(compaction: ClaudeCompaction, modelId: stri
     );
   }
   return `autoCompactWindow=${String(compaction.window)}`;
+}
+
+/** Whether a model is served through Claude Code, on either account. */
+export function servedByClaude(provider: string): boolean {
+  return ACCOUNTS.has(provider);
 }
 
 /**
@@ -195,9 +253,12 @@ export function claudeExecutable(): string {
   return cli;
 }
 
-/** pi's Anthropic catalog, served through Claude Code: the same ids and the same list prices. */
-export function claudeProvider(options: ClaudeOptions): Provider {
+/** pi's Anthropic catalog, served through Claude Code: the same ids and the same list prices. `id`
+ *  names the account, a Claude Code login unless it is `CLAUDE_API_PROVIDER`. */
+export function claudeProvider(options: ClaudeOptions, id: string = CLAUDE_PROVIDER): Provider {
   const { compaction } = options;
+  const account = ACCOUNTS.get(id);
+  if (account === undefined) throw new Error(`${id} is no account of the Claude backend`);
   if (
     compaction !== "off" &&
     (compaction.window < WINDOW_BOUNDS[0] || compaction.window > WINDOW_BOUNDS[1])
@@ -207,13 +268,13 @@ export function claudeProvider(options: ClaudeOptions): Provider {
   const stream = (model: Model<Api>, context: TranscriptContext, request?: SimpleStreamOptions) =>
     streamClaude(options, model, context, request);
   return createProvider({
-    id: CLAUDE_PROVIDER,
-    name: "Claude Code (Agent SDK)",
-    auth: { apiKey: envApiKeyAuth("Claude Code OAuth token", ["CLAUDE_CODE_OAUTH_TOKEN"]) },
+    id,
+    name: account.name,
+    auth: { apiKey: envApiKeyAuth(account.holds, [account.variable]) },
     // `compat` tunes pi's own Anthropic request, which Claude Code never sends.
     models: getBuiltinModels("anthropic").map(({ compat: _unsent, ...model }) => ({
       ...model,
-      provider: CLAUDE_PROVIDER,
+      provider: id,
       api: API,
     })),
     api: { stream, streamSimple: stream },
@@ -295,6 +356,7 @@ function open(
   const prompt = makePromptStream();
   const abort = new AbortController();
   const effort = claudeEffort(model, options.reasoning);
+  const own = getCurrentSystemPrompt(context.messages).trim();
   // Claude Code's working directory, which its prompt names: the solve's own, as v1's was its worker's.
   mkdirSync(claude.home, { recursive: true });
   const live = query({
@@ -306,16 +368,12 @@ function open(
       ...keyIfDefined("effort", effort),
       // Thinking arrives summarized rather than omitted whenever an effort is set (`provider.ts:405-408`).
       ...keyIfDefined("extraArgs", effort && { "thinking-display": "summarized" }),
-      // Claude Code's own prompt with the harness's appended, as the sweep ran (`provider.ts:439-442`):
-      // the solver reads the same preamble around the same Built prompt.
-      systemPrompt: {
-        type: "preset",
-        preset: "claude_code",
-        ...keyIfTruthy("append", getCurrentSystemPrompt(context.messages).trim()),
-      },
+      // The session's prompt is the whole of it: Claude Code's own is not sent before it.
+      systemPrompt: own,
       // The harness's pi tools and the CLI's WebSearch are the only tools: no other built-in, no setting
-      // file, no skill, no other MCP server (`provider.ts:430-434,445`).
-      tools: CLI_TOOLS,
+      // file, no skill, no other MCP server (`provider.ts:430-434,445`). With WebSearch off there is
+      // no built-in at all.
+      tools: claude.webSearch === false ? [] : CLI_TOOLS,
       skills: [],
       mcpServers: { [SERVER]: createToolServer(SERVER, tools) },
       permissionMode: "bypassPermissions",
@@ -325,7 +383,7 @@ function open(
       persistSession: false,
       includePartialMessages: true,
       abortController: abort,
-      env: claudeEnv(claude, options.apiKey),
+      env: claudeEnv(claude, { provider: model.provider, token: options.apiKey }),
     },
   });
   const session: Session = { query: live, prompt, abort, parked, early };
@@ -353,10 +411,20 @@ export function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined
 /**
  * The whole environment Claude Code runs in: HOME, the solve's own, PATH and TMPDIR; nothing else of
  * the host's reaches the CLI, so no host variable can move its compaction, its account or its MCP
- * servers.
+ * servers. Its one credential is its provider's: a Claude Code login for `claude`, an API key for
+ * `claude-api`, each under the variable Claude Code reads it from and never both.
  */
-function claudeEnv({ compaction, home }: ClaudeOptions, token: string | undefined): Record<string, string> {
-  if (token === undefined) throw new Error("the Claude backend needs a Claude Code OAuth token");
+function claudeEnv(
+  { compaction, home }: ClaudeOptions,
+  credential: { readonly provider: string; readonly token: string | undefined },
+): Record<string, string> {
+  const account = ACCOUNTS.get(credential.provider);
+  const { token } = credential;
+  if (account === undefined || token === undefined) {
+    throw new Error(
+      `the Claude backend needs ${account === undefined ? "an account" : `a ${account.holds}`}`,
+    );
+  }
   // One configuration directory per solve home, as v1 kept one per worker (`pi-built-child.ts:178-183`),
   // so no host Claude state is read. It is not `.claude`, so a run on the host's own HOME still reads none.
   const config = join(home, "claude-config");
@@ -366,7 +434,7 @@ function claudeEnv({ compaction, home }: ClaudeOptions, token: string | undefine
     ...keyIfDefined("PATH", Bun.env.PATH),
     ...keyIfDefined("TMPDIR", Bun.env.TMPDIR),
     CLAUDE_CONFIG_DIR: config,
-    CLAUDE_CODE_OAUTH_TOKEN: token,
+    [account.variable]: token,
     // claude.ai's cloud MCP servers load past strict MCP config and empty setting sources unless this
     // is off, as the sweep set it (`provider.ts:410-414,421`).
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",
@@ -436,7 +504,14 @@ async function readMessages(
     if (next.done === true) throw new Error("Claude Code ended the query without a result");
     const message = next.value;
     if (message.type === "assistant" && message.parent_tool_use_id === null) take(message, model, turn);
-    else if (message.type === "stream_event" && message.event.type === "message_delta") {
+    else if (message.type === "system" && message.subtype === "compact_boundary") {
+      const { pre_tokens: tokensBefore, duration_ms: ms } = message.compact_metadata;
+      const details = { tokensBefore, seconds: ms === undefined ? null : ms / 1000 };
+      turn.diagnostics = [
+        ...(turn.diagnostics ?? []),
+        { type: CLAUDE_COMPACTED, timestamp: Date.now(), details },
+      ];
+    } else if (message.type === "stream_event" && message.event.type === "message_delta") {
       apiStop = message.event.delta.stop_reason;
       updateUsage(turn, message.event.usage, model);
     } else if (
@@ -450,10 +525,13 @@ async function readMessages(
     } else if (message.type === "result") {
       // The query stays open for a later prompt; the cost Claude Code reports is the query's so far.
       turn.diagnostics = [
+        ...(turn.diagnostics ?? []),
         { type: REPORTED_COST, timestamp: Date.now(), details: { totalCostUsd: message.total_cost_usd } },
       ];
       const end = apiStop === null ? undefined : FINAL_STOPS.get(apiStop);
       if (message.subtype === "success" && !message.is_error && end !== undefined) return end;
+      // Claude Code reports the turn the host's own close interrupted as a run that failed.
+      if (sessions.get(key) !== session) throw new Error("the host closed the query");
       close(key, session);
       if (message.subtype !== "success") {
         throw new Error(`Claude Code: ${message.subtype}: ${message.errors.join("; ")}`);
@@ -503,11 +581,22 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
   updateUsage(turn, message.message.usage, model);
 }
 
-/** End the query and answer every parked handler, so no Claude Code call is left waiting on pi. */
+/**
+ * End the query and answer every parked handler, so no Claude Code call is left waiting on pi.
+ *
+ * The turn is interrupted before the query is aborted. An abort alone closes Claude Code's stdin and
+ * gives it two seconds before a signal, and Claude Code spends them on its turn: with a call still
+ * parked it asks the model again, and no meter reads that request. On 2026-10-08 a query closed on a
+ * parked `submit` called it again 975 ms and 1,812 ms after, and Claude Code's own logs of that
+ * day's solves hold such a call after 14 of 35. Interrupted first, it called nothing and was gone
+ * inside a second. The timer is for a child that never answers the interrupt.
+ */
 function close(key: string, session: Session): void {
   sessions.delete(key);
   session.prompt.end();
-  session.abort.abort();
+  const end = () => session.abort.abort();
+  void session.query.interrupt().then(end, end);
+  setTimeout(end, INTERRUPT_MS).unref();
   for (const resolve of session.parked.values()) {
     resolve({ content: [{ type: "text", text: "the query was closed" }] });
   }
@@ -515,7 +604,7 @@ function close(key: string, session: Session): void {
   session.early.clear();
 }
 
-function emptyTurn(model: Model<Api>): AssistantMessage {
+export function emptyTurn(model: Model<Api>): AssistantMessage {
   return {
     role: "assistant",
     content: [],

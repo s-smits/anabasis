@@ -11,7 +11,8 @@
  * its ending apart, since there is no verdict of v1's verifier to compare. Exits 1 on any mismatch. The dollars are compared, not matched: see
  * `stored-sweep.ts` for why the two differ.
  */
-import { openVerifier, type Task, type Verdict, type Verifier } from "#src/kernel/verify.ts";
+import { openVerifier, spelled, type Task, type Verdict, type Verifier } from "#src/kernel/verify.ts";
+import { TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -27,12 +28,6 @@ const { values } = parseArgs({
     jobs: { type: "string", default: "4" },
   },
 });
-
-function spelled(verdict: Verdict): string {
-  if (verdict.kind === "fail") return `fail ${[...verdict.blocking].sort().join(",")}`;
-  if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
-  return verdict.kind === "pass" ? "pass" : `non-result ${verdict.reason}`;
-}
 
 async function main(): Promise<number> {
   const root = values.root;
@@ -73,7 +68,7 @@ async function main(): Promise<number> {
         const checks = checkProgram(report.candidate, join(scratch, String(verifiers.size)));
         verify = openVerifier({ checks, tools: join(report.candidate, ".toolchain") });
         verifiers.set(report.candidate, verify);
-        const battery = join(report.candidate, "correctness-model", "tasks.json");
+        const battery = join(report.candidate, TASKS_FILE);
         tasks.set(report.candidate, parseJsonAs<Task[]>(readFileSync(battery, "utf8")));
       }
       const task = tasks.get(report.candidate)?.find((candidate) => candidate.taskId === row.taskId);

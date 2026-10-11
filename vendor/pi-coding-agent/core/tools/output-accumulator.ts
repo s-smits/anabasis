@@ -1,6 +1,7 @@
-// Copied from pi coding-agent v1.0.4 (github.com/earendil-works/pi, 7c10bd43, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/core/tools/output-accumulator.ts, verbatim but for
 // the compiler: this repository's strict options force the `!` on indexed reads and the `| undefined` on optional fields.
+// Departure: `tempDir`, where the full output of a cut command goes (see utils/output-files.ts).
 import type { WriteStream } from "node:fs";
 import { open } from "node:fs/promises";
 import { createOutputFileStream } from "../../utils/output-files.ts";
@@ -10,6 +11,7 @@ export interface OutputAccumulatorOptions {
 	maxLines?: number;
 	maxBytes?: number;
 	tempFilePrefix?: string;
+	tempDir?: string | undefined;
 }
 
 export interface OutputSnapshot {
@@ -40,6 +42,7 @@ export class OutputAccumulator {
 	private readonly maxBytes: number;
 	private readonly maxRollingBytes: number;
 	private readonly tempFilePrefix: string;
+	private readonly tempDir: string | undefined;
 	private readonly decoder = new TextDecoder();
 
 	private rawChunks: Buffer[] = [];
@@ -62,6 +65,7 @@ export class OutputAccumulator {
 		this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 		this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
 		this.tempFilePrefix = options.tempFilePrefix ?? "pi-output";
+		this.tempDir = options.tempDir;
 	}
 
 	append(data: Buffer): void {
@@ -249,7 +253,7 @@ export class OutputAccumulator {
 		if (this.tempFilePath) {
 			return;
 		}
-		const { path, stream } = createOutputFileStream(this.tempFilePrefix, ".log");
+		const { path, stream } = createOutputFileStream(this.tempFilePrefix, ".log", this.tempDir);
 		this.tempFilePath = path;
 		this.tempFileStream = stream;
 		for (const chunk of this.rawChunks) {

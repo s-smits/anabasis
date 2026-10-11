@@ -1,39 +1,51 @@
 /**
  * The one place a solve launches a command: the solver's bash calls and the harness's own tool calls
  * both come through `runWalled`, under the command wall v1's Built shell ran under
- * (`stageCommandIsolation`), on pi's local shell backend, which kills the command's process tree on
- * a timeout or an abort.
+ * (`stageCommandIsolation`), on pi's local shell backend, which kills the command's process group on
+ * a timeout or an abort. Whatever else the command left working on the solve's volume is ended here.
  *
  * A solve owns two directories under the shared scratch parent, which the command wall closes to
  * every command but its own trees:
  * - `root`, the capped volume (`mountDiskCap`), holds `home`, which survives between commands and is
- *   never read back, and `runs`, where each command gets a fresh `run-*` with `work`, its working
- *   directory, and `tmp`, its `TMPDIR`, both removed when it ends. That is v1's shape
- *   (built-bash.ts:293-298), with the runs moved onto the cap.
+ *   never read back, and `runs`, where each command gets a fresh `run-*` with `work`, where its
+ *   caller stages what it reads, and `tmp`, its `TMPDIR`, both removed when it ends. That is v1's
+ *   shape (built-bash.ts:293-298), with the runs moved onto the cap.
  * - `host`, beside it and outside the cap, which no command can read: the staged profiles, the
  *   commands' CPU records, and the model backend's own state, such as Claude Code's configuration
  *   and transcripts.
+ *
+ * A command starts in `work` unless its caller asks for the home (`inHome`). A harness's tool call
+ * and a file tool's command read files staged for that one command, and start beside them. The
+ * solver's own commands start in the home, which is the one working directory pi's coding tools
+ * share: until 2026-10-09 they started in `work` too, and nine in ten of them began with `cd ~`
+ * (the Starter solves of six campaigns, `docs/transfer.md`).
  *
  * Each command's CPU time is its waited-for descendants' user and system time, as the host's shell
  * around the wall reads it with `times` once the walled launch exits. A command killed at its
  * timeout or by an abort takes that shell with it, so it is counted as unmeasured rather than as
  * zero, and a process that outlived its command is in neither. v1 read CPU per run, not per solve,
- * from `rusage.py`.
+ * from `rusage.py`. That is Darwin's reading, where the launch replaces itself with the command. On
+ * Linux the launch is bubblewrap, whose child's usage did not reach this shell: a loop that read
+ * 0.46 s without it read 0 under it (bubblewrap 0.11.0, 2026-10-09). Campaigns run on Darwin, and a
+ * CPU figure from a Linux host is not one.
  */
-import {
-  createLocalBashOperations,
-  type BashOperations,
-} from "../../vendor/pi-coding-agent/core/tools/bash.ts";
+import { createLocalBashOperations } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "../meta/filesystem.ts";
 import { basename, join } from "../meta/path.ts";
+import { errorCode } from "../meta/runtime-values.ts";
+import { endHolders } from "../verify/disk-cap.ts";
 import {
   BUILT_COMMAND_SCRATCH_ROOT,
   commandIsolationPolicy,
   shellQuote,
   stageCommandIsolation,
 } from "../verify/solve-command-isolation.ts";
-import type { SolveIsolationPolicy } from "../verify/solve-sandbox.ts";
+import {
+  probeHostSolveReadDeny,
+  type SolveIsolationPolicy,
+  solveIsolationPolicy,
+} from "../verify/solve-sandbox.ts";
 
 export interface SolveDirs {
   /** The capped volume's mount point. */
@@ -56,6 +68,45 @@ export interface CommandWall {
   readonly limits: ShellLimits;
   /** The CPU seconds of the solve's commands so far, and how many ended unmeasured. */
   readonly cpu: { seconds: number; unmeasured: number };
+  /** The solve's own time, which its commands are held to near its end (`heldSeconds`). A Builder's
+   *  wall has none: its session ends when its model's turn does. */
+  readonly clock?: SolveClock | undefined;
+}
+
+/** What a wall denies and caps: the repository the command runs in, its other worktrees, and
+ *  the disk a solve, a session or an Examiner may fill. */
+export interface Walled {
+  readonly repoRoot: string;
+  /** The repository's other worktrees (`worktreesOf`, `tools/d2/campaign.ts`); none where the
+   *  caller knows of none, as a test does. */
+  readonly otherTrees?: readonly string[] | undefined;
+  readonly diskBytes: number;
+}
+
+/** The policies this process has probed and found to hold, by their hash: once a process. */
+const PROBED = new Set<string>();
+
+/**
+ * Whether a package index is reached from inside the wall: `reached` where a command run as a
+ * solver's fetched one when this process first asked, `unreached` where it did not. The solver's
+ * prompt said "commands have network access" whatever the host did: on the Linux host of
+ * 10 October the wall's commands get an empty environment and no resolver, 0 of 143 solves of t-10
+ * installed anything, and 26 of the 34 that ran out of turns had spent one on a pip install
+ * (its whole-run investigation, lanes 14 and 27). A sentence a host makes false is the host's to
+ * make true, so the prompt now says what the probe found.
+ */
+export type NetworkReach = "reached" | "unreached";
+/** The reach of each policy this process has probed, by its hash: once a process, and the promise
+ *  so that solves that start together wait on one probe. */
+const REACH = new Map<string, Promise<NetworkReach>>();
+const REACH_MARK = "ANA-NETWORK-REACHED";
+/** The index pip reads; curl first, and the resolver pip itself uses where curl is not on the host. */
+const REACH_COMMAND = `(curl -fsS -m 10 -o /dev/null https://pypi.org/simple/pip/ 2>/dev/null || python3 -c 'import urllib.request; urllib.request.urlopen("https://pypi.org/simple/pip/", timeout=10)' 2>/dev/null) && echo ${REACH_MARK}`;
+
+/** A solve's time: when its first turn started, null until it has, and how long the solve may be. */
+export interface SolveClock {
+  started: number | null;
+  readonly seconds: number;
 }
 
 /** A command's own two directories, for a caller that stages input files before it runs. */
@@ -64,14 +115,16 @@ export interface RunDirs {
   readonly temp: string;
 }
 
-export interface WalledOptions {
+interface WalledOptions {
   readonly onData: (data: Buffer) => void;
   readonly signal?: AbortSignal | undefined;
   /** Seconds asked for, held to the limits by `shellSeconds`; pi's backend throws
    *  `timeout:<seconds>` when the command runs past what it was given. */
   readonly timeout?: number | undefined;
   /** Writes what the command reads into its fresh directories before it starts. */
-  readonly stage?: (run: RunDirs) => void;
+  readonly stage?: ((run: RunDirs) => void) | undefined;
+  /** Start the command in the solve's home, not in its own `work`. */
+  readonly inHome?: boolean | undefined;
 }
 
 const SHELL = createLocalBashOperations({ shellPath: "/bin/sh" });
@@ -84,10 +137,130 @@ export function shellSeconds(timeout: number | undefined, limits: ShellLimits) {
   return { asked, seconds: Math.min(Math.max(asked, limits.shellDefaultSeconds), limits.shellMaxSeconds) };
 }
 
+/** How long before a solve's end its commands are cut, so that a result still reaches the solver:
+ *  a minute, and an eighth of a solve shorter than eight. */
+export function reserveSeconds(wallSeconds: number): number {
+  return Math.min(60, Math.floor(wallSeconds / 8));
+}
+
+/** The seconds of its time a solve has used, or null where it has no clock or has not started. */
+export function usedSeconds(clock: SolveClock | undefined, now = performance.now()): number | null {
+  const started = clock?.started ?? null;
+  return started === null ? null : (now - started) / 1000;
+}
+
+/**
+ * How long a command that starts now may run: the condition's limits (`shellSeconds`), and no
+ * longer than the solve has left before its reserve. `nearEnd` says the solve's end set it.
+ *
+ * Until 2026-10-09 a command was held to its own limits alone, and one the solve's wall fell in
+ * took the solve with it: at a five-minute wall 12 of 46 Starter solves ended at it, 11 of them
+ * inside a command, with nothing sent. A command now returns while there is time to act on it. One started inside
+ * the reserve, or with under five seconds before it, is left to its own limits: the solver is told
+ * the time used with every result, and what it starts then is its own to judge.
+ */
+export function heldSeconds(
+  timeout: number | undefined,
+  { limits, clock }: Pick<CommandWall, "limits" | "clock">,
+  now = performance.now(),
+): { asked: number; seconds: number; nearEnd: boolean } {
+  const held = shellSeconds(timeout, limits);
+  const used = usedSeconds(clock, now);
+  if (clock === undefined || used === null) return { ...held, nearEnd: false };
+  const left = Math.floor(clock.seconds - used - reserveSeconds(clock.seconds));
+  return left >= 5 && left < held.seconds
+    ? { asked: held.asked, seconds: left, nearEnd: true }
+    : { ...held, nearEnd: false };
+}
+
 /** The directories of solve `id`, named, not yet made: the runner mounts the cap at `root`. */
 export function solveDirs(id: string): SolveDirs {
   const root = join(BUILT_COMMAND_SCRATCH_ROOT, `solve-${id}`);
   return { root, home: join(root, "home"), runs: join(root, "runs"), host: `${root}.host` };
+}
+
+/**
+ * The base of a wall over `dirs`, with the three folders made: the solver's, the Builder's and the
+ * Examiner's are built the same way, and until 10 October each spelled it. `who` names the actor
+ * in the refusal of a host that cannot wall one.
+ *
+ * The wall is a test and no convention (`AGENTS.md`, rule 3): before its first use in a process
+ * each policy is probed, a canary read in the repository and in its first other worktree, and a
+ * read that gets through refuses the wall, with the probe's own lines. Until 10 October the probe
+ * ran in the test suite alone, and a sibling worktree's log was readable in every live run. The
+ * ancestor-rename guard is reported and refuses nothing here: on the Linux container it fails
+ * while every read-deny holds, and a run on such a host is a run under a wall that reads deny.
+ */
+export function walledBase(dirs: SolveDirs, wall: Walled, who: string): SolveIsolationPolicy {
+  for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
+  const otherTrees = wall.otherTrees ?? [];
+  const cap = { root: dirs.root, bytes: wall.diskBytes };
+  const base = solveIsolationPolicy({ repoRoot: wall.repoRoot, otherTrees, cap });
+  if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);
+  if (!PROBED.has(base.policyHash)) {
+    const probe = probeHostSolveReadDeny({ repoRoot: wall.repoRoot, otherTrees, cap });
+    const holds =
+      probe.available &&
+      probe.deniedReadRefused &&
+      probe.siblingReadRefused !== false &&
+      probe.controlReadSucceeded &&
+      probe.discriminationReadSucceeded;
+    if (!holds) {
+      throw new Error(
+        `the wall does not hold on this host, so ${who} is not started:\n${probe.evidence.join("\n")}`,
+      );
+    }
+    PROBED.add(base.policyHash);
+  }
+  return base;
+}
+
+/**
+ * A command's own folders, made fresh under `runs`: `run` is what is removed when it ends.
+ *
+ * On a full volume there is no room to make them, and the command that would make room is the one
+ * being started. One solve filled its 2 GiB on 2026-10-09 and was then refused `rm -rf ~/w`
+ * fourteen times running, each before it started (`ENOSPC` here). So a command that brings nothing
+ * starts all the same, with the home as its `work` and its `TMPDIR`: a delete needs neither. One
+ * that brings files to stage has nowhere to put them, and fails as the full volume it is.
+ */
+export function commandDirs(
+  dirs: SolveDirs,
+  brings: "files" | "nothing",
+  make: (prefix: string) => string = mkdtempSync,
+): RunDirs & { readonly run: string | null } {
+  let run: string | null = null;
+  try {
+    run = make(join(dirs.runs, "run-"));
+    const [work, temp] = [join(run, "work"), join(run, "tmp")];
+    mkdirSync(work);
+    mkdirSync(temp);
+    return { run, work, temp };
+  } catch (error) {
+    if (run !== null) rmSync(run, { recursive: true, force: true });
+    if (brings === "files" || errorCode(error) !== "ENOSPC") throw error;
+    return { run: null, work: dirs.home, temp: dirs.home };
+  }
+}
+
+/** The reach of the wall `wall` stands for, probed once a process (`NetworkReach`). The probe's
+ *  CPU is charged to no solve, and a probe that fails to run reads as unreached. */
+export function networkReach(wall: CommandWall): Promise<NetworkReach> {
+  const key = wall.base.policyHash;
+  const known = REACH.get(key);
+  if (known !== undefined) return known;
+  const probe = (async (): Promise<NetworkReach> => {
+    let out = "";
+    await runWalled({ ...wall, cpu: { seconds: 0, unmeasured: 0 } }, REACH_COMMAND, {
+      onData: (data) => {
+        out += data.toString();
+      },
+      timeout: 30,
+    });
+    return out.includes(REACH_MARK) ? "reached" : "unreached";
+  })().catch((): NetworkReach => "unreached");
+  REACH.set(key, probe);
+  return probe;
 }
 
 export async function runWalled(
@@ -95,33 +268,37 @@ export async function runWalled(
   command: string,
   options: WalledOptions,
 ): Promise<{ exitCode: number | null }> {
-  const run = mkdtempSync(join(wall.dirs.runs, "run-"));
-  const work = join(run, "work");
-  const temp = join(run, "tmp");
-  mkdirSync(work);
-  mkdirSync(temp);
-  const profile = join(wall.dirs.host, `${basename(run)}.sb`);
-  const times = join(wall.dirs.host, `${basename(run)}.times`);
+  const { run, work, temp } = commandDirs(wall.dirs, options.stage === undefined ? "nothing" : "files");
+  const name = run === null ? "run-on-a-full-volume" : basename(run);
+  const profile = join(wall.dirs.host, `${name}.sb`);
+  const times = join(wall.dirs.host, `${name}.times`);
   try {
     options.stage?.({ work, temp });
+    // A solver may remove its own home, and the next command still starts in one.
+    if (options.inHome === true) mkdirSync(wall.dirs.home, { recursive: true });
     const policy = commandIsolationPolicy(wall.base, {
       work,
       home: wall.dirs.home,
       temp,
       toolTree: wall.toolTree,
     });
-    const staged = stageCommandIsolation(policy, profile, command);
-    return await SHELL.exec(`(\n${staged}\n)\ns=$?\ntimes > ${shellQuote(times)}\nexit $s`, work, {
+    // The shell pi starts leads the group and waits here for `times`, so the launch is its child.
+    const staged = stageCommandIsolation(policy, profile, command, "$PPID");
+    const cwd = options.inHome === true ? wall.dirs.home : work;
+    return await SHELL.exec(`(\n${staged}\n)\ns=$?\ntimes > ${shellQuote(times)}\nexit $s`, cwd, {
       onData: options.onData,
       signal: options.signal,
-      timeout: shellSeconds(options.timeout, wall.limits).seconds,
+      timeout: heldSeconds(options.timeout, wall).seconds,
       env: policy.environment,
     });
   } finally {
+    // What left the command's group is out of its exit trap's reach, and a command the host killed
+    // never ran that trap. Both still work on the solve's volume, where one command runs at a time.
+    await endHolders(wall.dirs.root);
     const seconds = childSeconds(times);
     if (seconds === null) wall.cpu.unmeasured++;
     else wall.cpu.seconds += seconds;
-    rmSync(run, { recursive: true, force: true });
+    if (run !== null) rmSync(run, { recursive: true, force: true });
     rmSync(profile, { force: true });
     rmSync(times, { force: true });
   }
@@ -138,13 +315,4 @@ function childSeconds(path: string): number | null {
   }
   const spans = [...text.matchAll(/(\d+)m([\d.]+)s/g)].map(([, m, s]) => Number(m) * 60 + Number(s));
   return spans.length === 4 ? (spans[2] ?? 0) + (spans[3] ?? 0) : null;
-}
-
-/** pi's bash tool on the wall. The tool's own working directory and environment are the host's, so
- *  both are dropped: the command runs in its fresh `work` with the wall's environment alone. */
-export function wallOperations(wall: CommandWall): BashOperations {
-  return {
-    exec: (command, _cwd, { onData, signal, timeout }) =>
-      runWalled(wall, command, { onData, signal, timeout }),
-  };
 }

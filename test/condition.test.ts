@@ -2,9 +2,9 @@ import { describe, expect, it } from "bun:test";
 import { type Condition, conditionId, conditionsOf, recordCondition } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 
 const condition: Condition = {
   contract: "c1",
@@ -13,7 +13,7 @@ const condition: Condition = {
   model: "claude/claude-opus-5",
   effort: "high",
   prices: { "claude/claude-opus-5": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } },
-  runtime: { "@earendil-works/pi-ai": "1.0.4", "@anthropic-ai/claude-agent-sdk": "0.3.285" },
+  runtime: { "@earendil-works/pi-ai": "1.1.0", "@anthropic-ai/claude-agent-sdk": "0.3.285" },
   compaction: "off",
   solverTools: "s1",
   verifierTools: "v1",
@@ -69,8 +69,7 @@ describe("a condition", () => {
       expect(read(log).map((event) => event.kind)).toEqual(["condition.recorded", "condition.recorded"]);
       expect(conditionsOf(read(log)).get(conditionId(strong))).toEqual(strong);
       // A record edited under another's id: the strong record with its harness changed.
-      // SAFETY: a condition is strings, numbers and records of them.
-      const edited = { ...strong, harness: "h2" } as unknown as JsonObject;
+      const edited = requireJsonValue({ ...strong, harness: "h2" });
       append(log, "condition.recorded", { id: conditionId(condition), condition: edited });
       expect(() => conditionsOf(read(log))).toThrow("does not hash to its id");
     } finally {

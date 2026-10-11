@@ -19,12 +19,7 @@ import {
 } from "./darwin-seatbelt.ts";
 import type { ExactReadDrift, ExactReadSnapshot } from "./exact-read-attestation.ts";
 import { applyLinuxBwrapPlan, prepareLinuxBwrap, verifyLinuxBwrapPlan } from "./linux-bwrap-verifier.ts";
-import {
-  LINUX_BWRAP_ID,
-  type LinuxBwrapRuntime,
-  bwrapConfinedWorker,
-  linuxBwrapSupport,
-} from "./linux-bwrap.ts";
+import { LINUX_BWRAP_ID, type LinuxBwrapRuntime, linuxBwrapSupport } from "./linux-bwrap.ts";
 import type { VerifierConfinementRequest, VerifierSandboxLevel } from "./verifier-port.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { runtimeProcess } from "../meta/process.ts";
@@ -40,7 +35,7 @@ type OsIsolationPlatform = "darwin" | "linux";
  *  rather than forcing one override shape on both. */
 export type OsIsolationRuntime = DarwinSeatbeltRuntime & LinuxBwrapRuntime;
 
-export interface OsIsolationSupport {
+interface OsIsolationSupport {
   ok: boolean;
   reason: string | null;
   platform: OsIsolationPlatform | "other";
@@ -71,7 +66,7 @@ type PreparedVerifierPlan = {
 /** The selected plan carries its own lifecycle. Its closures retain the one concrete Darwin or
  *  Bubblewrap plan chosen at host construction, so the host cannot later cast a plan to the other
  *  mechanism or route a call to it. */
-export type VerifierOsIsolationPlan = PreparedVerifierPlan & {
+type VerifierOsIsolationPlan = PreparedVerifierPlan & {
   apply(): Promise<{ ok: true } | { ok: false; reason: string }>;
   /** `changed` names a real drift of an attested byte; `unavailable` a re-read the host could not
    *  complete. */
@@ -187,22 +182,4 @@ export function verifierOsIsolation(runtime: OsIsolationRuntime): VerifierOsIsol
         (plan) => verifyDarwinSeatbeltPlan(plan, runtime),
       ),
   };
-}
-
-/**
- * A confined worker reports its own pid, and the controller proves that report names its actual
- * child, returning the host pid or null. The proof differs by mechanism: Darwin sandbox-exec
- * replaces the spawned process, so the two pids match directly, while Bubblewrap runs the worker in
- * a private pid namespace beneath itself, so the reported pid has to be matched to the host process
- * through the kernel's `NSpid` column. Either mechanism rejects the controller's own pid, which is
- * the one report that would make the check pass while proving nothing.
- */
-export function witnessConfinedChild(
-  reportedPid: number,
-  childPid: number | undefined,
-  mechanismId: string,
-): number | null {
-  if (childPid === undefined || reportedPid === runtimeProcess.pid) return null;
-  if (mechanismId === LINUX_BWRAP_ID) return bwrapConfinedWorker(reportedPid, childPid);
-  return reportedPid === childPid ? reportedPid : null;
 }

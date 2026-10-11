@@ -15,10 +15,14 @@
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, readdirSync, realpathSync } from "../meta/filesystem.ts";
+import { activeDeveloperBinDirs } from "../meta/host-tool.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { keysIf } from "../meta/optional-key.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
+
+/** What a Darwin system command answered, by the command: each is asked once per process. */
+const darwinAnswers = new Map<string, string | undefined>();
 
 /**
  * Home-relative roots no confined actor may read.
@@ -71,24 +75,6 @@ export const SYSTEM_SERVICE_RULES = `(allow mach-lookup)
   (global-name "com.apple.pasteboard.1"))`;
 
 /**
- * The one directory inside a candidate workspace that holds tools rather than candidate content:
- * the controller links its own Bun runtime here, and a Builder that installs a compiler, a board
- * package tree or a prepared cache puts it here too, so the verifier can reopen this one tree
- * read-only for installed tools. The name is shared rather than spelled per caller because a
- * mismatch costs the product real tools: admission asking for a directory nothing creates refuses
- * every workspace-installed tool for sitting outside a directory that does not exist.
- */
-export const WORKSPACE_TOOL_TREE = ".toolchain";
-
-/** Disposable host locations a Builder cell may write outside its own workspace. What lands there
- *  remains Builder-influenceable even when the controller has pinned one exact executable for
- *  candidate measurement, which is why a path from this list is never independent operator
- *  authority and never a permitted broad read root. */
-export const BUILDER_SCRATCH_ROOTS: readonly string[] = ["/tmp", "/var/tmp", "/var/folders"].flatMap(
-  canonicalForms,
-);
-
-/**
  * The read-only platform baseline the Darwin walls grant.
  *
  * These are deliberately broad because they are meant for platform software — `sh`, `node`,
@@ -120,7 +106,7 @@ export const DARWIN_SYSTEM_READ_ROOTS: readonly string[] = [
  * may write Darwin's shared temporary directory, where a staged copy would sit readable beneath an
  * allowed path.
  */
-export const HIDDEN_TASKS_DENY_PATTERN = String.raw`/hidden-tasks\.json$`;
+const HIDDEN_TASKS_DENY_PATTERN = String.raw`/hidden-tasks\.json$`;
 
 /** The directory names that mark a checkout as one of these, carrying run data of its own. */
 const RUN_DATA_NAMES = ["domains", "campaigns", "correctness-model"];
@@ -155,7 +141,7 @@ export const BUILT_COMMAND_SCRATCH_DENY = "/ana-built-bash";
 
 /** The directory beside the verifier's cells where the host keeps each tool's cache between runs
  *  (`engine-cell-env.ts`). Every wall below closes it by this name. */
-export const VERIFIER_CACHE_STORE = "ana-verifier-cache";
+const VERIFIER_CACHE_STORE = "ana-verifier-cache";
 
 /** Both path forms of a root: a rule that names only the symlink form misses the access Seatbelt
  *  actually evaluates, which on Darwin is the difference between `/var` and `/private/var`. Every
@@ -217,19 +203,6 @@ export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.H
  *  move the policy hash and discard exit-0 verdicts for a wall that never changed. */
 export function darwinPlatformReadRoots(): string[] {
   return [...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)), ...darwinToolchainInstallRoots()];
-}
-
-/**
- * The controller's own checkout, derived from this file rather than from a caller.
- *
- * A Builder's workspace is a campaign directory, not this tree. Once the account's home opens, this
- * tree sits inside it holding the verifier source, the hidden expectations and every other run's
- * recorded evidence. Closing it by path is what keeps the home grant from letting a confined
- * command read a sibling worktree's `tasks.json` and `evaluator.ts`, which repeated slugs make
- * reachable.
- */
-export function controllerCheckoutRoot(): string {
-  return resolve(Bun.fileURLToPath(new URL("../../", import.meta.url)));
 }
 
 /**
@@ -304,33 +277,17 @@ export function runDataDenyPaths(deniedRoots: readonly string[]): string[] {
   return [...found].sort(compareCodeUnits);
 }
 
-/**
- * The per-user temporary directory a Darwin toolchain uses whatever `TMPDIR` says.
- *
- * Clang takes its scratch directory from `confstr(_CS_DARWIN_USER_TEMP_DIR)` and ignores the
- * environment, and Apple's `/usr/bin/python3` shim rewrites `TMPDIR` to the same directory before
- * it execs. Without a write grant there, `cc` is an advertised runtime the shell cannot use:
- * `clang: error: unable to make temporary file: Operation not permitted`.
- *
- * Reading the controller's own `TMPDIR` instead grants a different directory: it is this one under
- * a terminal and not under launchd, and the launch procedure sets a run-specific one, so the grant
- * lands where no compiler looks and every Built Harness compile fails the same way. The directory
- * is therefore asked of the system rather than of the environment, once per process, and a host
- * that cannot answer has no such directory to grant.
- */
-let confstrTempRoot: string | undefined | null = null;
-
-export function darwinUserTempRoot(): string | undefined {
+/** The one line a Darwin system command answers with, asked once per process: undefined on another
+ *  system, and where the command fails or says nothing. */
+function darwinAnswer(...command: string[]): string | undefined {
   if (runtimeProcess.platform !== "darwin") return undefined;
-  if (confstrTempRoot === null) {
-    const probe = Bun.spawnSync(["/usr/bin/getconf", "DARWIN_USER_TEMP_DIR"], {
-      stdout: "pipe",
-      stderr: "ignore",
-    });
+  const asked = command.join(" ");
+  if (!darwinAnswers.has(asked)) {
+    const probe = Bun.spawnSync(command, { stdout: "pipe", stderr: "ignore" });
     const found = probe.exitCode === 0 ? probe.stdout.toString().trim() : "";
-    confstrTempRoot = found === "" ? undefined : found.replace(/\/$/, "");
+    darwinAnswers.set(asked, found === "" ? undefined : found);
   }
-  return confstrTempRoot;
+  return darwinAnswers.get(asked);
 }
 
 /** What the product itself creates under the user temporary directory and a verifier tool may not
@@ -352,12 +309,6 @@ export const VERIFIER_TEMP_SIBLING_DENY_PATTERNS = [
   `/${VERIFIER_CACHE_STORE}`,
 ] as const;
 
-export function verifierTempSiblingDenyRules(
-  patterns: readonly string[] = VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
-): string[] {
-  return patterns.map((pattern) => `(deny file-read* file-read-metadata file-write* (regex #"${pattern}"))`);
-}
-
 /**
  * The confstr temp root and `extraRoots` in both path forms, which each wall records in its policy
  * identity, and the rules granting a toolchain every direct child of them and what lies beneath it.
@@ -373,13 +324,29 @@ export function userTempRules(
   extraRoots: readonly string[],
   siblingPatterns: readonly string[] = VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
 ) {
-  const confstr = darwinUserTempRoot();
+  // The per-user temporary directory a Darwin toolchain uses whatever `TMPDIR` says.
+  //
+  // Clang takes its scratch directory from `confstr(_CS_DARWIN_USER_TEMP_DIR)` and ignores the
+  // environment, and Apple's `/usr/bin/python3` shim rewrites `TMPDIR` to the same directory before
+  // it execs, for a command that names the shim by its path (`toolchainPathDirs` keeps it from being
+  // found first). Without a write grant there, `cc` is an advertised runtime the shell cannot use:
+  // `clang: error: unable to make temporary file: Operation not permitted`.
+  //
+  // Reading the controller's own `TMPDIR` instead grants a different directory: it is this one under
+  // a terminal and not under launchd, and the launch procedure sets a run-specific one, so the grant
+  // lands where no compiler looks and every Built Harness compile fails the same way. The directory
+  // is therefore asked of the system rather than of the environment, once per process, and a host
+  // that cannot answer has no such directory to grant.
+  const confstr = darwinAnswer("/usr/bin/getconf", "DARWIN_USER_TEMP_DIR")?.replace(/\/$/, "");
   const roots = canonicalRoots(confstr === undefined ? extraRoots : [confstr, ...extraRoots]);
   const childTrees = roots.map(
     (root) =>
       `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" (regex-quote ${capturedJsonStringify(root)}) #"/[^/]+(/.*)?$")))`,
   );
-  return { roots, rules: [...childTrees, ...verifierTempSiblingDenyRules(siblingPatterns)] };
+  const siblingDenies = siblingPatterns.map(
+    (pattern) => `(deny file-read* file-read-metadata file-write* (regex #"${pattern}"))`,
+  );
+  return { roots, rules: [...childTrees, ...siblingDenies] };
 }
 
 /**
@@ -397,7 +364,14 @@ export function toolchainPathDirs(): string[] {
   // Both /opt entries sit under the granted /opt read root, so neither needs a read rule of its
   // own. This host may have its only system Node under zerobrew, so the derived toolchain owner has
   // to retain that executable directory rather than assume /usr/bin holds one.
+  // The active developer directory goes ahead of /usr/bin, where Darwin keeps `python3`, `make`,
+  // `git` and `cc` as xcrun shims. A shim starts its tool with TMPDIR reset to the user temporary
+  // directory, so a command's own TMPDIR never reached a Python it started: every temp folder of
+  // every solve landed in that one shared directory, outside the solve's capped volume, and stayed
+  // when the command was gone. On 2026-10-10 one host held 1.56 million of them, 121 GB, from three
+  // days of campaigns. Started by its own path a tool keeps the TMPDIR it is given.
   const system = [
+    ...activeDeveloperBinDirs(),
     "/usr/bin",
     "/bin",
     "/usr/sbin",
@@ -422,12 +396,19 @@ export function toolchainPathDirs(): string[] {
  * no longer finds it — `rustc` fails with `rustup could not choose a version` while `~/.rustup`
  * sits readable on disk. These names put each such toolchain back on its real installation, which
  * it may read and may not write.
+ *
+ * `SDKROOT` is the same for a Darwin compiler. `/usr/bin/cc` is an xcrun shim that names the SDK for
+ * the compiler it starts; with the developer directory ahead of `/usr/bin` on PATH no shim runs, and
+ * `cc` started by its own path finds no `<stdio.h>` unless the name is set.
  */
 export function hostToolchainEnv(home: string | undefined = Bun.env.HOME) {
-  if (home === undefined || home === "") return {};
+  const sdk = darwinAnswer("/usr/bin/xcrun", "--show-sdk-path");
+  const compiler = sdk === undefined ? {} : { SDKROOT: sdk };
+  if (home === undefined || home === "") return compiler;
   const rustup = join(home, ".rustup");
   const pythonUserBase = join(home, ".local");
   return {
+    ...compiler,
     ...keysIf(existsSync(rustup), () => ({ RUSTUP_HOME: rustup })),
     ...keysIf(existsSync(pythonUserBase), () => ({ PYTHONUSERBASE: pythonUserBase })),
   };

@@ -65,12 +65,18 @@ describe("the log", () => {
     const path = fresh();
     const proposed = append(path, "task.proposed", { version: "v1" });
     expect(() => append(path, "task.proposed", { version: "v1" })).toThrow("task v1 is proposed twice");
-    expect(() => append(path, "task.gate", { version: "v1", gate: 4, outcome: "passed" })).toThrow(
-      "logs gate 4 out of order",
+    expect(() => append(path, "task.state", { version: "v1", state: "released" })).toThrow(
+      "task v1 cannot go from held to released before its gate passed",
     );
-    expect(() => append(path, "anchor.drawn", { tasks: "v1" })).toThrow(
-      "anchor.drawn names no task versions",
+    expect(() => append(path, "task.gate", { version: "v2", gate: 1, outcome: "passed" })).toThrow(
+      "task v2 is not proposed",
     );
     expect(read(path)).toEqual([proposed]);
+    // A second pass of the one gate is refused as well, and the first stands.
+    const gated = append(path, "task.gate", { version: "v1", gate: 1, outcome: "passed" });
+    expect(() => append(path, "task.gate", { version: "v1", gate: 1, outcome: "passed" })).toThrow(
+      "task v1 logs its gate twice",
+    );
+    expect(read(path)).toEqual([proposed, gated]);
   });
 });

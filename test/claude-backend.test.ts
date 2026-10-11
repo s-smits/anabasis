@@ -14,12 +14,14 @@ import {
   Type,
 } from "@earendil-works/pi-ai";
 import {
+  CLAUDE_COMPACTED,
   type ClaudeCompaction,
   claudeEffort,
   claudeProvider,
   REPORTED_COST,
   SWEEP_COMPACT_WINDOW,
 } from "../src/backends/claude.ts";
+import { read as readLog } from "../src/kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../src/kernel/meter.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
@@ -28,6 +30,7 @@ import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { traceSink } from "../src/solve/run.ts";
 
 /** What one launch of the CLI saw: its arguments, its environment and the SDK's lines to it. */
 interface Launch {
@@ -37,6 +40,8 @@ interface Launch {
   cwd: string;
 }
 
+/** A recorded stream of one turn that answers in text. */
+const TEXT = "text.jsonl";
 const FIXTURES = join(import.meta.dir, "fixtures", "claude-sdk-streams");
 const read = { name: "read", description: "Read a file", parameters: Type.Object({ path: Type.String() }) };
 const opening: Message = { role: "user", content: "Read the three files.", timestamp: 0 };
@@ -77,12 +82,17 @@ function replay(name: string, edit: (text: string) => string = (text) => text): 
   writeFileSync(join(home, "replay.jsonl"), edit(text));
 }
 
-/** The one launch since the test began. */
+/** The one launch since the test began: the last to start, since the launch of the test before may
+ *  still be writing what its close sent it. */
 function launched(): Launch {
   const launch: Launch = { argv: [], env: {}, stdin: [], cwd: "" };
-  for (const line of readFileSync(join(home, "launch.jsonl"), "utf8").trim().split("\n")) {
-    const entry = asRecord(capturedJsonParse(line));
-    const { argv, env, stdin, cwd } = entry ?? {};
+  const entries = readFileSync(join(home, "launch.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => asRecord(capturedJsonParse(line)) ?? {});
+  const last = entries.findLast((entry) => Array.isArray(entry.argv))?.pid;
+  for (const entry of entries.filter(({ pid }) => pid === last)) {
+    const { argv, env, stdin, cwd } = entry;
     if (isString(cwd)) launch.cwd = cwd;
     if (Array.isArray(argv)) launch.argv = argv.filter(isString);
     launch.env = asRecord(env) ?? launch.env;
@@ -140,8 +150,8 @@ describe("the Claude backend", () => {
     expect(asRecord(prompt?.message)?.content).toBe("Read the three files.");
   });
 
-  it("launches Claude Code as the sweep did, with the pi tools alone and nothing of the host's", async () => {
-    replay("text.jsonl");
+  it("launches Claude Code as the sweep did but for its prompt, with the pi tools alone and nothing of the host's", async () => {
+    replay(TEXT);
     await turn([opening], "high");
     const launch = launched();
     expect(flag(launch, "--model")).toBe("claude-haiku-4-5");
@@ -157,12 +167,13 @@ describe("the Claude backend", () => {
     expect(realpathSync.native(launch.cwd)).toBe(realpathSync.native(home));
     expect(launch.argv).toContain("--strict-mcp-config");
     expect(launch.argv).toContain("--setting-sources=");
-    // The preset prompt is the CLI's own, so the SDK sends only what is appended to it.
+    // The session's prompt is the whole prompt: Claude Code's own, which the sweep's solver read
+    // first, describes tools no session here has.
     const init = asRecord(
       launch.stdin.find((line) => asRecord(line.request)?.subtype === "initialize")?.request,
     );
-    expect(init?.appendSystemPrompt).toBe("You are a solver.");
-    expect(init?.systemPrompt).toBeUndefined();
+    expect(init?.systemPrompt).toEqual(["You are a solver."]);
+    expect(init?.appendSystemPrompt).toBeUndefined();
     expect(init?.skills).toEqual([]);
     expect(init?.sdkMcpServers).toEqual(["custom-tools"]);
     const { env } = launch;
@@ -174,21 +185,86 @@ describe("the Claude backend", () => {
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
+  // An Examiner and a reviewer run on the host's tools alone; a solver and a Builder keep the CLI's
+  // search beside them.
+  it("sends a session no built-in tool when the options say so", async () => {
+    const context = normalizeContext({
+      systemPrompt: "You are the Examiner.",
+      messages: [opening],
+      tools: [read],
+    });
+    const started = async (webSearch: boolean) => {
+      replay(TEXT);
+      const provider = claudeProvider({ executable, compaction: "off", home, webSearch });
+      const options = { ...solveOptions(), sessionId: `own-${String(solves)}-${String(webSearch)}` };
+      await provider.streamSimple(recorded, context, options).result();
+      const launch = launched();
+      const init = asRecord(
+        launch.stdin.find((line) => asRecord(line.request)?.subtype === "initialize")?.request,
+      );
+      return {
+        tools: flag(launch, "--tools"),
+        system: init?.systemPrompt,
+        appended: init?.appendSystemPrompt,
+      };
+    };
+    expect(await started(false)).toEqual({
+      tools: "",
+      system: ["You are the Examiner."],
+      appended: undefined,
+    });
+    writeFileSync(join(home, "launch.jsonl"), "");
+    expect(await started(true)).toEqual({
+      tools: "WebSearch",
+      system: ["You are the Examiner."],
+      appended: undefined,
+    });
+  });
+
   it("asks for the long-context id of a model the sweep ran at a million tokens", async () => {
-    replay("text.jsonl");
-    const opus = sweep.getModels().find((entry) => entry.id === "claude-opus-5");
-    if (opus === undefined) throw new Error("pi's Anthropic catalog has no claude-opus-5");
     const context = normalizeContext({
       systemPrompt: "You are a solver.",
       messages: [opening],
       tools: [read],
     });
-    await sweep.streamSimple(opus, context, solveOptions()).result();
-    expect(flag(launched(), "--model")).toBe("claude-opus-5[1m]");
+    for (const id of ["claude-opus-5", "claude-opus-5-5", "claude-sonnet-5-5"]) {
+      replay(TEXT);
+      const model = sweep.getModels().find((entry) => entry.id === id);
+      if (model === undefined) throw new Error(`pi's Anthropic catalog has no ${id}`);
+      await sweep.streamSimple(model, context, { ...solveOptions(), sessionId: `solve-${id}` }).result();
+      expect(flag(launched(), "--model")).toBe(`${id}[1m]`);
+    }
+  });
+
+  // Which account spends is the operator's to name. An API key is a provider of its own, so the
+  // name is on the command line and in every condition, and a key in the host's environment never
+  // reaches a solve asked of the login.
+  it("hands Claude Code the one credential of the account its provider names", async () => {
+    const onKey = claudeProvider({ executable, compaction: { window: 300_000 }, home }, "claude-api");
+    const model = onKey.getModels().find(({ id }) => id === recorded.id);
+    if (model === undefined) throw new Error(`the catalog has no ${recorded.id}`);
+    expect(model.provider).toBe("claude-api");
+    replay(TEXT);
+    const context = normalizeContext({
+      systemPrompt: "You are a solver.",
+      messages: [opening],
+      tools: [read],
+    });
+    const said = await onKey.streamSimple(model, context, { ...solveOptions(), apiKey: "key" }).result();
+    expect(said.errorMessage).toBeUndefined();
+    const { env } = launched();
+    expect(env.ANTHROPIC_API_KEY).toBe("key");
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+    // The rest of the CLI's environment is the login's: its own configuration, its compaction.
+    expect(env.CLAUDE_CONFIG_DIR).toBe(join(home, "claude-config"));
+    expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("300000");
+    expect(() => claudeProvider({ executable, compaction: "off", home }, "claude-max")).toThrow(
+      "claude-max is no account of the Claude backend",
+    );
   });
 
   it("switches Claude Code's compaction off when the condition says off, and refuses a window it would drop", async () => {
-    replay("text.jsonl");
+    replay(TEXT);
     await turn([opening], undefined, "off");
     const { env } = launched();
     expect(env.DISABLE_AUTO_COMPACT).toBe("1");
@@ -201,7 +277,7 @@ describe("the Claude backend", () => {
   it("bills the turns' token classes at what Claude Code reported the query cost", async () => {
     const prices = freezePrices([haiku]);
     for (const [fixture, reported] of [
-      ["text.jsonl", 0.020421],
+      [TEXT, 0.020421],
       ["parallel-tools.jsonl", 0.0056776],
     ] as const) {
       replay(fixture);
@@ -216,23 +292,53 @@ describe("the Claude backend", () => {
     }
   });
 
+  it("logs a compaction Claude Code ran before the turn, as v1's onCompaction read it", async () => {
+    const boundary = JSON.stringify({
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 312_000, duration_ms: 4_200 },
+      session_id: "00000000-0000-4000-8000-000000000001",
+      uuid: "00000000-0000-4000-8000-0000000000ff",
+    });
+    replay(TEXT, (text) => text.replace("\n", `\n${boundary}\n`));
+    const message = await turn([opening]);
+    const types = message.diagnostics?.map((entry) => entry.type);
+    expect(types).toEqual([CLAUDE_COMPACTED, REPORTED_COST]);
+    const log = join(home, "trace.jsonl");
+    traceSink(log, "solve", "s-1", () => 1)({ type: "turn_end", message, toolResults: [] });
+    const compacted = readLog(log).find(({ kind }) => kind === "solve.compacted");
+    expect(compacted?.data).toEqual({
+      solve: "s-1",
+      tokensBefore: 312_000,
+      seconds: 4.2,
+      usages: [],
+      error: null,
+    });
+  });
+
   it("fails the turn on a refusal, so it reads as the provider's non-result and not the solver's stop", async () => {
-    replay("text.jsonl", (text) => text.replaceAll('"stop_reason":"end_turn"', '"stop_reason":"refusal"'));
+    replay(TEXT, (text) => text.replaceAll('"stop_reason":"end_turn"', '"stop_reason":"refusal"'));
     const refused = await turn([opening]);
     expect(refused.stopReason).toBe("error");
     expect(refused.errorMessage).toContain("refusal");
   });
 
   // A submit ends pi's loop while Claude Code still waits on the call's result; the solve's abort,
-  // not a later turn, is what ends that query.
-  it("ends a query left open when the solve's signal aborts between turns", async () => {
+  // not a later turn, is what ends that query. It interrupts the turn first: Claude Code left to
+  // find its stdin closed goes on with the turn and asks the model again.
+  it("interrupts and ends a query left open when the solve's signal aborts between turns", async () => {
     replay("parallel-tools.jsonl");
     const context = (messages: Message[]) =>
       normalizeContext({ systemPrompt: "You are a solver.", messages, tools: [read] });
     const options = solveOptions();
     const first = await sweep.streamSimple(recorded, context([opening]), options).result();
     expect(first.stopReason).toBe("toolUse");
+    const interrupted = () =>
+      launched().stdin.some((sent) => asRecord(sent.request)?.subtype === "interrupt");
+    expect(interrupted()).toBe(false);
     solve.abort();
+    for (let waited = 0; waited < 2000 && !interrupted(); waited += 20) await Bun.sleep(20);
+    expect(interrupted()).toBe(true);
     const next = { ...options, signal: new AbortController().signal };
     const after = await sweep
       .streamSimple(recorded, context([opening, first, ...answered(first)]), next)
@@ -241,7 +347,7 @@ describe("the Claude backend", () => {
   });
 
   it("takes a nudge into the live query, as v1 did (provider.ts:525-560)", async () => {
-    replay("text.jsonl");
+    replay(TEXT);
     const answer = await turn([opening]);
     expect(answer.stopReason).toBe("stop");
     const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
@@ -254,7 +360,7 @@ describe("the Claude backend", () => {
   });
 
   it("refuses a later prompt with no live query to hold the conversation", async () => {
-    replay("text.jsonl");
+    replay(TEXT);
     const answer = await turn([opening]);
     solve.abort();
     solve = new AbortController();

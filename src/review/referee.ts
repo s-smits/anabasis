@@ -16,12 +16,12 @@
  *
  * The checks are replayed on the logged answer before any reading. A replay that gives another
  * verdict than the log holds is a check that does not repeat, and the host rules it a check-defect
- * itself; one that reaches no verdict leaves the fail unclear. Gate 3 asks the same of the accepted
- * answer and of no other, so a failing answer is where a check that does not repeat first shows.
+ * itself; one that reaches no verdict leaves the fail unclear. Nothing else runs a check twice on
+ * one answer, so a rejected answer is where a check that does not repeat first shows.
  *
  * The packet sets an answer the checks accepted for the task beside the one under review, where the
- * log holds one: gate 2's is there for every feasible task, and the difference between the two is
- * the shortest way to what a check objects to.
+ * log holds one: any solve of the task that passed left one, and the difference between the two is
+ * the shortest way to what a check objects to. A task no solve has answered validly has none.
  *
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
  * rules and logs, one `referee.finding` per fail.
@@ -40,7 +40,8 @@ import {
 import { readFileSync } from "../meta/filesystem.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { isString, type JsonValue } from "../meta/json-shape.ts";
+import { keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { text, tool } from "../solve/answer.ts";
 import { conclusive, type ProbeRow, probeTool } from "./probe.ts";
@@ -49,7 +50,7 @@ import { type Reader, readOnce } from "./reader.ts";
 export type Ruling = "earned" | "check-defect" | "unclear";
 
 /** One fail to referee: the solve that failed, as its log names it, and the verifier's side of it. */
-export interface RefereeCase {
+interface RefereeCase {
   readonly solve: string;
   readonly task: Task;
   readonly contract: Contract;
@@ -70,6 +71,13 @@ export interface RefereeFinding {
   readonly reason: string;
   /** The probes the ruling cites. */
   readonly probes: readonly number[];
+}
+
+/** What a ruling may name of one refusing check: the fields of the answer it reads and the public
+ *  rules it cites. */
+interface Refusing {
+  readonly fields: readonly string[];
+  readonly rules: readonly string[];
 }
 
 const REASON_MAX_CHARS = 700;
@@ -160,7 +168,7 @@ function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue |
   const { hidden, ...task } = fail.task;
   return [
     `Public rules:\n${fail.contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n")}`,
-    `Conventions: ${fail.contract.conventions || "(none)"}`,
+    ...(fail.contract.conventions === "" ? [] : [`Conventions: ${fail.contract.conventions}`]),
     `Public task: ${capturedJsonStringify(task)}`,
     `Hidden values the checks may receive: ${capturedJsonStringify(hidden)}`,
     `Answer under review: ${capturedJsonStringify(verdict.answer)}`,
@@ -202,18 +210,11 @@ function readProgramTool(checks: string) {
   });
 }
 
-/** What a ruling may name of one refusing check: the fields of the answer it reads and the public
- *  rules it cites. */
-interface Refusing {
-  readonly fields: readonly string[];
-  readonly rules: readonly string[];
-}
-
 function rulingTool(
   refusing: ReadonlyMap<string, Refusing>,
   answer: JsonValue,
   rows: readonly ProbeRow[],
-  found: { finding?: RefereeFinding },
+  found: RefereeFinding[],
 ) {
   return tool({
     name: "record_ruling",
@@ -229,7 +230,7 @@ function rulingTool(
       field: Type.Optional(
         Type.String({
           description:
-            "For earned: the path of the field of the answer that breaks the rule, spelled as the checks spell theirs: `$.layout.members[0].area`.",
+            "For earned: the path of the field of the answer that breaks the rule, spelled as the checks spell theirs: `$.items[0].value`.",
         }),
       ),
       reason: Type.String({ minLength: 1, maxLength: REASON_MAX_CHARS }),
@@ -278,14 +279,14 @@ function rulingTool(
         }
       }
       const earned = args.ruling === "earned";
-      found.finding = {
+      found.push({
         ruling: args.ruling,
         check: args.ruling === "check-defect" ? (args.check ?? null) : null,
         rule: earned ? (args.rule ?? null) : null,
         field: earned ? (args.field ?? null) : null,
         reason: args.reason.trim(),
         probes: [...new Set(args.probes)].sort((a, b) => a - b),
-      };
+      });
       return { ...text("Recorded."), terminate: true };
     },
   });
@@ -302,7 +303,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
   const replay = verdict?.fault === null ? await fail.verify(fail.task, verdict.answer) : null;
   const host = hostRuling(verdict, replay);
   const rows: ProbeRow[] = [];
-  const found: { finding?: RefereeFinding } = {};
+  const found: RefereeFinding[] = [];
   const accepted = events.findLast(
     ({ kind, data }) => kind === "verdict" && data.task === fail.task.taskId && data.kind === "pass",
   )?.data.answer;
@@ -333,7 +334,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
           ),
         ]);
   const finding = host ??
-    found.finding ?? {
+    found.at(-1) ?? {
       ruling: "unclear",
       check: null,
       rule: null,
@@ -341,13 +342,12 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
       reason: "the Referee recorded no ruling",
       probes: [],
     };
-  // SAFETY: a finding is strings and numbers, and a replay and probe rows add verdicts, all JSON.
   append(fail.log, "referee.finding", {
     solve: fail.solve,
     task: fail.task.taskId,
-    ...(finding as unknown as JsonObject),
-    ...(replay === null ? {} : { replay }),
-    ...(meter === null ? {} : { ...meter, probeRows: rows as unknown as JsonValue }),
+    ...finding,
+    ...keyIfNotNull("replay", replay),
+    ...keysIf(meter !== null, () => ({ ...meter, probeRows: rows })),
   });
   return finding;
 }

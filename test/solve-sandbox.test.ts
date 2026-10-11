@@ -14,7 +14,14 @@
 // while making the product unusable. Run 4 is the reason it is not hypothetical — it walled off
 // its own repair-attribution and Judge paths.
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { homedir, tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
@@ -55,6 +62,41 @@ afterEach(() => {
 });
 
 describe("the solve isolation's policy", () => {
+  it("denies the repository's other worktrees with it, and names them in its identity", () => {
+    // A campaign runs from a worktree kept for it, and its log, every hidden value in it, lies
+    // under `.ana` there. Until 10 October a shell in a sibling worktree could read it.
+    const repoRoot = workRepo();
+    const sibling = workRepo();
+    const alone = solveIsolationPolicy({ repoRoot, cap });
+    const closed = solveIsolationPolicy({ repoRoot, otherTrees: [sibling], cap });
+    if ("unsupported" in alone || "unsupported" in closed) {
+      throw new Error("this host cannot run the isolation");
+    }
+    expect(alone.deniedReadRoots).not.toContain(sibling);
+    expect(closed.deniedReadRoots).toContain(sibling);
+    expect(closed.deniedReadRoots).toContain(realpathSync.native(sibling));
+    expect(closed.deniedWriteRoots).toContain(sibling);
+    expect(closed.policyHash).not.toBe(alone.policyHash);
+  });
+
+  it("mounts nothing on a denied worktree removed since the policy was made, so a solve still starts", () => {
+    // The other worktrees are read once when a campaign opens. On 10 October two were removed
+    // while a simulated campaign ran, and from the next policy on every solve ended
+    // `sandbox-crash`: Bubblewrap cannot make a mountpoint under the read-only root. A removed
+    // tree cannot be read, so it stays in the identity and takes no mount.
+    const repoRoot = workRepo();
+    const sibling = workRepo();
+    const policy = solveIsolationPolicy({ repoRoot, otherTrees: [sibling], cap });
+    if ("unsupported" in policy) throw new Error(`this host cannot run the isolation: ${policy.unsupported}`);
+    rmSync(sibling, { recursive: true, force: true });
+    expect(policy.deniedReadRoots).toContain(sibling);
+    if (onLinux) {
+      const argv = isolationArgv(policy, "/bin/true", [], {});
+      expect(argv).not.toContain(sibling);
+      expect(argv).toEqual(expect.arrayContaining(["--tmpfs", realpathSync.native(repoRoot)]));
+    }
+  });
+
   it("denies the repository and whole operator home, reopening only explicit runtimes", () => {
     const repoRoot = workRepo();
     const policy = solveIsolationPolicy({ repoRoot, cap });
@@ -166,6 +208,17 @@ describe("the executed fixture", () => {
     expect(evidence.moveGuardRefused).toBe(true);
     if (onLinux) expect(evidence.evidence.join("\n")).toContain("stayed hidden");
     expect(evidence.isolated).toBe(true);
+    // Given no other worktree the sibling read is not tried; given one, a read of its package.json
+    // is refused too, which every wall checks once a process before its first use (`walledBase`).
+    // The probe writes nothing into a sibling, which another user may own (10 October).
+    expect(evidence.siblingReadRefused).toBeNull();
+    const sibling = workRepo();
+    writeFileSync(join(sibling, "package.json"), '{\n  "name": "a-sibling"\n}\n');
+    const closed = probeHostSolveReadDeny({ repoRoot, otherTrees: [sibling], cap });
+    expect(closed.siblingReadRefused).toBe(true);
+    expect(closed.isolated).toBe(true);
+    expect(closed.evidence.join("\n")).toContain("other-worktree read: REFUSED");
+    expect(readdirSync(sibling)).toEqual(["package.json"]);
     const policy = solveIsolationPolicy({ repoRoot, cap });
     if ("unsupported" in policy) throw new Error("this host cannot run the isolation");
     // The evidence binds the rules it executed, so a later reader can re-derive them.
@@ -225,13 +278,14 @@ describe("the disk cap", () => {
     );
   });
 
-  // Argv only: this suite's host may not be Linux, and the order is what the policy is.
+  // Argv only: this suite's host may not be Linux, and the order is what the policy is. The denied
+  // roots exist, since a root that does not takes no mount.
   it("mounts a sized tmpfs at the root after the denies and before any read-only remount", () => {
     const argv = isolationArgv(
       {
         profile: "linux",
         mechanismId: LINUX_BWRAP_ID,
-        deniedReadRoots: ["/home/operator", "/srv/repo"],
+        deniedReadRoots: [homedir(), workRepo()],
         allowedReadRoots: ["/home/operator/.bun"],
         cap: { root: "/tmp/solve-1", bytes: 1_048_576 },
       },

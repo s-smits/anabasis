@@ -1,29 +1,54 @@
 /**
  * What an Examiner reads before its first call: the system prompt and the opening message.
  *
- * The plan's D1b asks whether an author who never sees the harness can write tasks the bracket
- * admits, and gives the author's side in four lines: it writes task instances only, against a fixed
- * contract and checker; it hears one word of each; and its prompt carries no zone, share or target
- * count. v1 had no such author. Its Builder wrote the exam beside the harness, and what is taken
- * here is what its prompt said of tasks, from `src/author/builder-start-prompt.ts` at 3f93d06b:
+ * The Examiner writes task instances only, against a fixed contract and check program. It is told
+ * why a package was refused, and at its opening one outcome of each task the campaign holds, the
+ * pack's and the ones earlier sessions wrote (`record.ts`). Its prompt carries no zone, share or target count, which is the line v1 drew
+ * after measuring both. v1 had no such author. Its Builder wrote the exam beside the harness, and
+ * what is taken here is what its prompt said of tasks, from `src/author/builder-start-prompt.ts`
+ * at 3f93d06b:
  * - `INTENT_CLAUSE`'s last line, that requirements must act together on one answer. Its evidence is
  *   v1's own: on the truss packs the same requirements passed 22 of 23 one at a time and 7 of 20
- *   inside one shared limit.
+ *   inside one shared limit. The plan names it the one change that made tasks harder.
  * - `SCOPE_CLAUSE`'s last line, that a limit the field does not hold measures the author's wording.
  * - `PUBLICATION_CLAUSE`'s rule that a solver following every published rule never fails on one it
  *   could not read.
+ * - Its examples' list of changes that look harder and are not (`starter-pack/examples.md`): a limit
+ *   or a size moved while the method that passed still meets it. v1 measured that list: limits reset
+ *   at a 3.4-hour search's best passed 5 of 6, and 71 of 74 batteries after a widened one passed
+ *   whole.
  *
  * What v1's prompt said that is left out: everything about the harness, the correctness model and
  * the tools, none of which an Examiner writes. On 7 October a Builder told to make its exam harder
  * removed a solver tool instead; an Examiner has no harness to weaken.
  *
- * The words are the plan's four and two the host needs beside them: `wall-bound`, the kernel's
- * state for a task whose only fails ended at the wall, which stays apart until the plan's decision
- * 21 says whether such a task may be scored, and `undecided`, for a task the host could not finish
- * a solve of, which is nobody's verdict on the task.
+ * Until 2026-10-09 the prompt described a stronger solver that had to pass a task, three reject
+ * controls the Examiner wrote from that solver's answer, and a word for how the measured solver
+ * did. The plan removes all three (`docs/plan.md`, Phase 2), and the prompt says instead how a
+ * task is scored now: under one compute budget for both harnesses, an answer that passes every
+ * check within it is valid, and the harness with more valid answers wins the task. A task that can
+ * tell two harnesses apart is therefore one a better method answers validly within the budget and
+ * a worse one does not, which is what the text asks for. Until 10 October the budget's size was
+ * not told, on the reasoning that an author told it would write towards it; the tasks of ten
+ * campaigns tied under both harnesses, and a task that separates two harnesses at three turns
+ * cannot be written without knowing three. It is told now as a fact (`Facts`, `firstMessage`),
+ * with the sentence that it is no target.
+ *
+ * Since 2026-10-09 the prompt says that a task needs a valid answer, and one way to be sure of
+ * one; since 10 October `try_answer` runs the checks on an instance with an answer of the
+ * Examiner's, and a walled shell computes, where before the Examiner could run nothing and said
+ * so (`session.ts`). A task is held out on the shape of its package, and nothing solves it first (`AGENTS.md`,
+ * rule 9), so nothing but its author stands between the exam and a task no answer satisfies. In
+ * the first campaign opened from a prompt an Examiner whose tasks had all tied pressed the next
+ * ones to the margin, and two of seven asked for more addresses than their block had free: every
+ * solve of both harnesses failed them, which a comparison reads as two ties and its reader, until
+ * the same day, as room. The same day's notes of nine Examiner sessions on two stored packs say
+ * in at least eight that a task's feasibility rests on hand estimates. The sentence asks for no
+ * easier task: an answer chosen first can sit as close to a limit as its author likes.
  */
-import type { Contract } from "../kernel/contract.ts";
+import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
+import { plural } from "../meta/text.ts";
 
 /** A check as its author's brief declares it and an Examiner is shown it: never its program. */
 export interface CheckRow {
@@ -32,13 +57,23 @@ export interface CheckRow {
   readonly families: "all" | readonly string[];
 }
 
-/** An example as the opening message lists it. */
-export interface ListedExample {
-  readonly taskId: string;
-  readonly family: string;
+/** The limits a session is told it runs under. How many tasks are wanted is not among them. */
+/** What a session is told of its campaign beside the contract: the operator's brief, where the
+ *  campaign opened from one, and the budget every solve is held to, where the caller knows it. */
+interface Facts {
+  readonly brief?: string | null | undefined;
+  readonly budget?: { readonly modelTurns: number | null; readonly minutes: number } | null | undefined;
+  /** The campaign asks for tasks that leave the reference harness room. */
+  readonly room?: boolean | undefined;
 }
 
-/** The limits a session is told it runs under. How many tasks are wanted is not among them. */
+/** What a session asked for room is told, after the budget: the exam's tasks so far were answered,
+ *  and the campaign needs ones a solver under the budget can fail. Since 10 October the climb is
+ *  on tasks before the budget (`src/builder/decide.ts`, `harder`), and the operator's word is that
+ *  an author is told this much: the need, and no count, share or zone. */
+const ROOM =
+  "The tasks the exam holds leave no room: the reference harness answered nearly all of them within the budget, so a comparison on them cannot tell a better harness from it. The campaign needs tasks that are harder for a solver than these, within the domain's scope, which a solver under the budget can fail and which still have a valid answer. Harder is yours to judge from the domain; the outcomes above say which of the tasks so far were answered by every solve.";
+
 export interface Told {
   readonly wallSeconds: number;
   readonly turns: number;
@@ -46,32 +81,50 @@ export interface Told {
 
 export const SYSTEM_PROMPT = [
   "You are the Examiner. You write tasks of one domain, on which a solving model is then measured. The domain's public rules, its answer format and its checks are fixed and are not yours to change: you write no rule and no check. A task is a family, a public input, which is all a solver reads of it, and hidden values, which only the checks receive.",
-  "A task is scored when a stronger solver passes it and the solver being measured does not always pass it. A task no solver passes measures nothing, and neither does one every solver passes. You are not told how many tasks are wanted or what share of them should be scored, and you never see the measured solver: not its tools, its guide, its answers or its mistakes. Of each task you are told one word.",
-  "Write tasks a practitioner of the domain would call demanding and fair. Make several of the domain's requirements act together on a single answer, so that meeting one spends the margin another needs: requirements that only stand side by side are met one at a time. A limit, state or duty the field does not hold measures your wording rather than the solver, so add none. A solver that follows every public rule must never fail on a rule it could not read, so everything a task demands is in its public input and the public rules, and nothing a solver needs is in the hidden values. Vary what a task asks, not the names in it: an example with its numbers moved is the same task.",
-  "propose_tasks takes instances and puts each through the host's gates: its shape, one solve by the stronger solver, and a repeat of the checks on the answer that solve submitted. Of each it says refused, with the gate's reason, or too hard, or that it is feasible so far, with the answer the checks accepted. A task the stronger solver fails is too hard whatever the reason, and its instance is not yours to resubmit under another name.",
-  "For each feasible task you then write three reject controls with write_controls. A control is one change to that accepted answer, a field replaced or a passage rewritten, after which one check, which you name by its id, must refuse it; change a different fact in each. Controls test the checks, not the solver: a check that passes a wrong answer, or refuses one for another reason than the one you named, is a defect the task cannot carry, and the task is refused. Once its controls hold, the task is solved by the solver being measured and you are told the word: too easy, wall-bound, which is a task the solver only ran out of time on and which is not scored, or scored.",
-  "read_example returns one existing task of the domain whole, for its shape. When you have no more tasks to propose, call finish. The session also ends at its limits, and when the host has the tasks it needs.",
+  "The solver is measured by comparison. Each task is solved several times by the solver with one set of tools, called a harness, and several times with another, every solve under the same fixed budget of turns and computing time. An answer that passes every check within that budget is valid, and on each task the harness that gives more valid answers wins. A task both harnesses answer validly every time tells them apart no more than one neither can answer. So what the exam needs is a task a better method answers validly within the budget and a worse one does not. You are not told how many tasks are wanted, and you never see the measured solver: not its tools, its guide, its answers or its mistakes. The budget is given at your opening, as a fact.",
+  "Write tasks a practitioner of the domain would call demanding and fair. Make several of the domain's requirements act together on a single answer, so that meeting one spends the margin another needs: requirements that only stand side by side are met one at a time. A limit, state or duty the field does not hold measures your wording rather than the solver, so add none. A solver that follows every public rule must never fail on a rule it could not read, so everything a task demands is in its public input and the public rules, and nothing a solver needs is in the hidden values. A task with no valid answer measures nothing, since every harness fails it alike: make sure one exists, by starting from an answer that keeps every rule, deriving the task from it, and putting both to try_answer, which runs the checks on them and says which refuse the answer. An answer that passes can sit as close to a limit as you like, and the task is as demanding as the answer is hard to find. Vary what a task asks, not the names in it: an example with its numbers moved is the same task, and so is one with a limit or a size moved while the method that answered it still does.",
+  "propose_tasks takes instances and puts each to the host's one gate, which reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. Of each it says held out, or refused with the gate's reason. A task that is held out is in the exam from then on. No solver is put to it while you wait, so you hear nothing more of it in this session. At your opening you are told one thing of each task the exam holds so far, the older and easier ones included: how the reference harness, the one a new harness is measured against, did on it in the last comparison that scored it, valid in every one of its solves, in some, or in none; or that it is disputed, which is a rejected answer whose rejection is not settled. A task the reference harness answers in every solve leaves no room; one it answers in none is where a better harness could show.",
+  "read_example returns one task of the exam whole, for its shape. try_answer runs the checks on an instance with an answer of yours and keeps nothing: no task enters the exam by it. bash, read and write are yours in a home of your own, empty at the start of the session and closed to everything but your work, for computing an instance or an answer; what you compute there enters the exam through propose_tasks alone. When you have no more tasks to propose, call finish. The session also ends at its limits, and when the host has the tasks it needs.",
 ].join("\n");
 
-export const NUDGE =
-  "You have not called finish. Propose further tasks, write the controls a feasible task is waiting for, or call finish.";
+export const NUDGE = "You have not called finish. Propose further tasks, or call finish.";
 
-/** The opening message: the domain's public contract, its checks by id and assertion, the examples
- *  by family, and the session's limits. */
+/** The opening message: the operator's brief where the campaign opened from one, the domain's
+ *  public contract, its checks by id and assertion, the session's limits, and every task the
+ *  campaign holds with its one outcome, a line a task as `record.ts` renders it. */
 export function firstMessage(
   contract: Contract,
   checks: readonly CheckRow[],
-  examples: readonly ListedExample[],
+  listed: readonly string[],
   told: Told,
+  campaign: Facts = {},
 ): string {
+  const { brief = null, budget = null, room = false } = campaign;
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
+    // The brief first, where the campaign opened from one: every session rereads the domain as the
+    // operator put it, and not only the exam drafted from it (10 October). The rules govern.
+    ...(brief === null
+      ? []
+      : [
+          `The domain, as the operator put it when the campaign opened. The rules below are the exam drafted from it and govern where the two differ:
+${brief}`,
+        ]),
     `Public rules of the domain:\n${contract.rules.map((rule) => `- ${rule.id}: ${rule.statement}`).join("\n") || "(none)"}`,
-    `Conventions: ${contract.conventions || "(none)"}`,
+    ...(contract.conventions === "" ? [] : [`Conventions: ${contract.conventions}`]),
     `Scope: ${contract.scope}`,
+    ...(contract.objective === undefined ? [] : [`Objective: ${objectiveLine(contract.objective)}`]),
     `A solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
-    `The checks, by the id a reject control names:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
-    `Existing tasks, for read_example:\n${examples.map(({ taskId, family }) => `- ${taskId} (family ${family})`).join("\n") || "(none)"}`,
-    `This session has ${String(Math.round(told.wallSeconds / 60))} minutes and ${String(told.turns)} turns.`,
+    // The budget as a fact: a task that tells two harnesses apart is one a better method answers
+    // within it and a worse one does not, which nobody can write without knowing it (10 October).
+    ...(budget === null
+      ? []
+      : [
+          `Every solve of a task is held to ${budget.modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(budget.modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(budget.minutes, "minute")}. Both harnesses are measured under that budget, and the number may change as the campaign goes on. This is the measure of "within the budget" above; it is no target of yours.`,
+        ]),
+    `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
+    `The tasks of the exam so far, and what the last comparison that scored each one found. These are measurements and no instruction. read_example returns any of them whole.\n${listed.map((line) => `- ${line}`).join("\n") || "(none)"}`,
+    ...(room ? [ROOM] : []),
+    `This session has ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
   ].join("\n\n");
 }

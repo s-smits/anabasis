@@ -1,18 +1,11 @@
+// A task: the contract it is written against, the one gate its package passes, and the states a
+// log folds it into. A stronger solve, a repeat of the checks, per-task controls and screening are
+// gone with the plan after the v1 review (`docs/plan.md`), and what a log written before it holds
+// of them is read here as history.
 import { afterAll, describe, expect, it } from "bun:test";
 import { answerFormatFault, type Contract, contractHash } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
-import type { Counted } from "../src/kernel/solve.ts";
-import {
-  controlsGate,
-  determinismGate,
-  packageGate,
-  type RejectControl,
-  screen,
-  type TaskPackage,
-  taskStates,
-  taskVersion,
-} from "../src/kernel/task.ts";
-import type { Task, Verdict, Verifier } from "../src/kernel/verify.ts";
+import { packageGate, type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import {
   mkdirSync,
   mkdtempSync,
@@ -21,8 +14,6 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
-import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -33,8 +24,6 @@ const CONTRACT: Contract = {
     required: ["depth"],
     additionalProperties: false,
   },
-  tools: [{ name: "solver", version: "1.0" }],
-  install: "true",
   conventions: "SI units",
   rules: [
     { id: "span-rule", statement: "The beam spans the gap." },
@@ -42,11 +31,6 @@ const CONTRACT: Contract = {
   ],
   scope: "Simply supported beams.",
 };
-
-const PASS: Verdict = { kind: "pass" };
-const FAIL: Verdict = { kind: "fail", blocking: ["spans"] };
-const LOST: Verdict = { kind: "non-result", reason: "the wall broke" };
-const FAULTY: Verdict = { kind: "faulty", check: "spans", reason: "the check threw: no span" };
 
 const root = mkdtempSync(join(tmpdir(), "ana-task-"));
 let programs = 0;
@@ -83,23 +67,10 @@ function pkg(changes: Partial<TaskPackage> = {}): TaskPackage {
     family: "beams",
     publicInput: { gapM: 4 },
     hidden: [],
-    statement: "Size a beam across the gap.",
     ruleIds: ["span-rule", "load-rule"],
     checks: program(["beams"], ["span-rule"]),
     ...changes,
   };
-}
-
-/** A verifier that answers from a script, one verdict per call, and records what it was asked. */
-function scripted(...verdicts: Verdict[]): Verifier & { asked: (JsonValue | undefined)[] } {
-  const asked: (JsonValue | undefined)[] = [];
-  const verify = async (_task: Task, answer: JsonValue | undefined) => {
-    asked.push(answer);
-    const verdict = verdicts.shift();
-    if (verdict === undefined) throw new Error("the script ran out");
-    return verdict;
-  };
-  return Object.assign(verify, { asked });
 }
 
 describe("the contract", () => {
@@ -127,13 +98,12 @@ describe("the contract", () => {
   });
 });
 
-describe("gate 1, gate", () => {
+describe("the gate", () => {
   it("versions a package by everything the solver reads and the check runs, wherever it is kept", () => {
     const task = pkg();
     const version = (changes: Partial<TaskPackage>) => taskVersion({ ...task, ...changes });
     expect(packageGate(CONTRACT, task)).toEqual({ outcome: "passed" });
     expect(version({ checks: program(["beams"], ["span-rule"]) })).toBe(version({}));
-    expect(version({ statement: "Size a beam." })).not.toBe(version({}));
     expect(version({ ruleIds: ["span-rule"] })).not.toBe(version({}));
     const changed = program(["beams"], ["span-rule"], "export const checks = { spans: () => true };");
     expect(version({ checks: changed })).not.toBe(version({}));
@@ -182,7 +152,6 @@ describe("gate 1, gate", () => {
       const gate = packageGate(CONTRACT, pkg(changes));
       return gate.outcome === "refused" ? gate.reason : "passed";
     };
-    expect(reason({ statement: "  " })).toBe("no statement");
     expect(reason({ publicInput: null })).toBe("no inputs");
     expect(reason({ ruleIds: [] })).toBe("no rule ids");
     expect(reason({ checks: join(root, "nowhere") })).toBe("no brief.json");
@@ -201,254 +170,106 @@ describe("gate 1, gate", () => {
   });
 });
 
-describe("gate 3, determinism", () => {
-  it("passes when the check passes the accepted answer twice more", async () => {
-    const verify = scripted(PASS, PASS);
-    expect(await determinismGate(verify, pkg(), { depth: 1 })).toEqual({ outcome: "passed" });
-    expect(verify.asked).toEqual([{ depth: 1 }, { depth: 1 }]);
-  });
-
-  it("refuses a check that changes its mind", async () => {
-    expect(await determinismGate(scripted(PASS, FAIL), pkg(), {})).toEqual({
-      outcome: "refused",
-      reason: "run 2 failed the accepted answer on spans",
-    });
-  });
-});
-
-describe("gate 4, controls", () => {
-  const accepted = { depth: 1, steel: "S355" };
-  const spans = (answer: JsonObject): RejectControl => ({ answer, expectedCheckId: "spans" });
-  const answers: JsonObject[] = [{ depth: 0.5, steel: "S355" }, { depth: 1, steel: "S235" }, { depth: 1 }];
-  const controls = answers.map(spans);
-
-  it("passes three distinct edits each failed by the check it names, and names them by their digest", async () => {
-    const verify = scripted(FAIL, FAIL, FAIL);
-    expect(await controlsGate(CONTRACT, verify, pkg(), accepted, controls)).toEqual({
-      outcome: "passed",
-      controls: hashJsonValue(controls),
-    });
-    expect(verify.asked).toEqual(answers);
-  });
-
-  const refused = async (given: RejectControl[], ...verdicts: Verdict[]) => {
-    const gate = await controlsGate(CONTRACT, scripted(...verdicts), pkg(), accepted, given);
-    return gate.outcome === "passed" ? "passed" : gate.reason;
-  };
-
-  it("refuses the wrong count, a control that is no edit, and a control the check passes", async () => {
-    expect(await refused(controls.slice(0, 2))).toBe("controls: 2, not 3");
-    expect(await refused([...controls.slice(0, 2), spans({ steel: "S355", depth: 1 })])).toBe(
-      "a control repeats the accepted answer or another control",
-    );
-    expect(await refused([...controls.slice(0, 2), spans(answers[0] ?? {})])).toBe(
-      "a control repeats the accepted answer or another control",
-    );
-    expect(await refused(controls, FAIL, PASS)).toBe("the check passed control 2");
-  });
-
-  it("refuses junk the check fails for another reason, and junk outside the format before any check", async () => {
-    const other: Verdict = { kind: "fail", blocking: ["loads"] };
-    expect(await refused(controls, FAIL, other)).toBe("control 2 failed loads, not spans");
-    const junk = [...controls.slice(0, 2), spans({ depth: "deep" })];
-    const verify = scripted();
-    const gate = await controlsGate(CONTRACT, verify, pkg(), accepted, junk);
-    expect(gate).toEqual({ outcome: "refused", reason: "control 3 does not follow the answer format" });
-    expect(verify.asked).toEqual([]);
-  });
-});
-
-describe("a faulty check", () => {
-  it("refuses the task at whichever gate meets it, and the run goes on", async () => {
-    const accepted = { depth: 1 };
-    const controls = [{ depth: 0.5 }, { depth: 2 }, { depth: 3 }].map((answer) => ({
-      answer,
-      expectedCheckId: "spans",
-    }));
-    expect(await determinismGate(scripted(PASS, FAULTY), pkg(), accepted)).toEqual({
-      outcome: "refused",
-      reason: "run 2: check spans: the check threw: no span",
-    });
-    expect(await controlsGate(CONTRACT, scripted(FAIL, FAULTY), pkg(), accepted, controls)).toEqual({
-      outcome: "refused",
-      reason: "control 2: check spans: the check threw: no span",
-    });
-  });
-});
-
-describe("a broken verifier", () => {
-  it("stops the run at the first non-result, whichever gate asks", async () => {
-    const stops = "the verifier could not decide beam-01, so the run stops: the wall broke";
-    const accepted = { depth: 1 };
-    const controls = [{ depth: 0.5 }, { depth: 2 }, { depth: 3 }].map((answer) => ({
-      answer,
-      expectedCheckId: "spans",
-    }));
-    expect(determinismGate(scripted(LOST, LOST), pkg(), accepted)).rejects.toThrow(stops);
-    expect(determinismGate(scripted(PASS, LOST), pkg(), accepted)).rejects.toThrow(stops);
-    expect(controlsGate(CONTRACT, scripted(FAIL, LOST, LOST), pkg(), accepted, controls)).rejects.toThrow(
-      stops,
-    );
-  });
-});
-
-describe("gate 5, screening", () => {
-  const pass: Counted = { outcome: "pass" };
-  const fail = (kind: "rejected" | "wall-ended" | "no-answer"): Counted => ({ outcome: "fail", kind });
-
-  it("admits a task either harness fails, and leaves one both pass as too easy", () => {
-    expect(screen([[pass], [pass]], 1)).toBe("too-easy");
-    expect(screen([[pass], [fail("rejected")]], 1)).toBe("admitted");
-    expect(screen([[fail("no-answer")], [pass]], 1)).toBe("admitted");
-  });
-
-  it("holds a task whose only fails ended at the wall", () => {
-    expect(screen([[pass], [fail("wall-ended")]], 1)).toBe("wall-bound");
-    expect(screen([[fail("wall-ended")], [fail("wall-ended")]], 1)).toBe("wall-bound");
-    expect(screen([[fail("wall-ended")], [fail("rejected")]], 1)).toBe("admitted");
-  });
-
-  it("refuses to screen with a broken harness, whose fail says nothing of the task", () => {
-    const broken: Counted = { outcome: "fail", kind: "broken-harness", reason: "no tools" };
-    expect(() => screen([[pass], [broken]], 1)).toThrow("a broken harness cannot screen a task: no tools");
-  });
-
-  it("screens on as many solves and fails as it is asked for, each harness counted alone", () => {
-    const [slip, miss] = [fail("rejected"), fail("no-answer")];
-    // Decision 26: three solves a harness, two fails by one of them.
-    expect(
-      screen(
-        [
-          [pass, slip, pass],
-          [pass, pass, slip],
-        ],
-        2,
-      ),
-    ).toBe("too-easy");
-    expect(
-      screen(
-        [
-          [pass, slip, miss],
-          [pass, pass, pass],
-        ],
-        2,
-      ),
-    ).toBe("admitted");
-    // The harness that reached two fails did so at the wall; the other's one fail does not count.
-    const walled = [fail("wall-ended"), fail("wall-ended"), pass];
-    expect(screen([walled, [slip, pass, pass]], 2)).toBe("wall-bound");
-    expect(() => screen([[pass], [slip]], 2)).toThrow("1 solve(s) of a harness cannot show 2 fail(s)");
-  });
-});
-
 describe("the task states", () => {
-  const at = "2026-10-07T00:00:00.000Z";
+  const at = "2026-10-09T00:00:00.000Z";
   const proposedAs = (version: string): LogEvent => ({ at, kind: "task.proposed", data: { version } });
   const gateAs = (version: string, number: number, outcome = "passed"): LogEvent => ({
     at,
     kind: "task.gate",
-    data: { version, gate: number, outcome, controls: "digest" },
+    data: { version, gate: number, outcome },
   });
-  const feasibleAs = (version: string) => [
-    proposedAs(version),
-    ...[1, 2, 3, 4].map((n) => gateAs(version, n)),
-  ];
+  const stateAs = (version: string, to: string): LogEvent => ({
+    at,
+    kind: "task.state",
+    data: { version, state: to },
+  });
   const proposed = proposedAs("v1");
-  const gate = (number: number, outcome = "passed") => gateAs("v1", number, outcome);
-  const state = (to: string): LogEvent => ({ at, kind: "task.state", data: { version: "v1", state: to } });
-  const draw = (...tasks: string[]): LogEvent => ({ at, kind: "anchor.drawn", data: { tasks } });
-  const drawn = [...feasibleAs("v0"), draw("v0")];
-  const feasible = feasibleAs("v1");
+  const gate = (number = 1, outcome = "passed") => gateAs("v1", number, outcome);
+  const state = (to: string) => stateAs("v1", to);
+  const held = [proposed, gate()];
 
-  it("holds a proposed task and follows it through screening, scoring and release", () => {
+  it("holds a task out once its package passes the gate, and no sooner", () => {
     expect(taskStates([proposed])).toEqual(new Map([["v1", "held"]]));
-    expect(taskStates([...drawn, ...feasible, state("admitted"), state("released")])).toEqual(
-      new Map([
-        ["v0", "held"],
-        ["v1", "released"],
-      ]),
-    );
-    expect(taskStates([...drawn, ...feasible, state("released")]).get("v1")).toBe("released");
-    expect(taskStates([proposed, gate(1), gate(2, "too-hard"), state("too-hard")]).get("v1")).toBe(
-      "too-hard",
-    );
+    expect(taskSets([proposed])).toMatchObject({ held: [], released: [] });
+    expect(taskSets(held)).toMatchObject({ held: ["v1"], released: [] });
+    // In the order they were proposed, whichever passed its gate first.
+    const two = [proposedAs("v2"), proposed, gate(), gateAs("v2", 1)];
+    expect(taskSets(two).held).toEqual(["v2", "v1"]);
+    expect(taskStates([proposed, gate(1, "refused"), state("refused")]).get("v1")).toBe("refused");
+    expect(taskSets([proposed, gate(1, "refused"), state("refused")]).held).toEqual([]);
   });
 
-  it("refuses a history that screens a task short of feasible, or moves one where it cannot go", () => {
-    expect(() =>
-      taskStates([proposed, gate(1), gate(2), gate(3), gate(4, "refused"), state("admitted")]),
-    ).toThrow("task v1 cannot go from held to admitted");
-    expect(() => taskStates([...drawn, ...feasible, state("released"), state("held")])).toThrow(
-      "task v1 cannot go from released to held",
-    );
+  it("releases a held-out task for practice, and disputes one from either set", () => {
+    expect(taskSets([...held, state("released")])).toMatchObject({ held: [], released: ["v1"] });
+    expect(taskStates([...held, state("disputed")]).get("v1")).toBe("disputed");
+    const disputed = [...held, state("released"), state("disputed")];
+    expect(taskStates(disputed).get("v1")).toBe("disputed");
+    expect(taskSets(disputed)).toMatchObject({ held: [], released: [] });
+  });
+
+  it("refuses a history that could not have happened", () => {
     expect(() => taskStates([state("held")])).toThrow("task v1 is not proposed");
     expect(() => taskStates([proposed, proposed])).toThrow("task v1 is proposed twice");
     expect(() => taskStates([{ at, kind: "task.state", data: { state: "held" } }])).toThrow(
       "task.state names no task version",
     );
-  });
-
-  it("disputes a feasible task from screening, scoring or practice, and nothing follows a dispute", () => {
-    const disputed = (...before: LogEvent[]) =>
-      taskStates([...drawn, ...feasible, ...before, state("disputed")]).get("v1");
-    expect(disputed()).toBe("disputed");
-    expect(disputed(state("admitted"))).toBe("disputed");
-    expect(disputed(state("released"))).toBe("disputed");
-    expect(() => taskStates([...drawn, ...feasible, state("disputed"), state("admitted")])).toThrow(
-      "task v1 cannot go from disputed to admitted",
+    expect(() => taskStates([...held, gate()])).toThrow("task v1 logs its gate twice");
+    // A task whose package was never passed is no task a solver may be given.
+    expect(() => taskStates([proposed, state("released")])).toThrow(
+      "task v1 cannot go from held to released before its gate passed",
     );
-    expect(() => taskStates([proposed, gate(1), state("disputed")])).toThrow(
-      "task v1 cannot go from held to disputed",
+    expect(() => taskStates([proposed, gate(1, "refused"), state("disputed")])).toThrow(
+      "task v1 cannot go from held to disputed before its gate passed",
     );
-  });
-
-  it("refuses gates logged out of order, and any gate after one that did not pass", () => {
-    const reversed = [proposed, gate(4), gate(3), gate(2), gate(1), gate(3, "refused"), state("admitted")];
-    expect(() => taskStates(reversed)).toThrow("task v1 logs gate 4 out of order, after passing 0");
-    expect(() => taskStates([proposed, gate(1), gate(3)])).toThrow(
-      "logs gate 3 out of order, after passing 1",
+    // Nothing follows a release but a dispute, and nothing follows a dispute or a refusal.
+    expect(() => taskStates([...held, state("released"), state("held")])).toThrow(
+      "task v1 cannot go from released to held",
     );
-    expect(() => taskStates([proposed, gate(1), gate(2, "refused"), gate(2)])).toThrow(
-      "task v1 logs gate 2 after its gates ended",
+    expect(() => taskStates([...held, state("disputed"), state("released")])).toThrow(
+      "task v1 cannot go from disputed to released",
     );
-    expect(() => taskStates([...feasible, gate(5)])).toThrow("logs gate 5 out of order, after passing 4");
-    const refusedAt3 = [proposed, gate(1), gate(2), gate(3, "refused")];
-    expect(taskStates([...refusedAt3, state("refused")]).get("v1")).toBe("refused");
-    expect(() => taskStates([...refusedAt3, state("admitted")])).toThrow("cannot go from held to admitted");
-  });
-
-  it("never releases or admits a task the anchor drew, and draws only proposed, feasible tasks", () => {
-    expect(() => taskStates([...feasible, draw("v1"), state("released")])).toThrow(
-      "task v1 is an anchor task, so it is never released",
+    expect(() => taskStates([...held, state("refused"), state("released")])).toThrow(
+      "task v1 cannot go from refused to released",
     );
-    expect(() => taskStates([...drawn, ...feasible, state("released"), draw("v1")])).toThrow(
-      "task v1 is drawn after its release",
-    );
-    expect(() => taskStates([...feasible, draw("v1"), state("admitted")])).toThrow(
-      "task v1 is an anchor task, so it is never admitted",
-    );
-    expect(() => taskStates([...feasible, state("admitted"), draw("v1")])).toThrow(
-      "task v1 is drawn after its admission",
-    );
-    expect(() => taskStates([{ at, kind: "anchor.drawn", data: {} }])).toThrow(
-      "anchor.drawn names no task versions",
-    );
-    expect(() => taskStates([draw("v1")])).toThrow("task v1 is drawn before it is feasible");
-    expect(() => taskStates([proposed, gate(1), gate(2, "too-hard"), draw("v1")])).toThrow(
-      "task v1 is drawn before it is feasible",
+    expect(() => taskStates([...held, state("promoted")])).toThrow(
+      "task v1 cannot go from held to no known state",
     );
   });
 
-  it("refuses a gate 4 pass on no named control set, and a release before the anchor is drawn", () => {
-    const unnamed: LogEvent = { at, kind: "task.gate", data: { version: "v1", gate: 4, outcome: "passed" } };
-    expect(() => taskStates([proposed, gate(1), gate(2), gate(3), unnamed])).toThrow(
-      "task v1 passed gate 4 on no named control set",
-    );
-    expect(() => taskStates([...feasible, state("released")])).toThrow(
-      "task v1 is released before the anchor is drawn",
-    );
-    expect(() => taskStates([...feasible, state("admitted"), state("released"), ...drawn])).toThrow(
-      "task v1 is released before the anchor is drawn",
+  it("reads a log written before the plan: what a stronger solve and a screening said moves no task", () => {
+    const old = (version: string) => [proposedAs(version), ...[1, 2, 3, 4].map((n) => gateAs(version, n))];
+    // The anchor's draw, an admission, a second admission and a retirement all leave a task held out.
+    const screened = [
+      ...old("v0"),
+      { at, kind: "anchor.drawn", data: { tasks: ["v0"] } } as const,
+      ...old("v1"),
+      state("admitted"),
+      state("admitted"),
+      state("too-easy"),
+    ];
+    expect(taskSets(screened)).toMatchObject({ held: ["v0", "v1"] });
+    expect(taskStates(screened).get("v1")).toBe("held");
+    // A task no stronger solve passed is a held-out task with no valid answer yet.
+    const reach = [proposed, gate(), gate(2, "too-hard"), state("too-hard"), gate(2, "too-hard")];
+    expect(taskSets(reach).held).toEqual(["v1"]);
+    // One set aside at the wall and returned under a longer one was held throughout.
+    const walled = [
+      ...old("v1"),
+      state("wall-bound"),
+      { ...state("held"), data: { version: "v1", state: "held", limits: {} } },
+    ];
+    expect(taskStates(walled).get("v1")).toBe("held");
+    // A later gate that refused a task was followed by its refusal, which stands.
+    const refused = [proposed, gate(), gate(2), gate(3, "refused"), state("refused")];
+    expect(taskStates(refused).get("v1")).toBe("refused");
+    // A task admitted and then released is a practice task, as it was.
+    expect(taskSets([...old("v1"), state("admitted"), state("released")])).toMatchObject({
+      held: [],
+      released: ["v1"],
+    });
+    // Those states are read from held alone: none of them follows a release or a dispute.
+    expect(() => taskStates([...held, state("released"), state("admitted")])).toThrow(
+      "task v1 cannot go from released to admitted",
     );
   });
 });

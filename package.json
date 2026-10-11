@@ -19,12 +19,15 @@
     "simplify": "bun tools/oxlint/simplify-census.ts",
     "not-slop": "bun tools/oxlint/not-slop.ts",
     "format": "bun node_modules/@biomejs/biome/bin/biome format --write .",
-    "format:check": "bun node_modules/@biomejs/biome/bin/biome format ."
+    "format:check": "bun node_modules/@biomejs/biome/bin/biome format .",
+    "secrets": "bun tools/secrets/scan.ts",
+    "runs": "bun tools/runs/cli.ts",
+    "commit:check": "sh tools/runtime/commit-check.sh"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.285",
-    "@earendil-works/pi-agent-core": "1.0.4",
-    "@earendil-works/pi-ai": "1.0.4",
+    "@earendil-works/pi-agent-core": "1.1.0",
+    "@earendil-works/pi-ai": "1.1.0",
     "@modelcontextprotocol/sdk": "1.31.0",
     "@silvia-odwyer/photon-node": "0.3.4",
     "cross-spawn": "7.0.6",

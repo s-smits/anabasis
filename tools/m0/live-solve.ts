@@ -5,58 +5,62 @@
  *   bun tools/m0/live-solve.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c07 \
  *     --task forbidden-volumes-01 --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace
  *
- * Without `--live` no model is called. The condition is built and printed, and what the solver would
- * read is held against what the stored solve read: the tools, built on a mounted wall as a solve
- * builds them, row by row in order (name, label, description, parameters, execution mode); the
- * system prompt, which may differ only in the wall clause `prompt.ts` names; the first turn's
- * template, the nudge and the turn cap, against the digests and `maxTurns` v1 recorded; and the
- * public resources, against the head of the stored `read_public_resources` result, the part of it
- * v1's trace kept. With `--live` the solve runs, and
+ * Without `--live` no model is called. The condition is built and printed, and then what the solver
+ * would read: its system prompt whole and its tools by name, built on a mounted wall as a solve
+ * builds them. Until 2026-10-09 both were held to what the stored solve read, row by row, which was
+ * milestone 0's parity with v1's sweep. A v2 solver is pi's coding agent and no longer v1's Built
+ * shell (`src/solve/coding-tools.ts`, `src/solve/prompt.ts`), so its tools and its prompt part from
+ * the sweep's by design, and only what still is v1's is held to it: the first turn's template, the
+ * nudge and the turn cap, against the digests and `maxTurns` v1 recorded. With `--live` the solve runs, and
  * its log is read back: the ending, the meter's billed dollars against Claude Code's reported cost
  * (exit test 2 asks within 1%), and the events the solve wrote (exit test 3). A live solve on a Mac
  * runs under `caffeinate -s`.
  *
  * The solve is the stored one's: its harness state is `hb-bundles/<sweep>-<cycle>`, its model and
  * effort are those it recorded, and its contract, task and resources are the bundle's, as
- * `admit-sweep.ts` reads them. `--harness` solves under another state instead, such as a Builder's
+ * `tools/d2/campaign.ts` reads them. `--harness` solves under another state instead, such as a Builder's
  * kept one, and the read-back sets its ending beside the stored solve's: the pilot's informal reading
- * of old against new until M2. The limits are the sweep's `config.yaml` and `maxTurns`, but for the
+ * of old against new until M2. `--solver` and `--solver-effort` solve on another model in its place. The limits are the sweep's `config.yaml` and `maxTurns`, but for the
  * disk cap, which the sweep did not have.
  * The harness's digest binds its tool tree, so it is the condition's `solverTools` too. The condition's `sandbox` stands in for the policy's digest with its profile, platform and cap,
  * since the policy names each solve's own directories.
  */
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Condition, conditionId, type Limits, recordCondition } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
+import { ended, solvesIn } from "#src/kernel/solves.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { taskVersion } from "#src/kernel/task.ts";
 import { openVerifier } from "#src/kernel/verify.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import type { JsonValue } from "#src/meta/json-shape.ts";
+import { isNumber } from "#src/meta/json-shape.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { canonicalJson, hashJsonValue } from "#src/meta/stable-json.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { openDesk } from "#src/solve/answer.ts";
-import { solveDirs } from "#src/solve/command.ts";
+import { networkReach, solveDirs, walledBase } from "#src/solve/command.ts";
 import { type Harness, openHarness, treeContent } from "#src/solve/harness.ts";
-import { firstTurn, NUDGE, seedHome, systemPrompt } from "#src/solve/prompt.ts";
+import { firstTurn, installedPrograms, NUDGE, seedHome, systemPrompt } from "#src/solve/prompt.ts";
 import { type SolveRequest, solve, solverTools } from "#src/solve/run.ts";
 import { mountDiskCap } from "#src/verify/disk-cap.ts";
-import { HOST_SOLVE_ISOLATION_PROFILE_ID, solveIsolationPolicy } from "#src/verify/solve-sandbox.ts";
+import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
+import { worktreesOf } from "../d2/campaign.ts";
 import {
   checkProgram,
   contractOf,
   packageOf,
   readPack,
   recordedAnswerFormat,
+  modelNamed,
   rowModel,
   sweepOptions,
+  type StoredRuntime,
+  storedRuntime,
   sweepResources,
   sweepRows,
 } from "./stored-sweep.ts";
@@ -69,6 +73,8 @@ const { values } = parseArgs({
     task: { type: "string" },
     bundle: { type: "string" },
     harness: { type: "string" },
+    solver: { type: "string" },
+    "solver-effort": { type: "string", default: "high" },
     live: { type: "boolean", default: false },
   },
 });
@@ -83,43 +89,9 @@ const LIMITS: Limits = {
   concurrency: 1,
   diskBytes: 2 * 1024 ** 3,
 };
-/** The four sentences of v1's command guard that `shell.ts` leaves out, as there is no guard here
- *  (src/solve/dcg-rules.ts:54-56 and 59 at 7af7315). */
-const GUARD = [
-  "Refused: rm -r outside the command's own folder, find -delete, git clean, git reset --hard.",
-  "Delete a tree with rm -rf <relative path>; for anything else move a tree into a literal /tmp/<name> instead.",
-  "Write with > to $HOME/<name>, ~/<name>, a relative name or a literal /tmp/<name>; a redirect to any other $VAR/… is refused; make temp dirs with mktemp -d.",
-  "A refused command runs nothing: change the spelling and run it again.",
-];
 const REPO = resolve(import.meta.dir, "..", "..");
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
-
-/** What v1 recorded of the stored solve's starting state (`built-runtime.json`). */
-interface StoredRuntime {
-  readonly modelWorker: { modelSelection: { effort: ThinkingLevel } };
-  readonly contractCondition: {
-    systemPrompt: string;
-    tools: StoredTool[];
-    firstTurnTemplateDigest: string;
-    nudgeDigest: string;
-    maxTurns: number;
-  };
-}
-
-/** One tool as v1 sent it to the model (`BuiltAgentInterfaceTool`, built-starter.ts:83-86). */
-interface StoredTool {
-  readonly name: string;
-  readonly label: string;
-  readonly description: string;
-  readonly parameters: JsonValue;
-  readonly executionMode?: string;
-}
-
-/** The head of what the stored solve's first `read_public_resources` call returned. */
-interface StoredTrace {
-  readonly toolCalls: readonly { toolName: string; resultPreview: string }[];
-}
 
 async function main(): Promise<number> {
   const { root, sweep, cycle, task: taskId, bundle, harness: state, live } = values;
@@ -134,8 +106,7 @@ async function main(): Promise<number> {
   }
   const row = sweepRows(root, sweep).find((each) => each.cycle === cycle && each.taskId === taskId);
   if (row === undefined) throw new Error(`${sweep} graded no ${taskId} in ${cycle}`);
-  const caseDir = join(row.solve, "harness", "cases", row.taskId);
-  const stored = parseJsonAs<StoredRuntime>(readFileSync(join(caseDir, "built-runtime.json"), "utf8"));
+  const stored = storedRuntime(row);
   const { brief, tasks } = readPack(bundle);
   const task = tasks.find((each) => each.taskId === taskId);
   if (task === undefined) throw new Error(`${bundle} has no task ${taskId}`);
@@ -151,15 +122,19 @@ async function main(): Promise<number> {
     const resources = sweepResources(brief);
     const harnessDir = state ?? join(root, "hb-bundles", `${sweep}-${row.cycle}`);
     const harness = await openHarness(harnessDir);
-    const model = rowModel(row);
-    const effort = stored.modelWorker.modelSelection.effort;
+    const model = values.solver === undefined ? rowModel(row) : modelNamed(values.solver);
+    const effort =
+      values.solver === undefined
+        ? stored.modelWorker.modelSelection.effort
+        : // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
+          (values["solver-effort"] as ThinkingLevel);
     const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
       readFileSync(join(REPO, "package.json"), "utf8"),
     ).dependencies;
     const condition: Condition = {
       contract: contractHash(contract),
       harness: harness.digest,
-      task: taskVersion(packageOf(brief, checks, task)),
+      task: taskVersion(packageOf(checks, task)),
       model: priceKey(model),
       effort,
       prices: freezePrices([model]),
@@ -181,23 +156,18 @@ async function main(): Promise<number> {
     const id = conditionId(condition);
     console.log(JSON.stringify({ id, ...condition, prices: undefined }, null, 2));
 
-    const tools = await walledTools({ task, contract, resources }, harness);
-    const parity = [
-      toolParity(stored.contractCondition.tools, tools),
-      promptParity(stored, tools, harness.guide),
-      turnParity(stored),
-      resourceParity(join(caseDir, "trace.json"), JSON.stringify({ resources }, null, 2)),
-    ];
-    for (const line of parity) console.log(line);
-    if (!live) return parity.every((line) => line.startsWith("same")) ? 0 : 1;
+    console.log(await shown({ task, contract, resources }, harness));
+    const turns = turnParity(stored);
+    console.log(turns);
+    if (!live) return turns.startsWith("same") ? 0 : 1;
     // The plan runs every solve under `caffeinate -s`, so the Mac cannot sleep inside the wall; it
     // exits with this process, and unreferenced it does not hold this one open.
     if (runtimeProcess.platform === "darwin") {
       capturedSpawn(["caffeinate", "-s", "-w", String(runtimeProcess.pid)]).unref();
     }
 
-    // The state's digest in the name, so a solve under another state keeps the stored one's log.
-    const name = `${row.taskId}-${row.cycle}-${harness.digest.slice(0, 8)}`;
+    // The model and the state's digest in the name, so a solve under another keeps the stored one's log.
+    const name = `${row.taskId}-${row.cycle}-${model.id}-${harness.digest.slice(0, 8)}`;
     const log = join(scratch, `${name}.jsonl`);
     recordCondition(log, condition);
     const ending = await solve({
@@ -214,6 +184,7 @@ async function main(): Promise<number> {
       verify: openVerifier({ checks, tools: join(bundle, ".toolchain") }),
       log,
       repoRoot: REPO,
+      otherTrees: worktreesOf(REPO),
     });
     return readBack(log, ending.outcome, row.ending.outcome);
   } finally {
@@ -222,69 +193,42 @@ async function main(): Promise<number> {
 }
 
 /**
- * The tools a solve of this request would be given, built as `play` builds them: on a mounted wall,
- * with the home seeded, so the bash description counts the files and programs it names.
+ * What a solver of this request would read before its first call: its system prompt, then its tools
+ * by name. Both are built as `play` builds them, on a mounted wall with the home seeded, so the
+ * prompt names the solve's own working directory, its resource files and its installed programs.
  */
-async function walledTools(
+async function shown(
   request: Pick<SolveRequest, "task" | "contract" | "resources">,
   harness: Harness,
-): Promise<AgentTool[]> {
+): Promise<string> {
   const dirs = solveDirs(`dry-${String(runtimeProcess.pid)}-${String(Date.now())}`);
   const cap = { root: dirs.root, bytes: LIMITS.diskBytes };
   const release = await mountDiskCap(cap);
   try {
-    for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-    const base = solveIsolationPolicy({ repoRoot: REPO, cap });
-    if ("unsupported" in base) throw new Error(`this host cannot wall a solve: ${base.unsupported}`);
-    const files = seedHome(dirs.home, request.task, request.resources);
+    const base = walledBase(
+      dirs,
+      { repoRoot: REPO, otherTrees: worktreesOf(REPO), diskBytes: cap.bytes },
+      "a solve",
+    );
+    const files = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const cpu = { seconds: 0, unmeasured: 0 };
     const wall = { base, dirs, toolTree: harness.toolTree, limits: LIMITS, cpu };
-    return await solverTools(request, harness, wall, openDesk(), files);
+    const tools = await solverTools(request, harness, wall, openDesk());
+    const prompt = systemPrompt({
+      tools,
+      home: dirs.home,
+      guide: harness.guide,
+      wallSeconds: LIMITS.wallSeconds,
+      limits: LIMITS,
+      resources: files,
+      programs: installedPrograms(harness.toolTree),
+      network: await networkReach(wall),
+    });
+    return `${prompt}\n\ntools: ${tools.map(({ name }) => name).join(", ")}`;
   } finally {
     await release();
     rmSync(dirs.host, { recursive: true, force: true });
   }
-}
-
-/** This host's tools against the stored rows, in order, field by field; parameters compare as
- *  canonical JSON, and a description apart shows where it parts. */
-function toolParity(storedTools: readonly StoredTool[], tools: readonly AgentTool[]): string {
-  const stored = storedTools.map((tool) =>
-    tool.name === "bash"
-      ? { ...tool, description: GUARD.reduce((text, rule) => text.replace(` ${rule}`, ""), tool.description) }
-      : tool,
-  );
-  const row = (tool: StoredTool | AgentTool | undefined) =>
-    tool === undefined
-      ? null
-      : {
-          name: tool.name,
-          label: tool.label,
-          description: tool.description,
-          parameters: canonicalJson(JSON.parse(JSON.stringify(tool.parameters))),
-          executionMode: tool.executionMode ?? null,
-        };
-  const apart: string[] = [];
-  for (let index = 0; index < Math.max(stored.length, tools.length); index++) {
-    const before = row(stored[index]);
-    const after = row(tools[index]);
-    if (before === null || after === null) {
-      apart.push(`#${String(index)}: stored ${before?.name ?? "none"}, here ${after?.name ?? "none"}`);
-      continue;
-    }
-    for (const key of Object.keys(before) as (keyof typeof before)[]) {
-      const [was, is] = [String(before[key]), String(after[key])];
-      if (was === is) continue;
-      let at = 0;
-      while (was[at] === is[at]) at++;
-      apart.push(
-        `${before.name}.${key} parts at ${String(at)}:\n  stored ${was.slice(at, at + 160)}\n  here   ${is.slice(at, at + 160)}`,
-      );
-    }
-  }
-  return apart.length === 0
-    ? `same tools: ${String(tools.length)} rows, in order, by name, label, description, parameters and execution mode, but for the bash guard's sentences`
-    : `tools apart:\n${apart.join("\n")}`;
 }
 
 /** The first turn's template and the nudge against the digests v1 recorded of its own constants
@@ -307,41 +251,16 @@ function turnParity(stored: StoredRuntime): string {
     : `turns apart: ${apart.join("; ")}`;
 }
 
-/** The stored system prompt against this host's, given this host's tool names: the sentences apart. */
-function promptParity(stored: StoredRuntime, tools: readonly AgentTool[], guide: string | null): string {
-  const names = tools.map((tool) => tool.name);
-  const sentences = (text: string) => new Set(text.split(/(?<=[.:;])\s+/));
-  const before = sentences(stored.contractCondition.systemPrompt);
-  const after = sentences(systemPrompt(LIMITS.wallSeconds, names, guide));
-  const gone = [...before].filter((sentence) => !after.has(sentence));
-  const added = [...after].filter((sentence) => !before.has(sentence));
-  const wallOnly = gone.length === 1 && added.length === 1 && added[0]?.includes("is lost") === true;
-  return wallOnly
-    ? "same prompt, but for the wall clause"
-    : `prompt apart:\n- ${gone.join("\n- ")}\n+ ${added.join("\n+ ")}`;
-}
-
-/** This host's resources against the head of the stored result, with whitespace runs folded. */
-function resourceParity(trace: string, text: string): string {
-  const { toolCalls } = parseJsonAs<StoredTrace>(readFileSync(trace, "utf8"));
-  const head = toolCalls.find((call) => call.toolName === "read_public_resources")?.resultPreview;
-  if (head === undefined) return "same resources: the stored solve never read them";
-  const folded = text.replace(/\s+/g, " ");
-  return folded.startsWith(head)
-    ? `same resources, over the ${String(head.length)} characters the trace kept`
-    : `resources apart:\n  stored ${head}\n  here   ${folded.slice(0, head.length)}`;
-}
-
 /** Exit tests 2 and 3, read from the log alone. */
 function readBack(log: string, outcome: string, storedOutcome: string): number {
   const events = read(log);
   console.log(`log: ${JSON.stringify(countBy(events, (event) => event.kind))}`);
-  const finished = events.findLast((event) => event.kind === "solve.finished")?.data;
+  const finished = ended(solvesIn(events)).at(-1)?.end;
   const billed = Number(finished?.billed);
   const reported = finished?.reportedCost;
   console.log(`${outcome}, stored ${storedOutcome}`);
   // Claude Code reports its cost only in the result that ends a query, which a submit ends before.
-  if (typeof reported !== "number") {
+  if (!isNumber(reported)) {
     console.log(`billed $${billed.toFixed(4)}, none reported: the solve ended before Claude Code's result`);
     return 1;
   }

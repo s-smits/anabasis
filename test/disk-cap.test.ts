@@ -6,10 +6,10 @@
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { describe, expect, it } from "bun:test";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { mountDiskCap } from "../src/verify/disk-cap.ts";
+import { mountDiskCap, releaseDiskCap } from "../src/verify/disk-cap.ts";
 import { commandIsolationPolicy, stageCommandIsolation } from "../src/verify/solve-command-isolation.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
@@ -35,7 +35,7 @@ describe("the disk cap", () => {
         ].join("; ");
         const result = spawnSync(
           "/bin/sh",
-          ["-c", stageCommandIsolation(policy, join(parent, "command.sb"), command)],
+          ["-c", stageCommandIsolation(policy, join(parent, "command.sb"), command, "$$")],
           { cwd: dirs.work, env: policy.environment, timeout: 30_000 },
         );
         const output = `${result.stdout}${result.stderr}`;
@@ -50,4 +50,67 @@ describe("the disk cap", () => {
       rmSync(parent, { recursive: true, force: true });
     },
   );
+
+  // A solve that is killed never runs its own release. A stop of its run does, and has the root's
+  // name from the log and nothing else: four killed solves and two stopped Builder sessions stayed
+  // mounted on one host until then (2026-10-08).
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "is released from its root's name alone, mounted or already detached, and the root can be claimed again",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      await releaseDiskCap(root);
+      expect(spawnSync("/sbin/mount", []).stdout).not.toContain(root);
+      expect(existsSync(root)).toBe(false);
+      expect(existsSync(`${root}.sparseimage`)).toBe(false);
+      // A solve stopped inside its own release: the volume gone, the folder and the image left.
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      expect(spawnSync("/usr/bin/hdiutil", ["detach", root, "-quiet"]).status).toBe(0);
+      await releaseDiskCap(root);
+      expect(existsSync(root)).toBe(false);
+      expect(existsSync(`${root}.sparseimage`)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  // A command the host killed left its child running on the volume. The forced detach let it live,
+  // it wrote its home again, and the release threw on the mountpoint: a round and three more solves
+  // went with it (2026-10-09).
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "ends a process a solve left working on the volume, and is released though one wrote on",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      const cache = join(root, "home", "cache");
+      const left = Bun.spawn(["/bin/sh", "-c", `while :; do mkdir -p ${cache}; echo x > ${cache}/f; done`], {
+        cwd: root,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+      await Bun.sleep(300);
+      await releaseDiskCap(root);
+      await left.exited;
+      expect(left.signalCode).toBe("SIGKILL");
+      expect(spawnSync("/sbin/mount", []).stdout).not.toContain(root);
+      expect(existsSync(root)).toBe(false);
+      // What a holder wrote between its listing and the detach is debris in the bare mountpoint.
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      expect(spawnSync("/usr/bin/hdiutil", ["detach", root, "-quiet"]).status).toBe(0);
+      mkdirSync(cache, { recursive: true });
+      await releaseDiskCap(root);
+      expect(existsSync(root)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  // Two rounds once ran a Builder session under one id: the second claim failed to mount, and its
+  // cleanup removed the first's command profiles under it.
+  it("refuses a root another solve already holds, before touching it", async () => {
+    const root = join(mkdtempSync(join(tmpdir(), "ana-disk-cap-")), "solve");
+    mkdirSync(root);
+    await expect(mountDiskCap({ root, bytes: CAP_BYTES })).rejects.toThrow("EEXIST");
+    expect(existsSync(root)).toBe(true);
+    rmSync(dirname(root), { recursive: true, force: true });
+  });
 });

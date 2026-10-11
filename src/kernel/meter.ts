@@ -67,8 +67,8 @@ export function tokensOf(usages: readonly Usage[]): Tokens {
 }
 
 /**
- * The billed and metered dollars of `tokens` on `model`. Billed is pi-ai 1.0.4's `calculateCost`
- * (dist/models.js:657) on the summed classes, departing from it only in leaving out the tier, as
+ * The billed and metered dollars of `tokens` on `model`. Billed is pi-ai's `calculateCost`
+ * (dist/models.js:658) on the summed classes, departing from it only in leaving out the tier, as
  * `freezePrices` does: a sum of turns is the turns' sum while every turn is priced alike.
  */
 export function dollars(prices: PriceTable, model: string, tokens: Tokens) {

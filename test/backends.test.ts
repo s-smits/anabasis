@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { fauxAssistantMessage, fauxProvider, normalizeContext } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "../src/backends/claude.ts";
-import { type BackendOptions, backends, compactionMode } from "../src/backends/models.ts";
+import { type BackendOptions, backends, compactionMode, retried } from "../src/backends/models.ts";
+import { read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { traceSink } from "../src/solve/run.ts";
 
 const HOUR_S = 60 * 60;
 const home = mkdtempSync(join(tmpdir(), "ana-backends-"));
@@ -38,6 +41,12 @@ describe("the three backends", () => {
     expect(models.getModel("openai-codex", "gpt-5.5")?.api).toBe("openai-codex-responses");
     expect(models.getModel("openrouter", "anthropic/claude-opus-5")).toBeDefined();
     expect(models.getModel("claude", "claude-opus-5")?.api).toBe("claude-agent-sdk");
+    // The same backend on an API key is a provider of its own, with the same catalog and prices,
+    // and it compacts as the login does.
+    const [login_, key] = ["claude", "claude-api"].map((id) => models.getModel(id, "claude-sonnet-5-5"));
+    expect(key).toMatchObject({ provider: "claude-api", api: "claude-agent-sdk", cost: login_?.cost });
+    if (login_ === undefined || key === undefined) throw new Error("the catalog has no claude-sonnet-5-5");
+    expect(compactionMode(key, options)).toBe(compactionMode(login_, options));
   });
 
   it("read the Codex CLI's login as it stands", async () => {
@@ -51,15 +60,17 @@ describe("the three backends", () => {
     await expect(backends(options).getAuth("openai-codex")).rejects.toThrow("Codex CLI");
   });
 
-  it("name the compaction each runs under: Claude Code's own as the host set it, and none in pi's loop", () => {
+  it("name the compaction each runs under: Claude Code's own as the host set it, and pi's in its own loop", () => {
     const sweep: BackendOptions = {
       claude: { ...options.claude, compaction: { window: SWEEP_COMPACT_WINDOW } },
     };
-    const claude = (id: string) => ({ provider: "claude", id });
+    const claude = (id: string) => ({ provider: "claude", id, contextWindow: 1_000_000 });
     expect(compactionMode(claude("claude-opus-5"), sweep)).toBe("autoCompactWindow=300000");
     expect(compactionMode(claude("claude-opus-5-5"), options)).toBe("off");
-    expect(compactionMode({ provider: "openai-codex", id: "gpt-5.5" }, sweep)).toBe("off");
-    expect(compactionMode({ provider: "openrouter", id: "z-ai/glm-5" }, sweep)).toBe("off");
+    const codex = { provider: "openai-codex", id: "gpt-5.5", contextWindow: 400_000 };
+    expect(compactionMode(codex, sweep)).toBe("pi window=300000 reserve=16384 keep=20000");
+    const glm = { provider: "openrouter", id: "z-ai/glm-5", contextWindow: 200_000 };
+    expect(compactionMode(glm, options)).toBe("pi window=200000 reserve=16384 keep=20000");
   });
 
   // The CLI clamps the window to the context it serves the id, without a word: a bare id gets 200K.
@@ -67,12 +78,46 @@ describe("the three backends", () => {
     const at = (window: number): BackendOptions => ({
       claude: { ...options.claude, compaction: { window } },
     });
-    const claude = (id: string) => ({ provider: "claude", id });
-    expect(() => compactionMode(claude("claude-opus-5-5"), at(SWEEP_COMPACT_WINDOW))).toThrow(
-      "claude-opus-5-5 a 200000-token context",
+    const claude = (id: string) => ({ provider: "claude", id, contextWindow: 200_000 });
+    expect(() => compactionMode(claude("claude-haiku-4-5"), at(SWEEP_COMPACT_WINDOW))).toThrow(
+      "claude-haiku-4-5 a 200000-token context",
     );
-    expect(() => compactionMode(claude("claude-sonnet-5-5"), at(SWEEP_COMPACT_WINDOW))).toThrow("clamped");
-    expect(compactionMode(claude("claude-opus-5-5"), at(200_000))).toBe("autoCompactWindow=200000");
+    expect(compactionMode(claude("claude-haiku-4-5"), at(200_000))).toBe("autoCompactWindow=200000");
+    expect(compactionMode(claude("claude-opus-5-5"), at(SWEEP_COMPACT_WINDOW))).toBe(
+      "autoCompactWindow=300000",
+    );
     expect(compactionMode(claude("claude-fable-5-1"), at(1_000_000))).toBe("autoCompactWindow=1000000");
+  });
+});
+
+describe("a pi-served provider's calls", () => {
+  const context = normalizeContext({
+    messages: [{ role: "user", content: "Solve the task.", timestamp: 0 }],
+  });
+  const failed = (errorMessage: string) => fauxAssistantMessage("", { stopReason: "error", errorMessage });
+
+  it("are tried again in place when the transport drops, and answer with the last attempt", async () => {
+    const faux = fauxProvider();
+    faux.setResponses([failed("WebSocket closed 1000"), fauxAssistantMessage("Done.")]);
+    const message = await retried(faux.provider).streamSimple(faux.getModel(), context).result();
+    expect(message.stopReason).toBe("stop");
+    expect(faux.state.callCount).toBe(2);
+
+    // The turn's line in the log says what the attempt before it said; a call made once says nothing.
+    const log = join(home, "retried.jsonl");
+    const sink = traceSink(log, "solve", "s-1", () => 1);
+    sink({ type: "turn_end", message, toolResults: [] });
+    sink({ type: "turn_end", message: fauxAssistantMessage("Done."), toolResults: [] });
+    const [again, once] = read(log).map(({ data }) => data);
+    expect(again?.retried).toEqual(["WebSocket closed 1000"]);
+    expect(once).not.toHaveProperty("retried");
+  });
+
+  it("are not tried again on a failure no retry would mend", async () => {
+    const faux = fauxProvider();
+    faux.setResponses([failed("invalid_request_error: unknown parameter")]);
+    const message = await retried(faux.provider).streamSimple(faux.getModel(), context).result();
+    expect(message.errorMessage).toContain("unknown parameter");
+    expect(faux.state.callCount).toBe(1);
   });
 });

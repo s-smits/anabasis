@@ -12,12 +12,31 @@
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { isString } from "../meta/json-shape.ts";
+import { type Owner, OWNERS } from "./diagnoser.ts";
 import type { Ruling } from "./referee.ts";
 
-const RULINGS = ["earned", "check-defect", "unclear"] as const;
+/** The Referee's three rulings, which are a person's three labels too. */
+export const RULINGS = ["earned", "check-defect", "unclear"] as const;
+
+/** A person's words on one diagnosed practice fail: the Diagnoser's three owners, or unclear. */
+export const DIAGNOSIS_LABELS = [...OWNERS, "unclear"] as const;
+type DiagnosisLabel = (typeof DIAGNOSIS_LABELS)[number];
+
+interface DiagnosesAgreement {
+  /** Diagnoses on record that named an owner, and how many named the solver: the lean. Of the
+   *  first twelve with real models (9 October) all twelve named the solver, from a reader shown
+   *  no guide; of eight on 10 October all eight did, one naming an engine the Starter lacked. */
+  readonly recorded: number;
+  readonly solver: number;
+  /** Labelled diagnoses, and how many the Diagnoser's owner agrees with; one labelled unclear is
+   *  counted in neither. Labelled fails the log holds no diagnosis for. */
+  readonly labelled: number;
+  readonly agreed: number;
+  readonly undiagnosed: readonly string[];
+}
 
 /** The bar, frozen before the Referee reads a labelled fail. */
-export interface Bar {
+interface Bar {
   /** The fewest labelled fails that measure anything. */
   readonly fails: number;
   /** Of the fails a person labelled a check defect, the least share the Referee must void. */
@@ -26,7 +45,7 @@ export interface Bar {
   readonly voided: number;
 }
 
-export interface Agreement {
+interface Agreement {
   /** `table[label][ruling]`: fails a person labelled `label` that the Referee ruled `ruling`. */
   readonly table: Readonly<Record<Ruling, Readonly<Record<Ruling, number>>>>;
   /** Labelled fails the log holds no ruling for. */
@@ -38,6 +57,7 @@ export interface Agreement {
 
 /** The last ruling the log holds for each labelled solve, set against its label. */
 export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<string, Ruling>): Agreement {
+  // SAFETY: both levels are built from RULINGS, so every Ruling key is present at each.
   const table = Object.fromEntries(
     RULINGS.map((label) => [label, Object.fromEntries(RULINGS.map((ruling) => [ruling, 0]))]),
   ) as Record<Ruling, Record<Ruling, number>>;
@@ -69,4 +89,37 @@ export function clears(measured: Agreement, bar: Bar): boolean {
     measured.voided !== null &&
     measured.voided <= bar.voided
   );
+}
+
+/** The Diagnoser's owner for each labelled solve set against the person's label. A diagnosis is
+ *  the Builder's lead and enters no verdict, so this measures a lean and no bar: a Diagnoser that
+ *  blames the solver whatever the harness did steers Builders away from their own faults. */
+export function diagnosesAgreement(
+  events: readonly LogEvent[],
+  labels: ReadonlyMap<string, DiagnosisLabel>,
+): DiagnosesAgreement {
+  const owners = new Map<string, Owner>();
+  for (const { kind, data } of events) {
+    if (kind !== "diagnosis.recorded" || !isString(data.solve)) continue;
+    const owner = OWNERS.find((known) => known === data.owner);
+    if (owner !== undefined) owners.set(data.solve, owner);
+  }
+  const counts = { labelled: 0, agreed: 0 };
+  const undiagnosed: string[] = [];
+  for (const [solve, label] of labels) {
+    const owner = owners.get(solve);
+    if (owner === undefined) {
+      undiagnosed.push(solve);
+      continue;
+    }
+    if (label === "unclear") continue;
+    counts.labelled += 1;
+    if (owner === label) counts.agreed += 1;
+  }
+  return {
+    recorded: owners.size,
+    solver: [...owners.values()].filter((owner) => owner === "solver").length,
+    ...counts,
+    undiagnosed,
+  };
 }

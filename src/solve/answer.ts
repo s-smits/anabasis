@@ -1,222 +1,120 @@
 /**
- * The answer side of a solve: the record tool that prepares the answer, the tools that keep, show and
- * send it, and the reader of the domain's public resources. Their texts are v1's, as sweep
- * veryhard-hb-4c67fc's solves read them (harness-builder-v4 at 7af7315): `src/solve/built-starter.ts`,
- * `draft-candidates.ts` and `src/truth/public-resources.ts`.
+ * The answer side of a solve, which pi's coding agent has none of. The answer is a file,
+ * `answer.json` in the solver's working directory, and `submit` sends it: the host reads the file
+ * through the command wall, holds it to the contract's answer format, and keeps what it read as the
+ * solve's answer. A file that is missing, is not JSON or does not follow the format is refused with
+ * the reason, and the solver may submit again.
  *
- * v1 kept a draft store beside the answer, and under the `shell` preset the sweep's harnesses chose
- * nothing but an artifact-writer ever wrote to it, so the prepared answer was the whole draft and it
- * was never stale. Here the desk holds only the prepared answer, and three things follow:
- * - `inspect_draft` shows the answer's status and the saved names, without v1's empty `state: {}`.
- * - The `stale` texts are gone, since nothing can make an answer stale.
- * - Submit no longer re-checks the answer's shape. The record tool's parameters are the contract's
- *   answer format, which pi validates before the tool runs, and the desk keeps its own copy, so
- *   what submit sends is what was checked.
+ * v1 kept a DraftStore for each solve: harness tools wrote working values and files into it, an
+ * artifact-writer turned the draft into the answer, a later change made that answer stale, and the
+ * wall submitted the last one prepared. Four more tools served that store: `save_candidate`,
+ * `restore_candidate`, `inspect_draft` and `preview_artifact`. v2 has no store: harness tools keep
+ * no state, nothing goes stale and the wall submits nothing. Until 2026-10-09 v2 carried the four
+ * all the same, with `read_public_resources` beside them, because milestone 0 held a solver's tool
+ * rows to v1's stored sweep; and the answer still went through an artifact-writer, as that tool's
+ * arguments. Of 209 solves on record none restored or inspected a candidate, so a save changed
+ * nothing. And on truss, where an answer is 3 to 8 KB of JSON, 38 of 41 answers were typed into the
+ * writer straight after a command had printed them: the solver had computed the answer into a file
+ * and then copied it out by hand (`docs/transfer.md`).
  *
- * Arguments that fail the format come back as pi's validation error, where v1 threw its own
- * `arguments do not match the public artifact schema` text. pi's validator coerces, so the answer
- * prepared is the coerced one, which follows the format exactly (`answerFormatFault`).
+ * So a solver's working state is what it is under pi, the files in its working directory, and the
+ * answer is one of them. What v1's draft store held is kept the way a filesystem keeps it. The
+ * public resources and the answer format are files there too (`prompt.ts`, `seedHome`).
+ *
+ * v1 took three submit attempts and no more, when its submit ran checks of its own. This one
+ * returns no verdict and reads nothing hidden, so a refused submit tells a solver nothing but what
+ * is wrong with its file, and none is counted.
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "typebox";
-import { answerSchema, type Contract } from "../kernel/contract.ts";
+import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { sha256 } from "../meta/digest.ts";
-import { capturedJsonStringify, capturedStructuredClone } from "../meta/json-runtime.ts";
+import { capturedJsonParse } from "../meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
-import { canonicalJson, hashJsonValue, stableJson } from "../meta/stable-json.ts";
+import { join } from "../meta/path.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
+import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
+import { shellQuote } from "../verify/solve-command-isolation.ts";
+import type { SolverTool, WallExec } from "./coding-tools.ts";
 
-/** One of the domain's public resources, as `read_public_resources` returns it. */
+/** One of the domain's public resources, as a file in the solver's home holds it. */
 export interface PublicResource {
   readonly name: string;
   readonly content: JsonValue;
   readonly digest: string;
 }
 
-/** The prepared answer and what the solver holds beside it. */
+/** What a solve has answered. */
 export interface Desk {
-  prepared: JsonValue | undefined;
   /** The answer submit accepted; once set, the solve has answered. */
   submitted: JsonValue | undefined;
-  attempts: number;
-  /** The code of the last refused submit, as v1 named it in the exhausted text. */
-  lastRefusal: string | null;
-  readonly saved: Map<string, JsonValue | undefined>;
 }
 
-/** built-starter.ts: submit's attempt budget, from `SUBMIT_MAX_ATTEMPTS` (truth/battery-record.ts:323). */
-const SUBMIT_MAX_ATTEMPTS = 3;
-/** draft-candidates.ts: how many candidates a solver may hold at once. */
-const SAVED_CANDIDATES_MAX = 6;
-/** built-starter.ts: the longest window one read returns, in characters. */
-const MODEL_JSON_LIMIT = 12_000;
-/** draft-store.ts: the largest answer a writer may prepare, as canonical JSON bytes. */
+/** The solver's answer, by its name in the working directory. */
+export const ANSWER_FILE = "answer.json";
+/** The contract's answer format, as the home is seeded with it. */
+export const ANSWER_FORMAT_FILE = "public/answer-format.json";
+/** The largest answer, in the file's bytes (v1's draft-store.ts held an answer to the same). */
 const ANSWER_MAX_BYTES = 1024 * 1024;
-
-const CANDIDATE_NAME = Type.Object({
-  name: Type.String({ minLength: 1, maxLength: 60, description: "Your own label for this candidate." }),
-});
-const WINDOW = Type.Object({
-  from: Type.Optional(
-    Type.Number({
-      minimum: 0,
-      description:
-        "Character to start reading at. Use the number the previous result named; omit it for the start.",
-    }),
-  ),
-});
+const MISSING = 44;
 
 export function openDesk(): Desk {
-  return { prepared: undefined, submitted: undefined, attempts: 0, lastRefusal: null, saved: new Map() };
+  return { submitted: undefined };
 }
 
-/** public-resources.ts:54-56: a resource's digest binds its name and content. */
+/** A resource's digest binds its name and content (v1's public-resources.ts:54-56). */
 export function publicResource(name: string, content: JsonValue): PublicResource {
   return { name, content, digest: sha256(canonicalJson({ schema: "public-resource/v1", name, content })) };
 }
 
+/** Why the bytes of an answer file are no answer under `contract`, or the answer they hold. */
+function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { fault: string } {
+  if (bytes.length > ANSWER_MAX_BYTES) {
+    return { fault: `is larger than the ${String(ANSWER_MAX_BYTES)} bytes an answer may hold` };
+  }
+  let answer: JsonValue;
+  try {
+    answer = capturedJsonParse(bytes.toString("utf8"));
+  } catch (error) {
+    return { fault: `is not JSON: ${errorMessage(error)}` };
+  }
+  const fault = answerFormatFault(contract, answer);
+  return fault === null ? { answer } : { fault: `does not follow the answer format: ${fault}` };
+}
+
 /**
- * A harness's artifact-writer, bound to the contract: its name, label and description stay the
- * harness's, its parameters become the answer format, and its own code never runs
- * (built-starter.ts:464-496).
+ * `submit`: the answer file under `home`, read by one walled command, checked and kept. An answer
+ * once sent stays the answer, whatever the file holds afterwards.
  */
-export function recordTool(writer: AgentTool, contract: Contract, desk: Desk): AgentTool {
+export function submitTool(desk: Desk, contract: Contract, home: string, exec: WallExec): SolverTool {
+  const file = shellQuote(join(home, ANSWER_FILE));
   return {
-    name: writer.name,
-    label: writer.label,
-    description: writer.description,
-    parameters: answerSchema(contract),
+    name: "submit",
+    label: "Submit",
+    description: `Send ${ANSWER_FILE} from your working directory as your answer. It holds the answer as JSON, in the format ${ANSWER_FORMAT_FILE} gives. A file that does not is refused with the reason, and you may submit again. An accepted submit ends the task and returns no verdict.`,
+    promptSnippet: `Send ${ANSWER_FILE} as your answer, which ends the task`,
+    parameters: Type.Object({}),
     executionMode: "sequential",
-    execute: async (_id, params) => {
-      // SAFETY: pi validated the arguments against the answer format, a JSON Schema.
-      const answer = capturedStructuredClone(params) as JsonValue;
-      const bytes = Buffer.byteLength(stableJson(answer));
-      if (bytes > ANSWER_MAX_BYTES) {
-        throw new Error(
-          `the answer is ${String(bytes)} bytes; an answer holds at most ${String(ANSWER_MAX_BYTES)}`,
+    execute: async (_id, _params, signal) => {
+      if (desk.submitted !== undefined) return { ...text("Submitted."), terminate: true };
+      const { exitCode, output } = await exec(
+        `[ -f ${file} ] || exit ${String(MISSING)}; head -c ${String(ANSWER_MAX_BYTES + 1)} ${file}`,
+        { signal },
+      );
+      if (exitCode === MISSING) {
+        return text(
+          `Submit blocked: there is no ${ANSWER_FILE} in your working directory. Write your answer there as JSON, in the format ${ANSWER_FORMAT_FILE} gives, then submit again.`,
         );
       }
-      desk.prepared = answer;
-      return text("Prepared the exact public answer.", { answerDigest: hashJsonValue(answer) });
+      if (exitCode !== 0) {
+        return text(`Submit blocked: ${ANSWER_FILE} could not be read: ${output.toString("utf8").trim()}`);
+      }
+      const read = answerIn(output, contract);
+      if ("fault" in read) return text(`Submit blocked: ${ANSWER_FILE} ${read.fault}`);
+      desk.submitted = read.answer;
+      return { ...text("Submitted.", { answerDigest: hashJsonValue(read.answer) }), terminate: true };
     },
   };
-}
-
-/** public-resources.ts:215-227. */
-export function publicResourcesTool(resources: readonly PublicResource[]): AgentTool {
-  return {
-    name: "read_public_resources",
-    label: "Read public rules",
-    description:
-      "Read this domain's public validity rules with their task paths, rule decisions, answer schema, fixed constants and allowed values.",
-    parameters: Type.Object({}),
-    execute: async () => text(capturedJsonStringify({ resources }, null, 2), { resources: resources.length }),
-  };
-}
-
-/** save_candidate, restore_candidate, inspect_draft, preview_artifact and submit, in v1's order. */
-export function deskTools(desk: Desk): AgentTool[] {
-  const held = () => (desk.saved.size === 0 ? "none" : [...desk.saved.keys()].join(", "));
-  return [
-    tool({
-      name: "save_candidate",
-      label: "Save candidate",
-      description:
-        "Keep the draft and its prepared answer under a name, so a later change can be undone. Saving the same name again replaces it.",
-      parameters: CANDIDATE_NAME,
-      executionMode: "sequential",
-      execute: async (_id, { name }) => {
-        if (!desk.saved.has(name) && desk.saved.size >= SAVED_CANDIDATES_MAX) {
-          return text(
-            `Not saved: ${String(SAVED_CANDIDATES_MAX)} candidates are already held (${held()}). Save over one of those names instead.`,
-          );
-        }
-        desk.saved.set(name, desk.prepared);
-        return text(`Saved "${name}". Held: ${held()}.`);
-      },
-    }),
-    tool({
-      name: "restore_candidate",
-      label: "Restore candidate",
-      description:
-        "Put the draft and its prepared answer back to a saved candidate. The candidate stays saved.",
-      parameters: CANDIDATE_NAME,
-      executionMode: "sequential",
-      execute: async (_id, { name }) => {
-        if (!desk.saved.has(name)) return text(`No candidate named "${name}". Held: ${held()}.`);
-        desk.prepared = desk.saved.get(name);
-        return text(
-          `Restored "${name}". Check it before you submit: the answer prepared with it is prepared again.`,
-        );
-      },
-    }),
-    tool({
-      name: "inspect_draft",
-      label: "Inspect draft",
-      description:
-        "Read working values and files, with prepared-answer status. Use preview_artifact to read the exact answer submit would send.",
-      parameters: WINDOW,
-      executionMode: "parallel",
-      execute: async (_id, { from }) =>
-        modelView(
-          {
-            preparedAnswer: desk.prepared === undefined ? "absent" : "current",
-            savedCandidates: [...desk.saved.keys()],
-          },
-          from,
-        ),
-    }),
-    tool({
-      name: "preview_artifact",
-      label: "Preview artifact",
-      description: "Show the exact answer submit would send.",
-      parameters: WINDOW,
-      executionMode: "parallel",
-      execute: async (_id, { from }) =>
-        desk.prepared === undefined
-          ? text("No answer has been prepared. Call an artifact-writer.")
-          : modelView(desk.prepared, from),
-    }),
-    tool({
-      name: "submit",
-      label: "Submit",
-      description: `Send the prepared answer. Up to ${String(SUBMIT_MAX_ATTEMPTS)} submit attempts are accepted.`,
-      parameters: Type.Object({}),
-      executionMode: "sequential",
-      execute: async () => submit(desk),
-    }),
-  ];
-}
-
-/** built-starter.ts:338-365 and final-submission.ts:255-327, less the shape check (see above). */
-function submit(desk: Desk): AgentToolResult<JsonObject | null> {
-  if (desk.submitted !== undefined) return { ...text("Submitted."), terminate: true };
-  if (desk.attempts >= SUBMIT_MAX_ATTEMPTS) {
-    const prior = desk.lastRefusal === null ? "" : ` (the last attempt was rejected as ${desk.lastRefusal})`;
-    return text(
-      `Submit blocked: the submit attempt budget (${String(SUBMIT_MAX_ATTEMPTS)}) is exhausted — no further attempts are accepted${prior}`,
-    );
-  }
-  desk.attempts += 1;
-  if (desk.prepared === undefined) {
-    desk.lastRefusal = "draft-unmaterialized";
-    return text(
-      "Submit blocked: Call an artifact-writer to prepare the exact public answer, then submit again.",
-    );
-  }
-  desk.submitted = desk.prepared;
-  return { ...text("Submitted.", { answerDigest: hashJsonValue(desk.submitted) }), terminate: true };
-}
-
-/** built-starter.ts:305-317: a long value arrives as a window naming where the next one starts. */
-function modelView(value: JsonValue, from = 0): AgentToolResult<JsonObject | null> {
-  const complete = stableJson(value);
-  const start = Math.min(Math.max(0, Math.trunc(from)), complete.length);
-  const window = complete.slice(start, start + MODEL_JSON_LIMIT);
-  const next = start + window.length;
-  const left = complete.length - next;
-  const before = start === 0 ? "" : `… (${String(start)} chars before this)\n`;
-  const after = left === 0 ? "" : `\n… (${String(left)} chars left; call again with from: ${String(next)})`;
-  return text(`${before}${window}${after}`, { from: start, total: complete.length });
 }
 
 /** A tool whose arguments are typed by its own parameters, in a list of any tools. */

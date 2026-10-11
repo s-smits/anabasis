@@ -14,23 +14,38 @@
  * so stdout is the only channel back. A call names no timeout, so it runs for the condition's
  * shell default, where v1 gave a request 30 s (generated-tool-worker-process.ts:75). What the bundle sees in place of `@ana/agent-bundle` and
  * pi-ai, and the departures there, are in `harness-shim.ts`.
+ *
+ * Two more departures, of 2026-10-09. `presets` names pi's coding tools, any of `read`, `bash`,
+ * `edit` and `write`, where v1's named its own `files` and `shell` (`coding-tools.ts`). And the
+ * answer is no tool's: a state need declare no artifact-writer, and one that does has it listed
+ * and not served (`harnessTools`, `answer.ts`).
  */
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
+import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";
-import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from "../meta/filesystem.ts";
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  writeFileSync,
+} from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { basename, dirname, join, resolve, sep } from "../meta/path.ts";
+import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { capturedExecPath } from "../meta/process.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { shellQuote } from "../verify/solve-command-isolation.ts";
+import { CODING_TOOLS } from "./coding-tools.ts";
 import { type CommandWall, runWalled } from "./command.ts";
+import { DRAFT_TOOL } from "./harness-shim.ts";
 import { type PublicTask, publicView } from "./prompt.ts";
 
-export type ToolKind = "reader" | "advisor" | "artifact-writer";
+type ToolKind = "reader" | "advisor" | "artifact-writer";
 
 export interface Harness {
   /** `agent/BUILT_AGENTS.md` as written, untrimmed; null when the state has none. */
@@ -45,11 +60,6 @@ export interface Harness {
   /** sha256 over everything the solver-visible tools depend on: module, spec, guide and the tool
    *  tree's files, so a tool tree changed under an unchanged module changes it (v1's row G7). */
   readonly digest: string;
-}
-
-export interface DomainTool {
-  readonly kind: ToolKind;
-  readonly tool: AgentTool;
 }
 
 /** A tool's result as the shim's `call` returns it (v1's `Evidence`, define-tool.ts:13). */
@@ -70,9 +80,11 @@ interface ToolRow {
 }
 
 const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-writer"]);
+/** The names a solver's tools already hold, whatever the harness: pi's coding tools and `submit`. */
+const HOST_TOOLS: readonly string[] = [...CODING_TOOLS, "submit"];
 const SHIM = Bun.fileURLToPath(new URL("./harness-shim.ts", import.meta.url));
-/** The host's own source, which the shim imports from. */
-const HOST_SOURCE = dirname(dirname(SHIM));
+/** The host's own source and installed packages, which the shim imports from. */
+const HOST_ROOTS = [dirname(dirname(SHIM)), join(dirname(dirname(dirname(SHIM))), "node_modules")];
 const MARKER = "@@ana-harness-result@@";
 /** The tail of a call's output kept for the result line and an error's context; a tool printing
  *  without end is cut by the command's timeout, not by the host's memory. */
@@ -92,7 +104,7 @@ try {
   const { createDomainHarness } = await import("./harness.mjs");
   const tools = createDomainHarness(input.task)?.tools;
   if (!Array.isArray(tools)) throw new Error("createDomainHarness must return tools");
-  if (tools.some((tool) => tool?.[Symbol.for("anabasis/draft-tool/v1")] !== true))
+  if (tools.some((tool) => tool?.[Symbol.for(${capturedJsonStringify(DRAFT_TOOL.description)})] !== true))
     throw new Error("createDomainHarness tools must be created with defineDraftTool");
   if (input.name === null) {
     out({ tools: tools.map(({ name, label, description, parameters, executionMode }) => ({ name, label, description, parameters, executionMode })) });
@@ -125,34 +137,54 @@ function located(module: string, dir: string): string {
     .replace(BUNDLED_PATH, "");
 }
 
+/**
+ * The guide a kept harness state holds, as a solver under it read it, or null where the state holds
+ * none. For a reader of a solve that has the state's folder and no use for its tools. Read only
+ * where it is a file of the state's own: a state is kept with its links as they were, and a guide
+ * linked to a host file is refused where the harness is opened (`openHarness`), so it is not read
+ * here either.
+ */
+export function guideOf(dir: string): string | null {
+  const file = join(dir, `${AGENT_DIR}${GUIDE_FILE}`);
+  return existsSync(file) && lstatSync(file).isFile() ? readFileSync(file, "utf8") : null;
+}
+
 export async function openHarness(dir: string): Promise<Harness> {
   // The three files the host reads by name are the harness's own: a guide or a spec linked to a host
   // file would be read here, outside every wall, and handed to the solver.
   const root = realpathSync(dir);
-  for (const name of ["BUILT_AGENTS.md", "tools-spec.json", "tools.ts"]) {
-    const file = join(dir, "agent", name);
+  const guideName = `${AGENT_DIR}${GUIDE_FILE}`;
+  for (const name of [guideName, TOOLS_SPEC_FILE, GENERATED_TOOLS_FILE]) {
+    const file = join(dir, name);
     if (existsSync(file) && !containsPath(realpathSync(file), root)) {
-      throw new Error(`agent/${name} links outside the harness`);
+      throw new Error(`${name} links outside the harness`);
     }
   }
-  const guideFile = join(dir, "agent", "BUILT_AGENTS.md");
+  const guideFile = join(dir, guideName);
   const guide = existsSync(guideFile) ? await Bun.file(guideFile).text() : null;
-  const spec = capturedJsonParse(await Bun.file(join(dir, "agent", "tools-spec.json")).text());
+  const spec = capturedJsonParse(await Bun.file(join(dir, TOOLS_SPEC_FILE)).text());
   const fields = asRecord(spec);
   const presets = Array.isArray(fields?.presets) && fields.presets.every(isString) ? fields.presets : null;
   const declared = Array.isArray(fields?.tools) ? fields.tools : null;
   if (presets === null || declared === null) {
-    throw new Error("agent/tools-spec.json needs presets and tools lists");
+    throw new Error(`${TOOLS_SPEC_FILE} needs presets and tools lists`);
   }
   const kinds = new Map<string, ToolKind>();
   for (const row of declared) {
     if (!isRecord(row) || !isString(row.name) || !isString(row.kind) || !KINDS.has(row.kind)) {
-      throw new Error(`agent/tools-spec.json row ${capturedJsonStringify(row)} needs a name and a kind`);
+      throw new Error(`${TOOLS_SPEC_FILE} row ${capturedJsonStringify(row)} needs a name and a kind`);
     }
     // SAFETY: KINDS just admitted the kind.
     kinds.set(row.name, row.kind as ToolKind);
   }
-  const module = await bundle(join(dir, "agent", "tools.ts"));
+  // A solver is given one tool under each name, and these are pi's and the host's.
+  const taken = [...kinds.keys()].filter((name) => HOST_TOOLS.includes(name));
+  if (taken.length > 0) {
+    throw new Error(
+      `${TOOLS_SPEC_FILE} names a tool ${taken.join(", ")}: ${HOST_TOOLS.join(", ")} are the host's own`,
+    );
+  }
+  const module = await bundle(join(dir, GENERATED_TOOLS_FILE));
   const toolchain = resolve(dir, ".toolchain");
   const toolTree = existsSync(toolchain) ? toolchain : null;
   const tree = toolTree === null ? null : keptTreeContent(toolTree);
@@ -223,8 +255,9 @@ function keptTreeContent(toolTree: string) {
  * The bundle is built by the host, outside every wall, from files a Builder wrote. Left alone, Bun
  * runs a macro import in this process as it bundles, and inlines any file an import names, a text
  * import of a check program among them, into the module the solver's tools then run. So macros are
- * off, and every file the bundle loads must sit, links followed, inside the harness, inside an
- * installed package, or in the host's own source, which the shim imports.
+ * off, and every file the bundle loads must sit, links followed, inside the harness, its installed
+ * packages among it, or in the host's own source and packages, which the shim imports. A package linked in from
+ * elsewhere is outside it, as v1's states link theirs into the run that built them.
  *
  * The question is asked of each file as it is loaded and not of each import as it is resolved. A
  * guard on resolution has to trust some importers, an installed package's among them, and a Builder
@@ -234,7 +267,6 @@ function keptTreeContent(toolTree: string) {
  */
 async function bundle(entry: string): Promise<string> {
   const root = realpathSync(dirname(dirname(entry)));
-  const inPackage = (path: string) => path.split(sep).includes("node_modules");
   const result = await Bun.build({
     entrypoints: [entry],
     target: "bun",
@@ -254,8 +286,7 @@ async function bundle(entry: string): Promise<string> {
           }));
           build.onLoad({ filter: /.*/ }, ({ path }) => {
             const file = realpathSync(path);
-            const own = containsPath(file, root) || containsPath(file, HOST_SOURCE) || inPackage(file);
-            if (own) return undefined;
+            if ([root, ...HOST_ROOTS].some((own) => containsPath(file, own))) return undefined;
             throw new Error(
               `an import reaches ${basename(file)}, which is outside the harness: its tools are built from its own files and installed packages`,
             );
@@ -273,13 +304,19 @@ async function bundle(entry: string): Promise<string> {
 
 /**
  * The harness's domain tools for one task, in the factory's order, after one walled listing. The
- * name check and the artifact-writer's sequential rule are v1's (built-starter.ts:449-460).
+ * name check is v1's (built-starter.ts:449-460).
+ *
+ * An artifact-writer is listed and not served. Until 2026-10-09 a harness had to declare one, the
+ * host bound it to the answer format, and its arguments were the answer; three of four Sol Builders
+ * on 2026-10-08 froze a harness without one, and every solve under each ended with no answer. The
+ * answer is now a file the host reads at `submit` (`answer.ts`), so no harness carries the answer's
+ * path and none can break it. A harness kept before then still declares its writer, and opens.
  */
 export async function harnessTools(
   harness: Harness,
   task: PublicTask,
   wall: CommandWall,
-): Promise<DomainTool[]> {
+): Promise<AgentTool[]> {
   const view = publicView(task);
   const call = <T>(name: string | null, params: unknown, signal?: AbortSignal) =>
     callHarness<T>({ harness, wall, input: { task: view, name, params }, signal });
@@ -291,29 +328,25 @@ export async function harnessTools(
       `domain tool mismatch: generated [${actual.join(", ")}], recorded [${expected.join(", ")}]`,
     );
   }
-  return rows.map((row) => {
-    // SAFETY: the mismatch check above threw unless every listed name is a declared one.
-    const kind = harness.kinds.get(row.name) as ToolKind;
-    if (kind === "artifact-writer" && row.executionMode !== "sequential") {
-      throw new Error(`registered ${kind} tool "${row.name}" must use sequential execution`);
-    }
-    const tool: AgentTool = {
-      name: row.name,
-      label: row.label,
-      description: row.description,
-      parameters: row.parameters,
-      ...keyIfDefined("executionMode", row.executionMode),
-      execute: async (_toolCallId, params, signal) => {
-        const { result } = await call<{ result: Evidence }>(row.name, params, signal);
-        return {
-          content: [{ type: "text", text: result.text }],
-          details: result.details ?? null,
-          ...keyIfDefined("terminate", result.terminate),
-        } satisfies AgentToolResult<JsonValue>;
-      },
-    };
-    return { kind, tool };
-  });
+  return rows
+    .filter(({ name }) => harness.kinds.get(name) !== "artifact-writer")
+    .map(
+      (row): AgentTool => ({
+        name: row.name,
+        label: row.label,
+        description: row.description,
+        parameters: row.parameters,
+        ...keyIfDefined("executionMode", row.executionMode),
+        execute: async (_toolCallId, params, signal) => {
+          const { result } = await call<{ result: Evidence }>(row.name, params, signal);
+          return {
+            content: [{ type: "text", text: result.text }],
+            details: result.details ?? null,
+            ...keyIfDefined("terminate", result.terminate),
+          } satisfies AgentToolResult<JsonValue>;
+        },
+      }),
+    );
 }
 
 /** One walled run of the caller: the listing when `name` is null, otherwise one tool call. Returns

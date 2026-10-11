@@ -42,9 +42,25 @@ export const checks = {
     await runtime.tools.run({ toolId: "sleeper", args: [], timeoutMs: 100 });
     return true;
   },
+  ran: async (req) => (await req.runtime.tools.run({ toolId: req.publicTask.publicInput.tool })).exitCode === 0,
 };
 `;
 
+/** A check program with an objective: the mass of an answer, lower being better, which the
+ *  evaluator computes from the answer and the public input alone. `mode` in the public input makes
+ *  it misbehave, so one program covers each way the measure can fail. */
+const MEASURED_EVALUATOR = `export const checks = {
+  value: (req) => req.artifact.value > 0,
+  sees: (req) => req.hidden.length === 0,
+};
+export const objective = (req) => {
+  const mode = req.publicTask.publicInput.mode;
+  if (mode === "nan") return Number.NaN;
+  if (mode === "string") return "light";
+  if (mode === "throws") throw new Error("no scale");
+  return req.artifact.value * req.publicTask.publicInput.density;
+};
+`;
 setDefaultTimeout(60_000);
 
 const root = mkdtempSync(join(tmpdir(), "ana-verify-"));
@@ -80,7 +96,20 @@ const BRIEF = {
     { id: "lapses", execution: execution(["lapses"], [], [], ["sleeper"]) },
     { id: "slow", execution: execution(["slow"], [], [], ["sleeper"]) },
     { id: "host", execution: execution(["host"], [], [], ["sh"]) },
+    {
+      id: "ran",
+      execution: execution(["ran"], [], ["$.tool"], ["killed", "unlaunched", "unstarted", "refuses"]),
+    },
   ],
+};
+
+const MEASURED_BRIEF = {
+  correctnessContract: "check-program/v1",
+  truthChecks: [
+    { id: "value", execution: execution(["plain"], ["$.value"], []) },
+    { id: "sees", execution: execution(["plain"], [], []) },
+  ],
+  objective: { quantity: "mass in kg", direction: "lower" },
 };
 
 function task(family: string, publicInput: Task["publicInput"] = {}): Task {
@@ -104,6 +133,10 @@ writeFileSync(join(root, "checks", "reference", "model.ts"), "export const same 
 writeFileSync(secret, "another answer");
 tool("double", "read n; echo $((n * 2))");
 tool("sleeper", "sleep 30");
+tool("killed", "kill -KILL $$");
+tool("unlaunched", 'exec "$(dirname "$0")/missing"');
+tool("unstarted", "echo 'Fatal Python error: init_fs_encoding: failed to get the Python codec' >&2; exit 1");
+tool("refuses", "echo no; exit 127");
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("open") });
 
 afterAll(async () => {
@@ -175,6 +208,19 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
     });
   });
 
+  it("reads a tool a signal ended, or whose program never started, as a non-result, not a refusal", async () => {
+    const ran = async (toolId: string) => await verify(task("ran", { tool: toolId }), {});
+    expect(await ran("killed")).toEqual({ kind: "non-result", reason: "ran: killed was ended by SIGKILL" });
+    for (const toolId of ["unlaunched", "unstarted"]) {
+      expect(await ran(toolId)).toMatchObject({
+        kind: "non-result",
+        reason: expect.stringMatching(new RegExp(`^ran: ${toolId} exited 1\\d* before its program ran: `)),
+      });
+    }
+    // A program may exit 127 itself; having printed, it answered.
+    expect(await ran("refuses")).toEqual({ kind: "fail", blocking: ["ran"] });
+  });
+
   it("finds a check's tool only in the verifier's tree, never the host's copy", async () => {
     expect(await verify(task("host"), {})).toEqual({
       kind: "non-result",
@@ -189,5 +235,80 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
     expect(() => openVerifier({ checks: linked, tools: join(root, "tools") })).toThrow(
       "the check program's reference/answer.json is neither a file nor a directory",
     );
+  });
+});
+
+describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
+  const checks = join(root, "measured");
+  mkdirSync(checks);
+  writeFileSync(join(checks, "brief.json"), JSON.stringify(MEASURED_BRIEF));
+  writeFileSync(join(checks, "evaluator.ts"), MEASURED_EVALUATOR);
+  const verify = openVerifier({ checks, tools: join(root, "tools") });
+
+  it("measures a valid answer after its checks pass, and measures no refused answer", async () => {
+    expect(await verify(task("plain", { density: 3 }), { value: 7 })).toEqual({
+      kind: "pass",
+      objective: 21,
+    });
+    expect(await verify(task("plain", { density: 3 }), { value: 0 })).toEqual({
+      kind: "fail",
+      blocking: ["value"],
+    });
+  });
+
+  it("reads an objective that is no finite number, or throws, as faulty under its own name", async () => {
+    for (const [mode, reason] of [
+      ["nan", "the objective returned NaN"],
+      ["string", "the objective returned string"],
+      ["throws", "the objective threw: no scale"],
+    ] as const) {
+      expect(await verify(task("plain", { density: 3, mode }), { value: 7 })).toEqual({
+        kind: "faulty",
+        check: "objective",
+        reason,
+      });
+    }
+  });
+
+  it("reads a brief that declares an objective its program does not export as faulty", async () => {
+    const unexported = join(root, "unexported");
+    mkdirSync(unexported);
+    writeFileSync(join(unexported, "brief.json"), JSON.stringify(MEASURED_BRIEF));
+    writeFileSync(
+      join(unexported, "evaluator.ts"),
+      MEASURED_EVALUATOR.replace("export const objective", "const objective"),
+    );
+    const bare = openVerifier({ checks: unexported, tools: join(root, "tools") });
+    expect(await bare(task("plain", { density: 3 }), { value: 7 })).toEqual({
+      kind: "faulty",
+      check: "objective",
+      reason: "the check program has no objective",
+    });
+  });
+
+  it("refuses a brief with a check named objective, and measures nothing where none is declared", async () => {
+    const named = join(root, "named");
+    mkdirSync(named);
+    writeFileSync(
+      join(named, "brief.json"),
+      JSON.stringify({
+        ...MEASURED_BRIEF,
+        truthChecks: [
+          ...MEASURED_BRIEF.truthChecks,
+          { id: "objective", execution: execution(["plain"], [], []) },
+        ],
+      }),
+    );
+    writeFileSync(join(named, "evaluator.ts"), MEASURED_EVALUATOR);
+    expect(() => openVerifier({ checks: named, tools: join(root, "tools") })).toThrow(
+      "a check is named objective, which names the objective",
+    );
+    const undeclared = join(root, "undeclared");
+    mkdirSync(undeclared);
+    const { objective: _declared, ...rest } = MEASURED_BRIEF;
+    writeFileSync(join(undeclared, "brief.json"), JSON.stringify(rest));
+    writeFileSync(join(undeclared, "evaluator.ts"), MEASURED_EVALUATOR);
+    const plain = openVerifier({ checks: undeclared, tools: join(root, "tools") });
+    expect(await plain(task("plain", { density: 3 }), { value: 7 })).toEqual({ kind: "pass" });
   });
 });

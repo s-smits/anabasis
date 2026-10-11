@@ -20,6 +20,7 @@ import {
   bwrapEnvironmentArgs,
   bwrapOpenReadArgs,
   bwrapReadBinds,
+  bwrapReadonlyRemounts,
   bwrapTmpfsDenies,
   bwrapWriteBinds,
   nodeRuntimeBinDirs,
@@ -242,7 +243,7 @@ export function commandSearchPath(toolTree: string | null): string {
   return [...new Set([...own, ...runtime, ...toolchainPathDirs()])].join(":");
 }
 
-export function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolationEnvironment {
+function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolationEnvironment {
   return {
     ...hostToolchainEnv(),
     PATH: commandSearchPath(dirs.toolTree ?? null),
@@ -293,7 +294,8 @@ function darwinCommandProfile(
   const readDenies = [...new Set([...base.deniedReadRoots, ...scratchParent])].sort();
   const readAllows = commandReadAllows(base, readDenies, toolTree);
   // The two shared temporary directories a toolchain writes without asking: the confstr one clang
-  // and Apple's python3 shim use, and `/tmp`, which `mktemp` and most build scripts spell literally.
+  // uses, as Apple's python3 shim does for a command that names it by its path, and `/tmp`, which
+  // `mktemp` and most build scripts spell literally.
   const userTemp = userTempRules(["/tmp"], COMMAND_TEMP_SIBLING_DENY_PATTERNS);
   const profile = [
     "(version 1)",
@@ -449,11 +451,15 @@ export function shellQuote(value: string): string {
  * the rules would be choosing the wall a later command in the same case runs under. `exec` replaces
  * the outer shell, so nothing of the controller's process survives into the command beyond the file
  * descriptors pi opened to capture its output.
+ *
+ * `leader` is the pid that leads the command's process group, as the launched shell names it: `$$`
+ * where this line is all pi's shell runs, `$PPID` where that shell runs it in a subshell and waits.
  */
 export function stageCommandIsolation(
   policy: CommandIsolationPolicy,
   profileFile: string,
   command: string,
+  leader: "$$" | "$PPID",
 ): string {
   if (policy.mechanismId === LINUX_BWRAP_ID) {
     // bwrap rules are argv with no newlines, so the launch inlines rather than staging a file, and
@@ -477,10 +483,10 @@ export function stageCommandIsolation(
         canonicalForms(path).length === 1 ? ["--ro-bind", "/dev/null", path] : [],
       ),
       ...bwrapWriteBinds(policy.scratchRoots),
-      ...[
+      ...bwrapReadonlyRemounts([
         "/",
         ...policy.readDenies.filter((deny) => !policy.scratchRoots.some((root) => covers(deny, root))),
-      ].flatMap((path) => ["--remount-ro", path]),
+      ]),
       ...bwrapEnvironmentArgs(policy.environment),
       "/bin/sh",
       "-c",
@@ -501,13 +507,15 @@ export function stageCommandIsolation(
   // namespace above: the group as Codex's `kill_process_group` does it, the descendants as Bun's
   // `--no-orphans` walks them from every group member, which is what catches a child that left the
   // group with `setsid` even after its parent was orphaned. Both lists are taken before the first
-  // kill, because killing changes what the next `pgrep` can see. Both `exec`s keep the pid, so `$$`
-  // leads the group, and the shell spares itself so the command's exit code still reports. The
+  // kill, because killing changes what the next `pgrep` can see. Both `exec`s keep the pid, and the
+  // shell spares itself and the leader so the command's exit code still reports. Read by `$$` under
+  // a leader that is not this shell, the group is empty and nothing is reaped: a solver's loop ran
+  // on for over 20 minutes after its command and into its solve's release (2026-10-09). The
   // command runs in a subshell so that its own `exec` replaces that child rather than the shell
   // owning the trap — `sleep 30 & exec /bin/true` in the trap's shell leaves the sleep running. A
   // subshell keeps `$$` and the group, so the group kill still reaches a child the replaced process
-  // orphaned. A process that left the group and was already reparented to launchd is out of reach.
+  // orphaned. One that left the group and was reparented to launchd is `runWalled`'s to end.
 
-  const reaped = `trap 'd(){ for c in $(pgrep -P "$1"); do echo "$c"; d "$c"; done; }; g=$(pgrep -g $$); for p in $g $(for q in $g; do d "$q"; done); do [ "$p" != "$$" ] && kill -9 "$p" 2>/dev/null; done' EXIT\n(\n${command}\n)`;
+  const reaped = `trap 'd(){ for c in $(pgrep -P "$1"); do echo "$c"; d "$c"; done; }; g=$(pgrep -g ${leader}); for p in $g $(for q in $g; do d "$q"; done); do [ "$p" != "$$" ] && [ "$p" != "${leader}" ] && kill -9 "$p" 2>/dev/null; done' EXIT\n(\n${command}\n)`;
   return `exec ${shellQuote(policy.mechanismPath)} -f ${shellQuote(profileFile)} /bin/sh -c ${shellQuote(reaped)}`;
 }

@@ -9,11 +9,13 @@
  * files instead, and this module is the repair it asks for. The two directory prefixes joined them
  * when the same scan found `correctness-model/` spelled as a candidate prefix in two modules.
  *
- * Three bundle names are deliberately absent, because a module already owns each with its meaning
- * attached: `BUILT_AGENTS_FILE` in `src/solve/built-starter.ts`, `REFERENCE_SOLVE_ENTRY` in
- * `src/correctness-bundle/evaluator-process-bundle.ts` and `HARNESS_CONFIG_FILE` in
- * `src/correctness-bundle/harness-config.ts`. Moving them here would trade one owner for another rather than
- * removing a second spelling.
+ * Two names here are bare, with no half in front of them, because their readers join them onto a
+ * directory the caller holds rather than onto a bundle: `EVALUATOR_FILE` sits at the root of a
+ * task's check program (`task.checks`, `src/kernel/task.ts`), which inside a pack is the
+ * evaluation half and inside a staged exam is the model directory; `GUIDE_FILE` is the name pi's
+ * project context gives the guide, with `AGENT_DIR` in front of it on disk. Each was spelled in
+ * three files on 10 October, below the per-file floor in every one of them, and
+ * `identity-without-owner` reported both.
  *
  * Tests keep spelling the literals, and no file under `test/` imports this module. A fixture that
  * built its tree from the same constant as the code under test would follow a rename and pass
@@ -26,6 +28,12 @@ export const CORRECTNESS_MODEL_DIR = "correctness-model/";
 /** The solve half's directory, as a candidate path prefix. */
 export const AGENT_DIR = "agent/";
 
+/** The check program's entry, at the root of its directory: it exports the checks as `checks`. */
+export const EVALUATOR_FILE = "evaluator.ts";
+
+/** The guide, under `AGENT_DIR` on disk and by this name in the solver's system prompt. */
+export const GUIDE_FILE = "BUILT_AGENTS.md";
+
 /** The domain plan and public rule decisions the Builder writes first. */
 export const BRIEF_FILE = "correctness-model/brief.json";
 
@@ -34,9 +42,6 @@ export const TASKS_FILE = "correctness-model/tasks.json";
 
 /** The task-bound accept and reject artifacts that calibrate the checks. */
 export const CONTROLS_FILE = "correctness-model/controls.json";
-
-/** The named Boolean checks the host runs; the one owner of every pass. */
-export const EVALUATOR_FILE = "correctness-model/evaluator.ts";
 
 /** The declared tool contract the solver's roster is derived from. */
 export const TOOLS_SPEC_FILE = "agent/tools-spec.json";

@@ -1,317 +1,288 @@
 /**
- * One round: a Builder session, then the comparison of the harness it left with the one it started
- * from, on tasks it never saw. This is the plan's D2 from its first event to its reading, and until
- * this file its parts had no caller that ran them in order.
+ * A checkpoint: one comparison of a new harness with the reference harness, on held-out tasks. And
+ * a round: a Builder session, then the checkpoint of the harness it left.
  *
- * A round is four steps over one log.
- * 1. The session (`session.ts`): it practises on released tasks and freezes a harness.
- * 2. Screening, the task's gate 5: candidates are solved under both harnesses, and one that either
- *    harness fails often enough is admitted (`screen`). Admission is symmetric and comes after the
- *    session, since it needs the new harness, and before any scoring solve, which counts only from
- *    the admission on. Candidates are taken in the caller's order, as many at a time as the scored
- *    set still lacks, so no more are screened than the set needs.
- * 3. Scoring: each scored task and each anchor task is solved `solves` times under each harness.
- * 4. The reading: the scored set's sign test, its pooled gain and the anchor's test, logged as
- *    `comparison.reported` and `anchor.scored`.
+ * A checkpoint is three steps over one log.
+ * 1. Solving. Each task of the scored set is solved `solves` times under each of the two
+ *    harnesses, all of it afresh. The scored set is the caller's, fixed before any solve
+ *    (`scoredSet`), so no harness's results choose it. The harnesses take the first place in
+ *    turn, task by task, so that neither has the quieter hours or the warmer cache.
+ * 2. The comparison (`src/kernel/compare.ts`): every solve of the new harness paired with every
+ *    solve of the reference one, a valid answer over one that is not, each task counted once, and
+ *    the sign test over the tasks.
+ * 3. The reading, logged as `comparison.reported`.
  *
- * In steps 2 and 3 the two harnesses are interleaved, task by task, so that neither has the quieter
- * hours or the warmer cache, and only solves made in the round's own window are counted, from its
- * session's start to the next session's: an anchor solve an earlier round made under the same old
- * harness was not made beside this round's, and may rest on another condition, since the host's
- * code is part of one and is edited between rounds.
+ * What is fixed before the first solve. A comparison writes `comparison.started` with its
+ * harnesses, its setting, its scored tasks, its solves a side, its level, the budgets it will be
+ * read at and its dollar cap, so that what it compares is on record before any result is. One gone
+ * on from its log goes on with the same tasks, and one asked for again on other terms is refused.
+ * Every solve the comparison starts names it at its start, and a solve counts when it names the
+ * comparison and ran under one of its harnesses and its setting. No other solve is counted, made
+ * before it or beside it by another comparison: a condition names the host's code, which changes
+ * between comparisons, and one frozen draw of the reference harness's solves would bias every
+ * later comparison read against it (`docs/plan.md`, What we will not do).
  *
- * A fail is put to the Referee when the caller has one. Whether its ruling decides is the caller's
- * word (`refereeDecides`), and the plan's: the hand reading is the gate until the Referee's rulings
- * have cleared the operator's bar against hand labels (`src/review/agreement.ts`). Deciding, a fail
- * it rules a check defect disputes the task; advising, the fail stands and the task is reported as
- * flagged, for the person who reads the fails before the reading is read. A check that could not
- * run disputes its task either way. A disputed task is neither admitted nor compared. The Referee
- * reads both harnesses' fails: a defect on the old side would make a win as surely as one on the
- * new side makes a loss. Past `defects` disputed tasks outside the anchor the round stops, which is
- * the plan's rule that more than three check defects send the work to the contract.
+ * The Starter Built Harness is the reference harness until a step is promoted
+ * (`src/solve/starter.ts`), and a comparison with it has nothing more to solve. Once the operator
+ * has promoted another reference, the starter is a fixed lower reference and no side of the sign
+ * test. It is then solved only when the comparison reads a step, to test that the step also holds
+ * against it: a step needs at least as many wins as losses against the starter, and one with fewer
+ * reads `below-starter`. The test is held to the starter only once every tallied task has its
+ * solves under it; until then the reading is `starter-unread`, whether a kill, the cap or a
+ * settling left it so.
  *
- * The round keeps no state of its own. What is left to do is read from the log each time it is run:
- * a session that finished is not run again, a task screened is not screened again, and a solve
- * counted is not solved again, so a round killed in its sixth hour goes on from there. A round that
- * wrote its report is finished, and run again it returns that report and does nothing: topping up a
- * set a dispute thinned, after the tallies could be seen, would be a second look at the data. A
- * session that started and never finished is refused, since its harness is gone and a second
- * session under one id would be a second try. So is one that was killed or that crashed, a failed
- * provider turn among the crashes: what it froze is half a session's work, and comparing it would
- * spend a comparison on a harness nobody meant to measure. A session cut at its wall or its turns
- * is a whole session and is compared. One that left a harness no solve can open is reported as no
- * change, with why.
+ * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
+ * gave a valid answer in every solve, in some and in none, at the full limit and at each budget.
+ * For the starter this is what the plan's first gate reads: where it is valid on nearly every
+ * solve even at a short budget, the tasks leave a harness nothing to add (`docs/plan.md`, G0).
  *
- * A scored task is never diagnosed and its trace never shown: the Diagnoser's reading goes to the
- * Builder, and a reading of a scored fail would carry the task to it.
+ * `noise` reads the reference harness against itself beside the test (the plan's A/A comparison).
+ * The reference harness is then solved twice as often. Its first solves of a task, in the order
+ * they started, are the test's, and those against its later ones give a second tally: how often a
+ * fixed budget splits two solves of one harness at random, which is the noise every comparison has
+ * to exceed. It should read no step, and it decides nothing here. The later solves run after the
+ * test's own are done, so that second tally also holds whatever the later hour moved.
  *
- * The round decides nothing. `reading` says how the plan's rules read the tallies, and `stopRule`
- * how its three-session rule reads the rounds so far; promotion and a next session are the
- * operator's, behind gate G4.
+ * `budgets` reads the same solves at shorter budgets (`within`, `compare.ts`): a solve that used
+ * more than a budget allows counts as no answer at it. The report holds the tally at each, and how
+ * far the use of each unit moved between repeated solves of one harness on one task.
+ *
+ * `cap` is the comparison's dollar cap. Before each solve the dollars the log holds as billed for
+ * the comparison are summed (`billedFor`): its own solves and their rulings, and in a round the
+ * session's spend as well. The solve is not started when a reserve for it and for each solve still
+ * running would take the sum past the cap. A lane that cannot start a solve while others are in
+ * flight steps aside, since what they bill may be under their reserve; when none is in flight and
+ * the next solve still cannot start, the cap is reached. A comparison the cap cuts short of its
+ * test reads `not-scored` and is finished: its tally would be of the tasks that happened to come
+ * first. One the cap cuts in the starter's solves has its test whole, and reports it as
+ * `starter-unread`. A session is stopped by its own limits and not by the cap, which holds its
+ * practice solves alone: none starts that the cap has no reserve for (`practiceLeft`, `tools.ts`).
+ *
+ * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
+ * (`earned`), by the Referee where the caller seats one. One ruled a check defect or unclear, and
+ * one no ruling was made on, sets its task aside: the task is left out of every tally of the
+ * comparison, for both harnesses, and named in `aside` (the plan's table, `compare.ts`). The
+ * report also holds `counted`, the tally were every such rejection to stand, so a person sees what
+ * the labels can move. A person's labels settle it (`settleReading`): a task whose set-aside
+ * rejections are all labelled earned is restored, one labelled a check defect is disputed for
+ * good, and one labelled unclear stays out. A solve that ended at its limits or gave no answer has
+ * nothing to recompute and needs no ruling. A check that could not run disputes its task at once.
+ * Past `defects` tasks with a check that could not run or a rejection the Referee ruled a check
+ * defect, the checkpoint stops, since the check program then needs its owner before more is spent.
+ * A task a person released or refused while the comparison ran is left out and named
+ * (`withdrawn`), and no further solve of it is started. A rejection an earlier run of the
+ * comparison left unruled, killed before its ruling or failed by its reader, is put to the Referee
+ * when the comparison goes on.
+ *
+ * A checkpoint that wrote its report is finished, and run again it returns that report and does
+ * nothing: topping up a set a dispute thinned, after the tallies could be seen, would be a second
+ * look at the data. It also stops, to go on the same way, when the provider has stopped answering:
+ * `SILENT` tasks in a row whose solve ended, after its reruns, with nothing written for it. A login
+ * at its session limit does that to every solve in seconds.
+ *
+ * A round's session starts from the harness the caller names, which need not be the reference
+ * harness: a Builder goes on from its latest harness, and the comparison is against the reference
+ * one. The session is run once and read from the log whether it ran now or in an earlier run
+ * (`sessionOnce`, `session.ts`), which is also how a session runs with no comparison after it. A
+ * session cut at its wall or its turns is a whole session and is compared. One that left the
+ * harness it started from, the reference harness itself, or one no solve can open, is reported as
+ * no change.
+ *
+ * A held-out task is never diagnosed and its trace never shown: the Diagnoser's reading goes to
+ * the Builder, and a reading of a scored solve would carry the task to it.
+ *
+ * Nothing here decides what happens next. `reading` (`compared`, `comparison.ts`) says how the
+ * plan's rules read the tallies; the stop rule reads the reports (`src/kernel/reports.ts`), and
+ * promotion and a next session are the operator's.
+ *
+ * What the log holds of a comparison, and how it is read back, is `comparison.ts` since
+ * 10 October: its start, its counted solves, its rejections, its tallies and its report. This
+ * file keeps what runs one and what it writes.
  */
-import { anchor, gain, type Paired, pairsOf, scored } from "../kernel/compare.ts";
-import { conditionsOf } from "../kernel/condition.ts";
+import { type Budget, draw, type ObjectiveRule, UNITS } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import type { Counted } from "../kernel/solve.ts";
-import { screen, taskStates } from "../kernel/task.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { join } from "../meta/path.ts";
+import { awaitingLabel, billedFor, type Cap, capHolds, exhausted } from "../kernel/reports.ts";
+import { ranUnder, solvesIn } from "../kernel/solves.ts";
+import { taskSets, taskStates } from "../kernel/task.ts";
+import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
-import type { RefereeFinding } from "../review/referee.ts";
-import { openHarness } from "../solve/harness.ts";
-import { type BuildRequest, type Built, build, type Practised } from "./session.ts";
-
-export interface RoundRequest {
-  /** The session, as `build` takes it. Its id names the round in the log. */
-  readonly session: BuildRequest;
-  /** Runs the session: `build`, unless a caller without a command wall stands in for it. */
-  readonly builder?: (request: BuildRequest) => Promise<Built>;
-  /** Task versions admitted by another route, scored as they stand. */
-  readonly scored: readonly string[];
-  /** Feasible task versions still held, screened in this order until the scored set is full. */
-  readonly candidates: readonly string[];
-  /** The anchor's task versions, as `anchor.drawn` named them. */
-  readonly anchor: readonly string[];
-  /** How many scored tasks the round fills: the plan's 24. */
-  readonly target: number;
-  /** Gate 5: solves of a candidate under each harness, and the fails by one harness that admit it.
-   *  The plan's decision 26 is three and two. */
-  readonly screening: { readonly solves: number; readonly fails: number };
-  /** Counted solves of each scored and anchor task under each harness. */
-  readonly solves: number;
-  /** The sign test's level for the scored set, and the anchor's level and floor (`compare.ts`). */
-  readonly level: number;
-  readonly anchorLevel: number;
-  readonly anchorFloor: number;
-  /** Disputed tasks outside the anchor past which the round stops: the plan's three. */
-  readonly defects: number;
-  /** Solves in flight at once. */
-  readonly concurrency: number;
-  /** One solve of a task version under the test condition, with the harness kept in `harness` and
-   *  digested as `digest`. The caller builds the condition and records it, names the solve so that
-   *  no two share an id, and hands `kill` to the solve. A throw stops the round. */
-  readonly solve: (version: string, harness: string, digest: string, kill: AbortSignal) => Promise<Practised>;
-  /** The Referee, when the caller has a reader for it. */
-  readonly referee?: (solve: string, version: string, kill: AbortSignal) => Promise<RefereeFinding>;
-  /** Whether a check-defect ruling disputes its task, or only flags it for a person to read. */
-  readonly refereeDecides: boolean;
-}
-
-/**
- * How the plan's rules read a round. A step is the scored set's test clearing its level with the
- * anchor held. An anchor too thin to test is named apart, since not tested is not held, and whether
- * a step may rest on it is the operator's. `check-defects` is the round stopped on its disputes, and
- * `no-change` a session that left the harness it started from.
- */
-export type RoundReading =
-  | "step"
-  | "no-step"
-  | "anchor-lost"
-  | "anchor-not-tested"
-  | "check-defects"
-  | "no-change";
-
-export interface RoundReport {
-  readonly old: string;
-  /** The digest of the harness the session left; null when it left none to compare. */
-  readonly fresh: string | null;
-  /** The scored set's tally, test and pooled gain; null when the round never scored. */
-  readonly scored: (ReturnType<typeof scored> & ReturnType<typeof gain>) | null;
-  readonly anchor: ReturnType<typeof anchor> | null;
-  /** The task versions tallied in the scored set. */
-  readonly versions: readonly string[];
-  /** Task versions left out: disputed, short of `solves` counted solves, or candidates whose
-   *  screening solves did not all end in a pass or a fail. */
-  readonly disputed: readonly string[];
-  /** Task versions still counted that an advising Referee ruled a check defect on. */
-  readonly flagged: readonly string[];
-  readonly short: readonly string[];
-  readonly unscreened: readonly string[];
-  readonly reading: RoundReading;
-}
+import { sameJsonValue } from "../meta/stable-json.ts";
+import type { RefereeFinding, Ruling } from "../review/referee.ts";
+import { tasksByEpoch } from "./climb.ts";
+import {
+  asBudget,
+  compared,
+  DEFECT,
+  EARNED,
+  type Fixed,
+  fixedIn,
+  NO_LABELS,
+  NOTHING,
+  rejections,
+  type Report,
+  REPORTED,
+  reported,
+  solvesUnder,
+  STARTED,
+  startOf,
+  toLabel,
+} from "./comparison.ts";
+import { type BuildRequest, type Built, type Practised, sessionOnce } from "./session.ts";
 
 /** A harness as a solve is handed it. */
-interface Kept {
+export interface Kept {
   readonly dir: string;
   readonly digest: string;
 }
 
-/** One solve still to run: a task version under one of the two harnesses. */
+/** What a comparison is made on, whoever asks for it. */
+interface Terms {
+  /** The Starter Built Harness: the fixed lower reference a step is also read against, once it is
+   *  no longer the reference harness itself. */
+  readonly starter: Kept;
+  /** The scored set: held-out task versions, fixed before any solve (`scoredSet`). */
+  readonly tasks: readonly string[];
+  /** Counted solves of each task under each harness. */
+  readonly solves: number;
+  /** The sign test's level. */
+  readonly level: number;
+  /** The objective two valid answers are compared by, where the check program declares one: the
+   *  brief's direction and the caller's margin. */
+  readonly objective?: ObjectiveRule | undefined;
+  /** Tasks with a check defect past which the comparison stops. */
+  readonly defects: number;
+  /** Solves in flight at once. */
+  readonly concurrency: number;
+  /** One solve of a task version under the test condition and under `harness`, made for the
+   *  comparison named. The caller builds the condition and records it, names the solve so that no
+   *  two share an id, has its start name the comparison (`SolveRequest.comparison`), and hands
+   *  `kill` to the solve. A throw stops the comparison. */
+  readonly solve: (
+    version: string,
+    harness: Kept,
+    comparison: string,
+    kill: AbortSignal,
+  ) => Promise<Practised>;
+  /** The setting `solve` records in each condition (`settingId`): the solver, its limits and the
+   *  host. Only solves made under it are counted. */
+  readonly setting: string;
+  /** Whether the reference harness is also read against itself, on solves of its own. */
+  readonly noise?: boolean | undefined;
+  /** The shorter budgets the comparison is also read at. */
+  readonly budgets?: readonly Budget[] | undefined;
+  /** The dollar cap, where the solves are paid for. */
+  readonly cap?: Cap | undefined;
+  /** What the operator expects the comparison to read, in their own words, written with its terms
+   *  before the first solve (`docs/plan.md`, Phase 4). It decides nothing. A comparison gone on
+   *  from its log keeps the one it began with: begun on another, or on none, it is refused with
+   *  one, as it is on any other term that moved. */
+  readonly prediction?: string | undefined;
+  /** The Referee, when the caller has a reader for it. */
+  readonly referee?:
+    | ((solve: string, version: string, kill: AbortSignal) => Promise<RefereeFinding>)
+    | undefined;
+}
+
+export interface CheckpointRequest extends Terms {
+  readonly log: string;
+  /** Names the comparison in the log. */
+  readonly id: string;
+  /** The reference harness. */
+  readonly old: Kept;
+  readonly fresh: Kept;
+  /** Aborts when the run is killed. */
+  readonly kill?: AbortSignal | undefined;
+}
+
+export interface RoundRequest extends Terms {
+  /** The session, as `build` takes it. Its id names the round in the log, and its parent is the
+   *  harness the Builder starts from. */
+  readonly session: BuildRequest;
+  /** The harness the one the session leaves is compared with. */
+  readonly reference: Kept;
+  /** Runs the session: `build`, unless a caller without a command wall stands in for it. */
+  readonly builder?: ((request: BuildRequest) => Promise<Built>) | undefined;
+}
+
+/** One solve still to run: a task version under one of the harnesses. */
 interface Job {
   readonly task: string;
   readonly under: Kept;
 }
 
-/** A task with what each harness has of it so far, whatever the solves are counted as. */
-interface Had {
-  readonly task: string;
-  readonly old: readonly unknown[];
-  readonly fresh: readonly unknown[];
+/** A harness a comparison solves under, with the counted solves of a task it needs under it. */
+interface Arm {
+  readonly under: Kept;
+  readonly needed: number;
 }
 
-/** Passes over what is still unscored. A solve's own non-result is run again inside `solve`, so a
+/** Passes over what is still unsolved. A solve's own non-result is run again inside `solve`, so a
  *  second pass covers what outlasted that, and a task still short after it is reported short. */
 const PASSES = 2;
-/** The pooled gain, in points, below which the plan's three-session rule stops the experiment. */
-const STOP_POINTS = 10;
-const STOP_SESSIONS = 3;
-/** The fewest pooled tasks the rule's bound is trusted on: one scored set of the plan's size. */
-const STOP_TASKS = 24;
-const REPORTED = "comparison.reported";
-/** A report's fields, as its event carries them beside the round's own. */
-const REPORT_KEYS = [
-  "old",
-  "fresh",
-  "scored",
-  "anchor",
-  "versions",
-  "disputed",
-  "flagged",
-  "short",
-  "unscreened",
-  "reading",
-] as const satisfies readonly (keyof RoundReport)[];
-/** The kinds of fail a solver owns outright, as `solve.ts` types them. */
-const FAILS = ["rejected", "wall-ended", "context-ended", "no-answer"] as const;
-
-/** Refuse a session that did not run its course. */
-function ranItsCourse(id: string, ended: string): void {
-  if (ended === "killed" || ended === "crashed") {
-    throw new Error(
-      `session ${id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`,
-    );
-  }
-}
-
-/** What session `id` left, from the log: undefined when it never ran, and otherwise the harness to
- *  compare, null when it left none, with why when what it left does not open. */
-async function left(events: readonly LogEvent[], request: BuildRequest, old: string) {
-  const mine = events.filter(({ data }) => data.session === request.id);
-  const started = mine.find(({ kind }) => kind === "build.started")?.data;
-  const finished = mine.findLast(({ kind }) => kind === "build.finished")?.data;
-  if (started === undefined) return undefined;
-  if (started.parent !== old) {
-    throw new Error(`session ${request.id} started from another harness than ${request.parent}`);
-  }
-  if (finished === undefined) {
-    throw new Error(
-      `session ${request.id} started and never finished; a round does not run a second session under one id`,
-    );
-  }
-  ranItsCourse(request.id, isString(finished.ended) ? finished.ended : "");
-  const broken = isString(finished.broken) ? finished.broken : null;
-  if (finished.changed !== true || !isString(finished.harness)) return { kept: null, broken };
-  const dir = join(request.states, finished.harness);
-  if ((await openHarness(dir)).digest !== finished.harness) {
-    throw new Error(`${dir} is not the harness session ${request.id} froze`);
-  }
-  return { kept: { dir, digest: finished.harness }, broken };
-}
+/** Tasks in a row the provider wrote nothing for, at which the comparison stops and waits to be
+ *  run again. Tasks and not solves: one task its provider refuses at the first turn is that task's
+ *  fault, and is reported short. */
+const SILENT = 3;
+/** The share of a scored set kept for the epochs before the newest: one task in four. */
+const OLDER_SHARE = 4;
+const TASK_STATE = "task.state";
 
 /**
- * The log as a round counts it: every event, but of the solves only those made in the round's own
- * window, from its session's start to the next session's. Rounds run one after another in a log, so
- * the window is the round: an earlier round's solves under the same old harness are not this
- * round's, and neither are a later round's when this one is read again.
+ * The tasks a comparison scores: `target` of the held-out tasks a log holds, or all of them where
+ * it holds fewer, taken from the newest epoch down and within an epoch drawn by the contract's
+ * hash and nothing else (`draw`). The tasks written since the last promotion are the exam the
+ * reference harness has not answered, so they come first; what room is left is filled from the
+ * epoch before, by the same hash, and so on down. One share in `OLDER_SHARE` of the set is kept
+ * for the epochs before whatever the newest holds, which is the regression check: the control
+ * reads the starter and not the last reference, so without it a harness that lost what the
+ * reference answers would read as progress once the newest epoch filled the target (the plan's
+ * climb section, C2; `regressionOf` reads the same gap after the fact). The epoch chooses the set
+ * and no result does: the hash is fixed before any task exists, and which epoch a task is in is
+ * where it passed its gate (`tasksByEpoch`). Until 10 October the draw was over every epoch at
+ * once, and after two promotions in the simulated climb a target of 8 over 19 held tasks drew two
+ * or three the reference failed, so three comparisons read one win short and the campaign
+ * stopped (`docs/plan.md`, B14). A task with no valid answer on record, after two comparisons that
+ * cut no solve of it at a limit, is left out until a person has labelled it (`awaitingLabel`), and
+ * so is one the reference answered in every solve of two comparisons under the setting, which can
+ * only tie again, but for the third of them the hash keeps (`exhausted`).
  */
-function since(events: readonly LogEvent[], session: string): LogEvent[] {
-  const starts = (index: number, mine: boolean) => {
-    const event = events[index];
-    return event?.kind === "build.started" && (event.data.session === session) === mine;
-  };
-  const began = events.findIndex((_event, index) => starts(index, true));
-  const next = events.findIndex((_event, index) => index > began && starts(index, false));
-  const until = next === -1 ? events.length : next;
-  return events.filter(({ kind }, index) => !kind.startsWith("solve.") || (index >= began && index < until));
+export function scoredSet(events: readonly LogEvent[], target: number, contract: string): string[] {
+  const aside = new Set([...awaitingLabel(events), ...exhausted(events)]);
+  const held = new Set(taskSets(events).held.filter((version) => !aside.has(version)));
+  const count = Math.min(target, held.size);
+  const [newest = [], ...older] = tasksByEpoch(events)
+    .toReversed()
+    .map((epoch) => epoch.filter((version) => held.has(version)));
+  const reserved = Math.min(Math.floor(count / OLDER_SHARE), older.flat().length);
+  const scored = draw(newest, Math.min(count - reserved, newest.length), contract);
+  for (const epoch of older) {
+    scored.push(...draw(epoch, Math.min(count - scored.length, epoch.length), contract));
+  }
+  return scored;
 }
 
-/** A task version's counted test-side solves under one harness, as their endings. */
-function endingsOf(events: readonly LogEvent[], version: string, harness: string): Counted[] {
-  const conditions = conditionsOf(events);
-  const ran = new Set(
-    events.flatMap(({ kind, data }) => {
-      const condition = conditions.get(isString(data.condition) ? data.condition : "");
-      return kind === "solve.started" &&
-        isString(data.solve) &&
-        condition?.task === version &&
-        condition.harness === harness &&
-        condition.side === "test"
-        ? [data.solve]
-        : [];
-    }),
-  );
-  return events.flatMap(({ kind, data }): Counted[] => {
-    const ending = asRecord(data.ending);
-    if (kind !== "solve.finished" || !isString(data.solve) || !ran.has(data.solve)) return [];
-    if (ending?.outcome === "pass") return [{ outcome: "pass" }];
-    if (ending?.outcome !== "fail") return [];
-    if (ending.kind === "broken-harness") {
-      return [
-        { outcome: "fail", kind: "broken-harness", reason: isString(ending.reason) ? ending.reason : "" },
-      ];
-    }
-    const failed = FAILS.find((known) => known === ending.kind);
-    return failed === undefined ? [] : [{ outcome: "fail", kind: failed }];
-  });
-}
-
-/** The solves still to run, by what each task has: slot by slot over the tasks, the two harnesses
- *  taking the first place in turn. */
-function unsolved(tasks: readonly Had[], solves: number, old: Kept, fresh: Kept): Job[] {
+/** The solves still to run: slot by slot over the tasks, the harnesses taking the first place in
+ *  turn. `had` says how many counted solves a task has under a harness. */
+function unsolvedJobs(
+  tasks: readonly string[],
+  arms: readonly Arm[],
+  had: (task: string, digest: string) => number,
+): Job[] {
   const jobs: Job[] = [];
-  for (let slot = 0; slot < solves; slot += 1) {
+  const slots = Math.max(0, ...arms.map(({ needed }) => needed));
+  for (let slot = 0; slot < slots; slot += 1) {
     for (const [index, task] of tasks.entries()) {
-      const sides = [
-        { had: task.old.length, under: old },
-        { had: task.fresh.length, under: fresh },
-      ];
-      if ((index + slot) % 2 === 1) sides.reverse();
-      for (const side of sides) {
-        if (side.had <= slot) jobs.push({ task: task.task, under: side.under });
-      }
+      const turn = (index + slot) % arms.length;
+      const order = [...arms.slice(turn), ...arms.slice(0, turn)];
+      jobs.push(
+        ...order.flatMap(({ under, needed }) =>
+          slot < needed && had(task, under.digest) <= slot ? [{ task, under }] : [],
+        ),
+      );
     }
   }
   return jobs;
-}
-
-/** Each pair cut to its first `solves` solves a side, and the tasks that have fewer. A resumed round
- *  can leave a task one solve over on a side, and a tally needs as many of each. */
-function whole(pairs: readonly Paired[], solves: number) {
-  const enough = ({ old, fresh }: Paired) => old.length >= solves && fresh.length >= solves;
-  return {
-    pairs: pairs.flatMap((pair) =>
-      enough(pair)
-        ? [{ task: pair.task, old: pair.old.slice(0, solves), fresh: pair.fresh.slice(0, solves) }]
-        : [],
-    ),
-    short: pairs.flatMap((pair) => (enough(pair) ? [] : [pair.task])),
-  };
-}
-
-/** How the plan reads the two tests together. */
-function readingOf(p: number, level: number, guard: ReturnType<typeof anchor>["reading"]): RoundReading {
-  if (p > level) return "no-step";
-  if (guard === "lost") return "anchor-lost";
-  return guard === "held" ? "step" : "anchor-not-tested";
-}
-
-/** The task versions session `id` moved, each with the state it moved it to. */
-function movedBy(events: readonly LogEvent[], id: string): Map<string, string> {
-  return new Map(
-    events.flatMap(({ kind, data }): [string, string][] =>
-      kind === "task.state" && data.session === id && isString(data.version) && isString(data.state)
-        ? [[data.version, data.state]]
-        : [],
-    ),
-  );
-}
-
-/** The report a round already wrote for session `id`, or null: a round that reported is finished. */
-function reported(events: readonly LogEvent[], id: string): RoundReport | null {
-  const data = events.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
-  if (data === undefined) return null;
-  // SAFETY: only `round` writes this event, from the report it returns.
-  return Object.fromEntries(REPORT_KEYS.map((key) => [key, data[key]])) as unknown as RoundReport;
 }
 
 /** A whole number of at least `least`, which a count read from a command line may not be. */
@@ -319,332 +290,476 @@ function counts(value: number, least: number): boolean {
   return Number.isInteger(value) && value >= least;
 }
 
-/** Refuse, before a session is spent, a request whose sets could not be screened or scored. */
-function refuseUnscorable(request: RoundRequest, old: string): void {
-  const { session, screening } = request;
-  const versions = [...request.scored, ...request.candidates, ...request.anchor];
-  const twice = versions.find((version, index) => versions.indexOf(version) !== index);
-  if (twice !== undefined) {
-    throw new Error(`task ${twice} is listed twice among the scored, candidate and anchor tasks`);
+/** Refuse, before a session or a solve is spent, tasks that could not be scored. A comparison gone
+ *  on from its log is not asked again: its tasks were fixed at its start, and a person may have
+ *  released or refused one since, which then leaves it (`withdrawn`). */
+function refuseUnscorable(terms: Terms, log: string, practised: ReadonlySet<string>): void {
+  if (terms.tasks.length === 0) {
+    throw new Error(
+      "no task to score: a comparison is asked for with at least one held-out task that waits for no label (tools/d2/prepare.ts)",
+    );
   }
-  const practised = new Set(session.tasks.map(({ version }) => version));
-  const seen = versions.find((version) => practised.has(version));
+  const twice = terms.tasks.find((version, index) => terms.tasks.indexOf(version) !== index);
+  if (twice !== undefined) throw new Error(`task ${twice} is listed twice among the tasks to score`);
+  const seen = terms.tasks.find((version) => practised.has(version));
   if (seen !== undefined) {
     throw new Error(`task ${seen} is a practice task, and a round scores no task its session saw`);
   }
-  if (!counts(request.solves, 1) || !counts(request.concurrency, 1) || !counts(request.target, 0)) {
+  // The draw leaves such a task out (`scoredSet`), and a name was the one way past that.
+  const waiting = awaitingLabel(read(log)).find((version) => terms.tasks.includes(version));
+  if (waiting !== undefined) {
     throw new Error(
-      "a round needs whole numbers: at least one solve a harness, one solve at a time, no fewer than no tasks",
+      `task ${waiting} waits for a person's label, and is not scored until it has one: tools/d2/prepare.ts --keep or --infeasible`,
     );
   }
-  if (
-    !counts(screening.fails, 1) ||
-    !counts(screening.solves, screening.fails) ||
-    !counts(request.defects, 0)
-  ) {
+  const { states, held } = taskSets(read(log));
+  // A task this comparison disputed in an earlier run of it is where that run left it.
+  const unfit = terms.tasks.find((version) => !held.includes(version) && states.get(version) !== "disputed");
+  if (unfit !== undefined) {
+    const state = states.get(unfit);
+    const why = state === undefined ? "not proposed" : state === "held" ? "short of its gate" : state;
+    throw new Error(`task ${unfit} is ${why}, and only a held-out task is scored`);
+  }
+}
+
+/** Refuse terms no comparison could be read on, whatever its tasks. */
+function refuseUnreadable(terms: Terms): void {
+  if (!counts(terms.solves, 1) || !counts(terms.concurrency, 1) || !counts(terms.defects, 0)) {
     throw new Error(
-      "screening needs at least as many solves as the fails that admit, and both whole numbers",
+      "a comparison needs whole numbers: at least one solve a harness, one solve at a time, and no fewer than no check defects",
     );
   }
-  const levels = [request.level, request.anchorLevel];
-  if (!levels.every((level) => level > 0 && level < 1) || !counts(request.anchorFloor, 0)) {
-    throw new Error("a sign test's level lies between 0 and 1, and the anchor's floor is a whole number");
+  if (!(terms.level > 0 && terms.level < 1)) throw new Error("a sign test's level lies between 0 and 1");
+  if (terms.objective !== undefined && !(terms.objective.margin >= 0)) {
+    throw new Error("an objective's margin is a share of the larger measure, from nothing up");
   }
-  const events = read(session.log);
-  const states = taskStates(events);
-  const mine = movedBy(events, session.id);
-  for (const [listed, state, name] of [
-    [request.scored, "admitted", "a scored"],
-    [request.candidates, "held", "a candidate"],
-    [request.anchor, "held", "an anchor"],
-  ] as const) {
-    // A disputed task is in no comparison, whoever disputed it, and a task this round already moved
-    // is where the round left it when the round is run again.
-    const settled = (version: string) =>
-      states.get(version) === state || states.get(version) === "disputed" || mine.has(version);
-    const wrong = listed.find((version) => !settled(version));
-    if (wrong !== undefined) {
-      throw new Error(
-        `task ${wrong} is ${states.get(wrong) ?? "not proposed"}, and ${name} task is ${state}`,
-      );
-    }
+  if (terms.cap !== undefined && !capHolds(terms.cap)) {
+    throw new Error("a cap and its reserve are dollars, and both are more than nothing");
   }
-  // The log is asked what it would refuse of the sets it can already name: an anchor task never
-  // drawn. It is asked without its solves, which are other rounds' and may rest on other conditions.
-  const bare = events.filter(({ kind }) => !kind.startsWith("solve."));
-  pairsOf(bare, [...request.scored, ...request.anchor], old, old);
+  // A budget that names neither unit would read what the full limit reads under another name. One
+  // named in prompts or CPU seconds, which were units until 2026-10-09, is such a budget here.
+  if ((terms.budgets ?? []).some((budget) => Object.keys(asBudget(budget)).length === 0)) {
+    throw new Error("a budget names turns or seconds, or both, each as a number");
+  }
 }
 
 /**
- * What runs a round's solves: the jobs' pool, the Referee's part, and the reasons it stops taking
- * jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve in
- * flight has returned.
+ * Refuse the terms a comparison is asked for on: terms no comparison could be read on, and, for
+ * one that has not begun, tasks that could not be scored. `practised` is what its session may
+ * practise on, and empty for a checkpoint. A comparison that reported is asked nothing.
+ *
+ * A comparison asks this of itself before its first event. A command asks it before it records
+ * anything, so that a refused command leaves the log as it was: until 2026-10-09 a round refused
+ * for a mistyped task had recorded the campaign's setting first, and the corrected command was
+ * then refused as another setting (the third review, row F44).
  */
-function floor(request: RoundRequest) {
-  const { log, id } = request.session;
+export function refuseTerms(
+  terms: Terms,
+  of: { readonly log: string; readonly id: string; readonly practised: ReadonlySet<string> },
+): void {
+  const events = read(of.log);
+  if (reported(events, of.id) !== null) return;
+  refuseUnreadable(terms);
+  if (startOf(events, of.id) === undefined) refuseUnscorable(terms, of.log, of.practised);
+}
+
+/**
+ * Dispute task `version` under comparison `id`, where its state allows it, and say whether it was
+ * done. A task a person refused since stays refused, and one disputed already stays so: the log
+ * refuses a move from either (`src/kernel/task.ts`).
+ */
+function dispute(log: string, id: string, version: string, found: { solve: string; reason: string }) {
+  const state = taskStates(read(log)).get(version);
+  if (state !== "held" && state !== "released") return false;
+  append(log, TASK_STATE, { version, state: "disputed", session: id, ...found });
+  return true;
+}
+
+/** What the environment said of a solve that never ran, or null: the provider wrote no output
+ *  token in the solve's last attempt's record, or the wall did not hold on the host, so the solve
+ *  was not started. A solve the provider cut after an hour's work holds thousands (the Sol
+ *  rounds of 2026-10-08), and is a non-result the comparison solves on from. On 10 October a
+ *  rehearsal whose wall refused every solve ran 56 of them to `sandbox-crash` before it was
+ *  killed: a dead wall is a dead provider's case (AGENTS.md, rule 14). A solve whose start does
+ *  not name the comparison is refused: no fold would count it, and the comparison would buy it
+ *  again at every pass. */
+function unanswered(log: string, id: string, { solve, ending }: Practised): string | null {
+  const events = read(log);
+  if (!solvesIn(events).some((each) => each.id === solve && each.start.comparison === id)) {
+    throw new Error(
+      `solve ${solve} does not name comparison ${id} at its start, so no reading would count it: the caller's solve hands the comparison on to its solve request`,
+    );
+  }
+  if (ending.outcome !== "non-result") return null;
+  if (ending.kind === "sandbox-crash") return ending.reason;
+  if (ending.kind !== "provider") return null;
+  const record = events.findLast(({ kind, data }) => kind === "solve.finished" && data.solve === solve);
+  return asRecord(record?.data.tokens)?.output === 0 ? ending.reason : null;
+}
+
+/**
+ * What runs a comparison's solves: the jobs' pool, the Referee's part, and the reasons it stops
+ * taking jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve
+ * in flight has returned.
+ */
+function floor(request: CheckpointRequest, fixed: Fixed) {
+  const { log, id, cap } = request;
   const halt = new AbortController();
-  const kill = AbortSignal.any([halt.signal, ...(request.session.kill ? [request.session.kill] : [])]);
-  // The anchor is the log's as much as the caller's: a caller that lists only the anchor tasks still
-  // held leaves out one this round disputed, which is no less an anchor task for that.
-  const anchored = new Set([
-    ...request.anchor,
-    ...read(log).flatMap(({ kind, data }) =>
-      kind === "anchor.drawn" && Array.isArray(data.tasks) ? data.tasks.filter(isString) : [],
-    ),
-  ]);
+  const kill = AbortSignal.any([halt.signal, ...(request.kill ? [request.kill] : [])]);
   const faults: string[] = [];
-  const flagged = new Set<string>();
-  const failure: { thrown: Error | null } = { thrown: null };
-  // The tasks this round disputed, kept beside the log so that a job does not read the whole of it.
+  let thrown: Error | null = null;
+  let [running, capped] = [0, false];
+  const before = read(log);
+  // The tasks this comparison disputed, and those a Referee's ruling found a check defect on, kept
+  // beside the log so that a job does not fold the whole of it.
   const dropped = new Set(
-    movedBy(read(log), id)
-      .entries()
-      .flatMap(([version, state]) => (state === "disputed" ? [version] : [])),
+    before.flatMap(({ kind, data }) =>
+      kind === TASK_STATE && data.session === id && data.state === "disputed" && isString(data.version)
+        ? [data.version]
+        : [],
+    ),
   );
-  /** The disputed tasks the plan's rule counts: those outside the anchor. */
-  const defects = () => [...dropped].filter((version) => !anchored.has(version));
-  const going = () => failure.thrown === null && !kill.aborted && defects().length <= request.defects;
-  const dispute = (version: string, solve: string, reason: string) => {
-    if (dropped.has(version) || taskStates(read(log)).get(version) === "disputed") return;
-    dropped.add(version);
-    append(log, "task.state", { version, state: "disputed", session: id, solve, reason });
-  };
-  const run = async ({ task, under }: Job): Promise<void> => {
-    if (dropped.has(task)) return;
-    const { solve, ending } = await request.solve(task, under.dir, under.digest, kill);
-    if (ending.outcome === "non-result" && ending.kind === "check") {
-      dispute(task, solve, "its own check could not run on an answer");
-    }
-    if (ending.outcome !== "fail" || ending.kind === "broken-harness" || request.referee === undefined) {
-      return;
-    }
+  const defective = new Set(
+    rejections(before, fixed, NO_LABELS).flatMap(({ task, ruling }) => (ruling === DEFECT ? [task] : [])),
+  );
+  const going = () =>
+    thrown === null &&
+    !kill.aborted &&
+    !capped &&
+    new Set([...dropped, ...defective]).size <= request.defects;
+  const silent = new Set<string>();
+  /** Put one rejected answer to the Referee, where one is seated. */
+  const rule = async (solve: string, task: string): Promise<void> => {
+    if (request.referee === undefined) return;
     try {
-      const finding = await request.referee(solve, task, kill);
-      if (finding.ruling === "check-defect" && request.refereeDecides) {
-        dispute(task, solve, `the Referee ruled a check defect: ${finding.check ?? "no check named"}`);
-      } else if (finding.ruling === "check-defect") {
-        flagged.add(task);
-      }
+      if ((await request.referee(solve, task, kill)).ruling === DEFECT) defective.add(task);
     } catch (error) {
-      // An unread fail stands as a fail: the Referee removes a comparison, and its absence removes none.
+      // A rejection nobody ruled on sets its task aside, as one waiting for a person does.
       faults.push(`${solve}: ${errorMessage(error)}`);
     }
   };
-  /** Run `jobs`, `concurrency` at a time, until they are done or the round is no longer going. */
+  const run = async ({ task, under }: Job): Promise<void> => {
+    const solved = await request.solve(task, under, id, kill);
+    const { solve, ending } = solved;
+    const why = unanswered(log, id, solved);
+    if (why === null) silent.clear();
+    else if (silent.add(task).size >= SILENT) {
+      throw new Error(
+        `no solve of ${String(SILENT)} tasks in a row ran, so the comparison stops: ${why}. Run it again and it goes on from its log`,
+      );
+    }
+    if (ending.outcome === "non-result" && ending.kind === "check" && !dropped.has(task)) {
+      dropped.add(task);
+      dispute(log, id, task, { solve, reason: "its own check could not run on an answer" });
+    }
+    // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave
+    // no answer, is not valid with no ruling (`src/kernel/compare.ts`).
+    if (ending.outcome === "fail" && ending.kind === "rejected") await rule(solve, task);
+  };
+  /** Run `jobs`, `concurrency` at a time, until they are done or the comparison is no longer going. */
   const drain = async (jobs: Job[]): Promise<void> => {
     const worker = async (): Promise<void> => {
       for (let job = jobs.shift(); job !== undefined && going(); job = jobs.shift()) {
+        const events = read(log);
+        // A task this comparison disputed, or a person released or refused since, is solved no more.
+        if (!taskSets(events).held.includes(job.task)) continue;
+        if (cap !== undefined && billedFor(events, id) + (running + 1) * cap.reserve > cap.dollars) {
+          // The job is left for a lane that can afford it. With solves in flight the reserve held
+          // for each may come back in part, so this lane steps aside; with none in flight nothing
+          // more will, and the cap is reached.
+          jobs.unshift(job);
+          capped = running === 0;
+          return;
+        }
+        running += 1;
         try {
           await run(job);
         } catch (error) {
-          failure.thrown ??= asError(error);
+          thrown ??= asError(error);
           halt.abort();
+        } finally {
+          running -= 1;
         }
       }
     };
     await Promise.all(Array.from({ length: Math.max(1, request.concurrency) }, worker));
   };
-  /** Throw what stopped the solves, if a solve or a kill did. */
-  const settle = () => {
-    if (failure.thrown !== null) throw failure.thrown;
-    if (kill.aborted) throw new Error("the round was killed; run it again and it goes on from its log");
+  /**
+   * Solve `tasks` under `arms` until each has its solves, and say whether the comparison goes on.
+   * It throws what stopped the solves, if a solve or a kill did.
+   */
+  const solveAll = async (tasks: readonly string[], arms: readonly Arm[]): Promise<boolean> => {
+    for (let pass = 0; pass < PASSES && going(); pass += 1) {
+      const had = new Map<string, number>();
+      for (const { under } of solvesUnder(read(log), fixed).filter(({ counts: own }) => own)) {
+        const key = `${under.task} ${under.harness}`;
+        had.set(key, (had.get(key) ?? 0) + 1);
+      }
+      await drain(unsolvedJobs(tasks, arms, (task, digest) => had.get(`${task} ${digest}`) ?? 0));
+    }
+    if (thrown !== null) throw thrown;
+    if (kill.aborted) throw new Error("the comparison was killed; run it again and it goes on from its log");
+    return going();
   };
-  return { drain, going, settle, defects, dropped, faults, flagged };
+  /** Put to the Referee the rejections an earlier run of the comparison left unruled: it was killed
+   *  between a solve's end and its ruling, or its reader failed. */
+  const ruleLeft = async (): Promise<void> => {
+    const held = new Set(taskSets(before).held);
+    const unruled = rejections(before, fixed, NO_LABELS).filter(
+      ({ task, ruling }) => ruling === null && held.has(task),
+    );
+    for (let at = 0; at < unruled.length && going(); at += request.concurrency) {
+      const lane = unruled.slice(at, at + request.concurrency);
+      await Promise.all(lane.map(({ solve, task }) => rule(solve, task)));
+    }
+  };
+  return { solveAll, ruleLeft, faults, capped: () => capped };
 }
 
 /**
- * Step 2. Candidates are screened as many at a time as the scored set still lacks, each under both
- * harnesses, and moved to the state `screen` gives them. One whose screening solves did not all end
- * in a pass or a fail, or which a broken harness would have screened, stays held and is returned.
+ * What comparison `id` fixed, from its `comparison.started` event, which is written here the first
+ * time. A comparison gone on from its log goes on with the tasks and the terms it began with: one
+ * asked for again on other terms is refused, since its solves so far were made for the first.
  */
-async function screenCandidates(
-  request: RoundRequest,
-  work: ReturnType<typeof floor>,
-  harnesses: { readonly old: Kept; readonly fresh: Kept },
-  admitted: () => string[],
-): Promise<string[]> {
-  const { log, id } = request.session;
-  const { old, fresh } = harnesses;
-  const { solves, fails } = request.screening;
-  const waiting = request.candidates.filter((version) => taskStates(read(log)).get(version) === "held");
-  const unscreened: string[] = [];
-  const had = (events: readonly LogEvent[], task: string) => ({
-    task,
-    old: endingsOf(events, task, old.digest).slice(0, solves),
-    fresh: endingsOf(events, task, fresh.digest).slice(0, solves),
-  });
-  while (work.going()) {
-    const batch = waiting.splice(0, Math.max(0, request.target - admitted().length));
-    if (batch.length === 0) break;
-    const before = since(read(log), id);
-    await work.drain(
-      unsolved(
-        batch.map((task) => had(before, task)),
-        solves,
-        old,
-        fresh,
-      ),
+function begin(request: CheckpointRequest): Fixed {
+  const { log, id } = request;
+  const terms = {
+    old: request.old.digest,
+    fresh: request.fresh.digest,
+    starter: request.starter.digest,
+    setting: request.setting,
+    solves: request.solves,
+    level: request.level,
+    noise: request.noise === true,
+    budgets: (request.budgets ?? []).map(asBudget),
+    cap: request.cap === undefined ? null : { ...request.cap },
+    ...keyIfDefined("prediction", request.prediction),
+    ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
+  };
+  const was = startOf(read(log), id);
+  if (was === undefined) append(log, STARTED, { session: id, ...terms, tasks: [...request.tasks] });
+  const fixed = fixedIn(read(log), id);
+  if (fixed === null) throw new Error(`comparison ${id} wrote no start the log reads back`);
+  // Over the names of both: a continuation that drops a term the start recorded moved it too.
+  const now: JsonObject = { ...terms };
+  const named = new Set([...Object.keys(now), ...Object.keys(was ?? {})]).difference(
+    new Set(["session", "tasks"]),
+  );
+  const moved = [...named]
+    .toSorted()
+    .filter((name) => was !== undefined && !sameJsonValue(was[name], now[name]));
+  if (moved.length > 0) {
+    throw new Error(
+      `comparison ${id} began on other terms (${moved.join(", ")}), and its solves so far were made for those: run it as it began, or under another id`,
     );
-    if (!work.going()) break;
-    const after = since(read(log), id);
-    const live = batch.filter((each) => !work.dropped.has(each));
-    let broken = 0;
-    for (const version of live) {
-      const tests = had(after, version);
-      try {
-        if (tests.old.length < solves || tests.fresh.length < solves) {
-          throw new Error("its screening solves did not all end in a pass or a fail");
-        }
-        const state = screen([tests.old, tests.fresh], fails);
-        append(log, "task.state", { version, state, session: id });
-      } catch (error) {
-        unscreened.push(version);
-        work.faults.push(`${version}: ${errorMessage(error)}`);
-        const ended = [...tests.old, ...tests.fresh];
-        broken += ended.some((each) => each.outcome === "fail" && each.kind === "broken-harness") ? 1 : 0;
-      }
-    }
-    // A harness that broke on every task of a batch will break on the next batch too, at the other
-    // harness's full cost a task: the rest of the candidates are left held.
-    if (live.length > 0 && broken === live.length) break;
   }
-  return unscreened;
+  return fixed;
 }
 
-export async function round(request: RoundRequest): Promise<RoundReport> {
-  const { session, solves } = request;
+/** Write a comparison's report under its id, with the terms it was made on, and return it. */
+function write(
+  request: Pick<CheckpointRequest, "log" | "id" | "tasks" | "solves" | "level" | "setting">,
+  told: Report,
+  beside: { readonly broken: string | null; readonly reviewFaults: readonly string[] },
+): Report {
+  append(request.log, REPORTED, {
+    session: request.id,
+    // The eight truss rounds of 2026-10-08 asked for no scored task, and their logs could not say so.
+    tasks: request.tasks.length,
+    solves: request.solves,
+    level: request.level,
+    setting: request.setting,
+    broken: beside.broken,
+    reviewFaults: [...beside.reviewFaults],
+    // A report is strings, numbers and lists and records of them.
+    ...asRecord(told),
+  });
+  return told;
+}
+
+/**
+ * One comparison of `fresh` with the reference harness `old`, with no session: the plan's
+ * checkpoint after several sessions, and with `noise` its gate G2.
+ */
+export async function checkpoint(request: CheckpointRequest): Promise<Report> {
+  const { log, id, old, fresh, starter, solves } = request;
+  // A comparison that reported is finished, and run again it says what it said.
+  const before = reported(read(log), id);
+  if (before !== null) return before;
+  if (old.digest === fresh.digest) {
+    throw new Error(
+      `a comparison sets two harnesses against each other, and both sides are ${old.digest}; the reference harness is read against itself beside a comparison, with noise`,
+    );
+  }
+  refuseTerms(request, { log, id, practised: new Set() });
+  const fixed = begin(request);
+  const work = floor(request, fixed);
+  const head = { old: fixed.old, fresh: fixed.fresh, starter: fixed.starter };
+  const asked = { ...request, tasks: fixed.tasks };
+  const beside = () => ({ broken: null, reviewFaults: work.faults });
+  const disputed = () => fixed.tasks.filter((task) => taskStates(read(log)).get(task) === "disputed");
+  /** The report of a comparison that stopped before its test could be read: on its cap, or its
+   *  defects. It names the tasks a rejection had set aside by then, the check defects among them. */
+  const stopped = (): Report => {
+    const open = new Set(
+      rejections(read(log), fixed, NO_LABELS).flatMap(({ task, ruling }) =>
+        ruling === EARNED ? [] : [task],
+      ),
+    );
+    const told: Report = {
+      ...head,
+      ...NOTHING,
+      objective: fixed.objective === undefined ? null : { ...fixed.objective, decided: 0 },
+      disputed: disputed(),
+      aside: fixed.tasks.filter((task) => open.has(task)),
+      capped: work.capped(),
+      reading: work.capped() ? "not-scored" : "check-defects",
+    };
+    return write(asked, told, beside());
+  };
+  const arms = [
+    { under: old, needed: fixed.noise ? 2 * solves : solves },
+    { under: fresh, needed: solves },
+  ];
+  await work.ruleLeft();
+  if (!(await work.solveAll(fixed.tasks, arms))) return stopped();
+  let found = compared(log, fixed, NO_LABELS);
+  if (found.reading === "starter-unread") {
+    // The test cleared its level, so the starter is solved on the tallied tasks to hold it to.
+    // Whatever stops those solves, the test stands and is reported: a cap that cut the starter
+    // short leaves the reading where it was, unread against the starter.
+    await work.solveAll(found.versions, [{ under: starter, needed: solves }]);
+    found = compared(log, fixed, NO_LABELS);
+  }
+  const told = { ...head, ...found, disputed: disputed(), capped: work.capped(), settled: null };
+  return write(asked, told, beside());
+}
+
+/**
+ * A Builder session, then the comparison of the harness it left with the reference harness. The
+ * plan's first round is one, from the Starter Built Harness and against it.
+ */
+export async function round(request: RoundRequest): Promise<Report> {
+  const { session, builder, reference, ...terms } = request;
   const { log, id } = session;
   // A round that reported is finished, and run again it says what it said: a second pass over a
   // finished comparison, topping up a set a dispute thinned, would be a second look at its data.
   const before = reported(read(log), id);
   if (before !== null) return before;
-  const old: Kept = { dir: session.parent, digest: (await openHarness(session.parent)).digest };
-  refuseUnscorable(request, old.digest);
-
+  refuseTerms(terms, { log, id, practised: new Set(session.tasks.map(({ version }) => version)) });
   // The session is read from the log whether it ran now or in an earlier run of this round.
-  if ((await left(read(log), session, old.digest)) === undefined) await (request.builder ?? build)(session);
-  const built = await left(read(log), session, old.digest);
-  if (built === undefined) throw new Error(`session ${id} ran and left no record in the log`);
-  const work = floor(request);
-  /** Write the round's one report and return it. */
-  const report = (told: Omit<RoundReport, "old" | "fresh">): RoundReport => {
-    const told_: RoundReport = { old: old.digest, fresh: built.kept?.digest ?? null, ...told };
-    append(log, REPORTED, {
-      session: id,
-      solves,
-      level: request.level,
-      broken: built.broken,
-      reviewFaults: work.faults,
-      // SAFETY: a report is strings, numbers and lists and records of them.
-      ...(told_ as unknown as JsonObject),
-    });
-    return told_;
-  };
-  const nothing = {
-    scored: null,
-    anchor: null,
-    versions: [],
-    disputed: [],
-    flagged: [],
-    short: [],
-    unscreened: [],
-  };
-  if (built.kept === null) return report({ ...nothing, reading: "no-change" });
-  const fresh = built.kept;
-  const counted = () => since(read(log), id);
-  /** The scored set as it stands: the caller's, and what this round's screening admitted. */
-  const admitted = () => {
-    const events = read(log);
-    const states = taskStates(events);
-    const here = movedBy(events, id)
-      .entries()
-      .flatMap(([version, state]) => (state === "admitted" ? [version] : []));
-    return [...new Set([...request.scored, ...here])].filter((version) => states.get(version) === "admitted");
-  };
-
-  const unscreened = await screenCandidates(request, work, { old, fresh }, admitted);
-  for (let pass = 0; pass < PASSES && work.going(); pass += 1) {
-    const { pairs } = pairsOf(counted(), [...admitted(), ...request.anchor], old.digest, fresh.digest);
-    await work.drain(unsolved(pairs, solves, old, fresh));
+  const built = await sessionOnce({ ...session, cap: request.cap }, builder);
+  const asked = { ...terms, log, id, kill: session.kill };
+  if (built.kept === null || built.kept.digest === reference.digest) {
+    const unchanged: Report = {
+      old: reference.digest,
+      fresh: null,
+      starter: terms.starter.digest,
+      ...NOTHING,
+      reading: "no-change",
+    };
+    return write(asked, unchanged, { broken: built.broken, reviewFaults: [] });
   }
-  work.settle();
-  if (!work.going()) {
-    return report({
-      ...nothing,
-      disputed: [...work.dropped],
-      flagged: [...work.flagged],
-      unscreened,
-      reading: "check-defects",
-    });
-  }
-
-  const events = counted();
-  const setOf = (listed: readonly string[]) => {
-    const { pairs, disputed } = pairsOf(events, listed, old.digest, fresh.digest);
-    return { ...whole(pairs, solves), disputed };
-  };
-  const test = setOf(admitted());
-  const guard = setOf(request.anchor);
-  const tested = { ...scored(test.pairs), ...gain(test.pairs) };
-  const guarded = anchor(guard.pairs, request.anchorLevel, request.anchorFloor);
-  append(log, "anchor.scored", {
-    session: id,
-    old: old.digest,
-    fresh: fresh.digest,
-    solves,
-    level: request.anchorLevel,
-    floor: request.anchorFloor,
-    ...guarded,
-    tasks: guard.pairs.length,
-    disputed: guard.disputed,
-    short: guard.short,
-  });
-  return report({
-    scored: tested,
-    anchor: guarded,
-    versions: test.pairs.map(({ task }) => task),
-    disputed: [...work.dropped],
-    flagged: [...work.flagged].filter((version) => !work.dropped.has(version)),
-    short: [...test.short, ...guard.short],
-    unscreened,
-    reading: readingOf(tested.p, request.level, guarded.reading),
-  });
+  return await checkpoint({ ...asked, old: reference, fresh: built.kept });
 }
 
 /**
- * The plan's three-session rule over the rounds a log holds: the pooled gain of every scored task
- * of every compared session, and whether the experiment stops on it. It stops when at least three
- * sessions were compared, none read a step, and the gain stays under ten points at 90% confidence
- * over at least one scored set's worth of tasks: on fewer, tasks that all tied would bound the gain
- * at nothing with no evidence to speak of. A session that left no changed harness is a session
- * spent, and counts among the three with no task to pool; three sessions with no task between them
- * changed nothing, which stops it too.
+ * Settle a comparison's reading on a person's labels of its rejections, and write its report once
+ * more.
  *
- * Each round is read as its report found it: from the log up to that report, so a task released or
- * gone stale since is still the scored task it was, and within the round's own window of solves.
+ * `labels` holds a ruling a solve, and a person's label stands over the Referee's ruling of the
+ * same rejection. Every rejection that set a task aside must carry one. A task whose rejections are
+ * then all earned is restored to the tally. One labelled a check defect disputes its task, which
+ * leaves every comparison from then on. One labelled unclear leaves its task out of this
+ * comparison. The tests are read again from the same solves and logged as the comparison's last
+ * report, with what was settled and the labels themselves. Run again with the same labels it
+ * returns that report. A comparison is settled once: other labels for one already settled are
+ * refused, and so is a settling with no label at all, which would close the comparison to the
+ * labels still to come.
+ *
+ * A settling makes no solve. Where the labels leave a test that clears its level and the starter
+ * was never solved for it, the reading is `starter-unread`, and the new harness is compared with
+ * the starter in a comparison of its own.
+ *
+ * The comparison is read as its own report found it (`asReported`), so the labels settle the same
+ * reading whether they come at once or after later comparisons have solved the same tasks.
  */
-export function stopRule(events: readonly LogEvent[]) {
-  const last = new Map<string, number>();
-  for (const [index, { kind, data }] of events.entries()) {
-    if (kind === REPORTED && isString(data.session)) last.set(data.session, index);
+export function settleReading(log: string, id: string, labels: ReadonlyMap<string, Ruling>): Report {
+  const before = read(log);
+  const last = before.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
+  const report = reported(before, id);
+  const fixed = fixedIn(before, id);
+  if (last === undefined || report === null) throw new Error(`comparison ${id} has no report to settle`);
+  if (report.settled !== null) {
+    const was: Readonly<Record<string, Ruling | undefined>> = report.settled.labels ?? {};
+    const other = [...new Set([...labels.keys(), ...Object.keys(was)])].filter(
+      (solve) => labels.get(solve) !== was[solve],
+    );
+    if (other.length > 0) {
+      throw new Error(
+        `comparison ${id} is settled already, and these labels are not the ones it was settled on (${other.join(", ")}): a comparison is settled once`,
+      );
+    }
+    return report;
   }
-  const reports = [...last.entries()].flatMap(([session, index]) => {
-    const data = events[index]?.data;
-    return data === undefined || data.reading === "check-defects" ? [] : [{ session, index, data }];
+  if (report.scored === null || fixed === null) {
+    throw new Error(
+      `comparison ${id} reads ${report.reading} and compared nothing, so there is nothing to settle`,
+    );
+  }
+  // A budget in a unit that is read no longer would come back with no unit, which reads the full
+  // limit under no name, and the settled report would hold that in place of the budget the
+  // comparison began with (the third review, row F46).
+  const began = startOf(before, id)?.budgets;
+  const dropped = [
+    ...new Set((Array.isArray(began) ? began : []).flatMap((budget) => Object.keys(asRecord(budget) ?? {}))),
+  ].filter((unit) => !UNITS.some((known) => known === unit));
+  if (dropped.length > 0) {
+    throw new Error(
+      `comparison ${id} began with a budget in ${dropped.join(" and ")}, which this source reads no longer (${UNITS.join(" and ")} are read): its report stands as it was written. Settle it from the commit it was made at`,
+    );
+  }
+  const { aside, others } = toLabel(before, id);
+  const known = new Set([...aside, ...others]);
+  const stray = [...labels.keys()].find((solve) => !known.has(solve));
+  if (stray !== undefined) throw new Error(`${stray} is no rejected answer of comparison ${id}`);
+  const open = aside.filter((solve) => !labels.has(solve));
+  if (open.length > 0) {
+    throw new Error(
+      `${String(open.length)} of ${String(aside.length)} rejections that set a task aside carry no label (earned, check-defect or unclear): ${open.join(", ")}`,
+    );
+  }
+  if (labels.size === 0) {
+    throw new Error(
+      `comparison ${id} has no rejection that set a task aside, and no label is given: there is nothing to settle`,
+    );
+  }
+  const versionOf = new Map(ranUnder(before).map((solve) => [solve.id, solve.under.task] as const));
+  const defects = [...labels].flatMap(([solve, label]) => (label === DEFECT ? [solve] : []));
+  const reason = "a person labelled the rejection a check defect";
+  // A task a person refused since stays refused: its rejection keeps its label, and the task is
+  // left out of this comparison as one set aside.
+  const disputed = defects.flatMap((solve) => {
+    const version = versionOf.get(solve) ?? "";
+    return dispute(log, id, version, { solve, reason }) ? [version] : [];
   });
-  const pairs = reports.flatMap(({ session, index, data }) => {
-    const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
-    if (!isString(data.old) || !isString(data.fresh) || !isNumber(data.solves)) return [];
-    const then = since(events.slice(0, index + 1), session);
-    return whole(pairsOf(then, versions, data.old, data.fresh).pairs, data.solves).pairs;
-  });
-  const pooled = gain(pairs);
-  const stepped = reports.some(({ data }) => data.reading === "step");
-  const flat = pairs.length === 0 || (pairs.length >= STOP_TASKS && pooled.upper < STOP_POINTS);
-  return {
-    sessions: reports.length,
-    tasks: pairs.length,
-    ...pooled,
-    stop: reports.length >= STOP_SESSIONS && !stepped && flat,
+  const found = compared(log, fixed, labels);
+  const settled: Report = {
+    old: report.old,
+    fresh: report.fresh,
+    starter: report.starter,
+    ...found,
+    disputed: [...new Set([...report.disputed, ...disputed])],
+    capped: report.capped,
+    settled: {
+      labelled: labels.size,
+      defects: defects.length,
+      disputed,
+      restored: found.versions.filter((version) => report.aside.includes(version)),
+      labels: Object.fromEntries(labels),
+    },
   };
+  // The comparison's own terms are carried, so the settled report reads alone as the first one did.
+  append(log, REPORTED, { ...last, ...asRecord(settled) });
+  return settled;
 }

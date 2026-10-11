@@ -12,12 +12,11 @@
  * cannot be established is not one that may be run without.
  */
 
-import { existsSync, lstatSync, readFileSync, realpathSync } from "../meta/filesystem.ts";
-import { constants } from "../meta/os.ts";
+import { existsSync, lstatSync, realpathSync } from "../meta/filesystem.ts";
 import { dirname, isAbsolute, join } from "../meta/path.ts";
 import { posixContainsPath } from "../meta/path-containment.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
-import type { RuntimePlatform, RuntimeSignal } from "../meta/runtime-values.ts";
+import type { RuntimePlatform } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { runtimeProcess, capturedExecPath } from "../meta/process.ts";
@@ -67,18 +66,6 @@ const ATTESTED_BWRAP = new Map<
   { metadata: ReadRootMetadata; mechanismDigest: string; canaryRan: boolean }
 >();
 
-const isSignalName = (name: string): name is RuntimeSignal => name in constants.signals;
-
-/** Bubblewrap reports a command killed by a signal as exit 128 + the signal number and raises no
- *  signal of its own, so exit 137 from a confined command is a SIGKILL, and a caller reading the
- *  code at face value would record a clean finish for a killed process. The host's own signal table
- *  names it, which is sound because bwrap only ever runs on the host that reads the exit. */
-export function bwrapWrappedSignal(exitCode: number | null): RuntimeSignal | null {
-  if (exitCode === null || exitCode <= 128) return null;
-  const name = Object.entries(constants.signals).find(([, number]) => number === exitCode - 128)?.[0];
-  return name !== undefined && isSignalName(name) ? name : null;
-}
-
 /** Candidate Bubblewrap locations in resolution order. PATH wins so that a normal package install
  *  is found wherever the distribution put it, and these fixed roots exist for a controller running
  *  with a deliberately small environment, where PATH may name nothing useful. */
@@ -96,7 +83,7 @@ export const LINUX_SYSTEM_READ_ROOTS = ["/usr", "/bin", "/sbin", "/lib", "/lib64
  *  but on a systemd-resolved host it is a symlink into `/run`, which no posture binds: the child
  *  then has a socket and no way to turn a name into an address, so every hostname fails to resolve.
  *  Only the link target is bound, never the directory holding it. */
-export function networkResolverReadPaths(): string[] {
+function networkResolverReadPaths(): string[] {
   try {
     const target = realpathSync.native("/etc/resolv.conf");
     return target === "/etc/resolv.conf" || underSystemRoot(target) ? [] : [target];
@@ -116,7 +103,7 @@ function resolveBwrap(runtime: LinuxBwrapRuntime): string | null {
 }
 
 /** The system roots that actually exist on this host, in fixed order. */
-export function presentSystemReadRoots(): string[] {
+function presentSystemReadRoots(): string[] {
   return LINUX_SYSTEM_READ_ROOTS.filter((root) => existsSync(root));
 }
 
@@ -162,38 +149,6 @@ export function nodeRuntimeBinDirs(): string[] {
  *  support identity have a single owner. */
 export function baselineReadRoots(): string[] {
   return [...presentSystemReadRoots(), ...nodeRuntimeReadRoots()];
-}
-
-/** The one child process of `pid`, from the kernel's own `children` list; null when there is
- * none, more than one, or the list is unreadable. */
-function onlyChild(pid: number): number | null {
-  try {
-    const children = readFileSync(`/proc/${pid}/task/${pid}/children`, "utf8")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    return children.length === 1 ? Number(children[0]) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** The host pid of the worker below `bwrapPid` that reported `reportedPid` as its own pid. Every
- *  Bubblewrap child here runs in a private pid namespace, so bwrap forks the namespace init, the
- *  init forks the command, and the command sees itself as pid 2. Two exact parent links therefore
- *  reach the command, and the kernel's last `NSpid` column must equal what the command reported.
- *  Anything else fails closed: a pid that cannot be correlated proves nothing about what ran. */
-export function bwrapConfinedWorker(reportedPid: number, bwrapPid: number): number | null {
-  const init = onlyChild(bwrapPid);
-  const command = init === null ? null : onlyChild(init);
-  if (command === null) return null;
-  try {
-    const status = readFileSync(`/proc/${command}/status`, "utf8");
-    const namespacePid = /^NSpid:\s*(.+)$/m.exec(status)?.[1]?.trim().split(/\s+/).at(-1);
-    return Number(namespacePid) === reportedPid ? command : null;
-  } catch {
-    return null;
-  }
 }
 
 /** Bubblewrap's own stderr messages for a refused unprivileged user namespace. They are matched
@@ -431,6 +386,13 @@ export function bwrapReadBinds(paths: readonly string[]): string[] {
   return paths.flatMap((path) => ["--ro-bind", path, path]);
 }
 
+/** `--remount-ro` each path, so that a bind made earlier cannot reopen it writable. A path that no
+ *  longer exists is left out, as `bwrapTmpfsDenies` leaves it unmounted and for the same reason:
+ *  Bubblewrap refuses the launch on it ("realpath(destination): No such file or directory"). */
+export function bwrapReadonlyRemounts(paths: readonly string[]): string[] {
+  return paths.flatMap((path) => (existsSync(path) ? ["--remount-ro", path] : []));
+}
+
 /** `--bind` each writable root read-write at its own location. */
 export function bwrapWriteBinds(paths: readonly string[]): string[] {
   return paths.flatMap((path) => ["--bind", path, path]);
@@ -444,17 +406,26 @@ export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
   // and leaves the host file untouched, where an empty tmpfs file would read as empty rather than
   // refuse. The probe's witness requires an observable refusal, because an isolation returning ""
   // instead of an error cannot be told apart from one that is not running.
-  return paths.flatMap((path) =>
-    isRegularFileDeny(path) ? ["--ro-bind", "/dev/null", path] : ["--tmpfs", path],
-  );
+  //
+  // A path that no longer exists takes no mount. The root is bound read-only, so Bubblewrap cannot
+  // make the mountpoint ("Can't mkdir <path>: Read-only file system") and refuses the whole launch.
+  // The policy names the repository's other worktrees, read once when the campaign opens, and on
+  // 10 October two of them were removed while a simulated campaign ran: from the next policy on
+  // every solve ended `sandbox-crash`, 12 in a row, with the probe's own control read refused. A
+  // path that does not exist cannot be read, so leaving it unmounted denies nothing; it stays in
+  // the policy's identity, which says what was denied by name.
+  return paths.flatMap((path) => {
+    if (isRegularFileDeny(path)) return ["--ro-bind", "/dev/null", path];
+    return existsSync(path) ? ["--tmpfs", path] : [];
+  });
 }
 
 /**
  * Whether a protected path is a plain file on this host, and so cannot take a tmpfs.
  *
- * `--tmpfs` mounts a directory. Bubblewrap creates a missing mountpoint, so an absent path and a
- * directory are both fine, but an existing regular file refuses the whole launch with "Can't mkdir
- * <path>: Not a directory", and one refused mountpoint takes the entire isolation with it. Three of
+ * `--tmpfs` mounts a directory. An existing regular file refuses the whole launch with "Can't mkdir
+ * <path>: Not a directory", and one refused mountpoint takes the entire isolation with it. (An
+ * absent path refuses it too, under a read-only root; `bwrapTmpfsDenies` leaves those out.) Three of
  * the protected home paths are file-shaped: `.netrc`, `.npmrc` and `.claude.json`. A fresh Linux VM
  * has none of them, so a clean-VM gate run passes while an operator machine that has actually run
  * Claude Code has `~/.claude.json` and refuses every confined call.

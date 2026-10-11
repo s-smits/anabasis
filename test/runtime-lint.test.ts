@@ -6,18 +6,16 @@ import { type Diagnostic, optionalFinding, strictByConfig, tsgolintPath } from "
 import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 
 describe("runtime lint configuration", () => {
-  it("rejects abandoned async work, hidden promises, loose conditions, missing variants, unchecked OAuth imports and unsafe any", () => {
+  it("rejects abandoned async work, hidden promises, loose conditions, missing variants and unsafe any", () => {
     const root = resolve(import.meta.dirname, "..");
     const dir = mkdtempSync(join(tmpdir(), "ana-runtime-lint-"));
-    const oauth = join(dir, "src/backends/oauth");
-    mkdirSync(oauth, { recursive: true });
-    const fixture = join(oauth, "fixture.ts");
+    const src = join(dir, "src/backends");
+    mkdirSync(src, { recursive: true });
+    const fixture = join(src, "fixture.ts");
     const text = `
-import { parseJsonAs as unchecked } from "${root}/src/meta/json-runtime.ts"; // REPORT no-restricted-imports
 import { capturedJsonParse } from "${root}/src/meta/json-runtime.ts";
 export const json = capturedJsonParse("{}");
-export const parsed = unchecked<string>("1");
-export const raw = JSON.parse("1"); // REPORT no-restricted-properties no-unsafe-assignment
+export const raw = JSON.parse("1"); // REPORT no-unsafe-assignment
 Promise.resolve("lost"); // REPORT no-floating-promises
 void Promise.resolve("still lost"); // REPORT no-floating-promises
 if (Promise.resolve(false)) console.log("wrong branch"); // REPORT no-misused-promises strict-boolean-expressions

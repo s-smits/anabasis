@@ -6,15 +6,15 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { checkProgram, sweepRows } from "../tools/m0/stored-sweep.ts";
 
+type Turn =
+  | { status: "open" }
+  | { status: "ended"; inputTokens: number; outputTokens: number; costUsd: number };
+
 const root = mkdtempSync(join(tmpdir(), "ana-sweep-"));
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
 });
-
-type Turn =
-  | { status: "open" }
-  | { status: "ended"; inputTokens: number; outputTokens: number; costUsd: number };
 
 function solve(taskId: string, result: Record<string, boolean>, turns: Turn[]): void {
   const dir = join(root, "runs", "s", "c01", taskId);
@@ -52,7 +52,7 @@ describe("a stored sweep", () => {
       ["unparsed", null, { outcome: "fail", kind: "no-answer" }],
       ["refused", null, { outcome: "fail", kind: "rejected" }],
       ["walled", null, { outcome: "fail", kind: "wall-ended" }],
-      ["stalled", null, { outcome: "non-result", kind: "refusal", reason: "non-result:provider-stall" }],
+      ["stalled", null, { outcome: "non-result", kind: "provider", reason: "non-result:provider-stall" }],
     ]);
 
     writeFileSync(

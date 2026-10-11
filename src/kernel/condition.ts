@@ -6,8 +6,9 @@
  * host's, which a Built Harness used to declare for itself: on 7 October each harness state carried
  * its own `config.yaml` naming its wall, turn cap, shell timeouts and concurrency.
  */
-import type { JsonObject } from "../meta/json-shape.ts";
-import { hashJsonValue, sameJsonValue } from "../meta/stable-json.ts";
+import { asRecord, isNumber, type JsonValue, type OpenRecord } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
+import { hashJsonValue, requireJsonValue, sameJsonValue } from "../meta/stable-json.ts";
 import { append, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
 
@@ -15,11 +16,20 @@ import type { PriceTable } from "./meter.ts";
  * What the host holds every solve to. A harness never sets one: a file or a prompt that asks for a
  * longer wall, more turns, more concurrency or more disk changes nothing.
  */
-export interface Limits {
+export type Limits = {
   readonly wallSeconds: number;
   /** The prompts a solver is given, the opening one and each nudge after a turn that ended without a
    *  submit, before the solve stops without an answer of its own: v1's `maxTurns`. */
   readonly turns: number;
+  /**
+   * The model's own turns a solve is given, a turn being one reply of the model with the tool calls
+   * in it; absent, they are not limited. The solver is told the number and how many it has used, and
+   * a solve that reaches it without an answer ends there (`turns-ended`). It is the unit of a
+   * budget that does not move with the host's load: the one step on record was read under a time
+   * limit on a host loaded at ten times its cores, and `turns` above bound no solve, since every
+   * finished solve was given one prompt (`docs/plan.md`, Phase 2).
+   */
+  readonly modelTurns?: number;
   /** How long one shell command runs when the solver names no timeout. A timeout it names only
    *  raises this, up to `shellMaxSeconds`, as v1's Built shell clamped it (built-bash.ts:316-321). */
   readonly shellDefaultSeconds: number;
@@ -34,14 +44,14 @@ export interface Limits {
    * `solveIsolationPolicy`, so a change here moves `sandbox` too.
    */
   readonly diskBytes: number;
-}
+};
 
 export interface Condition {
   /** The contract frozen in round 0. */
   readonly contract: string;
   /** The harness version a Builder session ended on. */
   readonly harness: string;
-  /** The task version: statement, inputs and check. */
+  /** The task version: family, inputs, rule ids and check. */
   readonly task: string;
   /**
    * `provider/model`, a key of `prices`, exactly as the backend is asked for it. A provider may serve
@@ -63,8 +73,42 @@ export interface Condition {
    *  commit that touches neither opens no new condition, and an uncommitted change to either does,
    *  where a commit id did the opposite on both counts. */
   readonly host: string;
-  /** Which side of the pair: the test condition, or the stronger one. */
+  /** The test condition. Until 2026-10-09 a task was also solved once under a stronger condition,
+   *  to show it could be done, and a log written before then holds such solves. No comparison
+   *  counts one (`compare.ts`). */
   readonly side: "test" | "strong";
+}
+
+/**
+ * What a solve ran under apart from its task and its harness: the solver, its limits, the checker's
+ * side and the host. A comparison holds all of it still (`compare.ts`): a solve another model made,
+ * or the same model under other limits or other host code, is no solve of this solver's, and is
+ * neither counted nor reused.
+ */
+export type Setting = Omit<Condition, "task" | "harness" | "solverTools">;
+
+/** The limits a log event holds under `value`, or null where it holds none whole. */
+export function limitsIn(value: JsonValue | undefined): Limits | null {
+  const held = asRecord(value);
+  if (held === null) return null;
+  const { wallSeconds, turns, shellDefaultSeconds, shellMaxSeconds, concurrency, diskBytes } = held;
+  const { modelTurns } = held;
+  return isNumber(wallSeconds) &&
+    isNumber(turns) &&
+    isNumber(shellDefaultSeconds) &&
+    isNumber(shellMaxSeconds) &&
+    isNumber(concurrency) &&
+    isNumber(diskBytes)
+    ? {
+        wallSeconds,
+        turns,
+        shellDefaultSeconds,
+        shellMaxSeconds,
+        concurrency,
+        diskBytes,
+        ...keyIfDefined("modelTurns", isNumber(modelTurns) ? modelTurns : undefined),
+      }
+    : null;
 }
 
 /** The condition's identity: the hash of its canonical JSON, so field order does not move it. */
@@ -75,9 +119,28 @@ export function conditionId(condition: Condition): string {
   return hashJsonValue(condition);
 }
 
+/** A setting's identity. A whole condition may be passed: its task and its harness are left out. */
+export function settingId(setting: Setting): string {
+  const { contract, model, effort, prices, runtime, compaction } = setting;
+  const { verifierTools, sandbox, limits, host, side } = setting;
+  return hashJsonValue({
+    contract,
+    model,
+    effort,
+    prices,
+    runtime,
+    compaction,
+    verifierTools,
+    sandbox,
+    limits,
+    host,
+    side,
+  });
+}
+
 /** The fields two conditions differ in, by name: what a comparison of their solves compares. */
 export function fieldsApart(a: Condition, b: Condition): string[] {
-  const other: Readonly<Record<string, unknown>> = { ...b };
+  const other: OpenRecord = { ...b };
   return Object.entries(a).flatMap(([field, value]) => (sameJsonValue(value, other[field]) ? [] : [field]));
 }
 
@@ -90,8 +153,7 @@ export function fieldsApart(a: Condition, b: Condition): string[] {
 export function recordCondition(log: string, condition: Condition): string {
   const id = conditionId(condition);
   if (!read(log).some((event) => event.kind === "condition.recorded" && event.data.id === id)) {
-    // SAFETY: a condition is strings, numbers and records of them.
-    append(log, "condition.recorded", { id, condition: condition as unknown as JsonObject });
+    append(log, "condition.recorded", { id, condition: requireJsonValue(condition) });
   }
   return id;
 }

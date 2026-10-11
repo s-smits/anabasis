@@ -28,13 +28,13 @@ import { homedir, tmpdir } from "../meta/os.ts";
 import { join, resolve } from "../meta/path.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
 import {
   LINUX_BWRAP_ID,
   bwrapEnvironmentArgs,
   bwrapIsolationArgs,
   bwrapWholeRootArgs,
   bwrapReadBinds,
+  bwrapReadonlyRemounts,
   bwrapTmpfsDenies,
   nodeRuntimeReadRoots,
 } from "./linux-bwrap.ts";
@@ -67,6 +67,11 @@ type HostSolveIsolationFixture =
 export const HOST_SOLVE_ISOLATION_PROFILE_ID = "harness-host-solve-isolated";
 
 const CANARY_MARKER = "ANA-HOST-ISOLATION-PROBE-CANARY-DO-NOT-TRUST";
+/** The file of a sibling worktree the probe reads, and the text a read of it shows. */
+const SIBLING_FILE = "package.json";
+const SIBLING_MARKER = '"name"';
+/** The canary file a probe writes in each place a read is tried. */
+const CANARY_FILE = "canary.txt";
 /** The move-guard probe runs through `isolationArgv` like every launch, so it needs a cap of its own;
  *  it writes nothing there, and one mebibyte is any small number. */
 const LINUX_MOVE_GUARD_CAP_BYTES = 1024 * 1024;
@@ -109,6 +114,9 @@ export interface HostSolveIsolationEvidence {
   /** False when the mechanism or a required probe could not run. */
   available: boolean;
   deniedReadRefused: boolean;
+  /** Whether a read of a canary in the repository's first other worktree was refused; null where
+   *  the probe was given no other tree. A sibling worktree's log was readable until 10 October. */
+  siblingReadRefused: boolean | null;
   controlReadSucceeded: boolean;
   discriminationReadSucceeded: boolean;
   /** Whether an ancestor rename failed to expose a protected path. Both mechanisms run this probe,
@@ -134,6 +142,10 @@ function hostSolveIsolationFixture(mechanismId: string): HostSolveIsolationFixtu
  */
 export function solveIsolationPolicy(input: {
   repoRoot: string;
+  /** The repository's other worktrees, denied with it. Until 10 October only the worktree a
+   *  command ran in was denied, and a shell in one worktree read a sibling's `.ana` log, every
+   *  hidden value of that campaign in it, on the Linux container (an Examiner's shell, by hand). */
+  otherTrees?: readonly string[];
   cap: DiskCap;
   runtime?: OsIsolationRuntime;
   liftDeniesCovering?: string;
@@ -150,7 +162,7 @@ export function solveIsolationPolicy(input: {
   // mechanism is broken" when the mechanism is fine.
   const lifted = input.liftDeniesCovering === undefined ? [] : canonicalForms(input.liftDeniesCovering);
   const keep = (root: string): boolean => !lifted.some((target) => covers(root, target));
-  const reads = canonicalRoots([input.repoRoot, home]).filter(keep);
+  const reads = canonicalRoots([input.repoRoot, ...(input.otherTrees ?? []), home]).filter(keep);
   const writes = [...reads];
   const cap = { root: resolve(input.cap.root), bytes: input.cap.bytes };
   // A root inside the repository or the home would sit under a denied tree: Seatbelt would refuse
@@ -247,41 +259,13 @@ export function isolationArgv(
       // After the re-exposing binds, so that nothing reopens a hidden root as writable. Without
       // this a write into an overmounted path would succeed against the tmpfs and land on namespace
       // memory the host never sees; with it the write fails with EROFS.
-      ...policy.deniedReadRoots.flatMap((path) => ["--remount-ro", path]),
+      ...bwrapReadonlyRemounts(policy.deniedReadRoots),
       ...bwrapEnvironmentArgs(environment),
       command,
       ...args,
     ];
   }
   return ["-p", policy.profile, command, ...args];
-}
-
-/** Spawn a transport's own process under the isolation with native Bun pipes. Draining stderr is
- *  left to the caller: `startPiBuiltWorker` forwards it to the host's stderr and waits on that drain
- *  before it settles the worker, so nothing in the launch here may consume it first. */
-export function spawnUnderSolveIsolation(
-  policy: SolveIsolationPolicy,
-  options: {
-    command: string;
-    args: string[];
-    cwd?: string;
-    env: OptionalEnvValues;
-    signal?: AbortSignal;
-  },
-): Bun.Subprocess<"pipe", "pipe", "pipe"> {
-  return Bun.spawn({
-    cmd: [policy.mechanismPath, ...isolationArgv(policy, options.command, options.args, options.env)],
-    cwd: options.cwd ?? runtimeProcess.cwd(),
-    env: options.env,
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-    // The wrapper becomes its own process group, which is what settlement reaps. Under Bubblewrap
-    // the worker reports a different pid, and settlement reaps that group by its id as well, so both
-    // paths reap by process-group id rather than by matching process names.
-    detached: true,
-    ...keyIfDefined("signal", options.signal),
-  });
 }
 
 /**
@@ -339,7 +323,7 @@ function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuard
       const secret = join(home, "secret");
       const moved = join(root, "moved");
       mkdirSync(secret, { recursive: true, mode: 0o700 });
-      writeFileSync(join(secret, "canary.txt"), `${CANARY_MARKER}\n`, { mode: 0o600 });
+      writeFileSync(join(secret, CANARY_FILE), `${CANARY_MARKER}\n`, { mode: 0o600 });
       return runUnderPolicy(
         {
           profile: LINUX_SOLVE_ISOLATION_DESCRIPTOR,
@@ -351,7 +335,7 @@ function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuard
         },
         root,
         "/bin/sh",
-        ["-c", `mv ${home} ${moved} 2>/dev/null; cat ${join(moved, "secret", "canary.txt")} 2>&1`],
+        ["-c", `mv ${home} ${moved} 2>/dev/null; cat ${join(moved, "secret", CANARY_FILE)} 2>&1`],
       );
     };
     const guarded = run("guarded", true);
@@ -392,6 +376,7 @@ function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuard
  */
 export function probeHostSolveReadDeny(opts: {
   repoRoot: string;
+  otherTrees?: readonly string[];
   cap: DiskCap;
   runtime?: OsIsolationRuntime;
   readAllowRoots?: readonly string[];
@@ -405,6 +390,7 @@ export function probeHostSolveReadDeny(opts: {
     isolated: false,
     available: false,
     deniedReadRefused: false,
+    siblingReadRefused: null,
     controlReadSucceeded: false,
     discriminationReadSucceeded: false,
     moveGuardRefused: false,
@@ -414,25 +400,42 @@ export function probeHostSolveReadDeny(opts: {
   });
   const runtime = opts.runtime === undefined ? {} : { runtime: opts.runtime };
   const readAllow = opts.readAllowRoots === undefined ? {} : { readAllowRoots: opts.readAllowRoots };
-  const real = solveIsolationPolicy({ repoRoot: opts.repoRoot, cap: opts.cap, ...runtime, ...readAllow });
+  const trees = { otherTrees: opts.otherTrees ?? [] };
+  const real = solveIsolationPolicy({
+    repoRoot: opts.repoRoot,
+    ...trees,
+    cap: opts.cap,
+    ...runtime,
+    ...readAllow,
+  });
   if ("unsupported" in real) {
     return unproven(`host solve isolation unavailable — remaining contractual: ${real.unsupported}`);
   }
   let workRoot: string | null = null;
   let repoCanaryDir: string | null = null;
   try {
-    const parent = join(tmpdir(), "ana-host-isolation-probe");
-    mkdirSync(parent, { recursive: true, mode: 0o700 });
-    workRoot = mkdtempSync(join(parent, "run-"));
+    // The probe's own folder, under the temporary directory and under no shared parent: a parent
+    // made 0700 by the first user to probe refused every other, and on 10 October a rehearsal run
+    // as the campaign user after the suite had run as root ended all 56 of its solves as
+    // `sandbox-crash` on EACCES here.
+    workRoot = mkdtempSync(join(tmpdir(), "ana-host-isolation-probe-"));
     const controlCanary = join(workRoot, "control-canary.txt");
     writeFileSync(controlCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
     // The deny target sits inside the protected root, where the live policy must refuse the read and
     // the deny-lifted policy must not.
     repoCanaryDir = mkdtempSync(join(resolve(opts.repoRoot), ".ana-host-isolation-probe-"));
-    const repoCanary = join(repoCanaryDir, "canary.txt");
+    const repoCanary = join(repoCanaryDir, CANARY_FILE);
     writeFileSync(repoCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
+    // A file of the first other worktree, which the live policy must refuse as it refuses the
+    // repository's own: its `package.json`, which every worktree of this repository holds, read
+    // and never written. Until 10 October the probe wrote a canary there, and a sibling tree
+    // another user owns refused the write: a rehearsal as the campaign user then ended every
+    // solve as `sandbox-crash` on EACCES in the root-owned main tree.
+    const [sibling] = trees.otherTrees;
+    const siblingCanary = sibling === undefined ? null : join(resolve(sibling), SIBLING_FILE);
     const open = solveIsolationPolicy({
       repoRoot: opts.repoRoot,
+      ...trees,
       cap: opts.cap,
       ...runtime,
       ...readAllow,
@@ -441,7 +444,7 @@ export function probeHostSolveReadDeny(opts: {
     if ("unsupported" in open) {
       return unproven(`discrimination policy unavailable: ${open.unsupported}`, real.policyHash);
     }
-    return judgeSteps(real, open, workRoot, { repoCanary, controlCanary, probedAt });
+    return judgeSteps(real, open, workRoot, { repoCanary, siblingCanary, controlCanary, probedAt });
   } catch (error) {
     return unproven(
       `host solve isolation check failed — remaining contractual: ${errorMessage(error)}`,
@@ -464,12 +467,18 @@ function judgeSteps(
   real: SolveIsolationPolicy,
   open: SolveIsolationPolicy,
   workRoot: string,
-  targets: { repoCanary: string; controlCanary: string; probedAt: string },
+  targets: { repoCanary: string; siblingCanary: string | null; controlCanary: string; probedAt: string },
 ): HostSolveIsolationEvidence {
   const deny = runUnderPolicy(real, workRoot, "/bin/cat", [targets.repoCanary]);
+  const sibling =
+    targets.siblingCanary === null
+      ? null
+      : runUnderPolicy(real, workRoot, "/bin/cat", [targets.siblingCanary]);
   const control = runUnderPolicy(real, workRoot, "/bin/cat", [targets.controlCanary]);
   const discrimination = runUnderPolicy(open, workRoot, "/bin/cat", [targets.repoCanary]);
-  const executionError = [deny, control, discrimination].find((run) => hasText(run.error))?.error;
+  const executionError = [deny, control, discrimination, ...(sibling === null ? [] : [sibling])].find((run) =>
+    hasText(run.error),
+  )?.error;
   const base = {
     fixture: hostSolveIsolationFixture(real.mechanismId),
     profileDigest: real.policyHash,
@@ -481,6 +490,7 @@ function judgeSteps(
       isolated: false,
       available: false,
       deniedReadRefused: false,
+      siblingReadRefused: null,
       controlReadSucceeded: false,
       discriminationReadSucceeded: false,
       moveGuardRefused: false,
@@ -488,6 +498,10 @@ function judgeSteps(
     };
   }
   const deniedReadRefused = observedRefusal(deny.combined, deny.status, CANARY_MARKER, real.mechanismId);
+  const siblingReadRefused =
+    sibling === null
+      ? null
+      : observedRefusal(sibling.combined, sibling.status, SIBLING_MARKER, real.mechanismId);
   const controlReadSucceeded = control.combined.includes(CANARY_MARKER);
   const discriminationReadSucceeded = discrimination.combined.includes(CANARY_MARKER);
   const moveGuard: MoveGuardCheck =
@@ -496,18 +510,28 @@ function judgeSteps(
       : probeMoveGuardCheck(real.mechanismPath);
   const moveGuardRefused = moveGuard.refused && moveGuard.liftedSucceeded;
   const isolated =
-    deniedReadRefused && controlReadSucceeded && discriminationReadSucceeded && moveGuardRefused;
+    deniedReadRefused &&
+    siblingReadRefused !== false &&
+    controlReadSucceeded &&
+    discriminationReadSucceeded &&
+    moveGuardRefused;
   const liftedCount = real.deniedReadRoots.length - open.deniedReadRoots.length;
   return {
     ...base,
     isolated,
     available: true,
     deniedReadRefused,
+    siblingReadRefused,
     controlReadSucceeded,
     discriminationReadSucceeded,
     moveGuardRefused,
     evidence: [
       `protected-root read: ${deniedReadRefused ? "REFUSED" : "not refused"} (status=${deny.status ?? "null"})`,
+      ...(sibling === null
+        ? []
+        : [
+            `other-worktree read: ${siblingReadRefused === true ? "REFUSED" : "not refused"} (status=${sibling.status ?? "null"})`,
+          ]),
       `same-policy tmp control read: ${controlReadSucceeded ? "canary returned" : "canary NOT returned"} (status=${control.status ?? "null"})`,
       `deny-lifted discrimination read (${liftedCount} covering rules lifted): ${discriminationReadSucceeded ? "canary returned" : "canary NOT returned"} (status=${discrimination.status ?? "null"})`,
       `ancestor-rename guard: ${moveGuard.detail}`,

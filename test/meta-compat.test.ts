@@ -14,7 +14,7 @@ import {
   sameJsonValue,
   stableJson,
 } from "../src/meta/stable-json.ts";
-import { keyIfDefined, keyIfNotNull, keyIfTruthy, keysIf } from "../src/meta/optional-key.ts";
+import { keyIfDefined, keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { hasText, textOr } from "../src/meta/text.ts";
 import { isObject, isRecord } from "../src/meta/json-shape.ts";
 
@@ -174,18 +174,6 @@ describe("keyIfNotNull", () => {
 
   it("keeps zero, which a JSON boundary must not confuse with nothing measured", () => {
     expect(keyIfNotNull("cost", 0)).toEqual({ cost: 0 });
-  });
-});
-
-describe("keyIfTruthy", () => {
-  it("drops every falsy value, which is what the truthiness spreads did", () => {
-    for (const value of [undefined, null, "", 0, false]) {
-      expect(Object.keys({ ...keyIfTruthy("b", value) })).toEqual([]);
-    }
-  });
-
-  it("keeps a present value", () => {
-    expect(keyIfTruthy("b", "x")).toEqual({ b: "x" });
   });
 });
 

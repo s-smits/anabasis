@@ -18,6 +18,13 @@ export const solveOf = (events: readonly LogEvent[], solve: string) =>
   events.filter((event) => event.data.solve === solve);
 export const callsOf = (events: readonly LogEvent[]) =>
   events.flatMap((event) => (event.kind === "solve.call" ? [event.data] : []));
+export const turnsOf = (events: readonly LogEvent[]) =>
+  events.flatMap((event) => (event.kind === "solve.turn" ? [event.data] : []));
+/** What a solver last said in words: the text of its last turn that held any. */
+export const closingOf = (events: readonly LogEvent[]) =>
+  turnsOf(events)
+    .map((turn) => stringOf(turn.text))
+    .findLast((said) => said !== "");
 
 /** Every call of a solve: its number, its tool and whether it failed. */
 export function callList(calls: readonly JsonObject[]): string {

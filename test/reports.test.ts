@@ -20,6 +20,7 @@ import {
   promoted,
   referenceFailed,
   releaseOrder,
+  standingsOf,
   stopRule as stopOf,
   unansweredTwice,
 } from "../src/kernel/reports.ts";
@@ -553,6 +554,133 @@ describe("the outcome an Examiner hears of a task", () => {
       ...solved("b-1", "never", "h1", [F, F]),
     ];
     expect(feasibleTasks(known)).toEqual(new Set(["solved", "tried"]));
+  });
+});
+
+describe("where a task stands in the counts an Examiner hears", () => {
+  const terms = { old: "h1", fresh: "h2", solves: 2, setting: SETTING };
+  const cells = (events: readonly LogEvent[]) =>
+    new Map([...standingsOf(events)].map(([task, { cell }]) => [task, cell]));
+
+  it("tells a tie both harnesses answered in every solve from one neither answered in any, and a task told apart by the side that won it", () => {
+    const tasks = ["every", "none", "other", "ours", "mixed", "aside"];
+    const log = [
+      ...tasks.flatMap(heldOut),
+      ...solved("b-1", "every", "h1", [P, P]),
+      ...solved("b-1", "every", "h2", [P, P]),
+      ...solved("b-1", "none", "h1", [F, F]),
+      ...solved("b-1", "none", "h2", [F, F]),
+      ...solved("b-1", "other", "h1", [F, F]),
+      ...solved("b-1", "other", "h2", [P, F]),
+      ...solved("b-1", "ours", "h1", [P, P]),
+      ...solved("b-1", "ours", "h2", [F, P]),
+      ...solved("b-1", "mixed", "h1", [P, F]),
+      ...solved("b-1", "mixed", "h2", [F, P]),
+      reported("b-1", "no-step", "h2", { ...terms, versions: tasks.slice(0, 5), aside: ["aside"] }),
+    ];
+    // Four of the five are ties or losses to a tally; the two ties a plain count would merge are
+    // apart, and the reference's side is the old one.
+    expect(cells(log)).toEqual(
+      new Map([
+        ["every", "tied-every"],
+        ["none", "tied-none"],
+        ["other", "other-won"],
+        ["ours", "reference-won"],
+        ["mixed", "tied-mixed"],
+        ["aside", "aside"],
+      ]),
+    );
+    // Read from the record the outcome is read from: the same tasks, and the solves a side.
+    expect([...standingsOf(log).keys()].toSorted()).toEqual([...outcomesOf(log).keys()].toSorted());
+    expect(standingsOf(log).get("every")).toEqual({ cell: "tied-every", solves: 2 });
+    expect(standingsOf(log).get("aside")).toEqual({ cell: "aside", solves: null });
+  });
+
+  it("counts a tie nobody answered apart where a valid answer is on record, by the author's try or a solve elsewhere", () => {
+    const log = [
+      ...heldOut("never"),
+      ...heldOut("elsewhere"),
+      event("task.proposed", { version: "tried", taskId: "tried", feasible: true }),
+      event("task.gate", { version: "tried", gate: 1, outcome: "passed" }),
+      // A solve outside any comparison answered `elsewhere` validly.
+      ...solved(undefined, "elsewhere", "h9", [P]),
+      ...["never", "elsewhere", "tried"].flatMap((task) => [
+        ...solved("b-1", task, "h1", [F, F]),
+        ...solved("b-1", task, "h2", [F, F]),
+      ]),
+      reported("b-1", "no-step", "h2", { ...terms, versions: ["never", "elsewhere", "tried"] }),
+    ];
+    expect(cells(log)).toEqual(
+      new Map([
+        ["never", "tied-none"],
+        ["elsewhere", "tied-none-known"],
+        ["tried", "tied-none-known"],
+      ]),
+    );
+  });
+
+  it("reads the reference on the side it took after a promotion, and gives no standing where it stood on neither", () => {
+    const before = [
+      ...heldOut("kept"),
+      ...solved("b-1", "kept", "h1", [F, F]),
+      ...solved("b-1", "kept", "h2", [P, P]),
+      reported("b-1", "step", "h2", { ...terms, versions: ["kept"] }),
+    ];
+    const after = [...before, event("harness.promoted", { harness: "h2", from: "h1", rests: ["b-1"] })];
+    expect(cells(before).get("kept")).toBe("other-won");
+    expect(cells(after).get("kept")).toBe("reference-won");
+    // Between two other harnesses: the line says so, and the counts hold nothing of it.
+    const beside = [
+      ...after,
+      ...solved("g-2", "kept", "h3", [P, P]),
+      ...solved("g-2", "kept", "h4", [F, F]),
+      reported("g-2", "no-step", "h4", { ...terms, old: "h3", fresh: "h4", versions: ["kept"] }),
+    ];
+    expect(outcomesOf(beside).get("kept")).toBe("earlier-reference");
+    expect(standingsOf(beside).has("kept")).toBe(false);
+  });
+
+  it("counts a task the objective told apart between two valid answers as told apart, and the same answers without one as a tie", () => {
+    const measured = (objective: JsonObject | null) => {
+      const sides = [
+        ...solved("b-1", "split", "h1", [P, P]),
+        ...solved("b-1", "split", "h2", [P, P]),
+        ...solved("b-1", "even", "h1", [P, P]),
+        ...solved("b-1", "even", "h2", [P, P]),
+      ];
+      const starts = sides.filter(({ kind }) => kind === "solve.started");
+      // Lower is better: on `split` the new harness's answers measure half the reference's.
+      const measures = [10, 10, 5, 5, 10, 10, 10, 10];
+      return [
+        ...["split", "even"].flatMap(heldOut),
+        ...sides,
+        ...starts.map(({ data }, index) =>
+          event("verdict", {
+            solve: data.solve ?? "",
+            kind: "pass",
+            answer: {},
+            objective: measures[index] ?? 0,
+          }),
+        ),
+        reported("b-1", "no-step", "h2", {
+          ...terms,
+          versions: ["split", "even"],
+          ...keyIfDefined("objective", objective ?? undefined),
+        }),
+      ];
+    };
+    expect(cells(measured({ direction: "lower", margin: 0.01 }))).toEqual(
+      new Map([
+        ["split", "other-won"],
+        ["even", "tied-every"],
+      ]),
+    );
+    expect(cells(measured(null))).toEqual(
+      new Map([
+        ["split", "tied-every"],
+        ["even", "tied-every"],
+      ]),
+    );
   });
 });
 

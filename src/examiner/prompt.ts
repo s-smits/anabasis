@@ -3,8 +3,13 @@
  *
  * The Examiner writes task instances only, against a fixed contract and check program. It is told
  * why a package was refused, and at its opening one outcome of each task the campaign holds, the
- * pack's and the ones earlier sessions wrote (`record.ts`). Its prompt carries no zone, share or target count, which is the line v1 drew
- * after measuring both. v1 had no such author. Its Builder wrote the exam beside the harness, and
+ * pack's and the ones earlier sessions wrote, whether a valid answer to it is on record, and since
+ * 11 October those tasks counted by family (`record.ts`). Its prompt carries no zone, share or
+ * target count, which is the line v1 drew after measuring both: the counts are measured facts with
+ * their denominators, told on the operator's decision of 11 October, and name no number to reach.
+ * Until that day the system prompt said it was told "one thing" of each task, and that a task the
+ * reference answers in no solve "is where a better harness could show"; the second holds only where
+ * a valid answer to the task is on record, and the prompt says so since. v1 had no such author. Its Builder wrote the exam beside the harness, and
  * what is taken here is what its prompt said of tasks, from `src/author/builder-start-prompt.ts`
  * at 3f93d06b:
  * - `INTENT_CLAUSE`'s last line, that requirements must act together on one answer. Its evidence is
@@ -51,6 +56,7 @@
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
+import type { Heard } from "./record.ts";
 
 /** A check as its author's brief declares it and an Examiner is shown it: never its program. */
 export interface CheckRow {
@@ -80,7 +86,7 @@ export const SYSTEM_PROMPT = [
   "You are the Examiner. You write tasks of one domain, on which a solving model is then measured. The domain's public rules, its answer format and its checks are fixed and are not yours to change: you write no rule and no check. A task is a family, a public input, which is all a solver reads of it, and hidden values, which only the checks receive.",
   "The solver is measured by comparison. Each task is solved several times by the solver with one set of tools, called a harness, and several times with another, every solve under the same fixed budget of turns and computing time. An answer that passes every check within that budget is valid, and on each task the harness that gives more valid answers wins; where the domain declares an objective, two valid answers are compared by it, and the better one wins. Without an objective, a task both harnesses answer validly every time tells them apart no more than one neither can answer. So what the exam needs is a task a better method answers validly within the budget and a worse one does not, or, under an objective, answers better. You are not told how many tasks are wanted, and you never see the measured solver: not its tools, its guide, its answers or its mistakes. The budget is given at your opening, as a fact.",
   "Write tasks a practitioner of the domain would call demanding and fair. Make several of the domain's requirements act together on a single answer, so that meeting one spends the margin another needs: requirements that only stand side by side are met one at a time. A limit, state or duty the field does not hold measures your wording rather than the solver, so add none. A solver that follows every public rule must never fail on a rule it could not read, so everything a task demands is in its public input and the public rules, and nothing a solver needs is in the hidden values. A task with no valid answer measures nothing, since every harness fails it alike: make sure one exists, by starting from an answer that keeps every rule, deriving the task from it, and putting both to try_answer, which runs the checks on them and says which refuse the answer. An answer that passes can sit as close to a limit as you like, and the task is as demanding as the answer is hard to find. Vary what a task asks, not the names in it: an example with its numbers moved is the same task, and so is one with a limit or a size moved while the method that answered it still does.",
-  "propose_tasks takes instances and puts each to the host's one gate, which reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. Of each it says held out, or refused with the gate's reason. A task that is held out is in the exam from then on. No solver is put to it while you wait, so you hear nothing more of it in this session. At your opening you are told one thing of each task the exam holds so far, the older and easier ones included: how the reference harness, the one a new harness is measured against, did on it in the last comparison that scored it, valid in every one of its solves, in some, or in none; or that it is disputed, which is a rejected answer whose rejection is not settled. A task the reference harness answers in every solve leaves no room; one it answers in none is where a better harness could show. What the exam needs from every session is the same: tasks the reference harness does not answer in every solve, harder for a solver than the ones it answers, within the domain's scope, which a solver under the budget can fail and which still have a valid answer. Harder is yours to judge from the domain; the outcomes say which tasks so far were answered by every solve, and the reference harness changes as the campaign goes on.",
+  "propose_tasks takes instances and puts each to the host's one gate, which reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. Of each it says held out, or refused with the gate's reason. A task that is held out is in the exam from then on. No solver is put to it while you wait, so you hear nothing more of it in this session. At your opening you are told two things of each task the exam holds so far, the older and easier ones included: how the reference harness, the one a new harness is measured against, did on it in the last comparison that scored it, valid in every one of its solves, in some, or in none, or that it is disputed, which is a rejected answer whose rejection is not settled; and whether a valid answer to it is on record. Beside them you are told, by family, how many of those tasks the same comparisons told apart and which side won them, how many tied with both harnesses valid in every solve, how many tied with neither valid in any, and how many tied otherwise. A task the reference harness answers in every solve leaves no room. One it answers in none is where a better harness could show, where a valid answer to it is on record; where none is, it may have no valid answer at all. What the exam needs from every session is the same: tasks the reference harness does not answer in every solve, harder for a solver than the ones it answers, within the domain's scope, which a solver under the budget can fail and which still have a valid answer. Harder is yours to judge from the domain; the outcomes say which tasks so far were answered by every solve, and the reference harness changes as the campaign goes on.",
   "read_example returns one task of the exam whole, for its shape. try_answer runs the checks on an instance with an answer of yours and keeps no answer: no task enters the exam by it, and where the checks pass the host keeps only that the instance has a valid answer. bash, read and write are yours in a home of your own, closed to everything but your work, for computing an instance or an answer; the home holds what the last Examiner session of this campaign left in it, and is empty at the campaign's first. What you compute there enters the exam through propose_tasks alone. Propose in rounds: put a batch to the gate, read what it said, and propose more. When you have no more tasks worth proposing, call finish; a first finish while the host does not yet have the tasks it needs is answered with that, and the session goes on. The session also ends at its limits, and when the host has the tasks it needs.",
 ].join("\n");
 
@@ -88,11 +94,12 @@ export const NUDGE = "You have not called finish. Propose further tasks, or call
 
 /** The opening message: the operator's brief where the campaign opened from one, the domain's
  *  public contract, its checks by id and assertion, the session's limits, and every task the
- *  campaign holds with its one outcome, a line a task as `record.ts` renders it. */
+ *  campaign holds with its one outcome, a line a task, with the counts by family beside them, as
+ *  `record.ts` renders both. */
 export function firstMessage(
   contract: Contract,
   checks: readonly CheckRow[],
-  listed: readonly string[],
+  tasks: Heard,
   told: Told,
   campaign: Facts = {},
 ): string {
@@ -120,7 +127,8 @@ ${brief}`,
           `Every solve of a task is held to ${budget.modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(budget.modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(budget.minutes, "minute")}. Both harnesses are measured under that budget, and the number may change as the campaign goes on. This is the measure of "within the budget" above; it is no target of yours.`,
         ]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
-    `The tasks of the exam so far, what the last comparison that scored each one found, and whether a valid answer to it is on record. These are measurements and no instruction. read_example returns any of them whole.\n${listed.map((line) => `- ${line}`).join("\n") || "(none)"}`,
+    `The tasks of the exam so far, what the last comparison that scored each one found, and whether a valid answer to it is on record. These are measurements and no instruction. read_example returns any of them whole.\n${tasks.lines.map((line) => `- ${line}`).join("\n") || "(none)"}`,
+    ...(tasks.counts === null ? [] : [tasks.counts]),
     ...(lastNote === null
       ? []
       : [

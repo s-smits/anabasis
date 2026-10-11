@@ -132,12 +132,24 @@ Six consequences guide a change:
    ending, a limit and how much of it is used. It does not tell the agent what to write. A v1
    campaign that was told a three-stage course changed only its published magnitudes for four test
    sets in a row.
-2. **Give an author no target.** The Examiner is told one outcome for each task and no zone, share
-   or count. v1 measured why: an author told a zone, a share or a count wrote towards it, and one
-   told each answer's distance from its limit moved the limits. Since 10 October it is told the
+2. **Give an author no target.** The Examiner is told no zone, share or target count. v1 measured
+   why: an author told a zone, a share or a count wrote towards it, and one told each answer's
+   distance from its limit moved the limits. It is told facts. Since 10 October it is told the
    budget every solve is held to, as a fact and not a target: a task that tells two harnesses
    apart is one a better method answers within that budget and a worse one does not, which
-   nobody can write without knowing it, and ten campaigns' tasks tied without it.
+   nobody can write without knowing it, and ten campaigns' tasks tied without it. Since
+   11 October, on the operator's decision of that day, it is told beside each task's one outcome
+   the tasks counted by family, read from the same comparisons: how many were told apart and which
+   side won them, how many tied with both harnesses valid in every solve, how many tied with
+   neither valid in any and of those how many have a valid answer on record, how many tied
+   otherwise and how many were set aside, with the solves a side they rest on and no number to
+   reach (`src/examiner/record.ts`). Until then it heard one outcome a task and no count, and could
+   not tell a tie that left no room from one nobody could answer. The other harness's result on
+   any one task is still not told. The decision is untested, and two recorded counts would speak
+   against it (`docs/plan.md`, row F60): the tasks the next Examiner sessions hold out falling
+   more than three in four into one family where the exam held two or more, or the share of
+   scored tasks tied with both harnesses valid in every solve not falling between the last
+   comparison before a session was told counts and the comparison after the third such session.
 3. **Keep the Builder free.** It may change or rewrite anything in the harness. One limit stands:
    nothing in a harness returns a finished answer for a task. Do not add a second limit in a
    prompt or a check. Both harnesses run under one budget, and that budget prices whatever a
@@ -171,7 +183,7 @@ wall keeps from it.
 
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
-| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, what the last session said at its `finish`, and the home that session left; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, and what the host's reading found in each draft | A target, a harness's name, a count of solves. It makes no solve of the exam's | `src/examiner/` |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, those tasks counted by family (since 11 October), what the last session said at its `finish`, and the home that session left; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, and what the host's reading found in each draft | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none. It makes no solve of the exam's | `src/examiner/` |
 | **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
@@ -1083,7 +1095,7 @@ src/builder/    a Builder session, its tools, prompt, notes and what it is told 
                 the move that follows from a log (decide) and the reading of the log it is asked
                 of (ground), what a campaign runs by (opening), and the words the operator left
                 it (word)
-src/examiner/   an Examiner session, its prompt, and the outcomes it is told; the session that drafts
+src/examiner/   an Examiner session, its prompt, and the outcomes and counts it is told; the session that drafts
                 an exam from a prompt (draft)
 src/review/     the Referee, the probe, agreement with hand labels
 src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read

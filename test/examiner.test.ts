@@ -15,7 +15,7 @@ import { claimed, type ExamRequest, examine, keepHome, lastNote, seedHome } from
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
-import { append, type EventKind, read } from "../src/kernel/log.ts";
+import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import type { Task } from "../src/kernel/verify.ts";
 import {
@@ -426,7 +426,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     // each task, and nothing of h2.
     // Beside the outcome, one fact that names no side: whether a valid answer to the task is on
     // record at all, a solve's under either harness or the author's own try.
-    expect(heard(read(s.log), tasks)).toEqual([
+    expect(heard(read(s.log), tasks).lines).toEqual([
       "e-1 (family fixture): the reference harness answered it validly in some solves of the last comparison and not in others; a valid answer to it is on record",
       "x-1-001 (family fixture): the reference harness answered it validly in no solve of the last comparison; a valid answer to it is on record",
       "x-1-002 (family fixture): the reference harness answered it validly in every solve of the last comparison; a valid answer to it is on record",
@@ -434,6 +434,17 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       "x-1-004 (family fixture): in use as practice, and so never scored",
       "x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled; no valid answer to it is on record",
     ]);
+    // Beside the lines, from the same pass: the five lines read on the reference's side, counted
+    // by family. The tie both harnesses answered in every solve (x-1-002) and the one neither
+    // answered in any (x-1-003) are counted apart; which side won e-1 and x-1-001 is told in the
+    // count alone, and the practice task is in none.
+    expect(heard(read(s.log), tasks).counts).toBe(
+      [
+        "Counted by family from the same comparisons as the lines above: each task whose last comparison had the reference harness on one side, or that a later report set aside, and no other. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
+        "- family fixture, 5 tasks: 2 told apart, won by the other harness 2 and by the reference harness 0; 1 tied with both harnesses valid in every solve; 1 tied with neither valid in any solve, of which 0 with a valid answer on record; 0 tied otherwise; 1 set aside on a rejection not settled.",
+        "Each count rests on 2 solves a side of the task's last comparison. The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
+      ].join("\n"),
+    );
 
     await examine({ ...s.request, id: "x-2", examples: tasks });
     const opening = s.sent[3] ?? "";
@@ -446,6 +457,10 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(opening).toContain(
       "- x-1-002 (family fixture): the reference harness answered it validly in every solve",
     );
+    expect(opening).toContain(
+      String.raw`- x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled; no valid answer to it is on record\n\nCounted by family from the same comparisons as the lines above`,
+    );
+    expect(opening).toContain("- family fixture, 5 tasks: 2 told apart, won by the other harness 2");
     // Which harness won, how many solves failed and what a solver answered are not the author's.
     expect(opening).not.toContain("h2");
     expect(opening).not.toContain(SOLVER);
@@ -506,14 +521,108 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     append(s.log, "task.state", { version: s.versionOf("x-1-003", 6), state: "disputed" });
     const tasks = writtenTasks(read(s.log));
     expect(tasks.map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-1-002", "x-1-003"]);
-    expect(heard(read(s.log), tasks)).toEqual([
-      "x-1-001 (family fixture): not yet compared; no valid answer to it is on record",
-      "x-1-003 (family fixture): disputed: a check was at fault on an answer to it",
-    ]);
+    expect(heard(read(s.log), tasks)).toEqual({
+      lines: [
+        "x-1-001 (family fixture): not yet compared; no valid answer to it is on record",
+        "x-1-003 (family fixture): disputed: a check was at fault on an answer to it",
+      ],
+      // No comparison has scored a task, so there is nothing to count, and the opening says none.
+      counts: null,
+    });
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
-    expect(heard([], [EXAMPLE])).toEqual([
-      "e-1 (family fixture): not yet compared; no valid answer to it is on record",
+    expect(heard([], [EXAMPLE])).toEqual({
+      lines: ["e-1 (family fixture): not yet compared; no valid answer to it is on record"],
+      counts: null,
+    });
+    expect(heard([], [])).toEqual({ lines: [], counts: null });
+    expect(s.sent[0]).not.toContain("Counted by family");
+  });
+
+  it("counts by family with a total the tasks read on the reference's side, and none in practice, refused or last compared between two other harnesses", () => {
+    const events: LogEvent[] = [];
+    const add = (kind: EventKind, data: JsonObject) =>
+      events.push({ at: "2026-10-11T00:00:00.000Z", kind, data });
+    let solves = 0;
+    const solved = (comparison: string, taskId: string, harness: string, valid: readonly boolean[]) => {
+      const ran = condition(`v-${taskId}`, harness);
+      add("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      for (const pass of valid) {
+        solves += 1;
+        const solve = `t-${String(solves)}`;
+        add("solve.started", { solve, condition: conditionId(ran), comparison });
+        add("solve.finished", {
+          solve,
+          ending: pass ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+        });
+      }
+    };
+    const reported = (session: string, old: string, fresh: string, side: number, ids: readonly string[]) =>
+      add("comparison.reported", {
+        session,
+        reading: "no-step",
+        old,
+        fresh,
+        solves: side,
+        setting: settingId(condition("any", "any")),
+        versions: ids.map((id) => `v-${id}`),
+      });
+    const tasks = [
+      { taskId: "a-1", family: "beam" },
+      { taskId: "a-2", family: "beam" },
+      { taskId: "b-1", family: "slab" },
+      { taskId: "b-2", family: "slab" },
+      { taskId: "b-3", family: "slab" },
+      { taskId: "b-4", family: "slab" },
+    ];
+    for (const { taskId } of tasks) {
+      add("task.proposed", { version: `v-${taskId}`, taskId });
+      add("task.gate", { version: `v-${taskId}`, gate: 1, outcome: "passed" });
+    }
+    // c-1, against the reference h1 at two solves a side.
+    solved("c-1", "a-1", "h1", [false, false]);
+    solved("c-1", "a-1", "h2", [true, false]);
+    solved("c-1", "a-2", "h1", [true, true]);
+    solved("c-1", "a-2", "h2", [true, true]);
+    solved("c-1", "b-1", "h1", [false, false]);
+    solved("c-1", "b-1", "h2", [false, false]);
+    solved("c-1", "b-2", "h1", [true, false]);
+    solved("c-1", "b-2", "h2", [false, true]);
+    solved("c-1", "b-3", "h1", [true, true]);
+    solved("c-1", "b-3", "h2", [true, true]);
+    solved("c-1", "b-4", "h1", [false, false]);
+    solved("c-1", "b-4", "h2", [false, false]);
+    reported("c-1", "h1", "h2", 2, ["a-1", "a-2", "b-1", "b-2", "b-3", "b-4"]);
+    // c-2 between two other harnesses, and c-3 against the reference at three solves a side.
+    solved("c-2", "a-2", "h3", [true, true]);
+    solved("c-2", "a-2", "h4", [false, false]);
+    reported("c-2", "h3", "h4", 2, ["a-2"]);
+    solved("c-3", "b-1", "h1", [true, true, true]);
+    solved("c-3", "b-1", "h5", [false, false, false]);
+    reported("c-3", "h1", "h5", 3, ["b-1"]);
+    add("task.state", { version: "v-b-3", state: "released" });
+    add("task.state", { version: "v-b-4", state: "refused" });
+    const { lines, counts } = heard(events, tasks);
+    expect(lines).toEqual([
+      "a-1 (family beam): the reference harness answered it validly in no solve of the last comparison; a valid answer to it is on record",
+      "a-2 (family beam): the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none; a valid answer to it is on record",
+      "b-1 (family slab): the reference harness answered it validly in every solve of the last comparison; a valid answer to it is on record",
+      "b-2 (family slab): the reference harness answered it validly in some solves of the last comparison and not in others; a valid answer to it is on record",
+      "b-3 (family slab): in use as practice, and so never scored",
     ]);
-    expect(heard([], [])).toEqual([]);
+    // a-2, b-3 and b-4 were each scored by c-1 and are in no count: the three lines read on the
+    // reference's side are the three the total counts.
+    expect(counts?.split("\n").slice(1)).toEqual([
+      "- family beam, 1 task: 1 told apart, won by the other harness 1 and by the reference harness 0; 0 tied with both harnesses valid in every solve; 0 tied with neither valid in any solve, of which 0 with a valid answer on record; 0 tied otherwise; 0 set aside on a rejection not settled.",
+      "- family slab, 2 tasks: 1 told apart, won by the other harness 0 and by the reference harness 1; 0 tied with both harnesses valid in every solve; 0 tied with neither valid in any solve, of which 0 with a valid answer on record; 1 tied otherwise; 0 set aside on a rejection not settled.",
+      "- every family, 3 tasks: 2 told apart, won by the other harness 1 and by the reference harness 1; 0 tied with both harnesses valid in every solve; 0 tied with neither valid in any solve, of which 0 with a valid answer on record; 1 tied otherwise; 0 set aside on a rejection not settled.",
+      "Each count rests on 2 to 3 solves a side of the task's last comparison. The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
+    ]);
+    expect(
+      lines.filter((line) =>
+        /: the reference harness answered it validly in (every|some|no) solve/.test(line),
+      ),
+    ).toHaveLength(3);
+    // Neither the lines nor the counts name a harness.
+    expect([...lines, counts].join("\n")).not.toMatch(/\bh[1-5]\b/);
   });
 });

@@ -13,7 +13,8 @@
  * (`docs/plan.md`, Phase 2): v1's solver matched whatever its author's side found, the first
  * sessions here lost 14 of 25 tasks at the stronger solve, and the second session spent $48.45 of
  * which the Examiner's own turns were $2.01. What a task's author hears instead comes from the
- * comparisons, one outcome a task, at the next session's opening (`record.ts`).
+ * comparisons, one outcome a task with the tasks counted by family beside them, at the next
+ * session's opening (`record.ts`).
  *
  * What the Examiner is never given: a harness, a solver's trace or answer, a check's program. It
  * has no shell and reads no file.
@@ -98,7 +99,8 @@ export interface ExamRequest {
   /** The checks as the Examiner is shown them. */
   readonly checks: readonly CheckRow[];
   /** The tasks the campaign holds, the pack's and the ones earlier sessions wrote. Each is listed
-   *  at the opening with its outcome so far (`record.ts`), and shown whole on request. */
+   *  at the opening with its outcome so far and counted by family (`record.ts`), and shown whole
+   *  on request. */
   readonly examples: readonly Task[];
   /** An instance as a package: the caller's rule ids and check program for it. */
   readonly pack: (task: Task) => TaskPackage;

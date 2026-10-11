@@ -31,7 +31,7 @@ interface Named {
 
 /** What `crossings` found: the solves that ran what another campaign's session left, and how many
  *  scratch names solves of two campaigns shared. */
-export interface Crossed {
+interface Crossed {
   readonly left: string[];
   readonly scratch: string;
 }

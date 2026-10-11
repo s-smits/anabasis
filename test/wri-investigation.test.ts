@@ -98,6 +98,17 @@ describe("an investigation's lanes", () => {
     expect(prompt).not.toContain("REFUSED UNREAD");
   });
 
+  it("says which of the lane's own triggers fired and which did not, so a name in its body is no lead", () => {
+    const parts = { shared, overview: seen, catalogue, owners, report: "/r/04.md" };
+    const prompt = lanePrompt({ ...parts, lane: lane(4) });
+    expect(prompt).toContain("Fired on this campaign: `REFUSED UNREAD`");
+    expect(prompt).toContain("Not fired: `CHECK DEFECT RULED`, `RULED UNCLEAR`.");
+    // Lane 14's body names `NEVER CHECKED`, which buffer-a's lane 14 read as fired (11 October).
+    const standing = lanePrompt({ ...parts, lane: lane(14) });
+    expect(standing).toContain("None of these triggers fired on this campaign");
+    expect(standing).toContain("Not fired: `NEVER CHECKED`, `TOOLS CALLED`, `TOOL CALLS ERRED`.");
+  });
+
   it("gives the lane that reads peers each one named, or says none was, and no other lane either", () => {
     const parts = { shared, overview: seen, catalogue, owners, report: "/r/31.md" };
     expect(lane(31).peers).toBe(true);

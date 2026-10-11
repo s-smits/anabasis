@@ -11,7 +11,7 @@
  */
 import { plural } from "#src/meta/text.ts";
 import { type Lane, section } from "./catalogue.ts";
-import type { Trigger } from "./folds.ts";
+import { TRIGGERS, type Trigger } from "./folds.ts";
 import type { Overview } from "./read.ts";
 
 interface Selection {
@@ -128,6 +128,8 @@ function reporting(lane: Lane, report: string, owners: readonly string[]): strin
     "What you could not read, and why.",
     "```",
     "",
+    "Each of the five fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 9, 11 October).",
+    "",
     `An owner is one of: ${owners.map((owner) => `\`${owner}\``).join(", ")}. Name the file beside \`host\` and a prompt owner.`,
     "",
     "You read and you report. Write no file but your report, and scratch in a temporary directory of your own, never under the campaign's folder or the checkout. Start no solve, no session, no round and no check run; `wri.ts grade` is the one exception, and only where your lane names it. Reply with the report's path and one line per finding.",
@@ -151,6 +153,26 @@ function peerSection(peers: string): string[] {
       ? "None were named: read this campaign alone, and say which peer would settle what one campaign cannot."
       : `Each was read by the same reader as this campaign, and none is under review: compare, and cite each by its name and log.\n\n${peers.trim()}`,
   ];
+}
+
+/**
+ * Which of the triggers a lane starts from fired on this campaign. The lane's body names every one
+ * it can start from, and a session read a name there as a trigger the log had fired: buffer-a's lane
+ * 14 on 11 October reported `NEVER CHECKED` false, which the reader had never fired.
+ */
+function firedLine(lane: Lane, own: readonly Trigger[]): string {
+  const names = Object.entries(TRIGGERS).flatMap(([name, number]) => (number === lane.number ? [name] : []));
+  const fired = names.filter((name) => own.some((trigger) => trigger.name === name));
+  const quiet = names.filter((name) => !fired.includes(name));
+  const list = (each: readonly string[]) => each.map((name) => `\`${name}\``).join(", ");
+  return [
+    fired.length === 0
+      ? "None of these triggers fired on this campaign: the lane is open because its question stands whenever a harness was compared."
+      : `Fired on this campaign: ${list(fired)}, as "What the log holds" prints them.`,
+    ...(quiet.length === 0
+      ? []
+      : [`Not fired: ${list(quiet)}. Read each as the log's silence on it, not as a lead.`]),
+  ].join(" ");
 }
 
 export function lanePrompt({
@@ -192,6 +214,7 @@ export function lanePrompt({
     "## Your lane",
     `**${String(lane.number)}. ${lane.title}.**`,
     lane.body,
+    firedLine(lane, own),
     ...(lane.peers ? peerSection(peers) : []),
     reporting(lane, report, owners),
   ].join("\n\n");

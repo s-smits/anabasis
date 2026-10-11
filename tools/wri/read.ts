@@ -98,7 +98,9 @@ function practiceTriggers(
   // call to count, and a digest misses none.
   const practisedUnder = new Set(round.practice.map((solve) => solve.harness));
   const lastPractice = round.practice.at(-1);
-  const ended = finished === null ? "never finished" : text(finished.ended);
+  // A session with no end record may still be running when the log is read: it is not finished by
+  // the log's last event, which is not the same as a session cut short.
+  const ended = finished === null ? "not finished by the log's last event" : text(finished.ended);
   const failed = round.practice.filter((solve) => solve.outcome === "fail");
   const earned = failed.filter((fail) => log.rulings.get(fail.id)?.ruling === "earned").length;
   // A fail followed by a pass of the same task: under other bytes it may be the change answering
@@ -564,11 +566,15 @@ function rowsOf(log: Index): Row[] {
     );
   const sessions = log.builds.map((build) => {
     const child = isString(build.finished?.harness) ? short(build.finished.harness) : "none";
-    const ended = text(build.finished?.ended) || "never";
+    const ended = text(build.finished?.ended) || "not by the log's last event";
     const readings = log.compared
       .filter((each) => each.build === build)
       .map((each) => `${each.session} ${text(each.last.reading)}`);
-    return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${String(count(build.finished?.practiceSolves))} practice solves, reading ${readings.join(", ") || "none"}`;
+    // The end record counts a session's practice; one still running has none, and its solves so far
+    // are read from the log instead of printed as a zero.
+    const practised =
+      build.finished === null ? practiceOf(log, build).length : count(build.finished.practiceSolves);
+    return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${String(practised)} practice solves, reading ${readings.join(", ") || "none"}`;
   });
   return [
     {

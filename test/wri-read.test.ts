@@ -168,6 +168,24 @@ const later = () => {
   return (name: keyof typeof TRIGGERS) => triggers.findLast((trigger) => trigger.name === name)?.detail;
 };
 
+/** b-1's first practice solve again, as a solve of a later session still running: its condition, its
+ *  start and its end, under a new solve id. */
+function practisedAgain(): LogEvent[] {
+  // A start names its condition and an end its ending; a practice solve's start names no comparison.
+  const start = events.findIndex(
+    ({ data }) => data.condition !== undefined && data.solve !== undefined && data.comparison === undefined,
+  );
+  const id = events[start]?.data.solve;
+  const end = events.findIndex(({ data }) => data.solve === id && data.ending !== undefined);
+  return events
+    .slice(start - 1, end + 1)
+    .flatMap((event) =>
+      event.data.tool === undefined
+        ? [{ ...event, data: event.data.solve === id ? { ...event.data, solve: "s-again" } : event.data }]
+        : [],
+    );
+}
+
 describe("the whole-run investigation's reader", () => {
   it("settles the six rows from the log alone", () => {
     expect(seen.rows.map((row) => row.id)).toEqual(["A", "B", "C", "D", "E", "F"]);
@@ -239,7 +257,7 @@ describe("the whole-run investigation's reader", () => {
       {
         at: new Date(START).toISOString(),
         kind: "build.started" as EventKind,
-        data: { session: "b-2", parent: "hc" },
+        data: { session: "b-2", parent: "hc", tasks: ["t1"] },
       },
       {
         at: new Date(START).toISOString(),
@@ -257,6 +275,12 @@ describe("the whole-run investigation's reader", () => {
     // and both lanes stayed shut on 10 October.
     expect(cut("NEVER CHECKED")).toBe("b-2: no check_harness call");
     expect(cut("NO PRACTICE")).toBe("b-2: the harness changed and no practice solve ran");
+    // A session with no end record may still be running when the log is read: buffer-a's b-2 read
+    // as "ended never, 0 practice solves" with three practice solves in the log (11 October).
+    expect(cut("SESSION ENDED")).toBe("b-2: not finished by the log's last event");
+    expect(overview([...stopped, ...practisedAgain()]).rows.flatMap((row) => row.lines)).toContain(
+      "b-2: hc > none, ended not by the log's last event, 1 practice solves, reading none",
+    );
     expect(detail("TOOLS EDITED")).toBe("b-1: agent/tools.mjs");
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
       "b-1: no practice solve ran under hc, the harness measured; the last ran under hb",

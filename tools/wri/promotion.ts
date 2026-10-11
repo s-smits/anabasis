@@ -46,7 +46,7 @@ const UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
 const BARE = 0.5;
 /** A path under the host's temporary folder, as a shell command or a tool's argument names it. A
  *  solve's own temporary folder is under its root (`/var/folders/…` on the Mac), never here. */
-export const SHARED_TMP = /(^|[\s"'=:;(|&>])\/(private\/)?tmp(\/|[\s"';)|&]|$)/;
+const SHARED_TMP = /(^|[\s"'=:;(|&>])\/(private\/)?tmp(\/|[\s"';)|&]|$)/;
 /** A path under `/tmp`, to the first character a shell or JSON ends a word on. */
 export const SHARED_PATH = /(?:^|[\s"'=:;(|&>])(\/(?:private\/)?tmp\/[^\s"'\\;)|&<>*]+)/g;
 /** The paths a reader is shown, of those more than one solve or session named: a path one solve
@@ -100,7 +100,7 @@ function untied(tested: JsonValue | undefined): string {
 
 /** One rest comparison as lane 31 reads it: the tally against its own A/A noise, the tally at each
  *  budget, and the host's load while its solves started. */
-export function restSaid(log: Index, { session, last }: Compared): string {
+function restSaid(log: Index, { session, last }: Compared): string {
   const noise =
     asRecord(last.noise) === null
       ? ""

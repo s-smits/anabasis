@@ -4,3 +4,12 @@ node_modules
 .DS_Store
 .env
 .accounts/
+# v1's local state, which a checkout of this repository from before 11 October 2026 still holds
+# on disk: run outputs, Builder-written domains, operator notes and runtime pins. v2 reads none of it.
+/campaigns/
+/domains/
+/runs/
+/notes/
+/.harness/
+/.scratch/
+/.ana-scratch-*/

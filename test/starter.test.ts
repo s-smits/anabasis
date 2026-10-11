@@ -99,7 +99,7 @@ describe("the account of a harness a Builder is handed", () => {
       expect(example.presets).toEqual([...CODING_TOOLS]);
       expect(example.kinds.size).toBe(0);
       expect(installedPrograms(example.toolTree)).toEqual(["check-rota"]);
-      expect(example.guide).toContain("## Programs\n- check-rota <rota.json>:");
+      expect(example.guide).toContain("## Programs and tools\n- check-rota <rota.json>:");
       // The account prints its files byte for byte.
       for (const file of ["agent/tools-spec.json", "agent/BUILT_AGENTS.md", ".toolchain/bin/check-rota"]) {
         expect(HARNESS_ACCOUNT).toContain(readFileSync(join(dir, file), "utf8").trimEnd());

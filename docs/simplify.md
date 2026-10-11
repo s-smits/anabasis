@@ -963,6 +963,7 @@ operator's home or in another seat's root.
   that the worked example does not steer to programs alone.
 - **Tests.** `test/builder.test.ts`, `test/starter.test.ts`.
 - **Lines.** Text only.
+- **Done** at PR #207 (11 October): the system prompt loses the sentences that restated the limits and what a tool result ends with (its last paragraph from 1,071 to 884 characters), and keeps one on what a reply counts as; the guide outline of `HARNESS.md` is "Programs and tools", with the worked tool as its second entry.
 
 ### R1. No reader across campaigns
 

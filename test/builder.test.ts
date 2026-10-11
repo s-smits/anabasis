@@ -313,9 +313,12 @@ describe("a Builder session", () => {
     expect(s.sent[0]).not.toContain("says whether a candidate meets a rule");
     // What the rounds of 9 October showed of a guide and of the practice solves: four of the six
     // harnesses that went to a comparison told the solver that time was short, and both truss
-    // sessions spent their last solve before their last change.
+    // sessions spent their last solve before their last change. The prompt states each of these
+    // once; what a tool result ends with (the turn, the time, the solves left, whether a practice
+    // solve has run harness/) it does not restate (`docs/simplify.md`, E3).
     expect(s.sent[0]).toContain("so the guide says nothing of time or turns");
-    expect(s.sent[0]).toContain("keep a solve for the harness you mean to finish with");
+    expect(s.sent[0]).toContain("is measured untried");
+    expect(s.sent[0]).not.toContain("Every tool result ends with the turn");
     expect(readFileSync(join(s.home, "practice", "t-1.json"), "utf8")).toContain('"base": 7');
     // The solver's public resources, in the home as one file, which the opening message names.
     expect(readFileSync(join(s.home, "resources.json"), "utf8")).toContain('"maxSpan": 12');

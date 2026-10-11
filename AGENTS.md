@@ -751,7 +751,8 @@ prints it as its last line. In the order the table asks:
    builds, on practice brought up from those tasks; without it the tasks change again.
 7. A step under the trigger is one draw: the same two harnesses are compared again on fresh
    solves, and the two read together name the harness to promote (`unpromoted` says why another
-   is not).
+   is not). The repeat draws the held-out tasks the first stage did not score first, where the
+   campaign holds them (`firstStageOf`, `src/builder/round.ts`).
 8. No step with room sends the Builder to build again, once the next comparison has tasks to
    untie: where the reference answered too many of them in every solve, the Examiner writes
    tasks first, since a changed harness can only tie again on those. No step without room, or

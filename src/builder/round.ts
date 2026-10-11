@@ -96,7 +96,7 @@
  * 10 October: its start, its counted solves, its rejections, its tallies and its report. This
  * file keeps what runs one and what it writes.
  */
-import { draw, type ObjectiveRule } from "../kernel/compare.ts";
+import { draw, type ObjectiveRule, triggered } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { awaitingLabel, billedFor, type Cap, capHolds, exhausted } from "../kernel/reports.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
@@ -124,6 +124,7 @@ import {
   startOf,
   toLabel,
 } from "./comparison.ts";
+import { comparisonsOf, pairOf } from "./ground.ts";
 import { type BuildRequest, type Built, type Practised, sessionOnce } from "./session.ts";
 
 /** A harness as a solve is handed it. */
@@ -240,8 +241,20 @@ const TASK_STATE = "task.state";
  * cut no solve of it at a limit, is left out until a person has labelled it (`awaitingLabel`), and
  * so is one the reference answered in every solve of two comparisons under the setting, which can
  * only tie again, but for the third of them the hash keeps (`exhausted`).
+ *
+ * `last` are tasks taken last: a repeat's first stage's (`firstStageOf`). Within each epoch the
+ * draw takes the others first, by the same hash, and the tasks of `last` only where the epoch holds
+ * too few others, so that a campaign that holds no more than the target draws the set it drew.
+ * Until 11 October a repeat re-solved its first stage's tasks: the p183 campaign's repeat solved the
+ * same 12 task versions for 15 dollars and 53 minutes, which guards against the noise of a solve and
+ * not against a lucky draw of tasks (`docs/next.md`, question 9, the operator's decision).
  */
-export function scoredSet(events: readonly LogEvent[], target: number, contract: string): string[] {
+export function scoredSet(
+  events: readonly LogEvent[],
+  target: number,
+  contract: string,
+  last: readonly string[] = [],
+): string[] {
   const aside = new Set([...awaitingLabel(events), ...exhausted(events)]);
   const held = new Set(taskSets(events).held.filter((version) => !aside.has(version)));
   const count = Math.min(target, held.size);
@@ -249,11 +262,39 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
     .toReversed()
     .map((epoch) => epoch.filter((version) => held.has(version)));
   const reserved = Math.min(Math.floor(count / OLDER_SHARE), older.flat().length);
-  const scored = draw(newest, Math.min(count - reserved, newest.length), contract);
+  const taken = new Set(last);
+  /** `wanted` of an epoch's tasks: the ones not taken last first, then the ones that are. */
+  const drawn = (epoch: readonly string[], wanted: number) => {
+    const others = epoch.filter((version) => !taken.has(version));
+    const before = draw(others, Math.min(wanted, others.length), contract);
+    const after = epoch.filter((version) => taken.has(version));
+    return [...before, ...draw(after, wanted - before.length, contract)];
+  };
+  const scored = drawn(newest, Math.min(count - reserved, newest.length));
   for (const epoch of older) {
-    scored.push(...draw(epoch, Math.min(count - scored.length, epoch.length), contract));
+    scored.push(...drawn(epoch, Math.min(count - scored.length, epoch.length)));
   }
   return scored;
+}
+
+/**
+ * The tasks a repeat takes last (`scoredSet`): where comparison `id` of `fresh` with `old` follows
+ * one of the same two whose reading cleared `trigger` (`triggered`), and the two have reported
+ * nothing since, that one's scored set as its start fixed it; none for any other comparison. The
+ * comparison asked about is passed over: it is no first stage of itself. A repeat gone on from its
+ * log goes on with the tasks its start fixed, whatever this names (`begin`). It is the row of the
+ * table that buys the repeat read from the other side (`afterComparison`, `decide.ts`): the pair's
+ * last report, read by the trigger.
+ */
+export function firstStageOf(
+  events: readonly LogEvent[],
+  { id, old, fresh }: Pick<CheckpointRequest, "id" | "old" | "fresh">,
+  trigger: number,
+): readonly string[] {
+  const others = comparisonsOf(events).filter((each) => each.id !== id);
+  const first = pairOf(others, fresh.digest, old.digest).at(-1);
+  if (first === undefined || !triggered(first, trigger) || !isString(first.session)) return [];
+  return fixedIn(events, first.session)?.tasks ?? [];
 }
 
 /** The solves still to run: slot by slot over the tasks, the harnesses taking the first place in

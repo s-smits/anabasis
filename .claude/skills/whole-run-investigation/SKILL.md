@@ -55,7 +55,8 @@ holds.
    a second run changes neither.
    *Check:* exit 0, and count the entries: that is the spend.
 4. **Launch.** Start one session per `launch.md` entry, all in one message, on the model the
-   operator chose, handing each its one line and nothing else.
+   operator chose, handing each its one line and nothing else. Codex sessions start through
+   [codex-luna-swarm](../codex-luna-swarm/SKILL.md), one manifest row an entry.
    *Check:* read the model each transcript recorded before using its report.
 5. **Collect.** `wri.ts collect --out <dir>` holds every expected report to its shape and writes
    `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 11, 15 and 18, then

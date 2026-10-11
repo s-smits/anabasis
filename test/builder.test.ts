@@ -952,7 +952,8 @@ describe("what a Builder is shown of a solve", () => {
 // to read the same bytes.
 describe("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
-   *  reason, a task's hidden value, and which held-out task the comparison's new harness won. */
+   *  reason, the hidden value of a held-out task and of a practice task, and which held-out task
+   *  the comparison's new harness won. */
   interface Kept {
     readonly check: string;
     readonly reason: string;
@@ -1013,7 +1014,23 @@ describe("what crosses to the Builder", () => {
       for (const side of [s.digest, FRESH]) {
         const solve = `g-1-${version}-${side.slice(0, 4)}`;
         const lost = version === kept.won && side === s.digest;
-        append(log, "solve.started", { solve, comparison: "g-1", task: `x-${version}` });
+        // Under a recorded condition, as a comparison's solves are, so that what keeps them from
+        // the Builder is the wall's filter and not a malformed event; and with a trace that names
+        // the hidden value, which no Builder may page.
+        append(log, "solve.started", {
+          solve,
+          comparison: "g-1",
+          condition: recordCondition(log, s.condition(version, side)),
+          task: `x-${version}`,
+        });
+        append(log, "solve.call", {
+          solve,
+          turn: 1,
+          tool: "bash",
+          args: { command: "run" },
+          isError: false,
+          text: `answer ${kept.hidden}`,
+        });
         if (lost) {
           append(log, "verdict", {
             solve,
@@ -1036,12 +1053,15 @@ describe("what crosses to the Builder", () => {
       reading: "no-step",
       scored: { wins: 1, losses: 0, ties: 1, p: 0.5, unsolved: 0 },
       versions: kept.won === "h1" ? ["h1", "h2"] : ["h2", "h1"],
-      won: [kept.won],
       aside: [],
     });
+    // The practice tasks carry hidden values too, which differ between the two campaigns: what a
+    // Builder is shown of a released task is its public part alone.
+    const tasks = TASKS.map(({ version, task }) => ({ version, task: { ...task, hidden: kept.hidden } }));
     await session(
       {
         ...s.request,
+        tasks,
         referee: async () => ({
           ruling: "earned",
           check: kept.check,

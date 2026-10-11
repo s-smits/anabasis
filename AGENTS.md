@@ -116,7 +116,7 @@ decision falls.
 | Every limit of a solve and of a session | How a task is solved |
 | The condition a solve runs under, and its identity | What a new task asks, within the contract |
 | Whether an answer is valid | Whether a rejection was right (a ruling, with its required evidence) |
-| The comparison, the tally and the test | Why a practice solve failed (advice only) |
+| The comparison, the tally and the test | Why a practice solve failed, read from its trace |
 | What crosses the wall | Which failure to work on, and what to change |
 | The dollar cap and what is charged to it | |
 | The log: what is recorded, and its order | |
@@ -160,9 +160,11 @@ Six consequences guide a change:
    and a probe's folder under a shared parent ended 56 (`docs/plan.md`, rows B10, B12 and B17).
    Narrow a grant only where two would collide, as two solves writing one path in a shared `/tmp`
    did, or where the wider one opens one of the three. A wall is probed by one command run
-   through the launch a seat's commands use, and need not prove its own identity. At #185 the
-   source is short of this: three writable folders a command, and a probe through a launch no
-   seat uses (`docs/simplify.md`, phase 4).
+   through the launch a seat's commands use, and need not prove its own identity. The source
+   holds both on `main` at `524c589`: a seat's commands write one root, but for the host's own
+   folder in it (`SolveDirs`, `src/solve/command.ts`; PR #203), and each policy is probed once a
+   process by one command run as every command of a seat is run (`walledBase` and `probeWall`,
+   the same file; PR #197).
 
 ## 3. The seats
 
@@ -305,8 +307,9 @@ compacts at a pinned window (`SWEEP_COMPACT_WINDOW`, `src/backends/claude.ts`), 
 backends pi's loop compacts (`src/backends/pi-compaction.ts`). Each compaction is logged
 (`build.compacted`, `solve.compacted`, `exam.compacted`). What a session has when the conversation
 is lost is in the source too: the notes it carries (`src/builder/memory.ts`), and the list of
-failed practice solves with each comparison's tally (`src/builder/past.ts`). At PR #80 every
-session is that case, since a session opens a new conversation.
+failed practice solves with each comparison's tally (`src/builder/past.ts`). On `main` at
+`524c589` (11 October) every session is that case, since a session opens a new conversation: its
+loop starts from the system prompt and the opening message alone (`src/builder/session.ts`).
 
 When you build towards the Harness Builder, take v1's four lessons with it:
 
@@ -792,9 +795,9 @@ words since its revision 358. The plan keeps the level of each part, and a pull 
 what it moves: in `docs/plan.md` that is the level column of the fix plan. Keep no second status list: not in this file, not in a new file, not in a
 code comment.
 
-Read at PR #80 (`d878c1b`), four designed parts were absent from the source, and three still
-are. Check the plan and the head before relying on this list, and delete a line here in the
-change that makes it false:
+Read on `main` at `524c589` (11 October), three designed parts are absent from the source. Check
+the plan and the head before relying on this list, and delete a line here in the change that
+makes it false:
 
 - the Judge: the Referee has a probe and no shell, reads the check program, and is unmeasured
   against hand labels. No seat reads an answer that passed: a person reads a drawn few
@@ -950,8 +953,11 @@ request as failures that are there without the change, and do not call the suite
 ### The stack and pull requests
 
 `.claude/skills/stack-pr/SKILL.md` owns this procedure. Read it before you branch and again
-before you push. v2's work is one linear stack of open pull requests, each based on the branch
-below it, and several sessions write to it at once. What it comes to:
+before you push. Until 11 October v2's work was one linear stack of open pull requests; PRs #219
+and #221 merged the whole of it into `main` that day. A new subject is now a pull request on
+`main`, from a worktree of its own at `origin/main`, and the stacking rules below hold where one
+pull request depends on another that has not merged: there the top is that pull request's branch,
+and elsewhere it is `main`. Several sessions write at once. What it comes to:
 
 - **Read the stack every time**: before `git worktree add`, before opening a pull request, and
   before a push that rewrites a branch. `bun .claude/skills/stack-pr/scripts/stack.ts` prints the

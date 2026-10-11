@@ -88,7 +88,24 @@ later half runs after the earlier, so a drift of the host or the provider reads 
 rejection was fair. A person labels the same rejections blind, and the two are compared. Today:
 no labels yet (two packets wait). Bar: at least 10 labels a kind; the Referee catches 3 in 4 bad
 rejections and voids at most 1 in 10 good ones; and 3 passes a comparison are read by a person,
-since no seat reads an answer that passed.
+since no seat reads an answer that passed. How it runs (`src/review/referee.ts`,
+`src/review/agreement.ts`, `tools/d2/settle.ts`):
+
+- *When.* Once for each answer a check rejects inside a comparison, before the rejection counts.
+  Never on a pass, a solve a limit cut, or a crash. First the host replays the checks on the
+  logged answer: a verdict that does not repeat is a check defect ruled by the host, no model.
+- *In.* The task with its hidden values, the public rules, the answer, the rejecting checks with
+  the fields each reads, the check program's source, a valid answer for the task where one is
+  on record, and a probe: change one field, rerun the checks, see what flips. Never the harness,
+  the trace or anything the Builder wrote.
+- *Out.* One ruling, logged as `referee.finding`. `earned` must name the rule the answer breaks
+  and the field that breaks it, both cited by a rejecting check; `check-defect` must cite a probe
+  that decided both sides on a field the check reads; `unclear` is what is left. A ruling without
+  its evidence is refused. `earned` counts as a loss; the other two set the task aside for both
+  harnesses, so a broken check scores nobody. The reasons reach the log and never the Builder.
+- *The person.* The set-aside rejections go into a packet; the operator labels each blind with
+  the same three words, and a label stands over a ruling. `agreement` then reads a three-by-three
+  table of label against ruling and the two rates above.
 
 Four numbers nobody has set say what a working system is worth, and the plan keeps the question
 open: by how much a harness raises the solver's share of valid answers on held-out tasks; whether

@@ -3,13 +3,26 @@ node_modules
 *.log
 .DS_Store
 .env
+.env.*
 .accounts/
+__pycache__/
+# A test fixture's scratch inside the checkout, at any depth (v1's tests named theirs this way).
+**/.ana-scratch-*/
 # v1's local state, which a checkout of this repository from before 11 October 2026 still holds
-# on disk: run outputs, Builder-written domains, operator notes and runtime pins. v2 reads none of it.
+# on disk: run outputs, Builder-written domains, operator notes, runtime pins and the UI build.
+# v2 reads none of it.
 /campaigns/
 /domains/
 /runs/
 /notes/
 /.harness/
 /.scratch/
-/.ana-scratch-*/
+/packages/ui/dist/
+# Operator-local tooling v1 kept out of publication, still on disk in old checkouts: account and
+# sweep skills, a runner pin, a remote test script and a working register.
+/.claude/skills/claude-accounts/
+/.claude/skills/run-cycles/
+/.claude/skills/merge-train/
+/.config/m1-runner.json
+/tools/test-remote.sh
+/docs/systems-read-findings.md

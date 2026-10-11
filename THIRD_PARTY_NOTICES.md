@@ -37,11 +37,42 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Bun
+
+- Source: https://github.com/oven-sh/bun, at commit 73df7bb
+- Copy: the parse loop of the parallel bucket in `scripts/runner.node.ts`, as `interruptReader` in
+  `tools/runtime/test-suite.ts`, changed as its doc comment states
+- Bun's `LICENSE.md` says "Bun itself is MIT-licensed" and names no copyright holder.
+
+```text
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## pi-claude-bridge
 
 - Source: https://github.com/elidickinson/pi-claude-bridge, 0.9.1 at commit e870bc89
 - Copies: `vendor/pi-claude-bridge/`, which carries its own copy of this licence. Each file's header
   names its departures.
+- `test/fixtures/claude-sdk-streams/` copies the recorded streams in its `tests/fixtures/sdk-streams/`
+  verbatim, at the same commit.
 
 ```text
 MIT License

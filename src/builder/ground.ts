@@ -76,7 +76,7 @@ const STARTED = "comparison.started";
 
 /** Every comparison of a log, in the order they began. One a log of 8 October holds by its report
  *  alone stands where it first reported. */
-function comparisonsOf(events: readonly LogEvent[]): Compared[] {
+export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
   const begun = new Map<string, Compared>();
   for (const [at, { kind, data }] of events.entries()) {

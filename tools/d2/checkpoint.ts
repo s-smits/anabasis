@@ -30,7 +30,10 @@
  *
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
  * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
- * campaign has recorded none. The solves a side, the level, the
+ * campaign has recorded none. A repeat, the comparison that follows one of the same two harnesses
+ * whose reading cleared `--trigger`, draws the held-out tasks that one did not score first, and
+ * its own only where the campaign holds too few others (`firstStageOf`, `scoredSet`; the
+ * operator's decision of `docs/next.md`, question 9). The solves a side, the level, the
  * Referee and the cap are a round's, with a round's defaults (`round.ts`), and
  * `--cap` is required as it is there. With no `--reviewer`, every
  * rejection waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
@@ -46,7 +49,7 @@
  */
 import { admitComparison } from "#src/builder/admission.ts";
 import type { Report } from "#src/builder/comparison.ts";
-import { type CheckpointRequest, checkpoint, refuseTerms } from "#src/builder/round.ts";
+import { type CheckpointRequest, checkpoint, firstStageOf, refuseTerms } from "#src/builder/round.ts";
 import { read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -114,7 +117,12 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     old,
     fresh,
     starter: await starter(campaign),
-    tasks: scoredNamed(campaign, setting.tasks, setting.target),
+    tasks: scoredNamed(
+      campaign,
+      setting.tasks,
+      setting.target,
+      firstStageOf(read(campaign.log), { id, old, fresh }, Number(values.trigger)),
+    ),
     solves: Number(values.solves),
     level: Number(values.level),
     objective: objectiveNamed(campaign, values.margin),

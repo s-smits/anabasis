@@ -332,10 +332,15 @@ function scriptedExaminer(later: Task[], answered: readonly Task[], supply: numb
     }));
     const calls: (readonly [string, JsonObject])[] = [
       ...(batch.length === 0 ? [] : [["propose_tasks", { tasks: batch }] as const]),
-      [
-        "finish",
-        { note: batch.length === 0 ? "The source holds no further task." : "The source's next tasks." },
-      ] as const,
+      // Twice: a first finish while the host has not the tasks it needs is declined once.
+      ...Array.from(
+        { length: 2 },
+        () =>
+          [
+            "finish",
+            { note: batch.length === 0 ? "The source holds no further task." : "The source's next tasks." },
+          ] as const,
+      ),
     ];
     return examine({ ...request, ...scripted(calls, 0) });
   };

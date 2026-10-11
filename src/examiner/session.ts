@@ -139,12 +139,21 @@ interface Desk {
   readonly held: string[];
   readonly refused: string[];
   note: string | null;
+  /** Whether `finish` was once declined: a session that held out fewer tasks than the host asks
+   *  for is told so once, and ends at its second word. */
+  declined: boolean;
 }
 
 /** The most of an example one result shows. */
 const SHOWN_CHARS = 20_000;
 const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
+/** What a first `finish` is answered with while the host has not the tasks it needs: every live
+ *  Examiner session of 9 and 10 October proposed one batch of one to three tasks in three turns
+ *  and finished, of two hundred turns and twelve tasks it had, so a campaign paid a session's
+ *  opening six times for what one session could have written. The need, and no count. */
+const MORE =
+  "Noted, and the session goes on: the host does not yet have the tasks it needs from it. Propose further tasks, varying what they ask, and call finish again when you have none left worth proposing.";
 
 /** An instance by what a solver and the checks read of it, whatever id it carries. */
 function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
@@ -319,6 +328,10 @@ function finishTool(desk: Desk): AgentTool {
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
     execute: async (_id, args) => {
+      if (!desk.declined && !supplied(desk)) {
+        desk.declined = true;
+        return text(MORE);
+      }
       desk.note = args.note.trim();
       return { ...text("Finished."), terminate: true };
     },
@@ -371,6 +384,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     held: [],
     refused: [],
     note: null,
+    declined: false,
   };
   append(log, "exam.started", {
     session: request.id,

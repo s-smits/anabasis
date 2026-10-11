@@ -83,7 +83,15 @@ describe("a campaign run by its log", () => {
         ...solves(campaign, given),
         builder: scripted([["finish", { note: "Nothing to change." }]]),
       }),
-      examine: (request) => examine({ ...request, ...scripted([["finish", { note: "Nothing to add." }]]) }),
+      examine: (request) =>
+        examine({
+          ...request,
+          // Twice: a first finish while the host has not the tasks it needs is declined once.
+          ...scripted([
+            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: "Nothing to add." }],
+          ]),
+        }),
     };
     // The host is loaded at the first two looks: a move that solves waits, and the others do not.
     const looks: number[] = [];
@@ -248,6 +256,7 @@ describe("a campaign run by its log", () => {
         }));
         const script = scripted([
           ["propose_tasks", { tasks }],
+          ["finish", { note: "Three more." }],
           ["finish", { note: "Three more." }],
         ]);
         return examine({ ...request, ...script });
@@ -478,7 +487,15 @@ describe("a campaign run by its log", () => {
     // campaign then walked a ladder of shorter budgets (`--ladder`), three more moves here.
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, strayed),
-      examine: (request) => examine({ ...request, ...scripted([["finish", { note: "Nothing to add." }]]) }),
+      examine: (request) =>
+        examine({
+          ...request,
+          // Twice: a first finish while the host has not the tasks it needs is declined once.
+          ...scripted([
+            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: "Nothing to add." }],
+          ]),
+        }),
     };
     const next = await harnessBuilder([...flags, "--moves", "10"], seats);
     expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([

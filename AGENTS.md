@@ -509,8 +509,10 @@ Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves
 `--parent latest`, `--reference promoted`, which is the harness last promoted and the starter
 until one is; a Builder session of 240 minutes, 300 turns and 24 practice solves; a solve of
 120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
-names a number. An Examiner session ends when the Examiner calls `finish`, which it may at any
-count, as much as at `--exam-tasks`.
+names a number. An Examiner session ends when the Examiner calls `finish` a second time, or a
+first time once the host has the tasks it asked for (`--exam-tasks`): a first `finish` short of
+them is declined once, with the need and no count, since every live session of 9 and 10 October
+proposed one batch of one to three tasks in three turns and finished.
 
 Two of them need a word for a small campaign. The reserve is what one solve is held at before it
 starts, and a campaign ends where less of its total is left than that: set `--reserve` to about

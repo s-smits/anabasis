@@ -49,6 +49,8 @@ const scratches: string[] = [];
 const toolUse = { stopReason: "toolUse" } as const;
 const call = (name: string, args: JsonObject) => fauxAssistantMessage(fauxToolCall(name, args), toolUse);
 const finish = call("finish", { note: "Stacked two requirements." });
+// A first finish while the host has not the tasks it needs is declined once, and the session goes
+// on; every live session of 9 and 10 October finished after one batch of one to three tasks.
 const instance = (base: number | null) => ({
   family: "fixture",
   public_input: base === null ? null : { base },
@@ -133,7 +135,7 @@ function setup(responses: FauxResponseStep[]) {
 
 describe("an Examiner session", () => {
   it("is given the contract, the checks and the campaign's tasks, and nothing of a solver", async () => {
-    const s = setup([call("read_example", { task: "e-1" }), finish]);
+    const s = setup([call("read_example", { task: "e-1" }), finish, finish]);
     const examined = await examine(s.request);
     expect(examined).toEqual({ held: [], refused: [], ended: "finished" });
     expect(s.sent[0]).toContain("R1: The answer is the base times six.");
@@ -143,7 +145,7 @@ describe("an Examiner session", () => {
     expect(s.sent[0]).toContain("10 minutes and 12 turns");
     // The budget every solve is held to, as a fact and no target, where the campaign lends it.
     expect(s.sent[0]).not.toContain("Every solve of a task is held to");
-    const told = setup([finish]);
+    const told = setup([finish, finish, finish]);
     await examine({ ...told.request, budget: { modelTurns: 3, minutes: 8 } });
     expect(told.sent[0]).toContain(
       "Every solve of a task is held to 3 turns of the solver's own, a turn being one reply with the tool calls in it, and 8 minutes. Both harnesses are measured under that budget",
@@ -183,10 +185,10 @@ describe("an Examiner session", () => {
     const tried = (answer: number) =>
       call("try_answer", { family: "fixture", public_input: { base: 7 }, hidden: null, answer: { answer } });
     // Without a verifier the tool is not given; with one, the checks say which refuse the answer.
-    const bare = setup([finish]);
+    const bare = setup([finish, finish, finish]);
     await examine(bare.request);
     expect(bare.sent[0]).not.toContain('{"name":"try_answer"');
-    const s = setup([tried(42), tried(41), finish]);
+    const s = setup([tried(42), tried(41), finish, finish]);
     const asked: unknown[] = [];
     await examine({
       ...s.request,
@@ -225,6 +227,7 @@ describe("an Examiner session", () => {
       }),
       propose(7, 8),
       finish,
+      finish,
     ]);
     await examine({
       ...kept.request,
@@ -242,7 +245,7 @@ describe("an Examiner session", () => {
   });
 
   it("holds an instance out on the shape of its package, and says why another is refused", async () => {
-    const s = setup([propose(7, null, 7), finish]);
+    const s = setup([propose(7, null, 7), finish, finish]);
     const examined = await examine(s.request);
     const told = s.sent[1] ?? "";
     expect(told).toContain("x-1-001: held out.");
@@ -283,7 +286,7 @@ describe("an Examiner session", () => {
       ],
       toolUse,
     );
-    const s = setup([both, propose(13), finish]);
+    const s = setup([both, propose(13), finish, finish]);
     const examined = await examine({ ...s.request, limits: { ...LIMITS, tasks: 2 } });
     expect(examined.ended).toBe("supplied");
     expect(examined.held).toHaveLength(2);
@@ -293,17 +296,31 @@ describe("an Examiner session", () => {
     expect(s.of("exam.turn")).toHaveLength(1);
   });
 
+  it("declines a first finish once while the host has not the tasks it needs, and ends at the second", async () => {
+    // Every live session of 9 and 10 October proposed one batch of one to three tasks in three
+    // turns and finished, of twelve tasks and two hundred turns it had.
+    const s = setup([propose(1), finish, propose(2), finish]);
+    const examined = await examine(s.request);
+    expect(examined.ended).toBe("finished");
+    expect(examined.held).toHaveLength(2);
+    expect(JSON.stringify(s.of("exam.call")[1])).toContain("the host does not yet have the tasks it needs");
+    expect(s.of("exam.turn")).toHaveLength(4);
+    // A session that held out what the host asks for ends at its first finish.
+    const enough = setup([propose(3, 4), finish]);
+    expect((await examine({ ...enough.request, limits: { ...LIMITS, tasks: 2 } })).ended).toBe("supplied");
+  });
+
   it("takes no instance past its proposals, nor one an earlier session already wrote", async () => {
-    const spent = setup([propose(1, 2, 3), propose(4, 5), propose(6), finish]);
+    const spent = setup([propose(1, 2, 3), propose(4, 5), propose(6), finish, finish]);
     await examine(spent.request);
     expect(spent.sent[2]).toContain("An instance was not taken: this session can propose no further task.");
     expect(spent.sent[3]).toContain("This session can propose no further task.");
     expect(spent.of("task.proposed")).toHaveLength(4);
     // A second session is a new process, and the same instance under a new id is the same task.
-    const again = setup([propose(7), finish, propose(7, 8), finish]);
+    const again = setup([propose(7), finish, finish, propose(7, 8), finish, finish]);
     await examine(again.request);
     const second = await examine({ ...again.request, id: "x-2" });
-    expect(again.sent[3]).toContain("An instance an earlier session wrote was not taken again.");
+    expect(again.sent[4]).toContain("An instance an earlier session wrote was not taken again.");
     expect(second.held).toEqual([again.versionOf("x-2-001", 8)]);
   });
 
@@ -349,7 +366,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
   });
 
   it("is one outcome a task: one harness won, a tie between valid answers, no valid answer yet, or disputed", async () => {
-    const s = setup([propose(1, 2, 3, 4, 5), finish, finish]);
+    const s = setup([propose(1, 2, 3, 4, 5), finish, finish, finish, finish]);
     await examine({ ...s.request, limits: { ...LIMITS, proposals: 6 } });
     const [won, tied, unsolved, practice, aside] = [1, 2, 3, 4, 5].map((base) =>
       s.versionOf(`x-1-00${String(base)}`, base),
@@ -406,7 +423,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     ]);
 
     await examine({ ...s.request, id: "x-2", examples: tasks });
-    const opening = s.sent[2] ?? "";
+    const opening = s.sent[3] ?? "";
     expect(opening).toContain(
       "The tasks of the exam so far, and what the last comparison that scored each one found",
     );
@@ -428,7 +445,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
   });
 
   it("says a task is not yet compared, leaves a refused one out, and says when a check was at fault", async () => {
-    const s = setup([propose(5, null, 6), finish]);
+    const s = setup([propose(5, null, 6), finish, finish]);
     await examine(s.request);
     append(s.log, "task.state", { version: s.versionOf("x-1-003", 6), state: "disputed" });
     const tasks = writtenTasks(read(s.log));

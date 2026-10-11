@@ -1,6 +1,7 @@
 // What an investigation builds from the catalogue and one log's overview: which lanes open, the
 // prompt each session is given, and whether a report has the shape the synthesis reads; and the
-// `lanes` verb, run twice over one directory, building each prompt once and listing each session once.
+// `lanes` verb, run twice over one directory, building each prompt once and listing each session once;
+// and the `read` verb's host line, which finds the code a campaign ran in the tree its log sits in.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   mkdirSync,
@@ -11,9 +12,12 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
+import { treeContent } from "../src/solve/harness.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
 import {
   blankSections,
@@ -208,5 +212,63 @@ describe("the lanes verb", () => {
     expect(entries()).toHaveLength(count + 1);
     expect(entries().filter((entry) => entry === "## Lane 5:")).toHaveLength(1);
     expect(prompts()["04-prompt.md"]).toBe(built["04-prompt.md"]);
+  });
+});
+
+describe("the read verb's host line", () => {
+  const REPO = resolve(import.meta.dir, "..");
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-wri-host-")));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const tree = join(dir, "tree");
+  mkdirSync(join(tree, "src"), { recursive: true });
+  mkdirSync(join(tree, "vendor"), { recursive: true });
+  writeFileSync(join(tree, "src", "a.ts"), "export const a = 1;\n");
+  writeFileSync(join(tree, "vendor", "v.txt"), "v\n");
+  const treeHost = hashJsonValue(["src", "vendor"].map((part) => treeContent(join(tree, part))));
+  const hostLine = (host: string) => {
+    const log = join(tree, ".ana", "d2", "c", "log.jsonl");
+    mkdirSync(join(tree, ".ana", "d2", "c"), { recursive: true });
+    // A condition as `tools/d2/campaign.ts` records one; only its host is read here.
+    const condition: Condition = {
+      contract: "c1",
+      harness: "h1",
+      task: "t1",
+      model: "p/m",
+      effort: "high",
+      prices: { "p/m": { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } },
+      runtime: {},
+      compaction: "off",
+      solverTools: "s1",
+      verifierTools: "v1",
+      sandbox: "x1",
+      limits: {
+        wallSeconds: 1,
+        turns: 1,
+        shellDefaultSeconds: 1,
+        shellMaxSeconds: 1,
+        concurrency: 1,
+        diskBytes: 1,
+      },
+      host,
+      side: "test",
+    };
+    const event = {
+      at: new Date(0).toISOString(),
+      kind: "condition.recorded",
+      data: { id: conditionId(condition), condition },
+    };
+    writeFileSync(log, `${JSON.stringify(event)}\n`);
+    return execTextSync(capturedExecPath, ["tools/wri/wri.ts", "read", "--log", log], { cwd: REPO })
+      .trim()
+      .split("\n")
+      .at(-1);
+  };
+
+  it("sends a lane to the campaign's own tree when that tree holds the code it ran", () => {
+    expect(hostLine(treeHost)).toContain(`which the campaign's own tree \`${tree}\` holds as it stands`);
+  });
+
+  it("says source is another tree when neither the checkout nor the campaign's tree holds it", () => {
+    expect(hostLine("0".repeat(64))).toContain("so every statement about source is about another tree");
   });
 });

@@ -14,7 +14,8 @@
  *   and the paths under the host's `/tmp` one campaign named before another's solve ran them. It
  *   reads the logs as they stand, so it can be run on campaigns still running.
  * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
- *   the host hash of the last condition beside this checkout's.
+ *   the host hash of the last condition beside this checkout's, and beside the campaign's own
+ *   tree's when this checkout's differs.
  * - `start` writes that as `overview.md`, and the shared instructions with the campaign's row filled
  *   in and two sections left for the primary to write. `--with` names peer campaigns' logs, which a
  *   lane that reads peers (lane 31) is given read the same way, at `lanes` time, and never reviews.
@@ -91,16 +92,26 @@ function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
   return value;
 }
 
-/** One line on whether this checkout is the code the campaign last ran under. */
+/** The host's code as a condition names it (`tools/d2/campaign.ts`), for a tree that holds it. */
+function hostOf(tree: string): string | undefined {
+  const parts = ["src", "vendor"].map((part) => join(tree, part));
+  return parts.every((part) => existsSync(part)) ? hashJsonValue(parts.map(treeContent)) : undefined;
+}
+
+/**
+ * One line on where the code the campaign last ran under stands: this checkout, or the tree the
+ * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
+ */
 function hostLine(log: string): string {
   const ran = read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition;
   const host = asRecord(ran)?.host;
   const last = isString(host) ? host : undefined;
-  // The host's code as a condition names it (`tools/d2/campaign.ts`), for this checkout.
-  const here = hashJsonValue(["src", "vendor"].map((part) => treeContent(join(REPO, part))));
+  const here = hostOf(REPO) ?? "";
   if (last === undefined) return `host code: no condition in the log; this checkout is ${here.slice(0, 8)}`;
-  return last === here
-    ? `host code: the last condition and this checkout are both ${here.slice(0, 8)}`
+  if (last === here) return `host code: the last condition and this checkout are both ${here.slice(0, 8)}`;
+  const tree = resolve(dirname(log), "..", "..", "..");
+  return hostOf(tree) === last
+    ? `host code: the last condition ran under ${last.slice(0, 8)}, which the campaign's own tree \`${tree}\` holds as it stands, so read source there; this checkout is ${here.slice(0, 8)}`
     : `host code: the last condition ran under ${last.slice(0, 8)} and this checkout is ${here.slice(0, 8)}, so every statement about source is about another tree`;
 }
 

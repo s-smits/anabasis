@@ -44,9 +44,10 @@ to none.
   one exception, where your lane names it, and it writes nothing.
 - Write your report early, as soon as you have its first two lines, and append as you go.
 - You are independent: open no other lane's prompt or report and no synthesis of this investigation.
-- Read source in the checkout the campaign's row names. Where that row says the last condition ran
-  under another host hash, every statement you make about source is about this tree and may not be
-  what ran: say so beside the statement.
+- Read source where the campaign's row says the code it last ran stands: the campaign's own tree
+  when the row names it, and otherwise the checkout the row names. Where the row says the last
+  condition ran under another host hash than both, every statement you make about source is about
+  another tree and may not be what ran: say so beside the statement.
 - Your report is for the operator and the primary reviewer. It is never given to a Builder, an
   Examiner or a Referee, and you address none of them.
 - The orientation and the moved variable orient and do not conclude: contradict either with

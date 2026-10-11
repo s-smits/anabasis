@@ -44,7 +44,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { REPORTED_COST } from "../backends/claude.ts";
-import type { Contract } from "../kernel/contract.ts";
+import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
@@ -266,11 +266,6 @@ function exampleTool(desk: Desk): AgentTool {
   });
 }
 
-/** The checks run on one instance with an answer of the Examiner's: which refuse it, or that none
- *  does. The Examiner wrote tasks it could not know to be feasible: on 10 October the notes of
- *  nine sessions said in eight that feasibility rested on hand estimates, and two of seven tasks
- *  of one session asked for more than their input allowed. Nothing of a try is kept but its
- *  trace: no task, no answer. */
 /** A verdict as the Examiner reads it. */
 function tried(verdict: Verdict): string {
   if (verdict.kind === "pass") {
@@ -283,6 +278,15 @@ function tried(verdict: Verdict): string {
   return `The checks could not run: ${verdict.reason}`;
 }
 
+/** The checks run on one instance with an answer of the Examiner's: which refuse it, or that none
+ *  does. The Examiner wrote tasks it could not know to be feasible: on 10 October the notes of
+ *  nine sessions said in eight that feasibility rested on hand estimates, and two of seven tasks
+ *  of one session asked for more than their input allowed. Nothing of a try is kept but its
+ *  trace: no task, no answer.
+ *
+ *  An answer is held to the format first, as a solver's is (`answerFormatFault`). Until 11 October
+ *  a try ran the checks on any answer, and one the checks passed though the format refused it
+ *  marked its instance feasible on an answer no solver could submit (`awaitingLabel`). */
 function tryTool(desk: Desk, verify: Verifier): AgentTool {
   const { request } = desk;
   return tool({
@@ -312,6 +316,12 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
           : `The gate would refuse this instance: ${packaged.reason}
 `;
       if (signal?.aborted === true) throw new Error("The session has ended.");
+      const unformed = answerFormatFault(request.contract, answer);
+      if (unformed !== null) {
+        return text(
+          `${gate}This answer does not follow the answer format, so a solver's answer like it is refused before any check reads it, and no check was run: ${unformed}`,
+        );
+      }
       const verdict = await verify(instance, answer);
       if (verdict.kind === "pass") desk.answered.add(contentOf(instance));
       return text(`${gate}${tried(verdict)}`);

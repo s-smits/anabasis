@@ -1000,6 +1000,7 @@ operator's home or in another seat's root.
 - **What changes.** `AGENTS.md` section 12 (24.7 kB, a quarter of the file) moves to
   `tools/oxlint/HABITS.md`. The contract keeps ten lines: the gate, strict mode, never turn a
   rule off, and where the habits are. A session that writes no code does not read them.
+- **Done** at PR #208 (11 October): `tools/oxlint/HABITS.md` holds the thirteen parts under their numbers, and section 12 keeps four lines of contract with a pointer; `AGENTS.md` from 88.9 kB to 77.4 kB.
 
 ### T2. A head comment says what the code does, and one defect
 

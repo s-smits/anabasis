@@ -30,9 +30,11 @@ first line, and the round trip through the linter mostly disappears.
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
   Oxlint's own rules and counts the rest. Work in strict mode: CI's lint step is strict, and a
-  strict run reports nothing since 10 October (the 11 findings that stood from PR #80 were
-  cleared, one answered in the ledger). Add none, and say in your pull request that the strict
-  run is clean.
+  strict run at `main` reports nothing on 11 October. The 11 findings that stood from PR #80 were
+  cleared on 10 October, one answered in the ledger; the merge of #189 to #220 brought three
+  more (two assertions in `test/wri-read.test.ts`, `.toolchain` spelled five times in
+  `src/builder/tools.ts`), fixed on 11 October. Add none, and say in your pull request that the
+  strict run is clean.
 - Extra arguments go to Oxlint. Fifteen rules carry a fixer, marked [fix] below, which Oxlint's
   `--fix` applies; `tools/oxlint/FIXER-DECISIONS.md` says why the others report only.
 - **Never turn a rule off**: no new `"off"` in `.oxlintrc.json`, for the tree, a glob or a file,

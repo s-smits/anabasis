@@ -63,6 +63,38 @@ none.
                        THE LOG   one append-only file a campaign; every state is a view of it
 ```
 
+### What it is measured by
+
+Three numbers say whether the system works. Every session, every pull request and every run is
+judged against them, and a change that moves none of them has to say what it moves instead. The
+exact definitions, the recorded values and the bars are the plan's (`docs/plan.md`, "Goal and the
+three numbers"); this is what each one means.
+
+**M1. Does it climb?** Count how many times a campaign replaced its reference harness with a
+better one. Today: at most once in any campaign, on Linux and on the Mac. Bar: twice in one
+campaign, with the starter losing more pairs each time; then the same in a second domain.
+
+**M2. Does it fool itself?** Solve the same tasks with the same harness twice, treat the two runs
+as rivals, and count how often the test crowns a winner anyway. A winner there is a lie, since
+nothing changed. `--noise` on a checkpoint does this: the reference is solved twice as often, its
+first solves of each task are one side and its later ones the other, and the pairs are tallied and
+tested as a real comparison's are (`src/builder/round.ts`). The test is built to lie about one
+time in ten; the same control gives the tie share, which is the floor a real comparison has to
+beat. Today: 0 lies in 6 controls, which only says the rate is under about 39%. Bar: 0 in the
+next 10. Two limits of the measure, known: six or ten controls bound the rate loosely, and the
+later half runs after the earlier, so a drift of the host or the provider reads as a lie.
+
+**M3. Are the referees right?** When a check rejects an answer, the Referee says whether the
+rejection was fair. A person labels the same rejections blind, and the two are compared. Today:
+no labels yet (two packets wait). Bar: at least 10 labels a kind; the Referee catches 3 in 4 bad
+rejections and voids at most 1 in 10 good ones; and 3 passes a comparison are read by a person,
+since no seat reads an answer that passed.
+
+Four numbers nobody has set say what a working system is worth, and the plan keeps the question
+open: by how much a harness raises the solver's share of valid answers on held-out tasks; whether
+it holds on tasks written after the harness was frozen; what a promotion costs in dollars and
+sessions; and in how many domains the first three hold.
+
 ### Two sides and one wall
 
 The exam side knows what a right answer is. The build side tries to produce right answers. The

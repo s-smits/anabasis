@@ -159,7 +159,7 @@ Written by the building session at PR #176 (`a77051f`), with buffer-a/b/c and on
 7. The loop through three epochs is proved without a model (climb-11: 24 moves, 2 promotions, 0 non-results; at target 8 with #171). Four readers that stood in the way are fixed (#168, B13).
 8. The step rule stays the sign test, ties dropped, with the repeat on fresh solves and the full-limit reading before a promotion, and since 23:00 it is read in two stages on the operator's word ("2-0-4 should climb"): a comparison at or under the trigger (0.25: 2-0, 4-1, 5-2, 7-3) buys the repeat and promotes nothing, and the step and its repeat read together, wins and losses summed, clear the level (0.10: 4-0, 6-1, 7-2, 9-3). At sixteen tasks of which three in four tie: 82% of harnesses that win 96% of the untied are promoted (55% by two readings at 0.20), 31% at a win rate of 0.75 (14%), and 3.3% of pairs of equal harnesses (0.9%), by exact enumeration (`chanceOfPromotion`, `src/kernel/size.ts`), the repeat held to an untied task that it does not lose. The other rules read the 22 recorded comparisons identically; their numbers are in "Statistical power and cost".
 
-**Goal and the three numbers.** Working means one campaign, one domain, real models, two promotions, the second read on tasks the first promoted harness lost; then the same in a second domain.
+**Goal and the three numbers.** Working means one campaign, one domain, real models, two promotions, the second read on tasks the first promoted harness lost; then the same in a second domain. What each number means, in plain words, is in `AGENTS.md`, "What it is measured by"; this table keeps the exact definition, the recorded value and the bar.
 
 | # | Number | Now | Bar |
 | --- | --- | --- | --- |

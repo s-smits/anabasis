@@ -23,7 +23,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join, resolve } from "../src/meta/path.ts";
+import { dirname, join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
 import { openHarness } from "../src/solve/harness.ts";
@@ -46,6 +46,8 @@ const EARLIER = `${NAME}-earlier`;
 const SERVED = "claude/claude-opus-5-5";
 /** A campaign whose recorded setting names the tasks to score. */
 const RECORDED = `${NAME}-recorded`;
+/** A campaign opened and given a harness before it keeps any. */
+const FRESH = `${NAME}-fresh`;
 const ASKED = { solves: 2, level: 0.1, trigger: 0.25 };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
@@ -60,7 +62,7 @@ setDefaultTimeout(60_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  for (const name of [NAME, EARLIER, RECORDED]) {
+  for (const name of [NAME, EARLIER, RECORDED, FRESH]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   }
 });
@@ -376,6 +378,19 @@ describe("a campaign", () => {
     expect(importCommand(["--name", "never-opened", "--harness", handed])).rejects.toThrow(
       "has no folder yet",
     );
+  });
+
+  it("imports a harness with programs into a campaign that keeps nothing yet", async () => {
+    // Until 11 October the copy of its programs was made before the campaign had a folder of states.
+    layOut();
+    await openCampaign({ ...ARGS, name: FRESH });
+    const handed = join(root, "fresh", "harness");
+    const engine = join(".toolchain", "bin", "engine");
+    cpSync(FIXTURE, handed, { recursive: true });
+    mkdirSync(dirname(join(handed, engine)), { recursive: true });
+    writeFileSync(join(handed, engine), "#!/bin/sh\necho engine\n", { mode: 0o755 });
+    const imported = await importCommand(["--name", FRESH, "--harness", handed]);
+    expect(readFileSync(join(imported.dir, engine), "utf8")).toContain("echo engine");
   });
 
   it("says which harnesses a campaign keeps when --parent names none of them", async () => {

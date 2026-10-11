@@ -11,7 +11,10 @@
  *
  *   harness/     the reference harness as it then stands, the starter where no step was promoted,
  *                copied whole with its programs. It is opened there before the command returns,
- *                and has to open as the harness it was kept as.
+ *                and has to open as the harness it was kept as; where it does not, nothing is left
+ *                under `--to`. Its links are copied as links: until 11 October they were followed,
+ *                and a link in its programs to a host file came out as that file's bytes, in a
+ *                folder written to leave the host.
  *   RULES.md     the domain's public contract: its scope, conventions, rules and answer format.
  *   REPORT.md    the closing report: how the campaign ended, each promotion and the comparisons
  *                behind it, every comparison's tally and reading, what the Referee ruled and what
@@ -32,12 +35,13 @@
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
 import { campaignOf, type Handover } from "#src/builder/handover.ts";
+import { parentToolTree } from "#src/builder/tools.ts";
 import { openingOf } from "#src/builder/opening.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll, promoted } from "#src/kernel/reports.ts";
-import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
@@ -222,18 +226,30 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
   }
   const kept = await keptAs(campaign, "--reference", PROMOTED);
   const harness = join(to, "harness");
-  mkdirSync(to, { recursive: true });
-  // Whole, with what its links name: a kept harness's programs stand in a tree beside it.
-  cpSync(kept.dir, harness, { recursive: true, dereference: true });
-  const opened = await openHarness(harness);
-  if (opened.digest !== kept.digest) {
-    throw new Error(
-      `${harness} opens as harness ${short(opened.digest)}, and the campaign keeps ${short(kept.digest)}: the copy is not the harness, and is not handed over as it`,
-    );
-  }
   const events = read(campaign.log);
-  writeFileSync(join(to, "RULES.md"), rulesOf(campaign));
-  writeFileSync(join(to, "REPORT.md"), closingReport(pack.name, events, kept.digest));
+  mkdirSync(to, { recursive: true });
+  try {
+    // Links as they are, but for `.toolchain`, which names the tree kept beside the state and is
+    // replaced by a copy of that tree, its own links again as they are.
+    const verbatim = { recursive: true, verbatimSymlinks: true } as const;
+    const link = resolve(kept.dir, ".toolchain");
+    cpSync(kept.dir, harness, { ...verbatim, filter: (each) => resolve(each) !== link });
+    const tree = parentToolTree(kept.dir);
+    if (tree !== null) cpSync(tree, join(harness, ".toolchain"), verbatim);
+    const opened = await openHarness(harness);
+    if (opened.digest !== kept.digest) {
+      throw new Error(
+        `${harness} opens as harness ${short(opened.digest)}, and the campaign keeps ${short(kept.digest)}: the copy is not the harness, and is not handed over as it`,
+      );
+    }
+    writeFileSync(join(to, "RULES.md"), rulesOf(campaign));
+    writeFileSync(join(to, "REPORT.md"), closingReport(pack.name, events, kept.digest));
+  } catch (error) {
+    // `to` was empty or absent, so everything under it is this command's, and none of it is a
+    // handover.
+    for (const name of readdirSync(to)) rmSync(join(to, name), { recursive: true, force: true });
+    throw error;
+  }
   console.log(`handed over harness ${short(kept.digest)} with its report: ${to}`);
   if (values.solve === undefined) return { to, harness: kept.digest, solved: null };
   // The tasks an Examiner session wrote are in the log and in no pack.
@@ -243,9 +259,9 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
   mkdirSync(join(campaign.log, "..", "handover"), { recursive: true });
   const trial = await openCampaign({ ...pack, trial: trialLog });
   const { solve } = seated(trial, { builder: undefined, reference: PROMOTED });
-  const trialled = await solve(trial.pack(task), { dir: harness, digest: opened.digest }, undefined);
+  const trialled = await solve(trial.pack(task), { dir: harness, digest: kept.digest }, undefined);
   console.log(
-    `solved task ${task.taskId} under harness ${short(opened.digest)} from ${harness}: ${trialled.ending.outcome}${"kind" in trialled.ending ? ` (${trialled.ending.kind})` : ""}, recorded in ${trialLog}`,
+    `solved task ${task.taskId} under harness ${short(kept.digest)} from ${harness}: ${trialled.ending.outcome}${"kind" in trialled.ending ? ` (${trialled.ending.kind})` : ""}, recorded in ${trialLog}`,
   );
   return { to, harness: kept.digest, solved: trialled.ending.outcome };
 }

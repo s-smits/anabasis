@@ -8,14 +8,18 @@ import { draftExam } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -24,6 +28,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { closeCommand } from "../tools/d2/close.ts";
+import { importCommand } from "../tools/d2/import.ts";
 import { settleCommand } from "../tools/d2/settle.ts";
 import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
 import { wordCommand } from "../tools/d2/word.ts";
@@ -358,7 +363,7 @@ describe("a campaign run by its log", () => {
       "a person read 2 of the 5 in 1 comparison, drawn by each comparison's id: 1 sound, 1 wrong, 0 unclear",
     );
     // It holds no link: a kept harness names its programs by one, into a tree beside it, and what
-    // is handed over is the files themselves.
+    // is handed over is the tree itself.
     const links = readdirSync(join(to, "harness"), { recursive: true }).filter((entry) =>
       lstatSync(join(to, "harness", String(entry))).isSymbolicLink(),
     );
@@ -658,5 +663,36 @@ describe("a campaign run by its log", () => {
       "--solve-minutes 30 names another setting than the campaign's, which was recorded as --solve-minutes 8",
     );
     expect(of(name, OPENED)).toHaveLength(2);
+  });
+
+  it("hands over a harness's links as links, and leaves nothing where the copy is not the harness", async () => {
+    // Until 11 October the handover was copied with every link followed: a link among a kept
+    // harness's programs to a host file came out as that file's bytes, in a folder written to leave
+    // the host, and a copy that then did not open as the harness stayed where it was written.
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-links`;
+    const pack = seeded(name).slice(0, -2);
+    const host = join(root, "host-file.txt");
+    writeFileSync(host, "HOST-FILE-CANARY\n");
+    const built = join(root, "linked", "harness");
+    cpSync(FIXTURE, built, { recursive: true });
+    mkdirSync(join(built, ".toolchain", "bin"), { recursive: true });
+    symlinkSync(host, join(built, ".toolchain", "bin", "leak"));
+    const kept = await importCommand(["--name", name, "--harness", built]);
+    append(join(REPO, ".ana", "d2", name, LOG_FILE), "harness.promoted", { harness: kept.digest });
+    const to = join(root, "handover-linked");
+    expect(await closeCommand([...pack, "--to", to])).toMatchObject({ harness: kept.digest });
+    expect(lstatSync(join(to, "harness", ".toolchain")).isDirectory()).toBe(true);
+    expect(readlinkSync(join(to, "harness", ".toolchain", "bin", "leak"))).toBe(host);
+    // A guide linked by the kept state's own path opens where it is kept, and not where it is
+    // copied to: the copy is refused, and nothing of it stays.
+    const guide = join(kept.dir, "agent", "BUILT_AGENTS.md");
+    renameSync(guide, join(kept.dir, "agent", "guide.md"));
+    symlinkSync(join(kept.dir, "agent", "guide.md"), guide);
+    const refused = join(root, "handover-refused");
+    await expect(closeCommand([...pack, "--to", refused])).rejects.toThrow(
+      "agent/BUILT_AGENTS.md links outside the harness",
+    );
+    expect(readdirSync(refused)).toEqual([]);
   });
 });

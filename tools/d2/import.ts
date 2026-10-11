@@ -23,11 +23,11 @@
  * It starts no solve and calls no model.
  */
 import { append } from "#src/kernel/log.ts";
-import { cpSync, existsSync, mkdtempSync, realpathSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { stagedState } from "#src/builder/tools.ts";
+import { parentToolTree, stagedState } from "#src/builder/tools.ts";
 import { openHarness } from "#src/solve/harness.ts";
 import { campaignLog } from "./campaign.ts";
 
@@ -36,7 +36,6 @@ const OPTIONS = {
   harness: { type: "string" },
   note: { type: "string" },
 } as const;
-const TOOL_TREE = ".toolchain";
 
 /** `bun tools/d2/import.ts`. Returns the imported harness by its digest and where it is kept. */
 export async function importCommand(args: readonly string[]): Promise<{ digest: string; dir: string }> {
@@ -59,12 +58,14 @@ export async function importCommand(args: readonly string[]): Promise<{ digest: 
     return { digest, dir };
   }
   // The programs as a session keeps them: in a tree beside the state, named by a link. A link
-  // under the source is followed to the tree itself.
-  const own = join(source, TOOL_TREE);
-  const tree = existsSync(own) ? mkdtempSync(join(states, "tree-")) : null;
+  // under the source is followed to the tree itself. The states are made first: a campaign opened
+  // and not yet run has none, and until 11 October its import of a harness with programs failed.
+  const own = parentToolTree(source);
+  mkdirSync(states, { recursive: true });
+  const tree = own === null ? null : mkdtempSync(join(states, "tree-"));
   let scratch: string | null = null;
   try {
-    if (tree !== null) cpSync(realpathSync(own), tree, { recursive: true, verbatimSymlinks: true });
+    if (own !== null && tree !== null) cpSync(own, tree, { recursive: true, verbatimSymlinks: true });
     scratch = stagedState(source, states, tree, "importing-");
     const kept = await openHarness(scratch);
     if (kept.digest !== digest) {

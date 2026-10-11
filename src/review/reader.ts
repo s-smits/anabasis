@@ -72,7 +72,10 @@ export async function readOnce(
       {
         model: reader.model,
         reasoning: reader.effort,
-        sessionId: `reader-${String(Date.now())}`,
+        // The Claude backend keeps one live query a session id in the process. A comparison rules its
+        // rejections in parallel, and until 11 October two rulings begun in one millisecond shared an
+        // id, so the second reader's packet went into the first one's query.
+        sessionId: `reader-${crypto.randomUUID()}`,
         convertToLlm: (messages) => messages,
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);

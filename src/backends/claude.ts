@@ -164,6 +164,8 @@ const LONG_CONTEXT = new Set([
   "claude-sonnet-5-5",
 ]);
 
+/** The live queries of this process, by the caller's session id: two sessions that run at once need
+ *  two ids, or the second one's turns go into the first one's query. */
 const sessions = new Map<string, Session>();
 
 /**

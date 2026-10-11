@@ -16,12 +16,12 @@ export type Decided =
   | { readonly move: "accept"; readonly why: string }
   /** `practice` names the count practice is brought to where it is more than the campaign's. */
   | { readonly move: "prepare"; readonly why: string; readonly practice?: number }
-  /** An Examiner session. `room` asks for tasks that leave a harness room (row F52). `answers`
-   *  names the operator's word it follows, where it follows one (`pendingWords`). */
+  /** An Examiner session, which is always asked for tasks the reference harness fails (row F52;
+   *  until 11 October a `room` flag asked it of some sessions and not others). `answers` names
+   *  the operator's word it follows, where it follows one (`pendingWords`). */
   | {
       readonly move: "examine";
       readonly why: string;
-      readonly room: boolean;
       readonly answers?: readonly number[];
     }
   | { readonly move: "build"; readonly why: string }
@@ -68,10 +68,7 @@ export function decidedLine(decided: Decided): string {
     draft: () => "an Examiner session, to draft the exam",
     accept: () => "read the exam",
     prepare: () => "set the tasks apart",
-    examine: () =>
-      decided.move === "examine" && decided.room
-        ? "an Examiner session, for tasks that leave room"
-        : "an Examiner session",
+    examine: () => "an Examiner session",
     build: () => "a Builder session",
     compare: () =>
       decided.move === "compare"

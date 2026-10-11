@@ -48,8 +48,6 @@ const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
-  /** The session is asked for tasks that leave the reference harness room (`decide`, `room`). */
-  room: { type: "boolean", default: false },
 } as const;
 
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
@@ -77,7 +75,6 @@ export async function examineCommand(args: readonly string[], session = examineW
       modelTurns: recordedSetting(sofar)?.modelTurns ?? openingOf(sofar)?.limit ?? null,
       minutes: Math.round(campaign.limits.wallSeconds / 60),
     },
-    room: values.room,
     contract: campaign.contract,
     checks: declared.map((check, index) => ({
       id: check.id,

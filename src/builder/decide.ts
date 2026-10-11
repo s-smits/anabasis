@@ -30,8 +30,11 @@
  *    changed a harness, which ends it on its environment, to go on from when run again; and the
  *    stop rule, which ends it unless the operator said to go on.
  * 4. A comparison that began and has not reported goes on.
- * 5. After a promotion the tasks change, once: the next epoch's are the ones the harness now the
- *    reference fails, and a comparison against it says whether they do.
+ * 5. The reference's room on the tasks, read from the last comparison it was in, whichever side
+ *    it took: where it answered nearly all of them, the tasks change, to ones it fails, and a
+ *    comparison against it says whether they do. After a promotion that is the comparison the
+ *    harness was promoted on; the reading is the same at every epoch, and no row is a
+ *    promotion's own (the operator's word, 11 October: a second step is one of many).
  * 6. A step. A reading under the trigger is one draw, and the same two harnesses are compared
  *    again. The two read together clear the level (`readTwice`), and then the harness is
  *    promoted. Until 11 October the repeat read the reference against itself as well, once a
@@ -104,12 +107,7 @@ const fewYet = (since: number): string =>
  *  harness passes nearly all, as the table has it. */
 function supplied(ground: Ground, last: JsonObject | undefined, why: string): Decided {
   const none = last !== undefined && roomOf(last) === "none";
-  return written(
-    ground.drafts,
-    none ? "room" : "tasks",
-    { move: "examine", room: none, why },
-    ground.plan.patience,
-  );
+  return written(ground.drafts, none ? "room" : "tasks", { move: "examine", why }, ground.plan.patience);
 }
 
 /** An Examiner session, unless as many in a row as the campaign's patience have already held out
@@ -217,7 +215,7 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
     return written(
       idleDrafts(events),
       "tasks",
-      { move: "examine", room: false, why: "the campaign holds no task" },
+      { move: "examine", why: "the campaign holds no task" },
       plan.patience,
     );
   }
@@ -229,7 +227,6 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
   if (asked !== undefined) {
     return {
       move: "examine",
-      room: true,
       why: `the operator asked for other tasks${asked.why === "" ? "" : `: ${asked.why}`}`,
       answers: [asked.at],
     };
@@ -288,7 +285,6 @@ function unshown(ground: Ground): Decided | null {
     "room",
     {
       move: "examine",
-      room: true,
       why: `Builder session ${isString(last.session) ? last.session : "?"} left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for`,
     },
     plan.patience,
@@ -405,26 +401,32 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
     : step.why;
 }
 
-/** After a promotion the tasks change, once. Null where no promotion waits for it. */
-function afterPromotion({ events, all, reference }: Ground): Decided | null {
-  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  if (reference === null || promotedAt === -1) return null;
-  // Promoted on a comparison it was read in, and never yet the reference side of one: the tasks
-  // change, once, since the ones the campaign holds were answered by the harness now the
-  // reference, and the next epoch's are the ones it fails. A comparison made against it, after
-  // the promotion or by name before it, has read the tasks already, and its rows say what follows.
-  const read = all.some(
-    ({ fresh, old, report }) => (fresh === reference || old === reference) && report !== null,
-  );
+/**
+ * The tasks change where the harness now the reference answered nearly all of them: its room is
+ * read from the last comparison it was in, whichever side it took (`roomOf`), until a comparison
+ * against it as the reference reads the tasks again or tasks are held out since. A harness is
+ * promoted on a comparison it won, so the tasks it was promoted on mostly leave it none; one
+ * valid on half of them is built against on the same tasks. The reading is the same at every
+ * epoch, and nothing here is a promotion's own: until 11 October this row fired once after each
+ * promotion whatever the harness had answered, and the Examiner was asked "for room" in a mode
+ * of its own. Null where the reference has no such reading or the tasks leave it room.
+ */
+function afterPromotion(ground: Ground): Decided | null {
+  const { events, all, reference, plan } = ground;
+  if (reference === null) return null;
   const against = all.some(({ old, report }) => old === reference && report !== null);
-  if (!read || against) return null;
-  return events.some(({ kind }, index) => kind === "exam.finished" && index > promotedAt)
-    ? null
-    : {
-        move: "examine",
-        room: true,
-        why: `harness ${short(reference)} was promoted: the tasks have to change, to ones it fails`,
-      };
+  const last = all.findLast(({ fresh, report }) => fresh === reference && report !== null);
+  if (against || last?.report == null || heldSince(events, last.reported ?? -1) > 0) return null;
+  if (roomOf(last.report, "fresh") !== "none") return null;
+  return written(
+    ground.drafts,
+    "room",
+    {
+      move: "examine",
+      why: `harness ${short(reference)} is the reference, and comparison ${last.id} found it valid on more than three solves in four: the tasks have to change, to ones it fails`,
+    },
+    plan.patience,
+  );
 }
 
 /**
@@ -457,7 +459,6 @@ function toTarget(ground: Ground, before: string): Decided | null {
     "tasks",
     {
       move: "examine",
-      room: false,
       why: `the campaign holds ${String(scorable)} of the ${plural(target, "task")} a comparison scores, and ${before}: the Examiner writes more first`,
     },
     plan.patience,
@@ -633,7 +634,6 @@ function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): 
     "room",
     {
       move: "examine",
-      room: true,
       why: `comparison ${id} read no step, and ${nearlyAll}: the tasks have to change${fewYet(since)}`,
     },
     ground.plan.patience,
@@ -655,7 +655,7 @@ function tooHard(ground: Ground, id: string, since: number, fresh: Fresh): Decid
   return written(
     ground.drafts,
     "room",
-    { move: "examine", room: false, why: `${said}: other tasks are written${fewYet(since)}` },
+    { move: "examine", why: `${said}: other tasks are written${fewYet(since)}` },
     ground.plan.patience,
   );
 }

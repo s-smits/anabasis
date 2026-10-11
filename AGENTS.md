@@ -657,12 +657,14 @@ prints it as its last line. In the order the table asks:
 4. The budget, the provider (three sessions in a row crashed before they held out a task or
    changed a harness, section 6) and the stop rule, which end the campaign.
 5. A comparison that began and has not reported goes on.
-6. After a promotion the tasks change, once: the Examiner writes the next epoch's, which are the
-   ones the harness now the reference fails. Tasks held out since the last comparison, where no
-   session has left a harness but the reference, are read by a **control** before a Builder
-   session is paid for: the starter compared with the reference on them, which says whether
-   they leave the reference room. With room
-   the Builder builds, on practice brought up from those tasks; without it the tasks change again.
+6. The reference's room on the tasks, read from the last comparison it was in, whichever side
+   it took: where it answered nearly all of them, the Examiner writes tasks it fails. After a
+   promotion that reading is the comparison the harness was promoted on; the row is the same at
+   every epoch, and nothing in the table or in any seat's prompt is a promotion's own. Tasks
+   held out since the last comparison, where no session has left a harness but the reference,
+   are read by a **control** before a Builder session is paid for: the starter compared with the
+   reference on them, which says whether they leave the reference room. With room the Builder
+   builds, on practice brought up from those tasks; without it the tasks change again.
 7. A step under the trigger is one draw: the same two harnesses are compared again on fresh
    solves, and the two read together name the harness to promote (`unpromoted` says why another
    is not).

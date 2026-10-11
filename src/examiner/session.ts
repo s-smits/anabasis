@@ -106,9 +106,6 @@ export interface ExamRequest {
   /** The budget every solve is held to, as a fact for the Examiner: the solver's own turns, null
    *  where unlimited, and the minutes. Null where the caller knows none, as a test may. */
   readonly budget?: { readonly modelTurns: number | null; readonly minutes: number } | null | undefined;
-  /** Whether the campaign asks for tasks that leave the reference harness room: the ones it holds
-   *  were answered by it, and the next epoch's are the ones it fails (`decide`, `harder`). */
-  readonly room?: boolean | undefined;
   /** The campaign's verifier, for `try_answer`: the checks run on an instance with an answer of the
    *  Examiner's own. Absent, the tool is not given. */
   readonly verify?: Verifier | undefined;
@@ -406,7 +403,6 @@ export async function examine(request: ExamRequest): Promise<Examined> {
           firstMessage(request.contract, request.checks, heard(before, request.examples), limits, {
             brief: openingOf(before)?.prompt,
             budget: request.budget,
-            room: request.room,
           }),
         ),
       ],

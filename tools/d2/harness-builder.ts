@@ -527,7 +527,6 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
       [
         ...pack,
         ...seat,
-        ...(decided.room ? ["--room"] : []),
         ...flag("tasks", values["exam-tasks"]),
         ...flag("proposals", values["exam-proposals"]),
         ...flag("minutes", values["exam-minutes"]),

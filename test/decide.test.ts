@@ -145,7 +145,7 @@ describe("the exam and the tasks, before anything is built", () => {
 
   it("takes a pack's tasks in, has some written where there are none, and releases practice", () => {
     expect(move([READ], { ...PLAN, unprepared: true })).toMatchObject({ move: "prepare" });
-    expect(move([READ])).toEqual({ move: "examine", room: false, why: "the campaign holds no task" });
+    expect(move([READ])).toEqual({ move: "examine", why: "the campaign holds no task" });
     expect(move([READ, ...HELD.flatMap(heldOut)])).toMatchObject({
       move: "prepare",
       why: "no task is released for practice: the contract's draw releases some",
@@ -177,7 +177,6 @@ describe("a word the operator left", () => {
     const asked = [...ready, word({ word: "tasks", why: "three batches tied" })];
     expect(move(asked)).toEqual({
       move: "examine",
-      room: true,
       why: "the operator asked for other tasks: three batches tied",
       answers: [ready.length],
     });
@@ -198,7 +197,6 @@ describe("what is built and what is compared", () => {
     // compare and had nothing to work on: the tasks change before another session is paid for.
     expect(move([...SET_UP, built("b-1", "start", { changed: false })])).toMatchObject({
       move: "examine",
-      room: true,
       why: "Builder session b-1 left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for",
     });
   });
@@ -223,7 +221,6 @@ describe("what is built and what is compared", () => {
     ];
     expect(move([...six, built("b-1", "h1")])).toEqual({
       move: "examine",
-      room: false,
       why: "the campaign holds 6 of the 12 tasks a comparison scores, and harness h1 has not been compared under the campaign's setting: the Examiner writes more first",
     });
     // Three sessions in a row that hold out none end the campaign on its exam.
@@ -280,14 +277,12 @@ describe("what is built and what is compared", () => {
     ];
     expect(move([...tied, built("b-2", "h2")], small)).toEqual({
       move: "examine",
-      room: false,
       why: "the last comparison left too few tasks for the next to untie",
     });
     // Before another session as much as after one: a comparison with room that left too few tasks
     // to untie is answered with tasks, where t-2 (10 October) got two unchanged sessions and a stop.
     expect(move(tied, small)).toEqual({
       move: "examine",
-      room: false,
       why: "comparison g-1 read no step with room to gain and left too few tasks for the next to untie: harness h1 can only tie again on the tasks the reference harness answered in every solve",
     });
     // Enough to untie, and the Builder builds again. A 4-3 clears no trigger; a 6-2 (p 0.14)
@@ -420,7 +415,6 @@ describe("a step", () => {
     });
     expect(move([...twice, ...named, promoted])).toEqual({
       move: "examine",
-      room: true,
       why: "comparison b-3 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change",
     });
     // One step is one draw, whatever came after it.
@@ -445,8 +439,7 @@ describe("after a promotion", () => {
     const log = promotedOn(ALL);
     expect(move(log)).toEqual({
       move: "examine",
-      room: true,
-      why: "harness h1 was promoted: the tasks have to change, to ones it fails",
+      why: "harness h1 is the reference, and comparison g-2 found it valid on more than three solves in four: the tasks have to change, to ones it fails",
     });
     const written = event("exam.finished", { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
     // The tasks written are read by a control before a Builder session is paid for: the starter
@@ -491,10 +484,16 @@ describe("after a promotion", () => {
     // Valid on every solve: no room, so the tasks have to change again.
     expect(move(control("no-step", { old: ALL, fresh: HALF }, [0, 0, 12]))).toMatchObject({
       move: "examine",
-      room: true,
     });
-    // With no tasks held out since and no control, the Builder builds as before.
-    expect(move([...log, written])).toMatchObject({ move: "build" });
+    // An Examiner session that held out nothing leaves the reference's reading as it was: the
+    // tasks still have to change, until the patience is spent. Until 11 October the Builder built
+    // here, on tasks the reference answered in every solve.
+    const idle = event("exam.finished", { session: "x-2", held: [], refused: [], proposed: 0 });
+    expect(move([...log, idle])).toMatchObject({ move: "examine" });
+    expect(move([...log, idle, idle, idle])).toMatchObject({ move: "end", ending: "no-room" });
+    // A harness promoted while valid on half its tasks leaves itself room: the Builder builds
+    // against it on the same tasks, and no Examiner session is a promotion's own.
+    expect(move(promotedOn(HALF))).toMatchObject({ move: "build" });
   });
 });
 
@@ -521,7 +520,6 @@ describe("no step", () => {
     // budget was the fallback once the Examiner's patience was spent.
     expect(move(tied)).toEqual({
       move: "examine",
-      room: true,
       why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change",
     });
     // The tasks no solve answered are counted as the reference's failures, and are room: recode's
@@ -562,7 +560,7 @@ describe("no step", () => {
     const session = (id: string, held: readonly string[]) =>
       event("exam.finished", { session: id, held: [...held], refused: [], proposed: held.length });
     const few = [session("x-1", ["v13"]), ...heldOut("v13")];
-    expect(move([...tied, ...few])).toMatchObject({ move: "examine", room: true });
+    expect(move([...tied, ...few])).toMatchObject({ move: "examine" });
     expect(move([...tied, ...few, ...idle.slice(1)])).toMatchObject({ move: "examine" });
     expect(move([...tied, ...few, ...idle])).toMatchObject({ move: "end", ending: "no-room" });
   });
@@ -589,7 +587,7 @@ describe("no step", () => {
   it("ends the campaign where the tasks could not be made to leave room", () => {
     const full = { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } } as const;
     const tries = ["g-1", "g-2", "g-3", "g-4"].flatMap((id) => compared(id, "h1", "no-step", full));
-    expect(move([...first, ...tries.slice(0, 6)])).toMatchObject({ move: "examine", room: true });
+    expect(move([...first, ...tries.slice(0, 6)])).toMatchObject({ move: "examine" });
     expect(move([...first, ...tries])).toMatchObject({ move: "end", ending: "no-room" });
   });
 
@@ -599,7 +597,6 @@ describe("no step", () => {
     const nobody = [setting(40), ...first, ...compared("g-1", "h1", "no-step", empty)];
     expect(move(nobody)).toEqual({
       move: "examine",
-      room: false,
       why: "comparison g-1 read no step, and neither harness was valid on one solve in four: other tasks are written",
     });
     const more = ["v13", "v14", "v15", "v16", "v17", "v18"].flatMap(heldOut);
@@ -617,7 +614,6 @@ describe("no step", () => {
     const aside = compared("g-1", "h1", "not-scored", { extra: { versions: [], aside: HELD } });
     expect(move([...first, ...aside])).toEqual({
       move: "examine",
-      room: false,
       why: "comparison g-1 tallied no task",
     });
   });

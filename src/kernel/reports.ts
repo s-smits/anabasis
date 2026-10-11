@@ -224,13 +224,15 @@ function validAt(report: JsonObject, side: "old" | "fresh"): number | null {
  * (`docs/plan.md`, "How move 7 decides"): `none` where the reference harness was valid on more
  * than three solves in four, so that its tasks could mostly only tie; `too-hard` where neither
  * harness was valid on one solve in four; and `room` otherwise, and for a report that holds no
- * count of valid solves.
+ * count of valid solves. `side` is the reference's side of the report: `old` in a comparison
+ * made against it, and `fresh` in the one it was promoted on, which is the reading the tasks
+ * have after a promotion until a comparison against the new reference reads them again.
  */
-export function roomOf(report: JsonObject): "none" | "too-hard" | "room" {
-  const [old, fresh] = [validAt(report, "old"), validAt(report, "fresh")];
-  if (old === null || fresh === null) return "room";
-  if (old > ROOM.full) return "none";
-  return old < ROOM.empty && fresh < ROOM.empty ? "too-hard" : "room";
+export function roomOf(report: JsonObject, side: "old" | "fresh" = "old"): "none" | "too-hard" | "room" {
+  const [reference, other] = [validAt(report, side), validAt(report, side === "old" ? "fresh" : "old")];
+  if (reference === null || other === null) return "room";
+  if (reference > ROOM.full) return "none";
+  return reference < ROOM.empty && other < ROOM.empty ? "too-hard" : "room";
 }
 
 /**

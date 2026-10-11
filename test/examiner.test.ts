@@ -10,6 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { heard } from "../src/examiner/record.ts";
+import { SYSTEM_PROMPT } from "../src/examiner/prompt.ts";
 import { claimed, type ExamRequest, examine } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
@@ -148,15 +149,12 @@ describe("an Examiner session", () => {
       "Every solve of a task is held to 3 turns of the solver's own, a turn being one reply with the tool calls in it, and 8 minutes. Both harnesses are measured under that budget",
     );
     expect(told.sent[0]).toContain("it is no target of yours");
-    // Asked for room, it is told the need and no count, share or zone (10 October): the exam's
-    // tasks were answered, and the campaign needs tasks a solver under the budget can fail.
+    // Every session is asked for the same thing, tasks the reference harness fails, with the
+    // need and no count, share or zone (10 October); until 11 October a session was asked it in
+    // a mode of its own after a promotion, and the opening carries no such paragraph.
     expect(s.sent[0]).not.toContain("leave no room");
-    const room = setup([finish]);
-    await examine({ ...room.request, room: true });
-    expect(room.sent[0]).toContain(
-      "The tasks the exam holds leave no room: the reference harness answered nearly all of them within the budget",
-    );
-    expect(room.sent[0]).toContain("Harder is yours to judge from the domain");
+    expect(SYSTEM_PROMPT).toContain("What the exam needs from every session is the same");
+    expect(SYSTEM_PROMPT).toContain("Harder is yours to judge from the domain");
     // It is told how a task is scored: a valid answer within the budget, with no objective to rank
     // two of them, and neither the size of the budget nor any count.
     expect(s.sent[0]).toContain("the harness that gives more valid answers wins");

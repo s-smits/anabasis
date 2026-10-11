@@ -183,7 +183,12 @@ describe("an Examiner session", () => {
 
   it("runs the checks on an instance with an answer of its own, where the campaign lends it its verifier, and keeps nothing", async () => {
     const tried = (answer: number) =>
-      call("try_answer", { family: "fixture", public_input: { base: 7 }, hidden: null, answer: { answer } });
+      call("try_answer", {
+        family: "fixture",
+        public_input: { base: 7 },
+        hidden: null,
+        answer: { answer: String(answer), unit: "N" },
+      });
     // Without a verifier the tool is not given; with one, the checks say which refuse the answer.
     const bare = setup([finish, finish, finish]);
     await examine(bare.request);
@@ -194,15 +199,15 @@ describe("an Examiner session", () => {
       ...s.request,
       verify: async (task, answer) => {
         asked.push([task.taskId, task.publicInput, answer]);
-        return asRecord(answer)?.answer === 42
+        return asRecord(answer)?.answer === "42"
           ? { kind: "pass" }
           : { kind: "fail", blocking: ["check-product"] };
       },
     });
     expect(s.sent[0]).toContain('{"name":"try_answer"');
     expect(asked).toEqual([
-      ["try", { base: 7 }, { answer: 42 }],
-      ["try", { base: 7 }, { answer: 41 }],
+      ["try", { base: 7 }, { answer: "42", unit: "N" }],
+      ["try", { base: 7 }, { answer: "41", unit: "N" }],
     ]);
     expect(JSON.stringify(s.of("exam.call")[0])).toContain("Every applicable check passed this answer");
     expect(JSON.stringify(s.of("exam.call")[1])).toContain("Refused by check-product.");
@@ -217,13 +222,13 @@ describe("an Examiner session", () => {
         family: "fixture",
         public_input: { base: 7 },
         hidden: { seed: 1 },
-        answer: { answer: 42 },
+        answer: { answer: "42", unit: "N" },
       }),
       call("try_answer", {
         family: "fixture",
         public_input: { base: 8 },
         hidden: { seed: 1 },
-        answer: { answer: 1 },
+        answer: { answer: "1", unit: "N" },
       }),
       propose(7, 8),
       finish,
@@ -232,16 +237,47 @@ describe("an Examiner session", () => {
     await examine({
       ...kept.request,
       verify: async (_task, answer) =>
-        asRecord(answer)?.answer === 42 ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] },
+        asRecord(answer)?.answer === "42" ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] },
     });
     expect(kept.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
       ["x-1-001", true],
       ["x-1-002", null],
     ]);
-    expect(JSON.stringify(kept.of("task.proposed"))).not.toContain('"answer":42');
+    expect(JSON.stringify(kept.of("task.proposed"))).not.toContain('"answer":"42"');
     // The Examiner is told it has the tool, and the shell, and what neither does to the exam.
     expect(s.sent[0]).toContain("try_answer runs the checks on an instance with an answer of yours");
     expect(s.sent[0]).toContain("bash, read and write are yours in a home of your own");
+  });
+
+  it("holds a tried answer to the format before the checks, and keeps no instance feasible on one the format refuses", async () => {
+    // Checks that pass every answer, and an answer the format refuses: a number, and no unit.
+    const s = setup([
+      call("try_answer", {
+        family: "fixture",
+        public_input: { base: 7 },
+        hidden: { seed: 1 },
+        answer: { answer: 42 },
+      }),
+      propose(7),
+      finish,
+      finish,
+    ]);
+    const asked: unknown[] = [];
+    await examine({
+      ...s.request,
+      verify: async (task, answer) => {
+        asked.push([task.taskId, answer]);
+        return { kind: "pass" };
+      },
+    });
+    expect(asked).toEqual([]);
+    const told = JSON.stringify(s.of("exam.call")[0]);
+    expect(told).toContain("This answer does not follow the answer format");
+    expect(told).toContain("no check was run");
+    expect(told).not.toContain("Every applicable check passed this answer");
+    expect(s.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
+      ["x-1-001", null],
+    ]);
   });
 
   it("holds an instance out on the shape of its package, and says why another is refused", async () => {

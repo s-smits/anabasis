@@ -15,7 +15,7 @@
  * run no tool.
  */
 import { type Draft, draftFaults, draftOf } from "#src/examiner/draft.ts";
-import { doNothingFaults, readChecker } from "#src/kernel/acceptance.ts";
+import { readChecker } from "#src/kernel/acceptance.ts";
 import { read } from "#src/kernel/log.ts";
 import { CHECK_PROGRAM_CONTRACT, openVerifier, readBrief } from "#src/kernel/verify.ts";
 import { EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
@@ -130,7 +130,7 @@ export async function draftReading(dir: string, draft: Draft, width: number): Pr
     const { bundle, checks } = stageExam(dir, draft);
     const brief = readBrief(checks);
     const pack = readPack(bundle);
-    const { seen, rejected } = await readChecker({
+    const { faults } = await readChecker({
       verify: openVerifier({ checks, tools: join(bundle, ".toolchain") }),
       brief,
       contract: contractOf(pack.brief, draft.answerFormat),
@@ -140,7 +140,7 @@ export async function draftReading(dir: string, draft: Draft, width: number): Pr
       found: toolOnPath(bundle),
       width,
     });
-    return [...seen.faults, ...doNothingFaults(rejected)];
+    return faults;
   } catch (error) {
     return [`the check program could not be put to its controls: ${errorMessage(error)}`];
   }

@@ -11,10 +11,11 @@
  * it refused. Then the faults (`src/kernel/acceptance.ts`): a control that did not get the verdict
  * it is labelled with, or got two; a check never seen to refuse an answer, or to pass one; a tool a
  * check names that the verifier's tool path does not hold; a task on which the do-nothing answer,
- * the smallest the answer format allows, was not rejected; and a check its author's own computation
- * decides, which stands only once the operator admits it by name (`--admit a,b`). The reading goes
- * into the campaign's log as `checker.read`, under the contract's hash and the check program's
- * digest. Exits 1 on any fault.
+ * the smallest the answer format allows, was not rejected, or a format the smallest value its
+ * schema yields does not follow, so that no check was seen to refuse it (until 11 October that was
+ * printed and was no fault); and a check its author's own computation decides, which stands only
+ * once the operator admits it by name (`--admit a,b`). The reading goes into the campaign's log as
+ * `checker.read`, under the contract's hash and the check program's digest. Exits 1 on any fault.
  *
  * `--cycle` names the stored cycle the campaign opens over, as every other command of a campaign
  * names it; without it the cycle is the sweep's first graded row's.
@@ -100,7 +101,14 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     console.log("no control was run: a check whose tool is missing decides nothing");
     return 1;
   }
-  const { runs, seen, idle, unformed, rejected } = await readChecker({
+  const {
+    runs,
+    checks,
+    faults: seen,
+    idle,
+    unformed,
+    rejected,
+  } = await readChecker({
     verify: campaign.verify,
     brief,
     contract,
@@ -110,8 +118,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     found: toolOnPath(bundle),
     width: Number(values.jobs),
   });
-  const { checks } = seen;
-  const faults = [...seen.faults, ...authoredFaults(checks, admitted), ...doNothingFaults(rejected)];
+  const faults = [...seen, ...authoredFaults(checks, admitted)];
   append(log, "checker.read", {
     ...checker,
     controls: runs.length,
@@ -129,11 +136,11 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     faults: [...faults],
   });
   console.log(`${String(runs.length)} controls twice, ${String(stored.length)} stored verdicts`);
-  console.log(
-    unformed === null
-      ? `the do-nothing answer ${capturedJsonStringify(idle)}: rejected on ${String(rejected.length - doNothingFaults(rejected).length)} of ${plural(rejected.length, "task")}`
-      : `no do-nothing answer was put to the checks: the smallest value the format's schema yields does not follow it (${unformed})`,
-  );
+  if (unformed === null) {
+    console.log(
+      `the do-nothing answer ${capturedJsonStringify(idle)}: rejected on ${String(rejected.length - doNothingFaults(rejected).length)} of ${plural(rejected.length, "task")}`,
+    );
+  }
   console.log("check\tinstrument\tpassed\trefused\tcontrols refused of those naming it");
   for (const row of checks) {
     console.log(

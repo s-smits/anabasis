@@ -394,6 +394,20 @@ describe("a draft read without a model", () => {
     ]);
   });
 
+  it("tells a do-nothing answer that does not follow the format as a fault, with a check that passes everything", async () => {
+    const digits = { ...FORMAT, properties: { answer: { type: "string", pattern: "^[0-9]+$" } } };
+    const lax = {
+      ...SOUND,
+      answerFormat: digits,
+      evaluator: `export const checks = { "check-product": () => true };\n`,
+    };
+    expect(await draftReading(join(root, "read"), lax, 2)).toEqual([
+      "a reject control of ex-001 names check-product, which did not refuse it: pass",
+      "check-product has refused nothing: no control and no stored answer",
+      `the do-nothing answer {"answer":""} does not follow the answer format (Validation failed for tool "answer":\n  - answer: must match pattern "^[0-9]+$"), so no check was seen to refuse it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values and first choices, and reads no other keyword`,
+    ]);
+  });
+
   it("tells a check program that does not load as a fault, and the shape before anything runs", async () => {
     const broken = {
       ...SOUND,

@@ -25,6 +25,7 @@
  * wrong; that takes a reading of the refused answers themselves (`src/review/rejections.ts`).
  */
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import type { LogEvent } from "./log.ts";
@@ -314,18 +315,34 @@ export function acceptance(
  * schema yields one that follows the format (`unformed` says why it does not). The acceptance
  * command records it (`tools/c/accept.ts`), and an Examiner's draft is held to the same reading
  * before it stands (`tools/d2/exam.ts`), so an exam is drafted against what it will be read by.
+ *
+ * A do-nothing answer that does not follow the format is a fault of the reading's own. Until
+ * 11 October it was put to no check and named no fault, and both callers dropped it: a format
+ * with a `pattern` on its one string and a check that let every answer pass stood as a draft
+ * with no fault, though a draft stands only once that answer is refused on every example
+ * (`AGENTS.md`, section 6).
  */
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;
   const runs = await runControls(verify, tasks, given.controls, width);
   const idle = doNothingAnswer(given.contract.answerFormat);
   const unformed = answerFormatFault(given.contract, idle);
+  const rejected = unformed === null ? await runDoNothing(verify, tasks, idle, width) : [];
+  const { checks, faults } = acceptance(brief, tasks, runs, given.stored, given.found);
   return {
     runs,
-    seen: acceptance(brief, tasks, runs, given.stored, given.found),
+    checks,
+    faults: [
+      ...faults,
+      ...(unformed === null
+        ? doNothingFaults(rejected)
+        : [
+            `the do-nothing answer ${capturedJsonStringify(idle)} does not follow the answer format (${unformed}), so no check was seen to refuse it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values and first choices, and reads no other keyword`,
+          ]),
+    ],
     idle,
     unformed,
-    rejected: unformed === null ? await runDoNothing(verify, tasks, idle, width) : [],
+    rejected,
   };
 }
 

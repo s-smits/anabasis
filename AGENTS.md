@@ -418,7 +418,12 @@ solve is held at (`--reserve`), or than the next comparison would bill by what t
 (`afforded`, `src/builder/decide.ts`): a comparison the cap cuts tallies nothing.
 
 **It ends in one of six ways**, and the log's last event says which (`campaign.ended`):
-`budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment` or `operator`.
+`budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment` or `operator`. A
+move that threw after it began ends the campaign on its environment, and so do three Builder or
+Examiner sessions in a row that the provider failed (`crashedRun`, `src/builder/ground.ts`): a
+crashed session held out nothing because it was refused a turn, not because the domain gave it
+none, so it is not an idle session for the patience. Run again by its name, the campaign goes
+on from its log, and the count starts afresh.
 With `--handover <dir>` it then writes what it hands over (row 7): the harness is copied whole,
 with the programs a kept state names by a link, and has to open there as the harness it was kept
 as. The closing report is a view of the log, names no task and holds no check, and says what was
@@ -644,7 +649,8 @@ last promoted, and one that names a digest is made against that harness and prom
 **What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
 prints it as its last line. In the order the table asks:
 
-1. A word the operator left, where nothing has acted on it.
+1. A word the operator left, where nothing has acted on it; then the provider, where three
+   sessions in a row crashed (section 6).
 2. The exam: a draft where the campaign opened from a prompt, a reading of a checker nobody has
    read, and an ending where the reading holds a fault that nobody froze or admitted.
 3. The tasks: a pack's taken in, practice released, and tasks written where the campaign has none.

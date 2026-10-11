@@ -17,7 +17,9 @@
  * The order it asks in:
  *
  * 0. The operator's word, where one was left and nothing has acted on it: a stop ends the
- *    campaign there, and a word for other tasks has them written once the exam stands.
+ *    campaign there, and a word for other tasks has them written once the exam stands. Then
+ *    the provider: as many Builder or Examiner sessions in a row as `CRASHES` that it failed end
+ *    the campaign on its environment, which its command goes on from when run again.
  * 1. The exam. A campaign that opened from a prompt has it drafted, three drafts at most. A
  *    checker nobody has read is read, and one whose reading holds a fault that nobody froze ends
  *    the campaign: the exam was not accepted. It is read again where the operator's command
@@ -77,7 +79,7 @@ import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { supplyOf } from "./admission.ts";
-import { type Ground, groundOf, idleDrafts, pairOf, type Plan } from "./ground.ts";
+import { crashedRun, type Ground, groundOf, idleDrafts, pairOf, type Plan } from "./ground.ts";
 import { build, compare, type Decided, end, type Fresh, short, STEP } from "./move.ts";
 import { pendingWords } from "./word.ts";
 
@@ -85,6 +87,10 @@ import { pendingWords } from "./word.ts";
  *  Examiner sessions in a row that held out no task and comparisons of one harness that left no
  *  room, are the campaign's patience (`plan.patience`, `PATIENCE`), as the stop rule's is. */
 const DRAFTS = 3;
+/** Builder or Examiner sessions in a row the provider failed before the campaign ends on its
+ *  environment: as many as drafts, so that a campaign is not built or examined against a dead
+ *  provider without end, and no more, since each costs an id and the operator's wait. */
+const CRASHES = DRAFTS;
 const SETTING = "campaign.setting";
 const ROOM = "room";
 /** What an Examiner session's reason adds where the tasks written since the comparison are too
@@ -160,6 +166,15 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
       // Every word left before the stop is answered by it: the campaign has stopped.
       answers: words.filter(({ at }) => at <= stop.at).map(({ at }) => at),
     };
+  }
+  // The provider's failure is the environment's ending and no reading of the exam or the room:
+  // the campaign goes on from its log once its command is run again (`crashedRun`).
+  const crashes = crashedRun(events);
+  if (crashes.count >= CRASHES) {
+    return end(
+      "environment",
+      `${plural(crashes.count, "session")} in a row crashed (${crashes.crash ?? "the provider gave no reason"}): nothing was written or built by them. Run the command again by the campaign's name once the provider is back`,
+    );
   }
   if (plan.prompted === true && draftOf(events) === null) return drafting(events);
   const supply = supplyOf(events);

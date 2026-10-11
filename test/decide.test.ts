@@ -748,6 +748,53 @@ describe("the budget and the bounds", () => {
       why: "3 Examiner sessions in a row held out no task (the campaign holds no task): the tasks could not be written",
     });
   });
+
+  // On 11 October six Examiner sessions of one campaign crashed in a row on the provider's session
+  // limit, each under a new id within minutes, and the campaign ended `no-room` with "the tasks
+  // could not be written"; another lost a Builder session the same way. The provider's failure is
+  // the environment's ending, and the campaign goes on from its log once it is run again.
+  it("ends on its environment, not its exam, where three sessions in a row crashed, and goes on once run again", () => {
+    const EXAM = "exam.finished";
+    const crashed = (kind: typeof EXAM | "build.finished", id: string) =>
+      event(kind, {
+        session: id,
+        held: [],
+        refused: [],
+        proposed: 0,
+        ended: "crashed",
+        crash: "limit reached",
+      });
+    const idle = (id: string) =>
+      event(EXAM, { session: id, held: [], refused: [], proposed: 0, ended: "finished" });
+    // A crashed session is not idle: two crashes and one idle session are one idle session.
+    expect(move([READ, crashed(EXAM, "x-1"), crashed(EXAM, "x-2"), idle("x-3")])).toMatchObject({
+      move: "examine",
+    });
+    const dead = [
+      READ,
+      idle("x-1"),
+      crashed(EXAM, "x-2"),
+      crashed("build.finished", "b-1"),
+      crashed(EXAM, "x-3"),
+    ];
+    expect(move(dead)).toEqual({
+      move: "end",
+      ending: "environment",
+      why: "3 sessions in a row crashed (limit reached): nothing was written or built by them. Run the command again by the campaign's name once the provider is back",
+    });
+    // Run again after that ending, the count starts afresh: the next session is tried.
+    const ended = event("campaign.ended", { ending: "environment", why: "3 sessions in a row crashed" });
+    expect(move([...dead, ended])).toMatchObject({ move: "examine" });
+    expect(move([...dead, ended, crashed(EXAM, "x-4"), crashed(EXAM, "x-5")])).toMatchObject({
+      move: "examine",
+    });
+    // A session that ended whole between crashes breaks the run.
+    expect(
+      move([READ, crashed(EXAM, "x-1"), crashed(EXAM, "x-2"), idle("x-3"), crashed(EXAM, "x-4")]),
+    ).toMatchObject({
+      move: "examine",
+    });
+  });
 });
 
 describe("what a campaign runs by", () => {

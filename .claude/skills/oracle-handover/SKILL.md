@@ -103,7 +103,7 @@ In this order:
 
 1. **The question and the decision it changes.** One paragraph: what the operator has to choose,
    and what the report settles.
-2. **What you can read.** The repository, `https://github.com/s-smits/anabasis-v2`. A table of
+2. **What you can read.** The repository, `https://github.com/s-smits/anabasis`. A table of
    every cited commit: what it is and whether it is published. One line per folder of the zip.
    Point at `docs/plan.md` and `docs/transfer.md` at a cited commit for how the system works and
    what it defers, and do not write a second manual.

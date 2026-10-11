@@ -51,7 +51,7 @@ reading from the start of the task is a lead, not a fact.
 One worktree per pull request, from the top, pinned by commit:
 
 ```sh
-git worktree add -b claude/<topic> ../anabasis-v2-<topic> <top-head-sha>
+git worktree add -b claude/<topic> ../anabasis-<topic> <top-head-sha>
 ```
 
 Pin by commit because the branch can move between the fetch and the checkout. Run

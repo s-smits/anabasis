@@ -161,10 +161,11 @@ checks that refused an answer, and none of the Referee's reasons. Section 8 stat
 
 ### What changed from v1
 
-v1 is the public repository `s-smits/anabasis`. Much of `src/meta`, `src/verify`, `tools/loc` and
-`tools/oxlint` was copied from it, so its words still appear in comments. A comment there that
-cites "AGENTS.md rule N" means v1's file, whose rules were numbered otherwise. The design around
-the copied code is different.
+v1 is this repository's history before v2 took it over on 11 October 2026. Its last tree is
+`5bc9988`, and `git show 5bc9988:<path>` reads any v1 file. Much of `src/meta`, `src/verify`,
+`tools/loc` and `tools/oxlint` was copied from it at `3f93d06`, so its words still appear in
+comments. A comment there that cites "AGENTS.md rule N" means v1's file, whose rules were
+numbered otherwise. The design around the copied code is different.
 
 | v1 | v2 |
 | --- | --- |
@@ -1037,7 +1038,10 @@ before you push. Until 11 October v2's work was one linear stack of open pull re
 and #221 merged the whole of it into `main` that day. A new subject is now a pull request on
 `main`, from a worktree of its own at `origin/main`, and the stacking rules below hold where one
 pull request depends on another that has not merged: there the top is that pull request's branch,
-and elsewhere it is `main`. Several sessions write at once. What it comes to:
+and elsewhere it is `main`. Several sessions write at once. v2 was built in `s-smits/anabasis-v2`
+until 11 October 2026, when it took over this repository, v1's: a pull request number in text
+written before then, up to #233, is that repository's, while this one's own run to #140 for v1
+and go on from there. What it comes to:
 
 - **Read the stack every time**: before `git worktree add`, before opening a pull request, and
   before a push that rewrites a branch. `bun .claude/skills/stack-pr/scripts/stack.ts` prints the

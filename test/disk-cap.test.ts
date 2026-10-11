@@ -4,12 +4,19 @@
 // its TMPDIR once those sit on the mounted volume. On Linux nothing caps a seat's disk
 // (`src/verify/disk-cap.ts`).
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { describe, expect, it } from "bun:test";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { mountDiskCap, releaseDiskCap } from "../src/verify/disk-cap.ts";
+import { endHolders, mountDiskCap, releaseDiskCap } from "../src/verify/disk-cap.ts";
 import { commandIsolationPolicy, stageCommandIsolation } from "../src/verify/solve-command-isolation.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
@@ -100,6 +107,42 @@ describe("the disk cap", () => {
       mkdirSync(cache, { recursive: true });
       await releaseDiskCap(root);
       expect(existsSync(root)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  // A volume whose I/O has stopped holds up whatever reads it, and a detach of it hung disk
+  // arbitration for the whole host (2026-10-11). These stand in a listing that never answers for
+  // such a volume; a holder in uninterruptible wait, the other sign of one, takes a stalled volume
+  // to make.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "says a volume is stalled when the listing of what holds it does not answer",
+    async () => {
+      const parent = mkdtempSync(join(tmpdir(), "ana-disk-cap-"));
+      const lsof = join(parent, "lsof");
+      writeFileSync(lsof, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
+      expect(await endHolders(parent, { lsof, boundMs: 200 })).toBe(
+        "no listing of what holds it came within 200 ms",
+      );
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "leaves a stalled volume attached and its image in place, and says why",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      const lsof = join(parent, "lsof");
+      writeFileSync(lsof, "#!/bin/sh\nexec /bin/sleep 5\n", { mode: 0o755 });
+      await expect(releaseDiskCap(root, { lsof, boundMs: 200 })).rejects.toThrow(
+        `the volume at ${root} is left attached: no listing`,
+      );
+      expect(spawnSync("/sbin/mount", []).stdout).toContain(root);
+      expect(existsSync(`${root}.sparseimage`)).toBe(true);
+      await releaseDiskCap(root);
+      expect(spawnSync("/sbin/mount", []).stdout).not.toContain(root);
       rmSync(parent, { recursive: true, force: true });
     },
   );

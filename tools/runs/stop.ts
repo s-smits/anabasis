@@ -28,6 +28,7 @@ import { existsSync, rmSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
@@ -136,11 +137,23 @@ export async function stop(args: readonly string[]): Promise<void> {
       `${run.name} in ${run.tree}: ${String(left.length)} capped root(s) its solves and sessions left behind`,
     );
     if (!values.yes) continue;
+    // A stalled volume is left attached by its release, and the stop goes on to the next root.
+    let kept = 0;
     for (const { root, host } of left) {
-      await releaseDiskCap(root);
+      try {
+        await releaseDiskCap(root);
+      } catch (error) {
+        kept++;
+        console.log(`  ⚠ ${errorMessage(error)}`);
+        continue;
+      }
       rmSync(host, { recursive: true, force: true });
     }
-    console.log("  released");
+    console.log(
+      kept === 0
+        ? "  released"
+        : `  released but ${String(kept)}; a reboot clears what a stalled volume holds`,
+    );
   }
   if (found.length + held > 0 && !values.yes) console.log("nothing is ended or released without --yes");
 }

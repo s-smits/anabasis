@@ -35,6 +35,21 @@ interface DiskCap {
   readonly bytes: number;
 }
 
+/** What lists the processes holding a file on a volume, and how long its answer may take. A test
+ *  names one that never answers. */
+interface HolderListing {
+  lsof: string;
+  boundMs: number;
+}
+
+/** `lsof` reads the kernel's tables and stats only the mountpoint: it answered in 0.1 s at a host
+ *  load near 20 (2026-10-11). So a listing that runs past the bound is one the volume holds up. */
+const LSOF: HolderListing = { lsof: "/usr/sbin/lsof", boundMs: 30_000 };
+
+/** How long a killed holder may stay in uninterruptible wait, as one in the middle of a write does,
+ *  before its volume counts as stalled. */
+const STALL_MS = 10_000;
+
 /** Undo `mountDiskCap`: `releaseDiskCap` on its root. */
 export type ReleaseDiskCap = () => Promise<void>;
 
@@ -121,17 +136,26 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
  * process's files and left it running, and one that then wrote its home made the bare
  * mountpoint again, so the release threw on a folder that was not empty and took a round and its
  * three other solves with it; the process ran on at 80 forks a second (2026-10-09). So whatever
- * holds a file on a volume that will not detach is killed first, and what a process wrote into the
- * mountpoint after the volume went is removed with it.
+ * holds a file on the volume is killed first, and what a process wrote into the mountpoint after
+ * the volume went is removed with it.
+ *
+ * A volume whose I/O has stopped is left attached, and the release throws. Its readers sit in
+ * uninterruptible wait, which SIGKILL does not end, and a detach of it waits on that I/O inside
+ * disk arbitration, which serves every volume on the host: on 2026-10-11 an Examiner's image
+ * stalled under twelve concurrent writers, a forced detach of it hung `diskarbitrationd`, and every
+ * seat on the host took minutes to mount after it. A reboot clears such a volume; a detach does not.
  */
-export async function releaseDiskCap(root: string): Promise<void> {
+export async function releaseDiskCap(root: string, listing: HolderListing = LSOF): Promise<void> {
   if (runtimeProcess.platform === "darwin") {
     // A mountpoint is on another device than its parent.
     if (statSync(root).dev !== statSync(dirname(root)).dev) {
+      const wedged = await endHolders(root, listing);
+      if (wedged !== null) throw new Error(`the volume at ${root} is left attached: ${wedged}`);
       // "resource busy" is a file open on the volume, a working directory among them.
       const detached = await hdiutil(["detach", root, "-quiet"]);
       if (detached !== null) {
-        await endHolders(root);
+        const still = await endHolders(root, listing);
+        if (still !== null) throw new Error(`the volume at ${root} is left attached: ${still}`);
         const forced = await hdiutil(["detach", root, "-force", "-quiet"]);
         if (forced !== null) throw new Error(forced);
       }
@@ -141,20 +165,20 @@ export async function releaseDiskCap(root: string): Promise<void> {
   rmSync(root, { recursive: true, force: true });
 }
 
-/** Darwin's, as Linux ends a pid namespace: kill every process with a file open on the volume at
- *  `root`, for a few passes while one that forks leaves another; a forced detach takes the rest. */
-export async function endHolders(root: string): Promise<void> {
-  if (runtimeProcess.platform !== "darwin") return;
+/**
+ * Darwin's, as Linux ends a pid namespace: kill every process with a file open on the volume at
+ * `root`, for a few passes while one that forks leaves another; a forced detach takes the rest.
+ * Returns null, or why the volume's I/O has stopped: no listing of its holders within the bound, or
+ * a holder still in uninterruptible wait once killed. Each walled command's end calls this too,
+ * and the bound is what keeps a stalled volume from holding its controller there.
+ */
+export async function endHolders(root: string, listing: HolderListing = LSOF): Promise<string | null> {
+  if (runtimeProcess.platform !== "darwin") return null;
   for (let pass = 0; pass < 5; pass++) {
-    const listed = Bun.spawn(["/usr/sbin/lsof", "-t", "+f", "--", root], {
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "ignore",
-    });
-    const holders = (await new Response(listed.stdout).text()).split("\n").map(Number);
-    const others = holders.filter((pid) => pid > 1 && pid !== runtimeProcess.pid);
-    if (others.length === 0) return;
-    for (const pid of others) {
+    const holders = await holdersOf(root, listing);
+    if (holders === null) return `no listing of what holds it came within ${String(listing.boundMs)} ms`;
+    if (holders.length === 0) return null;
+    for (const pid of holders) {
       try {
         runtimeProcess.kill(pid, "SIGKILL");
       } catch {
@@ -162,4 +186,48 @@ export async function endHolders(root: string): Promise<void> {
       }
     }
   }
+  // What survived five passes either forks faster than they ran, which the forced detach takes, or
+  // cannot die: a process in uninterruptible wait takes its SIGKILL only when its I/O returns.
+  const until = Date.now() + STALL_MS;
+  for (;;) {
+    const holders = await holdersOf(root, listing);
+    if (holders === null) return `no listing of what holds it came within ${String(listing.boundMs)} ms`;
+    const waiting = holders.filter((pid) => stateOf(pid).startsWith("U"));
+    if (waiting.length === 0) return null;
+    if (Date.now() >= until) {
+      return `${String(waiting.length)} of its holders stayed in uninterruptible wait for ${String(STALL_MS)} ms after SIGKILL`;
+    }
+    await Bun.sleep(500);
+  }
+}
+
+/** The pids holding a file on the volume at `root` but this process, or null when the listing did
+ *  not answer within its bound. A listing stuck on the volume cannot be killed, and is left behind. */
+async function holdersOf(root: string, listing: HolderListing): Promise<number[] | null> {
+  const listed = Bun.spawn([listing.lsof, "-t", "+f", "--", root], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((done) => {
+    timer = setTimeout(() => done(null), listing.boundMs);
+  });
+  const answer = await Promise.race([new Response(listed.stdout).text(), late]);
+  clearTimeout(timer);
+  if (answer === null) return null;
+  return answer
+    .split("\n")
+    .map(Number)
+    .filter((pid) => pid > 1 && pid !== runtimeProcess.pid);
+}
+
+/** A process's `ps` state, `U` first for uninterruptible wait; empty for one that is gone. `ps`
+ *  reads the kernel's process table and no volume. */
+function stateOf(pid: number): string {
+  const ps = Bun.spawnSync(["/bin/ps", "-o", "stat=", "-p", String(pid)], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  return ps.stdout.toString().trim();
 }

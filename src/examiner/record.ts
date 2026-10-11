@@ -8,46 +8,64 @@
  * and easier ones included, each with its outcome so far: how the reference harness did on it in
  * the last comparison that scored it, valid in every solve, in some or in none, or disputed
  * (`docs/plan.md`, Phase 2; since 11 October, `docs/simplify.md` F3: "one harness won" and "no
- * valid answer yet" told the author nothing of where the room was). That is every word here
- * beside the ones about a task's own standing in the campaign. It is a view of the log, and no
- * store is kept for it. Until that day a session was shown the pack's tasks by id and family alone,
- * and no outcome.
+ * valid answer yet" told the author nothing of where the room was). Beside the outcome, one fact
+ * that names no side: whether a valid answer to the task is on record at all, a solve's or the
+ * author's own `try_answer` pass (`feasibleTasks`), which tells a task the reference answers in no
+ * solve apart from one nobody has answered. That is every word here beside the ones about a
+ * task's own standing in the campaign. It is a view of the log, and no store is kept for it. Until
+ * that day a session was shown the pack's tasks by id and family alone, and no outcome.
  *
- * What v1 measured about this channel is kept. An author told a zone, a share or a target count
+ * Each sentence says what its fold does. Until 11 October the exhausted line said "answered by
+ * both harnesses", where the rule reads the reference's own solves alone (`exhausted`,
+ * `src/kernel/reports.ts`); the review of the buffer runs of that day found the two apart.
+ *
+ * What v1 recorded about this channel is kept. An author told a zone, a share or a target count
  * wrote towards it, and one told each answer's distance from its limit moved limits (v1
- * `AGENTS.md`, "Tried and taken out"); the plan lists the difficulty band among what it will not
- * tell. So a line names no harness, no count of solves, no check and no budget.
+ * `AGENTS.md`, "Tried and taken out"; a judgement of v1's own Builder, which wrote and was scored
+ * on its own exam, and no measurement of a separate author); the plan lists the difficulty band
+ * among what it will not tell. So a line names no harness, no count of solves, no check and no
+ * budget.
  */
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { type Outcome, outcomesOf } from "../kernel/reports.ts";
+import { feasibleTasks, type Outcome, outcomesOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
 
 /** How each outcome is said. */
-const SAID: Readonly<Record<Outcome, string>> = {
+export const SAID: Readonly<Record<Outcome, string>> = {
   "reference-every": "the reference harness answered it validly in every solve of the last comparison",
   "reference-some":
     "the reference harness answered it validly in some solves of the last comparison and not in others",
   "reference-none": "the reference harness answered it validly in no solve of the last comparison",
+  "earlier-reference":
+    "the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none",
   disputed: "disputed: a rejection of an answer to it is not settled",
-  exhausted: "answered validly by both harnesses in every solve of two comparisons: no longer scored",
+  exhausted:
+    "the reference harness answered it validly in every solve of two comparisons: no longer scored, unless it is among the third kept in the draw",
 };
+/** The one fact beside the outcome that names no side. */
+const KNOWN = {
+  yes: "a valid answer to it is on record",
+  no: "no valid answer to it is on record",
+} as const;
 /** What a state that is not held out says of a task. */
 const SETTLED = new Map([
   ["released", "in use as practice, and so never scored"],
   ["disputed", "disputed: a check was at fault on an answer to it"],
 ]);
 
-/** One line a task among `tasks`, in their order: the task by id and family, and its outcome. A
- *  task the log refused is left out, since it is no task of the exam. One the log does not hold,
- *  and one no comparison has scored, is not yet compared. */
+/** One line a task among `tasks`, in their order: the task by id and family, its outcome, and for
+ *  a held-out task whether a valid answer to it is on record. A task the log refused is left out,
+ *  since it is no task of the exam. One the log does not hold, and one no comparison has scored,
+ *  is not yet compared. */
 export function heard(
   events: readonly LogEvent[],
   tasks: readonly Pick<Task, "taskId" | "family">[],
 ): string[] {
   const states = taskStates(events);
   const outcomes = outcomesOf(events);
+  const feasible = feasibleTasks(events);
   const versions = new Map(
     proposalsOf(events).flatMap(({ version, taskId, task }) => {
       const id = task?.taskId ?? taskId;
@@ -59,7 +77,9 @@ export function heard(
     const state = states.get(version) ?? "";
     if (state === "refused") return [];
     const outcome = outcomes.get(version);
-    const said = SETTLED.get(state) ?? (outcome === undefined ? "not yet compared" : SAID[outcome]);
-    return [`${taskId} (family ${family}): ${said}`];
+    const settled = SETTLED.get(state);
+    if (settled !== undefined) return [`${taskId} (family ${family}): ${settled}`];
+    const said = outcome === undefined ? "not yet compared" : SAID[outcome];
+    return [`${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}`];
   });
 }

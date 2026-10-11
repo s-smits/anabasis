@@ -12,6 +12,7 @@ import {
   billedFor,
   comparedAs,
   exhausted,
+  feasibleTasks,
   lastReports,
   latestBuilt,
   outcomesOf,
@@ -530,14 +531,28 @@ describe("the outcome an Examiner hears of a task", () => {
     const after = [...before, event("harness.promoted", { harness: "h2", from: "h1", rests: ["b-1"] })];
     expect(outcomesOf(before).get("kept")).toBe("reference-none");
     expect(outcomesOf(after).get("kept")).toBe("reference-every");
-    // A comparison of two harnesses neither of which is the reference is read on its old side.
+    // A comparison of two harnesses neither of which is the reference says nothing of the
+    // reference's own: the author hears that, and not the old side's record under the
+    // reference's name (11 October; the first fix of that day read the old side there).
     const beside = [
       ...after,
       ...solved("g-2", "kept", "h3", [P, F]),
       ...solved("g-2", "kept", "h4", [F, F]),
       reported("g-2", "no-step", "h4", { ...terms, old: "h3", fresh: "h4", versions: ["kept"] }),
     ];
-    expect(outcomesOf(beside).get("kept")).toBe("reference-some");
+    expect(outcomesOf(beside).get("kept")).toBe("earlier-reference");
+  });
+
+  it("is told, beside the outcome, which tasks a valid answer is on record for, by a solve or the author's own try", () => {
+    const known = [
+      ...heldOut("solved"),
+      event("task.proposed", { version: "tried", taskId: "tried", feasible: true }),
+      event("task.gate", { version: "tried", gate: 1, outcome: "passed" }),
+      ...heldOut("never"),
+      ...solved("b-1", "solved", "h1", [F, P]),
+      ...solved("b-1", "never", "h1", [F, F]),
+    ];
+    expect(feasibleTasks(known)).toEqual(new Set(["solved", "tried"]));
   });
 });
 
@@ -752,6 +767,49 @@ describe("the tasks the reference harness exhausted", () => {
     expect(exhausted(compared(twice, "b-3", "h4", "other"))).toEqual(spent);
     const released = [...twice, event("task.state", { version: spent[0] ?? "", state: "released" })];
     expect(exhausted(released)).not.toContain(spent[0]);
+  });
+
+  it("spares a task the objective told two valid answers apart on: the next harness can still win it", () => {
+    // The same two comparisons, under an objective: on `e1` the new harness's answers are the
+    // better by more than the margin, on `e2` the two sides are even. Until 11 October both
+    // closed alike, and the Examiner was told `e1` could only tie again.
+    const measured = (log: readonly LogEvent[], session: string, fresh: string) => {
+      const rule = { direction: "lower", margin: 0.01 };
+      const sides = [
+        ...solved(session, "e1", "h1", [P, P]),
+        ...solved(session, "e1", fresh, [P, P]),
+        ...solved(session, "e2", "h1", [P, P]),
+        ...solved(session, "e2", fresh, [P, P]),
+      ];
+      const starts = sides.filter(({ kind }) => kind === "solve.started");
+      const measures = [10, 10, 5, 5, 10, 10, 10, 10];
+      return [
+        ...log,
+        ...sides,
+        ...starts.map(({ data }, index) =>
+          event("verdict", {
+            solve: data.solve ?? "",
+            kind: "pass",
+            answer: {},
+            objective: measures[index] ?? 0,
+          }),
+        ),
+        reported(session, "no-step", fresh, {
+          ...terms,
+          fresh,
+          setting: SETTING,
+          versions: ["e1", "e2"],
+          objective: rule,
+        }),
+      ];
+    };
+    const log = measured(measured([read, ...["e1", "e2"].flatMap(heldOut)], "b-1", "h2"), "b-2", "h3");
+    // `e2` alone qualifies; of one task the hash keeps one, so nothing is retired, and `e1` reads
+    // as the reference's every-solve task that it is.
+    expect(exhausted(log)).toEqual([]);
+    expect(outcomesOf(log).get("e1")).toBe("reference-every");
+    const three = measured(log, "b-3", "h4");
+    expect(exhausted(three)).toEqual([]);
   });
 });
 

@@ -43,14 +43,16 @@
  * 7. No step. Where the reference harness left no room, or neither harness answered, the tasks
  *    have to change: an Examiner session, until as many in a row as the campaign's patience held
  *    out nothing. With room, the harness did not help, and the Builder builds again.
- * 8. Nothing new to compare: the Builder builds. Something new: it is compared once the sessions
- *    before a comparison have run, or tasks are written where the comparison would be short of
- *    them.
+ * 8. Nothing new to compare: the Builder builds, once the campaign holds as many scorable tasks
+ *    as a comparison scores (since 11 October; until then the first session built on whatever
+ *    was held, and the Examiner wrote the rest between the session and the comparison). Something
+ *    new: it is compared once the sessions before a comparison have run, or tasks are written
+ *    where the comparison would be short of them.
  * 9. Before a Builder session, practice is brought towards the count the campaign names, where
  *    tasks were held out since the last release, and brought up again after a control that read
  *    room: the tasks that leave the reference room are what the Builder has to work on.
  * 10. Before a comparison the campaign holds as many scorable tasks as a comparison scores, or
- *    the Examiner writes more first, up to three sessions in a row that add none. On 9 and 10
+ *    the Examiner writes more first, until as many sessions in a row as the campaign's patience add none. On 9 and 10
  *    October the two campaigns on the operator's host compared on 6 tasks where the setting
  *    asked for 12, and a harness came one win short of a step three times.
  * 11. No harness but the reference, and tasks held out since the last comparison: a control, the
@@ -484,6 +486,12 @@ function heldSince(events: readonly LogEvent[], after: number): number {
 function onReference(ground: Ground): Decided {
   const { events, all, reference, starter, tasksShort } = ground;
   const idle = build("no session has left a harness that is not the reference harness");
+  // Before any comparison the supply row comes first: the tasks a comparison is short of are
+  // written before the first session is paid for, so that the release before it has them to
+  // draw practice from, and the Examiner is not on the critical path between the session and
+  // the comparison. The buffer campaigns of 11 October built first on three practice tasks,
+  // cleared them in three to five harness versions, and then waited on an Examiner session.
+  if (all.length === 0) return toTarget(ground, "no comparison has run yet") ?? idle;
   if (reference === null || starter === null || reference === starter) return idle;
   const last = all.findLast(({ report }) => report !== null);
   const since = heldSince(events, last?.reported ?? -1);

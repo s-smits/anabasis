@@ -9,16 +9,25 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { heard } from "../src/examiner/record.ts";
+import { heard, SAID } from "../src/examiner/record.ts";
 import { SYSTEM_PROMPT } from "../src/examiner/prompt.ts";
-import { claimed, type ExamRequest, examine } from "../src/examiner/session.ts";
+import { claimed, type ExamRequest, examine, keepHome, lastNote, seedHome } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import type { Task } from "../src/kernel/verify.ts";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { asRecord, isFunction, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -162,7 +171,9 @@ describe("an Examiner session", () => {
     expect(s.sent[0]).toContain("the harness that gives more valid answers wins");
     // It is told that a task needs a valid answer, and that it may derive the task from one.
     expect(s.sent[0]).toContain("A task with no valid answer measures nothing");
-    expect(s.sent[0]).not.toContain("objective");
+    // The contract declares none, so the opening names none; the system prompt says what one
+    // would do.
+    expect(s.sent[0]).not.toContain("Objective:");
     // How many tasks are wanted is not the Examiner's to know: no prompt and no tool text says 24.
     expect((s.sent[0] ?? "").replace(/"timestamp":\d+/g, "")).not.toContain("24");
     // It writes no control and is put to no solver, and its prompt promises neither.
@@ -413,19 +424,21 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     const tasks = [EXAMPLE, ...writtenTasks(read(s.log))];
     // The reference harness is h1, the comparison's old side: the author hears how it did on
     // each task, and nothing of h2.
+    // Beside the outcome, one fact that names no side: whether a valid answer to the task is on
+    // record at all, a solve's under either harness or the author's own try.
     expect(heard(read(s.log), tasks)).toEqual([
-      "e-1 (family fixture): the reference harness answered it validly in some solves of the last comparison and not in others",
-      "x-1-001 (family fixture): the reference harness answered it validly in no solve of the last comparison",
-      "x-1-002 (family fixture): the reference harness answered it validly in every solve of the last comparison",
-      "x-1-003 (family fixture): the reference harness answered it validly in no solve of the last comparison",
+      "e-1 (family fixture): the reference harness answered it validly in some solves of the last comparison and not in others; a valid answer to it is on record",
+      "x-1-001 (family fixture): the reference harness answered it validly in no solve of the last comparison; a valid answer to it is on record",
+      "x-1-002 (family fixture): the reference harness answered it validly in every solve of the last comparison; a valid answer to it is on record",
+      "x-1-003 (family fixture): the reference harness answered it validly in no solve of the last comparison; no valid answer to it is on record",
       "x-1-004 (family fixture): in use as practice, and so never scored",
-      "x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled",
+      "x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled; no valid answer to it is on record",
     ]);
 
     await examine({ ...s.request, id: "x-2", examples: tasks });
     const opening = s.sent[3] ?? "";
     expect(opening).toContain(
-      "The tasks of the exam so far, and what the last comparison that scored each one found",
+      "The tasks of the exam so far, what the last comparison that scored each one found, and whether a valid answer to it is on record",
     );
     expect(opening).toContain(
       "- e-1 (family fixture): the reference harness answered it validly in some solves",
@@ -444,6 +457,49 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     });
   });
 
+  it("opens the next session with what the last one said at its finish, and nothing of a session that said nothing", async () => {
+    const s = setup([propose(1), finish, finish]);
+    await examine(s.request);
+    expect(lastNote(read(s.log))).toBe("Stacked two requirements.");
+    const next = setup([finish, finish]);
+    expect(lastNote(read(next.log))).toBeNull();
+    await examine({ ...next.request, log: s.log, id: "x-2" });
+    const opening = next.sent[0] ?? "";
+    expect(opening).toContain(
+      "What the last Examiner session of this campaign said at its finish, in its own words:",
+    );
+    expect(opening).toContain(String.raw`in its own words:\nStacked two requirements.`);
+    // A first session, with no finished one before it, is told nothing of the kind.
+    expect(s.sent[0]).not.toContain("said at its finish");
+    // The exhausted line says what the fold does: the reference's own solves, and the kept third.
+    expect(SAID.exhausted).toContain(
+      "the reference harness answered it validly in every solve of two comparisons",
+    );
+    expect(SAID.exhausted).not.toContain("both harnesses");
+  });
+
+  it("carries a session's home whole into the next session's, replacing what was kept before", () => {
+    const root = mkdtempSync(join(tmpdir(), "examiner-home-"));
+    const [first, keep, second] = [join(root, "first"), join(root, "keep"), join(root, "second")];
+    mkdirSync(join(first, "w"), { recursive: true });
+    writeFileSync(join(first, "w", "model.py"), "print(1)\n");
+    writeFileSync(join(first, "stale.txt"), "old\n");
+    // A first session finds nothing kept, and leaves its home whole.
+    mkdirSync(second, { recursive: true });
+    seedHome(second, keep);
+    expect(readdirSync(second)).toEqual([]);
+    keepHome(first, keep);
+    seedHome(second, keep);
+    expect(readFileSync(join(second, "w", "model.py"), "utf8")).toBe("print(1)\n");
+    expect(existsSync(join(second, "stale.txt"))).toBe(true);
+    // The next carry replaces the kept copy: what a session deleted stays deleted.
+    rmSync(join(second, "stale.txt"));
+    keepHome(second, keep);
+    expect(existsSync(join(keep, "stale.txt"))).toBe(false);
+    expect(existsSync(join(keep, "w", "model.py"))).toBe(true);
+    rmSync(root, { recursive: true, force: true });
+  });
+
   it("says a task is not yet compared, leaves a refused one out, and says when a check was at fault", async () => {
     const s = setup([propose(5, null, 6), finish, finish]);
     await examine(s.request);
@@ -451,11 +507,13 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     const tasks = writtenTasks(read(s.log));
     expect(tasks.map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-1-002", "x-1-003"]);
     expect(heard(read(s.log), tasks)).toEqual([
-      "x-1-001 (family fixture): not yet compared",
+      "x-1-001 (family fixture): not yet compared; no valid answer to it is on record",
       "x-1-003 (family fixture): disputed: a check was at fault on an answer to it",
     ]);
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
-    expect(heard([], [EXAMPLE])).toEqual(["e-1 (family fixture): not yet compared"]);
+    expect(heard([], [EXAMPLE])).toEqual([
+      "e-1 (family fixture): not yet compared; no valid answer to it is on record",
+    ]);
     expect(heard([], [])).toEqual([]);
   });
 });

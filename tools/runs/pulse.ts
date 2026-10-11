@@ -77,7 +77,11 @@ const CHECKPOINT = "tools/d2/checkpoint.ts";
 export const SESSION = "tools/d2/session.ts";
 /** The command a whole campaign runs as, which runs each of the above in its own process. */
 export const BUILDER = "tools/d2/harness-builder.ts";
-const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT, SESSION, BUILDER];
+/** The command the session that drafts an exam runs as. It holds a capped root as an Examiner
+ *  session does since 11 October, and run by itself it was read as closed while it ran: a stop
+ *  would have released its root and left it running, its next command outside the cap. */
+export const DRAFT = "tools/d1b/draft.ts";
+const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT, SESSION, BUILDER, DRAFT];
 /** This CLI's own command, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
 const CLI = "tools/runs/cli.ts";
 /** The file beside a log that says its campaign is a seed, and of what. */

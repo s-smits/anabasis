@@ -251,7 +251,7 @@ wall keeps from it.
 
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
-| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, and one outcome for each task of the campaign; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, and what the host's reading found in each draft | A target, a harness's name, a count of solves. It makes no solve of the exam's | `src/examiner/` |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, and one outcome for each task of the campaign; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, as when it writes tasks | A target, a harness's name, a count of solves. It makes no solve of the exam's | `src/examiner/` |
 | **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
@@ -265,7 +265,8 @@ The tools of each model seat, as its source names them:
   `try_answer` runs the checks on an instance with an answer of the Examiner's own and keeps
   nothing; the shell is a walled home of its own, empty at the session's start, and nothing in
   it enters the exam but through `propose_tasks`. In the session that drafts an exam:
-  `draft_exam`, `finish`.
+  `draft_exam`, `bash`, `read`, `write`, `finish`, the shell the same kind of walled home
+  (`src/examiner/shell.ts`), and nothing in it enters the exam but through `draft_exam`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness`, `reset_harness`, `finish`.
 - Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`.
@@ -1161,7 +1162,7 @@ src/builder/    a Builder session, its tools, prompt, notes and what it is told 
                 of (ground), what a campaign runs by (opening), and the words the operator left
                 it (word)
 src/examiner/   an Examiner session, its prompt, and the outcomes it is told; the session that drafts
-                an exam from a prompt (draft)
+                an exam from a prompt (draft); the walled home both sessions have (shell)
 src/review/     the Referee, the probe, agreement with hand labels
 src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read
 src/backends/   the three model backends as one pi collection, and compaction

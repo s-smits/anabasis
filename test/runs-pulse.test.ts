@@ -168,7 +168,7 @@ describe("the runs pulse", () => {
     expect(look.status).toContain("2 running");
   });
 
-  it("knows a campaign's log is written by its campaign command, a round or an Examiner session of its name, in its worktree", () => {
+  it("knows a campaign's log is written by its campaign command, a round, an Examiner session or a drafting session of its name, in its worktree", () => {
     const running = [
       { pid: 1, cwd: "/wt", args: ["bun", "tools/d2/round.ts", "--name", "r1", "--session", "b-1"] },
       { pid: 2, cwd: "/wt", args: ["bun", "tools/d1b/examine.ts", "--name", "r1", "--session", "x-1"] },
@@ -197,8 +197,11 @@ describe("the runs pulse", () => {
       // other, and read as closed while they ran (2026-10-10).
       { pid: 12, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name", "r1", "--unattended"] },
       { pid: 13, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name", "r10"] },
+      // The session that drafts an exam, run by itself, holds a capped root: read as closed, a stop
+      // would have released that root under it (11 October).
+      { pid: 14, cwd: "/wt", args: ["bun", "tools/d1b/draft.ts", "--name", "r1", "--session", "d-1"] },
     ];
-    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12]);
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
     expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
   });

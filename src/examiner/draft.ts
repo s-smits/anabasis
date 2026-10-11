@@ -129,6 +129,10 @@ interface DraftRequest {
   readonly shell?: CommandWall | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
+  /** When the seat began to be set up (`performance.now()`), where a caller set one up before
+   *  the session: the wall counts from then, so the mount and the probe of the shell are inside
+   *  it. */
+  readonly began?: number | undefined;
 }
 
 export interface Drafted {
@@ -448,7 +452,7 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
 
 export async function draftExam(request: DraftRequest): Promise<Drafted> {
   const { log, limits, model } = request;
-  const began = performance.now();
+  const began = request.began ?? performance.now();
   if (read(log).some(({ kind, data }) => kind === "draft.started" && data.session === request.id)) {
     throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
   }
@@ -460,12 +464,22 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
     limits: { ...limits },
     prompt: request.prompt,
   });
-  const tools = [
-    draftTool(desk),
-    ...(await examinerShell(request.shell, "a draft enters it through draft_exam alone")),
-    finishTool(desk),
-  ];
+  // The wall runs from the seat's start, before the shell's network probe is awaited: until
+  // 11 October it began after the probe, and after the mount and the wall's own probe, so a
+  // session spent those seconds outside its limit (found by review of #225).
   const wall = new AbortController();
+  const timer = setTimeout(
+    () => wall.abort(),
+    Math.max(0, limits.wallSeconds * 1000 - (performance.now() - began)),
+  );
+  let shell: AgentTool[];
+  try {
+    shell = await examinerShell(request.shell, "a draft enters it through draft_exam alone");
+  } catch (error) {
+    clearTimeout(timer);
+    throw error;
+  }
+  const tools = [draftTool(desk), ...shell, finishTool(desk)];
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
   const signal = AbortSignal.any([wall.signal, done.signal, ...(request.kill ? [request.kill] : [])]);
@@ -478,7 +492,6 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
   const home = hostScratch("claude-cli-examiner-");
   const over = () => desk.stands || desk.note !== null;
   let crash: string | null = null;
-  const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
   try {
     const models = request.models(home);
     const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
@@ -542,6 +555,9 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
 }
 
 /** One drafting session with a shell under the solver's command wall and disk cap (`shell.ts`). */
-export function draftWalled(request: Omit<DraftRequest, "shell"> & Walled): Promise<Drafted> {
-  return inExaminerWall(request, (shell) => draftExam({ ...request, shell }));
+export async function draftWalled(request: Omit<DraftRequest, "shell"> & Walled): Promise<Drafted> {
+  // A run killed before the session began mounts nothing and starts nothing.
+  if (request.kill?.aborted === true) throw new Error(`session ${request.id} was stopped before it began`);
+  const began = performance.now();
+  return await inExaminerWall(request, (shell) => draftExam({ ...request, shell, began }));
 }

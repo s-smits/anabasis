@@ -298,6 +298,27 @@ describe("the session that drafts, in a walled home of its own", () => {
     expect(told).not.toMatch(/research/i);
   });
 
+  it("mounts and starts nothing for a run that was stopped before its session began", async () => {
+    const log = join(root, "stopped-first.jsonl");
+    const sent: string[] = [];
+    const drafting = draftWalled({
+      id: "d-1",
+      prompt: "A fixture.",
+      reading: async () => [],
+      effort: "high",
+      limits: LIMITS,
+      log,
+      repoRoot: repo,
+      diskBytes: 64 * 1024 ** 2,
+      kill: AbortSignal.abort(),
+      ...scripted([["draft_exam", args(SOUND)]], sent),
+    });
+    await expect(drafting).rejects.toThrow("session d-1 was stopped before it began");
+    expect(existsSync(log)).toBe(false);
+    expect(existsSync(examinerDirs(log, "d-1").root)).toBe(false);
+    expect(sent).toEqual([]);
+  });
+
   it("is told of no shell where it has none", async () => {
     const log = join(root, "unwalled.jsonl");
     const sent: string[] = [];

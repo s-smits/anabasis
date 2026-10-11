@@ -32,7 +32,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextSyncOrThrow, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { type SolveDirs, solveDirs } from "#src/solve/command.ts";
 import { releaseDiskCap } from "#src/verify/disk-cap.ts";
-import { BUILDER, logEvents, processes, type Run, runs, writers } from "./pulse.ts";
+import { BUILDER, DRAFT, logEvents, processes, type Run, runs, writers } from "./pulse.ts";
 import { seedCut } from "./seed.ts";
 
 /** The value of `--name` among a running process's arguments, or undefined. */
@@ -117,11 +117,12 @@ export async function stop(args: readonly string[]): Promise<void> {
     // A campaign command names no session: the one it was inside is in its log, and its id is
     // spent whichever role it was. A word costs none, and both campaigns stopped by signal on
     // 10 October lost a session that was running (b-1 and x-1).
-    const cut = ranAs(EXAMINE)
-      ? "An Examiner session's id names one session: the next takes another --session"
-      : ranAs(BUILDER)
-        ? "A campaign goes on from its log under the same --name, and the session it was inside has spent its id. A word left with tools/d2/word.ts ends a campaign at its next move boundary and spends none"
-        : byHand;
+    const cut =
+      ranAs(EXAMINE) || ranAs(DRAFT)
+        ? "An Examiner session's id names one session: the next takes another --session"
+        : ranAs(BUILDER)
+          ? "A campaign goes on from its log under the same --name, and the session it was inside has spent its id. A word left with tools/d2/word.ts ends a campaign at its next move boundary and spends none"
+          : byHand;
     console.log(
       `  stopped, its log as it was. ${cut ?? "A round or a checkpoint goes on from it when started again under the same id"}`,
     );

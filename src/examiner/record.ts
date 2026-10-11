@@ -1,5 +1,5 @@
 /**
- * What an Examiner is told of the tasks its campaign holds: one outcome each.
+ * What an Examiner is told of the tasks its campaign holds: one outcome each, and counts by family.
  *
  * An Examiner session starts a new conversation, and since 2026-10-09 it is put to no solver either: a
  * task is held out on the shape of its package (`src/kernel/task.ts`), so nothing a session does
@@ -11,11 +11,21 @@
  * valid answer yet" told the author nothing of where the room was). Beside the outcome, one fact
  * that names no side: whether a valid answer to the task is on record at all, a solve's or the
  * author's own `try_answer` pass (`feasibleTasks`), which tells a task the reference answers in no
- * solve apart from one nobody has answered. The aggregate comparison summary adds validity and
- * win/loss/tie counts for the whole comparison, without task or harness identifiers, from the
- * last scored comparison involving the current reference. Both views read the log and keep no
- * second store. Until that day a session was shown the pack's tasks by id and family alone,
- * and no outcome.
+ * solve apart from one nobody has answered. It is a view of the log, and no store is kept for it.
+ * Until 9 October a session was shown the pack's tasks by id and family alone, and no outcome.
+ *
+ * Beside the lines, since 11 October, counts by family with a total (`counts`, `standingsOf`): of
+ * the tasks whose last comparison had the reference harness on a side, how many were told apart and
+ * which side won them, how many tied with both harnesses valid in every solve, how many tied with
+ * neither valid in any and of those how many have a valid answer on record, how many tied otherwise,
+ * and how many were set aside. Until then the author heard the reference's side of each task alone,
+ * and could not tell a tie both harnesses answered in every solve (no room) from one neither
+ * answered in any (too hard, infeasible or wrongly checked), nor see whether any task of the exam
+ * had told two harnesses apart. The operator decided that day that it is told these as measured
+ * facts. The counts are taken in the same pass as the lines, from the same record of each task
+ * (`lastRead`, `reports.ts`), so the two agree by construction; the other side's result is told
+ * by family and never for a task, so that an author is not shown which of its tasks one pair of
+ * harnesses split. They carry the sentence rule 6 asks for, with the solves a side they rest on.
  *
  * Each sentence says what its fold does. Until 11 October the exhausted line said "answered by
  * both harnesses", where the rule reads the reference's own solves alone (`exhausted`,
@@ -25,23 +35,25 @@
  * wrote towards it, and one told each answer's distance from its limit moved limits (v1
  * `AGENTS.md`, "Tried and taken out"; a judgement of v1's own Builder, which wrote and was scored
  * on its own exam, and no measurement of a separate author); the plan lists the difficulty band
- * among what it will not tell. So a line names no harness, no count of solves, no check and no
- * budget. The summary gives observed counts, not targets; two solves remain weak evidence.
+ * among what it will not tell. So nothing here names a harness, a check or a budget, and the
+ * counts carry no band, share or number to reach. Whether counts told as facts move an author as a
+ * target did is not measured: the operator's decision of 11 October takes that risk, and
+ * `docs/plan.md` (row F60) says what would count against it.
  */
-import { decidedByObjective, tally } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import {
-  feasibleTasks,
-  lastReports,
-  type Outcome,
-  outcomesOf,
-  pairsReported,
-  promoted,
-} from "../kernel/reports.ts";
-import { asRecord, isString } from "../meta/json-shape.ts";
+import { feasibleTasks, type Outcome, outcomesOf, type Standing, standingsOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
+import { countBy } from "../meta/tally.ts";
+import { plural } from "../meta/text.ts";
+
+/** What an Examiner is told of the tasks at its opening: one line a task, and the counts by
+ *  family that the same pass took, or null where no task stands in them. */
+export interface Heard {
+  readonly lines: string[];
+  readonly counts: string | null;
+}
 
 /** How each outcome is said. */
 export const SAID: Readonly<Record<Outcome, string>> = {
@@ -65,66 +77,20 @@ const SETTLED = new Map([
   ["released", "in use as practice, and so never scored"],
   ["disputed", "disputed: a check was at fault on an answer to it"],
 ]);
-
-/** Aggregate facts from the last scored comparison involving the current reference. Existing
- * readers own the counted solves and tally; no probe, answer, trace, harness identity or task
- * identifier enters this view (11 October). Counts stay comparison-wide: a singleton family
- * would reveal the other harness result for that task. */
-export function comparisonSummary(events: readonly LogEvent[]): string[] {
-  const reports = lastReports(events);
-  const reference = promoted(events) ?? reports.map(({ data }) => data.starter).find(isString);
-  if (!isString(reference)) return [];
-  const report = reports.findLast(
-    ({ data }) =>
-      data.old !== data.fresh &&
-      asRecord(data.scored) !== null &&
-      Array.isArray(data.versions) &&
-      data.versions.length > 0 &&
-      (data.old === reference || data.fresh === reference),
-  );
-  if (report === undefined) return [];
-  const pairs = pairsReported(events, report);
-  if (pairs.length === 0) return [];
-  const counts = { bothPass: 0, bothFail: 0, referenceOnly: 0, otherOnly: 0 };
-  let validReference = 0;
-  let validOther = 0;
-  let solves = 0;
-  for (const pair of pairs) {
-    const own = report.data.old === reference ? pair.old : pair.fresh;
-    const other = report.data.old === reference ? pair.fresh : pair.old;
-    const passedReference = own.filter(Boolean).length;
-    const passedOther = other.filter(Boolean).length;
-    validReference += passedReference;
-    validOther += passedOther;
-    solves += own.length;
-    counts.bothPass += passedReference * passedOther;
-    counts.bothFail += (own.length - passedReference) * (other.length - passedOther);
-    counts.referenceOnly += passedReference * (other.length - passedOther);
-    counts.otherOnly += (own.length - passedReference) * passedOther;
-  }
-  const scored = tally(pairs);
-  const wins = report.data.old === reference ? scored.wins : scored.losses;
-  const losses = report.data.old === reference ? scored.losses : scored.wins;
-  const excluded = ["aside", "disputed", "short", "withdrawn"].map((key) => {
-    const versions = report.data[key];
-    return `${key} ${Array.isArray(versions) ? versions.length : 0}`;
-  });
-  return [
-    `The last scored comparison involving the current reference, under one setting. Counts describe repeated solves; solve pairings are not independent observations. These are measurements, not a target pass rate or difficulty band. Tasks excluded: ${excluded.join(", ")}.`,
-    `${pairs.length} tasks; reference valid ${validReference}/${solves} solves; other valid ${validOther}/${solves} solves; solve pairings: both pass ${counts.bothPass}, both fail ${counts.bothFail}, reference only ${counts.referenceOnly}, other only ${counts.otherOnly}; other harness task wins ${wins}, losses ${losses}, ties ${scored.ties}; objective decided ${decidedByObjective(pairs)} tasks.`,
-  ];
-}
+/** What the counts say before their rows, and after them. */
+const COUNTS = {
+  head: "Counted by family from the same comparisons as the lines above: each task whose last comparison had the reference harness on one side, or that a later report set aside, and no other. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
+  weak: "The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
+} as const;
 
 /** One line a task among `tasks`, in their order: the task by id and family, its outcome, and for
- *  a held-out task whether a valid answer to it is on record. A task the log refused is left out,
- *  since it is no task of the exam. One the log does not hold, and one no comparison has scored,
- *  is not yet compared. */
-export function heard(
-  events: readonly LogEvent[],
-  tasks: readonly Pick<Task, "taskId" | "family">[],
-): string[] {
+ *  a held-out task whether a valid answer to it is on record; and, from the same pass, the counts
+ *  by family (`counts`). A task the log refused is left out, since it is no task of the exam. One
+ *  the log does not hold, and one no comparison has scored, is not yet compared and in no count. */
+export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "taskId" | "family">[]): Heard {
   const states = taskStates(events);
   const outcomes = outcomesOf(events);
+  const standings = standingsOf(events);
   const feasible = feasibleTasks(events);
   const versions = new Map(
     proposalsOf(events).flatMap(({ version, taskId, task }) => {
@@ -132,14 +98,43 @@ export function heard(
       return id === null ? [] : [[id, version] as const];
     }),
   );
-  return tasks.flatMap(({ taskId, family }) => {
+  const families = new Map<string, Standing[]>();
+  const lines = tasks.flatMap(({ taskId, family }) => {
     const version = versions.get(taskId) ?? "";
     const state = states.get(version) ?? "";
     if (state === "refused") return [];
-    const outcome = outcomes.get(version);
     const settled = SETTLED.get(state);
     if (settled !== undefined) return [`${taskId} (family ${family}): ${settled}`];
+    const standing = standings.get(version);
+    if (standing !== undefined) families.set(family, [...(families.get(family) ?? []), standing]);
+    const outcome = outcomes.get(version);
     const said = outcome === undefined ? "not yet compared" : SAID[outcome];
     return [`${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}`];
   });
+  return { lines, counts: counts(families) };
+}
+
+/** The counts, a row a family in the order the tasks first name it, a total where there are two
+ *  families or more, and what the counts rest on; null where no task stands in them. */
+function counts(families: ReadonlyMap<string, readonly Standing[]>): string | null {
+  const every = [...families.values()].flat();
+  if (every.length === 0) return null;
+  const row = (name: string, standings: readonly Standing[]) => {
+    const counted = countBy(standings, ({ cell }) => cell);
+    const of = (cell: Standing["cell"]) => counted[cell] ?? 0;
+    const apart = of("other-won") + of("reference-won");
+    const none = of("tied-none") + of("tied-none-known");
+    return `- ${name}, ${plural(standings.length, "task")}: ${String(apart)} told apart, won by the other harness ${String(of("other-won"))} and by the reference harness ${String(of("reference-won"))}; ${String(of("tied-every"))} tied with both harnesses valid in every solve; ${String(none)} tied with neither valid in any solve, of which ${String(of("tied-none-known"))} with a valid answer on record; ${String(of("tied-mixed"))} tied otherwise; ${String(of("aside"))} set aside on a rejection not settled.`;
+  };
+  const rows = [...families].map(([family, standings]) => row(`family ${family}`, standings));
+  const sizes = [...new Set(every.flatMap(({ solves }) => solves ?? []))].toSorted((a, b) => a - b);
+  const [fewest] = sizes;
+  const most = sizes.at(-1) ?? 0;
+  const span = fewest === most ? plural(most, "solve") : `${String(fewest)} to ${String(most)} solves`;
+  return [
+    COUNTS.head,
+    ...rows,
+    ...(families.size > 1 ? [row("every family", every)] : []),
+    `${fewest === undefined ? "" : `Each count rests on ${span} a side of the task's last comparison. `}${COUNTS.weak}`,
+  ].join("\n");
 }

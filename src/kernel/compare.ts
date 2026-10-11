@@ -66,17 +66,13 @@
  * more than a tally takes, the first started are taken, and the order solves ended in would take
  * the quick ones, which under a budget are the valid ones.
  *
- * A budget's units are two (`UNITS`). `turns` are the model's own turns, as a trace counts them,
- * and `seconds` is the whole attempt as the host timed it, from before its sandbox was mounted
- * until its verdict, which is some seconds more than the solver's own wall. They are the two a
- * solver can be told and held to (`--solve-model-turns`, `--solve-minutes`).
- *
- * Until 2026-10-09 a budget could also name `prompts` and `cpu`, and neither read anything a
- * campaign used. Every finished solve of the first three rounds was given one prompt, so a budget
- * in prompts read what the full limit read. The CPU time of a solve's commands is known only from
- * below once one of them is cut, which is the limit solvers meet most, so a budget in CPU left
- * such tasks out and reported how many (`unread`). The CPU a solve used is still measured and
- * reported (`Used.cpu`, `spread`); it is no unit a budget is given in.
+ * A comparison is read at the one budget its solves were told. Until 2026-10-11 the same pairs
+ * were read again at shorter budgets (`within`): a solve that used more of a unit than the budget
+ * allowed counted as no answer. The reading was of a solver told the longer budget, and on
+ * 9 October the starter answered 0 of 10 solves read at two turns and 10 of 10 once it was told
+ * two, so the shorter readings said nothing of a campaign run at them, and they went with the
+ * ladder of budgets that read them (`docs/simplify.md`, A1 and A2). What a solve used of its
+ * turns and its seconds is in its `solve.finished`, read by the investigation (`tools/wri/`).
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
@@ -87,41 +83,17 @@ import type { LogEvent } from "./log.ts";
 import { ended, passed, ranUnder, verdictsOf } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
-/** What one counted solve used, as its `solve.finished` holds it: null where the log has none. */
+/** What one counted solve cost, as its `solve.finished` holds it: billed dollars, null where the
+ *  log has none. Until 2026-10-11 it also held the model's turns, the prompts, the CPU seconds of
+ *  the solve's commands and the attempt's seconds, for the readings at shorter budgets and the
+ *  spread between repeated solves, both gone with them (`docs/simplify.md`, A2 and A3). */
 export interface Used {
-  /** The model's turns. */
-  readonly turns: number | null;
-  /** The prompts the solver was given: null for a solve logged before 2026-10-09. */
-  readonly prompts: number | null;
-  /** CPU seconds of the solve's commands that ended measured. */
-  readonly cpu: number | null;
-  /** How many of its commands ended with their CPU unmeasured: one cut at its limit or by the wall
-   *  takes its record with it (`src/solve/command.ts`). With any, `cpu` is a lower bound of what the
-   *  solve used and not the amount, which is why no budget is given in it. Left out where there
-   *  was none. */
-  readonly unmeasured?: number;
-  readonly seconds: number | null;
-  /** Billed dollars. */
   readonly billed: number | null;
 }
 
-/** The two units a compute budget can be given in. */
-export const UNITS = ["turns", "seconds"] as const;
 /** The trigger a first reading has to clear to buy the repeat, where no flag or opening names one
  *  (`--trigger`): 2-0, 4-1, 5-2 and 7-3 clear it, and 1-0 does not. */
 export const TRIGGER = 0.25;
-/** What a solve's use is reported in: a budget's units, and the CPU seconds of its commands. */
-export const MEASURED = ["turns", "cpu", "seconds"] as const;
-
-/** How far repeated solves of one harness on one task differ in a unit: over the tasks and sides
- *  with two measured solves or more, the largest use divided by the smallest, as the median of
- *  those ratios and the largest. Null where no task has two. */
-interface Spread {
-  readonly tasks: number;
-  readonly median: number;
-  readonly most: number;
-}
-
 /** How two valid answers on one task are set against each other: by the quantity the check program
  *  computes of each, lower or higher being better, where the two differ by more than `margin` of
  *  the larger magnitude. */
@@ -145,7 +117,7 @@ export interface Paired {
   };
   /** Each of those solves as the log names it, in the same order. */
   readonly solves?: { readonly old: readonly string[]; readonly fresh: readonly string[] };
-  /** What each of those solves used of its limits, in the same order. */
+  /** What each of those solves cost, in the same order. */
   readonly used?: { readonly old: readonly Used[]; readonly fresh: readonly Used[] };
 }
 
@@ -169,13 +141,6 @@ export interface Sides {
   readonly halves?: number | undefined;
   /** The objective two valid answers are compared by, where the comparison fixed one. */
   readonly objective?: ObjectiveRule | undefined;
-}
-
-/** A compute budget a comparison is read at after the fact: a solve that used more of any named
- *  unit than this counts as no answer. */
-export interface Budget {
-  readonly turns?: number | undefined;
-  readonly seconds?: number | undefined;
 }
 
 /** The chance of at least `wins` wins among `wins + losses` untied tasks, were either harness as
@@ -248,26 +213,9 @@ export function sweepOf(level: number): number {
   return sweep;
 }
 
-// Two other readings of a tally, kept for a later ablation and deciding nothing. Both are functions
-// of a report's wins, losses and ties, so any recorded comparison can be read under them unpaid.
-// On the 22 comparisons on record on 10 October each read the same 13 steps as the sign test at 0.20.
-//
-// The trinomial test (Bian, McAleer and Wong, 2011) reads the ties as evidence: a tie is as likely
-// as the tally's share of ties, a win as likely as a loss, and p is how often wins lead by this
-// much. 3-0-9 reads 0.071 and 2-0-10 reads 0.134, where the sign test reads 0.125 and 0.25. Bar 0.10.
-//   function trinomialP({ wins, losses, ties }: Tally): number {
-//     const n = wins + losses + ties, u = (wins + losses) / n; // u: the share of untied tasks
-//     let tail = 0;
-//     for (let k = 0, c = 1; k <= n; c = (c * (n - k)) / (k + 1), k += 1) { // k of n tasks untied
-//       const need = Math.max(0, Math.ceil((k + wins - losses) / 2)); // wins that give the lead
-//       if (need <= k) tail += c * u ** k * (1 - u) ** (n - k) * signP(need, k - need);
-//     }
-//     return Math.min(1, tail);
-//   }
-// The chance the new harness is the better one: the chance its share of untied wins is over a half,
-// every share as likely as another beforehand. 3-0 reads 0.938, 4-1 0.891, 2-0 0.875. Bar 0.90, which
-// takes 3-0 and refuses 4-1; at 0.95 it is the sign test at 0.10.
-//   const betterP = (wins: number, losses: number) => 1 - signP(wins + 1, losses);
+// Two other readings of a tally, the trinomial test and the chance that the new harness is the
+// better one, decide nothing and are not built: their formulas and what they read of the recorded
+// comparisons are in `docs/plan.md`, "Statistical power and cost" (row C3).
 
 /** Which of two valid answers' measures is the better by more than the rule's margin: 1 for the
  *  first, -1 for the second, 0 where neither is or one is missing. */
@@ -330,64 +278,6 @@ export function tally(pairs: readonly Paired[]): Tally {
 export function scored(pairs: readonly Paired[]): Tally & { readonly p: number } {
   const counts = tally(pairs);
   return { ...counts, p: signP(counts.wins, counts.losses) };
-}
-
-/** Whether a solve used more of a unit `budget` names than it allows. */
-function over(budget: Budget, used: Used | undefined): boolean {
-  return UNITS.some((unit) => {
-    const [most, spent] = [budget[unit], used?.[unit] ?? null];
-    return most !== undefined && spent !== null && spent > most;
-  });
-}
-
-/**
- * The same pairs read at a shorter budget: a solve that used more of a unit the budget names than
- * the budget allows counts as no answer, valid or not. One set of solves so gives the comparison
- * at every shorter budget. It is an approximation: the solver was told the long limit only, and
- * one told a short one may spend its turns otherwise (`docs/plan.md`, Phase 0). A solve whose use
- * of a named unit the log does not hold at all is counted as within it. Every task is read at
- * every budget: both units are measured whole for every solve.
- */
-export function within(pairs: readonly Paired[], budget: Budget): Paired[] {
-  const cut = (valid: readonly boolean[], used: readonly Used[] | undefined) =>
-    valid.map((each, index) => each && !over(budget, used?.[index]));
-  return pairs.map((pair) => ({
-    ...pair,
-    old: cut(pair.old, pair.used?.old),
-    fresh: cut(pair.fresh, pair.used?.fresh),
-  }));
-}
-
-/**
- * How far the use of each measured figure moved between repeated solves of one harness on one
- * task. It is what decides the unit a budget is given in: a unit whose use doubles between two
- * solves of the same harness splits them at random under any budget near it (`docs/plan.md`,
- * Phase 0). CPU is reported beside the two units, and is none. A solve that used none of a figure
- * is left out of that figure's ratio.
- */
-export function spread(pairs: readonly Paired[]): Record<(typeof MEASURED)[number], Spread | null> {
-  const of = (unit: (typeof MEASURED)[number]): Spread | null => {
-    const ratios = pairs
-      .flatMap(({ used }) => [used?.old ?? [], used?.fresh ?? []])
-      .flatMap((side) => {
-        const spent = side.flatMap((each) => {
-          const value = each[unit];
-          return value !== null && value > 0 ? [value] : [];
-        });
-        return spent.length < 2 ? [] : [Math.max(...spent) / Math.min(...spent)];
-      })
-      .sort((a, b) => a - b);
-    const middle = ratios[Math.floor(ratios.length / 2)];
-    const most = ratios.at(-1);
-    return middle === undefined || most === undefined
-      ? null
-      : {
-          tasks: ratios.length,
-          median: ratios.length % 2 === 1 ? middle : ((ratios[ratios.length / 2 - 1] ?? middle) + middle) / 2,
-          most,
-        };
-  };
-  return { turns: of("turns"), cpu: of("cpu"), seconds: of("seconds") };
 }
 
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of
@@ -454,17 +344,7 @@ export function pairsOf(events: readonly LogEvent[], versions: readonly string[]
     const own = under(old);
     const [before, after] = old === fresh ? [own.slice(0, halves), own.slice(halves)] : [own, under(fresh)];
     const used = (solves: typeof counted) =>
-      solves.map(({ end }): Used => {
-        const { seconds: cpu, unmeasured } = asRecord(end.cpu) ?? {};
-        return {
-          turns: isNumber(end.turns) ? end.turns : null,
-          prompts: isNumber(end.prompts) ? end.prompts : null,
-          cpu: isNumber(cpu) ? cpu : null,
-          ...keyIfDefined("unmeasured", isNumber(unmeasured) && unmeasured > 0 ? unmeasured : undefined),
-          seconds: isNumber(end.seconds) ? end.seconds : null,
-          billed: isNumber(end.billed) ? end.billed : null,
-        };
-      });
+      solves.map(({ end }): Used => ({ billed: isNumber(end.billed) ? end.billed : null }));
     const measured = (solves: typeof counted) =>
       solves.map(({ id }) => {
         const checker = verdicts?.get(id)?.checker;

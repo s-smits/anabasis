@@ -2,21 +2,20 @@
  * Whether a paid comparison may start: what the campaign's log holds for it, set against what it
  * asks for.
  *
- * One function decides it, and every way of starting a comparison asks that function. The launcher
- * asks before it spawns anything (`tools/runs/launch.ts`), and a round or a checkpoint asks again
- * before its first event (`admitComparison`), so a command started by hand is refused where a
- * launch of it would be. Until 2026-10-09 the launcher alone held these refusals, and a round
- * started directly on a checker nobody had read went on to pay for its solves.
+ * One function decides it, and every way of starting a comparison asks that function: a round or
+ * a checkpoint asks before its first event (`admitComparison`), whether the campaign command made
+ * it (`tools/d2/harness-builder.ts`) or a hand started it. Until 2026-10-09 the launcher
+ * (`bun run runs launch`) alone held these refusals, and a round started directly on a checker
+ * nobody had read went on to pay for its solves; the launcher went on 2026-10-11, once the
+ * campaign command was the one way a move is started (`docs/simplify.md`, D2).
  *
  * What is refused:
  *
  * - a log with no held-out task, or with fewer to score than a step takes at the level asked for;
  * - a comparison that would leave fewer untied tasks than a step takes. The untied tasks are
  *   the ones the harness this comparison is made against did not answer in every solve of the
- *   campaign's last comparison under the setting of the log's last test-side solves: after
- *   buffer's first step that harness was valid in every solve on 8 of 11 tasks. A task held out
- *   since counts whole, and so does every task where the caller found the comparison asked for
- *   under another setting (`restarted`);
+ *   campaign's last comparison: after buffer's first step that harness was valid in every solve
+ *   on 8 of 11 tasks. A task held out since counts whole;
  * - a comparison with no dollar cap;
  * - a checker `tools/c/accept.ts` has never read;
  * - a campaign the plan's stop rule has stopped: three moves in a row that could have shown a
@@ -39,17 +38,16 @@
  * What goes on unasked is what the log holds a start of, of its own kind (`begun`): a comparison
  * that began, and a session that began. Until 2026-10-09 either start exempted both, so a round
  * started by hand under the id of a session that had run by itself compared with no check at all,
- * on an unread checker and past the stop rule (the third review, row F42). The launcher reads the
- * same answer, so a comparison stopped after its start is launched again under its id where the
- * launcher had asked it the whole check a second time (row F45).
+ * on an unread checker and past the stop rule (the third review, row F42). A comparison stopped
+ * after its start goes on under its id, where the launcher had once asked it the whole check a
+ * second time (row F45).
  *
- * What only a host or an id can refuse stays with the launcher: a second writer of the log, a
- * loaded host, a missing env file, an id whose comparison has reported or whose session was cut.
- * A command answers the last two itself, by saying what it said or by refusing the session.
+ * What only a host or an id can refuse is the command's: a comparison that reported says what it
+ * said and ends, a session whose id was cut is refused (`spent`), and the campaign command waits
+ * for the host's load before a move that solves (`quiet`).
  */
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
-import { settingId } from "../kernel/condition.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import {
   awaitingLabel,
@@ -61,7 +59,6 @@ import {
   stopRule,
 } from "../kernel/reports.ts";
 import { sizeLines } from "../kernel/size.ts";
-import { ranUnder } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 
@@ -100,9 +97,6 @@ export interface Wanted {
   /** Whether a Builder session runs before the comparison. */
   readonly builds: boolean;
   readonly cap: Cap | null;
-  /** What the caller found where the comparison is asked for under another setting than the log's
-   *  last test-side solves ran under, a note each (`tools/d2/setting.ts`); none where it is the same. */
-  readonly restarted: readonly string[];
   /** The operator's reason to go on past the stop rule, where one is given. */
   readonly pastStop?: string | undefined;
   /** Why the setting asked for may not be recorded as the campaign's first, where the caller found
@@ -114,7 +108,7 @@ export interface Wanted {
 type WantedSession = Pick<Wanted, "cap" | "pastStop" | "unrecorded">;
 
 /** A comparison a command is about to start. */
-export interface Starting {
+interface Starting {
   /** Its id: a round's session, or a checkpoint's own. */
   readonly id: string;
   /** The harness it is made against, as `--reference` names it. */
@@ -132,7 +126,7 @@ export interface Starting {
 }
 
 /** What a session's start is asked beside it: the practice solves its limits allow. */
-export interface WantedPractice extends WantedSession {
+interface WantedPractice extends WantedSession {
   readonly practiceSolves?: number | undefined;
 }
 
@@ -144,7 +138,7 @@ interface StartingSession {
 }
 
 /** The command an Examiner session runs as: where a refusal sends its reader for more held-out
- *  tasks, and what a launch of one starts (`tools/runs/pulse.ts`). */
+ *  tasks, and what a stop knows a running one by (`tools/runs/pulse.ts`, `tools/runs/stop.ts`). */
 export const EXAMINE = "tools/d1b/examine.ts";
 const STARTED = "comparison.started";
 // The reading was a step done late and by hand in the first live rounds (2026-10-09), and on
@@ -155,21 +149,16 @@ const said = (rows: readonly (readonly [boolean, string])[]) =>
   rows.flatMap(([holds, text]) => (holds ? [text] : []));
 
 /** A log's supply for a comparison made against the harness `reference` names: `starter`,
- *  `promoted` for the campaign's reference harness, `latest`, or a digest. `stood` names the
- *  report the untied share is read from, where the caller knows which comparison stood under the
- *  setting the next will run under, and null says none did (`decide.ts`): a campaign returns to a
- *  budget, and the log's last solves are then another's. `fresh`, a digest, is the harness the
+ *  `promoted` for the campaign's reference harness, `latest`, or a digest. The untied share is
+ *  the last tallied comparison's; until 2026-10-11 it was the last one's under the setting id of
+ *  the log's last test-side solves, which names the host's code too, and a tree moved to a new
+ *  commit read no share (`docs/simplify.md`, A4). `fresh`, a digest, is the harness the
  *  comparison reads where the command knows it: the share is then the last comparison's of these
  *  two, since a tie share is of a pair. On t-4 (10 October) a control of the promoted harness's
  *  programs against the starter tied 7 of 8 tasks, 6 of them answered by neither, and the next
  *  command, the whole harness against those programs, was refused on that share, which said
  *  nothing of a harness that answers every task. */
-export function supplyOf(
-  events: readonly LogEvent[],
-  reference = "promoted",
-  stood?: JsonObject | null,
-  fresh?: string,
-): Supply {
+export function supplyOf(events: readonly LogEvent[], reference = "promoted", fresh?: string): Supply {
   const sets = taskSets(events);
   // Left out of the scored set as `scoredSet` leaves them out: the tasks waiting for a person's
   // label, and the ones both harnesses answered in every solve of two comparisons.
@@ -178,8 +167,6 @@ export function supplyOf(
     (version) => sets.held.includes(version) && !labelled.includes(version),
   );
   const waiting = [...labelled, ...spent];
-  const solved = ranUnder(events).findLast(({ under }) => under.side === "test")?.under;
-  const setting = solved === undefined ? null : settingId(solved);
   const reports = lastReports(events);
   const starter = reports.findLast(({ data }) => isString(data.starter))?.data.starter;
   // A task the harness to be compared with was valid on in every solve there can only tie again.
@@ -189,17 +176,13 @@ export function supplyOf(
     fresh === undefined ||
     (data.old === named && data.fresh === fresh) ||
     (data.old === fresh && data.fresh === named);
-  const last =
-    stood === undefined
-      ? reports.findLast(
-          ({ data }) =>
-            Array.isArray(data.versions) &&
-            data.versions.length > 0 &&
-            asRecord(data.scored) !== null &&
-            data.setting === setting &&
-            ofPair(data),
-        )?.data
-      : (stood ?? undefined);
+  const last = reports.findLast(
+    ({ data }) =>
+      Array.isArray(data.versions) &&
+      data.versions.length > 0 &&
+      asRecord(data.scored) !== null &&
+      ofPair(data),
+  )?.data;
   const tally = asRecord(last?.scored);
   const versions = Array.isArray(last?.versions) ? last.versions : [];
   const side = last?.old === named ? "old" : "fresh";
@@ -246,14 +229,13 @@ function stopped({ stop }: Supply, pastStop: string | undefined) {
 /** The numbers a comparison's size is read from on a supply: the tasks it would score, the fewest
  *  a step takes at its level, the share its last comparison left untied, and the untied tasks that
  *  share leaves it. */
-function sized(supply: Supply, wanted: Pick<Wanted, "target" | "trigger" | "restarted">) {
+function sized(supply: Supply, wanted: Pick<Wanted, "target" | "trigger">) {
   const scored = Math.min(wanted.target, supply.held);
   // What a comparison's test can say at this size is arithmetic, and rehearsals found it before a
   // round paid to (2026-10-08): exam-1 held one task to score. A first reading that clears the
   // trigger buys the repeat, so the fewest it takes is the trigger's sweep (10 October).
   const least = sweepOf(wanted.trigger);
-  // A share measured of another solver, or under other limits, says little of this comparison.
-  const share = wanted.restarted.length === 0 ? (supply.untied ?? 1) : 1;
+  const share = supply.untied ?? 1;
   // A task held out since that comparison has no share on record, and is counted whole.
   const untied = scored * (share + ((1 - share) * supply.since) / Math.max(1, supply.held));
   return { scored, least, share, untied };
@@ -267,7 +249,7 @@ function sized(supply: Supply, wanted: Pick<Wanted, "target" | "trigger" | "rest
  */
 export function shortOf(
   supply: Supply,
-  wanted: Pick<Wanted, "target" | "trigger" | "restarted">,
+  wanted: Pick<Wanted, "target" | "trigger">,
 ): "held" | "untied" | null {
   const { scored, least, untied } = sized(supply, wanted);
   if (scored < least) return "held";
@@ -329,7 +311,6 @@ export function admission(supply: Supply, wanted: Wanted) {
         `the cap of $${String(cap?.dollars)} holds a reserve of $${String(cap?.reserve)} for ${String(afforded)} solves, and the comparison's test alone makes ${String(test)}${wanted.builds ? ", after a session whose spend the same cap holds" : ""}: it is cut short and reads not-scored unless its solves bill well under their reserve`,
       ],
     ]),
-    ...wanted.restarted,
     ...stopped(supply, pastStop).notes,
   ];
   return { refusals, notes };
@@ -433,7 +414,7 @@ export function admitComparison(
     return [];
   }
   return entered(log, { id, pastStop: wanted.pastStop, start: STARTED, own }, (events) => {
-    const supply = supplyOf(events, reference, undefined, fresh);
+    const supply = supplyOf(events, reference, fresh);
     return { supply, ...admission(supply, wanted) };
   });
 }

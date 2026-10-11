@@ -50,11 +50,11 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
-import { mkdtempSync, rmSync } from "../meta/filesystem.ts";
+import { rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, type JsonValue } from "../meta/json-shape.ts";
-import { tmpdir } from "../meta/os.ts";
-import { basename, dirname, join } from "../meta/path.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
+import { basename, dirname } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
@@ -69,6 +69,7 @@ import {
 import { codingTools } from "../solve/coding-tools.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { mountDiskCap } from "../verify/disk-cap.ts";
+import { hostScratch } from "../verify/wall-policy.ts";
 import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";
 import { openingOf } from "../builder/opening.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
@@ -105,9 +106,6 @@ export interface ExamRequest {
   /** The budget every solve is held to, as a fact for the Examiner: the solver's own turns, null
    *  where unlimited, and the minutes. Null where the caller knows none, as a test may. */
   readonly budget?: { readonly modelTurns: number | null; readonly minutes: number } | null | undefined;
-  /** Whether the campaign asks for tasks that leave the reference harness room: the ones it holds
-   *  were answered by it, and the next epoch's are the ones it fails (`decide`, `harder`). */
-  readonly room?: boolean | undefined;
   /** The campaign's verifier, for `try_answer`: the checks run on an instance with an answer of the
    *  Examiner's own. Absent, the tool is not given. */
   readonly verify?: Verifier | undefined;
@@ -134,15 +132,28 @@ interface Desk {
   /** The instances this campaign has been given so far, by content, so that none is taken twice:
    *  this session's, and the ones earlier sessions wrote. */
   readonly seen: Map<string, "now" | "earlier">;
+  /** The instances, by content, the host saw a valid answer to in this session's `try_answer`:
+   *  a proposal of one is logged as feasible, and never waits for a person as possibly infeasible
+   *  (`awaitingLabel`). The answer itself is kept nowhere (11 October, `docs/simplify.md`, F4). */
+  readonly answered: Set<string>;
   readonly held: string[];
   readonly refused: string[];
   note: string | null;
+  /** Whether `finish` was once declined: a session that held out fewer tasks than the host asks
+   *  for is told so once, and ends at its second word. */
+  declined: boolean;
 }
 
 /** The most of an example one result shows. */
 const SHOWN_CHARS = 20_000;
 const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
+/** What a first `finish` is answered with while the host has not the tasks it needs: every live
+ *  Examiner session of 9 and 10 October proposed one batch of one to three tasks in three turns
+ *  and finished, of two hundred turns and twelve tasks it had, so a campaign paid a session's
+ *  opening six times for what one session could have written. The need, and no count. */
+const MORE =
+  "Noted, and the session goes on: the host does not yet have the tasks it needs from it. Propose further tasks, varying what they ask, and call finish again when you have none left worth proposing.";
 
 /** An instance by what a solver and the checks read of it, whatever id it carries. */
 function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
@@ -165,6 +176,7 @@ function gated(desk: Desk, instance: Task): string {
     taskId,
     session: request.id,
     task: { taskId, family, publicInput, hidden },
+    ...keyIfDefined("feasible", desk.answered.has(contentOf(instance)) ? true : undefined),
   });
   const packaged = packageGate(request.contract, task);
   append(request.log, "task.gate", { version, gate: 1, ...packaged });
@@ -277,7 +289,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
     name: "try_answer",
     label: "Try an answer",
     description:
-      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try keeps nothing: no task enters the exam by it, and no answer is kept. The gate's reading of the instance's package is given first, where it would refuse it.",
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try keeps no answer and enters no task in the exam; where the checks pass, the host keeps that the instance has a valid answer, so a task proposed with that content is not later read as possibly infeasible. The gate's reading of the instance's package is given first, where it would refuse it.",
     parameters: Type.Object({
       family: Type.String({ minLength: 1 }),
       public_input: Type.Unknown({ description: "What the solver would read of the task." }),
@@ -301,6 +313,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
 `;
       if (signal?.aborted === true) throw new Error("The session has ended.");
       const verdict = await verify(instance, answer);
+      if (verdict.kind === "pass") desk.answered.add(contentOf(instance));
       return text(`${gate}${tried(verdict)}`);
     },
   });
@@ -315,6 +328,10 @@ function finishTool(desk: Desk): AgentTool {
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
     execute: async (_id, args) => {
+      if (!desk.declined && !supplied(desk)) {
+        desk.declined = true;
+        return text(MORE);
+      }
       desk.note = args.note.trim();
       return { ...text("Finished."), terminate: true };
     },
@@ -336,7 +353,7 @@ async function toolsOf(desk: Desk): Promise<AgentTool[]> {
   // What the shell is told of its wall, after pi's own description of `bash`; the network as the
   // wall's probe found it (`networkReach`).
   const network = request.shell === undefined ? "unreached" : await networkReach(request.shell);
-  const walls = ` The command runs in your home directory, which is yours for the session and empty at its start. It can write there, $TMPDIR and /tmp, and read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: a task enters it through propose_tasks alone.`;
+  const walls = ` The command runs in your home directory, which is yours for the session and empty at its start. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: a task enters it through propose_tasks alone.`;
   const shell =
     request.shell === undefined
       ? []
@@ -363,9 +380,11 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     request,
     proposed: 0,
     seen: new Map(writtenTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
+    answered: new Set(),
     held: [],
     refused: [],
     note: null,
+    declined: false,
   };
   append(log, "exam.started", {
     session: request.id,
@@ -384,9 +403,9 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
-  // A name every solver's wall denies (`wall-policy.ts`): the Examiner's Claude Code keeps its
-  // session here, the tasks' hidden expectations included.
-  const home = mkdtempSync(join(tmpdir(), "ana-claude-cli-examiner-"));
+  // Under the host's own scratch, which every wall closes (`wall-policy.ts`): the Examiner's
+  // Claude Code keeps its session here, the tasks' hidden expectations included.
+  const home = hostScratch("claude-cli-examiner-");
   let crash: string | null = null;
   const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
   try {
@@ -398,7 +417,6 @@ export async function examine(request: ExamRequest): Promise<Examined> {
           firstMessage(request.contract, request.checks, heard(before, request.examples), limits, {
             brief: openingOf(before)?.prompt,
             budget: request.budget,
-            room: request.room,
           }),
         ),
       ],
@@ -476,11 +494,10 @@ export async function examineWalled(request: Omit<ExamRequest, "shell"> & Walled
   const release = await mountDiskCap({ root: dirs.root, bytes: request.diskBytes });
   try {
     const shell: CommandWall = {
-      base: walledBase(dirs, request, "an Examiner"),
+      base: await walledBase(dirs, request, "an Examiner"),
       dirs,
       toolTree: null,
       limits: { shellDefaultSeconds: 120, shellMaxSeconds: 600 },
-      cpu: { seconds: 0, unmeasured: 0 },
     };
     return await examine({ ...request, shell });
   } finally {

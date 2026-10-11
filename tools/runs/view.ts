@@ -1,20 +1,18 @@
 /**
- * `bun run runs view <name> [the flags of a launch]`
+ * `bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]`
  *
- * A campaign as its log reads: the set-up, what each step handed over, and the moves that may
- * start next. It is the one reading of `src/builder/handover.ts`, printed whole for the campaign's
- * owner. Nothing here reads the log for itself, and nothing is launched.
- *
- * The moves are asked with the flags a launch would be given: `--cap`, `--reserve`, `--solves`,
- * `--level`, `--reference`, `--past-stop`, and the setting's own. A round, a checkpoint and a
- * session by itself are answered by the admission the launcher asks (`tools/runs/launch.ts`), so
- * the view names the move a launch from this log would be admitted for, with the same refusals and
- * notes. What only the host or an id can refuse is the launcher's alone: a second writer, the
- * load, an id that is spent. With no `--cap` every paid move is refused for want of one, as a
- * launch would be.
+ * A campaign as its log reads: the set-up, what each step handed over, the climb, and the move
+ * that comes next. It is the one reading of `src/builder/handover.ts`, printed whole for the
+ * campaign's owner. Nothing here reads the log for itself, and nothing is launched.
  *
  * Its last line is the one move the plan's decision table names on this log (`decide`,
  * `src/builder/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
+ * The table is asked with the five flags of the campaign command that bear on it, and with the
+ * terms its opening keeps for those it does not name (`campaign.opened`, `src/builder/opening.ts`),
+ * so that the view and `tools/d2/harness-builder.ts` name one move on one log. Until 11 October
+ * the view also listed every move a launch would be admitted for, and that list named a promotion
+ * on one step where the table waits for its repeat; the table's move is the one it prints. The
+ * launcher went the same day (`docs/simplify.md`, D2), and the view parses no flag of its own.
  * The view opens no campaign, so of a log that holds no task it says what holds for a campaign
  * over a pack: that the pack's tasks are taken in first.
  *
@@ -25,20 +23,24 @@
 import { epochLine, epochsOf, regressionLine, regressionOf } from "#src/builder/climb.ts";
 import { decide } from "#src/builder/decide.ts";
 import { decidedLine } from "#src/builder/move.ts";
-import { planOf } from "#src/builder/opening.ts";
-import { type Campaign, campaignOf, type Handover, type Move, nextMoves } from "#src/builder/handover.ts";
+import { openingOf, planOf } from "#src/builder/opening.ts";
+import { type Campaign, campaignOf, type Handover } from "#src/builder/handover.ts";
 import { shortDigest } from "#src/builder/past.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { askedFlagged, LAUNCH_OPTIONS } from "./launch.ts";
+import { PRACTICE } from "../d2/prepare.ts";
+import { COMPARISON_OPTIONS } from "../d2/round.ts";
 import { logEvents, runs } from "./pulse.ts";
 
-/** What a move that reads no admission is, in the place of "may start". */
-const SAID = new Map([
-  ["settling", "waits for a person's labels"],
-  ["a promotion", "the operator's"],
-  ["stop", "the plan's stop rule"],
-]);
+/** The flags the table is asked with: the campaign command's, with the same names. */
+const VIEW_OPTIONS = {
+  level: { type: "string" },
+  trigger: { type: "string" },
+  target: { type: "string" },
+  practice: { type: "string" },
+  "past-stop": { type: "string" },
+} as const;
+
 const STANDINGS = [
   ["open", "open"],
   ["passed-once", "passed once"],
@@ -95,8 +97,8 @@ function stepLine(step: Handover): string {
   );
 }
 
-/** A campaign's reading and its next moves, a line each. */
-export function viewLines(name: string, campaign: Campaign, moves: readonly Move[]): string[] {
+/** A campaign's reading, a line each. */
+export function viewLines(name: string, campaign: Campaign): string[] {
   const { supply, fails } = campaign;
   const checker =
     supply.faults === null
@@ -116,12 +118,6 @@ export function viewLines(name: string, campaign: Campaign, moves: readonly Move
     ...(fails.length === 0
       ? []
       : [row("practice", `${plural(fails.length, "failed practice solve")}: ${standing.join(", ")}`)]),
-    "next",
-    ...moves.flatMap(({ move, may, refusals, notes }) => [
-      `  ${move.padEnd(15)} ${may ? (SAID.get(move) ?? "may start") : "refused"}`,
-      ...refusals.map((why) => `      ⚠ ${why}`),
-      ...notes.map((note) => `      · ${note}`),
-    ]),
   ];
 }
 
@@ -130,28 +126,41 @@ export function view(args: readonly string[]): void {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: LAUNCH_OPTIONS,
+    options: VIEW_OPTIONS,
   });
   const [name] = positionals;
   const tree = runtimeProcess.cwd();
   const run = runs().find((found) => found.tree === tree && found.name === name);
   if (name === undefined || run === undefined) {
     throw new Error(
-      `usage: bun run runs view <name> [--cap N] [the flags of a launch]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
+      `usage: bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
     );
   }
   const events = logEvents(run.path);
-  const asked = askedFlagged(values, events);
-  const lines = viewLines(name, campaignOf(events), nextMoves(events, asked));
+  const opening = openingOf(events);
+  // Each term as this view is asked it, then as the opening keeps it, then the tree's default: the
+  // scored tasks are the record's where it names them (`planOf`).
+  const term = (flag: "level" | "trigger" | "target" | "practice", fallback?: string) =>
+    values[flag] ?? opening?.terms[flag] ?? fallback;
+  const target = term("target");
+  const lines = viewLines(name, campaignOf(events));
   const decided = decide(
     events,
-    planOf(events, {
-      unprepared: !events.some(({ kind }) => kind === "task.proposed"),
-      level: asked.comparison.level,
-      trigger: asked.comparison.trigger,
-      target: asked.comparison.target,
-      pastStop: asked.comparison.pastStop,
-    }),
+    planOf(
+      events,
+      {
+        unprepared: !events.some(({ kind }) => kind === "task.proposed"),
+        level: Number(term("level", COMPARISON_OPTIONS.level.default)),
+        trigger: Number(term("trigger", COMPARISON_OPTIONS.trigger.default)),
+        target: target === undefined ? undefined : Number(target),
+        pastStop: values["past-stop"],
+        // The practice tasks the campaign is brought to, as the command passes them: without a
+        // count the table releases nothing, and the view said `build` where the command made
+        // `prepare` (found by review, 11 October).
+        practice: Number(term("practice", String(PRACTICE))),
+      },
+      opening,
+    ),
   );
   const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch)}`);
   const regression = regressionOf(events);

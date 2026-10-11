@@ -30,13 +30,13 @@
  *
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
  * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
- * campaign has recorded none or `--new-setting` changes it. The solves a side, the level, the
- * Referee, the budgets and the cap are a round's, with a round's defaults (`round.ts`), and
+ * campaign has recorded none. The solves a side, the level, the
+ * Referee and the cap are a round's, with a round's defaults (`round.ts`), and
  * `--cap` is required as it is there. With no `--reviewer`, every
  * rejection waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
- * Before its first event it asks whether the comparison may start, as a round does and as a
- * launch of it does (`src/builder/admission.ts`). `--past-stop "<why>"` goes on past the plan's
+ * Before its first event it asks whether the comparison may start, as a round does
+ * (`src/builder/admission.ts`). `--past-stop "<why>"` goes on past the plan's
  * stop rule, and the reason is logged.
  *
  * Run again with the same `--id`, it goes on from its log, and once it has reported it says what
@@ -60,7 +60,6 @@ import {
   stayAwake,
 } from "./campaign.ts";
 import {
-  budgetsNamed,
   predictionLines,
   predictionNamed,
   capNamed,
@@ -77,9 +76,8 @@ import {
 } from "./round.ts";
 import { keepSetting, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
 
-/** A checkpoint's flags and their defaults. A launch parses its flags by the same table first
- *  (`tools/runs/launch.ts`, `flagsRefused`). */
-export const CHECKPOINT_OPTIONS = {
+/** A checkpoint's flags and their defaults. */
+const CHECKPOINT_OPTIONS = {
   root: ROUND_OPTIONS.root,
   sweep: ROUND_OPTIONS.sweep,
   cycle: ROUND_OPTIONS.cycle,
@@ -102,7 +100,6 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   if (id === undefined) throw new Error("name --id, the id the comparison takes in the log");
   // Read before the campaign is opened: a paid comparison with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
-  const budgets = budgetsNamed(values.budget);
   // The campaign's setting is its log's, as a round reads it (`setting.ts`).
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
   const campaign = await openCampaign({ ...pack, ...setting.named });
@@ -123,7 +120,6 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     objective: objectiveNamed(campaign, values.margin),
     defects: Number(values.defects),
     noise: values.noise,
-    budgets,
     cap,
     prediction: predictionNamed(values.predict),
     concurrency: setting.named.limits.concurrency,
@@ -134,8 +130,8 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
         ? undefined
         : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
   };
-  // Every refusal comes before anything is recorded, as in a round: the admission's, as a launch
-  // of it asks, then the comparison's own terms, and only then the campaign's setting.
+  // Every refusal comes before anything is recorded, as in a round: the admission's, then the
+  // comparison's own terms, and only then the campaign's setting.
   const notes = admitComparison(campaign.log, {
     id,
     reference: values.reference,

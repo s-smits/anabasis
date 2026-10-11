@@ -181,10 +181,16 @@ async function main(): Promise<number> {
       effort,
       limits: LIMITS,
       models: (home) => backends(sweepOptions(home)),
-      verify: openVerifier({ checks, tools: join(bundle, ".toolchain") }),
+      verify: openVerifier({
+        checks,
+        tools: join(bundle, ".toolchain"),
+        otherTrees: worktreesOf(REPO),
+        packRoots: [root, bundle],
+      }),
       log,
       repoRoot: REPO,
       otherTrees: worktreesOf(REPO),
+      packRoots: [root, bundle],
     });
     return readBack(log, ending.outcome, row.ending.outcome);
   } finally {
@@ -205,14 +211,13 @@ async function shown(
   const cap = { root: dirs.root, bytes: LIMITS.diskBytes };
   const release = await mountDiskCap(cap);
   try {
-    const base = walledBase(
+    const base = await walledBase(
       dirs,
       { repoRoot: REPO, otherTrees: worktreesOf(REPO), diskBytes: cap.bytes },
       "a solve",
     );
     const files = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
-    const cpu = { seconds: 0, unmeasured: 0 };
-    const wall = { base, dirs, toolTree: harness.toolTree, limits: LIMITS, cpu };
+    const wall = { base, dirs, toolTree: harness.toolTree, limits: LIMITS };
     const tools = await solverTools(request, harness, wall, openDesk());
     const prompt = systemPrompt({
       tools,

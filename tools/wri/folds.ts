@@ -4,11 +4,11 @@
  *
  * The folds (`indexOf`) read the log once into what the lanes ask of it: each solve with what it
  * ran under and how it ended, each Builder session with the window of the log that is its round,
- * each comparison with the solves it could count, and the last verdict, ruling and diagnosis of
- * each solve. `TRIGGERS` names every trigger a reader can print and the lane it starts, and
+ * each comparison with the solves it could count, and the last verdict and ruling of each solve. `TRIGGERS` names every trigger a reader can print and the lane it starts, and
  * `fired` makes one. Lanes 1 to 6 read the exam's instrument, which is the pack author's, and
  * lanes 7 to 12 the tasks, which are the Examiner's and the pack's; both sit here, below the
- * lanes of the build side and the host, which `read.ts` keeps with the rows and the overview.
+ * lanes of the build side and the host, which `read.ts` keeps with the rows and the overview, and
+ * the lanes that read the clock, which are `time.ts`.
  *
  * Split from `read.ts` on 10 October, when that file stood at 1,227 nonblank lines against the
  * size policy's ceiling of 800 (`tools/loc/source-policy.ts`, `docs/plan.md` row F34). The lanes
@@ -62,12 +62,6 @@ export interface Solve {
   outcome: string | null;
   kind: string | null;
   seconds: number;
-  /** The CPU seconds of its commands, or null where the log holds none whole: a command cut at its
-   *  timeout or by an abort ends unmeasured (`src/solve/command.ts`), and the sum of the others is
-   *  then a floor and no reading. */
-  cpu: number | null;
-  /** How many of its commands ended with their CPU time unmeasured. */
-  unmeasured: number;
   readonly calls: string[];
   errors: number;
   /** Whether the provider named the model that served it. */
@@ -81,7 +75,7 @@ interface Call {
   readonly args: JsonObject | null;
 }
 
-/** A Builder session, the window of the log that is its round, and the round's report. */
+/** A Builder session and the window of the log that is its round. */
 export interface Build {
   readonly session: string;
   readonly from: number;
@@ -89,10 +83,6 @@ export interface Build {
   readonly parent: string;
   readonly practice: ReadonlySet<string>;
   finished: JsonObject | null;
-  /** The round's last report: its own, or the one a person's labels settled. */
-  report: JsonObject | null;
-  /** The round's own report, which a settling leaves in the log. */
-  own: JsonObject | null;
   readonly calls: Call[];
 }
 
@@ -105,7 +95,7 @@ export interface Compared {
   readonly at: number;
   /** Its last report: its own, or the one a person's labels settled. */
   readonly last: JsonObject;
-  /** The Builder session it followed, or null for a comparison with none. */
+  /** The Builder session whose harness it measured, or null for a comparison of none. */
   readonly build: Build | null;
   readonly scoredSet: ReadonlySet<string>;
   /** The test-side solves of its scored tasks under one of its harnesses that it could count. */
@@ -118,7 +108,6 @@ export interface Index {
   readonly solves: readonly Solve[];
   readonly verdicts: ReadonlyMap<string, JsonObject>;
   readonly rulings: ReadonlyMap<string, JsonObject>;
-  readonly diagnoses: ReadonlyMap<string, JsonObject>;
   readonly states: ReadonlyMap<string, string>;
   readonly builds: readonly Build[];
   readonly compared: readonly Compared[];
@@ -130,13 +119,6 @@ export interface Index {
 
 /** A pass under this share of its wall, on few calls, is the lead v1 read for a published recipe. */
 export const SMALL_WALL_SHARE = 0.05;
-/** The median ratio between the largest and the smallest use of a unit, over repeated solves of
- *  one harness on one task, from which a budget in that unit splits two such solves about as often
- *  as not. */
-const SPREAD_WORTH_A_LINE = 1.5;
-/** The units a budget on record may name: the two a budget is given in today, and the two that
- *  were units until 2026-10-09 (`src/kernel/compare.ts`), which the first campaigns' reports hold. */
-const RECORDED_UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
 const DEFECT = "check-defect";
 export const TEST = "test";
 export const BUILD_END = "build.finished";
@@ -148,6 +130,7 @@ export const REPORTED = "comparison.reported";
 export const TRIGGERS = {
   "INSTRUMENT AUTHORED": 1,
   "PASSES UNREAD": 1,
+  "REFUSALS BY CHECK": 1,
   "VERIFIER TOOLS MOVED": 2,
   "TOOL MISSING": 2,
   "NO CHECKER READING": 3,
@@ -167,9 +150,7 @@ export const TRIGGERS = {
   "NO VALID ANSWER": 8,
   "AWAITING A LABEL": 8,
   "TIES BETWEEN VALID ANSWERS": 9,
-  "USE OF THE BUDGET SPREADS": 9,
   "TIED TASKS": 10,
-  "TALLY BY BUDGET": 10,
   "PASSES AT A SMALL WALL SHARE": 11,
   "OUTCOMES BY SESSION": 12,
   "HARNESS CHANGED": 13,
@@ -186,14 +167,13 @@ export const TRIGGERS = {
   "PRACTISED TASK MEASURED": 18,
   "SHELL COMMANDS": 18,
   "WIN AT A SMALL WALL SHARE": 19,
+  WINS: 19,
   "SCORED SET MOVED": 21,
   "NOTHING SCORED": 22,
   "CUT BY ITS CAP": 22,
   "FEW INFORMATIVE PAIRS": 22,
   "SET SHORT": 22,
   "VALID BY HARNESS": 23,
-  "BELOW THE STARTER": 23,
-  "STARTER UNREAD": 23,
   "FLIPS": 24,
   "REFERENCE AGAINST ITSELF": 24,
   "HOST CODE MOVED": 20,
@@ -203,17 +183,14 @@ export const TRIGGERS = {
   "WALL SHARE": 26,
   "HOST LOADED": 26,
   "LOAD MOVED": 26,
-  "WALL-BOUND MISSES": 26,
-  "LONG SOLVE, LITTLE CPU": 26,
-  "CPU UNMEASURED": 26,
+  "MISSES AT A LIMIT": 26,
   "NON-RESULTS": 27,
   "SOLVE NEVER FINISHED": 27,
   "EXAMINER NEVER FINISHED": 27,
   "MISSES WITHOUT A VERDICT": 27,
   "SESSION CRASHED": 27,
-  "SILENCE": 28,
+  "LONG SILENCES": 28,
   "SPEND LED BY A ROLE": 28,
-  "DIAGNOSES": 29,
   "REPLAY MOVED THE VERDICT": 29,
   "SET ASIDE AND UNSETTLED": 30,
   "READING MOVES WITH THE SET-ASIDE": 30,
@@ -221,6 +198,10 @@ export const TRIGGERS = {
   "SETTLED BY HAND": 30,
   "REVIEW FAULTS": 30,
   "EARNED WITHOUT A PROBE": 30,
+  "PROMOTED": 31,
+  "STARTER BARE": 31,
+  "AFTER THE PROMOTION": 31,
+  "SHARED TEMPORARY FOLDER": 31,
 } as const;
 
 export const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");
@@ -272,8 +253,6 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
         outcome: null,
         kind: null,
         seconds: 0,
-        cpu: null,
-        unmeasured: 0,
         calls: [],
         errors: 0,
         attested: false,
@@ -286,12 +265,9 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
     }
     if (solve !== undefined && kind === "solve.finished") {
       const ending = asRecord(data.ending);
-      const cpu = asRecord(data.cpu);
       solve.outcome = text(ending?.outcome);
       solve.kind = isString(ending?.kind) ? ending.kind : null;
       solve.seconds = count(data.seconds);
-      solve.unmeasured = count(cpu?.unmeasured);
-      solve.cpu = isNumber(cpu?.seconds) && solve.unmeasured === 0 ? cpu.seconds : null;
       solve.attested = items(data.responseModels).length > 0;
     }
   }
@@ -312,8 +288,6 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
         parent: text(data.parent),
         practice: new Set(strings(data.tasks)),
         finished: null,
-        report: null,
-        own: null,
         calls: [],
       });
     }
@@ -322,10 +296,6 @@ function buildsOf(events: readonly LogEvent[]): Build[] {
       build.calls.push({ index, tool: text(data.tool), args: asRecord(data.args) });
     }
     if (build !== undefined && kind === BUILD_END) build.finished = data;
-    if (build !== undefined && kind === REPORTED) {
-      build.own ??= data;
-      build.report = data;
-    }
   }
   return builds;
 }
@@ -344,7 +314,6 @@ export function indexOf(events: readonly LogEvent[]): Index {
     solves,
     verdicts: last("verdict"),
     rulings: last("referee.finding"),
-    diagnoses: last("diagnosis.recorded"),
     states,
     builds,
     compared: comparedOf(events, { solves, builds }),
@@ -363,7 +332,16 @@ function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "bu
   return lastReports(events).map(({ session, data: last }) => {
     const at = events.findIndex(({ kind, data }) => kind === REPORTED && data.session === session);
     const own = events[at]?.data ?? last;
-    const build = log.builds.find((each) => each.session === session) ?? null;
+    // A comparison the campaign command runs is a session of its own (`g-N`), and the round it
+    // measured is the Builder session that left its new harness. Read by name alone, none of the
+    // six comparisons of the #107 buffer and recode campaigns had a round, and every trigger of a
+    // session's comparison read nothing (2026-10-10).
+    const makers = log.builds.filter((each) => each.from < at && each.finished?.harness === own.fresh);
+    const build =
+      log.builds.find((each) => each.session === session) ??
+      makers.find((each) => each.finished?.changed === true) ??
+      makers.at(-1) ??
+      null;
     const scoredSet = new Set(
       ["versions", "short", "aside", "withdrawn"].flatMap((left) => strings(own[left])),
     );
@@ -383,6 +361,7 @@ const ROLE_EVENTS = {
   builder: ["build.started", BUILD_END, "build.turn"],
   examiner: ["exam.started", EXAM_END, "exam.turn"],
   referee: ["referee.finding"],
+  // A seat until 11 October (`docs/simplify.md`, E1): a log of before holds what it billed.
   diagnoser: ["diagnosis.recorded"],
 } as const;
 
@@ -435,16 +414,21 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));
   const blocking = refused.flatMap((solve) => strings(log.verdicts.get(solve.id)?.blocking));
+  const byCheck = countBy(blocking, (check) => check);
   // One check refusing most answers, and no other refusing as many: t-10's one refusal on 10
   // October was blocked by all four checks, and the first of four equal counts read as a fault
   // of one check's.
-  const [top, next] = Object.entries(countBy(blocking, (check) => check)).sort(([, a], [, b]) => b - a);
+  const [top, next] = Object.entries(byCheck).sort(([, a], [, b]) => b - a);
   const lopsided =
     top !== undefined &&
     new Set(blocking).size > 1 &&
     top[1] > refused.length / 2 &&
     (next?.[1] ?? 0) < top[1];
   const carried = log.of("task.proposed").filter((data) => isString(data.carried)).length;
+  // A reading's row counts the check's controls, not the campaign's answers, so a check that caught
+  // its controls and refused no answer reads well there and is where a pass may show only the shape
+  // it checked: 3 of buffer's 7 checks and 5 of recode's 11 on 10 October.
+  const neverRefused = rows.map((row) => text(row.id)).filter((id) => byCheck[id] === undefined);
   return [
     ...(authored > 0
       ? [
@@ -459,6 +443,14 @@ export function instrumentTriggers(log: Index): Trigger[] {
       ? [fired("VERIFIER TOOLS MOVED", `${String(trees)} tool trees decided verdicts in one log`)]
       : []),
     ...(lost > 0 ? [fired("TOOL MISSING", plural(lost, "check tool"))] : []),
+    ...(neverRefused.length > 0 && passes > 0
+      ? [
+          fired(
+            "REFUSALS BY CHECK",
+            `${share(neverRefused.length, rows.length)} checks refused none of ${plural(log.verdicts.size, "answer")}: ${neverRefused.join(", ")}; the rest: ${tally(byCheck)}`,
+          ),
+        ]
+      : []),
     ...(reading === undefined
       ? [fired("NO CHECKER READING", "accept.ts has not read this campaign's checker")]
       : []),
@@ -508,15 +500,17 @@ export function instrumentTriggers(log: Index): Trigger[] {
 }
 
 /** The tallies of each comparison that scored a task, as the task lanes read them: the ties and the
- *  spread of the budget (lane 9), the test at each budget (lane 10), and each harness by itself
- *  (`VALID BY HARNESS`, lane 23). */
+ *  spread of the budget (lane 9), the ties (lane 10), and each harness by itself
+ *  (`VALID BY HARNESS`, lane 23). A report written before 2026-10-11 also holds the same test
+ *  read at shorter budgets (`budgets`), which no trigger reads: the reading was of a solver told
+ *  the longer budget (`docs/simplify.md`, A2). */
 function tallyTriggers(compared: readonly Compared[]): Trigger[] {
   const decided = compared.flatMap(({ session, last, scoring }) => {
     const scored = asRecord(last.scored);
     const [wins, losses, ties] = [count(scored?.wins), count(scored?.losses), count(scored?.ties)];
     const tasks = wins + losses + ties;
-    // The bound its solves were told, named beside "at its limits" so that a ladder's rung is not
-    // taken for it; a log of 8 October told its solves none.
+    // The bound its solves were told, named beside "at its limits"; a log of 8 October told its
+    // solves none.
     const told = scoring.find((solve) => solve.modelTurns !== null)?.modelTurns ?? null;
     const limits = told === null ? "at its limits" : `at its limits (turns ${String(told)})`;
     return scored === null || tasks === 0
@@ -528,34 +522,6 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
   // both sides. A tie holds as many valid answers under each harness, so one that is not unsolved
   // is such a tie.
   const validTies = decided.filter(({ ties, unsolved, tasks }) => (ties - unsolved) * 2 > tasks);
-  const spreading = decided.flatMap(({ session, last }) => {
-    const units = Object.entries(asRecord(last.spread) ?? {}).flatMap(([unit, value]) => {
-      const [middle, most] = [asRecord(value)?.median, asRecord(value)?.most];
-      return isNumber(middle) && isNumber(most) && middle >= SPREAD_WORTH_A_LINE
-        ? [`${unit} x${middle.toFixed(1)} at the median and x${most.toFixed(1)} at most`]
-        : [];
-    });
-    return units.length === 0 ? [] : [`${session}: ${units.join(", ")}`];
-  });
-  /** A budget as a report names it: its units, each with its most. */
-  const budgetOf = (row: JsonObject) =>
-    RECORDED_UNITS.flatMap((unit) => (isNumber(row[unit]) ? [`${unit} ${String(row[unit])}`] : [])).join(
-      ", ",
-    );
-  const byBudget = decided.flatMap(({ session, last, wins, losses, ties, limits }) => {
-    const read = items(last.budgets).flatMap((budget) => {
-      const row = asRecord(budget) ?? {};
-      // A report written before 2026-10-09 says how many scored tasks a CPU budget could not be
-      // read on, and so left out. No budget is given in CPU since, and no report holds the count.
-      const unread = count(row.unread);
-      return [
-        `${budgetOf(row)}: ${String(count(row.wins))}-${String(count(row.losses))}-${String(count(row.ties))}${unread === 0 ? "" : `, ${String(unread)} unread`}`,
-      ];
-    });
-    return read.length === 0
-      ? []
-      : [`${session}: ${String(wins)}-${String(losses)}-${String(ties)} ${limits}; ${read.join("; ")}`];
-  });
   // Each harness by itself: the tasks by how many of their solves were valid, none first. For the
   // plan's first round the reference harness is the starter, and this is what its gate reads.
   const byHarness = decided.flatMap(({ session, last, limits }) => {
@@ -567,13 +533,7 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
           .join("/");
       return valid === null ? [] : [`reference ${tasks(valid.old)}, new ${tasks(valid.fresh)} ${at}`];
     };
-    const read = [
-      ...census(last.valid, limits),
-      ...items(last.budgets).flatMap((budget) => {
-        const row = asRecord(budget) ?? {};
-        return census(row.valid, `at ${budgetOf(row)}`);
-      }),
-    ];
+    const read = census(last.valid, limits);
     return read.length === 0 ? [] : [`${session}: ${read.join("; ")}`];
   });
   return [
@@ -589,7 +549,6 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
           ),
         ]
       : []),
-    ...(spreading.length > 0 ? [fired("USE OF THE BUDGET SPREADS", spreading.join("; "))] : []),
     ...(tied.length > 0
       ? [
           fired(
@@ -603,7 +562,6 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
           ),
         ]
       : []),
-    ...(byBudget.length > 0 ? [fired("TALLY BY BUDGET", byBudget.join("; "))] : []),
     ...(byHarness.length > 0 ? [fired("VALID BY HARNESS", byHarness.join(" · "))] : []),
   ];
 }

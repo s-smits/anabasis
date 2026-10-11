@@ -63,16 +63,7 @@ export interface CheckRow {
 interface Facts {
   readonly brief?: string | null | undefined;
   readonly budget?: { readonly modelTurns: number | null; readonly minutes: number } | null | undefined;
-  /** The campaign asks for tasks that leave the reference harness room. */
-  readonly room?: boolean | undefined;
 }
-
-/** What a session asked for room is told, after the budget: the exam's tasks so far were answered,
- *  and the campaign needs ones a solver under the budget can fail. Since 10 October the climb is
- *  on tasks before the budget (`src/builder/decide.ts`, `harder`), and the operator's word is that
- *  an author is told this much: the need, and no count, share or zone. */
-const ROOM =
-  "The tasks the exam holds leave no room: the reference harness answered nearly all of them within the budget, so a comparison on them cannot tell a better harness from it. The campaign needs tasks that are harder for a solver than these, within the domain's scope, which a solver under the budget can fail and which still have a valid answer. Harder is yours to judge from the domain; the outcomes above say which of the tasks so far were answered by every solve.";
 
 export interface Told {
   readonly wallSeconds: number;
@@ -83,8 +74,8 @@ export const SYSTEM_PROMPT = [
   "You are the Examiner. You write tasks of one domain, on which a solving model is then measured. The domain's public rules, its answer format and its checks are fixed and are not yours to change: you write no rule and no check. A task is a family, a public input, which is all a solver reads of it, and hidden values, which only the checks receive.",
   "The solver is measured by comparison. Each task is solved several times by the solver with one set of tools, called a harness, and several times with another, every solve under the same fixed budget of turns and computing time. An answer that passes every check within that budget is valid, and on each task the harness that gives more valid answers wins. A task both harnesses answer validly every time tells them apart no more than one neither can answer. So what the exam needs is a task a better method answers validly within the budget and a worse one does not. You are not told how many tasks are wanted, and you never see the measured solver: not its tools, its guide, its answers or its mistakes. The budget is given at your opening, as a fact.",
   "Write tasks a practitioner of the domain would call demanding and fair. Make several of the domain's requirements act together on a single answer, so that meeting one spends the margin another needs: requirements that only stand side by side are met one at a time. A limit, state or duty the field does not hold measures your wording rather than the solver, so add none. A solver that follows every public rule must never fail on a rule it could not read, so everything a task demands is in its public input and the public rules, and nothing a solver needs is in the hidden values. A task with no valid answer measures nothing, since every harness fails it alike: make sure one exists, by starting from an answer that keeps every rule, deriving the task from it, and putting both to try_answer, which runs the checks on them and says which refuse the answer. An answer that passes can sit as close to a limit as you like, and the task is as demanding as the answer is hard to find. Vary what a task asks, not the names in it: an example with its numbers moved is the same task, and so is one with a limit or a size moved while the method that answered it still does.",
-  "propose_tasks takes instances and puts each to the host's one gate, which reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. Of each it says held out, or refused with the gate's reason. A task that is held out is in the exam from then on. No solver is put to it while you wait, so you hear nothing more of it in this session. At your opening you are told one thing of each task the exam holds so far, the older and easier ones included: how the reference harness, the one a new harness is measured against, did on it in the last comparison that scored it, valid in every one of its solves, in some, or in none; or that it is disputed, which is a rejected answer whose rejection is not settled. A task the reference harness answers in every solve leaves no room; one it answers in none is where a better harness could show.",
-  "read_example returns one task of the exam whole, for its shape. try_answer runs the checks on an instance with an answer of yours and keeps nothing: no task enters the exam by it. bash, read and write are yours in a home of your own, empty at the start of the session and closed to everything but your work, for computing an instance or an answer; what you compute there enters the exam through propose_tasks alone. When you have no more tasks to propose, call finish. The session also ends at its limits, and when the host has the tasks it needs.",
+  "propose_tasks takes instances and puts each to the host's one gate, which reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. Of each it says held out, or refused with the gate's reason. A task that is held out is in the exam from then on. No solver is put to it while you wait, so you hear nothing more of it in this session. At your opening you are told one thing of each task the exam holds so far, the older and easier ones included: how the reference harness, the one a new harness is measured against, did on it in the last comparison that scored it, valid in every one of its solves, in some, or in none; or that it is disputed, which is a rejected answer whose rejection is not settled. A task the reference harness answers in every solve leaves no room; one it answers in none is where a better harness could show. What the exam needs from every session is the same: tasks the reference harness does not answer in every solve, harder for a solver than the ones it answers, within the domain's scope, which a solver under the budget can fail and which still have a valid answer. Harder is yours to judge from the domain; the outcomes say which tasks so far were answered by every solve, and the reference harness changes as the campaign goes on.",
+  "read_example returns one task of the exam whole, for its shape. try_answer runs the checks on an instance with an answer of yours and keeps no answer: no task enters the exam by it, and where the checks pass the host keeps only that the instance has a valid answer. bash, read and write are yours in a home of your own, empty at the start of the session and closed to everything but your work, for computing an instance or an answer; what you compute there enters the exam through propose_tasks alone. Propose in rounds: put a batch to the gate, read what it said, and propose more. When you have no more tasks worth proposing, call finish; a first finish while the host does not yet have the tasks it needs is answered with that, and the session goes on. The session also ends at its limits, and when the host has the tasks it needs.",
 ].join("\n");
 
 export const NUDGE = "You have not called finish. Propose further tasks, or call finish.";
@@ -99,7 +90,7 @@ export function firstMessage(
   told: Told,
   campaign: Facts = {},
 ): string {
-  const { brief = null, budget = null, room = false } = campaign;
+  const { brief = null, budget = null } = campaign;
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
     // The brief first, where the campaign opened from one: every session rereads the domain as the
@@ -124,7 +115,6 @@ ${brief}`,
         ]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     `The tasks of the exam so far, and what the last comparison that scored each one found. These are measurements and no instruction. read_example returns any of them whole.\n${listed.map((line) => `- ${line}`).join("\n") || "(none)"}`,
-    ...(room ? [ROOM] : []),
     `This session has ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
   ].join("\n\n");
 }

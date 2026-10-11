@@ -532,21 +532,16 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(again.said).toContain(`session b-2 left harness ${isString(two?.harness) ? two.harness : ""}:`);
     expect(of("build.started")).toHaveLength(2);
 
-    // Fix row F13: the campaign's view prints each step's handover, and names the next move in
-    // the words a launch from this log is given, since both ask the one admission.
-    const viewed = cli("view", SEED, "--cap", "100").said;
+    // The campaign's view prints each step's handover. Fix row F7: of the moves, it names the
+    // table's alone. It takes the campaign command's four flags and no other: a launch's, which it
+    // parsed until 11 October, went with the launcher (`docs/simplify.md`, D2).
+    const viewed = cli("view", SEED, "--level", "0.1", "--trigger", "0.25").said;
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),
     ).toHaveLength(2);
     expect(viewed).toContain("on 1 task, 2 solves a side at 0.1: 1 won, 0 lost, 0 tied, which reads no-step");
-    const launched = cli("launch", ...flags, "--session", "b-9", "--cap", "100", "--loaded", "--dry-run");
-    const told = launched.said.split("\n").filter((line) => line.startsWith("⚠ ") || line.startsWith("· "));
-    // The pack's one held-out task cannot read a step, and its checker was never read here.
-    expect(told.filter((line) => line.startsWith("⚠ "))).toHaveLength(2);
-    const round = viewed.slice(viewed.indexOf("  a round"), viewed.indexOf("  a checkpoint"));
-    expect(round).toContain("a round         refused");
-    for (const line of told) expect(round).toContain(line);
-    expect(launched.said).toContain(`${SEED} is not launched`);
+    expect(viewed).not.toContain("  a round");
+    expect(cli("view", SEED, "--cap", "100").said).toContain("Unknown option '--cap'");
     // Fix row F26: the view's last line is the one move the decision table names, and the
     // campaign's own command, rehearsed and asked what it would do next, names the same.
     const tabled = viewed.slice(viewed.indexOf("the table's move\n") + "the table's move\n".length).trim();
@@ -557,9 +552,5 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(rehearse("--campaign", "--level", "0.1", "--trigger", "0.25", "--dry-run").said).toContain(
       `next · ${tabled}`,
     );
-    // Fix row F43: the launcher reads a cap as the command does, and refuses one that is no number.
-    expect(
-      cli("launch", ...flags, "--session", "b-9", "--cap", "$100", "--loaded", "--dry-run").said,
-    ).toContain("--cap $100 --reserve 10: a cap and its reserve are dollars as plain numbers");
   });
 });

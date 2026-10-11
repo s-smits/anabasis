@@ -10,7 +10,7 @@
  * Departure from v1: harness tools keep no state across calls in v2, each call runs alone under the
  * command wall. v1 loaded the factory once into a long-lived confined worker that held the solve's
  * DraftStore (generated-tool-worker.ts); here every call, and the one listing before them, is a
- * fresh `bun` over the bundled module in the command's own `work`, which is deleted when it ends,
+ * fresh `bun` over the bundled module in the command's own folder, which is removed when it ends,
  * so stdout is the only channel back. A call names no timeout, so it runs for the condition's
  * shell default, where v1 gave a request 30 s (generated-tool-worker-process.ts:75). What the bundle sees in place of `@ana/agent-bundle` and
  * pi-ai, and the departures there, are in `harness-shim.ts`.
@@ -366,10 +366,10 @@ async function callHarness<T>(run: {
       while (held - (chunks[0]?.length ?? 0) > OUTPUT_TAIL_BYTES) held -= chunks.shift()?.length ?? 0;
     },
     signal: run.signal,
-    stage: ({ work }) => {
-      writeFileSync(join(work, "harness.mjs"), run.harness.module);
-      writeFileSync(join(work, "caller.mjs"), CALLER);
-      writeFileSync(join(work, "input.json"), capturedJsonStringify(run.input));
+    stage: (into) => {
+      writeFileSync(join(into, "harness.mjs"), run.harness.module);
+      writeFileSync(join(into, "caller.mjs"), CALLER);
+      writeFileSync(join(into, "input.json"), capturedJsonStringify(run.input));
     },
   });
   const text = Buffer.concat(chunks).toString("utf8");

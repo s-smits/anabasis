@@ -2,12 +2,16 @@
  * The verifier: whether an answer passes a task's checks, decided on the verifier's own tree and
  * nowhere else. Answers are stored, so a verdict can be recomputed at any time.
  *
- * Every applicable check runs in a fresh cell inside the OS wall copied from v1, offline, as its own
- * process with only its declared projection of the answer and the task. A check's tools run in that
- * same wall. The verdict is a pass, a fail naming the checks that refused the answer, faulty when a
- * check itself failed on the request (it threw, returned no boolean, or is missing), or a non-result
- * when the wall, a tool or the program's loading could not decide. No answer is a fail. A faulty
- * check is the task's defect and drops the task; a non-result is the verifier's and stops the run.
+ * Every applicable check runs in a fresh cell, as its own process with only its declared projection
+ * of the answer and the task, under the wall a seat's commands run under with the network closed. A
+ * check's tools run in that same wall. Until 11 October a wall of the verifier's own ran it, closed
+ * by default and attested before and after each check, which v1 needed as its Builder wrote the
+ * checks; here an answer is data and a check is the exam side's code (`docs/simplify.md`, W6).
+ *
+ * The verdict is a pass, a fail naming the checks that refused the answer, faulty when a check
+ * itself failed on the request (it threw, returned no boolean, or is missing), or a non-result when
+ * the wall, a tool or the program's loading could not decide. No answer is a fail. A faulty check is
+ * the task's defect and drops the task; a non-result is the verifier's and stops the run.
  *
  * The contract is v1's check-program/v1, the format of the experiment's stored answers: a
  * `brief.json` declaring the checks and an `evaluator.ts` exporting them as `checks`. A check
@@ -25,7 +29,6 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -39,16 +42,18 @@ import {
   parseJsonAs,
 } from "../meta/json-runtime.ts";
 import { asRecord, isBoolean, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
-import { tmpdir } from "../meta/os.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
-import { engineCellEnv } from "../verify/engine-cell-env.ts";
-import { type VerifierOsIsolation, verifierOsIsolation } from "../verify/os-isolation.ts";
-import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
-import { type FrozenToolchainAccess, frozenToolchainAccess } from "../verify/wall-policy.ts";
+import {
+  commandIsolationPolicy,
+  isolatedArgv,
+  toolTreeSearchDirs,
+} from "../verify/solve-command-isolation.ts";
+import { type SolveIsolationPolicy, solveIsolationPolicy } from "../verify/solve-sandbox.ts";
+import { hostScratch } from "../verify/wall-policy.ts";
 import type { CheckChildInput, CheckChildResult } from "./check-child.ts";
 import type { Objective } from "./contract.ts";
 
@@ -101,6 +106,14 @@ interface VerifierTree {
   readonly tools: string;
 }
 
+/** What a check's wall closes beside the repository and the home, as a seat's does (`Walled`,
+ *  `src/solve/command.ts`): the repository's other worktrees, and the stored pack's root and bundle,
+ *  which hold every task's hidden values. */
+interface Closed {
+  readonly otherTrees?: readonly string[] | undefined;
+  readonly packRoots?: readonly string[] | undefined;
+}
+
 export type Verdict =
   | { readonly kind: "pass"; readonly objective?: number }
   | { readonly kind: "fail"; readonly blocking: readonly string[] }
@@ -116,9 +129,8 @@ interface Wall {
   readonly program: readonly string[];
   /** The tool tree's search directories, joined as a search path. */
   readonly toolPath: string;
-  readonly access: FrozenToolchainAccess;
-  readonly isolation: VerifierOsIsolation;
-  readonly readRoots: string[];
+  /** The base of every check's command wall, or why this host has none. */
+  readonly base: SolveIsolationPolicy | { readonly unsupported: string };
 }
 
 /** The objective, run as a check is, in a cell of its own: the evaluator's `objective` export,
@@ -137,9 +149,11 @@ export const OBJECTIVE: BriefTruthCheck = {
   },
 };
 
-/** The check process, which reads these sources from where they stand. */
+/** The check process, which reads these sources from where they stand: the wall closes the
+ *  repository they lie in and opens them again by path. */
 const CHECK_CHILD = join(import.meta.dir, "check-child.ts");
 const CHECK_CHILD_SOURCES = [import.meta.dir, resolve(import.meta.dir, "..", "meta")];
+const REPO = resolve(import.meta.dir, "..", "..");
 
 /** v1's ceiling on one tool run, `DEFAULT_TOOL_TIMEOUT_MS` in its src/verify/host.ts. */
 const TOOL_CEILING_MS = 300_000;
@@ -309,23 +323,24 @@ export function readBrief(checks: string): Brief {
 }
 
 /**
- * A verifier over one tree. The brief is read and the toolchain roots frozen once, here, so every
+ * A verifier over one tree. The brief is read and the wall's base taken once, here, so every
  * verdict it gives is under the same checks and the same wall. The tree is resolved first: the wall
  * takes only absolute roots.
  */
-export function openVerifier(given: VerifierTree): Verifier {
+export function openVerifier(given: VerifierTree & Closed): Verifier {
   const tree: VerifierTree = { checks: resolve(given.checks), tools: resolve(given.tools) };
   const brief = readBrief(tree.checks);
-  const access = frozenToolchainAccess(Bun.env.HOME);
   const wall: Wall = {
     tree,
     program: checkProgramFiles(tree.checks),
     toolPath: toolTreeSearchDirs(tree.tools).join(":"),
-    access,
-    isolation: verifierOsIsolation({}),
-    readRoots: [...new Set([tree.tools, ...CHECK_CHILD_SOURCES, ...access.installRoots])].sort(
-      compareCodeUnits,
-    ),
+    base: solveIsolationPolicy({
+      repoRoot: REPO,
+      otherTrees: given.otherTrees ?? [],
+      packRoots: given.packRoots ?? [],
+      readAllowRoots: CHECK_CHILD_SOURCES,
+      network: false,
+    }),
   };
   return async (task, answer) => {
     if (answer === undefined) return { kind: "fail", blocking: [] };
@@ -373,12 +388,24 @@ async function runCheck(
   check: BriefTruthCheck,
   request: EvaluationRequest,
 ): Promise<CheckChildResult> {
-  // The wall leaves the user temporary directory open to toolchains and closes the product's own
-  // trees in it by prefix, so a concurrent check's cell is shut only under this one.
-  const cell = mkdtempSync(join(tmpdir(), "ana-cell-"));
+  const { base } = wall;
+  if ("unsupported" in base) return { nonResult: `this host cannot wall a check: ${base.unsupported}` };
+  // The cell is a seat of its own: one root the check writes, the program in the host's folder in
+  // it, which the check reads and cannot write, and the profile beside the root, out of its reach.
+  // The root lies in the host's own scratch, which the wall closes whole but for the cell it runs.
+  const root = hostScratch("cell-");
+  const dirs = {
+    root,
+    home: join(root, "home"),
+    temp: join(root, "tmp"),
+    kept: join(root, "kept"),
+    host: `${root}.host`,
+  };
   try {
-    // The program goes below the cell, so no file of it can stand as the check's `result.json`.
-    const copy = join(cell, "program");
+    for (const dir of [dirs.home, dirs.temp, dirs.host]) mkdirSync(dir, { recursive: true });
+    // The program goes below the host's folder, so no file of it can stand as the check's
+    // `result.json`.
+    const copy = join(dirs.kept, "program");
     for (const file of wall.program) {
       mkdirSync(dirname(join(copy, file)), { recursive: true });
       copyFileSync(join(wall.tree.checks, file), join(copy, file));
@@ -392,31 +419,13 @@ async function runCheck(
       toolPath: wall.toolPath,
       toolCeilingMs: TOOL_CEILING_MS,
     };
-    const env = engineCellEnv({
-      toolchainEnv: wall.access.environment,
-      toolTree: wall.tree.tools,
-      workdir: cell,
-      requireOsSandbox: true,
-    });
-    const plan = wall.isolation.prepare({
-      workdir: cell,
-      resolvedCommand: capturedExecPath,
-      engineArgs: [CHECK_CHILD],
-      attestedFiles: [],
-      sandboxReadRoots: wall.readRoots,
-      environment: env,
-    });
-    if ("unsupported" in plan) return { nonResult: `${wall.isolation.requires}: ${plan.unsupported}` };
-    const applied = await plan.apply();
-    if (!applied.ok) return { nonResult: `${wall.isolation.requires}: ${applied.reason}` };
-    const before = plan.verify();
-    if (before !== null) {
-      return { nonResult: `the wall ${before.kind} before the check ran: ${before.detail}` };
-    }
+    const policy = commandIsolationPolicy(base, { ...dirs, toolTree: wall.tree.tools });
+    // The wall a seat's command takes, without its shell: the check child leads its own group, and
+    // the group is ended below.
     const child = capturedSpawn({
-      cmd: [plan.command, ...plan.args],
-      cwd: cell,
-      env,
+      cmd: isolatedArgv(policy, join(dirs.host, "check.sb"), [capturedExecPath, CHECK_CHILD]),
+      cwd: root,
+      env: policy.environment,
       detached: true,
       stdin: new TextEncoder().encode(capturedJsonStringify(input)),
       stdout: "ignore",
@@ -432,17 +441,15 @@ async function runCheck(
     // A tool the check left running must not outlive the cell it writes to.
     await terminateAndReapProcessGroupId(child.pid);
     if (timedOut) return { nonResult: `the check ran past ${CHECK_WALL_MS} ms` };
-    const after = plan.verify();
-    if (after !== null) return { nonResult: `the wall ${after.kind} while the check ran: ${after.detail}` };
     return (
-      writtenResult(join(cell, "result.json")) ?? {
+      writtenResult(join(root, "result.json")) ?? {
         nonResult: `the check exited ${exitCode} without a result: ${stderr.slice(-2000).trim()}`,
       }
     );
   } catch (error) {
     return { nonResult: `the verifier could not run the check: ${errorMessage(error)}` };
   } finally {
-    rmSync(cell, { recursive: true, force: true });
+    for (const dir of [root, dirs.host]) rmSync(dir, { recursive: true, force: true });
   }
 }
 

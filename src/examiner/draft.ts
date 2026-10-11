@@ -47,12 +47,11 @@ import { REPORTED_COST } from "../backends/claude.ts";
 import { answerFormatFault, type Contract, type Objective } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
-import { mkdtempSync, rmSync } from "../meta/filesystem.ts";
+import { rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { tmpdir } from "../meta/os.ts";
-import { join } from "../meta/path.ts";
+import { hostScratch } from "../verify/wall-policy.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
@@ -458,9 +457,9 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
-  // A name every solver's wall denies (`wall-policy.ts`): the Examiner's Claude Code keeps its
-  // session here, the draft's checks and hidden values included.
-  const home = mkdtempSync(join(tmpdir(), "ana-claude-cli-examiner-"));
+  // Under the host's own scratch, which every wall closes (`wall-policy.ts`): the Examiner's
+  // Claude Code keeps its session here, the draft's checks and hidden values included.
+  const home = hostScratch("claude-cli-examiner-");
   const over = () => desk.stands || desk.note !== null;
   let crash: string | null = null;
   const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);

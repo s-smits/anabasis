@@ -61,7 +61,7 @@ and why the next was not needed.
    repeated.
 9. **A cleared condition lands in its owning test.** The rehearsal is how a broken join is found.
    The test in `test/` that fails without the fix is what keeps it found.
-10. **Clean up.** A seed is listed by the pulse and matched by `runs compare` and `runs replay`.
+10. **Clean up.** A seed is listed by the pulse and read by `runs replay`.
     Move it to the Trash when its question is answered: `/usr/bin/trash .ana/d2/sim-<what>`.
 
 ## What a rehearsal walks, and what it cannot say
@@ -109,17 +109,14 @@ on 2026-10-09: the first rehearsal on a seed should write these as its predictio
 | `--held pass:pass` | `no-step`, `valid` 0/0/4 twice | four ties between valid answers: the tasks leave a harness nothing to add |
 | `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; twice in a row and each task waits for a person's label |
 | `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
-| the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and against the starter there is nothing more to solve |
-| `--reference <a built digest> --held none:pass` | `step`, with `against` 4-0 | after a promotion a step is held to the starter, which is solved because the test cleared and answers nothing |
-| the same with `--starter pass` | `step`, with `against` 0-0-4 | against the starter every task ties between valid answers, and as many wins as losses is enough |
-| the same with `--held fail:pass`, then `settle.ts` with every label `earned` | `starter-unread` | a settling makes no solve, so the new harness is compared with the starter in a checkpoint of its own |
-| fewer than two tasks held out | refused at launch; `no-step` at best if run | at a trigger of 0.25 a first reading takes two untied tasks, all won |
+| the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and a settling makes no solve |
+| `--reference <a built digest> --held none:pass` | `step`, sixteen solves | after a promotion the starter is solved on no task: until 11 October a step was held to it, a third arm (`docs/simplify.md`, B2) |
+| fewer than two tasks held out | refused by the comparison's admission; `no-step` at best if run | at a trigger of 0.25 a first reading takes two untied tasks, all won |
 | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
+| `--campaign --held none:pass --starter pass --supply 40` over a seed of a campaign that drafted its exam | a step read twice and a promotion at each epoch, three in 21 moves on t-10's seed (11 October) | the scripted Examiner proposes copies of the source's answered tasks once the source's own are spent; every epoch goes through the same rows: the reference's room, other tasks, the control, a session, a step and its repeat |
 
 `check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
-ruling of a check defect to count one. So is `below-starter`: a script ends every solve of a side
-alike, and losing to the starter while beating the reference harness takes a side that is valid
-only some of the time.
+ruling of a check defect to count one.
 
 ## What the first rehearsals settled
 
@@ -129,7 +126,7 @@ and read an anchor; what they found about that design went with it. What they fo
 round's size still holds in the new arithmetic:
 
 - **A step takes four untied tasks, all won, at level 0.1.** A campaign that holds fewer cannot
-  read one, and the launcher now refuses it.
+  read one, and the comparison's admission now refuses it.
 - **A step does not move the reference harness.** The next comparison is against the harness the
   campaign started with until the operator names another with `--reference`; the Builder goes on
   from the latest harness a session left.

@@ -14,7 +14,7 @@ const numbers = (some: readonly Lane[]) => some.map((each) => each.number);
 
 describe("the lane catalogue", () => {
   it("holds thirty lanes, numbered in order, each with its three sentences", () => {
-    expect(numbers(lanes)).toEqual(Array.from({ length: 30 }, (_, index) => index + 1));
+    expect(numbers(lanes)).toEqual(Array.from({ length: 31 }, (_, index) => index + 1));
     for (const { number, body } of lanes) {
       for (const phrase of ["The question is", "The decision it changes is", "it routes to"]) {
         expect(`${String(number)}: ${String(flat(body).includes(phrase))}`).toBe(`${String(number)}: true`);

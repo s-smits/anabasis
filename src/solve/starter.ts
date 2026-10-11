@@ -11,10 +11,10 @@
  * Every campaign starts from it (`docs/plan.md`, Terms and Phase 0). The Builder forks it in its
  * first session, since a session copies the harness it starts from whole. It is the first
  * reference harness: a new harness is compared with it until a step is promoted. And it stays the
- * fixed lower reference after that: a step against a promoted reference also needs at least as
- * many wins as losses against the starter (`src/builder/round.ts`). How the starter does by
- * itself, read from the first comparison at several budgets, is what says whether the tasks leave
- * a harness room to add anything.
+ * control after that: once another harness is promoted, the tasks written for it are read by the
+ * starter against it (`src/builder/decide.ts`). How the starter does by
+ * itself, read from the first comparison, is what says whether the tasks leave a harness room to
+ * add anything.
  *
  * It needs nothing from the correctness model. The host seeds the solver's home with the task, the
  * public rules and the contract's answer format, and sends the submitted answer to the verifier.
@@ -117,10 +117,11 @@ process.exit(failed === 0 ? 0 : 1);
   },
   guide: `# Operating Guide
 
-## Programs
+## Programs and tools
 - ${CHECKER} <rota.json>: tests a rota file against each person's hour limit in public/task.json and
   prints one line a person. Exit 0 when every limit is met, 1 when one is not, 2 when it could not
   run. It tests the hour limits and no other rule.
+- ${ADVISOR.name} (a tool, where the harness declares one): ${ADVISOR.description}
 
 ## Working with them
 A rota that ${CHECKER} passes has still to meet the rules it does not test.
@@ -257,8 +258,8 @@ under one sentence saying that it cannot override the public task, tool authorit
 or submission rules. Without the file the solver reads no guide, and the harness you start from may
 have none. It is words: code the solver would copy out and run is a program. It says nothing of
 time or turns: the host tells the solver its limits, and every tool result ends with how much of
-them is used. Keep to this outline, with one entry a program, so that one harness's guide can be
-read against another's:
+them is used. Keep to this outline, with one entry a program or a tool, so that one harness's
+guide can be read against another's:
 
 \`\`\`markdown
 ${EXAMPLE.guide.trimEnd()}

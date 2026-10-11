@@ -14,8 +14,8 @@
  *
  * The filter is what the wall allows (`AGENTS.md`, section 1):
  *
- * - A fail is told whole, with its standing and the Diagnoser's reading, where its task is one of
- *   the session's practice tasks. The list only grows: nothing is summarised or dropped, and
+ * - A fail is told whole, with its standing, where its task is one of the session's practice
+ *   tasks. The list only grows: nothing is summarised or dropped, and
  *   `read_trace` opens each (`tools.ts`). v1 folded its fails into at most six issues, and a
  *   genuine fail led to a harness change about once in six chances.
  * - A comparison is told as its tally and its reading, and only once it has tallied a task. It
@@ -35,7 +35,8 @@
 import { plural } from "../meta/text.ts";
 import type { Handover, PracticeFail } from "./handover.ts";
 
-/** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. */
+/** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. The
+ *  last two are readings a comparison made until 2026-10-11, which a log of before holds. */
 const READ = new Map([
   ["step", "a step"],
   ["no-step", "no step"],
@@ -56,22 +57,16 @@ function stands({ standing, under }: PracticeFail): string {
 
 /**
  * The campaign's failed practice solves on one of `tasks`, a line each, oldest first: the solve's
- * id, its task, the harness it ran under, how it ended, where it stands now and what the Diagnoser
- * read of it. `tasks` maps a task version to the id a Builder knows it by.
+ * id, its task, the harness it ran under, how it ended and where it stands now. `tasks` maps a
+ * task version to the id a Builder knows it by. Until 11 October the line ended with a
+ * Diagnoser's reading of the fail; 20 of 20 named the solver (`docs/simplify.md`, E1).
  */
 export function failsTold(fails: readonly PracticeFail[], tasks: ReadonlyMap<string, string>): string[] {
   return fails.flatMap((fail) => {
     const task = tasks.get(fail.task);
     if (task === undefined) return [];
-    const { diagnosis: read } = fail;
-    const diagnosis =
-      read === null
-        ? ""
-        : read === "abstained"
-          ? " The Diagnoser abstained."
-          : ` Diagnosis (owner ${read.owner}, confidence ${read.confidence}): ${read.cause}`;
     return [
-      `- ${fail.solve}, ${task}, harness ${shortDigest(fail.harness)}: fail${fail.kind === null ? "" : ` (${fail.kind})`}; ${stands(fail)}.${diagnosis}`,
+      `- ${fail.solve}, ${task}, harness ${shortDigest(fail.harness)}: fail${fail.kind === null ? "" : ` (${fail.kind})`}; ${stands(fail)}.`,
     ];
   });
 }

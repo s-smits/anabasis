@@ -69,7 +69,6 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import type { Diagnosis } from "../review/diagnoser.ts";
 import type { RefereeFinding } from "../review/referee.ts";
 import { type CommandWall, networkReach, type SolveDirs, solveDirs, walledBase } from "../solve/command.ts";
 import type { PublicResource } from "../solve/answer.ts";
@@ -148,9 +147,11 @@ export interface BuildRequest {
   /** The backends, built on the home the Builder's model process keeps its state in. */
   readonly models: (home: string) => Models;
   readonly log: string;
-  /** The repository, closed to every command, and its other worktrees, closed with it. */
+  /** The repository, closed to every command, and its other worktrees and the stored pack, closed
+   *  with it (`Walled`). */
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
+  readonly packRoots?: readonly string[] | undefined;
   /** One solve of a released task under the test condition, with the harness frozen in `harness`
    *  and digested as `digest`. The caller builds the condition and records it (`recordCondition`),
    *  and hands `kill` to the solve, which the session aborts when it ends. A throw ends the session. */
@@ -160,10 +161,8 @@ export interface BuildRequest {
     digest: string,
     kill: AbortSignal,
   ) => Promise<Practised>;
-  /** The reviewers, when the caller has a reader for them. Without a Referee nothing is diagnosed,
-   *  since the Diagnoser reads only what the Referee ruled earned. `kill` is for their readers. */
+  /** The Referee, when the caller has a reader for it. `kill` is for its reader. */
   readonly referee?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<RefereeFinding>;
-  readonly diagnose?: (solve: string, task: PracticeTask, kill: AbortSignal) => Promise<Diagnosis>;
   /** The dollar cap the session's spend is held to, where its solves are paid for: a round's own,
    *  or the session's where it runs with no comparison after it. No practice solve starts that a
    *  reserve for it would take past the cap (`practiceTool`). */
@@ -524,15 +523,19 @@ export async function build(request: BuildRequest): Promise<Built> {
   const release = await mountDiskCap({ root: dirs.root, bytes: request.limits.diskBytes });
   try {
     const wall: CommandWall = {
-      base: walledBase(
+      base: await walledBase(
         dirs,
-        { repoRoot: request.repoRoot, otherTrees: request.otherTrees, diskBytes: request.limits.diskBytes },
+        {
+          repoRoot: request.repoRoot,
+          otherTrees: request.otherTrees,
+          packRoots: request.packRoots,
+          diskBytes: request.limits.diskBytes,
+        },
         "a Builder",
       ),
       dirs,
       toolTree: join(dirs.home, HOME_TOOL_TREE),
       limits: request.limits,
-      cpu: { seconds: 0, unmeasured: 0 },
     };
     const network = await networkReach(wall);
     return await session(request, dirs, (bench) => walledTools(bench, wall, network));

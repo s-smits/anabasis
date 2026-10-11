@@ -3,6 +3,7 @@ import { type Task, openVerifier } from "../src/kernel/verify.ts";
 import {
   chmodSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -14,6 +15,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { join, relative } from "../src/meta/path.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { hostScratch } from "../src/verify/wall-policy.ts";
 
 const EVALUATOR = `import { readFileSync } from "node:fs";
 import { same } from "./reference/model.ts";
@@ -65,7 +67,7 @@ setDefaultTimeout(60_000);
 
 const root = mkdtempSync(join(tmpdir(), "ana-verify-"));
 /** Where a concurrent check's cell would hold its answer. */
-const sibling = mkdtempSync(join(tmpdir(), "ana-cell-"));
+const sibling = hostScratch("cell-");
 const secret = join(sibling, "answer.json");
 
 function execution(
@@ -98,7 +100,12 @@ const BRIEF = {
     { id: "host", execution: execution(["host"], [], [], ["sh"]) },
     {
       id: "ran",
-      execution: execution(["ran"], [], ["$.tool"], ["killed", "unlaunched", "unstarted", "refuses"]),
+      execution: execution(
+        ["ran"],
+        [],
+        ["$.tool"],
+        ["killed", "unlaunched", "unstarted", "refuses", "compiles"],
+      ),
     },
   ],
 };
@@ -137,6 +144,7 @@ tool("killed", "kill -KILL $$");
 tool("unlaunched", 'exec "$(dirname "$0")/missing"');
 tool("unstarted", "echo 'Fatal Python error: init_fs_encoding: failed to get the Python codec' >&2; exit 1");
 tool("refuses", "echo no; exit 127");
+tool("compiles", 'echo "int main(void) { return 0; }" > p.c && /usr/bin/cc p.c -o p && ./p');
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("open") });
 
 afterAll(async () => {
@@ -219,6 +227,12 @@ describe.skipIf(!osIsolationSupport().ok)("the verifier", () => {
     }
     // A program may exit 127 itself; having printed, it answered.
     expect(await ran("refuses")).toEqual({ kind: "fail", blocking: ["ran"] });
+  });
+
+  // The verifier's own deny-default wall once refused clang its toolchain and the scratch it takes
+  // through `confstr` rather than `TMPDIR`; a check's tool that builds what it runs needs both.
+  it.if(existsSync("/usr/bin/cc"))("lets a check's tool compile through the host toolchain", async () => {
+    expect(await verify(task("ran", { tool: "compiles" }), {})).toEqual({ kind: "pass" });
   });
 
   it("finds a check's tool only in the verifier's tree, never the host's copy", async () => {

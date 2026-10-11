@@ -13,7 +13,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitText } from "#skills/main/git.ts";
 import { join, resolve } from "#src/meta/path.ts";
-import { launchesOf } from "#tools/runs/launch.ts";
+import { launchesOf } from "#tools/runs/receipt.ts";
 
 const SHOWN = 3;
 

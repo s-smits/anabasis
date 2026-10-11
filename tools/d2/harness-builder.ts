@@ -31,15 +31,13 @@
  *   set the tasks apart tools/d2/prepare.ts
  *   an Examiner session tools/d1b/examine.ts, under the next free id `x-N`
  *   a Builder session   tools/d2/session.ts, under `b-N`
- *   a comparison        tools/d2/checkpoint.ts, under `g-N`, read also at each shorter budget of
- *                       the ladder; one that began goes on under its id and its own terms
- *   the budget          a new record of the setting (`rebudget`, `setting.ts`)
+ *   a comparison        tools/d2/checkpoint.ts, under `g-N`; one that began goes on under its id
+ *                       and its own terms
  *   a promotion         tools/d2/promote.ts `--yes`
  *
  * **What it runs by** is recorded once, as `campaign.opened`: the total budget in dollars and the
  * reserve one solve is held at (`--budget`, `--reserve`), the full limit of a solve in the model's
- * turns (`--solve-model-turns`), the ladder of shorter budgets (`--ladder`, by default a half, a
- * quarter and an eighth of the limit), the Builder sessions before a comparison (`--sessions`),
+ * turns (`--solve-model-turns`), the Builder sessions before a comparison (`--sessions`),
  * the campaign's patience (`--patience`: the moves without a gain, the idle Examiner sessions and
  * the comparisons without room it bears in a row before it ends, six by default while the system
  * is built, since every campaign of 9 and 10 October ended on the plan's three before its tasks
@@ -75,8 +73,8 @@
  *
  * A move is recorded once it is made (`campaign.move`), with the reason the table gave, so the
  * log holds what was decided beside what was done. Each run of the command keeps a receipt
- * beside the log, `launch-run-<n>.json`, as a launch keeps a round's: its flags, the commit the
- * worktree stands at and the load it started under (`keepReceipt`).
+ * beside the log, `launch-run-<n>.json`: its flags, the commit the worktree stands at and the
+ * load it started under (`keepReceipt`, `tools/runs/receipt.ts`).
  *
  * **A move that solves waits for the host.** A Builder session and a comparison start once the
  * host's one-minute load is at or under its cores, since a solve's wall counts the clock.
@@ -108,7 +106,7 @@ import { dirname } from "#src/meta/path.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
-import { launchesOf, writeReceipt } from "../runs/launch.ts";
+import { launchesOf, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/pulse.ts";
 import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
 import { checkpointCommand } from "./checkpoint.ts";
@@ -117,7 +115,7 @@ import { PRACTICE, prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { COMPARISON_OPTIONS, capRead, type Seated, SESSION_OPTIONS, solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
-import { rebudget, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
+import { recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
 
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
 export interface Seats {
@@ -159,7 +157,6 @@ const OPTIONS = {
   "prompt-file": { type: "string" },
   budget: { type: "string" },
   reserve: { type: "string" },
-  ladder: { type: "string" },
   sessions: { type: "string" },
   patience: { type: "string" },
   builder: SESSION_OPTIONS.builder,
@@ -171,7 +168,6 @@ const OPTIONS = {
   solver: SETTING_OPTIONS.solver,
   "solver-effort": SETTING_OPTIONS["solver-effort"],
   "solve-minutes": SETTING_OPTIONS["solve-minutes"],
-  "solve-turns": SETTING_OPTIONS["solve-turns"],
   "solve-model-turns": SETTING_OPTIONS["solve-model-turns"],
   // With no default of their own: one no command has named is the comparison's to default, and
   // one a command named is the opening's to keep (`TERMS`).
@@ -213,21 +209,6 @@ const flag = (name: string, value: string | undefined): string[] =>
 
 function flagsOf(args: readonly string[]) {
   return parseArgs({ args: [...args], options: OPTIONS }).values;
-}
-
-/** The shorter budgets a campaign's comparisons are read at: the ones `--ladder` names, or a half,
- *  a quarter and an eighth of the full limit where that is at least two of the model's turns. */
-function ladderOf(named: string | undefined, limit: number | null): number[] {
-  const rungs =
-    named === undefined
-      ? [2, 4, 8].flatMap((part) => (limit !== null && limit / part >= 2 ? [Math.floor(limit / part)] : []))
-      : named.split(",").map(Number);
-  if (rungs.some((rung) => !Number.isInteger(rung) || rung < 1)) {
-    throw new Error(
-      `--ladder ${String(named)}: the shorter budgets are whole numbers of the model's turns, as 20,10,5`,
-    );
-  }
-  return [...new Set(rungs)].filter((rung) => limit === null || rung < limit).toSorted((a, b) => b - a);
 }
 
 /** Whether a command names a stored pack, by any of the four flags that name one together. */
@@ -292,10 +273,6 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
   const named: Opening = {
     budget: dollars === undefined ? null : capRead(dollars, reserve),
     limit,
-    ladder:
-      values.ladder === undefined && was !== null && was.limit === limit
-        ? was.ladder
-        : ladderOf(values.ladder, limit),
     sessions: values.sessions === undefined ? (was?.sessions ?? DEFAULTS.sessions) : Number(values.sessions),
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
@@ -329,7 +306,6 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
   const record: JsonObject = {
     budget: named.budget === null ? null : { ...named.budget },
     limit: named.limit,
-    ladder: [...named.ladder],
     sessions: named.sessions,
     patience: named.patience,
     seats: Object.fromEntries(
@@ -397,17 +373,10 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
   const start =
     events.find(({ kind, data }) => kind === "comparison.started" && data.session === id)?.data ?? {};
   const cap = asRecord(start.cap);
-  const budgets = (Array.isArray(start.budgets) ? start.budgets : []).flatMap((budget) => {
-    const units = Object.entries(asRecord(budget) ?? {}).flatMap(([unit, most]) =>
-      isNumber(most) ? [`${unit}=${String(most)}`] : [],
-    );
-    return units.length === 0 ? [] : ["--budget", units.join(",")];
-  });
   return [
     ...flag("solves", isNumber(start.solves) ? String(start.solves) : undefined),
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
     ...(start.noise === true ? ["--noise"] : []),
-    ...budgets,
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
     ...flag("predict", isString(start.prediction) ? start.prediction : undefined),
@@ -440,7 +409,6 @@ function sharedOf({ events, plan, opening, values }: Turn) {
             ...flag("solver", values.solver ?? opening.solver?.model),
             ...flag("solver-effort", values["solver-effort"] ?? opening.solver?.effort),
             ...flag("solve-minutes", values["solve-minutes"]),
-            ...flag("solve-turns", values["solve-turns"]),
             ...flag(
               "solve-model-turns",
               values["solve-model-turns"] ?? (opening.limit === null ? undefined : String(opening.limit)),
@@ -460,27 +428,21 @@ function sharedOf({ events, plan, opening, values }: Turn) {
   };
 }
 
-/** The flags of the comparison a move names: a new one under the next free id, read also at each
- *  shorter budget of the ladder, or one that began, under its id and its own terms. */
+/** The flags of the comparison a move names: a new one under the next free id, or one that began,
+ *  under its id and its own terms. */
 function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn) {
-  const { events, plan, values } = turn;
+  const { events, values } = turn;
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);
-  const recorded = recordedSetting(events);
-  const turns = recorded === null ? plan.limit : recorded.modelTurns;
   const session = decided.id ?? nextId(events, "g");
   const terms =
     decided.id === undefined
       ? [
-          ...(decided.noise ? ["--noise"] : []),
           ...flag("solves", values.solves),
           ...flag("level", values.level),
           // The trigger is the table's and no term of the start: it goes on the command, new or
           // continued, so the admission reads what `decide` read (left off until 11 October).
           ...flag("trigger", values.trigger),
           ...flag("margin", values.margin),
-          ...plan.ladder.flatMap((rung) =>
-            turns === null || rung < turns ? ["--budget", `turns=${String(rung)}`] : [],
-          ),
           ...cap,
         ]
       : [...termsOf(events, decided.id), ...flag("trigger", values.trigger)];
@@ -529,10 +491,6 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
     ]);
     return {};
   }
-  if (decided.move === "budget") {
-    rebudget(campaignLog(values.name ?? ""), decided.modelTurns);
-    return { modelTurns: decided.modelTurns };
-  }
   if (decided.move === "promote") {
     await promoteCommand([...flag("name", values.name), "--harness", decided.harness, "--yes"]);
     return { harness: decided.harness };
@@ -569,7 +527,6 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
       [
         ...pack,
         ...seat,
-        ...(decided.room ? ["--room"] : []),
         ...flag("tasks", values["exam-tasks"]),
         ...flag("proposals", values["exam-proposals"]),
         ...flag("minutes", values["exam-minutes"]),
@@ -604,15 +561,16 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
  * Wait until the host's load is at or under its cores, before a move that solves. A solve's wall
  * counts the clock, so what starts into a loaded host reaches walls an idle one would not, and
  * slows every run beside it: on 9 October one harness answered the same seven tasks in a median
- * of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). The launcher
- * refuses such a launch once (`tools/runs/launch.ts`), and a session then queued the next move
- * by hand behind the load. A campaign that runs for hours meets the question at every move, so
- * it waits here, says so once, and looks again. `--loaded` starts the move all the same, which
- * is the operator's word that its times will not be compared.
+ * of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). Until
+ * 11 October the launcher (`bun run runs launch`) refused such a launch once, and a session then
+ * queued the next move by hand behind the load. A campaign that runs for hours meets the question
+ * at every move, so it waits here, says so once, and looks again. `--loaded` starts the move all
+ * the same, which is the operator's word that its times will not be compared.
  */
-async function quiet(host: Host, move: string): Promise<void> {
+async function quiet(host: Host, move: string): Promise<number> {
   let said = false;
-  for (let load = host.load(); load > host.cores; load = host.load()) {
+  let load = host.load();
+  for (; load > host.cores; load = host.load()) {
     if (!said) {
       console.log(
         `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: ${move} waits until it is at or under them, or pass --loaded`,
@@ -621,6 +579,7 @@ async function quiet(host: Host, move: string): Promise<void> {
     said = true;
     await Bun.sleep(host.waitMs);
   }
+  return load;
 }
 
 /** The checks `--admit` names, which is the operator's word for each. */
@@ -664,8 +623,8 @@ function examLines(
 }
 
 /**
- * Keep this run of the command on record as a launch keeps a round: `launch-run-<n>.json` beside
- * the log, with the flags, the commit and the load it started under (`Receipt`, `launch.ts`). The
+ * Keep this run of the command on record: `launch-run-<n>.json` beside the log, with the flags,
+ * the commit and the load it started under (`Receipt`, `tools/runs/receipt.ts`). The
  * log holds the host's code by content and no commit, and the opening keeps the terms and not the
  * flag line, so until 10 October a run under this command was on no record: the flag line of the
  * run that recorded the setting of the second campaign from a prompt on the test host (120 minutes
@@ -701,6 +660,26 @@ function ended(log: string, events: readonly LogEvent[], decided: Extract<Decide
 }
 
 /**
+ * What a move records of its start: when it began, and for a move that solves the host's load
+ * then. A Builder session's practice solves and a comparison's solves are held to a wall, so
+ * neither starts into a loaded host (`quiet`), and a rehearsal's seats are scripts, whose times
+ * nobody compares. The event is written when the move ends and carries the reason from when it
+ * was decided, which a reader took for the end's (the runs session's note, 10 October); and a
+ * solve's times are the host's as much as the solver's, since a wall counts the clock, and the
+ * load the wait read was on no record (eight campaigns on one host of 12 cores held its load
+ * between 14 and 26 that night).
+ */
+async function startOf(decided: Decided, values: Values, seats: Seats): Promise<JsonObject> {
+  const began = new Date().toISOString();
+  const solves = decided.move === "build" || decided.move === "compare";
+  if (!solves) return { began };
+  const host = seats.host ?? HOST;
+  const waits = !values.loaded && (seats.host !== undefined || seats.seated === solved);
+  const load = waits ? await quiet(host, decidedLine(decided).split(":")[0] ?? decided.move) : host.load();
+  return { began, load, cores: host.cores };
+}
+
+/**
  * `bun tools/d2/harness-builder.ts`, and under a rehearsal's seats the same loop with a script in
  * each model seat. It returns the last thing move 7 said: the campaign's ending, or the move that
  * would be made next.
@@ -731,7 +710,6 @@ export async function harnessBuilder(
         solver: given.solver,
         "solver-effort": given["solver-effort"],
         "solve-minutes": given["solve-minutes"],
-        "solve-turns": given["solve-turns"],
         "solve-model-turns": recorded.modelTurns === null ? undefined : String(recorded.modelTurns),
         tasks: recorded.tasks?.join(","),
         target: recorded.tasks === null ? given.target : String(recorded.target),
@@ -788,12 +766,7 @@ export async function harnessBuilder(
       );
       return decided;
     }
-    // A Builder session's practice solves and a comparison's solves are held to a wall: neither
-    // starts into a loaded host. A rehearsal's seats are scripts, whose times nobody compares.
-    const solves = decided.move === "build" || decided.move === "compare";
-    if (solves && !values.loaded && (seats.host !== undefined || seats.seated === solved)) {
-      await quiet(seats.host ?? HOST, decidedLine(decided).split(":")[0] ?? decided.move);
-    }
+    const started = await startOf(decided, values, seats);
     let left: JsonObject;
     try {
       left = await make(decided, { events, plan, opening, values, seats });
@@ -811,6 +784,7 @@ export async function harnessBuilder(
     append(log, "campaign.move", {
       move: decided.move,
       why: decided.why,
+      ...started,
       ...left,
       ...keyIfDefined(
         "answers",

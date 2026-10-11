@@ -29,7 +29,7 @@ import {
   selectedCodingTools,
   type WallExec,
 } from "../src/solve/coding-tools.ts";
-import { type CommandWall, shellSeconds, solveDirs } from "../src/solve/command.ts";
+import { type CommandWall, makeSeatDirs, shellSeconds, solveDirs } from "../src/solve/command.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
 const LIMITS = { shellDefaultSeconds: 300, shellMaxSeconds: 900 };
@@ -46,7 +46,7 @@ function plainHome() {
     commands.push(command);
     const work = join(root, `run-${String(runs++)}`);
     mkdirSync(work);
-    options.stage?.({ work, temp: work });
+    options.stage?.(work);
     const child = Bun.spawn(["/bin/sh", "-c", command], { cwd: work, stdout: "pipe", stderr: "pipe" });
     const [out, err] = await Promise.all([
       new Response(child.stdout).arrayBuffer(),
@@ -103,7 +103,6 @@ describe("the solver's coding tools", () => {
       dirs,
       toolTree: null,
       limits: LIMITS,
-      cpu: { seconds: 0, unmeasured: 0 },
     };
     const ours = bashTool(wall);
     const pi = createBashToolDefinition(dirs.home);
@@ -250,11 +249,11 @@ describe("the coding tools on the command wall", () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));
       const dirs = solveDirs(`coding-${String(runtimeProcess.pid)}-${String(Date.now())}`);
       try {
-        for (const dir of [dirs.home, dirs.runs, dirs.host]) mkdirSync(dir, { recursive: true });
-        const base = solveIsolationPolicy({ repoRoot, cap: { root: dirs.root, bytes: 16 * 1024 * 1024 } });
+        makeSeatDirs(dirs);
+        const base = solveIsolationPolicy({ repoRoot });
         if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
         const limits = { shellDefaultSeconds: 1, shellMaxSeconds: 2 };
-        const wall: CommandWall = { base, dirs, toolTree: null, limits, cpu: { seconds: 0, unmeasured: 0 } };
+        const wall: CommandWall = { base, dirs, toolTree: null, limits };
         const tools = new Map(
           codingTools(wall, ["read", "bash", "edit", "write"]).map((tool) => [tool.name, tool]),
         );
@@ -297,12 +296,6 @@ describe("the coding tools on the command wall", () => {
         expect(failed.isError).toBe(true);
         expect(text(failed)).toBe("partial\n\n\nCommand exited with code 3");
 
-        // The three timed-out commands took their CPU record with them; a finished one leaves its own.
-        expect(wall.cpu.unmeasured).toBe(3);
-        const before = wall.cpu.seconds;
-        await bash("i=0; while [ $i -lt 2000 ]; do i=$((i+1)); done", 2);
-        expect(wall.cpu.seconds).toBeGreaterThan(before);
-
         // A cut command's full output stays in this wall's home, where the solver can read it back.
         const cut = text(await bash("seq 1 3000"));
         const full = /Full output: (\S+)\]$/.exec(cut)?.[1] ?? "";
@@ -314,8 +307,15 @@ describe("the coding tools on the command wall", () => {
         await bash(`rm -rf ~/.shell-output && ln -s '${repoRoot}' ~/.shell-output`);
         await bash("seq 1 3000");
         expect(readdirSync(repoRoot)).toEqual(["hidden.txt"]);
-        expect(readdirSync(dirs.runs)).toEqual(["long-output"]);
-        expect(readdirSync(join(dirs.runs, "long-output"))).toEqual([]);
+        expect(readdirSync(dirs.kept)).toEqual(["long-output"]);
+        expect(readdirSync(join(dirs.kept, "long-output"))).toEqual([]);
+        // The host's folder is the host's: a command can neither write in it nor put a link there.
+        const kept = join(dirs.kept, "long-output");
+        await bash(
+          `rm -rf '${kept}'; ln -s '${repoRoot}' '${dirs.kept}/elsewhere'; echo x > '${kept}/made'; true`,
+        );
+        expect(readdirSync(dirs.kept)).toEqual(["long-output"]);
+        expect(readdirSync(kept)).toEqual([]);
 
         // A solver that removes its own home still has one for the next command.
         await bash("cd / && rm -rf ~");

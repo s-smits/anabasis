@@ -40,7 +40,6 @@ import { billedAll, promoted } from "#src/kernel/reports.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import { DIAGNOSIS_LABELS, diagnosesAgreement } from "#src/review/agreement.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -96,10 +95,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   const opening = openingOf(events);
   const setting = recordedSetting(events);
   const reference = promoted(events);
-  // A step is named with the budget it was read at, and the reading at the full limit beside
-  // it: a step at a shortened budget says the harness answers within that budget what the
-  // reference does not, which a harness that saves a solver its set-up reads as, and the full
-  // limit says whether it holds where the solver has the time (`AGENTS.md`, section 9).
+  // A step is named with the comparisons that read it and its last tally against the reference.
   /** Where an imported harness came from, by its digest (`tools/d2/import.ts`). */
   const imported = new Map(
     events.flatMap(({ kind, data }) =>
@@ -113,20 +109,13 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     const from = imported.get(data.harness);
     const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
     const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");
-    const budgets = [...new Set(stepped.map(({ modelTurns }) => modelTurns))];
-    const atBudget = budgets
-      .map((turns) => (turns === null ? "the full limit" : plural(turns, "turn")))
-      .join(" and ");
-    const full = comparisons.findLast(
-      (each) =>
-        each.fresh === data.harness && each.modelTurns === (opening?.limit ?? null) && each.tally !== null,
-    );
+    const last = comparisons.findLast((each) => each.fresh === data.harness && each.tally !== null);
     const held =
-      full?.tally === null || full === undefined
-        ? ". No comparison of it at the full limit tallied a task"
-        : `. At the full limit (${full.id}) it won ${String(full.tally.wins)}, lost ${String(full.tally.losses)} and tied ${String(full.tally.ties)}`;
+      last?.tally === null || last === undefined
+        ? ". No comparison of it tallied a task"
+        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}`;
     return [
-      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${stepped.length === 0 ? "" : ` at ${atBudget}`}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}`,
+      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}`,
     ];
   });
   const ruled = comparisons.reduce(
@@ -197,30 +186,11 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       passes.comparisons === 0
         ? "- No answer that passed was read by anyone: a pass is the checks' word alone."
         : `- Answers that passed: a person read ${String(passes.read)} of the ${String(passes.of)} in ${plural(passes.comparisons, "comparison")}, drawn by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and changes no tally.`,
-      diagnosesLine(events),
     ].join("\n"),
     "## Work and spend",
     `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a budget of $${String(budget.dollars)}`}.`,
     "",
   ].join("\n\n");
-}
-
-/** What the Diagnoser said of the campaign's practice fails, and what a person's blind labels of
- *  them say of its lean (`settle.ts --diagnoses`). A diagnosis enters no verdict. */
-function diagnosesLine(events: readonly LogEvent[]): string {
-  const labelled = events.findLast(({ kind }) => kind === "diagnosis.labelled")?.data.labels;
-  const labels = new Map(
-    Object.entries(asRecord(labelled) ?? {}).flatMap(([solve, label]) => {
-      const known = DIAGNOSIS_LABELS.find((each) => each === label);
-      return known === undefined ? [] : [[solve, known] as const];
-    }),
-  );
-  const found = diagnosesAgreement(events, labels);
-  if (found.recorded === 0) return "- No practice fail was diagnosed.";
-  const lean = `the Diagnoser named the solver in ${String(found.solver)} of ${String(found.recorded)} ${found.recorded === 1 ? "diagnosis" : "diagnoses"}`;
-  return found.labelled === 0
-    ? `- Diagnoses: ${lean}; no person has labelled one, so its lean is unmeasured.`
-    : `- Diagnoses: ${lean}; a person labelled ${String(found.labelled)} blind and agreed with ${String(found.agreed)}. A diagnosis is the Builder's lead and enters no verdict.`;
 }
 
 /** The public contract as a solver reads it, for whoever takes the harness over. */

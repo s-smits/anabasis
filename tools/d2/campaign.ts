@@ -63,12 +63,11 @@ import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { hostTool } from "#src/meta/host-tool.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { diagnose } from "#src/review/diagnoser.ts";
 import type { Reader } from "#src/review/reader.ts";
 import { referee } from "#src/review/referee.ts";
 import { writeStarter } from "#src/solve/starter.ts";
 import { stageExam } from "./exam.ts";
-import { guideOf, openHarness, treeContent } from "#src/solve/harness.ts";
+import { openHarness, treeContent } from "#src/solve/harness.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
 import {
   checkProgram,
@@ -97,7 +96,7 @@ interface CampaignArgs {
    *  and `--solver-effort` (`setting.ts`). */
   readonly solver?: { readonly model: string; readonly effort: ThinkingLevel } | undefined;
   /** What every solve of this command is held to, when not `LIMITS`: a command's `--solve-minutes`
-   *  and `--solve-turns` (`setting.ts`). */
+   *  and `--solve-model-turns` (`setting.ts`). */
   readonly limits?: Limits | undefined;
   /** A log of this command's own for the solves it makes, when not the campaign's: the trial solve
    *  of a handed-over harness (`close.ts --solve`), which the campaign's readings never count. The
@@ -143,7 +142,8 @@ const PROGRAMS_OF = "programs-of:";
 /** The sweep's `config.yaml` and its solves' `maxTurns`, with a disk cap the sweep did not have, as
  *  `live-solve.ts` has them, but four solves at a time where a parity solve runs alone. Concurrency
  *  is part of a condition, so a campaign's solves and a parity solve are not under the same one.
- *  These are a campaign's limits until a command names a longer wall or more turns (`setting.ts`). */
+ *  These are a campaign's limits until a command names another wall or the model's turns
+ *  (`setting.ts`); the prompts, `turns`, are every solve's (v1's cap on nudges). */
 export const LIMITS: Limits = {
   wallSeconds: 7200,
   turns: 24,
@@ -281,30 +281,15 @@ function recordedUnder({ contract, tools, limits }: Standing) {
   return { conditionOf, setting };
 }
 
-/** The two reviewers on one reader, for the campaign at `dir`. */
+/** The Referee on one reader, for the campaign. */
 function reviewersOf(
   reader: Reader,
-  at: { dir: string; log: string; contract: Contract; checks: string; verify: Verifier },
+  at: { log: string; contract: Contract; checks: string; verify: Verifier },
 ) {
-  const { dir, log, contract, checks, verify } = at;
+  const { log, contract, checks, verify } = at;
   return {
     referee: (solve: string, task: TaskPackage, kill: AbortSignal) =>
       referee({ ...reader, kill }, { solve, task, contract, checks, verify, log }),
-    diagnose: (solve: string, task: TaskPackage, kill: AbortSignal) =>
-      diagnose(
-        { ...reader, kill },
-        {
-          solve,
-          task,
-          contract,
-          log,
-          // A solve's harness is one the campaign keeps under its digest, a session's or the starter.
-          guide: (harness) => {
-            const state = join(dir, "states", harness);
-            return existsSync(state) ? guideOf(state) : undefined;
-          },
-        },
-      ),
   };
 }
 
@@ -323,8 +308,11 @@ export async function openCampaign(args: CampaignArgs) {
   if (moved !== null) throw new Error(`${log}: ${moved}`);
   const resources = sweepResources(brief);
   const tools = join(bundle, ".toolchain");
-  const verify = openVerifier({ checks, tools });
   const trees = worktreesOf(REPO);
+  // A stored pack's root and bundle, closed to every command and every check as the repository is.
+  // A campaign opened from a prompt drafted its exam under `.ana` here, inside the repository.
+  const packRoots = args.root === undefined ? [] : [args.root, bundle];
+  const verify = openVerifier({ checks, tools, otherTrees: trees, packRoots });
   const limits = args.limits ?? LIMITS;
   const { conditionOf, setting } = recordedUnder({ contract, tools, limits });
   const pack = (task: Task): TaskPackage => packageOf(checks, task);
@@ -360,14 +348,16 @@ export async function openCampaign(args: CampaignArgs) {
       log: written,
       repoRoot: REPO,
       otherTrees: trees,
+      packRoots,
       ...keyIfDefined("kill", kill),
       ...keyIfDefined("comparison", comparison),
     });
   };
-  const reviewers = (reader: Reader) => reviewersOf(reader, { dir, log, contract, checks, verify });
+  const reviewers = (reader: Reader) => reviewersOf(reader, { log, contract, checks, verify });
   return {
     repo: REPO,
     trees,
+    packRoots,
     log,
     states: join(dir, "states"),
     memory: join(dir, "memory"),

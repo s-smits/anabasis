@@ -40,8 +40,8 @@ export type Limits = {
   /**
    * The most bytes one solve's writable roots may hold together, enforced as the size of the volume
    * they sit on (`src/verify/disk-cap.ts`). Neither v1 nor the sweep this plan targets capped disk,
-   * so one solve could fill the host's disk under every other. The runner hands the same number to
-   * `solveIsolationPolicy`, so a change here moves `sandbox` too.
+   * so one solve could fill the host's disk under every other. The condition's `sandbox` names the
+   * same number, so a change here moves `sandbox` too.
    */
   readonly diskBytes: number;
 };

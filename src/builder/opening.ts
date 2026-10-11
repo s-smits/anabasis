@@ -4,8 +4,8 @@
  * that opening and the log (`Plan`, `ground.ts`).
  *
  * The opening is the operator's conditions for the whole campaign, recorded once and again where
- * a command names another: the total budget, the full limit of a solve and the shorter budgets
- * its comparisons are read at, the Builder sessions before a comparison, who sits in each seat,
+ * a command names another: the total budget, the full limit of a solve, the Builder sessions
+ * before a comparison, who sits in each seat,
  * and, for a campaign that opens from a prompt, the prompt and who solves. None of them moves a
  * comparison's reading. The setting is the log's own record (`campaign.setting`).
  *
@@ -34,10 +34,8 @@ export interface Opening {
   /** The dollars the campaign may bill in all, and the reserve one solve is held at; null for a
    *  rehearsal's, whose seats are paid nothing. */
   readonly budget: Cap | null;
-  /** The full limit of a solve in the model's turns, the shorter budgets its comparisons are also
-   *  read at, and the Builder sessions before a comparison. */
+  /** The full limit of a solve in the model's turns, and the Builder sessions before a comparison. */
   readonly limit: number | null;
-  readonly ladder: readonly number[];
   readonly sessions: number;
   /** The moves without a gain, the idle Examiner sessions and the comparisons without room the
    *  campaign bears in a row before it ends (`--patience`; `PATIENCE`). */
@@ -59,7 +57,6 @@ export interface Opening {
  *  an Examiner session's tasks, proposals, minutes and turns. */
 export const TERMS = [
   "solve-minutes",
-  "solve-turns",
   "target",
   "solves",
   "level",
@@ -101,7 +98,6 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
         ? { dollars: budget.dollars, reserve: budget.reserve }
         : null,
     limit: isNumber(data.limit) ? data.limit : null,
-    ladder: Array.isArray(data.ladder) ? data.ladder.filter(isNumber) : [],
     sessions: isNumber(data.sessions) ? data.sessions : SESSIONS,
     patience: patienceOf(events),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
@@ -119,8 +115,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
 /**
  * What move 7 reads beside a log: the campaign's plan from its opening, the dollars left of its
  * total, the size its setting asks a comparison for, and what only the caller knows. A campaign
- * with no opening on record, as every one before 2026-10-09, runs by the defaults: the full limit
- * its first setting named, no shorter budget, and no total.
+ * with no opening on record, as every one before 2026-10-09, runs by the defaults, and no total.
  */
 export function planOf(
   events: readonly LogEvent[],
@@ -138,13 +133,9 @@ export function planOf(
   },
   opening: Opening | null = openingOf(events),
 ): Plan {
-  const first = events.find(({ kind }) => kind === SETTING)?.data;
   const recorded = events.findLast(({ kind }) => kind === SETTING)?.data;
   const named = Array.isArray(recorded?.tasks) ? recorded.tasks.length : recorded?.target;
-  const began = isNumber(first?.modelTurns) ? first.modelTurns : null;
   return {
-    limit: opening === null ? began : opening.limit,
-    ladder: opening?.ladder ?? [],
     sessions: opening?.sessions ?? SESSIONS,
     patience: patienceOf(events),
     unprepared: beside.unprepared,
@@ -152,7 +143,6 @@ export function planOf(
       target: isNumber(named) ? named : (beside.target ?? TARGET),
       level: beside.level,
       trigger: beside.trigger,
-      restarted: [],
     },
     left:
       opening?.budget == null

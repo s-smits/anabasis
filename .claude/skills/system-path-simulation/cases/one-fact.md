@@ -5,12 +5,12 @@ before building anything.
 
 | the fact | the command | it writes |
 | --- | --- | --- |
-| Can this campaign start a round, and what would stop it? | `bun run runs launch --dry-run <the round's flags>` | nothing |
+| Which move follows on this campaign, and what would refuse it? | `bun tools/d2/harness-builder.ts --name <name> --dry-run` | nothing |
 | Which sets does a log hold? | the dry run's first line, or `bun run runs replay <name>` | nothing |
 | Is a run alive, and what did it last do? | `bun run runs pulse --once <name>` | the pulse's own state file |
-| Is there supply for a comparison, and what can it show? | `bun run runs launch --dry-run <the comparison's flags>` | nothing |
+| Is there supply for a comparison, and what can it show? | `bun run runs view <name>`: its set-up line, and the admission's notes when the move is made | nothing |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line | nothing |
-| Under what did two rounds run, and do they compare? | `bun run runs compare <name> ...` | nothing |
+| Under what did a campaign's comparisons run? | `bun run runs view <name>` | nothing |
 | Does the checker stand on its controls? | `bun tools/c/accept.ts <pack flags> --name <campaign>` | its reading, as `checker.read` |
 | What would a solver of this task be shown? | `bun tools/m0/live-solve.ts <pack flags> --task <id>`, without `--live` | nothing |
 | What does the host still hold of a run? | `bun run runs stop <name>` without `--yes`, which names its process and the roots it left; `mount \| grep ana-built-bash` for every run's | nothing |
@@ -35,7 +35,7 @@ What the log holds whole, and so answers without a run:
 - a session-written task entire, in its `task.proposed`.
 
 What it does not hold: the prompts. They are rendered from source, so a question about what a model
-was shown is answered by the tree that ran, at the commit its launch receipt names. For a solver,
+was shown is answered by the tree that ran, at the commit its receipt names. For a solver,
 `live-solve.ts` without `--live` builds the condition and prints what the solver would read, with no
 model called.
 

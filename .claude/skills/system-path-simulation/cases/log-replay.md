@@ -27,7 +27,7 @@ When a reader's words change, run the old tree and the new over the same logs an
 print. The other readers take a name each and write nothing:
 
 ```sh
-bun run runs compare <name>
+bun run runs view <name>
 bun tools/wri/wri.ts read --log <log>
 bun run runs pulse --once <name>
 ```

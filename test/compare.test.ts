@@ -4,16 +4,12 @@ import { describe, expect, it } from "bun:test";
 import {
   decidedByObjective,
   draw,
-  MEASURED,
   objectiveRuleIn,
   pairings,
   pairsOf,
   scored,
   signP,
-  spread,
   tally,
-  UNITS,
-  within,
 } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, fieldsApart, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -29,15 +25,6 @@ const pairs = (wins: number, losses: number, ties: number) => [
   ...Array.from({ length: losses }, (_, i) => ({ task: `l${String(i)}`, old: [P, P, P], fresh: [P, F, P] })),
   ...Array.from({ length: ties }, (_, i) => ({ task: `t${String(i)}`, old: [P, F, P], fresh: [F, P, P] })),
 ];
-/** What a solve used, where a case names only some of it. */
-const used = (turns: number | null, cpu: number | null = null, seconds: number | null = null) => ({
-  turns,
-  prompts: null,
-  cpu,
-  seconds,
-  billed: null,
-});
-
 describe("the sign test", () => {
   it("passes the plan's smallest wins at 0.10 and nothing one win short of them", () => {
     const smallest = [
@@ -155,82 +142,6 @@ describe("a task's pairings", () => {
   });
 });
 
-describe("the same solves at a shorter budget", () => {
-  const timed = [
-    {
-      task: "a",
-      old: [P, P],
-      fresh: [P, P],
-      used: { old: [used(20, 900), used(22, 400)], fresh: [used(8, 300), used(10, 350)] },
-    },
-    { task: "b", old: [P, F], fresh: [P, F], used: { old: [used(6), used(24)], fresh: [used(7), used(24)] } },
-  ];
-
-  it("counts a solve past the budget as no answer, valid or not, in every unit the budget names", () => {
-    // At the full limit both tasks tie. At twelve turns the reference harness's answers to `a`
-    // came too late and the new harness's did not.
-    expect(tally(timed)).toEqual({ wins: 0, losses: 0, ties: 2 });
-    const [a, b] = within(timed, { turns: 12 });
-    expect(a).toMatchObject({ old: [F, F], fresh: [P, P] });
-    expect(b).toMatchObject({ old: [P, F], fresh: [P, F] });
-    expect(tally(within(timed, { turns: 12 }))).toEqual({ wins: 1, losses: 0, ties: 1 });
-    // A budget in both units cuts on either, and a unit the log does not hold for a solve cuts nothing.
-    const clocked = [
-      {
-        task: "t",
-        old: [P, P],
-        fresh: [P, P],
-        used: {
-          old: [used(40, null, 900), used(9, null, 2400)],
-          fresh: [used(30, null, 600), used(8, null, 700)],
-        },
-      },
-    ];
-    expect(within(clocked, { turns: 35, seconds: 1800 })[0]).toMatchObject({ old: [F, F], fresh: [P, P] });
-    expect(within(clocked, { seconds: 650 })[0]).toMatchObject({ old: [F, F], fresh: [P, F] });
-    expect(within(timed, { seconds: 1 })[0]).toMatchObject({ old: [P, P], fresh: [P, P] });
-    expect(within([{ task: "c", old: [P], fresh: [P] }], { turns: 1 })[0]).toMatchObject({ old: [P] });
-  });
-
-  // Until 2026-10-09 a budget could name the CPU seconds of a solve's commands, and left out every
-  // task with a valid solve whose CPU a cut command hid, counting them as `unread`.
-  it("reads every task at every budget, whatever a cut command left unmeasured", () => {
-    // One command of a solve was cut, so its 100 s is what its other commands used and no more.
-    const cut = (cpu: number) => ({ ...used(10, cpu), unmeasured: 1 });
-    const hidden = [
-      {
-        task: "known",
-        old: [P, P],
-        fresh: [P, P],
-        used: { old: [used(10, 50), used(14, 400)], fresh: [used(10, 60), used(10, 70)] },
-      },
-      {
-        task: "hidden",
-        old: [P, P],
-        fresh: [P, P],
-        used: { old: [used(10, 50), cut(100)], fresh: [used(10, 60), used(10, 70)] },
-      },
-    ];
-    expect(within(hidden, { turns: 12 }).map(({ task, old }) => [task, old])).toEqual([
-      ["known", [P, F]],
-      ["hidden", [P, P]],
-    ]);
-    // The CPU a solve used is a reported figure and no unit: nothing is cut on it.
-    expect(UNITS).toEqual(["turns", "seconds"]);
-    expect(MEASURED).toEqual(["turns", "cpu", "seconds"]);
-    expect(within(hidden, {})).toEqual(hidden);
-  });
-
-  it("says how far the use of a unit moved between repeated solves of one harness on one task", () => {
-    // Turns: 22/20, 10/8, 24/6 and 24/7. CPU seconds: 900/400 and 350/300, on task `a` alone.
-    const moved = spread(timed);
-    expect(moved.turns).toEqual({ tasks: 4, median: (1.25 + 24 / 7) / 2, most: 4 });
-    expect(moved.cpu).toEqual({ tasks: 2, median: (350 / 300 + 2.25) / 2, most: 2.25 });
-    expect(moved.seconds).toBeNull();
-    expect(spread([{ task: "c", old: [P], fresh: [P] }]).turns).toBeNull();
-  });
-});
-
 describe("a draw", () => {
   const pool = ["v1", "v2", "v3", "v4", "v5", "v6"];
 
@@ -296,9 +207,10 @@ describe("the pairs a comparison reads from the log", () => {
     expect(fieldsApart(base, { ...base, limits: { ...base.limits, turns: 80 } })).toEqual(["limits"]);
   });
 
-  it("counts every pass and fail of a held-out task under either harness, with what each used", () => {
+  it("counts every pass and fail of a held-out task under either harness, with what each cost", () => {
     const log = [
       ...held,
+      // An end of 9 October, with the figures a solve reported then; what a pair keeps of it is the cost.
       ...solve(base, "pass", {
         turns: 20,
         prompts: 2,
@@ -316,7 +228,7 @@ describe("the pairs a comparison reads from the log", () => {
       // A third harness's solve of the task is no side of this comparison.
       ...solve({ ...base, harness: "starter", solverTools: "starter" }, "fail"),
     ];
-    const none = { turns: null, prompts: null, cpu: null, seconds: null, billed: null };
+    const none = { billed: null };
     const counted = pairsOf(log, ["v1", "v0"], sides);
     // Each counted solve is named: the non-result and the stronger side's solve, s-2 and s-4, are
     // not among them, and neither is the starter's.
@@ -334,13 +246,9 @@ describe("the pairs a comparison reads from the log", () => {
           old: [P, F],
           fresh: [P, P],
           solves: { old: ["s-1", "s-5"], fresh: ["s-3", "s-6"] },
-          used: {
-            old: [
-              { turns: 20, prompts: 2, cpu: 90, seconds: 600, billed: 6.5 },
-              { ...none, seconds: 900 },
-            ],
-            fresh: [{ ...none, turns: 9, seconds: 300 }, none],
-          },
+          // What each solve cost; its turns, prompts, CPU and seconds stay in the log's events
+          // for the investigation and are no part of a pair since 2026-10-11.
+          used: { old: [{ billed: 6.5 }, none], fresh: [none, none] },
         },
         other,
       ],

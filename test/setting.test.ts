@@ -12,9 +12,7 @@ import {
   firstRecord,
   keepSetting,
   type Recorded,
-  rebudget,
   recordedSetting,
-  restarts,
   SETTING_DEFAULTS,
   SETTING_OPTIONS,
   settingAsked,
@@ -26,7 +24,6 @@ import {
 const UNNAMED: Recorded = {
   solver: null,
   minutes: 120,
-  turns: 24,
   modelTurns: null,
   tasks: null,
   target: 12,
@@ -35,7 +32,6 @@ const UNNAMED: Recorded = {
 const SHORT: Recorded = {
   solver: { model: "anthropic/claude-sonnet-5-5", effort: "low" },
   minutes: 8,
-  turns: 24,
   modelTurns: 40,
   tasks: ["t-1", "t-2", "t-3"],
   target: 12,
@@ -50,9 +46,12 @@ describe("what the flags of a setting name", () => {
     expect(settingNamed({ "solver-effort": "low" }).solver).toBeUndefined();
   });
 
-  it("is another wall, other turns, a number of the model's own turns, or another solver", () => {
-    const longer = settingNamed({ "solve-minutes": "240", "solve-turns": "48" }).limits;
-    expect(longer).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
+  it("is another wall, a number of the model's own turns, or another solver", () => {
+    const longer = settingNamed({ "solve-minutes": "240" }).limits;
+    // The prompts a solve is given are every solve's (`LIMITS.turns`): until 2026-10-11
+    // `--solve-turns` named them, and no command takes the flag since.
+    expect(longer).toEqual({ ...LIMITS, wallSeconds: 14_400 });
+    expect(SETTING_OPTIONS).not.toHaveProperty("solve-turns");
     // The model's own turns are limited only where a command names a number: without the flag the
     // limits hold no such key, and the setting is the one it was before the flag existed.
     expect(longer).not.toHaveProperty("modelTurns");
@@ -76,15 +75,10 @@ describe("what the flags of a setting name", () => {
     expect(walled("1")).toEqual([15, 30]);
   });
 
-  it("refuses a wall, a turn cap, a number of model turns or a target that is no whole number of at least one", () => {
-    for (const [minutes, turns] of [
-      ["0", "24"],
-      ["1.5", "24"],
-      ["120", "0"],
-      ["two hours", "24"],
-    ] as const) {
-      expect(() => settingNamed({ "solve-minutes": minutes, "solve-turns": turns })).toThrow(
-        `--solve-minutes ${minutes} --solve-turns ${turns}: a solve's wall and its turns are whole numbers of at least one`,
+  it("refuses a wall, a number of model turns or a target that is no whole number of at least one", () => {
+    for (const minutes of ["0", "1.5", "two hours"]) {
+      expect(() => settingNamed({ "solve-minutes": minutes })).toThrow(
+        `--solve-minutes ${minutes}: a solve's wall is a whole number of minutes, at least one`,
       );
     }
     for (const turns of ["0", "2.5", "many"]) {
@@ -101,14 +95,7 @@ describe("what the flags of a setting name", () => {
   });
 
   it("is read by every command through the one owner's options", () => {
-    for (const flag of [
-      "solver",
-      "solver-effort",
-      "solve-minutes",
-      "solve-turns",
-      "solve-model-turns",
-      "new-setting",
-    ] as const) {
+    for (const flag of ["solver", "solver-effort", "solve-minutes", "solve-model-turns"] as const) {
       expect(ROUND_OPTIONS[flag]).toBe(SETTING_OPTIONS[flag]);
     }
   });
@@ -167,10 +154,10 @@ describe("a campaign's setting, recorded once", () => {
   // Until 2026-10-09 the same flags were typed on every command, and one that differed was a note.
   it("refuses a flag that names another, and says each with what the campaign's is", () => {
     expect(() => settingAsked({ "solve-minutes": "5" }, SHORT)).toThrow(
-      "--solve-minutes 5 names another setting than the campaign's, which was recorded as --solve-minutes 8. A campaign's setting is recorded once and every command runs under it: drop the flag, or pass --new-setting to record what this command names as the campaign's from here on, which opens a new condition that no tally on record speaks for",
+      "--solve-minutes 5 names another setting than the campaign's, which was recorded as --solve-minutes 8. A campaign's setting is recorded once and every command runs under it: drop the flag. Another setting is another campaign",
     );
-    expect(() => settingAsked({ "solve-model-turns": "20", "solve-turns": "48" }, SHORT)).toThrow(
-      "--solve-turns 48, --solve-model-turns 20 names another setting than the campaign's, which was recorded as --solve-turns 24, --solve-model-turns 40.",
+    expect(() => settingAsked({ "solve-model-turns": "20" }, SHORT)).toThrow(
+      "--solve-model-turns 20 names another setting than the campaign's, which was recorded as --solve-model-turns 40.",
     );
     expect(() => settingAsked({ solver: "claude/claude-opus-5-5" }, SHORT)).toThrow(
       // The effort it names none of is the campaign's, as every flag it leaves out is.
@@ -188,17 +175,10 @@ describe("a campaign's setting, recorded once", () => {
     );
   });
 
-  it("takes another only on the operator's word, and then only what the command names", () => {
-    const anew = settingAsked(
-      { "new-setting": true, "solve-minutes": "5", "solve-model-turns": "20" },
-      SHORT,
-    );
-    // Nothing is carried over from the record: the solver and the scored set are the defaults again.
-    expect(anew.record).toEqual({ ...UNNAMED, minutes: 5, modelTurns: 20 });
-    expect(anew.named.limits).toMatchObject({ wallSeconds: 300, modelTurns: 20 });
-    expect(anew.tasks).toBeUndefined();
-    // The word given over the setting as it stands records nothing.
-    expect(settingAsked({ "new-setting": true }, UNNAMED).record).toBeNull();
+  it("takes no other setting: --new-setting is no flag since 2026-10-11", () => {
+    expect(SETTING_OPTIONS).not.toHaveProperty("new-setting");
+    // A command run under the record records nothing more, whatever it names of the same.
+    expect(settingAsked({ "solve-minutes": "8" }, SHORT).record).toBeNull();
   });
 
   it("is kept in the log as the command begins, and read back as the last one kept", () => {
@@ -211,7 +191,9 @@ describe("a campaign's setting, recorded once", () => {
     // A command that runs under the record keeps nothing more.
     keepSetting(log, settingAsked({}, recordedSetting(read(log))));
     expect(read(log)).toHaveLength(1);
-    keepSetting(log, settingAsked({ "new-setting": true, "solve-minutes": "8" }, UNNAMED));
+    // A second record on a log, as a command of before 2026-10-11 wrote on `--new-setting`, is the
+    // one read back: the last stands, and no command writes one since.
+    keepSetting(log, settingAsked({ "solve-minutes": "8" }, null));
     expect(recordedSetting(read(log))).toEqual({ ...UNNAMED, minutes: 8 });
     expect(read(log).map(({ kind }) => kind)).toEqual(["campaign.setting", "campaign.setting"]);
     // A record that does not read whole is none: a command then says what it runs under afresh.
@@ -221,56 +203,13 @@ describe("a campaign's setting, recorded once", () => {
       data: { minutes: "8" },
     };
     expect(recordedSetting([torn])).toBeNull();
-  });
-});
-
-// The budget follows the reference harness (`docs/plan.md`, "The process"): move 7 sets it again,
-// which is a new setting, and every command from there on runs under it with no flag.
-describe("a budget set again", () => {
-  it("records the setting once more with the model's turns changed, and everything else as it stood", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-rebudget-"));
-    const log = join(root, "log.jsonl");
-    expect(() => rebudget(log, 10)).toThrow("records no setting yet");
-    keepSetting(log, { record: SHORT });
-    expect(rebudget(log, 10)).toEqual({ ...SHORT, modelTurns: 10 });
-    expect(recordedSetting(read(log))).toEqual({ ...SHORT, modelTurns: 10 });
-    // A command that names nothing runs under it, and the old budget named again is another setting.
-    expect(settingAsked({}, recordedSetting(read(log))).named.limits.modelTurns).toBe(10);
-    expect(() => settingAsked({ "solve-model-turns": "40" }, recordedSetting(read(log)))).toThrow(
-      "--solve-model-turns 40 names another setting than the campaign's, which was recorded as --solve-model-turns 10",
+    // A record of 10 October holds the prompts a solve was given; one that held another count than
+    // every solve is given now ran under another setting, and is refused rather than read as this one.
+    const counted = (turns: number): LogEvent => ({ ...torn, data: { ...UNNAMED, turns } });
+    expect(recordedSetting([counted(24)])).toEqual(UNNAMED);
+    expect(() => recordedSetting([counted(60)])).toThrow(
+      "the campaign's setting was recorded with 60 prompts a solve, and this source gives every solve 24: no tally on record speaks for it",
     );
-    // Back at no limit of the model's turns: the campaign's full limit, where that is unlimited.
-    expect(rebudget(log, null).modelTurns).toBeNull();
-    expect(read(log).filter(({ kind }) => kind === "campaign.setting")).toHaveLength(3);
-    rmSync(root, { recursive: true, force: true });
-  });
-});
-
-describe("a setting that is not the one the log's last solves ran under", () => {
-  const ran = { model: "p/m", effort: "high", limits: LIMITS };
-  const under = (limits: typeof LIMITS) => ({ solver: undefined, limits });
-  const told = "are another setting's";
-
-  it("says nothing before any solve, or under the same limits and solver", () => {
-    expect(restarts(under(LIMITS), null)).toEqual([]);
-    expect(restarts(under(LIMITS), ran)).toEqual([]);
-    expect(restarts({ solver: { model: "p/m", effort: "high" }, limits: LIMITS }, ran)).toEqual([]);
-  });
-
-  it("says that what the log measured so far was another setting's", () => {
-    expect(restarts(under({ ...LIMITS, wallSeconds: 4 * 3600 }), ran)).toEqual([
-      "a solve here is held to 240 minutes and 24 turns, and the log's last test-side solves ran under 120 minutes and 24 turns: the tallies, the tie share and the cost of a solve on record are another setting's, and say little of this comparison (tools/d2/setting.ts)",
-    ]);
-    expect(restarts(under({ ...LIMITS, turns: 48 }), ran).join("\n")).toContain(
-      "held to 120 minutes and 48 turns",
-    );
-    expect(restarts(under({ ...LIMITS, modelTurns: 40 }), ran).join("\n")).toContain("with 40 model turns");
-    const other = restarts({ solver: { model: "p/other", effort: "high" }, limits: LIMITS }, ran);
-    expect(other).toHaveLength(1);
-    expect(other[0]).toContain(
-      "solves here are p/other at high, and the log's last test-side solves were p/m at high: the tallies",
-    );
-    expect(other[0]).toContain(told);
   });
 });
 
@@ -290,7 +229,7 @@ describe("the first record of a campaign that already holds solves", () => {
     const forgot = settingAsked({}, null);
     expect(forgot.first).toBe(true);
     expect(firstRecord(forgot, { ...forgot.named, solver }, ran)).toBe(
-      "the campaign's log records no setting yet, and this command names another than its last test-side solves ran under, which was --solver anthropic/claude-sonnet-5-5 --solver-effort high --solve-minutes 30 --solve-turns 24 --solve-model-turns 15. Name that setting, which is then recorded as the campaign's, or pass --new-setting to record what this command names, which opens a new condition that no tally on record speaks for (tools/d2/setting.ts)",
+      "the campaign's log records no setting yet, and this command names another than its last test-side solves ran under, which was --solver anthropic/claude-sonnet-5-5 --solver-effort high --solve-minutes 30 --solve-model-turns 15. Name that setting, which is then recorded as the campaign's; another setting is another campaign (tools/d2/setting.ts)",
     );
     // Another solver under the same limits is another setting as much.
     const named = settingAsked(same, null);
@@ -299,21 +238,21 @@ describe("the first record of a campaign that already holds solves", () => {
     ).toContain("names another than its last test-side solves ran under");
     // A wall with no model turns on record is named without the flag.
     const unlimited = { ...ran, limits: { ...LIMITS, wallSeconds: 480 } };
-    expect(firstRecord(forgot, forgot.named, unlimited)).toContain(
-      "--solve-minutes 8 --solve-turns 24. Name that setting",
+    expect(firstRecord(forgot, forgot.named, unlimited)).toContain("--solve-minutes 8. Name that setting");
+    // The model's turns alone make another setting.
+    const turned = settingAsked({ "solve-minutes": "30", "solve-model-turns": "20" }, null);
+    expect(firstRecord(turned, turned.named, ran)).toContain(
+      "names another than its last test-side solves ran under",
     );
   });
 
-  it("is free where the command names that setting, where nothing was solved, and on the operator's word", () => {
+  it("is free where the command names that setting, and where nothing was solved", () => {
     const named = settingAsked(same, null);
     expect(firstRecord(named, { ...named.named, solver }, ran)).toBeUndefined();
     // A launch knows the solver only where a flag names it, and holds the limits alone otherwise.
     expect(firstRecord(named, named.named, ran)).toBeUndefined();
     const forgot = settingAsked({}, null);
     expect(firstRecord(forgot, forgot.named, null)).toBeUndefined();
-    const anew = settingAsked({ "new-setting": true }, null);
-    expect(anew.first).toBe(false);
-    expect(firstRecord(anew, { ...anew.named, solver }, ran)).toBeUndefined();
     // Once a record stands it is the record that holds a command, and this question is not asked.
     const recorded = settingAsked({}, SHORT);
     expect(recorded.first).toBe(false);

@@ -30,7 +30,7 @@ import { openHarness } from "../src/solve/harness.ts";
 import { starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
-import { budgetsNamed, capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
+import { capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -401,7 +401,7 @@ describe("a campaign", () => {
     expect(read(campaign.log).filter(({ kind }) => kind === "build.started")).toEqual([]);
   });
 
-  it("starts no paid comparison without a dollar cap, and reads its budgets before anything starts", async () => {
+  it("starts no paid comparison without a dollar cap, and prints each harness by itself in words", async () => {
     const flags = Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]);
     await expect(roundCommand([...flags, "--session", "z-8", "--builder", "faux/none"])).rejects.toThrow(
       "name --cap, the billed dollars this comparison may hold",
@@ -430,49 +430,23 @@ describe("a campaign", () => {
     // A simulation's seats are scripts, which are paid nothing, and may name none.
     expect(capNamed({ reserve: "10" }, "scripted")).toBeUndefined();
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
-    // A budget names either or both of its two units, and each flag is one budget to read the
-    // comparison at.
-    expect(budgetsNamed(["turns=40", "turns=20,seconds=900", "seconds=1800"])).toEqual([
-      { turns: 40 },
-      { turns: 20, seconds: 900 },
-      { seconds: 1800 },
-    ]);
-    expect(budgetsNamed()).toEqual([]);
     // What a report says of each harness by itself is printed in words: the tasks by how many of
-    // their solves were valid, at the full limit and at each budget. For the first round the
-    // reference harness is the starter, and these lines are what its gate reads.
-    const tested = { wins: 0, losses: 0, ties: 0, p: 1 };
-    expect(
-      validLines({
-        valid: { old: [2, 1, 5], fresh: [0, 1, 7] },
-        budgets: [
-          { seconds: 1800, ...tested, valid: { old: [4, 2, 2], fresh: [1, 3, 4] } },
-          { turns: 40, seconds: 600, ...tested, valid: { old: [6, 2, 0], fresh: [3, 3, 2] } },
-        ],
-        objective: null,
-      }),
-    ).toEqual([
+    // their solves were valid. For the first round the reference harness is the starter, and
+    // these lines are what its gate reads. Until 2026-10-11 the same solves were also read at
+    // each shorter `--budget`, and a report held a row for each; the flag is refused since.
+    expect(validLines({ valid: { old: [2, 1, 5], fresh: [0, 1, 7] }, objective: null })).toEqual([
       "each harness by itself, as how many tasks had 0, 1, 2 valid answers in 2 solves (a count of tasks a column, not a share):",
       "  at its limits: reference 2/1/5, new 0/1/7",
-      "  at seconds=1800: reference 4/2/2, new 1/3/4",
-      "  at turns=40,seconds=600: reference 6/2/0, new 3/3/2",
     ]);
-    expect(validLines({ valid: null, budgets: [], objective: null })).toEqual([]);
+    expect(validLines({ valid: null, objective: null })).toEqual([]);
+    expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
     expect(
       validLines({
         valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
-        budgets: [],
         objective: { direction: "lower", margin: 0.01, decided: 1 },
       }).at(-1),
     ).toBe("the objective (lower is better, margin 0.01) decided 1 task that validity alone would have tied");
-    // The prompts a solver was given and the CPU seconds of its commands were units until
-    // 2026-10-09: the first read what the full limit read, and the second left tasks unread.
-    for (const flag of ["turns", "turns=0", "tokens=5", "turns=4=5", "", "prompts=8", "turns=40,cpu=600"]) {
-      expect(() => budgetsNamed([flag])).toThrow(
-        `--budget ${flag}: a budget names turns or seconds, each with a number above nothing`,
-      );
-    }
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });
@@ -596,7 +570,7 @@ describe("a campaign", () => {
     // limit, and a harness no comparison measured is refused the word alone.
     const refused = promote("--harness", digest, "--yes");
     expect(refused).toContain(
-      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not read a step and its repeat against the reference harness under the campaign's setting`,
+      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not read a step and its repeat against the reference harness`,
     );
     expect(refused).toContain("not promoted: a step is promoted once it was read again");
     expect(promotions()).toEqual([]);
@@ -642,9 +616,9 @@ describe("a campaign", () => {
     expect(unnamed.setting(unnamed.test)).toBe(plain.setting(plain.test));
     const longer = await openCampaign({
       ...ARGS,
-      ...settingNamed({ "solve-minutes": "240", "solve-turns": "48" }),
+      ...settingNamed({ "solve-minutes": "240" }),
     });
-    expect(longer.limits).toEqual({ ...LIMITS, wallSeconds: 14_400, turns: 48 });
+    expect(longer.limits).toEqual({ ...LIMITS, wallSeconds: 14_400 });
     expect(longer.setting(longer.test)).not.toBe(plain.setting(plain.test));
     const turned = await openCampaign({ ...ARGS, ...settingNamed({ "solve-model-turns": "40" }) });
     expect(turned.setting(turned.test)).not.toBe(plain.setting(plain.test));
@@ -662,7 +636,7 @@ describe("a campaign", () => {
       "z-4",
     ];
     // A wall the owner refuses is refused by each command before a campaign is opened.
-    const refused = "--solve-minutes 0 --solve-turns 24: a solve's wall and its turns are whole numbers";
+    const refused = "--solve-minutes 0: a solve's wall is a whole number of minutes";
     await expect(roundCommand([...flags, "--solve-minutes", "0"])).rejects.toThrow(refused);
     const checkpoint = (...more: string[]) =>
       Bun.spawnSync({
@@ -692,12 +666,12 @@ describe("a campaign", () => {
       "--solve-minutes 5 names another setting than the campaign's, which was recorded as --solve-minutes 8";
     await expect(roundCommand([...flags, "--solve-minutes", "5"], seats)).rejects.toThrow(other);
     expect(checkpoint("--solve-minutes", "5").stderr.toString()).toContain(other);
-    // On the operator's word it is the campaign's from here on, once the command begins.
+    // No word changes it: `--new-setting` is no flag since 2026-10-11, and another setting is
+    // another campaign.
     await expect(roundCommand([...flags, "--solve-minutes", "5", "--new-setting"], seats)).rejects.toThrow(
-      "name --builder",
+      "--new-setting",
     );
-    expect(seen).toEqual([480, 40, 300, 0]);
-    // Nothing began, so nothing was recorded: the campaign's setting is still the eight minutes.
+    expect(seen).toEqual([480, 40]);
     const kept = read(campaign.log).filter(({ kind }) => kind === "campaign.setting");
     expect(kept.map(({ data }) => data.minutes)).toEqual([8]);
     expect(read(campaign.log).some(({ data }) => data.session === "z-4")).toBe(false);
@@ -771,7 +745,7 @@ describe("a campaign", () => {
       SERVED,
     ];
     const refusal = "the campaign's log records no setting yet, and this command names another";
-    const was = `which was --solver ${priceKey(model)} --solver-effort ${effort} --solve-minutes 8 --solve-turns 24 --solve-model-turns 15`;
+    const was = `which was --solver ${priceKey(model)} --solver-effort ${effort} --solve-minutes 8 --solve-model-turns 15`;
     /** What a command refused with, or nothing where it ran. */
     const refused = (ran: Promise<unknown>) => ran.then(() => "", errorMessage);
     // A round and a session by itself, each started by hand with the setting left out.
@@ -784,10 +758,6 @@ describe("a campaign", () => {
     const rest = await refused(roundCommand([...named, "--session", "z-1"]));
     expect(rest).toContain("the log holds no held-out task to score");
     expect(rest).not.toContain(refusal);
-    // So it is on the operator's word that the setting is new.
-    expect(await refused(roundCommand([...flags, "--session", "z-1", "--new-setting"]))).not.toContain(
-      refusal,
-    );
     expect(read(campaign.log).some(({ kind }) => kind === "campaign.setting")).toBe(false);
   });
 });

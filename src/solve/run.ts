@@ -90,9 +90,11 @@ export interface SolveRequest {
   readonly models: (home: string) => Models;
   readonly verify: Verifier;
   readonly log: string;
-  /** The repository, closed to every command, and its other worktrees, closed with it. */
+  /** The repository, closed to every command, and its other worktrees and the stored pack, closed
+   *  with it (`Walled`). */
   readonly repoRoot: string;
   readonly otherTrees?: readonly string[] | undefined;
+  readonly packRoots?: readonly string[] | undefined;
   /** The comparison the solve is made for, by its id, which every attempt's start then names. A
    *  comparison counts the solves that name it and no other (`src/kernel/compare.ts`); a practice
    *  solve names none. */
@@ -121,8 +123,6 @@ export interface Played {
   readonly broken: string | null;
   /** The harness's digest, null when it did not open. */
   readonly harness: string | null;
-  /** The CPU time of the solve's commands, the solver's and the harness's (`command.ts`). */
-  readonly cpu: { readonly seconds: number; readonly unmeasured: number };
   readonly turns: readonly AssistantMessage[];
   /** The prompts the solver was given: the opening one and each nudge. It is what the turn cap
    *  counts (`Limits.turns`), where `turns` holds the model's own turns, of which one prompt may
@@ -141,7 +141,7 @@ export interface Played {
 const RERUNS = 3;
 /** The text of a result or a turn the trace keeps: more than pi's own tools return of an output
  *  (50 KB), so the trace holds what the solver read. At 4 KB it held the head of a long result, and
- *  whoever read a fail afterwards, a person or the Diagnoser, read less than the solver had. v1 cut
+ *  whoever read a fail afterwards read less than the solver had. v1 cut
  *  its traces the same way and its own investigation named that as a loss. */
 const TRACE_TEXT_BYTES = 64 * 1024;
 const backoff = (rerun: number) => Bun.sleep(30_000 * 2 ** (rerun - 1));
@@ -189,7 +189,6 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     reportedCost: isNumber(reportedCost) ? reportedCost : null,
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
     harness: played.harness,
-    cpu: played.cpu,
     homeBytes: played.homeBytes,
     seconds: (performance.now() - started) / 1000,
     load: loadavg(),
@@ -226,20 +225,24 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
   let crash: string | null = null;
   let broken: string | null = null;
   let digest: string | null = null;
-  const cpu = { seconds: 0, unmeasured: 0 };
   let prompts = 0;
   try {
     release = await mountDiskCap({ root: dirs.root, bytes: limits.diskBytes });
-    const base = walledBase(
+    const base = await walledBase(
       dirs,
-      { repoRoot: request.repoRoot, otherTrees: request.otherTrees, diskBytes: limits.diskBytes },
+      {
+        repoRoot: request.repoRoot,
+        otherTrees: request.otherTrees,
+        packRoots: request.packRoots,
+        diskBytes: limits.diskBytes,
+      },
       "a solve",
     );
     const resources = seedHome(dirs.home, request.task, request.resources, request.contract.answerFormat);
     const harness = await openHarness(request.harness).catch(brokenHarness);
     digest = harness.digest;
     const clock: SolveClock = { started: null, seconds: limits.wallSeconds };
-    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, cpu, clock };
+    const commandWall: CommandWall = { base, dirs, toolTree: harness.toolTree, limits, clock };
     const defined = await solverTools(request, harness, commandWall, desk).catch(brokenHarness);
     const prompt = systemPrompt({
       tools: defined,
@@ -301,7 +304,6 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     crash,
     broken,
     harness: digest,
-    cpu,
     turns,
     prompts,
     summaries,

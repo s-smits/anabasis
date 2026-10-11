@@ -4,16 +4,14 @@
  *
  *   bun tools/d2/round.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --session b-1 \
- *     --builder claude/claude-opus-5-5 --tasks <eight task ids> --cap 625 \
- *     --budget turns=40 --budget turns=20
+ *     --builder claude/claude-opus-5-5 --tasks <eight task ids> --cap 625
  *
  * That is the plan's first round and its gate G0 (`docs/plan.md`, Phase 0). The Builder forks the
  * Starter Built Harness and builds on it, and the harness it leaves is compared with the starter
  * on the eight tasks named, two solves a harness, under today's limits and a dollar cap. The same
- * comparison shows how the starter does by itself: the report holds, for each harness at the full
- * limit and at each `--budget`, on how many tasks it was valid in every solve, in some and in
- * none (`valid`), which the command also prints in words. The plan continues at the budget where
- * the starter is valid on about half its solves. With no `--reviewer`, every rejection waits for a
+ * comparison shows how the starter does by itself: the report holds, for each harness, on how
+ * many tasks it was valid in every solve, in some and in none (`valid`), which the command also
+ * prints in words. With no `--reviewer`, every rejection waits for a
  * person's label (`tools/d2/settle.ts`), which is how the first round is read before there is a
  * Judge.
  *
@@ -41,25 +39,21 @@
  * session left, and the starter while none has. After a comparison without a step the Builder
  * continues from its latest harness, and the operator may send it back to an earlier one.
  *
- * `--reviewer` gives the Builder the Referee and the Diagnoser on its practice fails, and the
+ * `--reviewer` gives the Builder the Referee on its practice fails, and the
  * comparison the Referee on every rejected answer. A rejection counts only once it is ruled a true
  * fail. One ruled a check defect or unclear, and with no reviewer every one, sets its task aside
- * until a person has labelled it (`tools/d2/settle.ts`). `--budget` reads the same solves at a
- * shorter budget as well, as `turns=40,seconds=1800` with either or both of its two units, and may
- * be given more than once; the budgets are fixed with the comparison's other terms before its
- * first solve. The units are the model's `turns` and the `seconds` of the whole attempt
- * (`src/kernel/compare.ts`), which are the two a solver can be told and held to. The CPU seconds
- * of a solve's commands are reported and are no unit: a cut command leaves them unknown.
+ * until a person has labelled it (`tools/d2/settle.ts`). The comparison is read at the one budget
+ * its solves were told; until 2026-10-11 `--budget turns=40` read the same solves at shorter
+ * budgets as well, which read a solver told the longer one (`docs/simplify.md`, A2).
  *
  * Who solves, what a solve is held to and which tasks are scored are the campaign's setting, which
  * its log records once (`setting.ts`). A round that names none of it runs under the record, and
- * one whose `--solver`, `--solve-minutes`, `--solve-turns`, `--solve-model-turns`, `--tasks` or
- * `--target` name another is refused, unless `--new-setting` says the campaign's setting changes
- * here. The first comparison of a campaign records what it names, with the stored cycle's own
+ * one whose `--solver`, `--solve-minutes`, `--solve-model-turns`, `--tasks` or
+ * `--target` name another is refused. The first comparison of a campaign records what it names, with the stored cycle's own
  * solver and the sweep's limits for the rest. `--minutes` and `--turns` are the Builder session's
  * own.
  *
- * Before its first event a round asks whether its comparison may start, as a launch of it does
+ * Before its first event a round asks whether its comparison may start
  * (`src/builder/admission.ts`): on a checker nobody has read, with too few tasks left to untie, or
  * after the plan's stop rule has stopped the campaign, it starts nothing. `--past-stop "<why>"`
  * goes on past the stop rule, and the reason is logged.
@@ -74,10 +68,10 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison, type Wanted } from "#src/builder/admission.ts";
-import { predicted, type Report, type Valid } from "#src/builder/comparison.ts";
+import { predicted, type Report } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type Budget, type ObjectiveRule, TRIGGER, UNITS } from "#src/kernel/compare.ts";
+import { type ObjectiveRule, TRIGGER } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
@@ -107,7 +101,6 @@ import {
   firstRecord,
   keepSetting,
   recordedSetting,
-  restarts,
   SETTING_OPTIONS,
   settingAsked,
 } from "./setting.ts";
@@ -159,7 +152,6 @@ export const COMPARISON_OPTIONS = {
   // comparison of a check program that declares none.
   margin: { type: "string", default: "0.01" },
   defects: { type: "string", default: "3" },
-  budget: { type: "string", multiple: true },
   cap: { type: "string" },
   reserve: { type: "string", default: "10" },
   predict: { type: "string" },
@@ -192,8 +184,7 @@ export const SESSION_OPTIONS = {
   parent: { type: "string", default: "latest" },
 } as const;
 
-/** A round's flags and their defaults. A launch reads the same ones (`tools/runs/launch.ts`), so
- *  what it says a round can read is said of the round that would start. */
+/** A round's flags and their defaults. */
 export const ROUND_OPTIONS = { ...SESSION_OPTIONS, ...COMPARISON_OPTIONS } as const;
 
 /** What a Builder session reads of its command's flags, each with its default by then. */
@@ -289,12 +280,12 @@ export function sessionNamed(
     log: campaign.log,
     repoRoot: campaign.repo,
     otherTrees: campaign.trees,
+    packRoots: campaign.packRoots,
     practise: (task, dir, digest, kill) => seats.solve(packageOf(task.version), { dir, digest }, kill),
     ...(reviewers === null
       ? {}
       : {
           referee: (solve, task, kill) => reviewers.referee(solve, packageOf(task.version), kill),
-          diagnose: (solve, task, kill) => reviewers.diagnose(solve, packageOf(task.version), kill),
         }),
   };
 }
@@ -341,14 +332,13 @@ export function wantedNamed(
     trigger: Number(values.trigger),
     builds: given.builds,
     cap: given.cap ?? null,
-    restarted: restarts(solving, ran),
     pastStop: predictionNamed(values["past-stop"]),
     unrecorded: firstRecord(given.setting, solving, ran),
   };
 }
 
 /** Who an open campaign's test-side solves are by, as a condition names the model, and what they
- *  are held to: what a log's last solves are set against (`restarts`, `firstRecord`). */
+ *  are held to: what a log's last solves are set against (`firstRecord`). */
 export function solvingAs(campaign: Campaign, { limits }: Pick<AskedSetting, "named">["named"]) {
   const { model, effort } = campaign.test;
   return { solver: { model: priceKey(model), effort }, limits };
@@ -377,26 +367,9 @@ export function predictionLines(events: readonly LogEvent[], id: string, report:
   return said === null ? [] : [`predicted before the first solve: ${said}`, `read: ${report.reading}`];
 }
 
-/** The budgets `--budget` names, each as `turns=40,seconds=1800` with either or both units. */
-export function budgetsNamed(flags: readonly string[] = []): Budget[] {
-  return flags.map((flag): Budget => {
-    const named = flag.split(",").map((part) => {
-      const [unit = "", most, ...more] = part.split("=");
-      return { unit, most: more.length === 0 ? Number(most) : Number.NaN };
-    });
-    if (named.some(({ unit, most }) => !UNITS.some((known) => known === unit) || !(most > 0))) {
-      throw new Error(
-        `--budget ${flag}: a budget names turns or seconds, each with a number above nothing, as turns=40,seconds=1800. The prompts a solver was given and the CPU seconds of its commands are units no longer: the first read what the full limit read, and the second is unknown once a command is cut`,
-      );
-    }
-    const budget: Record<string, number> = Object.fromEntries(named.map(({ unit, most }) => [unit, most]));
-    return budget;
-  });
-}
-
 /**
- * The dollars `--cap` and `--reserve` name, read in one place for every command and for the
- * launcher: each is a plain number above nothing. A cap typed as "$40" is no number, and held
+ * The dollars `--cap` and `--reserve` name, read in one place for every command: each is a plain
+ * number above nothing. A cap typed as "$40" is no number, and held
  * nothing where it was not checked (`capHolds`).
  */
 export function capRead(cap: string, reserve: string): Cap {
@@ -427,29 +400,16 @@ export function capNamed(
 }
 
 /**
- * A report's `valid` in lines: each harness by itself, at the full limit and at each budget, as
- * the tasks by how many of their solves were valid. It is what the plan's first gate reads of the
+ * A report's `valid` in lines: each harness by itself, as the tasks by how many of their solves
+ * were valid. It is what the plan's first gate reads of the
  * starter, which is the reference harness of the first round (`docs/plan.md`, G0). None for a
  * report that compared nothing.
  */
-export function validLines({
-  valid,
-  budgets,
-  objective,
-}: Pick<Report, "valid" | "budgets" | "objective">): string[] {
+export function validLines({ valid, objective }: Pick<Report, "valid" | "objective">): string[] {
   if (valid === null) return [];
-  const row = (at: string, each: Valid) =>
-    `  ${at}: reference ${each.old.join("/")}, new ${each.fresh.join("/")}`;
-  const named = (budget: Budget) =>
-    UNITS.flatMap((unit) => (budget[unit] === undefined ? [] : [`${unit}=${String(budget[unit])}`])).join(
-      ",",
-    );
   return [
     `each harness by itself, as how many tasks had ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves (a count of tasks a column, not a share):`,
-    row("at its limits", valid),
-    ...budgets.flatMap((budget) =>
-      budget.valid === undefined ? [] : [row(`at ${named(budget)}`, budget.valid)],
-    ),
+    `  at its limits: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
     ...(objective === null
       ? []
       : [
@@ -476,7 +436,6 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   if (session === undefined) throw new Error("name --session, the id the round takes in the log");
   // Read before the campaign is opened: a paid round with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
-  const budgets = budgetsNamed(values.budget);
   // The campaign's setting is its log's: what the flags name is held to the record before the
   // campaign is opened under it (`setting.ts`).
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
@@ -501,7 +460,6 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     level: Number(values.level),
     objective: objectiveNamed(campaign, values.margin),
     defects: Number(values.defects),
-    budgets,
     cap,
     prediction: predictionNamed(values.predict),
     concurrency: limits.concurrency,

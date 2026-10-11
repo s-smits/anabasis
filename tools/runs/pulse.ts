@@ -66,13 +66,13 @@ interface Memory {
   readonly logs: Record<string, Seen>;
 }
 
-/** The command a round runs as: what a launch starts and what a running round is known by. */
-export const ROUND = "tools/d2/round.ts";
+/** The command a round runs as: what a running round is known by. */
+const ROUND = "tools/d2/round.ts";
 // An Examiner session's command (`EXAMINE`) is with a round's what writes a campaign's log for
 // hours, each naming it with `--name`: an Examiner session was read as closed while it ran, the
 // first time one did (exam-1, 2026-10-08).
 /** The command a comparison with no Builder session runs as. */
-export const CHECKPOINT = "tools/d2/checkpoint.ts";
+const CHECKPOINT = "tools/d2/checkpoint.ts";
 /** The command a Builder session with no comparison after it runs as. */
 export const SESSION = "tools/d2/session.ts";
 /** The command a whole campaign runs as, which runs each of the above in its own process. */
@@ -101,10 +101,11 @@ const runsAs = (args: readonly string[], tools: readonly string[]) =>
  *  is running" and counted a live session's root as left behind, and both had to be ended by
  *  signalling their process tree by hand (2026-10-10).
  *
- *  A launch is none, and its command line carries the command it launches: on 10 October
- *  `runs launch tools/d2/round.ts --name t-10` into the tree that held t-10's log was refused as
- *  "already being written here" by the one process that matched, the launcher itself, and by two
- *  when run as the package script (`bun run runs launch …`). Both are read as no writer here. */
+ *  A `runs` verb other than a rehearsal is none, whatever its command line carries: on
+ *  10 October `runs launch tools/d2/round.ts --name t-10` into the tree that held t-10's log was
+ *  refused as "already being written here" by the one process that matched, the launcher itself,
+ *  and by two when run as the package script. Both are read as no writer here; the launcher went
+ *  on 11 October (`docs/simplify.md`, D2). */
 const campaigns = (args: readonly string[]) => {
   if (runsAs(args, [CLI])) return args.includes("rehearse");
   // The package script `bun run runs <verb> …`, which holds no log open whatever the verb.

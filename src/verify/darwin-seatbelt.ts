@@ -1,419 +1,58 @@
-import { existsSync, lstatSync, readFileSync, realpathSync } from "../meta/filesystem.ts";
-import { dirname, isAbsolute, join } from "../meta/path.ts";
+/** Darwin's mechanism for the command wall: whether `sandbox-exec` can wall a command here, and
+ *  the wrapper's digest, which a seat's policy hash carries (`solve-sandbox.ts`). Until 11 October
+ *  this file also built the verifier's own deny-default wall and attested its inputs before and
+ *  after each check; a check now runs under the command wall (`docs/simplify.md`, W6). */
+import { realpathSync, statSync } from "../meta/filesystem.ts";
 import type { RuntimePlatform } from "../meta/runtime-values.ts";
-import { sha256, sha256OfFile } from "../meta/digest.ts";
-import { hashJsonBytes } from "../meta/json-runtime.ts";
-import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
-import { darwinRuntimeReadPaths } from "./darwin-runtime-closure.ts";
-import type { VerifierConfinementRequest } from "./verifier-port.ts";
-import {
-  type ReadRootMetadata,
-  sameReadRootMetadata,
-  settledBeforeRead,
-  snapshotReadRootPath,
-} from "./read-root-attestation.ts";
-import {
-  type ExactReadSnapshot,
-  exactFileReadPaths,
-  attestedInputDrift,
-  type ExactReadDrift,
-  exactReadDrift,
-  exactSymlinkMetadataPaths,
-  isRegularFile,
-  mechanismDrift,
-  snapshotExactReads,
-} from "./exact-read-attestation.ts";
-import {
-  isOverbroadSandboxReadRoot,
-  ancestorDirectories,
-  SEATBELT_BASELINE,
-  darwinPlatformReadRoots,
-  userTempRules,
-  surroundingSandbox,
-} from "./wall-policy.ts";
-import { type IsolationPosture, seatbeltProfile } from "./isolation-description.ts";
-import { sbRule } from "./seatbelt-path-guard.ts";
+import { sha256OfFile } from "../meta/digest.ts";
+import { surroundingSandbox } from "./wall-policy.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
 export const DARWIN_SEATBELT_ID = "darwin-seatbelt/v1" as const;
-export const DARWIN_SANDBOX_EXEC = "/usr/bin/sandbox-exec";
-const DARWIN_SYSTEM_PROFILE = "/System/Library/Sandbox/Profiles/system.sb";
+const DARWIN_SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 
 export interface DarwinSeatbeltRuntime {
   platform?: RuntimePlatform;
   sandboxExecPath?: string;
-  systemProfilePath?: string;
-  /** A surrounding sandbox is not verifier-specific proof of anything, and applying Seatbelt inside
-   *  another Seatbelt fails on macOS, so this condition has to refuse rather than let the child run
-   *  unwrapped under someone else's wall. */
+  /** Applying Seatbelt inside another Seatbelt fails on macOS, so a surrounding sandbox refuses
+   *  rather than letting a command run unwrapped under someone else's wall. */
   outerSandboxed?: boolean;
 }
 
 interface DarwinSeatbeltSupport {
   ok: boolean;
   reason: string | null;
-  /** The Darwin `sandbox-exec` wrapper and its exact bytes. */
   mechanismPath: string;
   mechanismDigest: string | null;
-  /** Digest of the imported `system.sb` closure, the Darwin isolation's baseline. */
-  baselineDigest: string | null;
 }
 
-interface DarwinSeatbeltPlan {
-  command: string;
-  args: string[];
-  policyHash: string;
-  profile: string;
-  workdir: string;
-  support: {
-    mechanismPath: string;
-    mechanismDigest: string;
-    baselineDigest: string;
-  };
-  exactReadSnapshots: ExactReadSnapshot[];
-  readRoots: string[];
-}
-
-interface ProfileClosure {
-  digest: string;
-  /** Every profile file, by canonical path. */
-  files: string[];
-  /** Every `(import ...)` edge: the path the directive names, and the file it resolved to. */
-  imports: Array<{ imported: string; canonical: string }>;
-}
-
-interface RememberedSupport {
-  /** The wrapper and every profile file, by canonical path, as they were when hashed. */
-  files: ReadRootMetadata[];
-  imports: ProfileClosure["imports"];
-  support: DarwinSeatbeltSupport;
-}
-
-interface PreparedVerifierReads {
-  command: string;
-  workdir: string;
-  reads: string[];
-  exactReadSnapshots: ExactReadSnapshot[];
-  readRoots: string[];
-}
-
-/** The shared network and process posture for both mechanisms. The verifier decides whether an
- *  answer is correct, so it stays offline: network access could fetch protected data or disclose it,
- *  and external-tool evidence depends on the host recording every tool request it executes, which a
- *  fetch the host never saw would sit outside. */
-export const VERIFIER_POSTURE: IsolationPosture = { network: false };
-
-/** The last attested support per wrapper and profile pair. Support is resolved for every confined
- *  child, so one census of 50 controls hashed the wrapper and the whole profile closure 50 times.
- *  It is reused while three things hold: the wrapper and the entry profile still resolve to the same
- *  files, every hashed file keeps identical complete metadata under `sameReadRootMetadata` (device,
- *  inode, mode, size, mtime, ctime and link target), and every import directive still
- *  resolves to the file it was read from, so a swapped directory link under an unchanged file is
- *  attested again rather than reused. Support whose files changed within two seconds of its read
- *  is not remembered at all (`settledBeforeRead`). */
-const SUPPORT_BY_RUNTIME = new Map<string, RememberedSupport>();
-
-function sandboxProfileClosure(entryPath: string): ProfileClosure {
-  const visited = new Set<string>();
-  const records: Array<{ path: string; sha256: string }> = [];
-  const imports: ProfileClosure["imports"] = [];
-  const visit = (path: string): void => {
-    const canonical = realpathSync.native(path);
-    if (visited.has(canonical)) return;
-    if (!isRegularFile(canonical)) throw new Error("an imported Seatbelt profile is unavailable");
-    visited.add(canonical);
-    const bytes = readFileSync(canonical);
-    records.push({ path: canonical, sha256: sha256(bytes) });
-    const source = bytes.toString("utf8");
-    for (const match of source.matchAll(/\(import\s+"([^"]+)"\)/g)) {
-      const name = match[1];
-      if (name === undefined) continue;
-      const imported = isAbsolute(name) ? name : join(dirname(canonical), name);
-      imports.push({ imported, canonical: realpathSync.native(imported) });
-      visit(imported);
-    }
-  };
-  visit(entryPath);
-  return {
-    digest: hashJsonValue(
-      records.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0)),
-    ),
-    files: [...visited],
-    imports,
-  };
-}
-
-function supportStillCurrent(
-  remembered: RememberedSupport,
-  sandboxExecPath: string,
-  systemProfilePath: string,
-): boolean {
-  try {
-    return (
-      realpathSync.native(sandboxExecPath) === remembered.support.mechanismPath &&
-      realpathSync.native(systemProfilePath) === remembered.files[1]?.path &&
-      remembered.files.every((file) => sameReadRootMetadata(file, snapshotReadRootPath(file.path))) &&
-      remembered.imports.every(({ imported, canonical }) => realpathSync.native(imported) === canonical)
-    );
-  } catch {
-    return false;
-  }
-}
-
-function attestedSupport(sandboxExecPath: string, systemProfilePath: string): DarwinSeatbeltSupport {
-  const key = `${sandboxExecPath}\0${systemProfilePath}`;
-  const remembered = SUPPORT_BY_RUNTIME.get(key);
-  if (remembered !== undefined && supportStillCurrent(remembered, sandboxExecPath, systemProfilePath)) {
-    return remembered.support;
-  }
-  const readStartedNs = BigInt(Date.now()) * 1_000_000n;
-  const mechanismPath = realpathSync.native(sandboxExecPath);
-  const closure = sandboxProfileClosure(systemProfilePath);
-  const support: DarwinSeatbeltSupport = {
-    ok: true,
-    reason: null,
-    mechanismPath,
-    mechanismDigest: sha256OfFile(mechanismPath),
-    baselineDigest: closure.digest,
-  };
-  // A file changed within its timestamp's grain of this read can be rewritten again under the same
-  // metadata (Linux stamps from the kernel's tick, some milliseconds wide), so only files settled
-  // before the read are remembered, as a read root's digests are.
-  const files = [mechanismPath, ...closure.files].map(snapshotReadRootPath);
-  if (files.every((file) => settledBeforeRead(file, readStartedNs))) {
-    SUPPORT_BY_RUNTIME.set(key, { files, imports: closure.imports, support });
-  }
-  return support;
-}
+/** The wrapper's digest by its canonical path. It lies on the sealed system volume, so it is read
+ *  once a process: every seat and every check asks. */
+const DIGEST_BY_PATH = new Map<string, string>();
 
 /** Check support without a model call. The reasons omit paths, to keep the operator's filesystem
- *  layout out of CLI diagnostics. The wrapper and every imported profile are hashed because
- *  `(import "system.sb")` names a file whose contents change across OS updates, so the directive
- *  alone is not a stable policy identity. */
+ *  layout out of CLI diagnostics. */
 export function darwinSeatbeltSupport(runtime: DarwinSeatbeltRuntime = {}): DarwinSeatbeltSupport {
   const sandboxExecPath = runtime.sandboxExecPath ?? DARWIN_SANDBOX_EXEC;
-  const systemProfilePath = runtime.systemProfilePath ?? DARWIN_SYSTEM_PROFILE;
-  const outerSandboxed = runtime.outerSandboxed ?? surroundingSandbox(Bun.env);
   const unavailable = (reason: string): DarwinSeatbeltSupport => ({
     ok: false,
     reason,
     mechanismPath: sandboxExecPath,
     mechanismDigest: null,
-    baselineDigest: null,
   });
   if ((runtime.platform ?? runtimeProcess.platform) !== "darwin") {
     return unavailable("Darwin Seatbelt is unavailable on this platform");
   }
-  if (outerSandboxed) {
-    return unavailable(
-      "a surrounding sandbox is not verifier-specific isolation and nested Seatbelt is unsupported",
-    );
-  }
-  if (!isRegularFile(sandboxExecPath) || !isRegularFile(systemProfilePath)) {
-    return unavailable("the Darwin Seatbelt executable or imported system profile is unavailable");
+  if (runtime.outerSandboxed ?? surroundingSandbox(Bun.env)) {
+    return unavailable("a surrounding sandbox is not this wall and nested Seatbelt is unsupported");
   }
   try {
-    return attestedSupport(sandboxExecPath, systemProfilePath);
+    const mechanismPath = realpathSync.native(sandboxExecPath);
+    if (!statSync(mechanismPath).isFile()) throw new Error("not a file");
+    const mechanismDigest = DIGEST_BY_PATH.get(mechanismPath) ?? sha256OfFile(mechanismPath);
+    DIGEST_BY_PATH.set(mechanismPath, mechanismDigest);
+    return { ok: true, reason: null, mechanismPath, mechanismDigest };
   } catch {
-    return unavailable("the Darwin Seatbelt mechanism or imported profile closure cannot be attested");
-  }
-}
-
-// Both OS implementations use these path checks and the shared read snapshots below: they resolve
-// directories, refuse overly broad roots and retain the selected executable path. Sharing the
-// preparation keeps Linux and Darwin subject to the same input restrictions, which is why the error
-// messages name the sandbox rather than a particular OS mechanism.
-function canonicalExistingDirectory(path: string): string {
-  if (!isAbsolute(path)) throw new Error("sandbox readable roots must be absolute");
-  if (!existsSync(path) || !lstatSync(path).isDirectory()) {
-    throw new Error("a sandbox readable root is missing or is not a directory");
-  }
-  const canonical = realpathSync.native(path);
-  if (isOverbroadSandboxReadRoot(canonical)) {
-    throw new Error("a sandbox readable root resolves to an over-broad host root");
-  }
-  return canonical;
-}
-
-function existingFilePath(path: string): string | null {
-  if (!isAbsolute(path) || !isRegularFile(path)) return null;
-  return path;
-}
-
-/**
- * The concrete OS policy differs by platform, but both verifier isolations need the same immutable
- * inputs: the selected command name, a private workdir, declared read roots and exact delegated
- * files. Their snapshot construction stays in one place so that neither mechanism can accidentally
- * admit a lexical path the other re-attests, or turn an unavailable attested file into a
- * platform-specific outcome. `runtimeReadPaths` is Darwin's Mach-O closure hook; Bubblewrap supplies
- * no extras.
- */
-export function prepareVerifierReads(
-  input: VerifierConfinementRequest,
-  unresolvedCommand: string,
-  runtimeReadPaths: (command: string) => readonly string[] = () => [],
-): PreparedVerifierReads | { unsupported: string } {
-  // Exact-read snapshots bind both the lexical link and the target bytes, and execution keeps the
-  // selected name, because equivalent hardlink bytes can dispatch to different tools — cc and git
-  // are the pair this is usually met on.
-  const command = existingFilePath(input.resolvedCommand);
-  if (command === null) return { unsupported: unresolvedCommand };
-  const workdir = canonicalExistingDirectory(input.workdir);
-  const readRoots = [...new Set(input.sandboxReadRoots.map(canonicalExistingDirectory))].sort(
-    compareCodeUnits,
-  );
-  const attestedReads = input.attestedFiles.map((path) => {
-    if (existingFilePath(path) === null) throw new Error("a sandbox attested file is unavailable");
-    return path;
-  });
-  const exactReadSnapshots = snapshotExactReads([command, ...attestedReads, ...runtimeReadPaths(command)]);
-  const reads = exactFileReadPaths(exactReadSnapshots);
-  return {
-    command,
-    workdir,
-    reads,
-    exactReadSnapshots,
-    readRoots,
-  };
-}
-
-/** Re-attest every external byte the policy and the verifier execution depend on. Preparation owns
- *  the first snapshot; the host calls this after the policy-application canary immediately before
- *  spawn, and again after the process closes, so persistent drift can never leave a verdict written
- *  under a stale evidence identity. */
-export function verifyDarwinSeatbeltPlan(
-  plan: DarwinSeatbeltPlan,
-  runtime: DarwinSeatbeltRuntime = {},
-): ExactReadDrift | null {
-  // `sandbox-exec` and the imported system profile sit on the read-only system volume, where a
-  // failed syscall reading as drift refuses the whole battery. A support failure there means the
-  // mechanism is unavailable, not that a byte changed.
-  return (
-    mechanismDrift(
-      darwinSeatbeltSupport(runtime),
-      plan.support,
-      "Darwin Seatbelt executable or imported profile closure",
-    ) ?? attestedInputDrift(exactReadDrift(plan.exactReadSnapshots))
-  );
-}
-
-/** Builds the verifier Seatbelt policy, binding its baseline, exact runtime closure, inputs and roots. */
-export function prepareDarwinSeatbelt(
-  input: VerifierConfinementRequest & {
-    runtime?: DarwinSeatbeltRuntime;
-    /** The platform roots fixed at host construction; a direct caller gets the live host list. */
-    platformRoots?: string[];
-  },
-): DarwinSeatbeltPlan | { unsupported: string } {
-  const support = darwinSeatbeltSupport(input.runtime);
-  if (!support.ok || support.baselineDigest === null || support.mechanismDigest === null) {
-    return { unsupported: support.reason ?? "Darwin Seatbelt is unavailable" };
-  }
-  // The system profile owns /System and /usr/lib, and every other runtime image and loader link is
-  // derived from the pinned command, so nothing here grants a directory by name. A synthetic
-  // non-Darwin test keeps the structural path alone.
-  const prepared = prepareVerifierReads(
-    input,
-    "the verifier command cannot be resolved for Seatbelt",
-    (command) => (runtimeProcess.platform === "darwin" ? darwinRuntimeReadPaths(command) : [command]),
-  );
-  if ("unsupported" in prepared) return prepared;
-  const { command, workdir, reads, exactReadSnapshots, readRoots } = prepared;
-  // The closure preserves metadata-only ancestor and symlink traversal, so a path can be walked to
-  // its attested leaf without granting the package prefix that holds it.
-  const metadataAncestors = [workdir, ...reads, ...readRoots]
-    .flatMap(ancestorDirectories)
-    .filter((path) => path !== "/")
-    .filter((path, index, all) => all.indexOf(path) === index)
-    .sort();
-  const metadataPaths = [
-    ...new Set([...metadataAncestors, ...exactSymlinkMetadataPaths(exactReadSnapshots)]),
-  ].sort();
-  const platformRoots = input.platformRoots ?? darwinPlatformReadRoots();
-  const userTemp = userTempRules([]);
-  const policyIdentity = {
-    schema: DARWIN_SEATBELT_ID,
-    mechanism: {
-      path: support.mechanismPath,
-      sha256: support.mechanismDigest,
-    },
-    baseline: { import: SEATBELT_BASELINE, closureSha256: support.baselineDigest },
-    default: "deny",
-    network: VERIFIER_POSTURE.network ? "allow" : "deny",
-    process: "allow-process-star-and-same-sandbox-signal-under-inherited-seatbelt",
-    reads: {
-      exact: exactReadSnapshots,
-      roots: readRoots,
-      platform: platformRoots,
-      metadata: metadataPaths,
-      privateWorkdir: true,
-    },
-    writes: { privateWorkdir: true, devNull: true, userTempChildren: userTemp.roots },
-  };
-  const policyHash = hashJsonBytes(policyIdentity);
-  const profile = seatbeltProfile({
-    shared: {
-      ...VERIFIER_POSTURE,
-      metadata: { literals: metadataPaths },
-      // The private workdir, the attested command with its delegated files, and the read roots the
-      // engine declared. Nothing else: this wall decides correctness, so it has to stay
-      // reproducible.
-      reads: { literals: reads, subpaths: [workdir, ...platformRoots, ...readRoots] },
-      writes: { subpaths: [workdir], literals: ["/dev/null"] },
-    },
-    seatbelt: {
-      finalRules: [
-        // Clang and Apple's python3 shim use the confstr temp root rather than TMPDIR. The grant
-        // opens what a command creates there; the concurrent verifier workdirs beside it are then
-        // closed by name, and this engine's own workdir is re-opened last.
-        ...userTemp.rules,
-        ...sbRule("allow file-read* file-read-metadata file-write*", "subpath", [workdir]),
-        // `process*` does not cover `signal`, so a deny-default wall stops a tool from stopping a
-        // process it started — an emulator harness ending QEMU, a runner ending a test child — and
-        // an accept whose tool works in the authoring shell fails here. `same-sandbox` reaches every
-        // process under this wall and none outside it.
-        "(allow signal (target same-sandbox))",
-      ],
-    },
-  });
-  return {
-    command: support.mechanismPath,
-    args: ["-p", profile, command, ...input.engineArgs],
-    policyHash,
-    profile,
-    workdir,
-    support: {
-      mechanismPath: support.mechanismPath,
-      mechanismDigest: support.mechanismDigest,
-      baselineDigest: support.baselineDigest,
-    },
-    exactReadSnapshots,
-    readRoots,
-  };
-}
-
-/** The policy-application probe, reused by preflight and immediately before a live spawn. It proves
- *  that Seatbelt accepted this profile, not that the configured verifier is healthy. The target is
- *  host-chosen and inert — `/usr/bin/true` — so the engine cannot supply the probe's result. */
-export async function applyDarwinSeatbeltPlan(
-  plan: DarwinSeatbeltPlan,
-  timeoutMs = 5_000,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  try {
-    const code = await Bun.spawn({
-      cmd: [plan.command, "-p", plan.profile, "/usr/bin/true"],
-      cwd: plan.workdir,
-      env: {},
-      timeout: timeoutMs,
-      killSignal: "SIGKILL",
-      stdin: "ignore",
-      stdout: "ignore",
-      stderr: "ignore",
-    }).exited;
-    return code === 0
-      ? { ok: true }
-      : { ok: false, reason: "the Darwin Seatbelt policy could not be applied" };
-  } catch {
-    return { ok: false, reason: "the Darwin Seatbelt policy could not be applied" };
+    return unavailable("the Darwin Seatbelt executable is unavailable");
   }
 }

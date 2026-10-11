@@ -13,19 +13,22 @@ no log, and the host's verifier stays the one owner of every verdict.
 
 It is v1's skill rebuilt for v2. v1's catalogue had nine rows and thirty-eight lanes and was written
 from one fact: the Builder wrote its own exam. v2 took that pen apart, so the catalogue here has six
-rows and thirty lanes: eleven of v1's kept with tuning, nine overhauled, ten new, and thirteen
+rows and thirty lanes from v1: eleven of v1's kept with tuning, nine overhauled, ten new, and thirteen
 removed with the machinery they read. [from-v1.md](references/from-v1.md) accounts for every one.
+Lane 31 was added after the first live promotion (10 October) and reads a promotion and the climb
+after it, beside peer campaigns where they are named.
 
-Five narrower questions need no lanes. Start there when one of them is the whole question.
+Six narrower questions need no lanes. Start there when one of them is the whole question.
 
 | question | command |
 | --- | --- |
 | Is a run alive, and what did it last do? | `bun run runs pulse` |
-| Is there enough supply for a comparison, and what can it show? | `bun run runs launch --dry-run <the comparison's flags>` |
+| Is there enough supply for a comparison, and what can it show? | `bun run runs view <name>`: its set-up line and the table's move |
 | Does the checker stand on its controls and the stored answers? | `bun tools/c/accept.ts --name <campaign>` |
 | What does a repaired checker move, and does the repair stand? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
 | A report names tasks set aside on rejections: what does it read once they are labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the rejections it draws |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
+| Did a promotion climb, beside the campaigns that ran the same pack, and did one campaign's `/tmp` reach another's solves? | `bun tools/wri/wri.ts climb --log <log> --with <log>,<log>`: one row a campaign, then each solve that named what another campaign's session left |
 
 ## The procedure
 
@@ -35,7 +38,9 @@ holds.
 
 1. **Start.** `wri.ts start --log <log> --out <dir>` folds the log into the six rows and the
    triggers, writes them to `<dir>/overview.md`, and writes `<dir>/shared-instructions.md` with the
-   campaign's row filled in and two sections left blank.
+   campaign's row filled in and two sections left blank. When the campaign promoted a harness and
+   other campaigns ran the same pack, name their logs with `--with <log>,<log>`: lane 31 is given
+   each as `read` prints it, read again when the lanes are built, and compares with them.
    *Check:* read the last line it prints. When the last condition ran under another host hash than
    this checkout's, every statement about source is about another tree: check out the tree that ran,
    or say so in the orientation. Then settle rows A to F yourself, from the log.
@@ -45,15 +50,17 @@ holds.
 3. **Build the lanes.** `wri.ts lanes --out <dir>` writes one prompt per lane under `<dir>/lanes/`
    and one entry per session in `<dir>/launch.md`. With no `--lanes` it opens every lane a trigger
    started and the four standing lanes. It builds no isolated lane: it names the ones whose trigger
-   fired, and each waits on another lane's report.
+   fired, and each waits on another lane's report. A prompt built before is kept, never rebuilt
+   under a report written against it, and `launch.md` lists every prompt that stands, once each, so
+   a second run changes neither.
    *Check:* exit 0, and count the entries: that is the spend.
 4. **Launch.** Start one session per `launch.md` entry, all in one message, on the model the
    operator chose, handing each its one line and nothing else.
    *Check:* read the model each transcript recorded before using its report.
 5. **Collect.** `wri.ts collect --out <dir>` holds every expected report to its shape and writes
    `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 11, 15 and 18, then
-   decide lane 19. Build either with `wri.ts lanes --out <dir> --lanes 5`, launch it alone, and
-   collect again.
+   decide lane 19. Build either with `wri.ts lanes --out <dir> --lanes 5`, launch the one lane it
+   says it built, alone, and collect again.
    *Check:* `collect` exits 0. It exits 1 while a report is missing or invalid.
 6. **Synthesise.** `wri.ts synthesis --out <dir>` renders `<dir>/synthesis-prompt.md`; one session
    writes `<dir>/synthesis.md`, and the primary adjudicates it ("Adjudicating" below).
@@ -89,6 +96,9 @@ smaller than the build, read the groups in this order, because each rests on the
    what the test could show at its size. Lanes 21 and 22 first.
 3. **The harness (13 to 19).** What changed and whether it could know the exam. Lane 18 first.
 4. **The tasks (7 to 12), the solve (26 to 28), the review loop (29 to 30).**
+5. **The climb (31).** Once a promotion is on record, open it before a person is told the campaign
+   improved a harness: it reads what the promotion rested on and what followed, and it rests on
+   lanes 13, 19, 22 and 25 where they ran.
 
 `--lanes` takes whatever is asked for. A lane named without its trigger opens and is told so by its
 own overview, except an isolated lane, which is refused without its trigger.
@@ -117,7 +127,7 @@ edited copy keeps them unless the primary deletes them on purpose.
   repeats them.
 - **Isolated lanes run alone.** Lanes 5 and 19 freeze a result before they read anything that could
   lead it, so neither is given the orientation, the moved variable or another lane's trigger.
-- **No report reaches a Builder, an Examiner, a Referee or a Diagnoser.** Lane 19 reads traces of
+- **No report reaches a Builder, an Examiner or a Referee.** Lane 19 reads traces of
   scored tasks, and several lanes read hidden values: a finding handed to a session that writes the
   harness or the tasks is the leak lane 18 looks for.
 - **A `pack/` finding is a decision, never a patch.** No session of v2 writes or repairs a check.
@@ -180,8 +190,10 @@ provisional and add two the catalogue did not know to ask.
   wall-bound cut at 95% and the quick cut at 5% each fired on nothing — the fastest real pass is
   twice the quick cut, because a solve that loads a harness and runs an engine costs about fifty
   seconds here. The silence of twenty minutes against a Builder session's 62 turns: its longest gap
-  was 4.6 minutes. All three are therefore still untested, and the quick cut reads better against a
-  campaign's own median solve than against its wall. Whether a round has too few informative pairs
+  was 4.6 minutes; since 10 October `LONG SILENCES` reads a gap against five of the campaign's own
+  median solve, with a floor of ten minutes, and names what ran through it. All three were
+  therefore untested, and the quick cut reads better against a campaign's own median solve than
+  against its wall. Whether a round has too few informative pairs
   is no threshold: the trigger asks the report's own test whether any result with a loss could have
   cleared its level.
 - **No conditional trigger over-fired; one could not fire where it mattered most.**
@@ -207,7 +219,7 @@ provisional and add two the catalogue did not know to ask.
 
 | file | owns |
 | --- | --- |
-| [references/lanes.md](references/lanes.md) | the stance, the owner table, rows A to F and lanes 1 to 30 |
+| [references/lanes.md](references/lanes.md) | the stance, the owner table, rows A to F and lanes 1 to 31 |
 | [references/from-v1.md](references/from-v1.md) | what became of v1's nine rows and thirty-eight lanes, and what that says about v2's direction |
 | [references/shared-instructions.template.md](references/shared-instructions.template.md) | the preset every open lane carries |
 | [references/synthesis.template.md](references/synthesis.template.md) | the synthesis session's prompt |

@@ -62,7 +62,7 @@ const TIME =
   "The case has 120 minutes of solve time, and every tool result ends with how much of it is used. Nothing is submitted for you when it runs out: an answer you have not submitted by then is lost.";
 const ENVIRONMENT = [
   "- The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only answer.json is read as your answer, and only when you submit.",
-  "- Commands and the file tools can write the home directory, /tmp and $TMPDIR, which is fresh for each command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
+  "- Commands and the file tools can write the home directory and $TMPDIR, which is kept for the whole task as the home is; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
   "- Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
   "- The home directory and $TMPDIR share one volume of 2 GiB.",
   "- A command runs for at most 300 seconds unless it names a longer timeout, and 900 seconds is the longest it may name. One that would run into the last 60 seconds of the solve time is cut there, so that its result still reaches you.",
@@ -77,7 +77,6 @@ function starterTools() {
     dirs: { ...solveDirs("s1"), home: HOME },
     toolTree: null,
     limits: { shellDefaultSeconds: 300, shellMaxSeconds: 900 },
-    cpu: { seconds: 0, unmeasured: 0 },
   };
   const exec = async () => ({ exitCode: 0, output: Buffer.alloc(0) });
   const [read, edit, write] = fileTools(HOME, exec);

@@ -35,8 +35,9 @@ that and no more. It does not say:
 
 - **Match the identities.** Every solve has a `condition.recorded`: contract, harness, task,
   solver model and effort, compaction, limits, the host's code by content. Two solves compare
-  when their conditions differ in the one thing compared. `bun run runs compare` says what two
-  rounds were given differently, and calls rounds under different contracts `not-comparable`.
+  when their conditions differ in the one thing compared. Two harnesses are set side by side by
+  a checkpoint, under one condition; rounds made apart are not compared (`AGENTS.md`, section 9,
+  and `docs/simplify.md`, R1: `bun run runs compare` went on 11 October).
 - **Count no solve twice.** Solves of two rounds were made apart, each under its own hour of
   the host. Setting them side by side is a description. A pair is made by one comparison.
 - **Keep the counts apart**: valid answers; rejected answers, by ruling (earned, a check defect,
@@ -108,10 +109,11 @@ Check in order, and stop at the first that fails. One command answers the first 
 bun .claude/skills/attribution-and-proof/scripts/run-source.ts <campaign folder> --holds <fix>
 ```
 
-1. **The commit.** `launch-<session>.json` beside the log names the commit and whether the tree held
-   uncommitted changes. A run started without the launcher has no receipt: the condition's host
+1. **The commit.** `launch-run-<n>.json` beside the log (and `launch-<session>.json` for a round
+   launched before 11 October) names the commit and whether the tree held uncommitted changes. A
+   round started by hand has no receipt: the condition's host
    hash still names the code by content, and the commit is then unknown.
-2. **Containment.** `--holds` asks whether the fix is an ancestor of each launch's commit.
+2. **Containment.** `--holds` asks whether the fix is an ancestor of each receipt's commit.
    After a restack the fix has another commit id; name the replayed one.
 3. **The event.** Find what the mechanism writes: an event kind, a field, an ending, a refusal's
    words in the `.out`.

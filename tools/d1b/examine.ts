@@ -34,9 +34,8 @@ import { openCampaign, packNamed, REPO, stayAwake } from "../d2/campaign.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
-/** An Examiner session's flags and their defaults. A launch parses its flags by the same table
- *  first (`tools/runs/launch.ts`, `flagsRefused`). */
-export const EXAMINE_OPTIONS = {
+/** An Examiner session's flags and their defaults. */
+const EXAMINE_OPTIONS = {
   root: { type: "string" },
   sweep: { type: "string" },
   cycle: { type: "string" },
@@ -49,8 +48,6 @@ export const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
-  /** The session is asked for tasks that leave the reference harness room (`decide`, `room`). */
-  room: { type: "boolean", default: false },
 } as const;
 
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
@@ -69,6 +66,7 @@ export async function examineCommand(args: readonly string[], session = examineW
     id,
     repoRoot: REPO,
     otherTrees: campaign.trees,
+    packRoots: campaign.packRoots,
     diskBytes: campaign.limits.diskBytes,
     verify: campaign.verify,
     // The budget every solve is held to now: the recorded setting's turns, or the opening's full
@@ -77,7 +75,6 @@ export async function examineCommand(args: readonly string[], session = examineW
       modelTurns: recordedSetting(sofar)?.modelTurns ?? openingOf(sofar)?.limit ?? null,
       minutes: Math.round(campaign.limits.wallSeconds / 60),
     },
-    room: values.room,
     contract: campaign.contract,
     checks: declared.map((check, index) => ({
       id: check.id,

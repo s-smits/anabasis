@@ -1,9 +1,8 @@
-// A campaign has one reading: each step's handover, folded once from its log, and the moves that
-// may start next. The operator's view prints it whole, the Builder's opening message is the same
-// rows through the Builder's filter, and the next move is the admission a launch would be given.
+// A campaign has one reading: each step's handover, folded once from its log. The operator's view
+// prints it whole, and the Builder's opening message is the same rows through the Builder's filter.
 import { afterAll, describe, expect, it } from "bun:test";
-import { admission, sessionAdmission, supplyOf, type Wanted } from "../src/builder/admission.ts";
-import { campaignOf, type Handover, nextMoves } from "../src/builder/handover.ts";
+import { supplyOf } from "../src/builder/admission.ts";
+import { campaignOf, type Handover } from "../src/builder/handover.ts";
 import { comparisonsTold, failsTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -24,16 +23,6 @@ const LIMITS = {
 };
 const [STARTER, HA, HB] = ["0".repeat(64), "a".repeat(64), "b".repeat(64)];
 const HELD = ["s1", "s2", "s3", "s4"];
-const WANTED: Wanted = {
-  target: 12,
-  solves: 2,
-  level: 0.1,
-  trigger: 0.25,
-  builds: true,
-  cap: { dollars: 600, reserve: 10 },
-  restarted: [],
-};
-const ASKED = { reference: "promoted", comparison: WANTED, session: { cap: WANTED.cap } };
 const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-handover-")));
 let logs = 0;
 
@@ -111,7 +100,6 @@ function campaign() {
       solves: 2,
       level: 0.1,
       noise: false,
-      budgets: [{ turns: 12 }],
       cap: { dollars: 100, reserve: 10 },
       tasks: HELD,
     });
@@ -173,7 +161,6 @@ describe("a campaign's reading", () => {
         tasks: 4,
         solves: 2,
         level: 0.1,
-        budgets: 1,
         cap: 100,
         modelTurns: null,
         reading: "step",
@@ -194,7 +181,6 @@ describe("a campaign's reading", () => {
         tasks: 4,
         solves: 2,
         level: 0.1,
-        budgets: 1,
         cap: 100,
         modelTurns: null,
         reading: null,
@@ -253,7 +239,6 @@ describe("a campaign's reading", () => {
         tasks: 4,
         solves: 2,
         level: 0.1,
-        budgets: 0,
         cap: null,
         reading: "no-step",
         tally: { wins: 1, losses: 0, ties: 3 },
@@ -265,6 +250,8 @@ describe("a campaign's reading", () => {
     const c = campaign();
     c.setUp();
     const [open] = c.built("b-1", STARTER, HA, ["fail"]);
+    // A reading of the fail by a Diagnoser, as a log of before 2026-10-11 holds one, is no part of
+    // the fail since (`docs/simplify.md`, E1).
     c.record("diagnosis.recorded", {
       solve: open ?? "",
       owner: "solver",
@@ -285,7 +272,6 @@ describe("a campaign's reading", () => {
         kind: "rejected",
         standing: "open",
         under: null,
-        diagnosis: { owner: "solver", confidence: "low", cause: "It guessed." },
       },
     ]);
     // One pass under a later harness is weak evidence, a second repairs, and a later fail under a
@@ -295,11 +281,11 @@ describe("a campaign's reading", () => {
     c.solved("p1", HB, "pass");
     expect(fails()[0]).toMatchObject({ standing: "repaired", under: HB });
     const again = c.solved("p1", STARTER, "fail");
-    c.record("diagnosis.recorded", { solve: again, abstain: "no contrast" });
     expect(fails()).toMatchObject([
       { solve: open, standing: "failing-again", under: STARTER },
-      { solve: again, standing: "open", under: null, diagnosis: "abstained" },
+      { solve: again, standing: "open", under: null },
     ]);
+    expect(fails()[1]).not.toHaveProperty("diagnosis");
     // A later pass under the fail's own harness says nothing of a repair: the same bytes flip.
     c.solved("p1", STARTER, "pass");
     c.solved("p1", STARTER, "pass");
@@ -322,20 +308,18 @@ describe("the Builder's filter over that reading", () => {
     });
     c.solved("p1", HB, "pass");
     const { fails } = campaignOf(c.events());
+    // A Diagnoser's reading in a log of before is not told (`docs/simplify.md`, E1).
     expect(failsTold(fails, TASKS)).toEqual([
-      `- ${open ?? ""}, t-1, harness aaaaaaaa: fail (rejected); open: passed once under harness bbbbbbbb. Diagnosis (owner solver, confidence low): It guessed.`,
+      `- ${open ?? ""}, t-1, harness aaaaaaaa: fail (rejected); open: passed once under harness bbbbbbbb.`,
     ]);
     // A task this session may not practise on is no line of its opening.
     expect(failsTold(fails, new Map([["p9", "t-9"]]))).toEqual([]);
     c.solved("p1", HB, "pass");
     expect(failsTold(campaignOf(c.events()).fails, TASKS)[0]).toContain("; repaired under harness bbbbbbbb.");
     const again = c.solved("p1", STARTER, "fail");
-    c.record("diagnosis.recorded", { solve: again, abstain: "no contrast" });
     const told = failsTold(campaignOf(c.events()).fails, TASKS);
     expect(told[0]).toContain("; failing again under harness 00000000.");
-    expect(told[1]).toBe(
-      `- ${again}, t-1, harness 00000000: fail (rejected); open. The Diagnoser abstained.`,
-    );
+    expect(told[1]).toBe(`- ${again}, t-1, harness 00000000: fail (rejected); open.`);
   });
 
   it("tells each comparison as its tally and its reading, with no task and no other count", () => {
@@ -384,7 +368,7 @@ describe("the Builder's filter over that reading", () => {
     c.built("b-1", STARTER, HA, ["fail", "fail", "pass"]);
     c.compared("b-1", { old: STARTER, fresh: HA }, tallied("no-step", 2, 2));
     const reading = campaignOf(c.events());
-    const view = viewLines("truss", reading, nextMoves(c.events(), ASKED)).join("\n");
+    const view = viewLines("truss", reading).join("\n");
     const told = comparisonsTold(reading.steps);
     expect(told).toHaveLength(1);
     expect(told[0]).toContain("2 won, 0 lost, 2 tied");
@@ -396,126 +380,8 @@ describe("the Builder's filter over that reading", () => {
   });
 });
 
-describe("the moves that may start next", () => {
-  const move = (c: ReturnType<typeof campaign>, named: string, asked = ASKED) =>
-    nextMoves(c.events(), asked).find((each) => each.move === named);
-
-  // Fix row F13: the view names the same next move that the launcher admits, because both ask the
-  // one admission.
-  it("are a round and a session by itself as their admissions read them", () => {
-    const c = campaign();
-    c.setUp();
-    const supply = supplyOf(c.events());
-    expect(move(c, "a round")).toMatchObject(admission(supply, WANTED));
-    expect(move(c, "a Builder session by itself")).toMatchObject(sessionAdmission(supply, ASKED.session));
-    // With no cap named, both are refused in the admission's own words.
-    const capless = { ...ASKED, comparison: { ...WANTED, cap: null }, session: { cap: null } };
-    expect(move(c, "a round", capless)?.refusals).toEqual(admission(supply, capless.comparison).refusals);
-    expect(move(c, "a round", capless)?.may).toBe(false);
-    expect(move(c, "a round")?.may).toBe(true);
-    // On a checker nobody has read, nothing that solves may start.
-    const unread = campaign();
-    unread.record("task.proposed", { version: "p1" });
-    unread.record("task.gate", { version: "p1", gate: 1, outcome: "passed" });
-    unread.record("task.state", { version: "p1", state: "released" });
-    expect(move(unread, "a Builder session by itself")?.refusals.join("\n")).toContain("never been read");
-    expect(move(unread, "an Examiner session")).toMatchObject({ may: true, refusals: [] });
-  });
-
-  // live-1, 2026-10-09: every task of its one comparison tied, so the round and the checkpoint were
-  // refused, and the session beside them read "may start" with nothing joining the two. Here the
-  // round is refused for having no held-out task, which the session does not need either.
-  it("say of a session by itself that no comparison could follow it, where a round is refused", () => {
-    const whole = campaign();
-    whole.setUp();
-    expect(move(whole, "a Builder session by itself")?.notes.join("\n")).not.toContain("is refused");
-    const c = campaign();
-    c.record("task.proposed", { version: "p1" });
-    c.record("task.gate", { version: "p1", gate: 1, outcome: "passed" });
-    c.record("task.state", { version: "p1", state: "released" });
-    c.record("checker.read", { contract: "c", checks: "k", faults: [] });
-    expect(move(c, "a round")).toMatchObject({ may: false });
-    const alone = move(c, "a Builder session by itself");
-    expect(alone?.may).toBe(true);
-    expect(alone?.notes.at(-1)).toBe(
-      "a comparison of the harness it leaves is refused as the log stands, for the reasons a round is given",
-    );
-    // A session that is itself refused says its own refusal and no more.
-    const capless = { ...ASKED, comparison: { ...WANTED, cap: null }, session: { cap: null } };
-    expect(move(c, "a Builder session by itself", capless)?.notes.join("\n")).not.toContain("is refused");
-  });
-
-  it("are a checkpoint once a session has left a harness that is not the reference", () => {
-    const c = campaign();
-    c.setUp();
-    expect(move(c, "a checkpoint")).toMatchObject({
-      may: false,
-      refusals: [
-        "no Builder session has left a harness that is not the reference harness: there is nothing to compare",
-      ],
-    });
-    c.built("b-1", STARTER, HA, []);
-    expect(move(c, "a checkpoint")).toMatchObject({
-      may: true,
-      ...admission(supplyOf(c.events()), { ...WANTED, builds: false }),
-    });
-    // Promoted, the latest harness is the reference, and there is again nothing to compare.
-    c.record("harness.promoted", { harness: HA, from: STARTER, rests: [] });
-    expect(move(c, "a checkpoint")?.may).toBe(false);
-  });
-
-  it("are a settling where a comparison set tasks aside, and a promotion where one read a step", () => {
-    const c = campaign();
-    c.setUp();
-    c.built("b-1", STARTER, HA, []);
-    expect(move(c, "settling")).toBeUndefined();
-    expect(move(c, "a promotion")).toBeUndefined();
-    c.compared(
-      "b-1",
-      { old: STARTER, fresh: HA },
-      { ...tallied("not-scored", 0, 0), scored: null, aside: HELD },
-    );
-    expect(move(c, "settling")).toMatchObject({
-      may: true,
-      notes: ["comparison b-1 set 4 tasks aside for a person's labels: tools/d2/settle.ts --session b-1"],
-    });
-    c.compared("g-1", { old: STARTER, fresh: HA }, tallied("step", 4, 0));
-    // A promotion is the operator's word, and the plan gives it after a repeat on fresh solves.
-    expect(move(c, "a promotion")).toMatchObject({
-      may: true,
-      notes: [
-        `harness ${HA.slice(0, 8)} read a step against the reference harness in 1 comparison (g-1): the plan promotes a step once it has been repeated on fresh solves, and the word is the operator's (tools/d2/promote.ts)`,
-      ],
-    });
-    c.compared("g-2", { old: STARTER, fresh: HA }, tallied("step", 4, 0));
-    expect(move(c, "a promotion")?.notes[0]).toContain("in 2 comparisons (g-1, g-2)");
-    c.record("harness.promoted", { harness: HA, from: STARTER, rests: ["g-1", "g-2"] });
-    expect(move(c, "a promotion")).toBeUndefined();
-  });
-
-  it("are a stop where the plan's stop rule has stopped the campaign", () => {
-    const c = campaign();
-    c.setUp();
-    // A campaign whose patience is the plan's three; the default is six (`PATIENCE`).
-    c.record("campaign.opened", { budget: null, limit: null, ladder: [], sessions: 1, patience: 3 });
-    expect(move(c, "stop")).toBeUndefined();
-    for (const [index, harness] of [HA, HB, "c".repeat(64)].entries()) {
-      const id = `b-${String(index + 1)}`;
-      c.built(id, STARTER, harness, []);
-      c.compared(id, { old: STARTER, fresh: harness }, tallied("no-step", 1, 3));
-    }
-    expect(move(c, "stop")).toMatchObject({
-      may: true,
-      notes: [
-        "3 checkpoints since the last step: the campaign's patience is spent (docs/plan.md, Phase 5; --patience)",
-      ],
-    });
-    expect(move(c, "a round")?.may).toBe(false);
-  });
-});
-
 describe("the operator's view", () => {
-  it("prints the set-up, each step's handover and each move, a line each", () => {
+  it("prints the set-up and each step's handover, a line each, and no move beside the table's", () => {
     const c = campaign();
     c.setUp();
     c.record("exam.started", { session: "x-1" });
@@ -529,7 +395,7 @@ describe("the operator's view", () => {
     });
     c.built("b-1", STARTER, HA, ["fail", "pass"]);
     c.compared("b-1", { old: STARTER, fresh: HA }, tallied("step", 4, 0));
-    const lines = viewLines("truss", campaignOf(c.events()), nextMoves(c.events(), ASKED));
+    const lines = viewLines("truss", campaignOf(c.events()));
     expect(lines.slice(0, 5)).toEqual([
       "truss",
       "  set-up      4 held out · 1 released for practice · 0 wait for a label · 0 exhausted · checker read, 0 faults, not frozen · reference: the starter",
@@ -538,8 +404,9 @@ describe("the operator's view", () => {
       "  b-1         comparison of aaaaaaaa with 00000000 on 4 tasks, 2 solves a side at 0.1: 4 won, 0 lost, 0 tied, which reads step · tasks with 0, 1, 2 valid answers: reference 4/0/0, new 0/0/4 · 1 rejection ruled earned · $3.50",
     ]);
     expect(lines).toContain("  practice    1 failed practice solve: 1 open");
-    expect(lines).toContain("next");
-    expect(lines.join("\n")).toMatch(/ {2}a round {9}may start/);
-    expect(lines.join("\n")).toMatch(/ {2}a promotion {5}the operator's/);
+    // Fix row F7: a list of moves beside the table's named a promotion on this one step, where the
+    // table waits for its repeat. The table's move is printed after this reading, by `view`.
+    expect(lines).toHaveLength(6);
+    expect(lines.join("\n")).not.toMatch(/promotion|may start/);
   });
 });

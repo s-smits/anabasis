@@ -25,7 +25,7 @@ what is true now, since a handover is a few hours old the moment it is written:
 
 ```sh
 bun run runs pulse --once                      # every open run, in every worktree
-bun run runs view <name> --cap <dollars>       # one campaign: each step's handover, the next moves,
+bun run runs view <name>                       # one campaign: each step's handover, the climb,
                                                # and as its last line the move the plan's table names
 bun .claude/skills/stack-pr/scripts/stack.ts   # the open stack and its top
 bun tools/wri/wri.ts read --log <worktree>/.ana/d2/<name>/log.jsonl
@@ -48,9 +48,9 @@ cap the reading: while one of them fails, a change anywhere below it is spent on
 
 | # | link | it holds when | read it from |
 | --- | --- | --- | --- |
-| 1 | supply | enough held-out tasks are left untied for a step at the comparison's level | `bun run runs launch --dry-run <flags>` |
+| 1 | supply | enough held-out tasks are left untied for a step at the comparison's level | `bun tools/d2/harness-builder.ts --name <name> --dry-run`, and the view's set-up line |
 | 2 | instrument | the checker has been read and stands, and rejections are ruled earned | `bun tools/c/accept.ts --name <name>`, `referee.finding`, tasks set aside |
-| 3 | the reference's room | the reference harness is valid on about half its solves at the budget read | `comparison.reported.valid.old`, each `budgets[]` entry |
+| 3 | the reference's room | the reference harness is valid on about half its solves | `comparison.reported.valid.old` |
 | 4 | the session | the Builder practised, and left a harness that differs in something a solver uses | `build.*`, `harness.version`, practice `verdict`s |
 | 5 | size | the tally has enough untied tasks to clear its level | `scored`, `unsolved`, the preflight's notes |
 | 6 | the host | solves started under a load below the cores, and the loads of the comparisons read together are alike | the reader's `HOST LOADED` and `LOAD MOVED` |
@@ -100,7 +100,7 @@ before choosing. Do not try the next idea on the old link.
 [system-path-simulation](../system-path-simulation/SKILL.md) picks the smallest real layer that
 can decide the question. For this loop three of its cases carry nearly everything:
 
-- **A dry run** for what a comparison of this shape can read: `bun run runs launch --dry-run`.
+- **A dry run** for the move the table names and what it can read: `bun tools/d2/harness-builder.ts --name <name> --dry-run`.
 - **A replay** for a changed reader: `bun run runs replay` puts every recorded log through this
   tree's readers, at no provider cost.
 - **A rehearsal** for a changed round: `bun run runs seed --from <campaign folder> --name <seed>`,
@@ -119,8 +119,11 @@ solve or a round on two tasks.
 Before the first solve, say what the comparison will read:
 
 ```sh
-bun run runs launch <flags> --predict "<one sentence a count can settle>"
+bun tools/d2/checkpoint.ts <flags> --predict "<one sentence a count can settle>"
 ```
+
+A comparison the campaign command makes takes no prediction on the command line: write it in the
+local notes below before the move starts, with the comparison's id.
 
 The sentence is written with the comparison's terms, decides nothing, and is printed beside the
 reading at the end. Write it so a recorded count settles it: "the Starter is valid on 4 to 8 of
@@ -144,11 +147,12 @@ decides whether the run can answer the question at all.
   and its receipt names the commit and whether the tree was dirty. Launch from a clean worktree
   at a published commit, detached, kept for that run alone. Do not edit `src/` there while the
   run lives, and never move a campaign's folder to another worktree.
-- **One or two rounds at a time on one host.** The launcher reads the load at the launch, not
-  what the next launch will add. On 9 October three campaigns on one Mac held the one-minute
-  load between 47 and 80, and that hour's readings were provisional. The refusal itself, the
-  cap and what a comparison of a given size can show are launch-run's: read its preflight notes
-  before spend, and score more tasks when the tie share on record is high.
+- **One or two campaigns at a time on one host.** The campaign command waits for the host's
+  load before a move that solves, and reads nothing of what the next start will add. On
+  9 October three campaigns on one Mac held the one-minute load between 47 and 80, and that
+  hour's readings were provisional. The cap and what a comparison of a given size can show are
+  the move's own admission's (`src/builder/admission.ts`): read its notes in the campaign's
+  output before spend, and score more tasks when the tie share on record is high.
 - **Which provider account spends is the operator's choice.** Pass the file the operator named
   with `--env-file <path>`. Never open it, print it, copy it or look for another, and say in the
   report which run used which.
@@ -169,30 +173,29 @@ have changed, not on a timer: a round's first `build.started`, its `build.finish
 - **Quiet under a wall is work.** A solve writes nothing between its start and its verdict, and
   a Builder's practice solve holds its session the same way. Read quiet against the solve's wall
   and the session's `--minutes` before calling it a stall.
-- **The process decides whether a run lives.** A launch receipt's pid that is gone before
+- **The process decides whether a run lives.** A receipt's pid that is gone before
   `comparison.reported` is a run to read in its `.err`, and a log that has not grown is a lead.
 - **A provider's limit ends a comparison without a report.** It goes on from its log under the
   same id once the limit resets, and a solve counted is not solved again. A Builder session it
-  ends is spent, and the next launch pays for another.
+  ends is spent, and the next session pays for another.
 - **Do not stop a run to fix it.** A commit that is not an ancestor of the run's commit cannot
   change that run, and `run-source.ts <campaign folder> --holds <commit>` (attribution-and-proof)
-  says whether it is. Work found while a run lives is work for the next launch.
+  says whether it is. Work found while a run lives is work for the next start.
 
 While runs are live, keep the host for them: run focused tests only, and send a whole suite to
 another machine or a VM ([stack-pr](../stack-pr/SKILL.md) says how).
 
 ## 6. Read
 
-Read in this order, and the prose last: the ending, the reading, the tally, each budget, the
-noise, the rulings, the load.
+Read in this order, and the prose last: the ending, the reading, the tally, the noise, the
+rulings, the load.
 
 ```sh
 bun tools/wri/wri.ts read --log <log>          # the rows, the triggers, the host line
-bun run runs compare <name> [<name> ...]       # rounds made apart, set side by side
 ```
 
-The report holds the reading at the full limit and at each budget fixed beforehand, the tally
-over tasks, each harness by itself, and the reference against itself where `--noise` asked for
+The report holds the reading at the budget the solves were told, the tally over tasks, each
+harness by itself, and the reference against itself where `--noise` asked for
 it. [launch-run](../launch-run/SKILL.md) says what each line is.
 
 Evidence precedence:
@@ -248,11 +251,11 @@ a default over the log, and what it cannot read is yours to bring. The moves it 
 the system's own: change one flag and run again; fix the one owner the evidence names; delete a
 mechanism nothing reads; investigate one consequential ambiguity.
 
-After a repeated step the table tests link 8 with what exists: where the campaign runs under a
-shortened budget the step is read once more at the full limit, then the harness is the one to
-promote, and the budget is set again from the promoted harness's own solves before the next
-session. Build for difficulty only once no budget leaves room, and then start from the one lever
-v1 found to work, several requirements that share one limit (`docs/plan.md`, row F52).
+After a repeated step the harness is the one to promote, and after the promotion the Examiner
+writes the next epoch's tasks, the ones the harness now the reference fails. A campaign runs at
+one budget since 11 October (`docs/simplify.md`, package A): there is no shorter budget to read a
+step under and no budget rule to set one again. Build for difficulty from the one lever v1 found
+to work, several requirements that share one limit (`docs/plan.md`, row F52).
 
 Keep a negative result and its limits intact, and say which level of evidence each claim of the
 pass reached (attribution-and-proof lists the four).
@@ -267,9 +270,9 @@ and the next command. Name no account and no credential path in anything that is
 | --- | --- | --- |
 | walk | the pulse, the reader, the table above | whole-run-investigation, lane 25, on a campaign with two comparisons or more |
 | choose | one link, one owner, one falsifier | stack-pr when the change is source |
-| prove | a dry run of the launch | system-path-simulation: a replay for a reader, a rehearsal for a round |
+| prove | a dry run of the campaign command | system-path-simulation: a replay for a reader, a rehearsal for a campaign |
 | predict | `--predict`, before the first solve | further rows in the local notes |
-| launch | launch-run, under the load rule | model-condition-comparison when two launches are meant as arms |
+| launch | launch-run, under the load rule | a checkpoint when two harnesses are meant as arms |
 | read | the report, the reader, every prediction resolved | attribution-and-proof before a claim; whole-run-investigation when a reading is in doubt |
 | decide | lifted, held or unreached; one move | oracle-handover when the question is one the repository's own evidence cannot settle |
 
@@ -281,8 +284,8 @@ decision and not an omission.
 Keep this list short and current. Replace an entry when its lesson has an owner elsewhere.
 
 - **Rounds that could read nothing.** Eight truss rounds on 8 October cost over $220 with no
-  held-out task, and each could only say that none was scored. The launcher refuses that now;
-  the dry run is still the first command of every pass.
+  held-out task, and each could only say that none was scored. The comparison's own admission
+  refuses that now; the dry run is still the first command of every pass.
 - **Too many runs on one host.** Three campaigns at once made an hour of readings provisional.
 - **A bundle or a report taken before the event it cites.** Wait for `comparison.reported`.
 - **Reading a wall-bound round as a weak harness.** Check link 6 before link 4.

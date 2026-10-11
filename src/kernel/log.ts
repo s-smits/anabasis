@@ -53,9 +53,10 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  `stop.overridden` is the operator's reason for a comparison begun after the plan's stop rule
  *  had stopped the campaign (`src/builder/admission.ts`).
  *  The three `campaign.*` kinds beside the setting are the Harness Builder's
- *  (`tools/d2/harness-builder.ts`): `campaign.opened` is what a campaign runs by, its total budget,
- *  its seats and the budgets its comparisons are read at; `campaign.move` is a move it made, with
- *  the reason its decision table gave (`src/builder/decide.ts`); and `campaign.ended` is how the
+ *  (`tools/d2/harness-builder.ts`): `campaign.opened` is what a campaign runs by, its total budget
+ *  and its seats; `campaign.move` is a move it made, written when the move ended, with the reason
+ *  its decision table gave (`src/builder/decide.ts`), when it began and the host's load then; and
+ *  `campaign.ended` is how the
  *  campaign ended, which is its last event. `campaign.word` is a word the operator left for a
  *  running campaign (`tools/d2/word.ts`): to stop, to have other tasks written, or another total
  *  budget. It is read at the next move's boundary, and the event that acts on it names it.

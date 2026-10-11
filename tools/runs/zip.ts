@@ -13,7 +13,7 @@
  * With no names, every run log in the repository's worktrees, as the pulse finds them. In the zip a
  * run sits under `<worktree>/<name>/`, beside a README.md of what the level holds, a GUIDE.md of how
  * to read it (`zip-guide.md`), `--note` as NOTES.md and a MANIFEST.json of every file with its size
- * and group, the commit each run's launches ran at (its receipts, `launch.ts`) beside the one its
+ * and group, the commit each run's starts ran at (its receipts, `receipt.ts`) beside the one its
  * worktree stands at when zipped, its last reading and its ending, and what was left where it was.
  * Until 10 October the README gave the worktree's commit as the run's, and the last comparison's
  * reading as its ending: the five test-host campaigns zipped on 9 October ran at four commits and
@@ -32,7 +32,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { launchesOf } from "./launch.ts";
+import { launchesOf } from "./receipt.ts";
 import { logEvents, type Run, runs, standing } from "./pulse.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;

@@ -16,13 +16,15 @@
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 12) are
  * `folds.ts` since 10 October, when this file was over the size policy's ceiling. This file keeps
  * the lanes of the harness, the comparison, the solve and the review (13 to 30), the rows and the
- * overview.
+ * overview; the lanes that read the clock (26 and 28) and row A's hours are `time.ts`, split from
+ * here on the same day for the same ceiling.
  */
-import { signP } from "#src/kernel/compare.ts";
+import { pairings, signP } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { countBy, median } from "#src/meta/tally.ts";
+import { pairsReported } from "#src/kernel/reports.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import {
   type Build,
@@ -35,7 +37,6 @@ import {
   indexOf,
   instrumentTriggers,
   items,
-  percent,
   practiceOf,
   REPORTED,
   share,
@@ -50,6 +51,8 @@ import {
   text,
   type Trigger,
 } from "./folds.ts";
+import { promotionTriggers } from "./promotion.ts";
+import { costTriggers, hoursLine, wallTriggers } from "./time.ts";
 
 export interface Row {
   readonly id: string;
@@ -62,17 +65,7 @@ export interface Overview {
   readonly triggers: readonly Trigger[];
 }
 
-/** The share of a wall past which a miss is read as bound by it, as v1's climb read it. */
-const WALL_BOUND_SHARE = 0.95;
 const FEW_CALLS = 3;
-/** The factor between the loads two comparisons ran under from which they are read as made on
- *  different hosts, and the load under which no factor is worth a line: a load of four moves no
- *  wall on a host of four cores or more. On 2026-10-09 one harness answered the same tasks in a
- *  median of 105 s under a load of 31 and of 40 s under a load of 6. */
-const LOAD_MOVED = 2;
-const LOAD_WORTH_A_LINE = 4;
-/** Minutes of silence in the log worth a line. */
-const SILENCE_MINUTES = 20;
 const EXAM_START = "exam.started";
 /** The Builder tools that write one named file: pi's two, and the one tool sessions had before them. */
 const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
@@ -105,7 +98,9 @@ function practiceTriggers(
   // call to count, and a digest misses none.
   const practisedUnder = new Set(round.practice.map((solve) => solve.harness));
   const lastPractice = round.practice.at(-1);
-  const ended = finished === null ? "never finished" : text(finished.ended);
+  // A session with no end record may still be running when the log is read: it is not finished by
+  // the log's last event, which is not the same as a session cut short.
+  const ended = finished === null ? "not finished by the log's last event" : text(finished.ended);
   const failed = round.practice.filter((solve) => solve.outcome === "fail");
   const earned = failed.filter((fail) => log.rulings.get(fail.id)?.ruling === "earned").length;
   // A fail followed by a pass of the same task: under other bytes it may be the change answering
@@ -122,16 +117,16 @@ function practiceTriggers(
   const flipped = failed.filter((fail) => laterPass(fail, true)).length;
   const exposed = [...round.scoredSet].filter((version) => build.practice.has(version)).length;
   const shell = calls.filter(({ tool }) => tool === "bash").length;
+  // A task lost in one comparison is no loss of another's: recode's b-1 was measured twice.
+  const lost = (solve: Solve) => `${String(solve.comparison)} ${solve.version}`;
   const lostBefore = new Set(
-    round.scoring
-      .filter((solve) => solve.harness === reference && solve.outcome === "fail")
-      .map((solve) => solve.version),
+    round.scoring.filter((solve) => solve.harness === reference && solve.outcome === "fail").map(lost),
   );
   const quickWins = round.scoring.filter(
     (solve) =>
       solve.harness === child &&
       solve.outcome === "pass" &&
-      lostBefore.has(solve.version) &&
+      lostBefore.has(lost(solve)) &&
       solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE &&
       solve.calls.length <= FEW_CALLS,
   ).length;
@@ -176,15 +171,43 @@ function practiceTriggers(
   ];
 }
 
+/**
+ * Lane 19's wins, by solve: each comparison's tasks the new harness won, read as the comparison
+ * paired them, with the solves under the new harness that passed them and under the reference that
+ * failed them. The lane opens those solves' turns and calls, and until this it rebuilt the pairing
+ * by hand from a log of thousands of events: the #107 buffer campaign won 11 tasks over 3
+ * comparisons in 5,531 (2026-10-10).
+ */
+function winTriggers(log: Index): Trigger[] {
+  return log.compared.flatMap(({ session, at, last }) => {
+    const pairs = pairsReported(log.events, { session, index: at, data: last });
+    const won = pairs.filter((pair) => {
+      const { fresh, old } = pairings(pair);
+      return fresh > old;
+    });
+    const named = (side: "old" | "fresh", valid: boolean) =>
+      won.flatMap((pair) => pair.solves?.[side].filter((_, index) => pair[side][index] === valid) ?? []);
+    return won.length === 0
+      ? []
+      : [
+          fired(
+            "WINS",
+            `${session}: ${share(won.length, pairs.length)} tasks won; passed under the new harness: ${named("fresh", true).join(" ")}; failed under the reference: ${named("old", false).join(" ")}`,
+          ),
+        ];
+  });
+}
+
 /** Lanes 13 to 19: the harness, which is the Builder's. */
 function harnessTriggers(log: Index): Trigger[] {
   return log.builds.flatMap((build) => {
     const { session, finished, parent, calls } = build;
-    const compared = log.compared.find((each) => each.build === build);
+    // Every comparison of the harness this session left: recode measured b-1's twice (2026-10-10).
+    const compared = log.compared.filter((each) => each.build === build);
     const round = {
       practice: practiceOf(log, build),
-      scoring: compared?.scoring ?? [],
-      scoredSet: compared?.scoredSet ?? new Set<string>(),
+      scoring: compared.flatMap((each) => each.scoring),
+      scoredSet: new Set(compared.flatMap((each) => [...each.scoredSet])),
     };
     const child = text(finished?.harness);
     // pi's `write` and `edit` since 2026-10-09, and `write_file` in the sessions before it.
@@ -245,7 +268,7 @@ function harnessTriggers(log: Index): Trigger[] {
         build,
         changed: edited,
         child,
-        reference: text(compared?.own.old) || parent,
+        reference: text(compared[0]?.own.old) || parent,
         round,
       }),
     ];
@@ -266,7 +289,6 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
   const fragile = signP(Math.max(0, informative - 1), 1) > level;
   const asked = last.tasks;
   const lacking = items(last.short).length;
-  const against = asRecord(last.against);
   return [
     ...(scored !== null && tasks === 0
       ? [
@@ -295,22 +317,6 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
         ]
       : []),
     ...(lacking > 0 ? [fired("SET SHORT", `${session}: ${String(lacking)} short of solves`)] : []),
-    ...(against !== null && count(against.wins) < count(against.losses)
-      ? [
-          fired(
-            "BELOW THE STARTER",
-            `${session}: ${String(count(against.wins))} won and ${String(count(against.losses))} lost against the starter; the report reads ${text(last.reading)}`,
-          ),
-        ]
-      : []),
-    ...(last.reading === "starter-unread"
-      ? [
-          fired(
-            "STARTER UNREAD",
-            `${session}: its test clears its level and the starter has not its solves on every tallied task`,
-          ),
-        ]
-      : []),
   ];
 }
 
@@ -410,89 +416,10 @@ function comparisonTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 26's wall and load: the misses bound by the wall, the share of it each harness used, and
- *  the host's load when each comparison's solves started. */
-function wallTriggers(log: Index): Trigger[] {
-  const missed = log.solves.filter((solve) => solve.outcome === "fail");
-  const walled = missed.filter(
-    (solve) => solve.kind === "wall-ended" || solve.seconds > solve.wallSeconds * WALL_BOUND_SHARE,
-  ).length;
-  const wallShares = log.compared.flatMap(({ session, own, scoring }) => {
-    // The median share of its wall a harness's solves used, or null for none under a wall. v1 read
-    // this share as the measure that moves on every battery and leads a fail (lane 26).
-    const under = (harness: JsonValue | undefined) =>
-      median(
-        scoring.flatMap((solve) =>
-          solve.harness === harness && solve.wallSeconds > 0 ? [solve.seconds / solve.wallSeconds] : [],
-        ),
-      );
-    const [before, after] = [under(own.old), under(own.fresh)];
-    return before === null || after === null || own.old === own.fresh
-      ? []
-      : [
-          fired(
-            "WALL SHARE",
-            `${session}: median ${percent(before)} under the reference harness, ${percent(after)} under the new`,
-          ),
-        ];
-  });
-  // The one-minute load each comparison's solves started under. A wall counts the clock, so the
-  // same wall holds less work on a loaded host: a comparison made there reaches walls an idle host
-  // would not, and two comparisons under different loads were not made under one budget, whatever
-  // their settings say.
-  const loads = log.compared.flatMap(({ session, scoring }) => {
-    const at = scoring.flatMap((solve) => (solve.load === null ? [] : [solve.load]));
-    const middle = median(at);
-    const cores = scoring.findLast((solve) => solve.cores !== null)?.cores ?? null;
-    return middle === null ? [] : [{ session, middle, most: Math.max(...at), cores }];
-  });
-  const loaded = loads.flatMap(({ session, middle, most, cores }) =>
-    cores !== null && middle > cores
-      ? [
-          fired(
-            "HOST LOADED",
-            `${session}: load ${middle.toFixed(1)} at the median and ${most.toFixed(1)} at most when its solves started, on ${plural(cores, "core")}`,
-          ),
-        ]
-      : [],
-  );
-  const middles = loads.map(({ middle }) => middle);
-  const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
-  const moved = loads.length > 1 && busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
-  return [
-    ...(walled > 0 ? [fired("WALL-BOUND MISSES", share(walled, missed.length))] : []),
-    ...wallShares,
-    ...loaded,
-    ...(moved
-      ? [
-          fired(
-            "LOAD MOVED",
-            `median load when each comparison's solves started: ${loads.map(({ session, middle }) => `${session} ${middle.toFixed(1)}`).join("; ")}`,
-          ),
-        ]
-      : []),
-  ];
-}
-
-/** Lanes 26 to 28: the solve, its failure and the cost. */
+/** Lanes 26 to 28: the solve, its failure and the cost, of which `time.ts` reads lanes 26 and 28. */
 function solveTriggers(log: Index): Trigger[] {
   const done = log.solves.filter((solve) => solve.outcome !== null);
   const missed = done.filter((solve) => solve.outcome === "fail");
-  const starved = done.filter(
-    (solve) => solve.cpu !== null && solve.seconds > 60 && solve.cpu < solve.seconds * 0.02,
-  );
-  // A solve with a command cut before its CPU time was read has a floor for its CPU and no
-  // reading. A comparison's report sums what was measured, so a budget or a spread in `cpu` is
-  // read low on these solves.
-  const cut = done.filter((solve) => solve.unmeasured > 0);
-  // A meter that reads zero on every finished solve measured nothing: it counts only the children
-  // a command waited for, and reads zero under Bubblewrap (AGENTS.md, section 7). On t-10 all 143
-  // solves read 0 on 10 October, and no line said so.
-  const zero = done.length > 0 && done.every((solve) => solve.cpu === 0);
-  const cutBy = log.compared.flatMap(({ session, scoring }) => {
-    const mine = scoring.filter((solve) => solve.unmeasured > 0).length;
-    return mine === 0 ? [] : [`${session}: ${share(mine, scoring.length)} of its solves`];
-  });
   // An Examiner session writes its ending as a Builder's does; one with a start and no ending
   // was cut, or is still running.
   const examined = new Set(log.of(EXAM_END).map((data) => text(data.session)));
@@ -507,11 +434,6 @@ function solveTriggers(log: Index): Trigger[] {
   );
   const ends = [...log.of(BUILD_END), ...log.of(EXAM_END)];
   const crashed = ends.filter((data) => isString(data.crash) || data.ended === "crashed");
-  const times = log.events.map((event) => Date.parse(event.at));
-  const gaps = times.flatMap((at, index) =>
-    at - (times[index - 1] ?? at) > SILENCE_MINUTES * 60_000 ? [index] : [],
-  );
-  const spend = spendOf(log);
   // Non-results by harness in each comparison: a side whose bad solves are run again is favoured.
   const rerun = log.compared.flatMap(({ session, own, scoring }) => {
     const mine = scoring.filter((solve) => solve.outcome === "non-result");
@@ -522,30 +444,8 @@ function solveTriggers(log: Index): Trigger[] {
           `${session}: ${String(under)} under the reference harness, ${String(mine.length - under)} under the others`,
         ];
   });
-  const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
-  const [[leader, most] = ["", 0]] = spend;
   return [
     ...wallTriggers(log),
-    ...(starved.length > 0 ? [fired("LONG SOLVE, LITTLE CPU", plural(starved.length, "solve"))] : []),
-    ...(cut.length > 0
-      ? [
-          fired(
-            "CPU UNMEASURED",
-            [
-              `${share(cut.length, done.length)} finished solves cut a command before its CPU time was read`,
-              ...cutBy,
-            ].join("; "),
-          ),
-        ]
-      : []),
-    ...(zero
-      ? [
-          fired(
-            "CPU UNMEASURED",
-            `${share(done.length, done.length)} finished solves read 0 CPU seconds: the meter counts only the children a command waited for, and reads zero under Bubblewrap`,
-          ),
-        ]
-      : []),
     ...(non.length > 0
       ? [
           fired(
@@ -565,28 +465,12 @@ function solveTriggers(log: Index): Trigger[] {
     ...(crashed.length > 0
       ? [fired("SESSION CRASHED", crashed.map((data) => text(data.session)).join(", "))]
       : []),
-    ...(gaps.length > 0
-      ? [
-          fired(
-            "SILENCE",
-            `${plural(gaps.length, "gap")} over ${String(SILENCE_MINUTES)} minutes, the first before ${log.events[gaps[0] ?? 0]?.at ?? ""}`,
-          ),
-        ]
-      : []),
-    ...(total > 0 && leader !== "solver" && most > total / 2
-      ? [fired("SPEND LED BY A ROLE", `${leader}: ${percent(most / total)} of billed dollars`)]
-      : []),
+    ...costTriggers(log),
   ];
 }
 
 /** Lanes 29 and 30: the review loop. */
 function reviewTriggers(log: Index): Trigger[] {
-  const diagnoses = [...log.diagnoses.values()];
-  const abstained = diagnoses.filter((data) => isString(data.abstain)).length;
-  const owners = countBy(
-    diagnoses.filter((data) => isString(data.owner)),
-    (data) => text(data.owner),
-  );
   const moved = [...log.rulings].filter(([solve, data]) => {
     const replay = asRecord(data.replay);
     return replay !== null && replay.kind !== log.verdicts.get(solve)?.kind;
@@ -605,14 +489,6 @@ function reviewTriggers(log: Index): Trigger[] {
     (data) => data.ruling === "earned" && items(data.probes).length === 0 && count(data.turns) > 0,
   ).length;
   return [
-    ...(diagnoses.length > 0
-      ? [
-          fired(
-            "DIAGNOSES",
-            `${String(diagnoses.length)}, ${String(abstained)} abstained; owners: ${tally(owners)}`,
-          ),
-        ]
-      : []),
     ...(moved > 0 ? [fired("REPLAY MOVED THE VERDICT", plural(moved, "ruling"))] : []),
     ...(standing > 0
       ? [
@@ -652,6 +528,27 @@ function reviewTriggers(log: Index): Trigger[] {
   ];
 }
 
+/**
+ * The campaign command's own record, for lane 25's "what runs next": its moves, how it ended, and
+ * its billed dollars against the budget it opened with. Lane 25 read the stop rule from the
+ * command's output, which the log outlives. An ending before the last event is one the campaign went
+ * on from: both #107 campaigns ended `exam` at their fourth event and ran on under the same opening.
+ * None for a log no campaign command wrote.
+ */
+function campaignOf(log: Index): string[] {
+  const endings = log.events.flatMap(({ kind, data }, index) =>
+    kind === "campaign.ended" ? [`${text(data.ending)} at event ${String(index)}`] : [],
+  );
+  const opened = asRecord(log.of("campaign.opened").at(-1)?.budget);
+  if (endings.length === 0 && opened === null) return [];
+  const moves = countBy(log.of("campaign.move"), (data) => text(data.move));
+  const billed = spendOf(log).reduce((sum, [, dollars]) => sum + dollars, 0);
+  const budget = isNumber(opened?.dollars) ? ` of ${String(opened.dollars)}` : "";
+  return [
+    `campaign: moves ${tally(moves)}; ended ${endings.join(", then ") || "never"}; billed ${billed.toFixed(2)}${budget} dollars`,
+  ];
+}
+
 /** Rows A to F: the identities every finding binds to. */
 function rowsOf(log: Index): Row[] {
   const conditions = [...log.conditions.values()];
@@ -669,8 +566,15 @@ function rowsOf(log: Index): Row[] {
     );
   const sessions = log.builds.map((build) => {
     const child = isString(build.finished?.harness) ? short(build.finished.harness) : "none";
-    const ended = text(build.finished?.ended) || "never";
-    return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${String(count(build.finished?.practiceSolves))} practice solves, reading ${text(build.report?.reading) || "none"}`;
+    const ended = text(build.finished?.ended) || "not by the log's last event";
+    const readings = log.compared
+      .filter((each) => each.build === build)
+      .map((each) => `${each.session} ${text(each.last.reading)}`);
+    // The end record counts a session's practice; one still running has none, and its solves so far
+    // are read from the log instead of printed as a zero.
+    const practised =
+      build.finished === null ? practiceOf(log, build).length : count(build.finished.practiceSolves);
+    return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${String(practised)} practice solves, reading ${readings.join(", ") || "none"}`;
   });
   return [
     {
@@ -682,6 +586,7 @@ function rowsOf(log: Index): Row[] {
         `billed dollars: ${spendOf(log)
           .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
           .join(", ")}`,
+        hoursLine(log),
       ],
     },
     {
@@ -722,7 +627,7 @@ function rowsOf(log: Index): Row[] {
         `${plural(log.solves.length - done.length, "solve")} never finished`,
       ],
     },
-    { id: "F", title: "sessions and the harness chain", lines: sessions },
+    { id: "F", title: "sessions and the harness chain", lines: [...campaignOf(log), ...sessions] },
   ];
 }
 
@@ -737,7 +642,9 @@ export function overview(events: readonly LogEvent[]): Overview {
       ...harnessTriggers(log),
       ...comparisonTriggers(log),
       ...solveTriggers(log),
+      ...winTriggers(log),
       ...reviewTriggers(log),
+      ...promotionTriggers(log),
     ],
   };
 }

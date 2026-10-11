@@ -17,6 +17,8 @@ import {
   outcomesOf,
   pairsReported,
   promoted,
+  referenceFailed,
+  releaseOrder,
   stopRule as stopOf,
   unansweredTwice,
 } from "../src/kernel/reports.ts";
@@ -170,7 +172,10 @@ describe("the stop rule", () => {
     expect(stopRule(read)).toEqual({ checkpoints: 2, sinceStep: 0, stop: false });
   });
 
-  it("counts under one setting: what was compared under an earlier one is cut, with all before it", () => {
+  it("counts across the setting ids the reports carry: a campaign runs at one setting", () => {
+    // Until 2026-10-11 whatever stood before the last comparison under another setting id was
+    // cut. The id names the host's code too, so a tree moved to a new commit between two
+    // comparisons began the count again (`docs/simplify.md`, A4).
     const earlier = [
       event("build.started", { session: "b-0" }),
       ...solved(undefined, "p1", "h2", [false]),
@@ -181,12 +186,12 @@ describe("the stop rule", () => {
     ];
     expect(stopRule(earlier)).toMatchObject({ checkpoints: 3, sinceStep: 3, stop: true });
     expect(stopRule([...earlier, flat("b-3", "h4", { setting: "s2" })])).toEqual({
-      checkpoints: 1,
-      sinceStep: 1,
-      stop: false,
+      checkpoints: 4,
+      sinceStep: 4,
+      stop: true,
     });
-    // A harness compared again under the new setting counts there: no comparison is read across two.
-    expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toMatchObject({ checkpoints: 1 });
+    // A harness compared again is one harness, whatever id its two comparisons carry.
+    expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toMatchObject({ checkpoints: 3 });
   });
 
   it("counts no comparison that left no room, by the reference's share of valid solves and the new harness's", () => {
@@ -283,15 +288,16 @@ describe("the stop rule", () => {
     expect(stopRule(round)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
   });
 
-  it("counts a harness set against the starter once: as the reference, and not as the guard after another", () => {
+  it("counts each pair of a harness and a reference once, the starter as a reference among them", () => {
     const versus = (id: string, old: string, reading: string) =>
       reported(id, reading, "h2", { old, starter: "base" });
     // While the starter is the reference, a comparison with it is the checkpoint.
     expect(stopRule([...sessions, versus("b-1", "base", "no-step")])).toMatchObject({ checkpoints: 1 });
-    // After a comparison with another reference left the starter unread, the comparison with the
-    // starter is that one's reading against it, and no second checkpoint.
-    const guarded = [...sessions, versus("b-1", "h1", "starter-unread"), versus("g-1", "base", "no-step")];
-    expect(stopRule(guarded)).toEqual({ checkpoints: 1, sinceStep: 1, stop: false });
+    // A harness compared with another reference and then with the starter is two pairs. Until
+    // 2026-10-11 the second was read as the first's reading against the starter
+    // (`starter-unread`), which no comparison makes since.
+    const both = [...sessions, versus("b-1", "h1", "no-step"), versus("g-1", "base", "no-step")];
+    expect(stopRule(both)).toEqual({ checkpoints: 2, sinceStep: 2, stop: false });
   });
 });
 
@@ -447,8 +453,11 @@ describe("the outcome an Examiner hears of a task", () => {
     );
   });
 
-  it("is of the setting the last comparison was made under: a task compared under an earlier one only says so", () => {
-    // t-10 on 10 October: five tasks tied at 10 turns and read "won" at 3 without changing.
+  it("is each task's last report's, whatever setting id the report carries", () => {
+    // Until 2026-10-11 a task whose last report carried another setting id than the last report's
+    // read `earlier-setting`: t-10 on 10 October tied five tasks at 10 turns and read them "won"
+    // at 3 without changing. A campaign runs at one setting since, and the id names the host's
+    // code too, which a tree moved to a new commit changes: a report under another id is read.
     const shorter = (task: string, harness: string): Condition => {
       const ran = condition(task, harness);
       return { ...ran, limits: { ...ran.limits, modelTurns: 3 } };
@@ -483,10 +492,10 @@ describe("the outcome an Examiner hears of a task", () => {
     ];
     expect(outcomesOf(shortened)).toEqual(
       new Map([
-        ["won", "earlier-setting"],
+        ["won", "reference-none"],
         ["tied", "reference-none"],
-        ["unsolved", "earlier-setting"],
-        ["aside", "earlier-setting"],
+        ["unsolved", "reference-none"],
+        ["aside", "disputed"],
       ]),
     );
   });
@@ -601,6 +610,18 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(awaitingLabel(compared(settled, "b-3", "h4", F))).toEqual([]);
   });
 
+  it("are not the ones the host saw their author's try_answer pass: the proposal says so", () => {
+    // The Examiner's `try_answer` passed an answer to the task before it proposed it (11 October):
+    // the task has a valid answer on record though no solve found one, so it waits for nobody.
+    const proposed = twice.map((each) =>
+      each.kind === "task.proposed" && each.data.version === "hard"
+        ? { ...each, data: { ...each.data, feasible: true } }
+        : each,
+    );
+    expect(awaitingLabel(proposed)).toEqual([]);
+    expect(awaitingLabel(compared(proposed, "b-3", "h4", F))).toEqual([]);
+  });
+
   it("are not the ones the starter answered, though the test's two harnesses did not", () => {
     const lower = (log: readonly LogEvent[], session: string) => {
       const whole = compared(log, session, "h2", F);
@@ -626,6 +647,37 @@ describe("the tasks that go to a person as possibly infeasible", () => {
   });
 });
 
+describe("the release before the draw", () => {
+  // Four held-out tasks the reference harness failed in the last comparison, and two it answered.
+  const terms = { old: "h1", fresh: "h2", solves: 2, setting: SETTING };
+  const tasks = ["f1", "f2", "f3", "f4", "a1", "a2"];
+  const log = [
+    ...tasks.flatMap(heldOut),
+    ...tasks.flatMap((task) => [
+      ...solved("b-1", task, "h1", task.startsWith("f") ? [F, F] : [P, P]),
+      ...solved("b-1", task, "h2", [P, P]),
+    ]),
+    reported("b-1", "no-step", "h2", { ...terms, versions: tasks }),
+  ];
+  const failed = referenceFailed(log);
+
+  it("takes half of the tasks the reference failed, and the draw cannot release the other half", () => {
+    expect(failed.toSorted()).toEqual(["f1", "f2", "f3", "f4"]);
+    // Half of the failed, then the draw over the answered tasks alone: the kept half stays scored.
+    const taken = releaseOrder(log, tasks, 4, "seed");
+    const versions = taken.map(([version]) => version);
+    expect(versions.slice(0, 2).every((version) => failed.includes(version))).toBe(true);
+    expect(versions.slice(2).toSorted()).toEqual(["a1", "a2"]);
+    expect(taken.slice(0, 2).every(([, why]) => why.includes("the reference harness failed it"))).toBe(true);
+    // Asked for more than the draw's pool holds, the release takes what there is and no kept task.
+    expect(
+      releaseOrder(log, tasks, 6, "seed")
+        .map(([version]) => version)
+        .toSorted(),
+    ).toEqual(["a1", "a2", ...versions.slice(0, 2).toSorted()]);
+  });
+});
+
 describe("the tasks the reference harness exhausted", () => {
   const terms = { old: "h1", solves: 2 };
   const read = event("checker.read", { contract: "c", checks: "k", faults: [] });
@@ -643,7 +695,7 @@ describe("the tasks the reference harness exhausted", () => {
   ];
   const start = [read, ...["e1", "e2", "e3", "open"].flatMap(heldOut)];
 
-  it("are the ones the reference answered in every solve of two comparisons under the setting, but for a third kept by the contract's hash", () => {
+  it("are the ones the reference answered in every solve of two comparisons, but for a third kept by the contract's hash", () => {
     const once = compared(start, "b-1", "h2", SETTING);
     expect(exhausted(once)).toEqual([]);
     // All four: `open` too, which the new harness failed once and the reference never did, since
@@ -657,9 +709,10 @@ describe("the tasks the reference harness exhausted", () => {
     const heard = outcomesOf(twice);
     expect([...heard.values()].filter((outcome) => outcome === "exhausted")).toHaveLength(2);
     expect(heard.get("open") === "reference-every" || heard.get("open") === "exhausted").toBe(true);
-    // Under another setting the count starts again: a report there holds no pair of this setting's
-    // solves, and the earlier reports are not read. A released task is no held-out one.
-    expect(exhausted(compared(twice, "b-3", "h4", "other"))).toEqual([]);
+    // A report under another setting id counts with the rest: the id names the host's code too,
+    // and a campaign runs at one setting. Until 2026-10-11 the count started again there, and a
+    // tree moved to a new commit drew every closed task again. A released task is no held-out one.
+    expect(exhausted(compared(twice, "b-3", "h4", "other"))).toEqual(spent);
     const released = [...twice, event("task.state", { version: spent[0] ?? "", state: "released" })];
     expect(exhausted(released)).not.toContain(spent[0]);
   });

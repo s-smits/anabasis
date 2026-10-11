@@ -517,6 +517,28 @@ describe("the outcome an Examiner hears of a task", () => {
     expect(answered(beside, "g-1")).toEqual(new Set(["again", "lower"]));
     expect([...outcomesOf(beside).values()]).toEqual(["reference-none", "reference-none"]);
   });
+
+  it("is the promoted harness's after a promotion, read on the side it took in the comparison the promotion rests on", () => {
+    // Until 11 October the old side was read always: h2, promoted on b-1 where it answered every
+    // solve, was heard as the harness it replaced, valid in none.
+    const before = [
+      ...heldOut("kept"),
+      ...solved("b-1", "kept", "h1", [F, F]),
+      ...solved("b-1", "kept", "h2", [P, P]),
+      reported("b-1", "step", "h2", { ...terms, versions: ["kept"] }),
+    ];
+    const after = [...before, event("harness.promoted", { harness: "h2", from: "h1", rests: ["b-1"] })];
+    expect(outcomesOf(before).get("kept")).toBe("reference-none");
+    expect(outcomesOf(after).get("kept")).toBe("reference-every");
+    // A comparison of two harnesses neither of which is the reference is read on its old side.
+    const beside = [
+      ...after,
+      ...solved("g-2", "kept", "h3", [P, F]),
+      ...solved("g-2", "kept", "h4", [F, F]),
+      reported("g-2", "no-step", "h4", { ...terms, old: "h3", fresh: "h4", versions: ["kept"] }),
+    ];
+    expect(outcomesOf(beside).get("kept")).toBe("reference-some");
+  });
 });
 
 describe("the reference harness of a campaign", () => {
@@ -675,6 +697,21 @@ describe("the release before the draw", () => {
         .map(([version]) => version)
         .toSorted(),
     ).toEqual(["a1", "a2", ...versions.slice(0, 2).toSorted()]);
+  });
+
+  it("takes the tasks the promoted harness failed, on the side it took in the comparison the promotion rests on", () => {
+    // Until 11 October the old side was read: after h2 was promoted on b-1 the release took the
+    // four tasks h1 failed and h2 answered in every solve, as tasks the reference failed.
+    const promotion = event("harness.promoted", { harness: "h2", from: "h1", rests: ["b-1"] });
+    expect(referenceFailed([...log, promotion])).toEqual([]);
+    const lost = [
+      ...heldOut("a1"),
+      ...solved("b-1", "a1", "h1", [P, P]),
+      ...solved("b-1", "a1", "h2", [F, F]),
+      reported("b-1", "step", "h2", { ...terms, versions: ["a1"] }),
+    ];
+    expect(referenceFailed(lost)).toEqual([]);
+    expect(referenceFailed([...lost, promotion])).toEqual(["a1"]);
   });
 });
 

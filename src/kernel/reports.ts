@@ -81,9 +81,10 @@ interface TaskRecord {
    *  and every task set aside, as `TalliedIn.order` counts them, where it was first set aside. */
   asideAt: number;
   asideOrder: number;
-  /** What the solves under the reference side of the last reported comparison did with it, and
-   *  the place of its first failed solve there among the log's solves. */
-  readonly lastOld: { valid: boolean; failed: boolean; failedAt: number };
+  /** What the solves of the last reported comparison under the reference harness did with it, on
+   *  the side `TalliedIn.reference` names and on the old side where it names neither, and the
+   *  place of its first failed solve there among the log's solves. */
+  readonly lastReference: { valid: boolean; failed: boolean; failedAt: number };
 }
 
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
@@ -420,6 +421,10 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
   // The reference harness: the one last promoted, or the one the first report was made against.
   const reference = promoted(events) ?? reports[0]?.data.old;
   const last = reports.at(-1);
+  // Until 11 October the old side was read here, and after a promotion that is the harness the
+  // promoted one replaced: the release took the tasks the starter failed and the promoted harness
+  // answered, as "the reference harness failed it in the last comparison".
+  const lastReference = last?.data.fresh === reference ? reference : last?.data.old;
   const records = new Map<string, TaskRecord>();
   const of = (version: string): TaskRecord => {
     const found = records.get(version);
@@ -433,7 +438,7 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
       tallied: [],
       asideAt: -1,
       asideOrder: Number.POSITIVE_INFINITY,
-      lastOld: { valid: false, failed: false, failedAt: Number.POSITIVE_INFINITY },
+      lastReference: { valid: false, failed: false, failedAt: Number.POSITIVE_INFINITY },
     };
     records.set(version, made);
     return made;
@@ -451,10 +456,10 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
     const valid = passed(solve);
     if (valid === true) Object.assign(of(task), { answered: true, feasible: true });
     if (isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)) cut.add(made(comparison, task));
-    if (valid !== null && last !== undefined && comparison === last.session && harness === last.data.old) {
-      const { lastOld } = of(task);
-      if (valid) lastOld.valid = true;
-      else Object.assign(lastOld, { failed: true, failedAt: Math.min(lastOld.failedAt, at) });
+    if (valid !== null && last !== undefined && comparison === last.session && harness === lastReference) {
+      const record = of(task).lastReference;
+      if (valid) record.valid = true;
+      else Object.assign(record, { failed: true, failedAt: Math.min(record.failedAt, at) });
     }
   }
   let order = 0;
@@ -540,8 +545,8 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
  */
 export function referenceFailed(events: readonly LogEvent[]): string[] {
   return inOrder(
-    taskRecords(events).flatMap(({ version, held, lastOld }) =>
-      held && lastOld.failed && !lastOld.valid ? [[version, lastOld.failedAt]] : [],
+    taskRecords(events).flatMap(({ version, held, lastReference }) =>
+      held && lastReference.failed && !lastReference.valid ? [[version, lastReference.failedAt]] : [],
     ),
   );
 }
@@ -612,6 +617,14 @@ export function unansweredTwice(events: readonly LogEvent[]): string[] {
  * campaign runs at one setting (`tools/d2/setting.ts`), and the id names the host's code too,
  * which a tree moved to a new commit changes. Until 2026-10-11 a task whose last report carried
  * another id than the last report's was `earlier-setting` (`docs/simplify.md`, A4).
+ *
+ * The reference's side is the one `TalliedIn.reference` names: `old` in a comparison made against
+ * it, and `fresh` in one that measured it as the new harness, as the comparison a promotion rests
+ * on did. A comparison of two harnesses neither of which is the reference, a checkpoint named
+ * against another digest or one made before a promotion of a third, is read on its old side, the
+ * harness it was made against. Until 11 October the old side was read always, and after a
+ * promotion the Examiner heard the replaced harness's validity as the reference's: `reference-none`
+ * where the promoted harness had answered every solve.
  */
 export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
   const spent = new Set(exhausted(events));
@@ -623,9 +636,10 @@ export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
       const last = tallied.at(-1);
       if (last === undefined && asideAt === -1) return [];
       if (last === undefined || asideAt > last.index) return [[version, "disputed"]];
-      const valid = last.old.filter(Boolean).length;
+      const own = last.reference === "fresh" ? last.fresh : last.old;
+      const valid = own.filter(Boolean).length;
       const reference: Outcome =
-        valid === last.old.length ? "reference-every" : valid === 0 ? "reference-none" : "reference-some";
+        valid === own.length ? "reference-every" : valid === 0 ? "reference-none" : "reference-some";
       return [[version, spent.has(version) ? "exhausted" : reference]];
     }),
   );

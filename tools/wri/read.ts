@@ -19,6 +19,7 @@
  * overview; the lanes that read the clock (26 and 28) and row A's hours are `time.ts`, split from
  * here on the same day for the same ceiling.
  */
+import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/builder/handover.ts";
 import { pairings, signP } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -416,17 +417,30 @@ function comparisonTriggers(log: Index): Trigger[] {
   ];
 }
 
+/** The solves with no end: those the campaign went past (`nextBound`), and those open at the log's
+ *  end. */
+function unendedSolves(log: Index) {
+  const unended = log.solves.filter((solve) => solve.outcome === null);
+  const cut = unended.filter((solve) => nextBound(log.events, solve.index) !== -1).length;
+  return { cut, open: unended.length - cut };
+}
+
+/** A lane 27 trigger's detail: what the campaign went past, then what is open at the log's end. */
+const apart = (cut: string, open: string) =>
+  [cut, open === "" ? "" : `${open} open at the log's end`].filter((part) => part !== "").join("; ");
+
 /** Lanes 26 to 28: the solve, its failure and the cost, of which `time.ts` reads lanes 26 and 28. */
-function solveTriggers(log: Index): Trigger[] {
+function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   const done = log.solves.filter((solve) => solve.outcome !== null);
   const missed = done.filter((solve) => solve.outcome === "fail");
-  // An Examiner session writes its ending as a Builder's does; one with a start and no ending
-  // was cut, or is still running.
-  const examined = new Set(log.of(EXAM_END).map((data) => text(data.session)));
-  const unended = log.of(EXAM_START).flatMap((data) => {
-    const session = text(data.session);
-    return examined.has(session) ? [] : [session];
-  });
+  // A session or a solve with no end that the campaign went past was cut. One open at the log's end
+  // is running, or was stopped by `bun run runs stop`, which writes no ending, and the trigger says
+  // it apart: until 11 October it read buffer-225's running x-1, and the four solves buffer-main's
+  // g-1 had in flight, as killed.
+  const unended = steps.flatMap((step) => (step.step === "examiner" && step.ended === null ? [step] : []));
+  const ids = (cut: boolean) => unended.flatMap((step) => (step.cut === cut ? [step.id] : [])).join(", ");
+  const { cut, open } = unendedSolves(log);
+  const solves = (many: number) => (many > 0 ? plural(many, "solve") : "");
   const non = done.filter((solve) => solve.outcome === "non-result");
   const unjudged = countBy(
     missed.filter((solve) => solve.kind !== "rejected"),
@@ -457,10 +471,8 @@ function solveTriggers(log: Index): Trigger[] {
           ),
         ]
       : []),
-    ...(log.solves.length > done.length
-      ? [fired("SOLVE NEVER FINISHED", plural(log.solves.length - done.length, "solve"))]
-      : []),
-    ...(unended.length > 0 ? [fired("EXAMINER NEVER FINISHED", unended.join(", "))] : []),
+    ...(cut + open > 0 ? [fired("SOLVE NEVER FINISHED", apart(solves(cut), solves(open)))] : []),
+    ...(unended.length > 0 ? [fired("EXAMINER NEVER FINISHED", apart(ids(true), ids(false)))] : []),
     ...(Object.keys(unjudged).length > 0 ? [fired("MISSES WITHOUT A VERDICT", tally(unjudged))] : []),
     ...(crashed.length > 0
       ? [fired("SESSION CRASHED", crashed.map((data) => text(data.session)).join(", "))]
@@ -549,8 +561,31 @@ function campaignOf(log: Index): string[] {
   ];
 }
 
+/** The steps open at the log's end, each with what it has done so far. A move the campaign command
+ *  is making writes its `campaign.move` when it ends, so the moves above leave it out. */
+function openLine(steps: readonly Handover[]): string[] {
+  const open = new Set(openSteps(steps));
+  const said = steps.flatMap((step) => {
+    if (!open.has(step.id)) return [];
+    if (step.step === "comparison") {
+      return [
+        `${step.id}, a comparison: ${plural(step.solved, "solve")} ended and ${String(step.begun - step.solved)} open`,
+      ];
+    }
+    const done =
+      step.step === "examiner"
+        ? `${plural(step.held, "task")} held out`
+        : plural(step.practiceSolves, "practice solve");
+    return [
+      `${step.id}, ${step.step === "examiner" ? "an Examiner" : "a Builder"} session: ${plural(step.turns, "turn")} and ${done} so far, last at ${step.last}`,
+    ];
+  });
+  return said.length === 0 ? [] : [`open at the log's end: ${said.join("; ")}`];
+}
+
 /** Rows A to F: the identities every finding binds to. */
-function rowsOf(log: Index): Row[] {
+function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
+  const { cut, open } = unendedSolves(log);
   const conditions = [...log.conditions.values()];
   const distinct = (pick: (condition: Condition) => string) => String(new Set(conditions.map(pick)).size);
   const frozen = log.of("contract.frozen").at(-1);
@@ -566,7 +601,10 @@ function rowsOf(log: Index): Row[] {
     );
   const sessions = log.builds.map((build) => {
     const child = isString(build.finished?.harness) ? short(build.finished.harness) : "none";
-    const ended = text(build.finished?.ended) || "not by the log's last event";
+    const past = steps.some((step) => step.step === "builder" && step.id === build.session && step.cut);
+    const ended =
+      text(build.finished?.ended) ||
+      (past ? "never: a later step began without it" : "not yet: open at the log's end");
     const readings = log.compared
       .filter((each) => each.build === build)
       .map((each) => `${each.session} ${text(each.last.reading)}`);
@@ -574,7 +612,7 @@ function rowsOf(log: Index): Row[] {
     // are read from the log instead of printed as a zero.
     const practised =
       build.finished === null ? practiceOf(log, build).length : count(build.finished.practiceSolves);
-    return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${String(practised)} practice solves, reading ${readings.join(", ") || "none"}`;
+    return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${plural(practised, "practice solve")}, reading ${readings.join(", ") || "none"}`;
   });
   return [
     {
@@ -583,9 +621,11 @@ function rowsOf(log: Index): Row[] {
       lines: [
         `${plural(log.events.length, "event")}, ${log.events[0]?.at ?? ""} to ${log.events.at(-1)?.at ?? ""}`,
         `${plural(log.builds.length, "Builder session")}, ${plural(log.of(EXAM_START).length, "Examiner session")}, ${plural(log.of(REPORTED).length, "report")}`,
-        `billed dollars: ${spendOf(log)
-          .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
-          .join(", ")}`,
+        `billed dollars: ${
+          spendOf(log)
+            .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
+            .join(", ") || "none"
+        }`,
         hoursLine(log),
       ],
     },
@@ -624,24 +664,29 @@ function rowsOf(log: Index): Row[] {
         `test side: ${partition(TEST)}`,
         // A log written before 2026-10-09 holds solves of a stronger condition, which no comparison counts.
         ...(done.some((solve) => solve.side === "strong") ? [`strong side: ${partition("strong")}`] : []),
-        `${plural(log.solves.length - done.length, "solve")} never finished`,
+        `${plural(cut, "solve")} never finished${open > 0 ? `, ${String(open)} open at the log's end` : ""}`,
       ],
     },
-    { id: "F", title: "sessions and the harness chain", lines: [...campaignOf(log), ...sessions] },
+    {
+      id: "F",
+      title: "sessions and the harness chain",
+      lines: [...campaignOf(log), ...openLine(steps), ...sessions],
+    },
   ];
 }
 
 /** The rows and the triggers of one log. */
 export function overview(events: readonly LogEvent[]): Overview {
   const log = indexOf(events);
+  const { steps } = handoverOf(events);
   return {
-    rows: rowsOf(log),
+    rows: rowsOf(log, steps),
     triggers: [
       ...instrumentTriggers(log),
       ...taskTriggers(log),
       ...harnessTriggers(log),
       ...comparisonTriggers(log),
-      ...solveTriggers(log),
+      ...solveTriggers(log, steps),
       ...winTriggers(log),
       ...reviewTriggers(log),
       ...promotionTriggers(log),

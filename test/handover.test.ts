@@ -2,7 +2,7 @@
 // prints it whole, and the Builder's opening message is the same rows through the Builder's filter.
 import { afterAll, describe, expect, it } from "bun:test";
 import { supplyOf } from "../src/builder/admission.ts";
-import { campaignOf, type Handover } from "../src/builder/handover.ts";
+import { campaignOf, type Handover, openSteps } from "../src/builder/handover.ts";
 import { comparisonsTold, failsTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -140,11 +140,25 @@ describe("a campaign's reading", () => {
     c.compared("g-1", { old: STARTER, fresh: HA }, null);
     const read1 = campaignOf(c.events());
     expect(read1.steps).toEqual([
-      { step: "examiner", id: "x-1", ended: "finished", proposed: 3, held: 2, refused: 1, billed: 2.25 },
+      {
+        step: "examiner",
+        id: "x-1",
+        ended: "finished",
+        cut: false,
+        turns: 0,
+        last: expect.any(String),
+        proposed: 3,
+        held: 2,
+        refused: 1,
+        billed: 2.25,
+      },
       {
         step: "builder",
         id: "b-1",
         ended: "finished",
+        cut: false,
+        turns: 0,
+        last: expect.any(String),
         parent: STARTER,
         harness: HA,
         changed: true,
@@ -171,6 +185,9 @@ describe("a campaign's reading", () => {
         rulings: { earned: 1, "check-defect": 0, unclear: 0 },
         // Its two solves and the Referee's reading, and nothing of the session under the same id.
         billed: 3.5,
+        cut: false,
+        begun: 2,
+        solved: 2,
       },
       // A comparison that began and has not reported is a step all the same: it is what runs now.
       {
@@ -190,11 +207,76 @@ describe("a campaign's reading", () => {
         aside: 0,
         rulings: { earned: 0, "check-defect": 0, unclear: 0 },
         billed: 0,
+        cut: false,
+        begun: 0,
+        solved: 0,
       },
     ]);
     // The set-up is the supply the admission reads, and the harnesses are the log's own folds.
     expect(read1.supply).toEqual(supplyOf(c.events()));
     expect([read1.reference, read1.latest]).toEqual([null, HA]);
+  });
+
+  // Until 11 October an Examiner session was read from its end alone: buffer-main's x-1, running,
+  // read "0 proposed, 0 held out" and $0.00 with seven tasks held out and $8.23 metered.
+  it("reads a session with no end from its own events, and as cut once a later step began", () => {
+    const c = campaign();
+    c.setUp();
+    c.record("exam.started", { session: "x-1" });
+    for (const turn of [1, 2, 3]) {
+      c.record("exam.turn", { session: "x-1", turn, usage: { cost: { total: 0.5 } } });
+    }
+    for (const [version, outcome] of [
+      ["e1", "passed"],
+      ["e2", "passed"],
+      ["e3", "refused"],
+    ] as const) {
+      c.record("task.proposed", { version, session: "x-1" });
+      c.record("task.gate", { version, gate: 1, outcome });
+    }
+    c.record("task.state", { version: "e3", state: "refused", session: "x-1" });
+    const open = { id: "x-1", ended: null, turns: 3, proposed: 3, held: 2, refused: 1, billed: 1.5 };
+    expect(steps(c, "examiner")).toMatchObject([{ ...open, cut: false }]);
+    expect(openSteps(campaignOf(c.events()).steps)).toEqual(["x-1"]);
+    // The campaign makes one move at a time: a step begun after x-1 means x-1 will write no end.
+    c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 0.25 } } });
+    c.solved("p1", HA, "fail");
+    expect(steps(c, "examiner")).toMatchObject([{ ...open, cut: true }]);
+    // The open Builder session: its practice so far, and its own turns beside its solve's dollars.
+    expect(steps(c, "builder")).toMatchObject([
+      {
+        id: "b-1",
+        ended: null,
+        cut: false,
+        turns: 1,
+        harness: null,
+        practiceSolves: 1,
+        fails: 1,
+        billed: 1.75,
+      },
+    ]);
+    expect(openSteps(campaignOf(c.events()).steps)).toEqual(["b-1"]);
+  });
+
+  // buffer-main's g-1 had four solves in flight on 11 October, and nothing said how far it was.
+  it("reads a comparison with no report as open, with its solves so far, and as cut once the campaign ended", () => {
+    const c = campaign();
+    c.setUp();
+    c.compared("g-1", { old: STARTER, fresh: HA }, null);
+    c.solved("s1", HA, "pass", "g-1");
+    c.record("solve.started", { solve: "s-2", condition: "c", comparison: "g-1" });
+    const open = { id: "g-1", reading: null, begun: 2, solved: 1 };
+    expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: false }]);
+    expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toContain(
+      "no report yet, open at the log's end: 1 solve ended, 1 open · $1.50",
+    );
+    c.record("campaign.ended", { ending: "no-room" });
+    expect(steps(c, "comparison")).toMatchObject([{ ...open, cut: true }]);
+    expect(openSteps(campaignOf(c.events()).steps)).toEqual([]);
+    expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toContain(
+      "no report yet, cut before it: 1 solve ended, 1 cut",
+    );
   });
 
   it("tells a comparison once where a settling wrote its report again, as settled", () => {
@@ -368,7 +450,7 @@ describe("the Builder's filter over that reading", () => {
     c.built("b-1", STARTER, HA, ["fail", "fail", "pass"]);
     c.compared("b-1", { old: STARTER, fresh: HA }, tallied("no-step", 2, 2));
     const reading = campaignOf(c.events());
-    const view = viewLines("truss", reading).join("\n");
+    const view = viewLines("truss", reading, Date.now()).join("\n");
     const told = comparisonsTold(reading.steps);
     expect(told).toHaveLength(1);
     expect(told[0]).toContain("2 won, 0 lost, 2 tied");
@@ -381,6 +463,30 @@ describe("the Builder's filter over that reading", () => {
 });
 
 describe("the operator's view", () => {
+  it("says a session with no end is open, with what it did so far and when it last wrote, or cut", () => {
+    const c = campaign();
+    c.setUp();
+    c.record("exam.started", { session: "x-1" });
+    c.record("exam.turn", { session: "x-1", turn: 1, usage: { cost: { total: 0.5 } } });
+    c.record("task.proposed", { version: "e1", session: "x-1" });
+    c.record("task.gate", { version: "e1", gate: 1, outcome: "passed" });
+    const examined = (reading: ReturnType<typeof campaignOf>) =>
+      reading.steps.find((step) => step.step === "examiner");
+    const last = examined(campaignOf(c.events()))?.last ?? "";
+    const lines = viewLines("truss", campaignOf(c.events()), Date.parse(last) + 3 * 60_000);
+    expect(lines[2]).toBe(
+      `  x-1         Examiner session, open at the log's end, 1 turn so far, last wrote at ${last.slice(11, 19)}Z (3 minutes before this reading): 1 proposed, 1 held out, 0 refused · $0.50`,
+    );
+    c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    const later = viewLines("truss", campaignOf(c.events()), Date.parse(last));
+    expect(later[2]).toContain(
+      "Examiner session, cut before its end: a later step began without it: 1 proposed",
+    );
+    // A Builder session with no end has left no harness yet, and says none.
+    expect(later[3]).toStartWith("  b-1         Builder session, open at the log's end, 0 turns so far");
+    expect(later[3]).toEndWith(": from 00000000, 0 practice solves · $0.00");
+  });
+
   it("prints the set-up and each step's handover, a line each, and no move beside the table's", () => {
     const c = campaign();
     c.setUp();
@@ -395,7 +501,7 @@ describe("the operator's view", () => {
     });
     c.built("b-1", STARTER, HA, ["fail", "pass"]);
     c.compared("b-1", { old: STARTER, fresh: HA }, tallied("step", 4, 0));
-    const lines = viewLines("truss", campaignOf(c.events()));
+    const lines = viewLines("truss", campaignOf(c.events()), Date.now());
     expect(lines.slice(0, 5)).toEqual([
       "truss",
       "  set-up      4 held out · 1 released for practice · 0 wait for a label · 0 exhausted · checker read, 0 faults, not frozen · reference: the starter",

@@ -22,7 +22,12 @@ import {
   prepareDarwinSeatbelt,
   verifyDarwinSeatbeltPlan,
 } from "../src/verify/darwin-seatbelt.ts";
-import { DARWIN_SYSTEM_READ_ROOTS, darwinToolchainInstallRoots } from "../src/verify/wall-policy.ts";
+import {
+  DARWIN_SYSTEM_READ_ROOTS,
+  darwinToolchainInstallRoots,
+  hostRoots,
+  hostScratch,
+} from "../src/verify/wall-policy.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 
 const dirs: string[] = [];
@@ -423,18 +428,24 @@ console.log(JSON.stringify({ status: r.exitCode, output: await Bun.file(${JSON.s
 
   it.if(onDarwin)("still refuses a read outside the workdir and the baseline", async () => {
     // A concurrent verification's workdir beside this one: the temp root is open for what a
-    // toolchain creates there, and the product's own scratch trees stay closed by name.
-    const root = mkdtempSync(join(tmpdir(), "ana-cell-outside-"));
+    // toolchain creates there, and the host's own scratch, which holds every cell, stays closed.
+    const root = hostScratch("cell-outside-");
     dirs.push(root);
     const workdir = join(root, "workdir");
     const secret = join(root, "answer-key.txt");
     mkdirSync(workdir);
     writeFileSync(secret, "expected");
     const script = join(workdir, "checker.js");
+    // The folder above the workdir is closed with the rest of the host's scratch, but for `lstat`,
+    // which a resolver walking to its script needs: it can be stat'ed and not listed.
     writeFileSync(
       script,
-      `try { await Bun.file(${JSON.stringify(secret)}).text(); console.log("READ"); }
+      `import { lstatSync, readdirSync } from "node:fs";
+const tried = (act) => { try { act(); return "ok"; } catch (error) { return String(error.code); } };
+try { await Bun.file(${JSON.stringify(secret)}).text(); console.log("READ"); }
 catch (error) { console.log("REFUSED:" + String(error.code)); }
+console.log("stat:" + tried(() => lstatSync(${JSON.stringify(root)})));
+console.log("list:" + tried(() => readdirSync(${JSON.stringify(root)})));
 `,
     );
     const environment = { PATH: "/usr/bin:/bin", TMPDIR: workdir };
@@ -450,13 +461,14 @@ catch (error) { console.log("REFUSED:" + String(error.code)); }
       env: environment,
       timeout: 30000,
     });
-    expect(run.stdout.trim()).toBe("REFUSED:EPERM");
+    expect(run.stdout.trim().split("\n")).toEqual(["REFUSED:EPERM", "stat:ok", "list:EPERM"]);
   });
 
   it.if(onDarwin)(
     "lets a tool signal its child and grandchild, never a process outside the wall",
     async () => {
-      const workdir = mkdtempSync(join(tmpdir(), "ana-cell-signal-"));
+      // A cell where the verifier makes one, under the host's scratch the wall closes.
+      const workdir = hostScratch("cell-signal-");
       dirs.push(workdir);
       const script = join(workdir, "checker.js");
       // The shell prints its own backgrounded sleep's pid, so the tool holds a child and a grandchild.
@@ -489,12 +501,14 @@ process.exit(0);
     },
   );
 
-  it("keeps a concurrent verification cell denied without a writable grant", () => {
-    const f = fixture();
-    const cellRules = prepared(launch(f))
-      .profile.split("\n")
-      .filter((line) => line.includes("ana-cell-"));
-    expect(cellRules).toHaveLength(1);
-    expect(cellRules[0]).toContain("(deny ");
+  it("closes the host's two roots whole, every seat's and its own scratch, and grants neither", () => {
+    const lines = prepared(launch(fixture())).profile.split("\n");
+    for (const root of hostRoots()) {
+      const named = lines.flatMap((line, at) => (line.includes(JSON.stringify(root)) ? [at] : []));
+      expect(named).toHaveLength(1);
+      // A rule's paths follow its verb, so the nearest verb above the root's line is its rule's.
+      const verb = lines.slice(0, named[0]).findLast((line) => line.startsWith("("));
+      expect(verb).toBe("(deny file-read* file-read-metadata file-write*");
+    }
   });
 });

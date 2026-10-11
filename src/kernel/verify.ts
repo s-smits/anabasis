@@ -25,7 +25,6 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -39,7 +38,6 @@ import {
   parseJsonAs,
 } from "../meta/json-runtime.ts";
 import { asRecord, isBoolean, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
-import { tmpdir } from "../meta/os.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -48,7 +46,7 @@ import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subp
 import { engineCellEnv } from "../verify/engine-cell-env.ts";
 import { type VerifierOsIsolation, verifierOsIsolation } from "../verify/os-isolation.ts";
 import { toolTreeSearchDirs } from "../verify/solve-command-isolation.ts";
-import { type FrozenToolchainAccess, frozenToolchainAccess } from "../verify/wall-policy.ts";
+import { type FrozenToolchainAccess, frozenToolchainAccess, hostScratch } from "../verify/wall-policy.ts";
 import type { CheckChildInput, CheckChildResult } from "./check-child.ts";
 import type { Objective } from "./contract.ts";
 
@@ -373,9 +371,9 @@ async function runCheck(
   check: BriefTruthCheck,
   request: EvaluationRequest,
 ): Promise<CheckChildResult> {
-  // The wall leaves the user temporary directory open to toolchains and closes the product's own
-  // trees in it by prefix, so a concurrent check's cell is shut only under this one.
-  const cell = mkdtempSync(join(tmpdir(), "ana-cell-"));
+  // The wall leaves the user temporary directory open to toolchains and closes the host's own
+  // scratch in it whole, so a concurrent check's cell is shut and only this one is opened again.
+  const cell = hostScratch("cell-");
   try {
     // The program goes below the cell, so no file of it can stand as the check's `result.json`.
     const copy = join(cell, "program");

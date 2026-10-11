@@ -26,6 +26,7 @@ import {
 } from "../src/solve/command.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
+import { hostScratch } from "../src/verify/wall-policy.ts";
 
 const CAP_BYTES = 16 * 1024 * 1024;
 
@@ -112,8 +113,8 @@ describe("a solve's walled commands", () => {
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-repo-")));
       writeFileSync(join(repoRoot, "secret"), "repo-canary");
-      // Where a reader or the Examiner keeps its Claude Code session, as `readOnce` names it.
-      const reader = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-claude-cli-reader-")));
+      // Where a reader or the Examiner keeps its Claude Code session, as `readOnce` makes it.
+      const reader = realpathSync.native(hostScratch("claude-cli-reader-"));
       writeFileSync(join(reader, "session"), "reader-canary");
       const dirs = solveDirs(`test-${String(runtimeProcess.pid)}-${String(Date.now())}`);
       const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });

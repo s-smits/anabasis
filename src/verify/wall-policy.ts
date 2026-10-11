@@ -14,10 +14,11 @@
  */
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { existsSync, readdirSync, realpathSync } from "../meta/filesystem.ts";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "../meta/filesystem.ts";
 import { activeDeveloperBinDirs } from "../meta/host-tool.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { keysIf } from "../meta/optional-key.ts";
+import { tmpdir } from "../meta/os.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 
@@ -115,13 +116,32 @@ const BROAD_SANDBOX_READ_ROOTS = new Set([
   "/var",
 ]);
 
-/** The Built shell's own scratch parent, named here with its siblings. `solve-command-isolation`
- *  creates it and drops this one entry from the list the running command is denied. */
-export const BUILT_COMMAND_SCRATCH_DENY = "/ana-built-bash";
+/**
+ * The one directory every seat's root is made under, which keeps them together for creation and
+ * cleanup at mode 0700. One parent does not separate them; the profile does that, by denying the
+ * parent and re-allowing the running seat's root after it, so another seat's root is closed by a
+ * rule that can be read and tested rather than by nobody having named it.
+ */
+export const BUILT_COMMAND_SCRATCH_ROOT = join(tmpdir(), "ana-built-bash");
 
-/** The directory beside the verifier's cells where the host keeps each tool's cache between runs
- *  (`engine-cell-env.ts`). Every wall below closes it by this name. */
-const VERIFIER_CACHE_STORE = "ana-verifier-cache";
+/**
+ * The host's own scratch, beside the seats' parent: a verifier's cells, which hold a check program
+ * and a task's hidden value, and the state a reviewer's or the Examiner's Claude Code keeps, which
+ * holds what it read. Every wall closes it by path, as it closes the seats' parent, so a wall that
+ * grants the shared temporary directory names no folder of the host's by pattern.
+ */
+const HOST_SCRATCH_ROOT = join(tmpdir(), "ana-host");
+
+/** The two roots of the host's own above, in both path forms, for a wall to close whole. */
+export function hostRoots(): string[] {
+  return [BUILT_COMMAND_SCRATCH_ROOT, HOST_SCRATCH_ROOT].flatMap(canonicalForms).sort(compareCodeUnits);
+}
+
+/** A fresh folder of the host's under `HOST_SCRATCH_ROOT`, named from `prefix`. */
+export function hostScratch(prefix: string): string {
+  mkdirSync(HOST_SCRATCH_ROOT, { recursive: true, mode: 0o700 });
+  return mkdtempSync(join(HOST_SCRATCH_ROOT, prefix));
+}
 
 /** Both path forms of a root: a rule that names only the symlink form misses the access Seatbelt
  *  actually evaluates, which on Darwin is the difference between `/var` and `/private/var`. Every
@@ -270,25 +290,6 @@ function darwinAnswer(...command: string[]): string | undefined {
   return darwinAnswers.get(asked);
 }
 
-/** What the product itself creates under the user temporary directory and a verifier tool may not
- *  touch: a concurrent verification's cell (`ana-cell-`, the host's per-check workdir), Built
- *  Harness scratch, reference-solve staging and tool staging. Each is named by prefix because the
- *  rest of the path is only known once it is created, and the list is spelled out rather than
- *  derived because dropping the cell prefix lets a Built shell read a staged cell. A host Claude
- *  session keeps its CLI state in `ana-claude-cli-`, and the Builder's holds the whole authoring
- *  history, hidden expectations included, for the length of the run. The verifier's tool cache
- *  store is closed to every tool, the verifier's own included, because only the host may put bytes
- *  in it that a later verification starts from. */
-export const VERIFIER_TEMP_SIBLING_DENY_PATTERNS = [
-  "/ana-cell-",
-  BUILT_COMMAND_SCRATCH_DENY,
-  "/ana-pi-built-",
-  "/ana-reference-solve-cwd-",
-  "/ana-generated-tools-",
-  "/ana-claude-cli-",
-  `/${VERIFIER_CACHE_STORE}`,
-] as const;
-
 /**
  * The confstr temp root and `extraRoots` in both path forms, which each wall records in its policy
  * identity, and the rules granting a toolchain every direct child of them and what lies beneath it.
@@ -297,13 +298,10 @@ export const VERIFIER_TEMP_SIBLING_DENY_PATTERNS = [
  *
  * A narrower, files-only version of this rule keeps concurrent verifier workdirs shut, but it also
  * refuses `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So both walls grant
- * this shape and close the product's own trees by name after it (`siblingPatterns`), which is the
- * only arrangement under which a toolchain works and a sibling's workdir stays shut.
+ * this shape and close the host's two roots by path after it (`hostRoots`), which is the only
+ * arrangement under which a toolchain works and a sibling's workdir stays shut.
  */
-export function userTempRules(
-  extraRoots: readonly string[],
-  siblingPatterns: readonly string[] = VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
-) {
+export function userTempRules(extraRoots: readonly string[]) {
   // The per-user temporary directory a Darwin toolchain uses whatever `TMPDIR` says.
   //
   // Clang takes its scratch directory from `confstr(_CS_DARWIN_USER_TEMP_DIR)` and ignores the
@@ -323,10 +321,7 @@ export function userTempRules(
     (root) =>
       `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" (regex-quote ${capturedJsonStringify(root)}) #"/[^/]+(/.*)?$")))`,
   );
-  const siblingDenies = siblingPatterns.map(
-    (pattern) => `(deny file-read* file-read-metadata file-write* (regex #"${pattern}"))`,
-  );
-  return { roots, rules: [...childTrees, ...siblingDenies] };
+  return { roots, rules: childTrees };
 }
 
 /**

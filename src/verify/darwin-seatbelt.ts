@@ -28,6 +28,8 @@ import {
   ancestorDirectories,
   SEATBELT_BASELINE,
   darwinPlatformReadRoots,
+  hostRoots,
+  traversalMetadataRules,
   userTempRules,
   surroundingSandbox,
 } from "./wall-policy.ts";
@@ -364,9 +366,12 @@ export function prepareDarwinSeatbelt(
     seatbelt: {
       finalRules: [
         // Clang and Apple's python3 shim use the confstr temp root rather than TMPDIR. The grant
-        // opens what a command creates there; the concurrent verifier workdirs beside it are then
-        // closed by name, and this engine's own workdir is re-opened last.
+        // opens what a command creates there; the host's two roots beside it, every seat's and its
+        // own, which holds the concurrent cells, are then closed whole. This engine's cell is in
+        // the second: its folders above are opened to `lstat` alone, and the cell itself last.
         ...userTemp.rules,
+        ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", hostRoots()),
+        ...traversalMetadataRules([workdir]),
         ...sbRule("allow file-read* file-read-metadata file-write*", "subpath", [workdir]),
         // `process*` does not cover `signal`, so a deny-default wall stops a tool from stopping a
         // process it started — an emulator harness ending QEMU, a runner ending a test child — and

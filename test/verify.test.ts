@@ -14,6 +14,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { join, relative } from "../src/meta/path.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { hostScratch } from "../src/verify/wall-policy.ts";
 
 const EVALUATOR = `import { readFileSync } from "node:fs";
 import { same } from "./reference/model.ts";
@@ -65,7 +66,7 @@ setDefaultTimeout(60_000);
 
 const root = mkdtempSync(join(tmpdir(), "ana-verify-"));
 /** Where a concurrent check's cell would hold its answer. */
-const sibling = mkdtempSync(join(tmpdir(), "ana-cell-"));
+const sibling = hostScratch("cell-");
 const secret = join(sibling, "answer.json");
 
 function execution(

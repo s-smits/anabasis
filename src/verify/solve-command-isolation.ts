@@ -31,8 +31,6 @@ import type { EnvValues } from "../backends/scrub-env.ts";
 import { covers, moveBlockingRules, sbRule } from "./seatbelt-path-guard.ts";
 import type { SolveIsolationPolicy } from "./solve-sandbox.ts";
 import {
-  BUILT_COMMAND_SCRATCH_DENY,
-  VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
   canonicalForms,
   canonicalRoots,
   darwinToolchainInstallRoots,
@@ -41,28 +39,10 @@ import {
   runDataDenyRules,
   toolchainPathDirs,
   traversalMetadataRules,
+  hostRoots,
   userTempRules,
 } from "./wall-policy.ts";
 import { runtimeProcess } from "../meta/process.ts";
-
-/**
- * The one directory every seat's root is made under, which keeps them together for creation and
- * cleanup at mode 0700. One parent does not separate them; the profile does that, by denying the
- * parent and re-allowing the running seat's root after it, so another seat's root is closed by a
- * rule that can be read and tested rather than by nobody having named it.
- */
-export const BUILT_COMMAND_SCRATCH_ROOT = join(tmpdir(), basename(BUILT_COMMAND_SCRATCH_DENY));
-
-/**
- * What the Built shell may not touch inside the shared temporary directories it may now write: the
- * verifier's list, less this shell's own scratch parent. That one is denied by subpath further down
- * instead, because a name-shaped deny matches by basename and so would also match the running
- * seat's root, whose ancestors are what `getcwd` walks: the shell would start with `error
- * retrieving current directory` and every command would fail before it ran.
- */
-const COMMAND_TEMP_SIBLING_DENY_PATTERNS = VERIFIER_TEMP_SIBLING_DENY_PATTERNS.filter(
-  (pattern) => pattern !== BUILT_COMMAND_SCRATCH_DENY,
-);
 
 /**
  * The whole environment a command receives, built from fixed settings, scratch paths and the host
@@ -231,10 +211,11 @@ function darwinCommandProfile(
   toolTree: string | null,
 ) {
   const writeDenies = [...new Set(["/", ...base.deniedWriteRoots])].sort();
-  const scratchParent = canonicalForms(BUILT_COMMAND_SCRATCH_ROOT).sort();
-  // Under a deny-default read rule one seat's root stayed private without a rule of its own. Reads
-  // are open now, so the shared parent is denied here and this seat's root is re-allowed after it.
-  const readDenies = [...new Set([...base.deniedReadRoots, ...scratchParent])].sort();
+  // The seats' parent and the host's own scratch beside it. Under a deny-default read rule one
+  // seat's root stayed private without a rule of its own. Reads are open now, so both are denied
+  // here and this seat's root is re-allowed after them.
+  const closed = hostRoots();
+  const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].sort();
   const readAllows = commandReadAllows(base, readDenies, toolTree);
   // The shared temporary directory a toolchain writes without asking: the confstr one clang uses,
   // as Apple's python3 shim does for a command that names it by its path. `/tmp` is no longer
@@ -244,7 +225,7 @@ function darwinCommandProfile(
   // campaign's Builder had installed under `/tmp` four hours before. Linux gives each command an
   // empty `/tmp` of its own; a Seatbelt rule cannot, so Darwin closes it, and such a write is
   // refused where Linux would keep it private.
-  const userTemp = userTempRules([], COMMAND_TEMP_SIBLING_DENY_PATTERNS);
+  const userTemp = userTempRules([]);
   const sharedTmp = [...new Set(canonicalForms("/tmp"))].sort();
   const profile = [
     "(version 1)",
@@ -261,10 +242,8 @@ function darwinCommandProfile(
     // down, directories included, because a `mktemp -d` there has a name only the tool knows, so
     // the grant cannot be narrower without refusing the tool outright. That leaves another tenant's
     // tree under the same root open, which is the Darwin wall's stated limit; the Linux path closes
-    // it with a private tmpfs instead. The same rules then close by name what those directories
-    // hold that must stay separate, concurrent verifier workdirs and the product's other staging
-    // trees, because each path is known only once it has been created. The parent of every
-    // seat's root is closed by subpath below instead.
+    // it with a private tmpfs instead. What the host keeps there, every seat's root and its own
+    // scratch, is closed by subpath below.
     ...userTemp.rules,
     // Run data is denied by name rather than by place, so one rule covers every earlier run's copy
     // instead of a worktree enumeration that goes stale. It follows the temporary-directory grant
@@ -282,11 +261,11 @@ function darwinCommandProfile(
     // prints the file while `ls` of its directory and the shell's PATH search over it answer
     // "Operation not permitted". Naming both operations in the allow puts this rule back in charge.
     ...sbRule("allow file-read* file-read-metadata", "subpath", readAllows),
-    // The parent of every seat's root, closed for the same three operations the temporary grant
-    // above opened. `file-read-metadata` is named outright for the same specificity reason: without
-    // it, one seat's `stat` of another seat's file reports its size while `cat` of the same file is
-    // refused.
-    ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", scratchParent),
+    // The parent of every seat's root and the host's own scratch, closed for the same three
+    // operations the temporary grant above opened. `file-read-metadata` is named outright for the
+    // same specificity reason: without it, one seat's `stat` of another seat's file reports its size
+    // while `cat` of the same file is refused.
+    ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", closed),
     // A command may read and create files under its seat's root, and outside it and the shared
     // temporary roots above it may create them nowhere. This allow names the same operations as the
     // deny immediately above, which makes order the tie-break, and being later it wins.

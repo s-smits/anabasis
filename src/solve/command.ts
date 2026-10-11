@@ -36,11 +36,11 @@ import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { endHolders } from "../verify/disk-cap.ts";
 import {
-  BUILT_COMMAND_SCRATCH_ROOT,
   commandIsolationPolicy,
   shellQuote,
   stageCommandIsolation,
 } from "../verify/solve-command-isolation.ts";
+import { BUILT_COMMAND_SCRATCH_ROOT } from "../verify/wall-policy.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../verify/solve-sandbox.ts";
 
 export interface SolveDirs {

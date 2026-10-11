@@ -841,6 +841,15 @@ Reads are open otherwise. The network is open for a seat and closed for a check.
   `TMPDIR` (`userTempRules`). That is the platform's, and the collision it leaves between seats
   is stated in `src/verify/disk-cap.ts`.
 - **Lines.** About −40 (*estimate*).
+- **Done** at PR #204 (11 October), as written. The root is `$TMPDIR/ana-host`, beside the seats'
+  `ana-built-bash`, made at mode 0700 by `hostScratch`. `hostRoots` names both roots in both path
+  forms, and each Darwin wall denies them whole: the command wall where it denied the seats'
+  parent, the verifier's after its temporary grant. A check's cell lies in the host's root, so the
+  verifier opens the folders above the cell to `lstat` alone, as the command wall does for a seat,
+  and the cell after them. All seven patterns go, the four with no maker that W1 left for a change
+  proved on the Mac among them, and `userTempRules` only grants. Linux changes nothing: the
+  verifier binds only what it names, and the command wall overmounts the temporary directory. The
+  source loses 25 lines net (98 out, 73 in).
 
 ### W5. A stored pack is closed by name
 

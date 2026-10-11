@@ -25,10 +25,9 @@ import {
 } from "@earendil-works/pi-ai";
 import { REPORTED_COST } from "../backends/claude.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
-import { mkdtempSync, rmSync } from "../meta/filesystem.ts";
+import { rmSync } from "../meta/filesystem.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
-import { tmpdir } from "../meta/os.ts";
-import { join } from "../meta/path.ts";
+import { hostScratch } from "../verify/wall-policy.ts";
 
 /** Who reads, and on what. */
 export interface Reader {
@@ -56,9 +55,9 @@ export async function readOnce(
   packet: string,
   tools: readonly AgentTool[],
 ): Promise<JsonObject> {
-  // A name every solver's wall denies (`wall-policy.ts`): the reader's Claude Code keeps what it was
-  // sent here, hidden expectations included.
-  const home = mkdtempSync(join(tmpdir(), "ana-claude-cli-reader-"));
+  // Under the host's own scratch, which every wall closes (`wall-policy.ts`): the reader's Claude
+  // Code keeps what it was sent here, hidden expectations included.
+  const home = hostScratch("claude-cli-reader-");
   const turns: AssistantMessage[] = [];
   // A record tool ends the loop while Claude Code still waits on its result, and only this signal
   // ends that query: on 8 October a live Referee's Claude Code outlived its ruling by two hours.

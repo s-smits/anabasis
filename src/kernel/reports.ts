@@ -1,7 +1,8 @@
 /**
  * What the comparisons on record say of a campaign: whether it should stop, each report read as it
  * was found, the tasks a person has to read before they are scored again, the one outcome of a task
- * its author may hear, and what the log holds of billed dollars.
+ * its author may hear and where the task stands in the counts its author hears beside it, and what
+ * the log holds of billed dollars.
  *
  * A comparison ends in a `comparison.reported` event under an id, a round's session id or a
  * checkpoint's own (`src/builder/round.ts`). A person's settling writes the same id's report once
@@ -30,6 +31,7 @@ import {
   type Paired,
   pairsOf,
   separatedByObjective,
+  tally,
   TRIGGER,
   triggered,
 } from "./compare.ts";
@@ -63,6 +65,22 @@ export type Outcome =
   | "disputed"
   | "exhausted";
 
+/** Where a task stands in the counts its author hears (`standingsOf`): told apart, and by which
+ *  side; tied with both sides valid in every solve; tied with neither valid in any, with a valid
+ *  answer on record (`feasible`) or without; tied otherwise; or set aside. `solves` is the solves
+ *  a side it rests on, null for a task set aside. */
+export interface Standing {
+  readonly cell:
+    | "other-won"
+    | "reference-won"
+    | "tied-every"
+    | "tied-none-known"
+    | "tied-none"
+    | "tied-mixed"
+    | "aside";
+  readonly solves: number | null;
+}
+
 /** One comparison's reading of a task, as the comparison's last report tallied it. */
 interface TalliedIn {
   /** The index of the report in the log. */
@@ -78,6 +96,8 @@ interface TalliedIn {
   readonly cut: boolean;
   /** Whether the objective told two valid answers apart in this comparison (`separatedByObjective`). */
   readonly separated: boolean;
+  /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
+  readonly won: "old" | "fresh" | null;
 }
 
 /**
@@ -489,6 +509,7 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
     for (const pair of pairsReported(events, report)) {
       const { index, session } = report;
       const { task, old, fresh } = pair;
+      const { wins, losses } = tally([pair]);
       order += 1;
       of(task).tallied.push({
         index,
@@ -498,6 +519,7 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
         reference: side,
         cut: cut.has(made(session, task)),
         separated: separatedByObjective(pair),
+        won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
       });
     }
     const aside = Array.isArray(report.data.aside) ? report.data.aside.filter(isString) : [];
@@ -529,8 +551,8 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
  * since its answers are what the next harness has to match. A third of them stays in
  * the draw, by the contract's hash, so that a harness that breaks what the reference answers
  * still shows its losses: left out whole, the set would hold no task the new harness could lose.
- * The Examiner is told a task is exhausted, which is one outcome a task and no count
- * (`outcomesOf`).
+ * The Examiner is told a task is exhausted, as that task's outcome (`outcomesOf`); in the counts
+ * by family it stands where its last comparison's tally puts it (`standingsOf`).
  */
 export function exhausted(events: readonly LogEvent[]): string[] {
   const spent = inOrder(
@@ -644,10 +666,11 @@ export function unansweredTwice(events: readonly LogEvent[]): string[] {
  * The outcome of each task some comparison scored or set aside, by task version, from the last
  * comparison that did under the setting the last report was made under: how the reference
  * harness did on it, valid in every one of its counted solves, in some, or in none. The plan lets
- * a task's author hear this and no more (`docs/plan.md`, Phase 2): without a stronger solve the
- * author would otherwise hear nothing, and a difficulty zone or a count is what v1 found an
+ * a task's author hear this of each task (`docs/plan.md`, Phase 2): without a stronger solve the
+ * author would otherwise hear nothing, and a difficulty zone or a target count is what v1 found an
  * author writes towards. The reading is of the reference's side alone: which other harness was
- * compared, and what it answered, are not the author's. Until 11 October the outcome was "one
+ * compared, and what it answered on that task, are not the author's. What the other side did
+ * reaches the author only as counts by family (`standingsOf`, since 11 October). Until 11 October the outcome was "one
  * harness won", "a tie between valid answers" or "no valid answer yet", which told the author
  * nothing of where the room was: after a control a task the reference failed and the starter
  * failed read as one with no valid answer, which the author's prompt says measures nothing, and
@@ -673,10 +696,11 @@ export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
     Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
   const records = taskRecords(events).toSorted((one, other) => first(one) - first(other));
   return new Map(
-    records.flatMap(({ version, tallied, asideAt }): [string, Outcome][] => {
-      const last = tallied.at(-1);
-      if (last === undefined && asideAt === -1) return [];
-      if (last === undefined || asideAt > last.index) return [[version, "disputed"]];
+    records.flatMap((record): [string, Outcome][] => {
+      const { version } = record;
+      const last = lastRead(record);
+      if (last === null) return [];
+      if (last === "aside") return [[version, "disputed"]];
       if (spent.has(version)) return [[version, "exhausted"]];
       if (last.reference === null) return [[version, "earlier-reference"]];
       const own = last.reference === "fresh" ? last.fresh : last.old;
@@ -689,6 +713,39 @@ export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
       ];
     }),
   );
+}
+
+/**
+ * Where each task some comparison scored or set aside stands in the counts its author hears, by
+ * task version (`Standing`; why, in `src/examiner/record.ts`, 11 October). It is read from the
+ * record the outcome is read from (`lastRead`), so the counts and the lines agree by construction.
+ * A task last compared between two other harnesses has an outcome and no standing. Told apart is
+ * the comparison's own tally (`tally`, `compare.ts`), so under an objective two valid answers can
+ * be told apart, and a tie with both sides valid in every solve is one the objective did not break.
+ */
+export function standingsOf(events: readonly LogEvent[]): Map<string, Standing> {
+  return new Map(
+    taskRecords(events).flatMap((record): [string, Standing][] => {
+      const last = lastRead(record);
+      if (last === null) return [];
+      if (last === "aside") return [[record.version, { cell: "aside", solves: null }]];
+      const { reference, won, old, fresh } = last;
+      if (reference === null) return [];
+      const both = [...old, ...fresh];
+      const none = record.feasible ? "tied-none-known" : "tied-none";
+      const tied = both.every(Boolean) ? "tied-every" : both.some(Boolean) ? "tied-mixed" : none;
+      const cell = won === null ? tied : won === reference ? "reference-won" : "other-won";
+      return [[record.version, { cell, solves: old.length }]];
+    }),
+  );
+}
+
+/** The record a task's outcome and its standing are read from: the last comparison that tallied
+ *  it, `"aside"` where a later report set it aside, or null where no report did either. */
+function lastRead({ tallied, asideAt }: TaskRecord): TalliedIn | "aside" | null {
+  const last = tallied.at(-1);
+  if (last === undefined) return asideAt === -1 ? null : "aside";
+  return asideAt > last.index ? "aside" : last;
 }
 
 /**

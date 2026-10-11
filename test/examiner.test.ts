@@ -9,13 +9,13 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { comparisonSummary, heard, SAID } from "../src/examiner/record.ts";
+import { heard, SAID } from "../src/examiner/record.ts";
 import { SYSTEM_PROMPT } from "../src/examiner/prompt.ts";
 import { claimed, type ExamRequest, examine, keepHome, lastNote, seedHome } from "../src/examiner/session.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
-import { append, type EventKind, read } from "../src/kernel/log.ts";
+import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import type { Task } from "../src/kernel/verify.ts";
 import {
@@ -412,7 +412,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     side: "test",
   });
 
-  const compared = async (objective = false) => {
+  it("is one outcome a task: one harness won, a tie between valid answers, no valid answer yet, or disputed", async () => {
     const s = setup([propose(1, 2, 3, 4, 5), finish, finish, finish, finish]);
     await examine({ ...s.request, limits: { ...LIMITS, proposals: 6 } });
     const [won, tied, unsolved, practice, aside] = [1, 2, 3, 4, 5].map((base) =>
@@ -432,12 +432,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         solves += 1;
         const solve = `s-${String(solves)}`;
         append(s.log, "solve.started", { solve, condition: id, comparison: "b-1" });
-        append(s.log, "verdict", {
-          solve,
-          kind: pass ? "pass" : "fail",
-          answer: { answer: SOLVER },
-          objective: harness === "h1" ? 2 : 1,
-        });
+        append(s.log, "verdict", { solve, kind: pass ? "pass" : "fail", answer: { answer: SOLVER } });
         append(s.log, "solve.finished", { solve, ending: { outcome: pass ? "pass" : "fail" } });
       }
     };
@@ -454,46 +449,20 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       reading: "no-step",
       old: "h1",
       fresh: "h2",
-      starter: "h1",
       solves: 2,
       setting: settingId(condition("any", "any")),
       versions: [won ?? "", tied ?? "", unsolved ?? "", packed],
       aside: [aside ?? ""],
       scored: { wins: 2, losses: 0, ties: 2 },
-      objective: objective ? { direction: "lower", margin: 0.01 } : null,
     });
     append(s.log, "task.state", { version: practice ?? "", state: "released" });
     // Every task the campaign holds, the pack's first: the session is handed them in that order.
     const tasks = [EXAMPLE, ...writtenTasks(read(s.log))];
-    return { s, tasks };
-  };
-
-  it("gives task outcomes and aggregate comparison counts without solver content", async () => {
-    const { s, tasks } = await compared();
-    const recorded = read(s.log);
-    const row =
-      "4 tasks; reference valid 3/8 solves; other valid 6/8 solves; solve pairings: both pass 6, both fail 4, reference only 0, other only 6; other harness task wins 2, losses 0, ties 2; objective decided 0 tasks.";
-    expect(comparisonSummary(recorded)[1]).toBe(row);
-    expect(comparisonSummary(recorded)[0]).toContain("aside 1");
-    expect(comparisonSummary(recorded)[0]).toContain("not independent observations");
-    expect(comparisonSummary([])).toEqual([]);
-    expect(
-      comparisonSummary(
-        recorded.map((event) =>
-          event.kind === "verdict"
-            ? {
-                ...event,
-                data: { ...event.data, answer: { secret: "changed-answer" }, blocking: ["changed-check"] },
-              }
-            : event,
-        ),
-      ),
-    ).toEqual(comparisonSummary(recorded));
     // The reference harness is h1, the comparison's old side: the author hears how it did on
     // each task, and nothing of h2.
     // Beside the outcome, one fact that names no side: whether a valid answer to the task is on
     // record at all, a solve's under either harness or the author's own try.
-    expect(heard(read(s.log), tasks)).toEqual([
+    expect(heard(read(s.log), tasks).lines).toEqual([
       "e-1 (family fixture): the reference harness answered it validly in some solves of the last comparison and not in others; a valid answer to it is on record",
       "x-1-001 (family fixture): the reference harness answered it validly in no solve of the last comparison; a valid answer to it is on record",
       "x-1-002 (family fixture): the reference harness answered it validly in every solve of the last comparison; a valid answer to it is on record",
@@ -501,6 +470,17 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       "x-1-004 (family fixture): in use as practice, and so never scored",
       "x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled; no valid answer to it is on record",
     ]);
+    // Beside the lines, from the same pass: the five lines read on the reference's side, counted
+    // by family. The tie both harnesses answered in every solve (x-1-002) and the one neither
+    // answered in any (x-1-003) are counted apart; which side won e-1 and x-1-001 is told in the
+    // count alone, and the practice task is in none.
+    expect(heard(read(s.log), tasks).counts).toBe(
+      [
+        "Counted by family from the same comparisons as the lines above: each task whose last comparison had the reference harness on one side, or that a later report set aside, and no other. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
+        "- family fixture, 5 tasks: 2 told apart, won by the other harness 2 and by the reference harness 0; 1 tied with both harnesses valid in every solve; 1 tied with neither valid in any solve, of which 0 with a valid answer on record; 0 tied otherwise; 1 set aside on a rejection not settled.",
+        "Each count rests on 2 solves a side of the task's last comparison. The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
+      ].join("\n"),
+    );
 
     await examine({ ...s.request, id: "x-2", examples: tasks });
     const opening = s.sent[3] ?? "";
@@ -513,57 +493,19 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(opening).toContain(
       "- x-1-002 (family fixture): the reference harness answered it validly in every solve",
     );
-    // The aggregate counts name no harness and carry no answer or trace.
+    expect(opening).toContain(
+      String.raw`- x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled; no valid answer to it is on record\n\nCounted by family from the same comparisons as the lines above`,
+    );
+    expect(opening).toContain("- family fixture, 5 tasks: 2 told apart, won by the other harness 2");
+    // Which harness won, how many solves failed and what a solver answered are not the author's.
     expect(opening).not.toContain("h2");
     expect(opening).not.toContain(SOLVER);
-    expect(opening).toContain("Comparison summary:");
-    expect(opening).toContain(row);
     expect(opening).not.toContain("too easy");
     // Every one of them can be read whole, an earlier session's as the pack's.
     expect(s.of("exam.started")[1]).toMatchObject({
       session: "x-2",
       examples: tasks.map(({ taskId }) => taskId),
     });
-  });
-
-  it("reads the current reference on either side and ignores unscored reports and later releases", async () => {
-    const { s } = await compared();
-    const before = comparisonSummary(read(s.log));
-    append(s.log, "comparison.reported", {
-      session: "b-2",
-      old: "h1",
-      fresh: "h2",
-      scored: { wins: 0, losses: 0, ties: 0 },
-      versions: [],
-      reading: "not-scored",
-    });
-    append(s.log, "task.state", { version: taskVersion(s.request.pack(EXAMPLE)), state: "released" });
-    expect(comparisonSummary(read(s.log))).toEqual(before);
-    append(s.log, "harness.promoted", { harness: "h2" });
-    expect(comparisonSummary(read(s.log))[1]).toBe(
-      "4 tasks; reference valid 6/8 solves; other valid 3/8 solves; solve pairings: both pass 6, both fail 4, reference only 6, other only 0; other harness task wins 0, losses 2, ties 2; objective decided 0 tasks.",
-    );
-    append(s.log, "harness.promoted", { harness: "h3" });
-    expect(comparisonSummary(read(s.log))).toEqual([]);
-  });
-
-  it("reports quality wins even when both harnesses passed", async () => {
-    const { s } = await compared(true);
-    expect(comparisonSummary(read(s.log))[1]).toContain(
-      "task wins 3, losses 0, ties 1; objective decided 1 tasks",
-    );
-  });
-
-  it("keeps the starter as reference when an experimental control was compared first", async () => {
-    const { s } = await compared();
-    const events = read(s.log);
-    const report = events.find(({ kind }) => kind === "comparison.reported");
-    if (report === undefined) throw new Error("comparison fixture has no report");
-    const control = {
-      ...report,
-      data: { ...report.data, session: "control", old: "programs-only", fresh: "h2" },
-    };
-    expect(comparisonSummary([control, ...events])).toEqual(comparisonSummary(events));
   });
 
   it("opens the next session with what the last one said at its finish, and nothing of a session that said nothing", async () => {
@@ -615,14 +557,108 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     append(s.log, "task.state", { version: s.versionOf("x-1-003", 6), state: "disputed" });
     const tasks = writtenTasks(read(s.log));
     expect(tasks.map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-1-002", "x-1-003"]);
-    expect(heard(read(s.log), tasks)).toEqual([
-      "x-1-001 (family fixture): not yet compared; no valid answer to it is on record",
-      "x-1-003 (family fixture): disputed: a check was at fault on an answer to it",
-    ]);
+    expect(heard(read(s.log), tasks)).toEqual({
+      lines: [
+        "x-1-001 (family fixture): not yet compared; no valid answer to it is on record",
+        "x-1-003 (family fixture): disputed: a check was at fault on an answer to it",
+      ],
+      // No comparison has scored a task, so there is nothing to count, and the opening says none.
+      counts: null,
+    });
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
-    expect(heard([], [EXAMPLE])).toEqual([
-      "e-1 (family fixture): not yet compared; no valid answer to it is on record",
+    expect(heard([], [EXAMPLE])).toEqual({
+      lines: ["e-1 (family fixture): not yet compared; no valid answer to it is on record"],
+      counts: null,
+    });
+    expect(heard([], [])).toEqual({ lines: [], counts: null });
+    expect(s.sent[0]).not.toContain("Counted by family");
+  });
+
+  it("counts by family with a total the tasks read on the reference's side, and none in practice, refused or last compared between two other harnesses", () => {
+    const events: LogEvent[] = [];
+    const add = (kind: EventKind, data: JsonObject) =>
+      events.push({ at: "2026-10-11T00:00:00.000Z", kind, data });
+    let solves = 0;
+    const solved = (comparison: string, taskId: string, harness: string, valid: readonly boolean[]) => {
+      const ran = condition(`v-${taskId}`, harness);
+      add("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      for (const pass of valid) {
+        solves += 1;
+        const solve = `t-${String(solves)}`;
+        add("solve.started", { solve, condition: conditionId(ran), comparison });
+        add("solve.finished", {
+          solve,
+          ending: pass ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+        });
+      }
+    };
+    const reported = (session: string, old: string, fresh: string, side: number, ids: readonly string[]) =>
+      add("comparison.reported", {
+        session,
+        reading: "no-step",
+        old,
+        fresh,
+        solves: side,
+        setting: settingId(condition("any", "any")),
+        versions: ids.map((id) => `v-${id}`),
+      });
+    const tasks = [
+      { taskId: "a-1", family: "beam" },
+      { taskId: "a-2", family: "beam" },
+      { taskId: "b-1", family: "slab" },
+      { taskId: "b-2", family: "slab" },
+      { taskId: "b-3", family: "slab" },
+      { taskId: "b-4", family: "slab" },
+    ];
+    for (const { taskId } of tasks) {
+      add("task.proposed", { version: `v-${taskId}`, taskId });
+      add("task.gate", { version: `v-${taskId}`, gate: 1, outcome: "passed" });
+    }
+    // c-1, against the reference h1 at two solves a side.
+    solved("c-1", "a-1", "h1", [false, false]);
+    solved("c-1", "a-1", "h2", [true, false]);
+    solved("c-1", "a-2", "h1", [true, true]);
+    solved("c-1", "a-2", "h2", [true, true]);
+    solved("c-1", "b-1", "h1", [false, false]);
+    solved("c-1", "b-1", "h2", [false, false]);
+    solved("c-1", "b-2", "h1", [true, false]);
+    solved("c-1", "b-2", "h2", [false, true]);
+    solved("c-1", "b-3", "h1", [true, true]);
+    solved("c-1", "b-3", "h2", [true, true]);
+    solved("c-1", "b-4", "h1", [false, false]);
+    solved("c-1", "b-4", "h2", [false, false]);
+    reported("c-1", "h1", "h2", 2, ["a-1", "a-2", "b-1", "b-2", "b-3", "b-4"]);
+    // c-2 between two other harnesses, and c-3 against the reference at three solves a side.
+    solved("c-2", "a-2", "h3", [true, true]);
+    solved("c-2", "a-2", "h4", [false, false]);
+    reported("c-2", "h3", "h4", 2, ["a-2"]);
+    solved("c-3", "b-1", "h1", [true, true, true]);
+    solved("c-3", "b-1", "h5", [false, false, false]);
+    reported("c-3", "h1", "h5", 3, ["b-1"]);
+    add("task.state", { version: "v-b-3", state: "released" });
+    add("task.state", { version: "v-b-4", state: "refused" });
+    const { lines, counts } = heard(events, tasks);
+    expect(lines).toEqual([
+      "a-1 (family beam): the reference harness answered it validly in no solve of the last comparison; a valid answer to it is on record",
+      "a-2 (family beam): the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none; a valid answer to it is on record",
+      "b-1 (family slab): the reference harness answered it validly in every solve of the last comparison; a valid answer to it is on record",
+      "b-2 (family slab): the reference harness answered it validly in some solves of the last comparison and not in others; a valid answer to it is on record",
+      "b-3 (family slab): in use as practice, and so never scored",
     ]);
-    expect(heard([], [])).toEqual([]);
+    // a-2, b-3 and b-4 were each scored by c-1 and are in no count: the three lines read on the
+    // reference's side are the three the total counts.
+    expect(counts?.split("\n").slice(1)).toEqual([
+      "- family beam, 1 task: 1 told apart, won by the other harness 1 and by the reference harness 0; 0 tied with both harnesses valid in every solve; 0 tied with neither valid in any solve, of which 0 with a valid answer on record; 0 tied otherwise; 0 set aside on a rejection not settled.",
+      "- family slab, 2 tasks: 1 told apart, won by the other harness 0 and by the reference harness 1; 0 tied with both harnesses valid in every solve; 0 tied with neither valid in any solve, of which 0 with a valid answer on record; 1 tied otherwise; 0 set aside on a rejection not settled.",
+      "- every family, 3 tasks: 2 told apart, won by the other harness 1 and by the reference harness 1; 0 tied with both harnesses valid in every solve; 0 tied with neither valid in any solve, of which 0 with a valid answer on record; 1 tied otherwise; 0 set aside on a rejection not settled.",
+      "Each count rests on 2 to 3 solves a side of the task's last comparison. The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
+    ]);
+    expect(
+      lines.filter((line) =>
+        /: the reference harness answered it validly in (every|some|no) solve/.test(line),
+      ),
+    ).toHaveLength(3);
+    // Neither the lines nor the counts name a harness.
+    expect([...lines, counts].join("\n")).not.toMatch(/\bh[1-5]\b/);
   });
 });

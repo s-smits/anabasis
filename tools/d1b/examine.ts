@@ -10,7 +10,8 @@
  * (`src/examiner/session.ts`). The session is shown every task the campaign holds, the pack's own
  * and the ones earlier sessions wrote, and the opening message says one outcome of each: how the
  * reference harness did on it in the last comparison that scored it, disputed, or no longer
- * scored, and whether a valid answer to it is on record (`src/examiner/record.ts`). The home the
+ * scored, and whether a valid answer to it is on record, with those tasks counted by family beside
+ * the lines (`src/examiner/record.ts`, 11 October). The home the
  * last session computed in, and what it said at its finish, are carried into this one.
  *
  * No solve runs, so the session takes no flag for a solver, its limits or a reviewer, and costs

@@ -14,7 +14,6 @@
  * had in `round.ts`.
  */
 import {
-  type Budget,
   decidedByObjective,
   type ObjectiveRule,
   objectiveRuleIn,
@@ -23,8 +22,6 @@ import {
   scored,
   type Sides,
   spread,
-  UNITS,
-  within,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
@@ -82,9 +79,6 @@ export interface Report {
   /** Each harness by itself at the full limit, over `versions`. Null when nothing was compared, and
    *  in a report written before 2026-10-09. */
   readonly valid: Valid | null;
-  /** The same test at each budget the comparison fixed, in the order it named them, with each
-   *  harness by itself at that budget. */
-  readonly budgets: readonly (Budget & Tested & { readonly valid?: Valid })[];
   /** How far the use of turns, CPU seconds and seconds moved between repeated solves of one harness
    *  on one task. Null when nothing was compared. */
   readonly spread: ReturnType<typeof spread> | null;
@@ -148,7 +142,6 @@ export interface Fixed {
   readonly solves: number;
   readonly level: number;
   readonly noise: boolean;
-  readonly budgets: readonly Budget[];
   readonly tasks: readonly string[];
   /** The objective two valid answers are compared by, where the check program declares one. */
   readonly objective: ObjectiveRule | undefined;
@@ -163,7 +156,6 @@ const REPORT_KEYS = [
   "starter",
   "scored",
   "valid",
-  "budgets",
   "spread",
   "billed",
   "against",
@@ -186,7 +178,6 @@ export const NO_LABELS: ReadonlyMap<string, Ruling> = new Map();
 export const NOTHING = {
   scored: null,
   valid: null,
-  budgets: [],
   spread: null,
   billed: null,
   against: null,
@@ -275,7 +266,7 @@ export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: Re
 /**
  * The comparison of `fixed.tasks`, read from the log as comparison `id` found it: the new harness
  * against the reference one over the tasks that have their solves under both and no rejection that
- * sets them aside, the same tasks at each budget, against the starter where it was solved, and
+ * sets them aside, against the starter where it was solved, and
  * the reference harness against itself where that was asked for, with how the plan reads them.
  */
 export function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
@@ -327,10 +318,6 @@ export function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, 
   return {
     scored: { ...tested, unsolved: pairs.filter(unsolved).length },
     valid: validOf(pairs, fixed.solves),
-    budgets: fixed.budgets.map((budget) => {
-      const cut = within(pairs, budget);
-      return { ...budget, ...scored(cut), valid: validOf(cut, fixed.solves) };
-    }),
     spread: spread(pairs),
     billed: { old: mean("old"), fresh: mean("fresh") },
     against,
@@ -363,7 +350,7 @@ export function startOf(events: readonly LogEvent[], id: string): JsonObject | u
 /** What comparison `id` fixed at its start, read back from the log; null where it never began. */
 export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
   const start = startOf(events, id) ?? {};
-  const { old, fresh, starter, setting, solves, level, noise, budgets, tasks } = start;
+  const { old, fresh, starter, setting, solves, level, noise, tasks } = start;
   return isString(old) &&
     isString(fresh) &&
     isString(starter) &&
@@ -379,22 +366,10 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         solves,
         level,
         noise: isBoolean(noise) && noise,
-        budgets: Array.isArray(budgets) ? budgets.map(asBudget) : [],
         tasks: Array.isArray(tasks) ? tasks.filter(isString) : [],
         objective: objectiveRuleIn(start),
       }
     : null;
-}
-
-/** A budget as a log holds it: the units it names, each a number. */
-export function asBudget(value: unknown): Record<string, number> {
-  const named = asRecord(value) ?? {};
-  return Object.fromEntries(
-    UNITS.flatMap((unit) => {
-      const most = named[unit];
-      return isNumber(most) ? [[unit, most] as const] : [];
-    }),
-  );
 }
 
 /** The rejections of comparison `id` a person may label, from its log: none when it has no report

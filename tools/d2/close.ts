@@ -96,10 +96,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   const opening = openingOf(events);
   const setting = recordedSetting(events);
   const reference = promoted(events);
-  // A step is named with the budget it was read at, the model's turns a solve was held to, and
-  // its last tally against the reference: a step at a short budget says the harness answers
-  // within it what the reference does not, which a harness that saves a solver its set-up reads
-  // as (`AGENTS.md`, section 9).
+  // A step is named with the comparisons that read it and its last tally against the reference.
   /** Where an imported harness came from, by its digest (`tools/d2/import.ts`). */
   const imported = new Map(
     events.flatMap(({ kind, data }) =>
@@ -113,17 +110,13 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     const from = imported.get(data.harness);
     const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
     const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");
-    const budgets = [...new Set(stepped.map(({ modelTurns }) => modelTurns))];
-    const atBudget = budgets
-      .map((turns) => (turns === null ? "the full limit" : plural(turns, "turn")))
-      .join(" and ");
     const last = comparisons.findLast((each) => each.fresh === data.harness && each.tally !== null);
     const held =
       last?.tally === null || last === undefined
         ? ". No comparison of it tallied a task"
         : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}`;
     return [
-      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${stepped.length === 0 ? "" : ` at ${atBudget}`}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}`,
+      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}`,
     ];
   });
   const ruled = comparisons.reduce(

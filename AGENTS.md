@@ -521,8 +521,8 @@ boundary; `bun run runs stop` ends a run the launcher started.
 head comments are the full account. The short form follows.
 
 **Terms first.** A comparison writes `comparison.started` before its first solve: its two
-harnesses, its setting, its scored tasks, its solves a side, its level, the budgets it will be read
-at, its dollar cap and, where given, its prediction (`--predict`). One continued from its log
+harnesses, its setting, its scored tasks, its solves a side, its level, its dollar cap and, where
+given, its prediction (`--predict`). One continued from its log
 keeps those terms, and one asked for again on other terms is refused. The scored tasks are
 `--target` of the held-out ones, the newest epoch's first and within an epoch drawn by the
 contract's hash, less two kinds the draw leaves out: a task with no valid answer after two comparisons, until a person labels it
@@ -588,12 +588,13 @@ needs its owner before more is spent.
 **The budget.** The binding unit is the model's own turns, told to the solver on every tool result
 and enforced (`--solve-model-turns`; a solve that uses them without an answer ends `turns-ended`).
 A time limit on each command bounds a turn. CPU seconds are reported and bind nothing: the meter
-counts only the children a command waited for and reads zero under Bubblewrap. `--budget turns=40`
-reads the same solves again at a shorter budget, fixed before the first solve. A budget names the
-model's turns or the attempt's seconds, or both, and nothing else (`UNITS`).
+counts only the children a command waited for and reads zero under Bubblewrap. A comparison is
+read at the one budget its solves were told. Until 11 October `--budget turns=40` read the same
+solves again at a shorter budget, which is a reading of a solver told the longer one; it went
+with the ladder (`docs/simplify.md`, A2), and the report holds what each solve used (`spread`).
 
 **Beside the test.** The report holds how each harness did by itself (`valid`: on how many tasks
-every solve, some or none were valid, at the full limit and at each budget). `--noise` reads the
+every solve, some or none were valid). `--noise` reads the
 reference against itself on separate solves; it should read no step, and its tie share is the
 noise every comparison has to exceed.
 
@@ -623,9 +624,8 @@ promoted, and one that names a digest is made against that harness and promotes 
 **What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
 prints it as its last line. A step is one draw: the same two harnesses are compared again. The
 reference is read against itself beside the first comparison under a setting and stands for the
-ones after it, until the reference is another harness or tasks were held out since (`noiseRead`). A step read twice at a shortened budget is read once more at
-the full limit, where the new harness must win at least as many tasks as it loses, and then the
-harness is the one to promote (`unpromoted` says why another is not). No step with room sends the
+ones after it, until the reference is another harness or tasks were held out since (`noiseRead`). A step read twice, where the new harness won at least as many tasks as it lost
+against the starter, names the harness to promote (`unpromoted` says why another is not). No step with room sends the
 Builder to build again, once the next comparison has tasks to untie: where the reference harness
 answered too many of them in every solve, the Examiner writes tasks first, since a changed harness
 can only tie again on those (t-2, 10 October: 3-0-2 on 5 tasks, two unchanged sessions and a
@@ -680,9 +680,8 @@ Cite a rule by its number in a pull request or a review.
    prompts, tool descriptions, tool results and files in its home.
 
 4. **Terms are fixed before the first solve and never moved after a result.** The tasks, the
-   solves a side, the level, the budgets, the cap and the prediction are logged first. Do not top
-   up a set that a dispute thinned, rerun a finished comparison on other terms, or choose the
-   budget to read after the tallies can be seen.
+   solves a side, the level, the cap and the prediction are logged first. Do not top up a set
+   that a dispute thinned, or rerun a finished comparison on other terms.
 
 5. **Both sides are solved afresh under one setting.** No stored solve stands in for a side.
 

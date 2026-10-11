@@ -19,7 +19,6 @@ const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
 /** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
 const REPORT = {
   scored: TESTED,
-  budgets: [],
   spread: null,
   billed: null,
   against: null,
@@ -99,7 +98,7 @@ function solve(task: string, harness: string, outcome: "pass" | "rejected" | "la
 function started(session: string, old: string, fresh: string) {
   const terms = { old, fresh, starter: "hbase", setting: SETTING, solves: 1, level: 0.1 };
   comparison = session;
-  record("comparison.started", { session, ...terms, noise: false, budgets: [], cap: null, tasks: HELD });
+  record("comparison.started", { session, ...terms, noise: false, cap: null, tasks: HELD });
   return { session, ...terms, tasks: 4 };
 }
 
@@ -145,6 +144,7 @@ const OWN = {
   ...REPORT,
   ...round,
   scored: { wins: 2, losses: 0, ties: 0, p: 0.25, unsolved: 0 },
+  // A report written before 2026-10-11 holds the same test at each shorter budget; no trigger reads it.
   budgets: [{ turns: 4, wins: 1, losses: 0, ties: 1, p: 0.5 }],
   spread: { turns: { tasks: 2, median: 2, most: 3 }, cpu: null, seconds: { tasks: 2, median: 1, most: 1 } },
   noise: { wins: 0, losses: 0, ties: 2, p: 1 },
@@ -211,8 +211,9 @@ describe("the whole-run investigation's reader", () => {
     expect(detail("CHAIN")).toBe("b-1 hp>hc no-step");
   });
 
-  it("reads the budget from what a comparison measured: the tally at each, the spread, and its own noise", () => {
-    expect(detail("TALLY BY BUDGET")).toBe("b-1: 2-0-0 at its limits; turns 4: 1-0-1");
+  it("reads the budget from what a comparison measured: the spread, and its own noise", () => {
+    // The report's rows at shorter budgets, which were read until 2026-10-11, start no trigger.
+    expect(seen.triggers.some((trigger) => trigger.detail.includes("turns 4"))).toBe(false);
     // Turns doubled between two solves of one harness on one task at the median; seconds did not move.
     expect(detail("USE OF THE BUDGET SPREADS")).toBe("b-1: turns x2.0 at the median and x3.0 at most");
     expect(detail("REFERENCE AGAINST ITSELF")).toBe(
@@ -506,10 +507,9 @@ describe("the reader of a round compared with another harness than its session s
     );
   });
 
-  it("gives each harness by itself, at the full limit and at each budget, which the first gate reads", () => {
-    expect(said("VALID BY HARNESS")).toBe(
-      "r-1: reference 1/0, new 0/1 at its limits; reference 1/0, new 1/0 at prompts 1",
-    );
+  it("gives each harness by itself at its limits, which the first gate reads", () => {
+    // The row at a prompt budget, which a report of 8 October holds, is read no longer.
+    expect(said("VALID BY HARNESS")).toBe("r-1: reference 1/0, new 0/1 at its limits");
   });
 
   it("says each comparison's non-results by the harness they fell under", () => {
@@ -671,11 +671,8 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
   const { triggers } = overview(log);
   const said = (name: keyof typeof TRIGGERS) => triggers.find((trigger) => trigger.name === name)?.detail;
 
-  it("names the bound the solves were told beside the tally at its limits", () => {
-    expect(said("TALLY BY BUDGET")).toBe("t-1: 1-0-0 at its limits (turns 3); turns 2: 0-0-1");
-    expect(said("VALID BY HARNESS")).toBe(
-      "t-1: reference 1/0, new 0/1 at its limits (turns 3); reference 1/0, new 1/0 at turns 2",
-    );
+  it("names the bound the solves were told beside each harness by itself", () => {
+    expect(said("VALID BY HARNESS")).toBe("t-1: reference 1/0, new 0/1 at its limits (turns 3)");
   });
 
   it("reads no check as refusing most answers where every refusing check blocked the same ones", () => {

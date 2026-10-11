@@ -69,7 +69,6 @@ function compared(
       scored: { wins, losses, ties },
       versions: HELD,
       valid: { old: [...(more.valid?.old ?? HALF)], fresh: [...(more.valid?.fresh ?? HALF)] },
-      budgets: [],
       setting: null,
       ...more.extra,
     }),

@@ -39,7 +39,7 @@ ended is finished: the next takes another `--session`.
 
 The plan's first experiment is its first round (`docs/plan.md`, Phase 0). The Builder forks the
 Starter Built Harness and builds on it, and the harness it leaves is compared with the starter on
-eight tasks the operator names, read at the full limit and at budgets fixed beforehand. A round
+eight tasks the operator names. A round
 starts from the starter and compares with it by default (`--parent latest`, `--reference
 promoted`), so the round needs neither flag. `promoted` is the campaign's reference harness: the
 starter until the operator promotes another with `tools/d2/promote.ts --harness <digest> --yes`,
@@ -47,23 +47,20 @@ which is logged, and that harness for every comparison after.
 
 ```sh
 bun run runs launch <pack flags> --name <name> --session b-1 --builder <model> \
-  --tasks <eight task ids> --cap 625 --budget turns=40 --budget turns=20
+  --tasks <eight task ids> --cap 625
 ```
 
-A budget names the model's `turns` or the attempt's `seconds`, or both: the two a solver can be
-told and held to. A budget in `prompts` or `cpu` is refused. Every finished solve of the first
-three rounds on 9 October was given one prompt, so that unit read what the full limit read, and
-`--solve-turns`, which caps prompts, bound nothing. The CPU seconds of a solve's commands are
-unknown once one of them is cut, so a budget in them left tasks unread. To hold a solve
-to a number of the model's own turns, and tell the solver so, name `--solve-model-turns` once: a
-solve that uses them all without an answer ends `turns-ended`, and every tool result says which
-turn the solver is in. Without the flag the turns are not limited,
-and a budget in `turns` is read after the fact of a solver that was told only its time. CPU is
-still measured and reported for every solve, as a figure and no unit; the investigation's reader
-counts the solves whose CPU a cut command left unmeasured (`CPU UNMEASURED`). The report holds each harness by itself at the full limit
-and at each budget, as the tasks by how many of their solves were valid, and the command prints
-it. For the first round the reference harness is the starter, so that line is what gate G0 reads:
-the plan continues at the budget where the starter is valid on about half its solves.
+A comparison is read at the one budget its solves were told. To hold a solve to a number of the
+model's own turns, and tell the solver so, name `--solve-model-turns` once: a solve that uses
+them all without an answer ends `turns-ended`, and every tool result says which turn the solver
+is in. Without the flag the turns are not limited. Until 11 October `--budget turns=40` read the
+same solves again at a shorter budget, which is a reading of a solver told the longer one; the
+flag is refused since (`docs/simplify.md`, A2). CPU is still measured and reported for every
+solve, as a figure and no unit; the investigation's reader counts the solves whose CPU a cut
+command left unmeasured (`CPU UNMEASURED`). The report holds each harness by itself, as the
+tasks by how many of their solves were valid, and the command prints it. For the first round the
+reference harness is the starter, so that line is what gate G0 reads: where the starter is valid
+on nearly every solve, the tasks leave a harness nothing to add, and the Examiner writes others.
 
 ## What may start now
 
@@ -130,7 +127,7 @@ rehearsal is exempt from them: its seats are scripts, which are paid nothing.
   comparison of fewer scored tasks is refused, and so is one the campaign's own tie share leaves
   too few untied: the share is that of the last tallied comparison made under the same solver
   and limits, and before any such comparison every scored task is counted. Run an Examiner
-  session for more tasks, or change the budget so that fewer tie.
+  session for more tasks.
 - **No dollar cap.** `--cap` is required: the billed dollars the comparison may hold. No solve
   starts that a reserve for it and for each one running (`--reserve`, $10) would take past the
   cap, and a comparison the cap cuts short reads `not-scored` and is finished. The plan proposes

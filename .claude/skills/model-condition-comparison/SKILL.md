@@ -69,8 +69,8 @@ A round started with `bun run runs launch` keeps its launch line and its commit 
 `launch-<session>.json` beside the log, and its report holds the target it asked for. The reader
 says both from there. A round started by hand, or on source from before 2026-10-08, has neither:
 the reader then says `a target its log does not hold`, and a commit `where its worktree stands
-now`, which nothing confirms. The solves a side, the level, the budgets and the cap are in the
-round's `comparison.started`.
+now`, which nothing confirms. The solves a side, the level and the cap are in the round's
+`comparison.started`.
 
 ## Read a round
 

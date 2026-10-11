@@ -379,9 +379,9 @@ describe("a campaign run by its log", () => {
     );
     expect(readFileSync(join(to, "RULES.md"), "utf8")).toContain("- R1: The answer is the base times six.");
     const report = readFileSync(join(to, "REPORT.md"), "utf8");
-    // The step is named with the budget it was read at and its last tally beside it.
+    // The step is named with the comparisons that read it and its last tally beside it.
     expect(report).toContain(
-      `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2 at the full limit. In g-2 it won 5, lost 0 and tied 0`,
+      `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2. In g-2 it won 5, lost 0 and tied 0`,
     );
     expect(report).toContain("| g-1 |");
     expect(report).toContain(
@@ -512,7 +512,8 @@ describe("a campaign run by its log", () => {
       ["examine", "x-2"],
     ]);
     const [first] = of(name, "comparison.reported");
-    expect(first).toMatchObject({ reading: "no-step", valid: { old: [0, 5] }, budgets: [] });
+    expect(first).toMatchObject({ reading: "no-step", valid: { old: [0, 5] } });
+    expect(first).not.toHaveProperty("budgets");
     expect(of(name, "campaign.setting").map(({ modelTurns }) => modelTurns)).toEqual([8]);
     expect(next).toMatchObject({ move: "end", ending: "no-room" });
     expect(strayed).toEqual([]);

@@ -12,8 +12,6 @@ import {
   signP,
   spread,
   tally,
-  UNITS,
-  within,
 } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, fieldsApart, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -155,7 +153,7 @@ describe("a task's pairings", () => {
   });
 });
 
-describe("the same solves at a shorter budget", () => {
+describe("what repeated solves used", () => {
   const timed = [
     {
       task: "a",
@@ -166,61 +164,6 @@ describe("the same solves at a shorter budget", () => {
     { task: "b", old: [P, F], fresh: [P, F], used: { old: [used(6), used(24)], fresh: [used(7), used(24)] } },
   ];
 
-  it("counts a solve past the budget as no answer, valid or not, in every unit the budget names", () => {
-    // At the full limit both tasks tie. At twelve turns the reference harness's answers to `a`
-    // came too late and the new harness's did not.
-    expect(tally(timed)).toEqual({ wins: 0, losses: 0, ties: 2 });
-    const [a, b] = within(timed, { turns: 12 });
-    expect(a).toMatchObject({ old: [F, F], fresh: [P, P] });
-    expect(b).toMatchObject({ old: [P, F], fresh: [P, F] });
-    expect(tally(within(timed, { turns: 12 }))).toEqual({ wins: 1, losses: 0, ties: 1 });
-    // A budget in both units cuts on either, and a unit the log does not hold for a solve cuts nothing.
-    const clocked = [
-      {
-        task: "t",
-        old: [P, P],
-        fresh: [P, P],
-        used: {
-          old: [used(40, null, 900), used(9, null, 2400)],
-          fresh: [used(30, null, 600), used(8, null, 700)],
-        },
-      },
-    ];
-    expect(within(clocked, { turns: 35, seconds: 1800 })[0]).toMatchObject({ old: [F, F], fresh: [P, P] });
-    expect(within(clocked, { seconds: 650 })[0]).toMatchObject({ old: [F, F], fresh: [P, F] });
-    expect(within(timed, { seconds: 1 })[0]).toMatchObject({ old: [P, P], fresh: [P, P] });
-    expect(within([{ task: "c", old: [P], fresh: [P] }], { turns: 1 })[0]).toMatchObject({ old: [P] });
-  });
-
-  // Until 2026-10-09 a budget could name the CPU seconds of a solve's commands, and left out every
-  // task with a valid solve whose CPU a cut command hid, counting them as `unread`.
-  it("reads every task at every budget, whatever a cut command left unmeasured", () => {
-    // One command of a solve was cut, so its 100 s is what its other commands used and no more.
-    const cut = (cpu: number) => ({ ...used(10, cpu), unmeasured: 1 });
-    const hidden = [
-      {
-        task: "known",
-        old: [P, P],
-        fresh: [P, P],
-        used: { old: [used(10, 50), used(14, 400)], fresh: [used(10, 60), used(10, 70)] },
-      },
-      {
-        task: "hidden",
-        old: [P, P],
-        fresh: [P, P],
-        used: { old: [used(10, 50), cut(100)], fresh: [used(10, 60), used(10, 70)] },
-      },
-    ];
-    expect(within(hidden, { turns: 12 }).map(({ task, old }) => [task, old])).toEqual([
-      ["known", [P, F]],
-      ["hidden", [P, P]],
-    ]);
-    // The CPU a solve used is a reported figure and no unit: nothing is cut on it.
-    expect(UNITS).toEqual(["turns", "seconds"]);
-    expect(MEASURED).toEqual(["turns", "cpu", "seconds"]);
-    expect(within(hidden, {})).toEqual(hidden);
-  });
-
   it("says how far the use of a unit moved between repeated solves of one harness on one task", () => {
     // Turns: 22/20, 10/8, 24/6 and 24/7. CPU seconds: 900/400 and 350/300, on task `a` alone.
     const moved = spread(timed);
@@ -228,6 +171,8 @@ describe("the same solves at a shorter budget", () => {
     expect(moved.cpu).toEqual({ tasks: 2, median: (350 / 300 + 2.25) / 2, most: 2.25 });
     expect(moved.seconds).toBeNull();
     expect(spread([{ task: "c", old: [P], fresh: [P] }]).turns).toBeNull();
+    // The three figures are reported; none is a budget the same solves are read again at.
+    expect(MEASURED).toEqual(["turns", "cpu", "seconds"]);
   });
 });
 

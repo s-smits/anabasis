@@ -13,8 +13,8 @@
  * reference harness: a new harness is compared with it until a step is promoted. And it stays the
  * fixed lower reference after that: a step against a promoted reference also needs at least as
  * many wins as losses against the starter (`src/builder/round.ts`). How the starter does by
- * itself, read from the first comparison at several budgets, is what says whether the tasks leave
- * a harness room to add anything.
+ * itself, read from the first comparison, is what says whether the tasks leave a harness room to
+ * add anything.
  *
  * It needs nothing from the correctness model. The host seeds the solver's home with the task, the
  * public rules and the contract's answer format, and sends the submitted answer to the verifier.

@@ -134,9 +134,6 @@ export const SMALL_WALL_SHARE = 0.05;
  *  one harness on one task, from which a budget in that unit splits two such solves about as often
  *  as not. */
 const SPREAD_WORTH_A_LINE = 1.5;
-/** The units a budget on record may name: the two a budget is given in today, and the two that
- *  were units until 2026-10-09 (`src/kernel/compare.ts`), which the first campaigns' reports hold. */
-const RECORDED_UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
 const DEFECT = "check-defect";
 export const TEST = "test";
 export const BUILD_END = "build.finished";
@@ -169,7 +166,6 @@ export const TRIGGERS = {
   "TIES BETWEEN VALID ANSWERS": 9,
   "USE OF THE BUDGET SPREADS": 9,
   "TIED TASKS": 10,
-  "TALLY BY BUDGET": 10,
   "PASSES AT A SMALL WALL SHARE": 11,
   "OUTCOMES BY SESSION": 12,
   "HARNESS CHANGED": 13,
@@ -508,15 +504,17 @@ export function instrumentTriggers(log: Index): Trigger[] {
 }
 
 /** The tallies of each comparison that scored a task, as the task lanes read them: the ties and the
- *  spread of the budget (lane 9), the test at each budget (lane 10), and each harness by itself
- *  (`VALID BY HARNESS`, lane 23). */
+ *  spread of the budget (lane 9), the ties (lane 10), and each harness by itself
+ *  (`VALID BY HARNESS`, lane 23). A report written before 2026-10-11 also holds the same test
+ *  read at shorter budgets (`budgets`), which no trigger reads: the reading was of a solver told
+ *  the longer budget (`docs/simplify.md`, A2). */
 function tallyTriggers(compared: readonly Compared[]): Trigger[] {
   const decided = compared.flatMap(({ session, last, scoring }) => {
     const scored = asRecord(last.scored);
     const [wins, losses, ties] = [count(scored?.wins), count(scored?.losses), count(scored?.ties)];
     const tasks = wins + losses + ties;
-    // The bound its solves were told, named beside "at its limits" so that a ladder's rung is not
-    // taken for it; a log of 8 October told its solves none.
+    // The bound its solves were told, named beside "at its limits"; a log of 8 October told its
+    // solves none.
     const told = scoring.find((solve) => solve.modelTurns !== null)?.modelTurns ?? null;
     const limits = told === null ? "at its limits" : `at its limits (turns ${String(told)})`;
     return scored === null || tasks === 0
@@ -537,25 +535,6 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
     });
     return units.length === 0 ? [] : [`${session}: ${units.join(", ")}`];
   });
-  /** A budget as a report names it: its units, each with its most. */
-  const budgetOf = (row: JsonObject) =>
-    RECORDED_UNITS.flatMap((unit) => (isNumber(row[unit]) ? [`${unit} ${String(row[unit])}`] : [])).join(
-      ", ",
-    );
-  const byBudget = decided.flatMap(({ session, last, wins, losses, ties, limits }) => {
-    const read = items(last.budgets).flatMap((budget) => {
-      const row = asRecord(budget) ?? {};
-      // A report written before 2026-10-09 says how many scored tasks a CPU budget could not be
-      // read on, and so left out. No budget is given in CPU since, and no report holds the count.
-      const unread = count(row.unread);
-      return [
-        `${budgetOf(row)}: ${String(count(row.wins))}-${String(count(row.losses))}-${String(count(row.ties))}${unread === 0 ? "" : `, ${String(unread)} unread`}`,
-      ];
-    });
-    return read.length === 0
-      ? []
-      : [`${session}: ${String(wins)}-${String(losses)}-${String(ties)} ${limits}; ${read.join("; ")}`];
-  });
   // Each harness by itself: the tasks by how many of their solves were valid, none first. For the
   // plan's first round the reference harness is the starter, and this is what its gate reads.
   const byHarness = decided.flatMap(({ session, last, limits }) => {
@@ -567,13 +546,7 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
           .join("/");
       return valid === null ? [] : [`reference ${tasks(valid.old)}, new ${tasks(valid.fresh)} ${at}`];
     };
-    const read = [
-      ...census(last.valid, limits),
-      ...items(last.budgets).flatMap((budget) => {
-        const row = asRecord(budget) ?? {};
-        return census(row.valid, `at ${budgetOf(row)}`);
-      }),
-    ];
+    const read = census(last.valid, limits);
     return read.length === 0 ? [] : [`${session}: ${read.join("; ")}`];
   });
   return [
@@ -603,7 +576,6 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
           ),
         ]
       : []),
-    ...(byBudget.length > 0 ? [fired("TALLY BY BUDGET", byBudget.join("; "))] : []),
     ...(byHarness.length > 0 ? [fired("VALID BY HARNESS", byHarness.join(" · "))] : []),
   ];
 }

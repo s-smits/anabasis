@@ -165,9 +165,8 @@ function validShare(counts: unknown): number | null {
 }
 
 /**
- * The share of its solves on which the harness on `side` of a comparison was valid, by its report:
- * at the limits the comparison ran under, or with `turns` at the shorter budget of that many of
- * the model's turns it was also read at. Null where the report holds no such count.
+ * The share of its solves on which the harness on `side` of a comparison was valid, by its report,
+ * at the limits the comparison ran under. Null where the report holds no such count.
  *
  * The share is over every scored task, the ones no solve answered counted as failed. Until
  * 10 October those were left out, on the reading that a task neither harness answered is hard
@@ -180,11 +179,8 @@ function validShare(counts: unknown): number | null {
  * answers it; one with no valid answer at all goes to a person after two comparisons
  * (`awaitingLabel`), and the Examiner's `try_answer` is for writing none.
  */
-function validAt(report: JsonObject, side: "old" | "fresh", turns?: number): number | null {
-  const rows = Array.isArray(report.budgets) ? report.budgets.map(asRecord) : [];
-  const row =
-    turns === undefined ? report : rows.find((each) => each?.turns === turns && each.seconds === undefined);
-  return validShare(asRecord(row?.valid)?.[side]);
+function validAt(report: JsonObject, side: "old" | "fresh"): number | null {
+  return validShare(asRecord(report.valid)?.[side]);
 }
 
 /**
@@ -192,10 +188,10 @@ function validAt(report: JsonObject, side: "old" | "fresh", turns?: number): num
  * (`docs/plan.md`, "How move 7 decides"): `none` where the reference harness was valid on more
  * than three solves in four, so that its tasks could mostly only tie; `too-hard` where neither
  * harness was valid on one solve in four; and `room` otherwise, and for a report that holds no
- * count of valid solves. `turns` reads the same at a shorter budget the comparison was read at.
+ * count of valid solves.
  */
-export function roomOf(report: JsonObject, turns?: number): "none" | "too-hard" | "room" {
-  const [old, fresh] = [validAt(report, "old", turns), validAt(report, "fresh", turns)];
+export function roomOf(report: JsonObject): "none" | "too-hard" | "room" {
+  const [old, fresh] = [validAt(report, "old"), validAt(report, "fresh")];
   if (old === null || fresh === null) return "room";
   if (old > ROOM.full) return "none";
   return old < ROOM.empty && fresh < ROOM.empty ? "too-hard" : "room";

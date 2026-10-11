@@ -538,6 +538,7 @@ harnesses answered at the full limit (t-10, `docs/handover-2026-10-10.md`).
 - **Docs.** `AGENTS.md` section 7; the skills `launch-run` and `whole-run-investigation`
   (`references/lanes.md`, 8 mentions).
 - **Lines.** About −200 (*estimate*).
+- **Done** at PR #194 (11 October), as written. A report written before holds its `budgets` rows and no reader reads them; a settling of a comparison that began with shorter budgets is refused, since the settled report would drop them.
 
 #### A3. A solve's use in two figures
 

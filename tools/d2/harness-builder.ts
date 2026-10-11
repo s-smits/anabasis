@@ -374,17 +374,10 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
   const start =
     events.find(({ kind, data }) => kind === "comparison.started" && data.session === id)?.data ?? {};
   const cap = asRecord(start.cap);
-  const budgets = (Array.isArray(start.budgets) ? start.budgets : []).flatMap((budget) => {
-    const units = Object.entries(asRecord(budget) ?? {}).flatMap(([unit, most]) =>
-      isNumber(most) ? [`${unit}=${String(most)}`] : [],
-    );
-    return units.length === 0 ? [] : ["--budget", units.join(",")];
-  });
   return [
     ...flag("solves", isNumber(start.solves) ? String(start.solves) : undefined),
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
     ...(start.noise === true ? ["--noise"] : []),
-    ...budgets,
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
     ...flag("predict", isString(start.prediction) ? start.prediction : undefined),

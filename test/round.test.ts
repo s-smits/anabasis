@@ -54,7 +54,6 @@ import { openHarness } from "../src/solve/harness.ts";
 const COMPARISON_REPORTED = "comparison.reported";
 const COMPARISON_STARTED = "comparison.started";
 /** What a report holds of the comparison read at one budget, here one in turns. */
-const BUDGET_ROW = ["losses", "p", "ties", "turns", "valid", "wins"];
 const TASK_STATE = "task.state";
 /** What a stand-in solve throws to stop a run part-way. */
 const STOPS = "the run stops";
@@ -344,7 +343,6 @@ describe("a round", () => {
         scored: { ...tested, unsolved: 0 },
         // Each harness by itself: the reference answered no task validly, the new one all, twice.
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
-        budgets: [],
         spread: {
           turns: { tasks: 8, median: 1, most: 1 },
           cpu: null,
@@ -390,7 +388,6 @@ describe("a round", () => {
         solves: 2,
         level: 0.1,
         noise: false,
-        budgets: [],
         cap: null,
         tasks: HELD,
       },
@@ -516,11 +513,10 @@ describe("a round", () => {
       return step(version, side, nth, digest);
     });
     await expect(round(s.request)).rejects.toThrow(STOPS);
-    // Its solves so far were made for two solves a side, no budget to be read at and no cap.
+    // Its solves so far were made for two solves a side and no cap.
     await expect(round({ ...s.request, solves: 3 })).rejects.toThrow(
       "comparison b-1 began on other terms (solves), and its solves so far were made for those",
     );
-    await expect(round({ ...s.request, budgets: [{ turns: 5 }] })).rejects.toThrow("other terms (budgets)");
     await expect(round({ ...s.request, cap: { dollars: 500, reserve: 10 } })).rejects.toThrow(
       "other terms (cap)",
     );
@@ -1114,13 +1110,11 @@ describe("a checkpoint with no session", () => {
       if (version === "s4") return { ending: PASS, turns: nth === 0 ? 5 : 11 };
       return version === "s3" && nth === 0 ? { ending: PASS, turns: 11 } : LATE;
     });
-    const budgets = [{ turns: 12 }, { turns: 6 }];
     const first: RoundRequest = {
       ...s.request,
       setting: s.request.setting,
       session: { ...s.request.session, parent: s.starter.dir },
       reference: s.starter,
-      budgets,
     };
     const report = await round(first);
     expect(report).toMatchObject({
@@ -1130,11 +1124,6 @@ describe("a checkpoint with no session", () => {
       // How the starter does by itself is read from the same comparison: no valid answer on two
       // tasks, one on a third, two on the fourth. That is the plan's first gate.
       valid: { old: [2, 1, 1], fresh: [0, 0, 4] },
-      budgets: [
-        { turns: 12, wins: 3, valid: { old: [2, 1, 1], fresh: [0, 0, 4] } },
-        // At six turns the starter has one valid answer left, and every task is the new harness's.
-        { turns: 6, wins: 4, p: 0.0625, valid: { old: [3, 1, 0], fresh: [0, 0, 4] } },
-      ],
       // The starter is a side of the test, so there is no third harness to hold a step to.
       against: null,
       reading: NO_STEP,
@@ -1152,75 +1141,45 @@ describe("a checkpoint with no session", () => {
     );
   });
 
-  it("reads the same solves at the budgets it fixed before its first solve", async () => {
+  it("reads its solves at the one budget they were told, and holds a report with no shorter reading", async () => {
     // Both arms answer everything within the full limit: the harness in twenty turns, the bare
-    // solver in eight and then ten.
+    // solver in eight and then ten. Until 2026-10-11 the same solves were read again at each
+    // shorter budget the comparison fixed, and the report held a row for each.
     const s = await setup([], (_version, side, nth) => ({
       ending: PASS,
       turns: side === "old" ? 20 : 8 + 2 * nth,
     }));
-    const budgets = [{ turns: 12 }, { turns: 9 }, { turns: 5 }];
-    const report = await checkpoint(s.compare("g0", { budgets }));
+    const report = await checkpoint(s.compare("g0"));
     expect(report).toMatchObject({
       scored: { wins: 0, losses: 0, ties: 4 },
-      budgets: [
-        // At twelve turns the harness has no answer yet, and at nine the bare solver has one of two.
-        { turns: 12, wins: 4, losses: 0, ties: 0, p: 0.0625 },
-        { turns: 9, wins: 4, losses: 0, ties: 0, p: 0.0625 },
-        // At five nobody has answered, which is four ties and no evidence.
-        { turns: 5, wins: 0, losses: 0, ties: 4, p: 1 },
-      ],
       // Between two solves of one arm on one task the turns moved by a quarter at most.
       spread: { turns: { tasks: 8, median: 1.125, most: 1.25 } },
       billed: { old: BILLED, fresh: BILLED },
-      // The reading is the full limit's: a budget is read, and decides nothing here.
       reading: NO_STEP,
     });
-    expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ budgets });
-    // Every scored task is read at every budget: a report holds no count of tasks left unread,
-    // which a budget in CPU seconds made until 2026-10-09.
-    for (const row of report.budgets) expect(Object.keys(row).sort()).toEqual(BUDGET_ROW);
-    expect(JSON.stringify(s.of(COMPARISON_REPORTED))).not.toContain("unread");
+    expect(report).not.toHaveProperty("budgets");
+    expect(s.of(COMPARISON_STARTED)[0]).not.toHaveProperty("budgets");
+    expect(JSON.stringify(s.of(COMPARISON_REPORTED))).not.toContain("budgets");
   });
 
-  it("refuses a budget in a unit that is none: the prompts a solver was given, or CPU seconds", async () => {
-    const s = await setup([], () => PASS);
-    const dropped: Record<string, number>[] = [{ cpu: 600 }, { prompts: 8 }, {}];
-    for (const budget of dropped) {
-      await expect(checkpoint(s.compare("g0", { budgets: [{ turns: 12 }, budget] }))).rejects.toThrow(
-        "a budget names turns or seconds, or both, each as a number",
-      );
-    }
-    expect(s.of(COMPARISON_STARTED)).toEqual([]);
-    // The other unit is the seconds of the whole attempt, which the stand-in times at sixty.
-    const report = await checkpoint(s.compare("g0", { budgets: [{ seconds: 30 }, { seconds: 90 }] }));
-    expect(report.budgets).toMatchObject([
-      { seconds: 30, valid: { old: [4, 0, 0], fresh: [4, 0, 0] } },
-      { seconds: 90, valid: { old: [0, 0, 4], fresh: [0, 0, 4] } },
-    ]);
-  });
-
-  // Fix row F46: a settling reads the comparison's terms back from its start. A budget in a unit
-  // that is read no longer came back with no unit, which reads the full limit, and the settled
-  // report held that row in place of the budget the comparison began with.
-  it("settles on the budgets a comparison began with, and refuses one begun in a unit it reads no longer", async () => {
+  // Fix row F46: a settling reads the comparison's terms back from its start. A comparison that
+  // began with shorter budgets reported rows this source reads no longer, and the settled report
+  // would drop them in place of the report the comparison began with.
+  it("refuses to settle a comparison that began with shorter budgets, which it reads no longer", async () => {
     const s = await setup([edit, finish], rejecting);
-    await round({ ...s.request, budgets: [{ turns: 12 }] });
+    await round(s.request);
     const labels = new Map(toLabel(read(s.log), "b-1").aside.map((solve) => [solve, "earned"] as const));
-    // The same comparison as a source of 8 October began it: read also at 600 CPU seconds.
+    // The same comparison as a source of 10 October began it: read also at 12 turns.
     const older = join(dirname(s.log), "older.jsonl");
     for (const { kind, data } of read(s.log)) {
-      const began = kind === COMPARISON_STARTED ? { budgets: [{ turns: 12 }, { cpu: 600 }] } : {};
+      const began = kind === COMPARISON_STARTED ? { budgets: [{ turns: 12 }] } : {};
       append(older, kind, { ...data, ...began });
     }
     expect(() => settleReading(older, "b-1", labels)).toThrow(
-      "comparison b-1 began with a budget in cpu, which this source reads no longer (turns and seconds are read): its report stands as it was written",
+      "comparison b-1 began with 1 shorter budgets, which this source reads no longer: its report stands as it was written",
     );
     expect(read(older).filter(({ kind }) => kind === COMPARISON_REPORTED)).toHaveLength(1);
-    const settled = settleReading(s.log, "b-1", labels);
-    expect(settled.budgets.map(({ turns, seconds }) => ({ turns, seconds }))).toEqual([
-      { turns: 12, seconds: undefined },
-    ]);
+    expect(settleReading(s.log, "b-1", labels)).not.toHaveProperty("budgets");
   });
 
   it("writes the operator's prediction with the terms, before the first solve, and keeps it", async () => {

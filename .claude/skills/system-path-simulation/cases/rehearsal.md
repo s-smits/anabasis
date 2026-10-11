@@ -33,7 +33,7 @@ bun tools/d2/prepare.ts <pack flags> --name sim-<what> --practice 2
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --session r-1 \
   --solves 1 --target 4 --minutes 10 --turns 10 \
-  [--tasks <task ids>] [--budget turns=40] [--held old:new] [--starter pass|fail|none]
+  [--tasks <task ids>] [--held old:new] [--starter pass|fail|none]
 ```
 
 The flags are `tools/d2/round.ts`'s, less the three that name a model. The pack flags are the
@@ -87,17 +87,16 @@ checkpoint with the starter read against itself beside it:
 
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --id g2 --tasks <task ids> \
-  --budget turns=40 --noise --held pass:pass
+  --noise --held pass:pass
 ```
 
-Every scripted solve uses the same few turns, so a rehearsal shows that the budgets are read and
-nothing of where they bind.
+Every scripted solve uses the same few turns, so a rehearsal shows nothing of where a budget
+binds.
 
 ## Read it
 
 It prints the round's report, then the stop rule, then each harness by itself as the tasks by how
-many of their solves were valid, at the full limit and at each budget, then one of two last
-lines.
+many of their solves were valid, then one of two last lines.
 
 - `the rehearsal went as scripted`, exit 0. Every solve ended as its script said and the Builder
   changed the harness. Now read `reading` against the prediction you wrote.

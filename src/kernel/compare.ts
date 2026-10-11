@@ -66,17 +66,13 @@
  * more than a tally takes, the first started are taken, and the order solves ended in would take
  * the quick ones, which under a budget are the valid ones.
  *
- * A budget's units are two (`UNITS`). `turns` are the model's own turns, as a trace counts them,
- * and `seconds` is the whole attempt as the host timed it, from before its sandbox was mounted
- * until its verdict, which is some seconds more than the solver's own wall. They are the two a
- * solver can be told and held to (`--solve-model-turns`, `--solve-minutes`).
- *
- * Until 2026-10-09 a budget could also name `prompts` and `cpu`, and neither read anything a
- * campaign used. Every finished solve of the first three rounds was given one prompt, so a budget
- * in prompts read what the full limit read. The CPU time of a solve's commands is known only from
- * below once one of them is cut, which is the limit solvers meet most, so a budget in CPU left
- * such tasks out and reported how many (`unread`). The CPU a solve used is still measured and
- * reported (`Used.cpu`, `spread`); it is no unit a budget is given in.
+ * A comparison is read at the one budget its solves were told. Until 2026-10-11 the same pairs
+ * were read again at shorter budgets (`within`): a solve that used more of a unit than the budget
+ * allowed counted as no answer. The reading was of a solver told the longer budget, and on
+ * 9 October the starter answered 0 of 10 solves read at two turns and 10 of 10 once it was told
+ * two, so the shorter readings said nothing of a campaign run at them, and they went with the
+ * ladder of budgets that read them (`docs/simplify.md`, A1 and A2). What a solve used of its
+ * turns, its seconds and the CPU of its commands is still measured and reported (`Used`, `spread`).
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
@@ -105,12 +101,11 @@ export interface Used {
   readonly billed: number | null;
 }
 
-/** The two units a compute budget can be given in. */
-export const UNITS = ["turns", "seconds"] as const;
 /** The trigger a first reading has to clear to buy the repeat, where no flag or opening names one
  *  (`--trigger`): 2-0, 4-1, 5-2 and 7-3 clear it, and 1-0 does not. */
 export const TRIGGER = 0.25;
-/** What a solve's use is reported in: a budget's units, and the CPU seconds of its commands. */
+/** What a solve's use is reported in: the model's turns, the CPU seconds of its commands, and the
+ *  whole attempt's seconds as the host timed it. */
 export const MEASURED = ["turns", "cpu", "seconds"] as const;
 
 /** How far repeated solves of one harness on one task differ in a unit: over the tasks and sides
@@ -169,13 +164,6 @@ export interface Sides {
   readonly halves?: number | undefined;
   /** The objective two valid answers are compared by, where the comparison fixed one. */
   readonly objective?: ObjectiveRule | undefined;
-}
-
-/** A compute budget a comparison is read at after the fact: a solve that used more of any named
- *  unit than this counts as no answer. */
-export interface Budget {
-  readonly turns?: number | undefined;
-  readonly seconds?: number | undefined;
 }
 
 /** The chance of at least `wins` wins among `wins + losses` untied tasks, were either harness as
@@ -330,32 +318,6 @@ export function tally(pairs: readonly Paired[]): Tally {
 export function scored(pairs: readonly Paired[]): Tally & { readonly p: number } {
   const counts = tally(pairs);
   return { ...counts, p: signP(counts.wins, counts.losses) };
-}
-
-/** Whether a solve used more of a unit `budget` names than it allows. */
-function over(budget: Budget, used: Used | undefined): boolean {
-  return UNITS.some((unit) => {
-    const [most, spent] = [budget[unit], used?.[unit] ?? null];
-    return most !== undefined && spent !== null && spent > most;
-  });
-}
-
-/**
- * The same pairs read at a shorter budget: a solve that used more of a unit the budget names than
- * the budget allows counts as no answer, valid or not. One set of solves so gives the comparison
- * at every shorter budget. It is an approximation: the solver was told the long limit only, and
- * one told a short one may spend its turns otherwise (`docs/plan.md`, Phase 0). A solve whose use
- * of a named unit the log does not hold at all is counted as within it. Every task is read at
- * every budget: both units are measured whole for every solve.
- */
-export function within(pairs: readonly Paired[], budget: Budget): Paired[] {
-  const cut = (valid: readonly boolean[], used: readonly Used[] | undefined) =>
-    valid.map((each, index) => each && !over(budget, used?.[index]));
-  return pairs.map((pair) => ({
-    ...pair,
-    old: cut(pair.old, pair.used?.old),
-    fresh: cut(pair.fresh, pair.used?.fresh),
-  }));
 }
 
 /**

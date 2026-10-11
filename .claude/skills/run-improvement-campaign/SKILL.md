@@ -50,7 +50,7 @@ cap the reading: while one of them fails, a change anywhere below it is spent on
 | --- | --- | --- | --- |
 | 1 | supply | enough held-out tasks are left untied for a step at the comparison's level | `bun run runs launch --dry-run <flags>` |
 | 2 | instrument | the checker has been read and stands, and rejections are ruled earned | `bun tools/c/accept.ts --name <name>`, `referee.finding`, tasks set aside |
-| 3 | the reference's room | the reference harness is valid on about half its solves at the budget read | `comparison.reported.valid.old`, each `budgets[]` entry |
+| 3 | the reference's room | the reference harness is valid on about half its solves | `comparison.reported.valid.old` |
 | 4 | the session | the Builder practised, and left a harness that differs in something a solver uses | `build.*`, `harness.version`, practice `verdict`s |
 | 5 | size | the tally has enough untied tasks to clear its level | `scored`, `unsolved`, the preflight's notes |
 | 6 | the host | solves started under a load below the cores, and the loads of the comparisons read together are alike | the reader's `HOST LOADED` and `LOAD MOVED` |
@@ -183,16 +183,16 @@ another machine or a VM ([stack-pr](../stack-pr/SKILL.md) says how).
 
 ## 6. Read
 
-Read in this order, and the prose last: the ending, the reading, the tally, each budget, the
-noise, the rulings, the load.
+Read in this order, and the prose last: the ending, the reading, the tally, the noise, the
+rulings, the load.
 
 ```sh
 bun tools/wri/wri.ts read --log <log>          # the rows, the triggers, the host line
 bun run runs compare <name> [<name> ...]       # rounds made apart, set side by side
 ```
 
-The report holds the reading at the full limit and at each budget fixed beforehand, the tally
-over tasks, each harness by itself, and the reference against itself where `--noise` asked for
+The report holds the reading at the budget the solves were told, the tally over tasks, each
+harness by itself, and the reference against itself where `--noise` asked for
 it. [launch-run](../launch-run/SKILL.md) says what each line is.
 
 Evidence precedence:

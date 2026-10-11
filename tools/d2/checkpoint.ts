@@ -31,7 +31,7 @@
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
  * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
  * campaign has recorded none or `--new-setting` changes it. The solves a side, the level, the
- * Referee, the budgets and the cap are a round's, with a round's defaults (`round.ts`), and
+ * Referee and the cap are a round's, with a round's defaults (`round.ts`), and
  * `--cap` is required as it is there. With no `--reviewer`, every
  * rejection waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
@@ -60,7 +60,6 @@ import {
   stayAwake,
 } from "./campaign.ts";
 import {
-  budgetsNamed,
   predictionLines,
   predictionNamed,
   capNamed,
@@ -102,7 +101,6 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   if (id === undefined) throw new Error("name --id, the id the comparison takes in the log");
   // Read before the campaign is opened: a paid comparison with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
-  const budgets = budgetsNamed(values.budget);
   // The campaign's setting is its log's, as a round reads it (`setting.ts`).
   const setting = settingAsked(values, recordedSetting(read(campaignLog(name))));
   const campaign = await openCampaign({ ...pack, ...setting.named });
@@ -123,7 +121,6 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     objective: objectiveNamed(campaign, values.margin),
     defects: Number(values.defects),
     noise: values.noise,
-    budgets,
     cap,
     prediction: predictionNamed(values.predict),
     concurrency: setting.named.limits.concurrency,

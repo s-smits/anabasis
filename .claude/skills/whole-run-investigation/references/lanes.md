@@ -307,8 +307,8 @@ The question is whether a valid answer within the budget tells two harnesses apa
 the budget's unit is steady enough to be a budget. `TIES BETWEEN VALID ANSWERS` fires on a
 comparison where more than half of the tallied tasks tie with valid answers on both sides. That
 is the plan's condition for building an objective (`docs/plan.md`, Phase 3): until it holds, no
-objective is built, and where it holds the first question is whether a shorter budget would have
-separated the same solves, which lane 10's `TALLY BY BUDGET` answers from the report.
+objective is built, and where it holds the question is whether the objective would separate the
+same solves (`objective.decided` in a report of a check program that declares one).
 `USE OF THE BUDGET SPREADS` reads the report's `spread`: over the tasks with two measured solves
 under one harness, the largest use of a unit divided by the smallest, at the median and at most.
 A unit whose use doubles between two solves of the same harness on the same task splits them at
@@ -320,24 +320,23 @@ built; it routes to `operator`.
 
 **10. Ties and the budget.**
 
-Starts from `TIED TASKS (lane 10)` and `TALLY BY BUDGET (lane 10)`.
+Starts from `TIED TASKS (lane 10)`.
 
-The question is what share of the tasks tie, why, and at which budget the fewest would. A tie
-says nothing, and the share of untied tasks is what sizes every later comparison. With two solves
-a side and no true difference, 38% of tasks tie when a solve is valid half the time, 51% at four
-times in five and 69% at nine in ten (`src/kernel/size.ts`), so a budget is set where the
-reference harness is valid about half the time. `TIED TASKS` gives each comparison's ties and how
-many of them had no valid answer; the rest are ties between valid answers. `TALLY BY BUDGET`
-gives the same solves read at each budget the comparison fixed before its first solve
-(`within`, `src/kernel/compare.ts`): a solve that used more than a budget counts as no answer at
-it. That reading is an approximation, since the solver was told the long limit only. Read which
-budget leaves the most tasks untied and how valid the reference harness is there. v1's limit
-never bound: six tasks passed in 2.5 to 26 minutes of a 120-minute limit, and 265 of 299
+The question is what share of the tasks tie and why. A tie says nothing, and the share of untied
+tasks is what sizes every later comparison. With two solves a side and no true difference, 38%
+of tasks tie when a solve is valid half the time, 51% at four times in five and 69% at nine in
+ten (`src/kernel/size.ts`), so the tasks are written where the reference harness is valid about
+half the time. `TIED TASKS` gives each comparison's ties and how many of them had no valid
+answer; the rest are ties between valid answers. A report written before 11 October also holds
+the same solves read at each shorter budget the comparison fixed (`budgets`), which no trigger
+reads since: that reading was of a solver told the longer limit, and on 9 October the starter
+answered 0 of 10 solves read at two turns and 10 of 10 once it was told two. v1's limit never
+bound: six tasks passed in 2.5 to 26 minutes of a 120-minute limit, and 265 of 299
 batteries passed whole. Say what demand the tied tasks make: v1 measured that requirements
 sharing one limit lowered pass counts, 7 of 20 against 22 of 23, where a tightened limit and a
 widened exam did not. Do not prescribe an instance. The decision it changes is the size of the
-budget and what the Examiner is asked for next; it routes to `operator` for the budget and
-`examiner/task` for tasks every harness answers at any budget.
+budget the setting names and what the Examiner is asked for next; it routes to `operator` for
+the budget and `examiner/task` for tasks every harness answers.
 
 **11. Public disclosure and one recipe.**
 
@@ -552,7 +551,7 @@ Starts from `SCORED SET MOVED (lane 21)`.
 The question is whether the tasks a comparison tallied are the tasks it fixed before its first
 solve, and whether what left favours a side. No result chooses the scored set: it is drawn from
 the held-out tasks by the contract's hash, or named by the operator, and written into
-`comparison.started` with the harnesses, the solves a side, the level, the budgets and the cap.
+`comparison.started` with the harnesses, the solves a side, the level and the cap.
 `SCORED SET MOVED` fires when the tally holds fewer tasks than that event. A task leaves four
 ways, and the report names each: `short` of its solves under a harness, `disputed` when a check
 could not run, `withdrawn` when a person released or refused it while the comparison ran, and
@@ -602,12 +601,12 @@ and no domain tool (`src/solve/starter.ts`). Before 2026-10-09 it was the solver
 answer writer, and a log of that time holds its solves under another digest. The Builder forks it
 in its first session, and it is the reference harness until a step is promoted, so the plan's first
 round compares a built harness with it. `VALID BY HARNESS` gives each harness by itself, as the tasks by how many of their
-solves were valid, none first, at the full limit and at each budget: for the reference harness
-of the first round that is the starter's own result, and the plan's first gate is read off it.
-A starter valid on nearly every solve even at the shortest budget has tasks too easy to show an
-improvement, and they are replaced before another session is paid for: v1's solver wrote its own
-search and passed, and twelve firmware tasks passed faster with the simulator withheld. The plan
-goes on at the budget where the starter is valid on about half its solves. After a promotion the
+solves were valid, none first: for the reference harness of the first round that is the
+starter's own result, and the plan's first gate is read off it. A starter valid on nearly every
+solve has tasks too easy to show an improvement, and they are replaced before another session is
+paid for: v1's solver wrote its own search and passed, and twelve firmware tasks passed faster
+with the simulator withheld. The Examiner writes tasks where the starter is valid on about half
+its solves. After a promotion the
 starter is a fixed lower reference and no side of the sign test: a comparison that clears its
 level solves the starter on the same tasks, and reads a step only with at least as many wins as
 losses against it. `BELOW THE STARTER` names a harness that beat the reference and lost to the
@@ -688,8 +687,8 @@ exactly the solves that ran longest. For that reason no budget is given in CPU s
 9 October, and a report from before may hold a count of tasks a CPU budget left `unread`. A turn
 is one outer prompt over an unbounded tool loop, so the turn cap is a runaway guard and the calls
 are the work: every finished solve of the first three rounds on 9 October was given one prompt,
-and a budget in `prompts`, which was a unit until then, read what the full limit read. A budget
-names the model's `turns` or the attempt's `seconds`. The decision it changes is whether a
+and a budget in `prompts`, which was a unit until then, read what the full limit read. Since
+11 October a comparison is read at the one budget its solves were told. The decision it changes is whether a
 wall-bound miss is the task's or the wall's, and whether a gain shows first in time; it routes
 to `environment` for load, `harness/guide` when the guide sends the solver into work the wall
 cannot hold, and `operator` for the wall itself.

@@ -4,8 +4,8 @@
  * that opening and the log (`Plan`, `ground.ts`).
  *
  * The opening is the operator's conditions for the whole campaign, recorded once and again where
- * a command names another: the total budget, the full limit of a solve and the shorter budgets
- * its comparisons are read at, the Builder sessions before a comparison, who sits in each seat,
+ * a command names another: the total budget, the full limit of a solve, the Builder sessions
+ * before a comparison, who sits in each seat,
  * and, for a campaign that opens from a prompt, the prompt and who solves. None of them moves a
  * comparison's reading. The setting is the log's own record (`campaign.setting`).
  *

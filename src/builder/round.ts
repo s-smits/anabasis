@@ -13,8 +13,8 @@
  * 3. The reading, logged as `comparison.reported`.
  *
  * What is fixed before the first solve. A comparison writes `comparison.started` with its
- * harnesses, its setting, its scored tasks, its solves a side, its level, the budgets it will be
- * read at and its dollar cap, so that what it compares is on record before any result is. One gone
+ * harnesses, its setting, its scored tasks, its solves a side, its level and its dollar cap, so
+ * that what it compares is on record before any result is. One gone
  * on from its log goes on with the same tasks, and one asked for again on other terms is refused.
  * Every solve the comparison starts names it at its start, and a solve counts when it names the
  * comparison and ran under one of its harnesses and its setting. No other solve is counted, made
@@ -32,9 +32,9 @@
  * settling left it so.
  *
  * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
- * gave a valid answer in every solve, in some and in none, at the full limit and at each budget.
- * For the starter this is what the plan's first gate reads: where it is valid on nearly every
- * solve even at a short budget, the tasks leave a harness nothing to add (`docs/plan.md`, G0).
+ * gave a valid answer in every solve, in some and in none. For the starter this is what the
+ * plan's first gate reads: where it is valid on nearly every solve, the tasks leave a harness
+ * nothing to add (`docs/plan.md`, G0).
  *
  * `noise` reads the reference harness against itself beside the test (the plan's A/A comparison).
  * The reference harness is then solved twice as often. Its first solves of a task, in the order
@@ -43,9 +43,10 @@
  * to exceed. It should read no step, and it decides nothing here. The later solves run after the
  * test's own are done, so that second tally also holds whatever the later hour moved.
  *
- * `budgets` reads the same solves at shorter budgets (`within`, `compare.ts`): a solve that used
- * more than a budget allows counts as no answer at it. The report holds the tally at each, and how
- * far the use of each unit moved between repeated solves of one harness on one task.
+ * The report holds how far the use of turns, CPU seconds and seconds moved between repeated
+ * solves of one harness on one task (`spread`). Until 2026-10-11 it also read the same solves at
+ * shorter budgets (`within`), which read a solver told the longer one; a comparison is read at the
+ * one budget its solves were told (`docs/simplify.md`, A2).
  *
  * `cap` is the comparison's dollar cap. Before each solve the dollars the log holds as billed for
  * the comparison are summed (`billedFor`): its own solves and their rulings, and in a round the
@@ -99,7 +100,7 @@
  * 10 October: its start, its counted solves, its rejections, its tallies and its report. This
  * file keeps what runs one and what it writes.
  */
-import { type Budget, draw, type ObjectiveRule, UNITS } from "../kernel/compare.ts";
+import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { awaitingLabel, billedFor, type Cap, capHolds, exhausted } from "../kernel/reports.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
@@ -111,7 +112,6 @@ import { sameJsonValue } from "../meta/stable-json.ts";
 import type { RefereeFinding, Ruling } from "../review/referee.ts";
 import { tasksByEpoch } from "./climb.ts";
 import {
-  asBudget,
   compared,
   DEFECT,
   EARNED,
@@ -169,8 +169,6 @@ interface Terms {
   readonly setting: string;
   /** Whether the reference harness is also read against itself, on solves of its own. */
   readonly noise?: boolean | undefined;
-  /** The shorter budgets the comparison is also read at. */
-  readonly budgets?: readonly Budget[] | undefined;
   /** The dollar cap, where the solves are paid for. */
   readonly cap?: Cap | undefined;
   /** What the operator expects the comparison to read, in their own words, written with its terms
@@ -335,11 +333,6 @@ function refuseUnreadable(terms: Terms): void {
   }
   if (terms.cap !== undefined && !capHolds(terms.cap)) {
     throw new Error("a cap and its reserve are dollars, and both are more than nothing");
-  }
-  // A budget that names neither unit would read what the full limit reads under another name. One
-  // named in prompts or CPU seconds, which were units until 2026-10-09, is such a budget here.
-  if ((terms.budgets ?? []).some((budget) => Object.keys(asBudget(budget)).length === 0)) {
-    throw new Error("a budget names turns or seconds, or both, each as a number");
   }
 }
 
@@ -531,7 +524,6 @@ function begin(request: CheckpointRequest): Fixed {
     solves: request.solves,
     level: request.level,
     noise: request.noise === true,
-    budgets: (request.budgets ?? []).map(asBudget),
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
     ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
@@ -707,16 +699,13 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
       `comparison ${id} reads ${report.reading} and compared nothing, so there is nothing to settle`,
     );
   }
-  // A budget in a unit that is read no longer would come back with no unit, which reads the full
-  // limit under no name, and the settled report would hold that in place of the budget the
+  // A comparison that began with shorter budgets, which were read until 2026-10-11, reported rows
+  // this source reads no longer, and the settled report would drop them in place of the report the
   // comparison began with (the third review, row F46).
   const began = startOf(before, id)?.budgets;
-  const dropped = [
-    ...new Set((Array.isArray(began) ? began : []).flatMap((budget) => Object.keys(asRecord(budget) ?? {}))),
-  ].filter((unit) => !UNITS.some((known) => known === unit));
-  if (dropped.length > 0) {
+  if (Array.isArray(began) && began.length > 0) {
     throw new Error(
-      `comparison ${id} began with a budget in ${dropped.join(" and ")}, which this source reads no longer (${UNITS.join(" and ")} are read): its report stands as it was written. Settle it from the commit it was made at`,
+      `comparison ${id} began with ${String(began.length)} shorter budgets, which this source reads no longer: its report stands as it was written. Settle it from the commit it was made at`,
     );
   }
   const { aside, others } = toLabel(before, id);

@@ -92,7 +92,6 @@ interface Compared {
   readonly tasks: number;
   readonly solves: number;
   readonly level: number;
-  readonly budgets: number;
   readonly cap: number | null;
   /** The model's turns each of its solves was told and held to, by the setting on record when it
    *  began, or by its first solve where the log holds no record of the setting; null where the
@@ -239,7 +238,6 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     tasks: Array.isArray(start.tasks) ? start.tasks.length : count(start.tasks),
     solves: count(start.solves),
     level: count(start.level),
-    budgets: listed(start.budgets),
     cap: isNumber(asRecord(start.cap)?.dollars) ? count(asRecord(start.cap)?.dollars) : null,
     modelTurns: isNumber(told) ? told : null,
     reading: text(report?.reading),

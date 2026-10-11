@@ -30,7 +30,7 @@ import { openHarness } from "../src/solve/harness.ts";
 import { starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
-import { budgetsNamed, capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
+import { capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -401,7 +401,7 @@ describe("a campaign", () => {
     expect(read(campaign.log).filter(({ kind }) => kind === "build.started")).toEqual([]);
   });
 
-  it("starts no paid comparison without a dollar cap, and reads its budgets before anything starts", async () => {
+  it("starts no paid comparison without a dollar cap, and prints each harness by itself in words", async () => {
     const flags = Object.entries(ARGS).flatMap(([flag, value]) => [`--${flag}`, value]);
     await expect(roundCommand([...flags, "--session", "z-8", "--builder", "faux/none"])).rejects.toThrow(
       "name --cap, the billed dollars this comparison may hold",
@@ -430,49 +430,23 @@ describe("a campaign", () => {
     // A simulation's seats are scripts, which are paid nothing, and may name none.
     expect(capNamed({ reserve: "10" }, "scripted")).toBeUndefined();
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
-    // A budget names either or both of its two units, and each flag is one budget to read the
-    // comparison at.
-    expect(budgetsNamed(["turns=40", "turns=20,seconds=900", "seconds=1800"])).toEqual([
-      { turns: 40 },
-      { turns: 20, seconds: 900 },
-      { seconds: 1800 },
-    ]);
-    expect(budgetsNamed()).toEqual([]);
     // What a report says of each harness by itself is printed in words: the tasks by how many of
-    // their solves were valid, at the full limit and at each budget. For the first round the
-    // reference harness is the starter, and these lines are what its gate reads.
-    const tested = { wins: 0, losses: 0, ties: 0, p: 1 };
-    expect(
-      validLines({
-        valid: { old: [2, 1, 5], fresh: [0, 1, 7] },
-        budgets: [
-          { seconds: 1800, ...tested, valid: { old: [4, 2, 2], fresh: [1, 3, 4] } },
-          { turns: 40, seconds: 600, ...tested, valid: { old: [6, 2, 0], fresh: [3, 3, 2] } },
-        ],
-        objective: null,
-      }),
-    ).toEqual([
+    // their solves were valid. For the first round the reference harness is the starter, and
+    // these lines are what its gate reads. Until 2026-10-11 the same solves were also read at
+    // each shorter `--budget`, and a report held a row for each; the flag is refused since.
+    expect(validLines({ valid: { old: [2, 1, 5], fresh: [0, 1, 7] }, objective: null })).toEqual([
       "each harness by itself, as how many tasks had 0, 1, 2 valid answers in 2 solves (a count of tasks a column, not a share):",
       "  at its limits: reference 2/1/5, new 0/1/7",
-      "  at seconds=1800: reference 4/2/2, new 1/3/4",
-      "  at turns=40,seconds=600: reference 6/2/0, new 3/3/2",
     ]);
-    expect(validLines({ valid: null, budgets: [], objective: null })).toEqual([]);
+    expect(validLines({ valid: null, objective: null })).toEqual([]);
+    expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
     expect(
       validLines({
         valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
-        budgets: [],
         objective: { direction: "lower", margin: 0.01, decided: 1 },
       }).at(-1),
     ).toBe("the objective (lower is better, margin 0.01) decided 1 task that validity alone would have tied");
-    // The prompts a solver was given and the CPU seconds of its commands were units until
-    // 2026-10-09: the first read what the full limit read, and the second left tasks unread.
-    for (const flag of ["turns", "turns=0", "tokens=5", "turns=4=5", "", "prompts=8", "turns=40,cpu=600"]) {
-      expect(() => budgetsNamed([flag])).toThrow(
-        `--budget ${flag}: a budget names turns or seconds, each with a number above nothing`,
-      );
-    }
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });

@@ -568,9 +568,10 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
  * at every move, so it waits here, says so once, and looks again. `--loaded` starts the move all
  * the same, which is the operator's word that its times will not be compared.
  */
-async function quiet(host: Host, move: string): Promise<void> {
+async function quiet(host: Host, move: string): Promise<number> {
   let said = false;
-  for (let load = host.load(); load > host.cores; load = host.load()) {
+  let load = host.load();
+  for (; load > host.cores; load = host.load()) {
     if (!said) {
       console.log(
         `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: ${move} waits until it is at or under them, or pass --loaded`,
@@ -579,6 +580,7 @@ async function quiet(host: Host, move: string): Promise<void> {
     said = true;
     await Bun.sleep(host.waitMs);
   }
+  return load;
 }
 
 /** The checks `--admit` names, which is the operator's word for each. */
@@ -748,9 +750,16 @@ export async function harnessBuilder(
     // A Builder session's practice solves and a comparison's solves are held to a wall: neither
     // starts into a loaded host. A rehearsal's seats are scripts, whose times nobody compares.
     const solves = decided.move === "build" || decided.move === "compare";
-    if (solves && !values.loaded && (seats.host !== undefined || seats.seated === solved)) {
-      await quiet(seats.host ?? HOST, decidedLine(decided).split(":")[0] ?? decided.move);
-    }
+    const host = seats.host ?? HOST;
+    const waits = solves && !values.loaded && (seats.host !== undefined || seats.seated === solved);
+    // When the move began, and for a move that solves the host's load then: the event is written
+    // when the move ends and carries the reason from when it was decided, which a reader took for
+    // the end's (the runs session's note, 10 October); and a solve's times are the host's as much
+    // as the solver's, since a wall counts the clock, and the load the wait read was on no record
+    // (eight campaigns on one host of 12 cores held its load between 14 and 26 that night).
+    const began = new Date().toISOString();
+    const waited = waits ? await quiet(host, decidedLine(decided).split(":")[0] ?? decided.move) : null;
+    const load = solves ? (waited ?? host.load()) : undefined;
     let left: JsonObject;
     try {
       left = await make(decided, { events, plan, opening, values, seats });
@@ -768,6 +777,9 @@ export async function harnessBuilder(
     append(log, "campaign.move", {
       move: decided.move,
       why: decided.why,
+      began,
+      ...keyIfDefined("load", load),
+      ...keyIfDefined("cores", load === undefined ? undefined : host.cores),
       ...left,
       ...keyIfDefined(
         "answers",

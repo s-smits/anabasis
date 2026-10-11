@@ -109,6 +109,18 @@ describe("a campaign run by its log", () => {
       ending: "no-room",
       why: "2 Examiner sessions in a row held out no task (Builder session b-1 left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for): the tasks could not be made to leave room",
     });
+    // Each move records when it began, and a move that solves the load the host had then: the
+    // Builder session's is the quiet one the wait ended on, and the moves that solve nothing read
+    // the host not at all.
+    const moves = of(name, "campaign.move");
+    expect(moves.every(({ began }) => isString(began))).toBe(true);
+    expect(moves.map(({ move, load, cores }) => [move, load ?? null, cores ?? null])).toEqual([
+      ["accept", null, null],
+      ["prepare", null, null],
+      ["build", 0, 4],
+      ["examine", null, null],
+      ["examine", null, null],
+    ]);
     expect(of(name, "campaign.move").map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
       ["prepare", null],

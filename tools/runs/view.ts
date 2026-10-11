@@ -1,5 +1,5 @@
 /**
- * `bun run runs view <name> [the flags of a launch]`
+ * `bun run runs view <name> [--level N] [--trigger N] [--target N] [--past-stop "<why>"]`
  *
  * A campaign as its log reads: the set-up, what each step handed over, the climb, and the move
  * that comes next. It is the one reading of `src/builder/handover.ts`, printed whole for the
@@ -7,10 +7,12 @@
  *
  * Its last line is the one move the plan's decision table names on this log (`decide`,
  * `src/builder/decide.ts`), with its reason: what `tools/d2/harness-builder.ts` would make next.
- * The table is asked with the flags of a launch that bear on it: `--level`, `--trigger`,
- * `--past-stop` and the setting's own. Until 11 October the view also listed every move a launch
- * would be admitted for, and that list named a promotion on one step where the table waits for
- * its repeat; the table's move is the one it prints.
+ * The table is asked with the four flags of the campaign command that bear on it, and with the
+ * terms its opening keeps for those it does not name (`campaign.opened`, `src/builder/opening.ts`),
+ * so that the view and `tools/d2/harness-builder.ts` name one move on one log. Until 11 October
+ * the view also listed every move a launch would be admitted for, and that list named a promotion
+ * on one step where the table waits for its repeat; the table's move is the one it prints. The
+ * launcher went the same day (`docs/simplify.md`, D2), and the view parses no flag of its own.
  * The view opens no campaign, so of a log that holds no task it says what holds for a campaign
  * over a pack: that the pack's tasks are taken in first.
  *
@@ -21,13 +23,21 @@
 import { epochLine, epochsOf, regressionLine, regressionOf } from "#src/builder/climb.ts";
 import { decide } from "#src/builder/decide.ts";
 import { decidedLine } from "#src/builder/move.ts";
-import { planOf } from "#src/builder/opening.ts";
+import { openingOf, planOf } from "#src/builder/opening.ts";
 import { type Campaign, campaignOf, type Handover } from "#src/builder/handover.ts";
 import { shortDigest } from "#src/builder/past.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { askedFlagged, LAUNCH_OPTIONS } from "./launch.ts";
+import { COMPARISON_OPTIONS } from "../d2/round.ts";
 import { logEvents, runs } from "./pulse.ts";
+
+/** The flags the table is asked with: the campaign command's, with the same names. */
+const VIEW_OPTIONS = {
+  level: { type: "string" },
+  trigger: { type: "string" },
+  target: { type: "string" },
+  "past-stop": { type: "string" },
+} as const;
 
 const STANDINGS = [
   ["open", "open"],
@@ -114,28 +124,37 @@ export function view(args: readonly string[]): void {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: LAUNCH_OPTIONS,
+    options: VIEW_OPTIONS,
   });
   const [name] = positionals;
   const tree = runtimeProcess.cwd();
   const run = runs().find((found) => found.tree === tree && found.name === name);
   if (name === undefined || run === undefined) {
     throw new Error(
-      `usage: bun run runs view <name> [the flags of a launch]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
+      `usage: bun run runs view <name> [--level N] [--trigger N] [--target N] [--past-stop "<why>"]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
     );
   }
   const events = logEvents(run.path);
-  const asked = askedFlagged(values, events);
+  const opening = openingOf(events);
+  // Each term as this view is asked it, then as the opening keeps it, then the tree's default: the
+  // scored tasks are the record's where it names them (`planOf`).
+  const term = (flag: "level" | "trigger" | "target", fallback?: string) =>
+    values[flag] ?? opening?.terms[flag] ?? fallback;
+  const target = term("target");
   const lines = viewLines(name, campaignOf(events));
   const decided = decide(
     events,
-    planOf(events, {
-      unprepared: !events.some(({ kind }) => kind === "task.proposed"),
-      level: asked.comparison.level,
-      trigger: asked.comparison.trigger,
-      target: asked.comparison.target,
-      pastStop: asked.comparison.pastStop,
-    }),
+    planOf(
+      events,
+      {
+        unprepared: !events.some(({ kind }) => kind === "task.proposed"),
+        level: Number(term("level", COMPARISON_OPTIONS.level.default)),
+        trigger: Number(term("trigger", COMPARISON_OPTIONS.trigger.default)),
+        target: target === undefined ? undefined : Number(target),
+        pastStop: values["past-stop"],
+      },
+      opening,
+    ),
   );
   const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch)}`);
   const regression = regressionOf(events);

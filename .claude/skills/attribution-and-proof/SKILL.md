@@ -109,10 +109,11 @@ Check in order, and stop at the first that fails. One command answers the first 
 bun .claude/skills/attribution-and-proof/scripts/run-source.ts <campaign folder> --holds <fix>
 ```
 
-1. **The commit.** `launch-<session>.json` beside the log names the commit and whether the tree held
-   uncommitted changes. A run started without the launcher has no receipt: the condition's host
+1. **The commit.** `launch-run-<n>.json` beside the log (and `launch-<session>.json` for a round
+   launched before 11 October) names the commit and whether the tree held uncommitted changes. A
+   round started by hand has no receipt: the condition's host
    hash still names the code by content, and the commit is then unknown.
-2. **Containment.** `--holds` asks whether the fix is an ancestor of each launch's commit.
+2. **Containment.** `--holds` asks whether the fix is an ancestor of each receipt's commit.
    After a restack the fix has another commit id; name the replayed one.
 3. **The event.** Find what the mechanism writes: an event kind, a field, an ending, a refusal's
    words in the `.out`.

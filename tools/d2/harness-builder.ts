@@ -73,8 +73,8 @@
  *
  * A move is recorded once it is made (`campaign.move`), with the reason the table gave, so the
  * log holds what was decided beside what was done. Each run of the command keeps a receipt
- * beside the log, `launch-run-<n>.json`, as a launch keeps a round's: its flags, the commit the
- * worktree stands at and the load it started under (`keepReceipt`).
+ * beside the log, `launch-run-<n>.json`: its flags, the commit the worktree stands at and the
+ * load it started under (`keepReceipt`, `tools/runs/receipt.ts`).
  *
  * **A move that solves waits for the host.** A Builder session and a comparison start once the
  * host's one-minute load is at or under its cores, since a solve's wall counts the clock.
@@ -106,7 +106,7 @@ import { dirname } from "#src/meta/path.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
-import { launchesOf, writeReceipt } from "../runs/launch.ts";
+import { launchesOf, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/pulse.ts";
 import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
 import { checkpointCommand } from "./checkpoint.ts";
@@ -562,11 +562,11 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
  * Wait until the host's load is at or under its cores, before a move that solves. A solve's wall
  * counts the clock, so what starts into a loaded host reaches walls an idle one would not, and
  * slows every run beside it: on 9 October one harness answered the same seven tasks in a median
- * of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). The launcher
- * refuses such a launch once (`tools/runs/launch.ts`), and a session then queued the next move
- * by hand behind the load. A campaign that runs for hours meets the question at every move, so
- * it waits here, says so once, and looks again. `--loaded` starts the move all the same, which
- * is the operator's word that its times will not be compared.
+ * of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). Until
+ * 11 October the launcher (`bun run runs launch`) refused such a launch once, and a session then
+ * queued the next move by hand behind the load. A campaign that runs for hours meets the question
+ * at every move, so it waits here, says so once, and looks again. `--loaded` starts the move all
+ * the same, which is the operator's word that its times will not be compared.
  */
 async function quiet(host: Host, move: string): Promise<void> {
   let said = false;
@@ -622,8 +622,8 @@ function examLines(
 }
 
 /**
- * Keep this run of the command on record as a launch keeps a round: `launch-run-<n>.json` beside
- * the log, with the flags, the commit and the load it started under (`Receipt`, `launch.ts`). The
+ * Keep this run of the command on record: `launch-run-<n>.json` beside the log, with the flags,
+ * the commit and the load it started under (`Receipt`, `tools/runs/receipt.ts`). The
  * log holds the host's code by content and no commit, and the opening keeps the terms and not the
  * flag line, so until 10 October a run under this command was on no record: the flag line of the
  * run that recorded the setting of the second campaign from a prompt on the test host (120 minutes

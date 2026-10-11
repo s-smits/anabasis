@@ -34,9 +34,8 @@ import { openCampaign, packNamed, REPO, stayAwake } from "../d2/campaign.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
-/** An Examiner session's flags and their defaults. A launch parses its flags by the same table
- *  first (`tools/runs/launch.ts`, `flagsRefused`). */
-export const EXAMINE_OPTIONS = {
+/** An Examiner session's flags and their defaults. */
+const EXAMINE_OPTIONS = {
   root: { type: "string" },
   sweep: { type: "string" },
   cycle: { type: "string" },

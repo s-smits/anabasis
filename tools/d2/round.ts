@@ -53,7 +53,7 @@
  * solver and the sweep's limits for the rest. `--minutes` and `--turns` are the Builder session's
  * own.
  *
- * Before its first event a round asks whether its comparison may start, as a launch of it does
+ * Before its first event a round asks whether its comparison may start
  * (`src/builder/admission.ts`): on a checker nobody has read, with too few tasks left to untie, or
  * after the plan's stop rule has stopped the campaign, it starts nothing. `--past-stop "<why>"`
  * goes on past the stop rule, and the reason is logged.
@@ -184,8 +184,7 @@ export const SESSION_OPTIONS = {
   parent: { type: "string", default: "latest" },
 } as const;
 
-/** A round's flags and their defaults. A launch reads the same ones (`tools/runs/launch.ts`), so
- *  what it says a round can read is said of the round that would start. */
+/** A round's flags and their defaults. */
 export const ROUND_OPTIONS = { ...SESSION_OPTIONS, ...COMPARISON_OPTIONS } as const;
 
 /** What a Builder session reads of its command's flags, each with its default by then. */
@@ -369,8 +368,8 @@ export function predictionLines(events: readonly LogEvent[], id: string, report:
 }
 
 /**
- * The dollars `--cap` and `--reserve` name, read in one place for every command and for the
- * launcher: each is a plain number above nothing. A cap typed as "$40" is no number, and held
+ * The dollars `--cap` and `--reserve` name, read in one place for every command: each is a plain
+ * number above nothing. A cap typed as "$40" is no number, and held
  * nothing where it was not checked (`capHolds`).
  */
 export function capRead(cap: string, reserve: string): Cap {

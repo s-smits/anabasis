@@ -111,7 +111,7 @@ on 2026-10-09: the first rehearsal on a seed should write these as its predictio
 | `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
 | the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and a settling makes no solve |
 | `--reference <a built digest> --held none:pass` | `step`, sixteen solves | after a promotion the starter is solved on no task: until 11 October a step was held to it, a third arm (`docs/simplify.md`, B2) |
-| fewer than two tasks held out | refused at launch; `no-step` at best if run | at a trigger of 0.25 a first reading takes two untied tasks, all won |
+| fewer than two tasks held out | refused by the comparison's admission; `no-step` at best if run | at a trigger of 0.25 a first reading takes two untied tasks, all won |
 | a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
 
 `check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
@@ -125,7 +125,7 @@ and read an anchor; what they found about that design went with it. What they fo
 round's size still holds in the new arithmetic:
 
 - **A step takes four untied tasks, all won, at level 0.1.** A campaign that holds fewer cannot
-  read one, and the launcher now refuses it.
+  read one, and the comparison's admission now refuses it.
 - **A step does not move the reference harness.** The next comparison is against the harness the
   campaign started with until the operator names another with `--reference`; the Builder goes on
   from the latest harness a session left.

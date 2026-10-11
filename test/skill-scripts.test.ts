@@ -17,7 +17,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
-import { launchesOf } from "../tools/runs/launch.ts";
+import { launchesOf } from "../tools/runs/receipt.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-skill-scripts-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));

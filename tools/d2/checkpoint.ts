@@ -35,8 +35,8 @@
  * `--cap` is required as it is there. With no `--reviewer`, every
  * rejection waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
- * Before its first event it asks whether the comparison may start, as a round does and as a
- * launch of it does (`src/builder/admission.ts`). `--past-stop "<why>"` goes on past the plan's
+ * Before its first event it asks whether the comparison may start, as a round does
+ * (`src/builder/admission.ts`). `--past-stop "<why>"` goes on past the plan's
  * stop rule, and the reason is logged.
  *
  * Run again with the same `--id`, it goes on from its log, and once it has reported it says what
@@ -76,9 +76,8 @@ import {
 } from "./round.ts";
 import { keepSetting, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
 
-/** A checkpoint's flags and their defaults. A launch parses its flags by the same table first
- *  (`tools/runs/launch.ts`, `flagsRefused`). */
-export const CHECKPOINT_OPTIONS = {
+/** A checkpoint's flags and their defaults. */
+const CHECKPOINT_OPTIONS = {
   root: ROUND_OPTIONS.root,
   sweep: ROUND_OPTIONS.sweep,
   cycle: ROUND_OPTIONS.cycle,
@@ -131,8 +130,8 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
         ? undefined
         : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
   };
-  // Every refusal comes before anything is recorded, as in a round: the admission's, as a launch
-  // of it asks, then the comparison's own terms, and only then the campaign's setting.
+  // Every refusal comes before anything is recorded, as in a round: the admission's, then the
+  // comparison's own terms, and only then the campaign's setting.
   const notes = admitComparison(campaign.log, {
     id,
     reference: values.reference,

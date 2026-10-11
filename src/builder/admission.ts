@@ -2,11 +2,12 @@
  * Whether a paid comparison may start: what the campaign's log holds for it, set against what it
  * asks for.
  *
- * One function decides it, and every way of starting a comparison asks that function. The launcher
- * asks before it spawns anything (`tools/runs/launch.ts`), and a round or a checkpoint asks again
- * before its first event (`admitComparison`), so a command started by hand is refused where a
- * launch of it would be. Until 2026-10-09 the launcher alone held these refusals, and a round
- * started directly on a checker nobody had read went on to pay for its solves.
+ * One function decides it, and every way of starting a comparison asks that function: a round or
+ * a checkpoint asks before its first event (`admitComparison`), whether the campaign command made
+ * it (`tools/d2/harness-builder.ts`) or a hand started it. Until 2026-10-09 the launcher
+ * (`bun run runs launch`) alone held these refusals, and a round started directly on a checker
+ * nobody had read went on to pay for its solves; the launcher went on 2026-10-11, once the
+ * campaign command was the one way a move is started (`docs/simplify.md`, D2).
  *
  * What is refused:
  *
@@ -37,13 +38,13 @@
  * What goes on unasked is what the log holds a start of, of its own kind (`begun`): a comparison
  * that began, and a session that began. Until 2026-10-09 either start exempted both, so a round
  * started by hand under the id of a session that had run by itself compared with no check at all,
- * on an unread checker and past the stop rule (the third review, row F42). The launcher reads the
- * same answer, so a comparison stopped after its start is launched again under its id where the
- * launcher had asked it the whole check a second time (row F45).
+ * on an unread checker and past the stop rule (the third review, row F42). A comparison stopped
+ * after its start goes on under its id, where the launcher had once asked it the whole check a
+ * second time (row F45).
  *
- * What only a host or an id can refuse stays with the launcher: a second writer of the log, a
- * loaded host, a missing env file, an id whose comparison has reported or whose session was cut.
- * A command answers the last two itself, by saying what it said or by refusing the session.
+ * What only a host or an id can refuse is the command's: a comparison that reported says what it
+ * said and ends, a session whose id was cut is refused (`spent`), and the campaign command waits
+ * for the host's load before a move that solves (`quiet`).
  */
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
@@ -107,7 +108,7 @@ export interface Wanted {
 type WantedSession = Pick<Wanted, "cap" | "pastStop" | "unrecorded">;
 
 /** A comparison a command is about to start. */
-export interface Starting {
+interface Starting {
   /** Its id: a round's session, or a checkpoint's own. */
   readonly id: string;
   /** The harness it is made against, as `--reference` names it. */
@@ -125,7 +126,7 @@ export interface Starting {
 }
 
 /** What a session's start is asked beside it: the practice solves its limits allow. */
-export interface WantedPractice extends WantedSession {
+interface WantedPractice extends WantedSession {
   readonly practiceSolves?: number | undefined;
 }
 
@@ -137,7 +138,7 @@ interface StartingSession {
 }
 
 /** The command an Examiner session runs as: where a refusal sends its reader for more held-out
- *  tasks, and what a launch of one starts (`tools/runs/pulse.ts`). */
+ *  tasks, and what a stop knows a running one by (`tools/runs/pulse.ts`, `tools/runs/stop.ts`). */
 export const EXAMINE = "tools/d1b/examine.ts";
 const STARTED = "comparison.started";
 // The reading was a step done late and by hand in the first live rounds (2026-10-09), and on

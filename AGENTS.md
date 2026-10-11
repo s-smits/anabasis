@@ -403,7 +403,7 @@ nobody did.
 
 A move that solves waits for the host: a Builder session and a comparison start once the
 one-minute load is at or under the cores, and the command says once that it waits. `--loaded`
-starts them all the same, as it does for a launch.
+starts them all the same.
 
 The operator steers a campaign that runs by leaving it a word (`tools/d2/word.ts`), which is one
 event in its log (`campaign.word`): `--stop "<why>"` ends it there with the ending `operator`,
@@ -446,39 +446,37 @@ line to run. It goes on when the operator admits the checks by name: the command
 past that ending. `--prompt-file <path>` takes the prompt from a file, for a shell that cannot
 carry it whole.
 
-Start a round, a checkpoint, a Builder session by itself or an Examiner session through the
-launcher, which reads the log and the host first and refuses a run that cannot report anything
-(`tools/runs/launch.ts`). `--no-comparison` says that the flags are a session's by itself:
+The campaign command is the one way a campaign is started, and the skill `launch-run` says how:
+niced, in a process group of its own, with its output in two files and the key in Bun's own
+`--env-file`. Until 11 October a launcher (`bun run runs launch`) read the log and the host and
+started one round, checkpoint, session or Examiner session; the campaign command asks the same
+admission before each move and waits for the host, and the launcher went (`docs/simplify.md`,
+D2). The other verbs over a campaign's log:
 
 ```text
-bun run runs launch [--env-file FILE] [--loaded] [--dry-run] [--no-comparison] <the command's own flags>
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
-bun run runs view <name> [the flags of a launch]
+bun run runs view <name> [--level N] [--trigger N] [--target N] [--past-stop "<why>"]
 bun run runs pulse | stop <name> | replay | seed | zip
 ```
 
-The launcher refuses, among others: a log with no held-out task; a comparison that would leave
-fewer untied tasks than a step takes at its level; a comparison with no `--cap`; an id whose
-comparison has reported; a checker that nobody has read; a campaign the stop rule has stopped,
-unless `--past-stop "<why>"` gives the operator's reason; a host whose load is over its cores,
-unless `--loaded` says that its times will not be compared.
-
-Whether a comparison may start is one function's to say (`admission`, `src/builder/admission.ts`).
-The launcher asks it before it spawns anything, and a round or a checkpoint asks it again before
-its first event, so a command started by hand is refused where a launch of it would be. What goes
-on unasked is what the log holds the start of, of its own kind: a comparison that began, or a
-session that began, and the launcher reads the same answer. A command writes nothing before its
-last refusal: the admission's, then the comparison's own terms, and only then an override of the
-stop rule and the campaign's setting. What only a host or an id can refuse stays with the
-launcher. A rehearsal is exempt by name: its seats are scripts, which are paid nothing.
+Whether a comparison may start is one function's to say (`admission`, `src/builder/admission.ts`),
+and a round or a checkpoint asks it before its first event, whether the campaign command made it
+or a hand started it. It refuses, among others: a log with no held-out task; a comparison that
+would leave fewer untied tasks than a step takes at its level; a comparison with no `--cap`; a
+checker that nobody has read; a campaign the stop rule has stopped, unless `--past-stop "<why>"`
+gives the operator's reason. What goes on unasked is what the log holds the start of, of its own
+kind: a comparison that began, or a session that began. A command writes nothing before its last
+refusal: the admission's, then the comparison's own terms, and only then an override of the stop
+rule and the campaign's setting. A comparison that reported is finished, and run again says what
+it said. A rehearsal is exempt by name: its seats are scripts, which are paid nothing.
 
 The setting of a campaign is recorded once in its log, as the event `campaign.setting`
 (`tools/d2/setting.ts`): who solves and under which limits, which four flags name (`--solver`,
 `--solver-effort`, `--solve-minutes`, `--solve-model-turns`), and which tasks
 are scored (`--tasks` or `--target`). The first command that begins a comparison records what it
 names, with the defaults for the rest. From then on a command that names nothing runs under the
-record, and one whose flag names another is refused, by the command and by the launcher: the
+record, and one whose flag names another is refused: the
 setting does not change, and another setting is another campaign. Until 11 October
 `--new-setting` changed it, and every fold then read the log by setting id, which names the
 host's code too, so a tree moved to a new commit between two comparisons began the stop rule,
@@ -517,7 +515,8 @@ bun tools/d2/harness-builder.ts --name t-9 --prompt-file <file> --budget 6 --res
 An Examiner session ends when the Examiner calls `finish`, which it may at any count, as much as
 at `--exam-tasks`: on 10 October every session held out two to four tasks and finished of its own
 accord. A campaign that runs is ended by a word (`tools/d2/word.ts --stop`), read at the next
-boundary; `bun run runs stop` ends a run the launcher started.
+boundary; `bun run runs stop` ends the process that writes a campaign's log, and releases what
+its unfinished solves and sessions held on the host.
 
 ## 7. How a comparison is read
 
@@ -804,7 +803,7 @@ events in a campaign's log  >  a fold over the log  >  source and tests  >  a co
 - A session report or a subagent's report is a lead. Check a finding against the source before
   acting on it or repeating it.
 
-A negative claim about capability, such as "nothing checks X" or "the launcher does not refuse Y",
+A negative claim about capability, such as "nothing checks X" or "the admission does not refuse Y",
 is the most expensive kind to get wrong, because every later reader compensates for a defect that
 may not exist. Make one only with the named symbol, its call sites and a check run in the same
 turn.
@@ -849,18 +848,19 @@ What holds in all of them:
 1. **The worktree is the condition.** A run executes the source of the worktree it started in.
    Launch from a clean worktree at a published commit, kept for that run alone. Do not edit
    `src/` there while the run lives, and never move a campaign's folder to another worktree.
-2. **Prove the path first, without a model**: a dry run of the launch
-   (`bun run runs launch --dry-run`), a replay for a changed reader (`bun run runs replay`), a
-   rehearsal over a seed for a changed round (`bun run runs seed`, `bun run runs rehearse`).
+2. **Prove the path first, without a model**: a dry run of the campaign command
+   (`bun tools/d2/harness-builder.ts --name <name> --dry-run`), a replay for a changed reader
+   (`bun run runs replay`), a rehearsal over a seed for a changed round or campaign
+   (`bun run runs seed`, `bun run runs rehearse`).
 3. **Put one prediction on record before the first solve** (`--predict`), written so that a
    recorded count settles it. One written after the first solve started is a description. The
    campaign command takes no `--predict`, since its comparisons are the table's: a prediction for
-   a campaign is written in the ledger of the session that launches it, before the first solve.
+   a campaign is written in the ledger of the session that starts it, before the first solve.
 4. **One or two rounds at a time on one host.** A wall counts the clock, and a loaded host moves
    every solve's time.
 5. **Never open, print or copy the file passed as `--env-file`**, and name no account or
    credential path in anything that is published.
-6. **Do not stop a run to fix it.** Work found while a run lives is work for the next launch.
+6. **Do not stop a run to fix it.** Work found while a run lives is work for the next start.
 7. **Read the log's events and the report before any agent's prose**, and resolve the prediction
    as held or falsified with the count that settled it.
 8. **Report every attempt that started as spent**, the unsuccessful ones included.
@@ -895,7 +895,7 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run not-slop` | The ledger of answered findings: status, `-- answer <id> "<why>"`, `-- prune` |
 | `bun run commit:check` | By hand before a commit: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
-| `bun run runs <verb>` | `pulse`, `launch`, `stop`, `rehearse`, `seed`, `replay`, `zip`, `view` |
+| `bun run runs <verb>` | `pulse`, `stop`, `rehearse`, `seed`, `replay`, `zip`, `view` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
 
@@ -968,7 +968,7 @@ Checked                each step of each CI job, where it ran, the head's short 
                        a failure that is there without the change is named as such
 ```
 
-Name what misbehaves: the launcher, a round, a reader, the Builder. The file that holds it goes in
+Name what misbehaves: the campaign command, a round, a reader, the Builder. The file that holds it goes in
 the evidence beneath. A change with no defect behind it says so in one line. Rewrite the body
 after every push that changes the pull request.
 
@@ -1068,7 +1068,7 @@ tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, 
                 which stages a drafted exam as a pack; close, which writes what a campaign hands
                 over; harness-builder, which runs a campaign move after move; and word, which
                 leaves the operator's word for one that runs
-tools/runs/     launch, stop, rehearse, seed, pulse, view, compare, replay, zip
+tools/runs/     stop, the receipt, rehearse, seed, pulse, view, replay, zip
 tools/wri/      the whole-run investigation's reader of one log: its folds and the exam side's lanes
                 (folds), the other lanes, the rows and the overview (read)
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans

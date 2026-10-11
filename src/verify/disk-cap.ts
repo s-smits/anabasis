@@ -107,7 +107,7 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
  * Let go of a root a cap was mounted at: detach its volume, move the image away and remove the
  * empty mountpoint. The solve or session that mounted it does this when it ends. One that was
  * stopped or killed never does, and its root stays attached until a stop of its run releases it
- * (`tools/runs/launch.ts`): six such roots were mounted on one host on 2026-10-08, two of them a
+ * (`tools/runs/stop.ts`): six such roots were mounted on one host on 2026-10-08, two of them a
  * Builder's with a third of a gigabyte each.
  *
  * A root with no volume at it is released too. A solve stopped inside its mount or inside its own

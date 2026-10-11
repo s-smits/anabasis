@@ -67,7 +67,6 @@ import { harnessBuilder } from "../d2/harness-builder.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
 import { sessionCommand } from "../d2/session.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
-import { passedOn } from "./launch.ts";
 import { SEED_FILE } from "./pulse.ts";
 
 /** How a scripted solve ends: a valid answer, one a check rejects, or none at all. */
@@ -92,6 +91,7 @@ interface DraftedSource {
 }
 
 const OWN = new Set(["held", "starter", "no-comparison", "campaign"]);
+
 /** The flags that name a stored pack together (`packNamed`). */
 const PACK_FLAGS = 3;
 const TOOL_USE = { stopReason: "toolUse" } as const;
@@ -100,6 +100,22 @@ const TOOL_USE = { stopReason: "toolUse" } as const;
 const PRICE = { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 };
 /** The guide a scripted Builder writes on, from its home. */
 const GUIDE = "harness/agent/BUILT_AGENTS.md";
+
+/** `args` without the options `own` names and their values, as `parseArgs` tokenised them: what
+ *  this command hands on to the round, the checkpoint or the campaign command it rehearses. */
+export function passedOn(
+  args: readonly string[],
+  tokens: readonly { kind: string; index: number; name?: string; inlineValue?: boolean | undefined }[],
+  own: ReadonlySet<string>,
+): string[] {
+  const dropped = new Set(
+    tokens.flatMap(({ kind, index, name, inlineValue }) => {
+      if (kind !== "option" || name === undefined || !own.has(name)) return [];
+      return inlineValue === false ? [index, index + 1] : [index];
+    }),
+  );
+  return args.filter((_, index) => !dropped.has(index));
+}
 
 /** `old:new` as a pair of endings. */
 export function sidesOf(flag: string): Sides {

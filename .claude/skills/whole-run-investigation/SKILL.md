@@ -21,7 +21,7 @@ Five narrower questions need no lanes. Start there when one of them is the whole
 | question | command |
 | --- | --- |
 | Is a run alive, and what did it last do? | `bun run runs pulse` |
-| Is there enough supply for a comparison, and what can it show? | `bun run runs launch --dry-run <the comparison's flags>` |
+| Is there enough supply for a comparison, and what can it show? | `bun run runs view <name>`: its set-up line and the table's move |
 | Does the checker stand on its controls and the stored answers? | `bun tools/c/accept.ts --name <campaign>` |
 | What does a repaired checker move, and does the repair stand? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
 | A report names tasks set aside on rejections: what does it read once they are labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the rejections it draws |

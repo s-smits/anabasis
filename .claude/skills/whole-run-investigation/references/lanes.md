@@ -536,8 +536,8 @@ each `solve.started` and `solve.finished` records and nothing acts on; the hour;
 served model, which `responseModels` names or leaves empty; how many solves ran at once. The two
 harnesses take the first place in turn, task by task, so neither has the quieter hours: check
 the order of `solve.started` within the comparison. Where the host's code moved inside the
-campaign, name the commits between the two hashes if this checkout has them. A run the launcher
-started names its commit, and whether the tree was dirty, in `launch-<session>.json` beside the
+campaign, name the commits between the two hashes if this checkout has them. A campaign command
+that ran names its commit, and whether the tree was dirty, in `launch-run-<n>.json` beside the
 log. The decision it changes is whether a difference between the sides is the harness's; it
 routes to `host` (`src/kernel/condition.ts`, `src/builder/round.ts`) for a field a condition
 should hold and does not, and `environment` for load.

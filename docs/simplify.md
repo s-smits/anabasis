@@ -97,7 +97,8 @@ top, in the order of section 10, with the guard of section 9.
 - *D2 (the launcher starts nothing)* and *D3 (the round is no command)*: deferred until the
   session on the Mac says it starts nothing through `runs launch` any more. The buffer campaigns
   of 10 October were launched through it, and a cut that spans fifteen files collides with a
-  session patching one (section 12). D3 is taken last if at all, as the plan says.
+  session patching one (section 12). D3 is taken last if at all, as the plan says. D2 was taken
+  at PR #211, once the Mac's session had said so.
 - *W2 to W7*: the Mac's, as the plan says: each needs the suite on both systems and the Seatbelt
   half cannot run here. W1 is taken here, since it removes names with no maker and no reader.
 - *E2 (a Builder's home carried whole)*: deferred. It is a design change to what a Builder reads
@@ -695,6 +696,12 @@ preflight, the command, and a row of the table.
   launcher and on admission); the skill `launch-run` is rewritten as "start and stop a
   campaign"; `run-improvement-campaign` (5 mentions).
 - **Lines.** About −420 (*estimate*).
+- **Done** at PR #211 (11 October), as written, with two differences: `passedOn` moves into
+  `tools/runs/rehearse.ts`, its one reader, in place of going; and `runs view` parses its four
+  flags itself and reads the campaign's opening for the terms it does not name, where it had
+  parsed a launch's. Two files hold what stays: `tools/runs/stop.ts` and `tools/runs/receipt.ts`.
+  The deferral below was met the same day: the session on the Mac starts its campaigns through
+  the campaign command.
 
 #### D3. The round is no command
 
@@ -862,7 +869,7 @@ Reads are open otherwise. The network is open for a seat and closed for a check.
 - **Tests.** A wall test on each system: a file under a pack's `correctness-model` is refused to
   a solve's command, with the pack in a folder that carries none of the three names beside it.
 - **Lines.** About −70 (*estimate*).
-- **Done** at PR #210 (11 October), as written. `tools/d2/campaign.ts` and `tools/m0/live-solve.ts`
+- **Done** at PR #211 (11 October), as written. `tools/d2/campaign.ts` and `tools/m0/live-solve.ts`
   name the pack's root and bundle; a campaign that opened from a prompt names none, as its exam
   lies under `.ana` in the repository. A solve, an examination and a Builder's session pass them to
   `solveIsolationPolicy`, which closes them with the repository, its other worktrees and the home.

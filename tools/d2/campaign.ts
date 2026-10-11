@@ -308,11 +308,11 @@ export async function openCampaign(args: CampaignArgs) {
   if (moved !== null) throw new Error(`${log}: ${moved}`);
   const resources = sweepResources(brief);
   const tools = join(bundle, ".toolchain");
-  const verify = openVerifier({ checks, tools });
   const trees = worktreesOf(REPO);
-  // A stored pack's root and bundle, closed to every command as the repository is. A campaign
-  // opened from a prompt drafted its exam under `.ana` here, inside the repository.
+  // A stored pack's root and bundle, closed to every command and every check as the repository is.
+  // A campaign opened from a prompt drafted its exam under `.ana` here, inside the repository.
   const packRoots = args.root === undefined ? [] : [args.root, bundle];
+  const verify = openVerifier({ checks, tools, otherTrees: trees, packRoots });
   const limits = args.limits ?? LIMITS;
   const { conditionOf, setting } = recordedUnder({ contract, tools, limits });
   const pack = (task: Task): TaskPackage => packageOf(checks, task);

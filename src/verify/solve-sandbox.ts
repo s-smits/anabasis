@@ -40,6 +40,9 @@ export interface SolveIsolationPolicy {
   /** `darwin-seatbelt/v1` or `linux-bwrap/v1`: read by the command wall to choose how a command is
    *  launched. */
   mechanismId: string;
+  /** Whether a command may reach the network: a seat's may, to install what its task needs, and a
+   *  check's may not (`src/kernel/verify.ts`). */
+  network: boolean;
 }
 
 /** Author the solve isolation for one repository. */
@@ -55,6 +58,8 @@ export function solveIsolationPolicy(input: {
   packRoots?: readonly string[];
   runtime?: OsIsolationRuntime;
   readAllowRoots?: readonly string[];
+  /** Open unless closed, as a seat's is. */
+  network?: boolean;
 }): SolveIsolationPolicy | { unsupported: string } {
   const support = osIsolationSupport(input.runtime);
   if (!support.ok || support.mechanismDigest === null) {
@@ -70,6 +75,7 @@ export function solveIsolationPolicy(input: {
   const allowedReads = canonicalRoots([...nodeRuntimeReadRoots(), ...(input.readAllowRoots ?? [])]).filter(
     (path) => reads.some((root) => covers(root, path)),
   );
+  const network = input.network ?? true;
   const identity = {
     profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
     mechanism: { path: support.mechanismPath, sha256: support.mechanismDigest },
@@ -80,11 +86,13 @@ export function solveIsolationPolicy(input: {
   };
   return {
     profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
-    policyHash: hashJsonBytes(identity),
+    // The network is named only where closed, so a seat's policy keeps the hash it had.
+    policyHash: hashJsonBytes(network ? identity : { ...identity, network }),
     deniedReadRoots: reads,
     deniedWriteRoots: writes,
     allowedReadRoots: allowedReads,
     mechanismPath: support.mechanismPath,
     mechanismId: support.mechanismId,
+    network,
   };
 }

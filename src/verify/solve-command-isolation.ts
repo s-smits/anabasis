@@ -1,4 +1,5 @@
-/** Controller-owned wall for Built Bash commands.
+/** Controller-owned wall for Built Bash commands, and for a check (`src/kernel/verify.ts`), whose
+ * cell is its root and whose network is closed.
  *
  * A command receives an explicit environment rather than an inherited one, and outbound network is
  * open so it can fetch a toolchain into its private home (operator decision). That is what makes
@@ -83,6 +84,8 @@ interface CommandIsolationPolicy {
    *  from the fields below by `stageCommandIsolation`. */
   profile: string | null;
   mechanismPath: string;
+  /** Whether the command may reach the network; Darwin's profile already says so. */
+  network: boolean;
   /** The seat's root, in both path forms: what a command may write. */
   scratchRoots: string[];
   /** The host's own folder in the root, in both path forms: what a command may read there and may
@@ -159,7 +162,7 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
  * run time rather than at install time: wheels installed under the shell's `python3` fail
  * wholesale in a cell that inherited the launcher's PATH and found a different version first.
  */
-export function commandSearchPath(toolTree: string | null): string {
+function commandSearchPath(toolTree: string | null): string {
   const runtime = runtimeProcess.platform === "linux" ? nodeRuntimeBinDirs() : [];
   const own = toolTree === null ? [] : toolTreeSearchDirs(toolTree);
   return [...new Set([...own, ...runtime, ...toolchainPathDirs()])].join(":");
@@ -179,9 +182,9 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
  * Runtime and toolchain roots to reopen inside the directories a denial closed. Only paths a read
  * denial actually covers are kept, since every other host path is readable already under the open
  * default and re-allowing it would add a rule that changes nothing. The adopted tool tree is added
- * explicitly rather than filtered in, because its campaign path is denied by a name pattern rather
- * than by one of the listed roots. Both operating systems use this list, and Darwin emits it after
- * the denials so the later, more specific rule decides.
+ * explicitly, as no list above names it: it lies under the repository or a stored pack, both closed
+ * whole. Both operating systems use this list, and Darwin emits it after the denials so the later,
+ * more specific rule decides.
  */
 function commandReadAllows(
   base: SolveIsolationPolicy,
@@ -231,9 +234,9 @@ function darwinCommandProfile(
     // closed. All of it arrives through `solveIsolationPolicy`, so there is no second list here to
     // fall out of step.
     "(allow default)",
-    // The same network posture, and the same spelling, as the Builder's authoring wall, so a
-    // command can install what its task needs.
-    "(allow network*)",
+    // A seat's command may reach the network, so it can install what its task needs; a check may
+    // not (`src/kernel/verify.ts`).
+    base.network ? "(allow network*)" : "(deny network*)",
     ...sbRule("deny file-write*", "subpath", writeDenies),
     // The writes outside the scratch tree a toolchain takes without asking. They open one level
     // down, directories included, because a `mktemp -d` there has a name only the tool knows, so
@@ -242,6 +245,11 @@ function darwinCommandProfile(
     // it with a private tmpfs instead. What the host keeps there, every seat's root and its own
     // scratch, is closed by subpath below.
     ...userTemp.rules,
+    // The directory itself is not listed, though a file in it still opens by its name. Its listing
+    // is every tenant's names, which Linux hides under a tmpfs, and Bun reads the listing of each
+    // ancestor of its working directory as it starts: on 11 October that was 33,673 entries, and
+    // 26 ms of the 48 a walled `bun -e 1` took below it.
+    ...sbRule("deny file-read-data", "literal", [...new Set(userTemp.roots.flatMap(canonicalForms))].sort()),
     // The host's `/tmp`, closed whole: what another seat left there is neither read nor run, and a
     // command leaves nothing there for the next. The seat's root is opened again further down,
     // after it, for a controller whose own temporary directory lies under `/tmp`.
@@ -289,6 +297,7 @@ export function commandIsolationPolicy(
   const toolTree = dirs.toolTree ?? null;
   const shared = {
     mechanismPath: base.mechanismPath,
+    network: base.network,
     scratchRoots: canonicalRoots([dirs.root]),
     keptRoots: canonicalRoots([dirs.kept]),
     environment: commandIsolationEnvironment(dirs),
@@ -350,45 +359,15 @@ export function stageCommandIsolation(
   command: string,
   leader: "$$" | "$PPID",
 ): string {
+  // Every argument is quoted, so a scratch path with a space cannot split into two.
   if (policy.profile === null) {
-    // bwrap rules are argv with no newlines, so the launch inlines rather than staging a file, and
-    // every argument is quoted so a scratch path with a space cannot split into two. The order is
-    // itself the policy, as on Darwin: the host opens for reading, the protected paths are
-    // overmounted, the seat's root is bound back writable and the host's folder in it read-only
-    // over that, and only then do the host root and the overmounts over product trees go
-    // read-only, so a write there fails with EROFS instead of landing on the host or vanishing into
-    // an overmount. The two overmounts holding the seat's root, `/tmp` and the host tmpdir, stay
-    // writable, as Darwin lets `mktemp` through. Each remount touches one mount, which is why the
-    // overmounts are named beside the root and why the binds, mounted earlier, are unaffected.
-    const argv = [
-      policy.mechanismPath,
-      ...bwrapOpenReadArgs({ network: true }),
-      ...bwrapTmpfsDenies(policy.readDenies),
-      ...bwrapReadBinds(policy.readAllowRoots),
-      ...bwrapWriteBinds(policy.scratchRoots),
-      ...bwrapReadBinds(policy.keptRoots),
-      ...bwrapReadonlyRemounts([
-        "/",
-        ...policy.readDenies.filter((deny) => !policy.scratchRoots.some((root) => covers(deny, root))),
-      ]),
-      ...bwrapEnvironmentArgs(policy.environment),
-      "/bin/sh",
-      "-c",
-      command,
-    ];
-    return `exec ${argv.map(shellQuote).join(" ")}`;
+    return `exec ${isolatedArgv(policy, profileFile, ["/bin/sh", "-c", command]).map(shellQuote).join(" ")}`;
   }
-  // The staged file is read-only and cannot be overwritten in place; removing it first is what lets
-  // the same policy be restaged, with the same rules either way since its bytes are a pure function
-  // of the policy.
-  rmSync(profileFile, { force: true });
-  // The rendered rules carry no trailing newline, and a staged file ends in one.
-  writeFileSync(profileFile, `${policy.profile}\n`, { mode: 0o400 });
   // Seatbelt has no namespace to end what a command leaves behind, and pi kills the process group
   // only on timeout, so a command that backgrounds work and returns — `nohup python3 r.py & sleep
   // 100` — leaves that work running at full CPU long past its case. So on exit the shell SIGKILLs
   // its own group and every live descendant, which is what Linux gets for free from bwrap's pid
-  // namespace above: the group as Codex's `kill_process_group` does it, the descendants as Bun's
+  // namespace: the group as Codex's `kill_process_group` does it, the descendants as Bun's
   // `--no-orphans` walks them from every group member, which is what catches a child that left the
   // group with `setsid` even after its parent was orphaned. Both lists are taken before the first
   // kill, because killing changes what the next `pgrep` can see. Both `exec`s keep the pid, and the
@@ -401,5 +380,49 @@ export function stageCommandIsolation(
   // orphaned. One that left the group and was reparented to launchd is `runWalled`'s to end.
 
   const reaped = `trap 'd(){ for c in $(pgrep -P "$1"); do echo "$c"; d "$c"; done; }; g=$(pgrep -g ${leader}); for p in $g $(for q in $g; do d "$q"; done); do [ "$p" != "$$" ] && [ "$p" != "${leader}" ] && kill -9 "$p" 2>/dev/null; done' EXIT\n(\n${command}\n)`;
-  return `exec ${shellQuote(policy.mechanismPath)} -f ${shellQuote(profileFile)} /bin/sh -c ${shellQuote(reaped)}`;
+  return `exec ${isolatedArgv(policy, profileFile, ["/bin/sh", "-c", reaped]).map(shellQuote).join(" ")}`;
+}
+
+/**
+ * The argv that runs `argv` under these rules, with Darwin's profile staged at `profileFile`. A
+ * seat's command takes it through the shell above, which reaps what the command leaves. A check
+ * takes it bare (`src/kernel/verify.ts`), as it took the verifier's own wall until W6: the verifier
+ * ends the check's process group itself, and a shell and its trap would start with every check.
+ */
+export function isolatedArgv(
+  policy: CommandIsolationPolicy,
+  profileFile: string,
+  argv: readonly string[],
+): string[] {
+  if (policy.profile === null) {
+    // bwrap rules are argv with no newlines, so nothing is staged. The order is itself the policy,
+    // as on Darwin: the host opens for reading, the protected paths are overmounted, the seat's
+    // root is bound back writable and the host's folder in it read-only over that, and only then
+    // do the host root and the overmounts over product trees go read-only, so a write there fails
+    // with EROFS instead of landing on the host or vanishing into an overmount. The two overmounts
+    // holding the seat's root, `/tmp` and the host tmpdir, stay writable, as Darwin lets `mktemp`
+    // through. Each remount touches one mount, which is why the overmounts are named beside the
+    // root and why the binds, mounted earlier, are unaffected.
+    return [
+      policy.mechanismPath,
+      ...bwrapOpenReadArgs({ network: policy.network }),
+      ...bwrapTmpfsDenies(policy.readDenies),
+      ...bwrapReadBinds(policy.readAllowRoots),
+      ...bwrapWriteBinds(policy.scratchRoots),
+      ...bwrapReadBinds(policy.keptRoots),
+      ...bwrapReadonlyRemounts([
+        "/",
+        ...policy.readDenies.filter((deny) => !policy.scratchRoots.some((root) => covers(deny, root))),
+      ]),
+      ...bwrapEnvironmentArgs(policy.environment),
+      ...argv,
+    ];
+  }
+  // The staged file is read-only and cannot be overwritten in place; removing it first is what lets
+  // the same policy be restaged, with the same rules either way since its bytes are a pure function
+  // of the policy.
+  rmSync(profileFile, { force: true });
+  // The rendered rules carry no trailing newline, and a staged file ends in one.
+  writeFileSync(profileFile, `${policy.profile}\n`, { mode: 0o400 });
+  return [policy.mechanismPath, "-f", profileFile, ...argv];
 }

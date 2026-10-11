@@ -31,6 +31,7 @@ import {
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { guardedAncestors, moveBlockingRules } from "../src/verify/seatbelt-path-guard.ts";
 import { commandIsolationPolicy } from "../src/verify/solve-command-isolation.ts";
+import { userTempRules } from "../src/verify/wall-policy.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID, solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
@@ -161,6 +162,25 @@ describe("the solve isolation's policy", () => {
       expect(await run("echo started")).toBe("started\n");
     });
   }, 60_000);
+
+  // On Linux an overmount leaves the directory empty, so its listing names no tenant either way.
+  it.skipIf(!onDarwin)(
+    "lists nothing of the shared temporary directory, and opens a file in it by its name",
+    async () => {
+      const [shared] = userTempRules([]).roots;
+      if (shared === undefined) throw new Error("this host names no user temporary directory");
+      const tree = mkdtempSync(join(shared, "ana-unlisted-"));
+      made.push(tree);
+      writeFileSync(join(tree, "named.txt"), "NAMED\n");
+      await inSeat(workRepo(), [], async (_wall, run) => {
+        const said = await run(
+          `ls ${shared} >/dev/null 2>&1 && echo listed || echo unlisted; cat ${tree}/named.txt`,
+        );
+        expect(said).toBe("unlisted\nNAMED\n");
+      });
+    },
+    60_000,
+  );
 });
 
 describe("the wall's probe", () => {

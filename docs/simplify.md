@@ -907,6 +907,27 @@ Reads are open otherwise. The network is open for a seat and closed for a check.
 - **Tests that go.** `test/exact-read-attestation.test.ts` (149 lines),
   `test/read-root-attestation.test.ts` (140), `test/linux-bwrap-verifier.test.ts` (278), and most
   of `test/darwin-seatbelt.test.ts` (500).
+- **Done** at PR #217 (11 October), as written. A check's cell is a seat's root: `home` and `tmp` in
+  it, the program in its `kept`, which the check reads and cannot write, and the profile beside it.
+  The check is launched through `isolatedArgv`, the argv a seat's command takes without its shell,
+  with the network closed: Darwin `(deny network*)`, Linux `--unshare-net`. Its base is
+  `solveIsolationPolicy`, with the check child's sources opened again by path. `openVerifier` takes
+  the worktrees and the pack a campaign closes, so on Linux a pack outside the home is closed to a
+  check as it is to a seat. A seat's policy hash does not move, as the network is named in it only
+  where closed. Seven files go whole. `darwin-seatbelt.ts`, `os-isolation.ts`, `linux-bwrap.ts` and
+  `wall-policy.ts` keep what the command wall uses; the bwrap canary now runs under the open-read
+  posture. The regrade matched: truss 100 of 100, buffer 5 of 5, recode 10 of 10. The command wall
+  no longer lets a command list the shared temporary directory on Darwin, as Linux's overmount
+  leaves it empty. Bun lists each ancestor of its working directory as it starts, which the
+  verifier's own wall had refused, and with 33,673 entries in that directory the truss regrade took
+  68 s against the base's 43 (medians of four, interleaved). With the rule it took 43 and 32 s
+  against 48 and 54. `test/verify.test.ts` gains a check whose tool compiles with `/usr/bin/cc`.
+  `test/linux-bwrap.test.ts` keeps the support, refusal, resolver and runtime-prefix cases of the
+  deleted test. Two things the verifier's own wall refused are open to a check now, as they are to a
+  seat's command: a Mach lookup of the keychain and consent services, and a signal to a process
+  outside the wall. A keychain read has no way out, since the network is closed and the cell is
+  removed; a signal can end a host process. The source loses 1,855 lines net (2,086 out, 231 in),
+  against the estimate of about 1,400.
 
 ### W7. Campaigns outside the tree (D9)
 

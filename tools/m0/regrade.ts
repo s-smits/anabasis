@@ -66,7 +66,11 @@ async function main(): Promise<number> {
       let verify = verifiers.get(report.candidate);
       if (verify === undefined) {
         const checks = checkProgram(report.candidate, join(scratch, String(verifiers.size)));
-        verify = openVerifier({ checks, tools: join(report.candidate, ".toolchain") });
+        verify = openVerifier({
+          checks,
+          tools: join(report.candidate, ".toolchain"),
+          packRoots: [root, report.candidate],
+        });
         verifiers.set(report.candidate, verify);
         const battery = join(report.candidate, TASKS_FILE);
         tasks.set(report.candidate, parseJsonAs<Task[]>(readFileSync(battery, "utf8")));

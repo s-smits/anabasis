@@ -1,16 +1,12 @@
 /**
- * Shared allowed paths, protected paths and toolchain locations for the host isolation policies.
+ * Shared protected paths and toolchain locations for the command wall, which a seat's commands and
+ * a check both run under (`solve-command-isolation.ts`).
  *
- * Three actors run on this host, each confined by its own mechanism: the Harness Builder authors
- * the product, the Built Harness solves tasks, and the verifier's declared checks decide
- * correctness. When each wall also states its own idea of what may be read, the order comes out
- * backwards — the verifier, which has to run whatever the Builder installed, ends up with the
- * fewest system roots, so `(allow process*)` lets a compiler start while the read rules stop it
- * opening its own toolchain and the runtime facts still advertise that compiler as available.
- *
- * So each caller keeps its own policy but builds it from the shared lists here, which is what keeps
- * the three walls agreeing on where toolchains live and what stays protected. The verifier permits
- * declared reads; authoring and solve commands open reads broadly and deny the protected paths.
+ * Until 11 October the verifier had a deny-default wall of its own, which granted declared reads
+ * and the platform roots named here; it ended with the fewest system roots of the three walls, so
+ * `(allow process*)` let a compiler start while its read rules stopped it opening its own
+ * toolchain. A check now runs under the command wall with the network closed (`docs/simplify.md`,
+ * W6), and reads open by default with the protected paths denied.
  */
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -24,82 +20,6 @@ import { compareCodeUnits } from "../meta/stable-json.ts";
 
 /** What a Darwin system command answered, by the command: each is asked once per process. */
 const darwinAnswers = new Map<string, string | undefined>();
-
-/** The Seatbelt baseline every wall imports; its closure digest is recorded beside the name. */
-export const SEATBELT_BASELINE = "system.sb";
-
-/**
- * The Mach services a confined command may ask for, and the ones it may not.
- *
- * A `(deny default)` profile denies mach-lookup, and a denied lookup does not read as a denial. A
- * tool building an HTTP client asks configd for the system proxy configuration before it sends
- * anything; under a denying profile that call returns NULL, and Rust's system-configuration crate
- * treats NULL as impossible and panics — before the `--offline` flag is read, so the backtrace
- * names neither the network nor a proxy. With the allow below the same command fails with "dns
- * error: failed to lookup address information". Network access is denied either way; only the
- * diagnosis changes.
- *
- * The denies come last so they win over the allow above them, and they name the services that
- * broker secrets and consent — keychain, authorisation, privacy and the pasteboard. A cell writes
- * into a tree that a networked session later reads, so a secret it could read here would have a way
- * out. One list serves the workshop cell and the verifier wall alike.
- */
-export const SYSTEM_SERVICE_RULES = `(allow mach-lookup)
-(deny mach-lookup
-  (global-name "com.apple.SecurityServer")
-  (global-name "com.apple.securityd")
-  (global-name "com.apple.securityd.xpc")
-  (global-name "com.apple.CoreAuthentication.daemon")
-  (global-name "com.apple.CoreAuthentication.agent")
-  (global-name "com.apple.tccd")
-  (global-name "com.apple.tccd.system")
-  (global-name "com.apple.pasteboard.1"))`;
-
-/**
- * The read-only platform baseline the Darwin walls grant.
- *
- * These are deliberately broad because they are meant for platform software — `sh`, `node`,
- * `python3` and the coreutils all run under them — and their contents are not inspected here, so
- * the policy assumes protected run data and credentials are kept outside them. They carry no
- * recursive content digest, as `LINUX_SYSTEM_READ_ROOTS` does, because walking `/System` fails when
- * `scandir` refuses its asset store; exact executable and input files have their own snapshots
- * instead, since granting a directory path establishes no identity for what lies underneath it.
- */
-export const DARWIN_SYSTEM_READ_ROOTS: readonly string[] = [
-  "/Applications",
-  "/Library",
-  "/System",
-  "/bin",
-  "/etc",
-  "/opt",
-  "/sbin",
-  "/usr",
-  "/var/select",
-].flatMap(canonicalForms);
-
-/** The host-level half of verifier toolchain access: the environment homes and install roots that
- *  exist under `home` at the moment the verifier host is built. A host reads them once and hands
- *  the frozen result to every plan, so a root that a sibling run creates mid-battery moves no
- *  request's read roots and no policy hash. Left per-request, a toolchain root appearing between
- *  two requests loses a whole battery to a policy hash that changed under it. */
-export type FrozenToolchainAccess = {
-  readonly environment: Record<string, string>;
-  readonly installRoots: readonly string[];
-};
-
-const BROAD_SANDBOX_READ_ROOTS = new Set([
-  "/",
-  "/Applications",
-  "/Library",
-  "/System",
-  "/Users",
-  "/Volumes",
-  "/home",
-  "/opt",
-  "/private",
-  "/usr",
-  "/var",
-]);
 
 /**
  * The one directory every seat's root is made under, which keeps them together for creation and
@@ -149,17 +69,13 @@ export function canonicalRoots(paths: readonly string[]): string[] {
 }
 
 /**
- * Where a host toolchain installs itself, for the two walls that must name a place.
+ * Where a host toolchain installs itself.
  *
- * The Built Harness shell reads by default outside its protected roots, so this is not an
- * enumeration of every readable installation; it exists to reopen a toolchain that a denied home
- * sits on top of, and to construct PATH. A complete install allow list was tried and dropped,
- * because it stopped the shell using tools installed somewhere the list did not name.
- *
- * The verifier needs concrete directories for a different reason: it denies reads by default and
- * then executes a selected tool, so the place has to be named, and PATH needs directories to
- * search. All three consumers read this one list, so adding an installation location updates access
- * and command lookup together rather than one of them.
+ * The command wall reads by default outside its protected roots, so this is not an enumeration of
+ * every readable installation; it exists to reopen a toolchain that a denied home sits on top of,
+ * and to construct PATH. A complete install allow list was tried and dropped, because it stopped
+ * the shell using tools installed somewhere the list did not name. Both read this one list, so
+ * adding an installation location updates access and command lookup together.
  */
 export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.HOME): string[] {
   const shared = ["/usr/local"];
@@ -182,14 +98,6 @@ export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.H
   return [...shared, ...perUser].filter(existsSync).sort(compareCodeUnits);
 }
 
-/** The Darwin platform roots the verifier wall opens: the system roots that are present, plus the
- *  toolchain install roots under the process home. A verifier host reads this once at construction
- *  and hands the list to every plan, so a root appearing on the shared machine mid-census cannot
- *  move the policy hash and discard exit-0 verdicts for a wall that never changed. */
-export function darwinPlatformReadRoots(): string[] {
-  return [...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)), ...darwinToolchainInstallRoots()];
-}
-
 /** The one line a Darwin system command answers with, asked once per process: undefined on another
  *  system, and where the command fails or says nothing. */
 function darwinAnswer(...command: string[]): string | undefined {
@@ -209,10 +117,10 @@ function darwinAnswer(...command: string[]): string | undefined {
  * `regex-quote` is Seatbelt's own path-to-regex boundary, the form Apple's shipped profiles and
  * Firefox's macOS sandbox use.
  *
- * A narrower, files-only version of this rule keeps concurrent verifier workdirs shut, but it also
- * refuses `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So both walls grant
- * this shape and close the host's two roots by path after it (`hostRoots`), which is the only
- * arrangement under which a toolchain works and a sibling's workdir stays shut.
+ * A narrower, files-only version of this rule keeps concurrent check cells shut, but it also refuses
+ * `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So the wall grants this shape
+ * and closes the host's two roots by path after it (`hostRoots`), which is the only arrangement
+ * under which a toolchain works and a sibling's cell stays shut.
  */
 export function userTempRules(extraRoots: readonly string[]) {
   // The per-user temporary directory a Darwin toolchain uses whatever `TMPDIR` says.
@@ -302,19 +210,6 @@ export function hostToolchainEnv(home: string | undefined = Bun.env.HOME) {
   };
 }
 
-export function frozenToolchainAccess(home: string | undefined): FrozenToolchainAccess {
-  return { environment: hostToolchainEnv(home), installRoots: darwinToolchainInstallRoots(home) };
-}
-
-/** Whether a declared sandbox read names an over-broad root, which both operating systems refuse
- *  after resolving the path, so a symlink or a relative spelling cannot slip one through. The
- *  platform baseline grants are a separate decision and are not subject to this check: the wall
- *  chooses those, whereas a declared read is whatever the candidate asked for. */
-export function isOverbroadSandboxReadRoot(path: string): boolean {
-  const normalized = resolve(path);
-  return BROAD_SANDBOX_READ_ROOTS.has(normalized) || /^\/(?:Users|home)\/[^/]+$/.test(normalized);
-}
-
 /** Every directory between `/` and `path`, outermost first, as a resolver walks them. */
 export function ancestorDirectories(path: string): string[] {
   const ancestors: string[] = [];
@@ -334,8 +229,7 @@ export function ancestorDirectories(path: string): string[] {
  * A profile that denies a directory denies `lstat` on it too, and a resolver walks every ancestor
  * of the file it opens. Without this, `node t.js` fails with `EPERM: operation not permitted,
  * lstat` for every script on disk while `node -e` works, because Node realpaths its entry point and
- * a `-e` script has none. `prepareDarwinSeatbelt` in `darwin-seatbelt.ts` builds its
- * `metadataAncestors` the same way.
+ * a `-e` script has none.
  *
  * The grant is `file-read-metadata` on each ancestor directory as a literal rather than a subpath,
  * which lets a path be traversed while the directory itself stays unlistable: `stat ~` succeeds and
@@ -350,7 +244,7 @@ export function traversalMetadataRules(paths: string[]): string[] {
 
 /**
  * Whether this environment already sits inside someone else's OS sandbox, which is what makes a
- * verifier wall refuse to nest. Presence of the name is the test and not its value, because a
+ * wall refuse to nest. Presence of the name is the test and not its value, because a
  * surrounding sandbox that exports an empty `CODEX_SANDBOX` is still a surrounding sandbox, and a
  * wall that ran anyway would record isolation it does not have.
  */

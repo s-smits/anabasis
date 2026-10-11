@@ -59,7 +59,7 @@ async function main(): Promise<number> {
   const dir = mkdtempSync(join(tmpdir(), "ana-repaired-"));
   try {
     const checks = checkProgram(bundle, join(dir, "checks"));
-    const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
+    const verify = openVerifier({ checks, tools: join(bundle, ".toolchain"), packRoots: [bundle] });
     // The tasks an Examiner session wrote are in the log and in no pack; the repaired pack's own
     // stand where both name one.
     const held = [...writtenTasks(events), ...readPack(bundle).tasks];
@@ -93,7 +93,7 @@ async function main(): Promise<number> {
     const old = join(dirname(log), "checks");
     const before = existsSync(old)
       ? await runControls(
-          openVerifier({ checks: old, tools: join(bundle, ".toolchain") }),
+          openVerifier({ checks: old, tools: join(bundle, ".toolchain"), packRoots: [bundle] }),
           pack,
           controls,
           jobs,

@@ -228,7 +228,7 @@ async function grade(): Promise<number> {
   const tasks = [...writtenTasks(read(log)), ...readPack(bundle).tasks];
   const task = tasks.find((each) => each.taskId === taskId);
   if (task === undefined) throw new Error(`neither the log nor the pack holds task ${taskId}`);
-  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
+  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain"), packRoots: [bundle] });
   console.log(spelled(await verify(task, capturedJsonParse(readFileSync(needed("answer"), "utf8")))));
   return 0;
 }

@@ -181,7 +181,12 @@ async function main(): Promise<number> {
       effort,
       limits: LIMITS,
       models: (home) => backends(sweepOptions(home)),
-      verify: openVerifier({ checks, tools: join(bundle, ".toolchain") }),
+      verify: openVerifier({
+        checks,
+        tools: join(bundle, ".toolchain"),
+        otherTrees: worktreesOf(REPO),
+        packRoots: [root, bundle],
+      }),
       log,
       repoRoot: REPO,
       otherTrees: worktreesOf(REPO),

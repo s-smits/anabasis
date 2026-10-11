@@ -16,6 +16,8 @@ const START = Date.parse("2026-10-09T12:00:00Z");
 const REPORTED = "comparison.reported";
 const PROPOSED = "task.proposed";
 const BUILD_STARTED = "build.started";
+const SOLVE_STARTED = "solve.started";
+const GATE = "task.gate";
 const HELD = ["v1", "v2", "v3", "v4"];
 const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
 /** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
@@ -73,7 +75,7 @@ function solve(task: string, harness: string, outcome: "pass" | "rejected" | "la
   const ran = condition(task, harness);
   const id = `s${String((solves += 1))}`;
   record("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-  record("solve.started", {
+  record(SOLVE_STARTED, {
     solve: id,
     condition: conditionId(ran),
     limits: { wallSeconds: 100 },
@@ -114,7 +116,7 @@ record("checker.read", {
 });
 for (const version of ["t1", ...HELD]) {
   record(PROPOSED, { version });
-  record("task.gate", { version, gate: 1, outcome: "passed" });
+  record(GATE, { version, gate: 1, outcome: "passed" });
 }
 record("task.state", { version: "t1", state: "released" });
 record(BUILD_STARTED, { session: "b-1", parent: "hp", tasks: ["t1"] });
@@ -318,7 +320,7 @@ describe("the whole-run investigation's reader", () => {
     // A fifth held-out task, which no solve on record has answered: the round's new harness
     // answered the other four, and a task with a valid answer on record is feasible for good.
     record(PROPOSED, { version: "v5" });
-    record("task.gate", { version: "v5", gate: 1, outcome: "passed" });
+    record(GATE, { version: "v5", gate: 1, outcome: "passed" });
     // Two comparisons of the reference harness with the starter. Both answer v1 to v4 validly
     // every time, and neither gives v5 an answer, though no solve of it is cut at a limit.
     for (const session of ["g-1", "g-2"]) {
@@ -432,12 +434,12 @@ describe("the reader on a log written before the plan after the v1 review", () =
   const put = appendTo(log);
   for (const version of ["t2", "a1"]) {
     put(PROPOSED, { version });
-    for (const gate of [1, 2, 3, 4]) put("task.gate", { version, gate, outcome: "passed", controls: "d" });
+    for (const gate of [1, 2, 3, 4]) put(GATE, { version, gate, outcome: "passed", controls: "d" });
   }
   put("anchor.drawn", { tasks: ["a1"] });
   const strong = { ...condition("t2", "hp"), side: "strong" as const };
   put("condition.recorded", { id: conditionId(strong), condition: requireJsonValue(strong) });
-  put("solve.started", { solve: "w1", condition: conditionId(strong), limits: { wallSeconds: 100 } });
+  put(SOLVE_STARTED, { solve: "w1", condition: conditionId(strong), limits: { wallSeconds: 100 } });
   put("solve.finished", { solve: "w1", ending: { outcome: "pass" }, seconds: 50 });
   put(BUILD_STARTED, { session: "b-1", parent: "hp", tasks: [] });
   put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
@@ -473,7 +475,7 @@ describe("the reader of a round compared with another harness than its session s
   const made = (id: string, harness: string, ending: JsonObject, seconds: number, cpu?: JsonObject) => {
     const ran = condition("v1", harness);
     put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-    put("solve.started", {
+    put(SOLVE_STARTED, {
       solve: id,
       condition: conditionId(ran),
       limits: { wallSeconds: 100 },
@@ -489,7 +491,7 @@ describe("the reader of a round compared with another harness than its session s
     });
   };
   put(PROPOSED, { version: "v1" });
-  put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
+  put(GATE, { version: "v1", gate: 1, outcome: "passed" });
   // The session goes on from the harness an earlier one left, hx. Its comparison is made against
   // the reference harness, href.
   put(BUILD_STARTED, { session: "r-1", parent: "hx", tasks: [] });
@@ -555,7 +557,7 @@ describe("the reader of a round compared with another harness than its session s
     more("exam.started", { session: "x-10" });
     more("exam.turn", { session: "x-10", turn: 1, usage: { cost: { total: 0.25 } } });
     more(PROPOSED, { version: "v9", session: "x-10" });
-    more("task.gate", { version: "v9", gate: 1, outcome: "passed" });
+    more(GATE, { version: "v9", gate: 1, outcome: "passed" });
     const read = overview(live);
     // `bun run runs stop` writes no ending, so an open session may be a stopped one, and the lane
     // still opens on it.
@@ -579,7 +581,7 @@ describe("the reader of a round compared with another harness than its session s
       level: 0.1,
       tasks: ["v1"],
     });
-    more("solve.started", { solve: "s-9", condition: "c-9", comparison: "g-9" });
+    more(SOLVE_STARTED, { solve: "s-9", condition: "c-9", comparison: "g-9" });
     const lines = (read: readonly LogEvent[]) => overview(read).rows.flatMap((row) => row.lines);
     const never = (read: readonly LogEvent[]) =>
       overview(read).triggers.find((trigger) => trigger.name === "SOLVE NEVER FINISHED")?.detail;
@@ -614,7 +616,7 @@ describe("the reader of the load a comparison's solves started under", () => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put("task.proposed", { version: "v1" });
-    put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
+    put(GATE, { version: "v1", gate: 1, outcome: "passed" });
     for (const [session, loads, cores] of rows) {
       const terms = { session, old: "hbase", fresh: "hy", starter: "hbase", setting: SETTING };
       put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
@@ -622,7 +624,7 @@ describe("the reader of the load a comparison's solves started under", () => {
         const ran = condition("v1", index % 2 === 0 ? "hbase" : "hy");
         const id = `${session}-${String(index)}`;
         put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-        put("solve.started", {
+        put(SOLVE_STARTED, {
           solve: id,
           condition: conditionId(ran),
           limits: { wallSeconds: 100 },
@@ -690,7 +692,7 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
   const made = (id: string, harness: string, ending: JsonObject) => {
     const ran = condition("v1", harness);
     put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-    put("solve.started", {
+    put(SOLVE_STARTED, {
       solve: id,
       condition: conditionId(ran),
       limits: { wallSeconds: 100, modelTurns: 3 },
@@ -708,7 +710,7 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
   put("contract.frozen", { contract: "c1", checks: "k1" });
   put("checker.read", { contract: "c1", checks: "k1", faults: [], rows: [] });
   put(PROPOSED, { version: "v1" });
-  put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
+  put(GATE, { version: "v1", gate: 1, outcome: "passed" });
   put(BUILD_STARTED, { session: "t-1", parent: "hp", tasks: [] });
   put("build.finished", { session: "t-1", ended: "finished", harness: "hc", changed: true });
   const terms = { session: "t-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
@@ -746,14 +748,14 @@ describe("the reader of misses at a limit, by comparison and side", () => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put("task.proposed", { version: "v1" });
-    put("task.gate", { version: "v1", gate: 1, outcome: "passed" });
+    put(GATE, { version: "v1", gate: 1, outcome: "passed" });
     const terms = { session: "g-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
     put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
     for (const [index, [harness, ending, seconds]] of endings.entries()) {
       const ran = condition("v1", harness);
       const id = `m${String(index)}`;
       put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-      put("solve.started", {
+      put(SOLVE_STARTED, {
         solve: id,
         condition: conditionId(ran),
         limits: { wallSeconds: 100, modelTurns: 8 },
@@ -802,7 +804,7 @@ describe("the reader of the campaign's clock", () => {
    *  turn of 28; its practice solves each took `seconds`. */
   const silences = (seconds: number, stretch = 1) => {
     const practice = [1, 2, 3].flatMap((index): [number, EventKind, JsonObject][] => [
-      [0, "solve.started", { solve: `p${String(index)}`, limits: { wallSeconds: 900 } }],
+      [0, SOLVE_STARTED, { solve: `p${String(index)}`, limits: { wallSeconds: 900 } }],
       [0, "solve.finished", { solve: `p${String(index)}`, ending: { outcome: "pass" }, seconds }],
     ]);
     const log = timed([
@@ -869,7 +871,7 @@ describe("the reader of comparisons the campaign command named apart from its Bu
     const ran = condition(task, harness);
     const id = `${measuredIn}-${task}-${harness}`;
     put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-    put("solve.started", {
+    put(SOLVE_STARTED, {
       solve: id,
       condition: conditionId(ran),
       limits: { wallSeconds: 100 },
@@ -921,7 +923,7 @@ describe("the reader of comparisons the campaign command named apart from its Bu
   });
   for (const version of ["t1", "v1", "v2"]) {
     put(PROPOSED, { version });
-    put("task.gate", { version, gate: 1, outcome: "passed" });
+    put(GATE, { version, gate: 1, outcome: "passed" });
   }
   put(BUILD_STARTED, { session: "b-1", parent: "hp", tasks: ["t1"] });
   put("build.finished", { session: "b-1", ended: "finished", harness: "hc", changed: true });
@@ -987,7 +989,7 @@ describe("the reader of a harness that answered for its solver", () => {
       const ran = condition(task, harness);
       const id = `s${String(log.length)}`;
       put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-      put("solve.started", {
+      put(SOLVE_STARTED, {
         solve: id,
         condition: conditionId(ran),
         limits: { wallSeconds: 100 },
@@ -1000,7 +1002,7 @@ describe("the reader of a harness that answered for its solver", () => {
     };
     for (const version of ["t1", "v1"]) {
       put("task.proposed", { version });
-      put("task.gate", { version, gate: 1, outcome: "passed" });
+      put(GATE, { version, gate: 1, outcome: "passed" });
     }
     put("build.started", { session: "p-1", parent: "href", tasks: ["t1"] });
     for (const calls of practice) made("t1", "hy", calls, null);

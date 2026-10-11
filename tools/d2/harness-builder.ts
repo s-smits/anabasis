@@ -342,12 +342,9 @@ function opened(
 
 /**
  * The held-out tasks an Examiner session is asked for where no flag names them: what the campaign
- * is short of a comparison's target, and what the next release will take for practice, since a
- * release before a Builder session takes held-out tasks. Undefined where the campaign is short of
- * neither, as after a comparison that left no room, and the command's default stands. Until
- * 11 October the count was the command's literal default, 12 new tasks, whatever the campaign
- * held: the buffer campaigns of that day were short 9 and asked for 12, and the sentence that
- * declines a first `finish`, "the host does not yet have the tasks it needs", was tied to it.
+ * is short of a comparison's target, plus what the next release takes for practice. Undefined
+ * where it is short of neither, and the command's default stands. Until 11 October it was that
+ * default, 12, whatever the campaign held: the buffer campaigns of that day were short 9.
  */
 function examTasks({ events, plan }: Turn): string | undefined {
   const supply = supplyOf(events);
@@ -554,8 +551,7 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
         ...pack,
         ...seat,
         ...flag("tasks", values["exam-tasks"] ?? examTasks(turn)),
-        // The wall every solve is held to, as the campaign's terms hold it, for the budget fact
-        // the Examiner is told before a setting is on record.
+        // The campaign's wall, for the budget the Examiner is told before a setting is recorded.
         ...flag("solve-minutes", values["solve-minutes"]),
         ...flag("proposals", values["exam-proposals"]),
         ...flag("minutes", values["exam-minutes"]),

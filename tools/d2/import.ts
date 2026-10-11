@@ -28,6 +28,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { stagedState } from "#src/builder/tools.ts";
+import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { openHarness } from "#src/solve/harness.ts";
 import { campaignLog } from "./campaign.ts";
 
@@ -36,7 +37,6 @@ const OPTIONS = {
   harness: { type: "string" },
   note: { type: "string" },
 } as const;
-const TOOL_TREE = ".toolchain";
 
 /** `bun tools/d2/import.ts`. Returns the imported harness by its digest and where it is kept. */
 export async function importCommand(args: readonly string[]): Promise<{ digest: string; dir: string }> {
@@ -60,7 +60,7 @@ export async function importCommand(args: readonly string[]): Promise<{ digest: 
   }
   // The programs as a session keeps them: in a tree beside the state, named by a link. A link
   // under the source is followed to the tree itself.
-  const own = join(source, TOOL_TREE);
+  const own = join(source, TOOL_TREE_DIR);
   const tree = existsSync(own) ? mkdtempSync(join(states, "tree-")) : null;
   let scratch: string | null = null;
   try {

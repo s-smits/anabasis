@@ -63,6 +63,7 @@ import {
   rmSync,
   symlinkSync,
 } from "../meta/filesystem.ts";
+import { TOOL_TREE_DIR } from "../meta/bundle-layout.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
@@ -126,7 +127,7 @@ const HEAD_CHARS = 4_000;
 /** What a preview names the solve's home, which only a solve has. */
 const SOLVE_HOME = "(the solve's own home directory)";
 /** The harness's tool tree, as a path in the Builder's home. */
-export const HOME_TOOL_TREE = "harness/.toolchain";
+export const HOME_TOOL_TREE = `harness/${TOOL_TREE_DIR}`;
 
 /** An ending as the Builder is shown it: the outcome and its kind. A non-result's reason can name a
  *  check, so only a broken harness's reason, which is the harness's own, is shown. */
@@ -160,7 +161,7 @@ export function record(events: readonly LogEvent[], version: string, harness: st
 
 /** The parent's tool tree, where it really is; null when the parent has none. */
 export function parentToolTree(parent: string): string | null {
-  const tree = join(parent, ".toolchain");
+  const tree = join(parent, TOOL_TREE_DIR);
   return existsSync(tree) ? realpathSync(tree) : null;
 }
 
@@ -190,7 +191,7 @@ function refuseNamingHome(dir: string, home: string, under: string): void {
  *  (2026-10-10), and a truss tree is 316 MB, so a check after each tree edit would leave one each. */
 function dropUnlinked(states: string, dir: string): void {
   const named = join("..", basename(dir));
-  const links = readdirSync(states).map((name) => join(states, name, ".toolchain"));
+  const links = readdirSync(states).map((name) => join(states, name, TOOL_TREE_DIR));
   const linked = (link: string) =>
     lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() === true && readlinkSync(link) === named;
   if (!links.some(linked)) rmSync(dir, { recursive: true, force: true });
@@ -240,10 +241,10 @@ export function stagedState(source: string, states: string, tree: string | null,
   mkdirSync(states, { recursive: true });
   const dir = realpathSync(mkdtempSync(join(states, prefix)));
   try {
-    const own = resolve(source, ".toolchain");
+    const own = resolve(source, TOOL_TREE_DIR);
     cpSync(source, dir, { recursive: true, verbatimSymlinks: true, filter: (each) => resolve(each) !== own });
     if (!lstatSync(dir).isDirectory()) throw new Error("harness/ is not a directory");
-    if (tree !== null) symlinkSync(join("..", basename(tree)), join(dir, ".toolchain"));
+    if (tree !== null) symlinkSync(join("..", basename(tree)), join(dir, TOOL_TREE_DIR));
     return dir;
   } catch (error) {
     rmSync(dir, { recursive: true, force: true });
@@ -290,7 +291,7 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
   }
   bench.opened = {
     dir: kept,
-    harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, ".toolchain") },
+    harness: { ...harness, toolTree: harness.toolTree === null ? null : join(kept, TOOL_TREE_DIR) },
     listed,
   };
   return bench.opened;

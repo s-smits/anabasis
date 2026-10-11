@@ -25,6 +25,14 @@
  * The Examiner is told the prompt, its limits and what the host found in each draft. It is told
  * nothing of a harness, a solver, a budget or a count of tasks: none exists yet, and an author
  * told a target writes towards it.
+ *
+ * Under `draftWalled` it has `bash`, `read` and `write` in a walled home of its own, as a session
+ * that writes tasks has (`shell.ts`). Until 11 October it had `draft_exam` and `finish` alone: it
+ * was asked for each rule's source named precisely enough to look up, and could look nothing up,
+ * nor run its check program on its controls before the host did (`docs/plan.md`, row F57). It is
+ * told what the shell is and what the wall's probe found of the network, and not what to use it for.
+ * Nothing hidden exists at drafting, and the wall closes the repository, where the log lies. Its
+ * commands are in the log as its calls (`draft.call`).
  */
 import {
   type AgentMessage,
@@ -55,7 +63,9 @@ import { hostScratch } from "../verify/wall-policy.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
+import type { CommandWall, Walled } from "../solve/command.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
+import { examinerShell, inExaminerWall } from "./shell.ts";
 
 /** A rule of the contract as its author states it: the requirement, and where the field states it. */
 interface DraftedRule {
@@ -115,8 +125,14 @@ interface DraftRequest {
   /** The backends, built on the home the Examiner's model process keeps its state in. */
   readonly models: (home: string) => Models;
   readonly log: string;
+  /** The Examiner's shell, where the session has one (`draftWalled` gives one). */
+  readonly shell?: CommandWall | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
+  /** When the seat began to be set up (`performance.now()`), where a caller set one up before
+   *  the session: the wall counts from then, so the mount and the probe of the shell are inside
+   *  it. */
+  readonly began?: number | undefined;
 }
 
 export interface Drafted {
@@ -436,7 +452,7 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
 
 export async function draftExam(request: DraftRequest): Promise<Drafted> {
   const { log, limits, model } = request;
-  const began = performance.now();
+  const began = request.began ?? performance.now();
   if (read(log).some(({ kind, data }) => kind === "draft.started" && data.session === request.id)) {
     throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
   }
@@ -448,8 +464,22 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
     limits: { ...limits },
     prompt: request.prompt,
   });
-  const tools = [draftTool(desk), finishTool(desk)];
+  // The wall runs from the seat's start, before the shell's network probe is awaited: until
+  // 11 October it began after the probe, and after the mount and the wall's own probe, so a
+  // session spent those seconds outside its limit (found by review of #225).
   const wall = new AbortController();
+  const timer = setTimeout(
+    () => wall.abort(),
+    Math.max(0, limits.wallSeconds * 1000 - (performance.now() - began)),
+  );
+  let shell: AgentTool[];
+  try {
+    shell = await examinerShell(request.shell, "a draft enters it through draft_exam alone");
+  } catch (error) {
+    clearTimeout(timer);
+    throw error;
+  }
+  const tools = [draftTool(desk), ...shell, finishTool(desk)];
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
   const signal = AbortSignal.any([wall.signal, done.signal, ...(request.kill ? [request.kill] : [])]);
@@ -462,7 +492,6 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
   const home = hostScratch("claude-cli-examiner-");
   const over = () => desk.stands || desk.note !== null;
   let crash: string | null = null;
-  const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
   try {
     const models = request.models(home);
     const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
@@ -523,4 +552,12 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
     seconds: (performance.now() - began) / 1000,
   });
   return { stands: desk.stands, tries: desk.tries, ended };
+}
+
+/** One drafting session with a shell under the solver's command wall and disk cap (`shell.ts`). */
+export async function draftWalled(request: Omit<DraftRequest, "shell"> & Walled): Promise<Drafted> {
+  // A run killed before the session began mounts nothing and starts nothing.
+  if (request.kill?.aborted === true) throw new Error(`session ${request.id} was stopped before it began`);
+  const began = performance.now();
+  return await inExaminerWall(request, (shell) => draftExam({ ...request, shell, began }));
 }

@@ -12,6 +12,7 @@ time. It holds no queue and no status. Those have other owners:
 | What is designed, in what order, and how far each part has got | the plan of record; `docs/plan.md` is the repository's copy |
 | What came over from v1, and what was replaced or dropped | `docs/transfer.md` |
 | What v1 measured, and why it did not climb | `docs/v1.md` |
+| A prompt handed whole to another session: an audit, a review | `docs/prompts.md` |
 | Where v2 stood at PR #91 and PR #168, with the three reviews of 9 October | `docs/plan-history.md` |
 | What the code does today | the source at the stack's head, and the head comment of each module |
 | How a procedure is carried out: stacking, launching, reading a run, wording a claim | the skill that owns it, under `.claude/skills/` (sections 10 and 11) |
@@ -62,6 +63,83 @@ none.
                             │
                        THE LOG   one append-only file a campaign; every state is a view of it
 ```
+
+### The five success factors
+
+Anabasis v2 is a training loop in which the thing trained is a harness and the loss is measured
+by running a fixed model. Read that way its success factors are the ones every learning system
+has: a training signal that carries information, a held-out set the learner cannot see, an
+evaluation no noisier than the effect it looks for, labels that are correct, and a result that
+transfers. Every session, pull request and run is judged against the five below, and a change
+that moves none of them says what it moves instead. Each is a question, how it is measured and
+its bar; the recorded values are the plan's (`docs/plan.md`, "Goal and the five factors"), and
+nowhere else.
+
+**1. Supply: is there gradient?** A comparison registers a difference only on a task where one
+harness answers and the other does not. A task the reference solves in every attempt is a solved
+example, and one nobody has solved is an unlearnable one: neither carries signal, and a scored
+set made of them reads "no room" whatever the new harness is. The informative tasks lie between:
+the reference answers them sometimes, or never while another harness has. In most learning the
+data is fixed and the model moves; here the solver is fixed and the Examiner keeps the exam at
+its frontier, told one outcome a task and nothing else. Measured as the informative tasks in a
+comparison's scored set. Bar: at least four before each comparison starts. It binds first,
+because every other number is undefined without it.
+
+**2. Climb: does the learner improve?** The one quantity the system exists to move is the
+reference harness. A promotion, a harness that beats the reference on held-out tasks by more
+than chance allows, twice, on fresh solves, is one step of descent; a climb is several. Measured
+as promotions a campaign, with the pairs the starter loses in each epoch beside it, which rise as
+the reference improves. Bar: two promotions in one real campaign, the starter losing more pairs
+after the second than after the first, then the same in a second domain. One step shows that the
+loop can move; two show that it can move from where it moved to.
+
+**3. Honesty: what is the false-positive rate of the test?** A sign test at level 0.10 is
+designed to crown a winner between two equal harnesses about one time in ten, and the design
+value is a claim until it is measured on the real solver, whose variance is unknown: the same
+harness fails a task once and passes it next time. The measurement is an A/A test. With
+`--noise` on a checkpoint the reference is solved twice as often; its earlier solves of each
+task are one side and its later solves the other, and the two are tallied and tested as a
+comparison is (`src/builder/round.ts`). A step there is a false positive by construction. Bar: no
+step in the ten controls after the six on record. Two limits are known: ten controls still bound
+the rate loosely, and the later side always runs after the earlier, so a drift of the host or the
+provider reads as a lie. The same control gives the tie share, the floor a real comparison has to
+beat before its wins mean anything.
+
+**4. Verdicts: are the labels correct?** Validity is decided by a check program nobody has
+audited against the field, and a check that rejects a right answer is label noise: in v1, 36 of
+47 rehearsal misses came from a faulty check or instrument. The Referee is the noise filter
+(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison,
+before the rejection counts, and never on a pass, a solve a limit cut or a crash; first the host
+replays the checks on the logged answer, and a verdict that does not repeat is a check defect
+ruled by the host. It reads the task with its hidden values, the public rules, the answer, the
+rejecting checks with the fields each reads, the check program's source, a valid answer for the
+task where one is on record, and a probe that changes one field and reruns the checks; never the
+harness, the trace or anything the Builder wrote. It records one ruling (`referee.finding`):
+`earned` must name the rule broken and the field that breaks it, both cited by a rejecting check;
+`check-defect` must cite a probe that decided both sides on a field the check reads; `unclear` is
+what is left, and a ruling without its evidence is refused. `earned` counts as a loss; the other
+two set the task aside for both harnesses, so a broken check scores nobody. The Referee is a
+model and is measured by agreement with a person who labels the same rejections blind
+(`tools/d2/settle.ts`, `src/review/agreement.ts`): a three-by-three table of label against
+ruling, read as two rates. Bar: on at least ten labels a kind, three in four of the rejections a
+person calls a check defect caught, at most one in ten of those a person calls earned voided, and
+three passes a comparison read by a person, since no seat reads an answer that passed.
+
+**5. Worth: how large is the effect, does it transfer, and what did it cost?** A significant
+step is not necessarily a useful one. Three numbers from one report say what a promotion is
+worth: the effect size, the reference's share of valid answers on held-out tasks against the new
+harness's at the full limit; transfer, the same harness on tasks written after it was frozen,
+which is the only reading that separates learning the domain from learning the exam; and the
+cost, in dollars and Builder sessions, of a promotion. None has a bar. Setting the three is the
+operator's decision, and until it is made no promotion is called a result worth having.
+
+Left out on purpose: the wall between the two sides is a correctness property, tested in the
+suite as a byte-identical message under a changed hidden value, and is not optimised; the
+Builder's practice results are excluded by rule 1, since a learner's score on its own training
+set is the overfitting signal and not the metric; cost stands inside factor 5, since a cheap
+system that does not climb has no cost worth reporting. The five are ordered by where they bind:
+without supply there is no gradient, without climb no result, without honesty and verdicts no
+result that can be believed, and without worth none that can be used.
 
 ### Two sides and one wall
 
@@ -116,7 +194,7 @@ decision falls.
 | Every limit of a solve and of a session | How a task is solved |
 | The condition a solve runs under, and its identity | What a new task asks, within the contract |
 | Whether an answer is valid | Whether a rejection was right (a ruling, with its required evidence) |
-| The comparison, the tally and the test | Why a practice solve failed (advice only) |
+| The comparison, the tally and the test | Why a practice solve failed, read from its trace |
 | What crosses the wall | Which failure to work on, and what to change |
 | The dollar cap and what is charged to it | |
 | The log: what is recorded, and its order | |
@@ -160,9 +238,11 @@ Six consequences guide a change:
    and a probe's folder under a shared parent ended 56 (`docs/plan.md`, rows B10, B12 and B17).
    Narrow a grant only where two would collide, as two solves writing one path in a shared `/tmp`
    did, or where the wider one opens one of the three. A wall is probed by one command run
-   through the launch a seat's commands use, and need not prove its own identity. At #185 the
-   source is short of this: three writable folders a command, and a probe through a launch no
-   seat uses (`docs/simplify.md`, phase 4).
+   through the launch a seat's commands use, and need not prove its own identity. The source
+   holds both on `main` at `524c589`: a seat's commands write one root, but for the host's own
+   folder in it (`SolveDirs`, `src/solve/command.ts`; PR #203), and each policy is probed once a
+   process by one command run as every command of a seat is run (`walledBase` and `probeWall`,
+   the same file; PR #197).
 
 ## 3. The seats
 
@@ -171,7 +251,7 @@ wall keeps from it.
 
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
-| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, and one outcome for each task of the campaign; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, and what the host's reading found in each draft | A target, a harness's name, a count of solves. It makes no solve of the exam's | `src/examiner/` |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, and one outcome for each task of the campaign; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, as when it writes tasks | A target, a harness's name, a count of solves. It makes no solve of the exam's | `src/examiner/` |
 | **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
@@ -185,7 +265,8 @@ The tools of each model seat, as its source names them:
   `try_answer` runs the checks on an instance with an answer of the Examiner's own and keeps
   nothing; the shell is a walled home of its own, empty at the session's start, and nothing in
   it enters the exam but through `propose_tasks`. In the session that drafts an exam:
-  `draft_exam`, `finish`.
+  `draft_exam`, `bash`, `read`, `write`, `finish`, the shell the same kind of walled home
+  (`src/examiner/shell.ts`), and nothing in it enters the exam but through `draft_exam`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness`, `reset_harness`, `finish`.
 - Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`.
@@ -305,8 +386,9 @@ compacts at a pinned window (`SWEEP_COMPACT_WINDOW`, `src/backends/claude.ts`), 
 backends pi's loop compacts (`src/backends/pi-compaction.ts`). Each compaction is logged
 (`build.compacted`, `solve.compacted`, `exam.compacted`). What a session has when the conversation
 is lost is in the source too: the notes it carries (`src/builder/memory.ts`), and the list of
-failed practice solves with each comparison's tally (`src/builder/past.ts`). At PR #80 every
-session is that case, since a session opens a new conversation.
+failed practice solves with each comparison's tally (`src/builder/past.ts`). On `main` at
+`524c589` (11 October) every session is that case, since a session opens a new conversation: its
+loop starts from the system prompt and the opening message alone (`src/builder/session.ts`).
 
 When you build towards the Harness Builder, take v1's four lessons with it:
 
@@ -793,9 +875,9 @@ words since its revision 358. The plan keeps the level of each part, and a pull 
 what it moves: in `docs/plan.md` that is the level column of the fix plan. Keep no second status list: not in this file, not in a new file, not in a
 code comment.
 
-Read at PR #80 (`d878c1b`), four designed parts were absent from the source, and three still
-are. Check the plan and the head before relying on this list, and delete a line here in the
-change that makes it false:
+Read on `main` at `524c589` (11 October), three designed parts are absent from the source. Check
+the plan and the head before relying on this list, and delete a line here in the change that
+makes it false:
 
 - the Judge: the Referee has a probe and no shell, reads the check program, and is unmeasured
   against hand labels. No seat reads an answer that passed: a person reads a drawn few
@@ -951,8 +1033,11 @@ request as failures that are there without the change, and do not call the suite
 ### The stack and pull requests
 
 `.claude/skills/stack-pr/SKILL.md` owns this procedure. Read it before you branch and again
-before you push. v2's work is one linear stack of open pull requests, each based on the branch
-below it, and several sessions write to it at once. What it comes to:
+before you push. Until 11 October v2's work was one linear stack of open pull requests; PRs #219
+and #221 merged the whole of it into `main` that day. A new subject is now a pull request on
+`main`, from a worktree of its own at `origin/main`, and the stacking rules below hold where one
+pull request depends on another that has not merged: there the top is that pull request's branch,
+and elsewhere it is `main`. Several sessions write at once. What it comes to:
 
 - **Read the stack every time**: before `git worktree add`, before opening a pull request, and
   before a push that rewrites a branch. `bun .claude/skills/stack-pr/scripts/stack.ts` prints the
@@ -1078,7 +1163,7 @@ src/builder/    a Builder session, its tools, prompt, notes and what it is told 
                 of (ground), what a campaign runs by (opening), and the words the operator left
                 it (word)
 src/examiner/   an Examiner session, its prompt, and the outcomes it is told; the session that drafts
-                an exam from a prompt (draft)
+                an exam from a prompt (draft); the walled home both sessions have (shell)
 src/review/     the Referee, the probe, agreement with hand labels
 src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read
 src/backends/   the three model backends as one pi collection, and compaction
@@ -1096,7 +1181,7 @@ tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans
 tools/runtime/  the lint and test wrappers, the commit check
 tools/loc/      the size and unused-export policy
 vendor/         pi-coding-agent and pi-claude-bridge, copied
-docs/           the plan, the transfer ledger, the account of v1
+docs/           the plan, the transfer ledger, the account of v1, the helper prompts
 .claude/skills/ the procedures (section 10), stack-pr, and main/ with the skill scripts' argument
                 parser and git helper
 .ana/           campaign logs and kept harnesses; ignored, and never edited by hand

@@ -195,9 +195,8 @@ describe("the whole-run investigation's reader", () => {
     expect(lines).toContain("0 of 9 finished solves name no response model");
     expect(lines).toContain("states: held 4, released 1");
     expect(lines).toContain("4 tasks held out, for a comparison to score; 1 released for practice");
-    expect(lines).toContain(
-      "billed dollars: solver 9.00, builder 2.00, examiner 0.00, referee 0.00, diagnoser 0.00",
-    );
+    // A role the log holds no event of is no row: the Diagnoser's seat went on 11 October.
+    expect(lines).toContain("billed dollars: solver 9.00, builder 2.00, referee 0.00");
     expect(lines).toContain("b-1: hp > hc, ended finished, 0 practice solves, reading b-1 no-step");
   });
 
@@ -252,16 +251,16 @@ describe("the whole-run investigation's reader", () => {
       "b-1: hp to hc; written by its file tools: agent/tools.mjs, agent/BUILT_AGENTS.md",
     );
     // A session a stop cut leaves no end record, and its writes are all there is of its harness.
-    const stopped = [
+    const stopped: LogEvent[] = [
       ...events,
       {
         at: new Date(START).toISOString(),
-        kind: "build.started" as EventKind,
+        kind: "build.started",
         data: { session: "b-2", parent: "hc", tasks: ["t1"] },
       },
       {
         at: new Date(START).toISOString(),
-        kind: "build.call" as EventKind,
+        kind: "build.call",
         data: { session: "b-2", tool: "write", args: { path: "agent/tools.mjs" } },
       },
     ];
@@ -279,7 +278,7 @@ describe("the whole-run investigation's reader", () => {
     // as "ended never, 0 practice solves" with three practice solves in the log (11 October).
     expect(cut("SESSION ENDED")).toBe("b-2: not finished by the log's last event");
     expect(overview([...stopped, ...practisedAgain()]).rows.flatMap((row) => row.lines)).toContain(
-      "b-2: hc > none, ended not by the log's last event, 1 practice solves, reading none",
+      "b-2: hc > none, ended not yet: open at the log's end, 1 practice solve, reading none",
     );
     expect(detail("TOOLS EDITED")).toBe("b-1: agent/tools.mjs");
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
@@ -420,6 +419,8 @@ describe("the whole-run investigation's reader", () => {
       "NO CHECKER READING",
       "CHECKER NOT FROZEN",
     ]);
+    // A log with no billed role says so, where the line read "billed dollars: " for a moment.
+    expect(overview([]).rows.flatMap((row) => row.lines)).toContain("billed dollars: none");
   });
 });
 
@@ -493,6 +494,12 @@ describe("the reader of a round compared with another harness than its session s
   // the reference harness, href.
   put(BUILD_STARTED, { session: "r-1", parent: "hx", tasks: [] });
   put("build.finished", { session: "r-1", ended: "finished", harness: "hy", changed: true });
+  // Two Examiner sessions: one ended, and one cut, since the comparison began after it.
+  put("exam.started", { session: "x-8" });
+  put("exam.finished", { session: "x-8", ended: "finished" });
+  put("exam.started", { session: "x-9" });
+  // Its turns are what x-9 spent: the end record a stop never wrote held nothing (2026-10-10).
+  for (const turn of [1, 2]) put("exam.turn", { session: "x-9", turn, usage: { cost: { total: 0.25 } } });
   const terms = { session: "r-1", old: "href", fresh: "hy", starter: "hbase", setting: SETTING };
   put("comparison.started", { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
   made("q1", "href", { outcome: "non-result", kind: "provider", reason: "cut" }, 50);
@@ -500,12 +507,6 @@ describe("the reader of a round compared with another harness than its session s
   made("q2", "href", { outcome: "fail", kind: "wall-ended" }, 100, { seconds: 1, unmeasured: 1 });
   // The new harness's valid answer came in two seconds of a hundred, with one call.
   made("q3", "hy", { outcome: "pass" }, 2, { seconds: 1, unmeasured: 0 });
-  // Two Examiner sessions: one ended, and one was cut.
-  put("exam.started", { session: "x-8" });
-  put("exam.finished", { session: "x-8", ended: "finished" });
-  put("exam.started", { session: "x-9" });
-  // Its turns are what x-9 spent: the end record a stop never wrote held nothing (2026-10-10).
-  for (const turn of [1, 2]) put("exam.turn", { session: "x-9", turn, usage: { cost: { total: 0.25 } } });
   put(REPORTED, {
     ...REPORT,
     ...terms,
@@ -546,9 +547,54 @@ describe("the reader of a round compared with another harness than its session s
     expect(said("EXAMINER NEVER FINISHED")).toBe("x-9");
   });
 
+  // Until 11 October lane 27 opened on every live campaign's running Examiner session, and row F's
+  // moves left out the move being made, whose `campaign.move` is written when it ends.
+  it("names a session open at the log's end in row F, with what it did so far, and says it apart in lane 27", () => {
+    const live = [...log];
+    const more = appendTo(live);
+    more("exam.started", { session: "x-10" });
+    more("exam.turn", { session: "x-10", turn: 1, usage: { cost: { total: 0.25 } } });
+    more(PROPOSED, { version: "v9", session: "x-10" });
+    more("task.gate", { version: "v9", gate: 1, outcome: "passed" });
+    const read = overview(live);
+    // `bun run runs stop` writes no ending, so an open session may be a stopped one, and the lane
+    // still opens on it.
+    expect(read.triggers.find((trigger) => trigger.name === "EXAMINER NEVER FINISHED")?.detail).toBe(
+      "x-9; x-10 open at the log's end",
+    );
+    expect(read.rows.find((row) => row.id === "F")?.lines).toContain(
+      `open at the log's end: x-10, an Examiner session: 1 turn and 1 task held out so far, last at ${live.at(-3)?.at ?? ""}`,
+    );
+  });
+
+  // buffer-main's g-1 had four solves in flight on 11 October, and lane 27 read them as killed.
+  it("reads a solve with no end as open while its comparison is, and as never finished once the campaign ended", () => {
+    const live = [...log];
+    const more = appendTo(live);
+    more("comparison.started", {
+      session: "g-9",
+      old: "href",
+      fresh: "hy",
+      solves: 1,
+      level: 0.1,
+      tasks: ["v1"],
+    });
+    more("solve.started", { solve: "s-9", condition: "c-9", comparison: "g-9" });
+    const lines = (read: readonly LogEvent[]) => overview(read).rows.flatMap((row) => row.lines);
+    const never = (read: readonly LogEvent[]) =>
+      overview(read).triggers.find((trigger) => trigger.name === "SOLVE NEVER FINISHED")?.detail;
+    expect(never(live)).toBe("1 solve open at the log's end");
+    expect(lines(live)).toContain("0 solves never finished, 1 open at the log's end");
+    expect(lines(live)).toContain("open at the log's end: g-9, a comparison: 0 solves ended and 1 open");
+    more("campaign.ended", { ending: "no-room" });
+    expect(never(live)).toBe("1 solve");
+    expect(lines(live)).toContain("1 solve never finished");
+    expect(lines(live).some((line) => line.startsWith("open at the log's end"))).toBe(false);
+  });
+
   it("counts the dollars of that session's turns, which no end record holds", () => {
     expect(seenHere.rows.flatMap((row) => row.lines)).toContain(
-      "billed dollars: examiner 0.50, solver 0.00, builder 0.00, referee 0.00, diagnoser 0.00",
+      "billed dollars: examiner 0.50, solver 0.00, builder 0.00",
     );
   });
 

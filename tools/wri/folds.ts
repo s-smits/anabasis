@@ -368,12 +368,15 @@ const ROLE_EVENTS = {
 /** Billed dollars by role, the largest first, counted as the campaign's own budget counts them:
  *  a session a stop cut has no end record, and its turns were read as nothing. Buffer's Examiner
  *  session x-1 read 0.00 against $1.68 billed, and the builder's share of the campaign read 71.3%
- *  where it was 42.2% (2026-10-10). */
+ *  where it was 42.2% (2026-10-10). A role the log holds no event of is left out: every log since
+ *  11 October printed "diagnoser 0.00" for a seat that no longer exists. */
 export function spendOf(log: Index): [string, number][] {
-  const spent = (kinds: readonly string[]) =>
-    billedAll(log.events.filter(({ kind }) => kinds.includes(kind)));
+  const of = (kinds: readonly string[]) => log.events.filter(({ kind }) => kinds.includes(kind));
   return Object.entries(ROLE_EVENTS)
-    .map(([role, kinds]): [string, number] => [role, spent(kinds)])
+    .flatMap(([role, kinds]): [string, number][] => {
+      const own = of(kinds);
+      return own.length === 0 ? [] : [[role, billedAll(own)]];
+    })
     .sort(([, a], [, b]) => b - a);
 }
 

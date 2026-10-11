@@ -11,14 +11,17 @@ stalls, what proliferates, and the defects found on the way. Part II is the plan
 decisions, then every cut as pull requests in order, each with its files, its tests, what it
 needs and what would show it wrong.
 
-It is a proposal and holds no status. `docs/plan.md` keeps the level of each part, and nothing
-here moves one. Every cut is the operator's to accept.
+It is a proposal. `docs/plan.md` keeps the level of each part, and nothing here moves one. Every
+cut is the operator's to accept. Since 11 October this file keeps the reading, the review, the
+rules, the order of the packages with each one's status in a word and the pull request that did
+it, and the packages still open, whole. The packages that were done are in `docs/plan-history.md`
+("The simplification plan's history"), word for word with their notes.
 
 **How to read a claim here.** Each carries one of four marks where it matters:
 
 - *read*: I read it in the source, or ran a script over the tree at `49900e5`, in this session;
-- *record*: it is what `docs/plan.md`, `docs/handover-2026-10-10.md`, `docs/transfer.md` or
-  `AGENTS.md` says;
+- *record*: it is what `docs/plan.md`, the handover of 10 October (in `docs/plan-history.md`
+  since 11 October), `docs/transfer.md` or `AGENTS.md` says;
 - *bodies*: it comes from a classification of the 179 pull-request bodies #2 to #183, which I
   did not recheck line by line;
 - *estimate*: my reading of what a cut would take. Nobody has made the cut.
@@ -344,15 +347,15 @@ Lines are nonblank, of `src` and `tools` without `tools/oxlint` and without test
 `49900e5` (`src` 19,352, the tools 11,094) (*read*). Every figure in the last column is an
 *estimate*.
 
-| Phase | Packages | Needs | Leaves |
-| --- | --- | --- | --- |
-| 0 | G1, G2 | D1, D13 | a baseline, and one line of stack |
-| 1 | F1, F2, F3, F4, F6, F9 | D5, D6 | the defects mended; about +40 |
-| 2 | A1 to A4, B1 to B3 | D2, D3, D4 | about −950; the table at about 16 rows from about 20, and 8 moves from 9 |
-| 3 | C1, D1 to D3 | D7 | about −850 |
-| 4 | W1 to W6, then W7 | D8, D9 | about −2,200, nearly all of it of the 3,958 in `src/verify` |
-| 5 | E1 to E3, R1 to R3 | D10, D11 | about −1,250, and about −1,000 more with R3 |
-| 6 | T1 to T5 | D12 | `AGENTS.md` under 60 kB |
+| Phase | Packages | Needs | Leaves | Status |
+| --- | --- | --- | --- | --- |
+| 0 | G1, G2 | D1, D13 | a baseline, and one line of stack | partly |
+| 1 | F1, F2, F3, F4, F6, F9 | D5, D6 | the defects mended; about +40 | done |
+| 2 | A1 to A4, B1 to B3 | D2, D3, D4 | about −950; the table at about 16 rows from about 20, and 8 moves from 9 | done |
+| 3 | C1, D1 to D3 | D7 | about −850 | partly |
+| 4 | W1 to W6, then W7 | D8, D9 | about −2,200, nearly all of it of the 3,958 in `src/verify` | partly |
+| 5 | E1 to E3, R1 to R3 | D10, D11 | about −1,250, and about −1,000 more with R3 | partly |
+| 6 | T1 to T5 | D12 | `AGENTS.md` under 60 kB | partly |
 
 Phases 1 to 5 without R3 come to about 5,200 lines, a sixth of the 30,446.
 
@@ -362,6 +365,51 @@ when its guard passes and a campaign from a prompt has run to a typed ending at 
 **A campaign that runs is not moved.** Every package changes what a solve runs under or what a
 reader says, so it opens a new condition. Campaigns on record finish on the tree they started in
 (`AGENTS.md` section 10, rule 1).
+
+**Each package, at main `524c589` (PR #221, 11 October).** A package marked *done* is in
+`docs/plan-history.md` with its note, and the pull request is the one that did it. The others
+follow below, whole.
+
+| Package | Status | Where |
+| --- | --- | --- |
+| G1 | partly | #173 and #174 reached main through PR #221; #172, #163 and #164 stand open |
+| G2 | untaken | the first pull request of phase 1 (#188) carried no baseline; the numbers at `49900e5` stand below |
+| F1 | done | mended otherwise at PR #183, as the review says |
+| F2 | done | half at PR #183, the other half declined in the review |
+| F3 | done | PR #188 |
+| F4 | done | PR #190 |
+| F6 | done | PR #191 |
+| F9 | done | PR #189 |
+| A1 | done | PR #193 |
+| A2 | done | PR #194 |
+| A3 | done | PR #196 |
+| A4 | done | PR #198 |
+| B1 | done | PR #200 |
+| B2 | done | PR #201 |
+| B3 | declined | in the review |
+| C1 | partly | its first commit at PR #202; the second waits for a live refusal that the share got wrong |
+| D1 | done | PR #199 |
+| D2 | done | PR #211 |
+| D3 | deferred | in the review |
+| W1 | done | PR #191, and the four temporary names with no maker at PR #204, with W4 |
+| W2 | done | PR #197 |
+| W3 | done | PR #203 |
+| W4 | done | PR #204 |
+| W5 | done | PR #210 (its note names #211, which stands on it) |
+| W6 | done | PR #217 |
+| W7 | open | the Mac's |
+| E1 | done | PR #205 |
+| E2 | deferred | in the review, until a campaign has run two sessions on one home |
+| E3 | done | PR #207 |
+| R1 | done | PR #206 |
+| R2 | operator's | |
+| R3 | waiting | for buffer under the objective (D11) |
+| T1 | done | PR #208 |
+| T2 | ongoing | with each pull request that opens a file |
+| T3 | done | PR #209 |
+| T4 | done | PR #213 |
+| T5 | operator's | |
+| Small edges (section 11) | done | PRs #191 and #212, but `src/meta/campaign-root.ts`, which goes with T5 |
 
 ---
 
@@ -385,231 +433,9 @@ reader says, so it opens a new condition. Campaigns on record finish on the tree
 
 ---
 
-## Phase 1. Defects
-
-Each is a small pull request that stands whatever is cut later.
-
-### F1. The stop rule reads a promotion, and a reading that bought its repeat is not yet a move
-
-- **Why.** Section 6, F1.
-- **What changes.**
-  - `stopRule` (`src/kernel/reports.ts`): the count of moves since the last gain starts again at
-    a `harness.promoted` event, as it does at a report that read `step`. A pair whose last
-    comparison cleared the campaign's trigger, and has no later comparison of the same two, is
-    left out of the moves: it is one draw whose repeat is owed. The trigger is read from the
-    opening (`campaign.opened`), where #178 pinned it.
-  - `signP` is in `src/kernel/compare.ts` already, so the kernel imports nothing of
-    `src/builder`.
-- **Tests.** `test/reports.test.ts`: a 2-0 and a 2-0 with a promotion after them leave
-  `sinceStep` at 0; a 2-0 as the sixth move leaves `stop` false until its repeat reports.
-  `test/decide.test.ts`: the same log names the repeat and no ending.
-- **On the recorded logs.** Replay. No campaign on record was promoted in two stages, so no
-  recorded move should change; the body says so with the count.
-- **Lines.** About +15.
-
-### F2. A step and its repeat are the same two harnesses on the same tasks
-
-- **Why.** Section 6, F2. The chance of a false promotion the plan gives (3.4% an attempt) is of
-  one reading and its repeat. A window that slides over any two comparisons of a pair, with
-  tasks written between them, is another test.
-- **What changes.** `readTwice` (`src/builder/move.ts`) reads two reports where the earlier one
-  cleared the trigger and the later one scored the same task versions (`versions` of both
-  reports). `onStep` passes the trigger.
-- **Tests.** `test/decide.test.ts`: 3-1, tasks written, 4-0 names a repeat of the 4-0 and no
-  promotion; 2-0 and 2-0 on one set promote.
-- **Needs.** Nothing: it restores the rule as `AGENTS.md` section 7 states it.
-- **Lines.** About +10.
-
-### F3. The Examiner hears what the reference harness did
-
-- **Why.** Section 6, F3. Needs D5.
-- **What changes.**
-  - `outcomesOf` (`src/kernel/reports.ts`): the outcome of a task is read on the reference
-    harness's side of the last comparison that scored it: answered in every solve, in some, in
-    none. `exhausted`, `disputed` and "not yet compared" stay.
-  - `SAID` (`src/examiner/record.ts`): three sentences for the three, in place of "one harness
-    won", "a tie between valid answers" and "no valid answer yet".
-  - `ROOM` (`src/examiner/prompt.ts`): its last sentence already points at "the outcomes above",
-    and stays as it is. The system prompt's sentence that a task with no valid answer "measures
-    nothing" stays too: F4 is what keeps a feasible task from reading as one.
-- **The wall.** The outcome is of the reference harness alone. It names no other harness, no
-  count of solves beyond "every, some, none", and no check. The test of rule 3 for the Examiner
-  (`test/examiner.test.ts`) gains the hostile case: two campaigns that differ in which harness
-  won a task give the same lines.
-- **Tests.** `test/reports.test.ts` (the outcome cases), `test/examiner.test.ts`.
-- **Lines.** About 0.
-
-### F4. A task the host saw answered is feasible, and stays scored
-
-- **Why.** Section 6, F4. Needs D6.
-- **What changes.**
-  - `tryTool` (`src/examiner/session.ts`): where the verdict is a pass, the desk keeps the
-    instance's content hash (`contentOf`). Nothing of the answer is kept.
-  - `propose_tasks`: a proposal whose content the desk holds as passed is logged with
-    `feasible: true` on its `task.proposed` event.
-  - `awaitingLabel` (`src/kernel/reports.ts`): a task proposed as feasible counts as one with a
-    valid answer on record, which that fold already treats as settled "for good".
-- **What it does not do.** It asks no answer of the Examiner. A task proposed with none tried
-  goes to a person as today. Rule 9 stands: no answer is stored, and no solve is made.
-- **Tests.** `test/examiner.test.ts`: a pass and then a proposal of the same content logs the
-  fact, and a changed instance does not. `test/reports.test.ts`: such a task never awaits a
-  label. `test/round.test.ts`: it stays in `scoredSet` after two comparisons without an answer.
-- **Lines.** About +15.
-
-### F6. Say what is capped on Linux
-
-- **What changes.** The head comment of `src/verify/disk-cap.ts` and the header of
-  `test/disk-cap.test.ts`: a solve, a Builder session and an Examiner session are uncapped on
-  Linux, and why. `AGENTS.md` says so since this branch. No behaviour changes.
-- **Needs.** A session that may edit `src/verify` (D8), though this is a comment.
-
-### F9. Half of the failed tasks stay scored
-
-- **What changes.** `releaseOrder` (`tools/d2/prepare.ts`): `rest` leaves out every task of
-  `failed`, so the draw cannot release the half that was kept.
-- **Tests.** One case beside the release's own.
-- **Lines.** About +2.
-
----
-
 ## Phase 2. The controller
 
-### Package A. One fixed budget a campaign (D2)
-
-`AGENTS.md` section 1: "One fixed compute budget for both harnesses. No band and no levels." The
-source holds a ladder all the same. Since #167 it is the fallback behind the tasks, the plan's
-levers of 10 October, 22:15 name no budget, and its account of t-10 is that with the budget
-first the campaign "climbed in turns". The objective (#184) is the second way to room now.
-
-What stays through all four: `--solve-model-turns` as the one number told to the solver and
-held, `--solve-minutes` as the wall of a solve, a time limit a command, and the operator's word
-to open another campaign under another budget.
-
-What would show the package wrong: a recorded campaign in which an Examiner asked for room held
-out nothing for its whole patience, and a rung of the ladder then read a step on tasks the
-reference harness failed at the full limit. On record a rung read its steps on tasks both
-harnesses answered at the full limit (t-10, `docs/handover-2026-10-10.md`).
-
-#### A1. The table without the ladder
-
-- **What goes.**
-  - `src/builder/decide.ts`: the rung in `harder` (it becomes `written`), `tried`, the two
-    full-limit branches of `onStep` (it becomes: the pair read twice, promote), the longer-rung
-    half of `tooHard` (it becomes: tasks written since are compared on, else other tasks), the
-    setting index in `afterPromotion`, and the last three paragraphs of the head comment.
-  - `src/builder/move.ts`: `budgetBy`, `toBudget`, `budgetSaid`, `vouches`, `held`, `HALF`,
-    `versionsOf` unless F2 keeps it, the move `budget` of `Decided` and its line in
-    `decidedLine`.
-  - `src/builder/ground.ts`: `Under`, `settingsOf`, `under`, `rest`, `settings`, `turns`; `here`
-    is `all`. `Plan.limit` and `Plan.ladder`.
-  - `src/builder/opening.ts`: `ladder` and `limit` as terms of the table. The limit stays as the
-    setting's.
-  - `tools/d2/harness-builder.ts`: `--ladder`, `ladderOf`, the arm of `make` for a budget move,
-    the import of `rebudget`, and the `--budget turns=` flags `comparisonOf` adds.
-  - `tools/d2/setting.ts`: `rebudget`.
-- **Tests.** `test/decide.test.ts` names the ladder 18 times and the full limit 22 times in 42
-  cases; `test/harness-builder.test.ts` 5; `test/admission.test.ts` 2; `test/handover.test.ts`
-  1; `test/setting.test.ts` 5 for `rebudget`. The cases of the ladder go. The cases that prove a
-  promotion through a full-limit reading are rewritten to the plain promotion first.
-- **Docs.** `AGENTS.md` section 6 (the paragraph on `--ladder`, the flag line of t-9) and
-  section 7 ("The budget", and most of "What follows a reading"); the skills
-  `system-path-simulation` and `run-improvement-campaign`.
-- **On the recorded logs.** Replay. A campaign that walked the ladder (t-4, t-9, t-10) reads
-  another next move after its last comparison, and the body lists them.
-- **Lines.** About −280 (*estimate*).
-- **Done** at PR #193 (11 October), as written, with two differences: `here` is the comparisons since the setting's last record (no reading across two settings, kept until A4), and `Opening.limit` stays, since the controller names `--solve-model-turns` from it for a campaign from a prompt.
-
-#### A2. A comparison read at one budget
-
-- **Depends on.** A1: `budgetBy` and `tooHard` are the readers of a report's rows by budget.
-- **What goes.**
-  - `src/kernel/compare.ts`: `Budget`, `UNITS`, `over`, `within`.
-  - `src/builder/comparison.ts`: the rows a report holds for each shorter budget (`budgets`),
-    `asBudget`, the key in `REPORT_KEYS` and in `Fixed`.
-  - `src/builder/round.ts`: `Terms.budgets` and their refusals in `refuseTerms`.
-  - `src/kernel/reports.ts`: the `turns` parameter of `validAt` and of `roomOf`.
-  - `tools/d2/round.ts`: `--budget`, `budgetsNamed`, the lines of `validLines` by budget.
-    `tools/d2/checkpoint.ts`: the same flag. `tools/d2/harness-builder.ts`: the budgets in
-    `termsOf`. `tools/d2/close.ts`: its two lines.
-  - `tools/wri/folds.ts`, `tools/wri/read.ts`: the lanes that read a report by budget.
-- **What is not touched.** `tools/d2/word.ts --budget <dollars>` is the campaign's total and has
-  nothing to do with this.
-- **Tests.** `test/compare.test.ts` (15 mentions), `test/round.test.ts`, `test/wri-read.test.ts`,
-  `test/campaign.test.ts` (5).
-- **Docs.** `AGENTS.md` section 7; the skills `launch-run` and `whole-run-investigation`
-  (`references/lanes.md`, 8 mentions).
-- **Lines.** About −200 (*estimate*).
-- **Done** at PR #194 (11 October), as written. A report written before holds its `budgets` rows and no reader reads them; a settling of a comparison that began with shorter budgets is refused, since the settled report would drop them.
-
-#### A3. A solve's use in two figures
-
-- **What goes.**
-  - `src/solve/command.ts`: the `times` record, `childSeconds`, `CommandWall.cpu`, and the last
-    paragraph of the head comment. `src/solve/run.ts`, `src/builder/session.ts`,
-    `src/examiner/session.ts`, `tools/m0/live-solve.ts`: the `cpu` they pass.
-  - `src/kernel/compare.ts`: `cpu`, `unmeasured` and `prompts` of `Used`, `MEASURED`, `spread`
-    and `Spread`. The report's `spread`.
-  - `tools/wri/folds.ts`, `tools/wri/read.ts`: the CPU lanes (`unmeasured`, `cut`).
-  - `--solve-turns` as a flag (`tools/d2/setting.ts`, 11 mentions; `harness-builder.ts`,
-    `launch.ts`, `round.ts`, `campaign.ts`, `opening.ts`). The cap on nudges stays as the
-    constant of `LIMITS` it defaults to.
-- **Why.** The plan lists a budget in CPU seconds as withdrawn, and the meter reads zero under
-  Bubblewrap. `setting.ts` says of `--solve-turns` that it "bound no solve". `spread` was what
-  decided the budget's unit, which is decided.
-- **Tests.** `test/command.test.ts` (5), `test/compare.test.ts` (3), `test/wri-read.test.ts` (3),
-  `test/coding-tools.test.ts` (3), `test/solve-run.test.ts` (2), `test/setting.test.ts` (8),
-  `test/runs-launch.test.ts` (3), `test/campaign.test.ts` (3).
-- **The condition.** `limits` keeps its field for the prompt count, so a condition's form does
-  not move. A `solve.finished` written before this holds `cpu`, and nothing reads it afterwards.
-- **Lines.** About −170 (*estimate*).
-- **Done** at PR #196 (11 October), as written, with one addition: `Used` keeps the billed dollars alone, since nothing read a pair's turns or seconds once `within` and `spread` were gone; `Recorded` holds no `turns`, and a record on the log with another count than `LIMITS.turns` is refused.
-
-#### A4. A setting is recorded once and does not change
-
-- **Depends on.** A1.
-- **What goes.** `--new-setting` (`tools/d2/setting.ts`, 13 mentions of it and of `restarts`;
-  `launch.ts`, `round.ts`, `checkpoint.ts`); `restarted` of `Wanted` and its use in `sized`
-  (`src/builder/admission.ts`); the outcome `earlier-setting` (`reports.ts`, `record.ts`); the
-  setting filters of `stopRule` (`from`), of `exhausted` and of `outcomesOf`.
-- **What stays.** `campaign.setting`, written once; the refusal of a flag that names another
-  setting; `firstRecord`, which holds a first record to what the log's solves ran under.
-- **Tests.** `test/setting.test.ts` (15), `test/decide.test.ts` (3), `test/admission.test.ts`
-  (2), `test/reports.test.ts` (3), `test/campaign.test.ts` (2), `test/runs-launch.test.ts` (2).
-- **Lines.** About −100 (*estimate*).
-- **Done** at PR #198 (11 October), as written, with one addition: the setting filter of `supplyOf` and the `stood` report `groundOf` passed it go too, and `Ground.here` is `all`. The filters read the setting id, which names the host's code, so a tree moved to a new commit between two comparisons had begun the stop rule, the exhausted tasks, the untied share and the Examiner's outcomes again.
-
 ### Package B. A comparison without its extras
-
-#### B1. The noise arm is the operator's flag (D3)
-
-- **Why.** The reference against itself costs half as many solves again beside the first
-  comparison under a setting. The table reads only whether one was made (`noiseRead`), never
-  what it read. The plan's measure M2 is a count of such controls, which a checkpoint by hand
-  gives.
-- **What goes.** `noiseRead` and every `"noise"` argument of `compare` in
-  `src/builder/decide.ts`; the `noise` field of the move and its words in `decidedLine`; the
-  three-sides arithmetic of `afforded` (two sides always); `--noise` in `comparisonOf` and
-  `termsOf` of the campaign command.
-- **What stays.** `--noise` on `tools/d2/checkpoint.ts`, `halves` in `src/kernel/compare.ts`, the
-  report's `noise`.
-- **Tests.** `test/decide.test.ts` (23 mentions), `test/harness-builder.test.ts` (5).
-- **Lines.** About −60 (*estimate*).
-- **Done** at PR #200 (11 October), as written. `afforded` still reads three sides off a comparison the operator asked for with `--noise`, since the next bills two.
-
-#### B2. The starter's tally is a line of the report (D4)
-
-- **What goes.** The readings `below-starter` and `starter-unread` as values a comparison
-  writes (`Reading`, `reading()` in `src/builder/comparison.ts`); the third arm of a comparison
-  and its completion (`src/builder/round.ts`); the row of `afterComparison` for
-  `starter-unread`; the pair rule of `stopRule` for a harness set against the starter
-  (`referenced`).
-- **What stays.** The two words stay readable in a recorded report. The starter is still the
-  control after a promotion (`onReference`), which is where the plan reads whether the starter
-  loses more pairs each epoch (its measure M1).
-- **Tests.** `test/round.test.ts`, `test/reports.test.ts` (3), `test/handover.test.ts` (2),
-  `test/decide.test.ts` (2), `test/wri-read.test.ts` (5).
-- **Lines.** About −90 (*estimate*).
-- **Done** at PR #201 (11 October), as written, with one addition: the report's `against` goes too, since no comparison solves the starter as a third side, and the investigation's `BELOW THE STARTER` and `STARTER UNREAD` triggers with it; the Builder's words for the two readings stay (`src/builder/past.ts`), for a log of before.
 
 #### B3. No prediction flag
 
@@ -664,45 +490,6 @@ The campaign command calls `acceptCommand`, `prepareCommand`, `draftCommand`, `e
 (`launchesOf`, `writeReceipt`). One refusal is therefore asked in three places: the launcher's
 preflight, the command, and a row of the table.
 
-#### D1. The view prints the table's move, once
-
-- **What goes.** `nextMoves`, `Asked`, `Move` and `UNCOMPARED` (`src/builder/handover.ts`, about
-  90 lines), and their lines in `tools/runs/view.ts`.
-- **Mends.** F7.
-- **Tests.** `test/handover.test.ts` (4 mentions).
-- **Lines.** About −110 (*estimate*).
-- **Done** at PR #199 (11 October), as written, with the imports and the one constant only
-  `nextMoves` read (`STEP`). The view still parses a launch's flags, since the table reads
-  `--level`, `--trigger`, `--past-stop` and the setting's; the move list's case of
-  `test/handover.test.ts` goes whole (5 cases), the view's case says that no move but the
-  table's is printed, and the rehearsal of `test/checker-commands.test.ts` reads a launch's
-  refusals from the launcher alone. The source loses 135 lines (153 out, 18 in); AGENTS.md section 4, the
-  `launch-run` and `run-improvement-campaign` skills say the same.
-
-#### D2. The launcher starts nothing
-
-- **What goes.** In `tools/runs/launch.ts`: `launch`, `preflight`, `sessionPreflight`,
-  `examPreflight`, `refused`, `passedOn`, `settingFlagged`, `askedFlagged`, `flagsRefused`,
-  `commandOf`, `start`, `endedEarly`, `reportedAs`, `sessionTaken`. The verb in
-  `tools/runs/cli.ts`. `--loaded`, `--env-file` and `--no-comparison` as the launcher's.
-- **What stays.** `stop`, `family`, `leftOpen` and the receipt (`receiptOf`, `writeReceipt`,
-  `launchesOf`), in a file named for them. The campaign command already waits for the host's
-  load and keeps a receipt a run.
-- **What replaces a launch.** One paragraph of the skill: the campaign command, niced, in a
-  process group of its own, with its output to two files and the key in Bun's `--env-file`.
-- **Tests.** `test/runs-launch.test.ts` (376 lines, 20 cases): the cases of `stop` and of the
-  receipt stay.
-- **Docs.** `AGENTS.md` section 6 (the block of `bun run runs`, the two paragraphs on the
-  launcher and on admission); the skill `launch-run` is rewritten as "start and stop a
-  campaign"; `run-improvement-campaign` (5 mentions).
-- **Lines.** About −420 (*estimate*).
-- **Done** at PR #211 (11 October), as written, with two differences: `passedOn` moves into
-  `tools/runs/rehearse.ts`, its one reader, in place of going; and `runs view` parses its four
-  flags itself and reads the campaign's opening for the terms it does not name, where it had
-  parsed a launch's. Two files hold what stays: `tools/runs/stop.ts` and `tools/runs/receipt.ts`.
-  The deferral below was met the same day: the session on the Mac starts its campaigns through
-  the campaign command.
-
 #### D3. The round is no command
 
 - **What goes.** `roundCommand` (`tools/d2/round.ts`), `round` and `RoundRequest`
@@ -719,215 +506,6 @@ preflight, the command, and a row of the table.
 ---
 
 ## Phase 4. The wall (D8)
-
-This session could not edit `src/verify`: its permissions refuse a change to the wall's rules.
-The phase is for a session on the operator's host, and every package runs the suite on macOS
-and on Linux.
-
-### What a seat's commands run under today
-
-*Read* in `src/solve/command.ts` and `src/verify/solve-command-isolation.ts`.
-
-- Three writable directories a command (`work`, the session `home`, a private `tmp`), a fresh
-  `run-*` made and removed around every command, a profile file staged for each, and a policy
-  rebuilt and hashed for each.
-- Two layers of policy identity (`policyHash` of the session and of the command). Their one
-  reader in v2 is the key of two per-process memos (`PROBED`, `REACH`). The condition records
-  the profile's name, the platform and the disk bytes, and no policy hash (`recordedUnder`,
-  `tools/d2/campaign.ts`).
-- Programs `withheld` inside the tool tree: a field no caller sets and no test names.
-- Seven name patterns for folders under the temporary directory. Three have a maker in v2: the
-  verifier's cells (`ana-cell-`), the reviewers' and the Examiner's backend state
-  (`ana-claude-cli-`), and the seats' own parent (`ana-built-bash`). Four are spelled in
-  `wall-policy.ts` alone.
-- v1's run-data patterns (`/correctness-model`, `/domains/<slug>/…`, `/campaigns/`, `/.env`,
-  `hidden-tasks.json`) and its scan for peer checkouts. **These are what closes a stored pack
-  today** (F10), so they go only once W5 closes a pack by name.
-- The worktrees, read once a campaign (`worktreesOf`).
-
-### The form to reach
-
-By `AGENTS.md` section 2, consequence 6. A wall keeps three things, and each gets one rule.
-
-| Kept | Rule |
-| --- | --- |
-| The exam side's hidden values | closed by name: the repository and its worktrees (or the campaigns' home, W7), a stored pack's root and bundle, and one host root that holds the verifier's cells and the reviewers' backend state |
-| The operator's credentials | the home closed whole, with the runtimes and toolchains under it opened again read-only |
-| One seat's files from another's | the parent of the seats' roots closed, and the seat's own root opened again |
-
-A seat writes its one root, whole. `HOME`, `TMPDIR` and the staging folder are subfolders of it.
-Reads are open otherwise. The network is open for a seat and closed for a check.
-
-### W1. Names with no maker and no reader
-
-- **What goes.** `withheld` (the field of `CommandDirectories`, of `CommandIsolationPolicy` and
-  of both identities, `withheldKey`, its Seatbelt rule and its Bubblewrap binds);
-  `PROTECTED_HOME_NAMES`; the four temporary names with no maker (`ana-pi-built-`,
-  `ana-reference-solve-cwd-`, `ana-generated-tools-`, `ana-verifier-cache` with
-  `VERIFIER_CACHE_STORE`).
-- **Behaviour.** None changes: an empty list, an unread constant, and patterns that match no
-  path v2 makes.
-- **Tests.** None names `withheld`.
-- **Lines.** About −50.
-
-### W2. The probe goes through the launch in use
-
-- **Mends.** F5.
-- **What changes.** `walledBase` (`src/solve/command.ts`) probes as `networkReach` does, by
-  commands through `runWalled`, once a policy a process: a read of a canary in the repository
-  is refused, a read of the first other worktree's `package.json` is refused, and a write and a
-  read under the seat's root succeed.
-- **What goes.** `isolationArgv`, `runUnderPolicy`, `probeHostSolveReadDeny`, `judgeSteps`,
-  `linuxMoveGuardCheck`, `observedRefusal`, `HostSolveIsolationEvidence`, the two fixture names
-  and `liftDeniesCovering` (313 lines of `src/verify/solve-sandbox.ts` from `isolationArgv`
-  down, *read*); `probeMoveGuardCheck`, `runIsolationProbe` and `MoveGuardCheck` (75 lines of
-  `src/verify/seatbelt-path-guard.ts`, *read*); `bwrapIsolationArgs` and `bwrapWholeRootArgs`
-  where nothing else calls them; the `cap` of `SolveIsolationPolicy`, which only that launch
-  mounted.
-- **The discrimination step.** The probe today lifts the denial and reads again, to show the
-  refusal was the rule's and not a broken mechanism. The read under the root does the same for
-  the launch: a mechanism that refuses everything fails it.
-- **Tests.** `test/solve-sandbox.test.ts` (301 lines, 15 cases) is rewritten around the new
-  probe, and `test/command.test.ts` gains the three reads. #185's Linux case already goes
-  through the command wall.
-- **Lines.** About −370.
-- **Done** at PR #197 (11 October), as written, with three differences: the policy's `profile`
-  (the Seatbelt text and the Linux descriptor) goes too, since only `isolationArgv` read it;
-  the probe is one command, which prints each read's outcome and then writes and reads back
-  under the seat's folder; and with the cap gone from the policy, a tree has one policy, so the
-  probe runs once a process where the cap's root put it in every seat's hash before.
-  `bwrapIsolationArgs` stays, since `bwrapBaselineArgs` builds on it. The source loses 559 lines
-  net (685 out, 126 in); the tests are rewritten at about the same length.
-
-### W3. One policy a seat, built once
-
-- **What changes.** `commandIsolationPolicy` takes the seat's root and builds one policy for the
-  session or the solve. `runWalled` stages a caller's files in a fresh folder under
-  `root/staging`, starts the command there or in the home, and removes that folder afterwards.
-  `TMPDIR` is `root/tmp`.
-- **What goes.** `commandDirs`, `RunDirs` as two paths, the `ENOSPC` fallback that exists
-  because a fresh `run-*` could not be made on a full volume, the profile file a command and its
-  removal, the policy and hash a command, the three scratch roots in the identity,
-  `CommandIsolationIdentity`, `BUILT_COMMAND_ISOLATION_FIXTURE` and
-  `LINUX_COMMAND_ISOLATION_DESCRIPTOR`.
-- **What a command loses.** A `TMPDIR` that is empty at its start. A seat's temporary files now
-  last the seat. That is the grant made whole: one seat, one root.
-- **Collision.** None between seats: each has its own root. Inside a seat one command runs at a
-  time, and `endHolders` is called after each.
-- **Tests.** `test/command.test.ts` (321 lines), `test/coding-tools.test.ts`,
-  `test/harness-tools.test.ts`, `test/disk-cap.test.ts`.
-- **Lines.** About −200 (*estimate*).
-- **Done** at PR #203 (11 October), with one departure: the seat's commands write its root but for
-  one folder in it, `kept`, which the host alone writes. A root writable whole would let pi's long
-  output, which the host writes while the command runs, follow a link the command made, and a
-  check before the write cannot close that race. Nor does the host stage a command's files where a
-  command can write. A process that outran its command and holds no file on the volume escapes
-  `endHolders` on Darwin, so it could swap the folder for a link between the host's check and its
-  write. So a command's files are staged in a fresh folder under `kept`. The command copies them
-  into a folder it makes under its `TMPDIR`, starts there, and removes that folder when it ends.
-  The probe gains a step: a write in `kept` is refused. The policy is still taken for each command,
-  as a pure function of the seat's folders and its tool tree, because a Builder's `.toolchain`
-  grows during its session and its preview runs another harness's tree on the same seat. It is
-  staged to one profile file a seat. `inHome` goes, as every command that brings nothing starts in
-  the home. The solver's prompt now says `$TMPDIR` is kept for the whole task. A write outside the
-  home but inside the root, such as pi's write to `../escape.txt` from the home, now lands in the
-  seat's own root; the Builder's case reads the refusal one level up. The source loses 64 lines
-  net (268 out, 204 in).
-
-### W4. The host's own scratch under one closed root
-
-- **Why.** The verifier's cells hold a check program and a task's hidden value, and the
-  reviewers' and the Examiner's backend state holds what they read. Both are made under the
-  shared temporary directory (`src/kernel/verify.ts:378`, `src/review/reader.ts:61`,
-  `src/examiner/session.ts:389`, `src/examiner/draft.ts:463`), and closed there by a name
-  pattern on Darwin and by the overmount of the temporary directory on Linux.
-- **What changes.** They are made under one host root beside the seats' parent, which every
-  seat's policy closes by path. The remaining temporary name patterns
-  (`VERIFIER_TEMP_SIBLING_DENY_PATTERNS`, `COMMAND_TEMP_SIBLING_DENY_PATTERNS`) go.
-- **What stays.** Darwin's grant of the user temporary directory to toolchains that ignore
-  `TMPDIR` (`userTempRules`). That is the platform's, and the collision it leaves between seats
-  is stated in `src/verify/disk-cap.ts`.
-- **Lines.** About −40 (*estimate*).
-- **Done** at PR #204 (11 October), as written. The root is `$TMPDIR/ana-host`, beside the seats'
-  `ana-built-bash`, made at mode 0700 by `hostScratch`. `hostRoots` names both roots in both path
-  forms, and each Darwin wall denies them whole: the command wall where it denied the seats'
-  parent, the verifier's after its temporary grant. A check's cell lies in the host's root, so the
-  verifier opens the folders above the cell to `lstat` alone, as the command wall does for a seat,
-  and the cell after them. All seven patterns go, the four with no maker that W1 left for a change
-  proved on the Mac among them, and `userTempRules` only grants. Linux changes nothing: the
-  verifier binds only what it names, and the command wall overmounts the temporary directory. The
-  source loses 25 lines net (98 out, 73 in).
-
-### W5. A stored pack is closed by name
-
-- **Mends.** F10.
-- **What changes.** `Walled` carries the pack's root and bundle where a campaign opened over
-  one, and `solveIsolationPolicy` closes them as it closes the repository. The harness's tool
-  tree is opened again by path, as it is today.
-- **What goes.** `RUN_DATA_DENY_PATTERNS`, `runDataDenyRules`, `RUN_DATA_NAMES`,
-  `runDataDenyPaths`, `HIDDEN_TASKS_DENY_PATTERN`.
-- **Tests.** A wall test on each system: a file under a pack's `correctness-model` is refused to
-  a solve's command, with the pack in a folder that carries none of the three names beside it.
-- **Lines.** About −70 (*estimate*).
-- **Done** at PR #211 (11 October), as written. `tools/d2/campaign.ts` and `tools/m0/live-solve.ts`
-  name the pack's root and bundle; a campaign that opened from a prompt names none, as its exam
-  lies under `.ana` in the repository. A solve, an examination and a Builder's session pass them to
-  `solveIsolationPolicy`, which closes them with the repository, its other worktrees and the home.
-  On the Mac nothing a command sees changes: the home is closed whole, and every pack lies under
-  it. On Linux a pack outside the home is now closed by its path. `test/command.test.ts` puts a
-  pack in the temporary directory, its hidden file under `fixture/workspace/correctness-model`: a
-  command is refused it on both systems, and on Darwin reads it where the policy names no pack,
-  which shows that no folder's name closes it. The Linux half was not run here. The source loses
-  62 lines net (115 out, 53 in).
-
-### W6. A check runs under the same wall, with the network closed
-
-- **Why.** Nine files hold the verifier's default-deny wall and its attestation, 1,700 lines
-  (*read*): `exact-read-attestation.ts` 355, `read-root-attestation.ts` 319,
-  `darwin-seatbelt.ts` 400, `os-isolation.ts` 175, `darwin-runtime-closure.ts` 155,
-  `linux-bwrap-verifier.ts` 150, `isolation-description.ts` 88, `engine-cell-env.ts` 39,
-  `verifier-port.ts` 19. v1 needed them because its Builder wrote the checks. An answer here is
-  data, and a check is the exam side's code.
-- **What stays.** Everything that makes a check's inputs a contract and is no wall of the
-  system's: one fresh process a check, the projection of the answer and the task to the declared
-  paths, one check's own hidden value, the copy of the check program in the cell, the tool tree
-  as the only place a check's tools are found, the time limit and the reaping.
-- **What changes.** `runCheck` (`src/kernel/verify.ts`) launches the check's process through
-  the command wall with the cell as its root and the network closed. `plan.verify()` before and
-  after, and the non-result "the wall changed while the check ran", go.
-- **What goes.** The attestation files whole, the verifier's plans on both systems, and the
-  parts of `os-isolation.ts` and `darwin-seatbelt.ts` that serve them. The part that finds the
-  mechanism for both walls stays (`osIsolationSupport`, `darwinSeatbeltSupport`,
-  `linuxBwrapSupport`). About 1,400 lines go (*estimate*).
-- **The test.** `bun tools/m0/regrade.ts` over the stored verdicts, which matched 100 of 100 on
-  truss (`docs/transfer.md`), is to match again. Then `test/verify.test.ts` and
-  `test/acceptance.test.ts`.
-- **What I could not establish.** What a check program's tools read outside the tool tree. The
-  regrade is what says.
-- **Tests that go.** `test/exact-read-attestation.test.ts` (149 lines),
-  `test/read-root-attestation.test.ts` (140), `test/linux-bwrap-verifier.test.ts` (278), and most
-  of `test/darwin-seatbelt.test.ts` (500).
-- **Done** at PR #217 (11 October), as written. A check's cell is a seat's root: `home` and `tmp` in
-  it, the program in its `kept`, which the check reads and cannot write, and the profile beside it.
-  The check is launched through `isolatedArgv`, the argv a seat's command takes without its shell,
-  with the network closed: Darwin `(deny network*)`, Linux `--unshare-net`. Its base is
-  `solveIsolationPolicy`, with the check child's sources opened again by path. `openVerifier` takes
-  the worktrees and the pack a campaign closes, so on Linux a pack outside the home is closed to a
-  check as it is to a seat. A seat's policy hash does not move, as the network is named in it only
-  where closed. Seven files go whole. `darwin-seatbelt.ts`, `os-isolation.ts`, `linux-bwrap.ts` and
-  `wall-policy.ts` keep what the command wall uses; the bwrap canary now runs under the open-read
-  posture. The regrade matched: truss 100 of 100, buffer 5 of 5, recode 10 of 10. The command wall
-  no longer lets a command list the shared temporary directory on Darwin, as Linux's overmount
-  leaves it empty. Bun lists each ancestor of its working directory as it starts, which the
-  verifier's own wall had refused, and with 33,673 entries in that directory the truss regrade took
-  68 s against the base's 43 (medians of four, interleaved). With the rule it took 43 and 32 s
-  against 48 and 54. `test/verify.test.ts` gains a check whose tool compiles with `/usr/bin/cc`.
-  `test/linux-bwrap.test.ts` keeps the support, refusal, resolver and runtime-prefix cases of the
-  deleted test. Two things the verifier's own wall refused are open to a check now, as they are to a
-  seat's command: a Mach lookup of the keychain and consent services, and a signal to a process
-  outside the wall. A keychain read has no way out, since the network is closed and the cell is
-  removed; a signal can end a host process. The source loses 1,855 lines net (2,086 out, 231 in),
-  against the estimate of about 1,400.
 
 ### W7. Campaigns outside the tree (D9)
 
@@ -949,30 +527,6 @@ operator's home or in another seat's root.
 
 ## Phase 5. Seats and readers
 
-### E1. No Diagnoser (D10)
-
-- **Why.** 12 of 12 diagnoses of 9 October and 8 of 8 of 10 October named the solver
-  (*record*). The Builder is handed the trace and the ending either way. It is a model call a
-  failed practice solve.
-- **What goes.** `src/review/diagnoser.ts` (350 lines, *read*) with its 6.9 kB prompt; the
-  diagnosis in `src/review/agreement.ts`; `diagnosisText` and its place in a practice result
-  (`src/builder/tools.ts`); the diagnoses of `src/builder/past.ts` and
-  `src/builder/handover.ts`; the seat's wiring in `src/builder/session.ts` and
-  `tools/d2/campaign.ts`; `--diagnoses` and the blind packet of #182 in `tools/d2/settle.ts` (28
-  mentions); the lines of `tools/d2/close.ts` (11).
-- **What stays.** `diagnosis.recorded` and `diagnosis.labelled` stay readable. The Referee and
-  the reviewers' shared reader stay.
-- **The wall.** A practice result loses one paragraph. The test of rule 3 for the Builder
-  (`test/builder.test.ts`, "what crosses to the Builder") passes with fewer bytes on both sides.
-- **Tests.** `test/review.test.ts` (39 mentions in 24 cases), `test/builder.test.ts` (11),
-  `test/handover.test.ts` (8), `test/harness-builder.test.ts` (14).
-- **Docs.** `AGENTS.md` sections 1, 3 and 14; the skill `whole-run-investigation` (about 23
-  mentions).
-- **If the operator keeps it.** Its measure is then the labels of #182, and this package waits
-  for ten of them.
-- **Lines.** About −500 (*estimate*).
-- **Done** at PR #205 (11 October), as written. The wall test's hostile case leaks through a practice solve's trace in place of a diagnosis. `src/review/trace.ts` loses `stringOf` and `turnsOf`, which only the Diagnoser read.
-
 ### E2. A Builder's home is carried whole
 
 - **Why.** `src/builder/memory.ts` (384 lines, from v1) carries two named files and a `scratch/`
@@ -987,29 +541,6 @@ operator's home or in another seat's root.
 - **Tests.** `test/builder-memory.test.ts` (463 lines, 26 cases) shrinks to the carry and the
   limit.
 - **Lines.** About −250 (*estimate*).
-
-### E3. The Builder's prompt says each fact once
-
-- **Why.** The Builder's text grew at nearly every checkpoint, mostly a sentence a failed run:
-  its system prompt from 3,498 to 5,250 characters, and `HARNESS.md` to 9,569 (a trace of the
-  stack I did not recheck; the instrument reads `src/builder/prompt.ts` at 5,135 bytes on main
-  and 9,751 at #183). Three pull requests answered one failure, a harness no practice solve had
-  run, with words (#77, #93, #156) (*bodies*).
-- **What changes.** The sentences that restate what a tool result already ends with go from the
-  system prompt: the time and turns used, the practice solves left, that no practice solve has
-  run the harness. `HARNESS.md`'s guide outline gains a tool beside its "Programs" heading, so
-  that the worked example does not steer to programs alone.
-- **Tests.** `test/builder.test.ts`, `test/starter.test.ts`.
-- **Lines.** Text only.
-- **Done** at PR #207 (11 October): the system prompt loses the sentences that restated the limits and what a tool result ends with (its last paragraph from 1,071 to 884 characters), and keeps one on what a reply counts as; the guide outline of `HARNESS.md` is "Programs and tools", with the worked tool as its second entry.
-
-### R1. No reader across campaigns
-
-- **What goes.** `tools/runs/compare.ts` (364 lines, *read*), its verb,
-  `test/runs-compare.test.ts` (353 lines), the skill `model-condition-comparison`.
-- **Why.** `AGENTS.md` section 9: "Results are never compared across campaigns, and never across
-  two settings." Two harnesses are set side by side by a checkpoint.
-- **Done** at PR #206 (11 October), as written. The skills that named the verb point at a checkpoint or `runs view`.
 
 ### R2. The pulse keeps what the campaign command reads
 
@@ -1033,13 +564,6 @@ operator's home or in another seat's root.
 
 ## Phase 6. Text and tooling (D12)
 
-### T1. The lint habits beside the linter
-
-- **What changes.** `AGENTS.md` section 12 (24.7 kB, a quarter of the file) moves to
-  `tools/oxlint/HABITS.md`. The contract keeps ten lines: the gate, strict mode, never turn a
-  rule off, and where the habits are. A session that writes no code does not read them.
-- **Done** at PR #208 (11 October): `tools/oxlint/HABITS.md` holds the thirteen parts under their numbers, and section 12 keeps four lines of contract with a pointer; `AGENTS.md` from 88.9 kB to 77.4 kB.
-
 ### T2. A head comment says what the code does, and one defect
 
 - **What changes.** `AGENTS.md` section 13: a head comment states what the module does and the
@@ -1047,27 +571,6 @@ operator's home or in another seat's root.
   in the pull request's body, and `git log` keeps it.
 - **How.** No sweep. A pull request that touches a file trims that file's head comment to the
   rule. Packages A to W touch most of the files that carry the 183 dates.
-
-### T3. The plan keeps its present
-
-- **What changes.** "Where v2 stands" in `docs/plan.md` is a history written at #91 and again at
-  #168. It moves to a file of its own beside `docs/v1.md`. The plan keeps the process, the fix
-  plan with its level column, the climb plan and the decisions.
-- **Done** at PR #209 (11 October): `docs/plan-history.md`, 24.3 kB, and a pointer of three lines where the section stood; the plan from 234.3 kB to 210.8 kB.
-
-### T4. Sections 6 and 7 of `AGENTS.md`, written once more
-
-- **After** A, B and D. "A campaign's commands" loses the launcher and the round. "How a
-  comparison is read" loses the budget, the noise arm in the table and two readings. Both are
-  written again whole, since each was patched a sentence a pull request.
-- **Done** at PR #213 (11 October), after A, B, D2 and E: both sections written again whole in
-  the present, with four subsections in section 6 (the campaign command, what the log records of
-  a campaign's conditions, what refuses a move, defaults and a first flag line) and the decision
-  table's order as a numbered list in section 7; the dated notes on what each rule replaced go to
-  `docs/simplify.md` and `docs/plan-history.md` by one pointer. The round stays, since D3 is
-  deferred. One correction on the way: the stop rule's second kind of move is a whole session
-  that left its harness as it was where a practice solve of it failed, as `stopRule` has read it
-  since row F52, where the section said any unchanged session.
 
 ### T5. The repository's own lint rules
 
@@ -1083,18 +586,8 @@ operator's home or in another seat's root.
 
 ## 11. Small edges
 
-Each has no reader or no effect (*read*). They go with the package named, or alone.
-
-| Edge | Where | What I checked | Goes with |
-| --- | --- | --- | --- |
-| `withheld` programs | `solve-command-isolation.ts` | no caller outside the file, no test | W1 |
-| `PROTECTED_HOME_NAMES` | `wall-policy.ts` | no reader; the home is closed whole | W1 |
-| Four temporary names with no maker | `VERIFIER_TEMP_SIBLING_DENY_PATTERNS` | spelled in `wall-policy.ts` alone | W1 |
-| `src/meta/completed-json.ts` | 60 lines | no importer | alone |
-| `src/meta/campaign-root.ts` | v1's `campaigns/` root | imported by one lint rule and two tests | T5 |
-| The trinomial test as a comment | `src/kernel/compare.ts` | the plan's own row C3 | alone; done at PR #212 (11 October) |
-| `--solve-turns` | `tools/d2/setting.ts` | "bound no solve", its head comment | A3 |
-| `anchor.drawn`, `anchor.scored`, `exam.word` | `EVENT_KINDS` | no writer; kept readable by section 5 of `AGENTS.md` | stay |
+Done at PRs #191 and #212, but `src/meta/campaign-root.ts`, which goes with T5. The table is in
+`docs/plan-history.md`.
 
 ## 12. Risks
 

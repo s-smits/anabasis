@@ -1,517 +1,208 @@
+// The runs pulse says what a run's log gained since the last look: milestones, solves that ended
+// without a result, failed turns gathered into one line, a quiet that starts and ends, and a
+// process gone before its run was done. A first look says the status alone.
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { placeOnBand } from "../src/claim/battery-difficulty.ts";
-import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
-import type { Observation } from "../tools/runs/evidence.ts";
-import { busyUnder, elapsedMs, loadMemory, parseProcessTable, saveMemory } from "../tools/runs/pulse-host.ts";
-import { isPulseReading, offAimStreak, pulseEvents, selected, statusLine } from "../tools/runs/pulse.ts";
-import {
-  pulseLabel,
-  readInFlight,
-  type PulseBattery,
-  type PulseReading,
-  type PulseRound,
-} from "../tools/runs/pulse-read.ts";
+import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
+import { pulse, type Run, writers } from "../tools/runs/pulse.ts";
 
-const SLUG = "design-lightweight-steel-trusses-3fd52f9e-4";
-const RUN_ID = "truss-opus-20260925T042950810Z-371f8f";
-const OPENED = Date.parse("2026-09-25T04:30:00.000Z");
-const MINUTE = 60_000;
+const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
+const START = Date.parse("2026-10-08T12:00:00Z");
+const at = (minute: number) => new Date(START + minute * 60_000).toISOString();
+const event = (minute: number, kind: EventKind, data: JsonObject): LogEvent => ({
+  at: at(minute),
+  kind,
+  data,
+});
+const usage = (total: number) => ({ cost: { total } });
 
-function at(minutes: number): string {
-  return new Date(OPENED + minutes * MINUTE).toISOString();
-}
-
-function transition(
-  minutes: number,
-  phase: string,
-  state: string,
-  extra: Partial<Observation> = {},
-): Observation {
-  return {
-    at: at(minutes),
-    phase,
-    type: "phase-transition",
-    state,
-    subjectId: null,
-    level: "default",
-    summary: null,
-    parentId: null,
-    evidence: [],
-    ...extra,
-  };
-}
-
-function round(extra: Partial<PulseRound> = {}): PulseRound {
-  return {
-    number: 1,
-    epoch: "epoch-a",
-    checkpointAt: null,
-    toolCalls: 10,
-    failedCalls: 0,
-    previews: 0,
-    clearPreviews: 0,
-    firstClearMs: null,
-    accepted: 0,
-    refused: 0,
-    refusalCodes: [],
-    rehearsals: [],
-    inFlight: null,
-    headline: null,
-    ...extra,
-  };
-}
-
-function battery(passed: number, verified: number, zone: PulseBattery["zone"]): PulseBattery {
-  const placedOn = zone === null ? null : { passes: passed, n: verified };
-  return { passed, verified, unaccepted: 0, nonResults: 0, zone, placedOn, recorded: true };
-}
-
-/** A battery placed on the climb band by the controller's own rule, on `placed` counts when a review
- *  settled some of its cases against their check. */
-function placed(passes: number, n: number, settled = 0): PulseBattery {
-  const placement = placeOnBand(passes, n - settled, [0.2, 0.5]);
-  return { ...battery(passes, n, placement?.zone ?? null), placedOn: { passes, n: n - settled } };
-}
-
-const OPENING = [
-  transition(0, "input", "completed"),
-  transition(1, "build", "started", { summary: "Build step started (build)" }),
+const built: LogEvent[] = [
+  event(0, "build.started", { session: "r1-b", model: "claude/claude-opus-5" }),
+  event(1, "build.turn", { session: "r1-b", turn: 1, error: null, usage: usage(0.5) }),
+  event(2, "solve.started", { solve: "s1", task: "mass-03", model: "openai-codex/gpt-6.1-sol" }),
+  event(3, "solve.turn", { solve: "s1", turn: 1, error: "WebSocket closed 1000", usage: usage(0.25) }),
+  event(4, "solve.finished", {
+    solve: "s1",
+    ending: { outcome: "non-result", kind: "provider", reason: "WebSocket closed 1000" },
+    billed: 0.25,
+    seconds: 240,
+  }),
 ];
 
-function reading(minutes: number, extra: Partial<PulseReading> = {}): PulseReading {
-  return {
-    runId: RUN_ID,
-    label: pulseLabel(RUN_ID),
-    state: "live",
-    now: OPENED + minutes * MINUTE,
-    startedAt: at(0),
-    observations: OPENING,
-    round: round({ checkpointAt: at(minutes) }),
-    batteries: [],
-    safeguards: [],
-    terminal: null,
-    busy: null,
-    ...extra,
-  };
-}
-
-function texts(before: PulseReading | undefined, after: PulseReading): string[] {
-  return pulseEvents(before, after, SLUG).map((event) => `${event.mark} ${event.text}`);
-}
-
-describe("runs pulse", () => {
-  it("drops the launch instant from the label and keeps what tells runs apart", () => {
-    expect(pulseLabel(RUN_ID)).toBe("truss-opus-371f8f");
-    expect(pulseLabel("standard-opus-20260930T091500123Z-pr75-669de6c")).toBe("standard-opus-pr75-669de6c");
+describe("the runs pulse", () => {
+  it("says the status alone at a first look", () => {
+    const look = pulse(round, built, "open", undefined, START + 5 * 60_000);
+    expect(look.status).toBe("r1  build turn 1 · solves 1 non-result · $0.75 · 1m since the last event");
+    expect(look.said).toEqual([]);
+    expect(look.seen).toEqual({ lines: 5, open: true, quiet: false });
+    // A seed's counts are its source's and a script's, so its line says what it is.
+    const seeded = pulse({ ...round, seed: true }, built, "closed", undefined, START + 5 * 60_000);
+    expect(seeded.status.startsWith("r1 (a seed)  closed · ")).toBe(true);
   });
 
-  it("says nothing on the first look and nothing when no recorded byte moved", () => {
-    const first = reading(10);
-    expect(texts(undefined, first)).toEqual([]);
-    expect(texts(first, { ...first, now: first.now + MINUTE })).toEqual([]);
-  });
-
-  it("names a recorded battery with its placement and its off-aim streak", () => {
-    const before = reading(60, { batteries: [battery(6, 6, "too-easy")] });
-    const claim = transition(61, "claim", "completed", {
-      summary: "battery recorded — claim 7/7 truth",
-      evidence: [`campaigns/${SLUG}/claims/${RUN_ID}-i02.json`],
-    });
-    const after = {
-      ...before,
-      now: before.now + MINUTE,
-      observations: [...before.observations, claim],
-      batteries: [battery(6, 6, "too-easy"), battery(7, 7, "too-easy")],
-    };
-    const [event, ...rest] = pulseEvents(before, after, SLUG);
-    expect(rest).toEqual([]);
-    expect(event?.text).toBe("battery recorded: 7/7 pass of verified, too-easy, above the aim 2 in a row");
-    expect(event?.look).toEqual(["claims/<run>-i02.json"]);
-  });
-
-  it("counts a streak on one side only, and an on-aim battery ends it", () => {
-    expect(offAimStreak([placed(1, 7), placed(6, 6), placed(3, 3)])).toMatchObject({
-      side: "above",
-      rounds: 2,
-      flat: 1,
-    });
-    expect(offAimStreak([placed(6, 6), placed(3, 7)])).toBeNull();
-    expect(offAimStreak([battery(0, 0, null)])).toBeNull();
-  });
-
-  it("names a stall at three batteries in a row that came no closer to the aim, whatever their zone", () => {
-    const flat = [placed(5, 5), placed(5, 5), placed(3, 3), placed(5, 5)];
-    expect(flat[2]?.zone).toBe("over-aim");
-    expect(statusLine(reading(0, { batteries: flat }), 10)).toContain(
-      "above the aim 4 in a row; the 3 since 5/5 came no closer, a stall",
-    );
-    expect(statusLine(reading(0, { batteries: flat.slice(1) }), 10)).not.toContain("stall");
-  });
-
-  it("reads a battery that came closer as movement, though it stays too easy, and one that did not as flat", () => {
-    // truss-sol-198d70's line since its closest battery, 6/7, with each outcome its thirteenth could have.
-    const line = [placed(5, 5), placed(6, 7), placed(25, 25), placed(10, 11)];
-    const next = (passes: number) => statusLine(reading(0, { batteries: [...line, placed(passes, 11)] }), 10);
-    expect(placed(9, 11).zone).toBe("too-easy");
-    expect(next(8)).not.toContain("stall");
-    expect(next(9)).not.toContain("stall");
-    expect(next(10)).toContain("the 3 since 6/7 came no closer, a stall");
-    expect(next(11)).toContain("the 3 since 6/7 came no closer, a stall");
-  });
-
-  it("does not count a fail its review settled against the check as coming closer", () => {
-    const settled = placed(3, 6, 3);
-    expect(settled.passed).toBe(3);
-    expect(settled.verified).toBe(6);
-    const line = [placed(6, 6), placed(6, 6), settled, placed(6, 6)];
-    expect(statusLine(reading(0, { batteries: line }), 10)).toContain(
-      "the 3 since 6/6 came no closer, a stall",
-    );
-  });
-
-  it("reads a flat line below the aim as a stall too, and a rise as movement", () => {
-    const low = [placed(1, 25), placed(1, 25), placed(1, 25), placed(1, 25)];
-    expect(statusLine(reading(0, { batteries: low }), 10)).toContain(
-      "below the aim 4 in a row; the 3 since 1/25 came no closer, a stall",
-    );
-    const rising = [...low.slice(0, 3), placed(3, 25)];
-    expect(statusLine(reading(0, { batteries: rising }), 10)).not.toContain("stall");
-  });
-
-  it("never reads the launch film's twelve rounds as a stall", () => {
-    // master/launch.json in anabasis-launch-video: raise a requirement and the line drops, repair and
-    // it rises, and the swings narrow into the band.
-    const film = [25, 6, 5, 24, 17, 21, 12, 19, 21, 9, 12, 11];
-    for (let rounds = 1; rounds <= film.length; rounds++) {
-      const batteries = film.slice(0, rounds).map((passes) => placed(passes, 25));
-      expect(statusLine(reading(0, { batteries }), 10)).not.toContain("stall");
-    }
-  });
-
-  it("numbers a new round and carries the last battery into its line", () => {
-    const before = reading(90, { batteries: [battery(7, 7, "too-easy")] });
-    const rebuild = transition(91, "build", "started", { summary: "Build step started (rebuild)" });
-    const after = {
-      ...before,
-      observations: [...before.observations, rebuild],
-      round: round({ number: 2, epoch: "epoch-b", checkpointAt: at(91) }),
-    };
-    expect(texts(before, after)).toEqual([
-      "◆ round 2 opened, a rebuild; last battery 7/7 pass of verified, too-easy, above the aim 1 in a row",
+  it("says what came since the last look, by the solve's task", () => {
+    const look = pulse(round, built, "open", { lines: 1, open: true, quiet: false }, START + 5 * 60_000);
+    expect(look.said).toEqual([
+      "· mass-03 started on openai-codex/gpt-6.1-sol",
+      "⚠ mass-03 ended without a result, provider: WebSocket closed 1000 in 4m, $0.25",
+      "⚠ 1 failed turn: WebSocket closed 1000",
     ]);
   });
 
-  it("raises a controller error row whatever its phase", () => {
-    const before = reading(20);
-    const error = transition(21, "grade", "failed", {
-      level: "error",
-      type: "verifier",
-      summary: "host wall refused",
-    });
-    const after = { ...before, observations: [...before.observations, error] };
-    expect(texts(before, after)).toEqual(["⚠ grade:failed host wall refused"]);
-  });
-
-  it("says each rehearsal's verdict, and marks one that could not run", () => {
-    const before = reading(30);
-    const after = {
-      ...before,
-      round: round({
-        checkpointAt: at(30),
-        rehearsals: [
-          { taskId: "t1", verdict: "pass", submitted: true },
-          { taskId: "t2", verdict: "not-run", submitted: null },
-          { taskId: "t3", verdict: "fail", submitted: false },
-        ],
-      }),
-    };
-    expect(texts(before, after)).toEqual([
-      "· r1 rehearsal 1 t1: pass",
-      "⚠ r1 rehearsal 2 t2: not-run",
-      "· r1 rehearsal 3 t3: fail (nothing submitted)",
-    ]);
-  });
-
-  it("raises no target or hold alert on passing rehearsals", () => {
-    const pass = (taskId: string) => ({ taskId, verdict: "pass", submitted: true });
-    const held = round({ checkpointAt: at(31), rehearsals: [pass("t1"), pass("t2"), pass("t3")] });
-    const passed = texts(
-      reading(30, { round: round({ checkpointAt: at(30) }) }),
-      reading(31, { round: held }),
-    );
-    expect(passed).toEqual([
-      "· r1 rehearsal 1 t1: pass",
-      "· r1 rehearsal 2 t2: pass",
-      "· r1 rehearsal 3 t3: pass",
-    ]);
-    expect(statusLine(reading(31, { round: held }), 10)).not.toMatch(/passed past|predictions expect|hold/);
-  });
-
-  it("reads each battery's Epoch Review once", () => {
-    const review = {
-      status: "completed",
-      findings: 2,
-      blocking: 1,
-      file: `analysis/${RUN_ID}-i02-epoch-review.json`,
-    };
-    const before = reading(60, { batteries: [{ ...battery(6, 6, "too-easy"), review: null }] });
-    const reviewed = { ...before, batteries: [{ ...battery(6, 6, "too-easy"), review }] };
-    expect(pulseEvents(before, reviewed, SLUG)[0]?.look).toEqual(["analysis/<run>-i02-epoch-review.json"]);
-    expect(texts(before, reviewed)).toEqual(["◆ review of battery 1 completed: 2 finding(s), 1 blocking"]);
-    expect(texts(reviewed, reviewed)).toEqual([]);
-    const kept = reading(60, { batteries: [battery(6, 6, "too-easy")] });
-    expect(texts(kept, reviewed)).toEqual([]);
-  });
-
-  it("says a quiet Builder once when the silence starts and once when it ends", () => {
-    const quietFrom = reading(40, { round: round({ checkpointAt: at(15) }) });
-    const stillQuiet = { ...quietFrom, now: quietFrom.now + 5 * MINUTE };
-    const fresh = reading(46);
-    const started = texts(reading(34, { round: round({ checkpointAt: at(15) }) }), quietFrom);
-    expect(started).toEqual([
-      "⚠ no Builder checkpoint for 25m 0s in round 1; no command running, so the model turn itself is long",
-    ]);
-    const compiling = { ...quietFrom, busy: { command: "sh -lc pio run", forMs: 12 * MINUTE } };
-    expect(texts(reading(34, { round: round({ checkpointAt: at(15) }) }), compiling)).toEqual([
-      "⚠ no Builder checkpoint for 25m 0s in round 1; running 12m 0s: sh -lc pio run",
-    ]);
-    expect(texts(quietFrom, stillQuiet)).toEqual([]);
-    expect(texts(stillQuiet, fresh)).toEqual(["· Builder checkpoints again"]);
-  });
-
-  it("names the rehearsal a quiet Builder is inside, and how long it has run", () => {
-    const rehearsing = reading(40, {
-      round: round({
-        checkpointAt: at(15),
-        inFlight: { taskId: "truss-5", stage: "solving", startedAt: at(16) },
-      }),
-    });
-    expect(texts(reading(34, { round: round({ checkpointAt: at(15) }) }), rehearsing)).toEqual([
-      "⚠ no Builder checkpoint for 25m 0s in round 1; rehearsing truss-5 for 24m 0s",
-    ]);
-    expect(statusLine(rehearsing, 18)).toContain("checkpoint 25m 0s ago · rehearsing truss-5 for 24m 0s");
-  });
-
-  it("reads the newest rehearsal still running, and not one an earlier session left unfinished", () => {
-    const epoch = mkdtempSync(join(tmpdir(), "pulse-inflight-"));
-    const started = (ordinal: number, minutes: number) => {
-      const task = join(epoch, "rehearsals", `rehearsal-${String(ordinal)}`, "cases", "truss-5");
-      mkdirSync(task, { recursive: true });
-      writeFileSync(join(task, "public-task.json"), "{}");
-      utimesSync(join(task, "public-task.json"), new Date(at(minutes)), new Date(at(minutes)));
-      return task;
-    };
-    expect(readInFlight(epoch, null)).toBeNull();
-    started(2, 10);
-    // Interrupted before its checks were written, and older than the last checkpoint.
-    expect(readInFlight(epoch, at(12))).toBeNull();
-    const task = started(10, 20);
-    expect(readInFlight(epoch, at(12))).toEqual({ taskId: "truss-5", stage: "solving", startedAt: at(20) });
-    writeFileSync(join(task, "trace.json"), "{}");
-    expect(readInFlight(epoch, at(12))?.stage).toBe("grading");
-    writeFileSync(join(epoch, "rehearsals", "rehearsal-10", "checks.json"), "{}");
-    expect(readInFlight(epoch, at(12))).toBeNull();
-  });
-
-  it("reads a candidate check that has not written its census, and not one that has or predates the checkpoint", () => {
-    const epoch = mkdtempSync(join(tmpdir(), "pulse-check-"));
-    const opened = (condition: string, run: string, minutes: number) => {
-      mkdirSync(join(epoch, "trials", condition, run), { recursive: true });
-      utimesSync(join(epoch, "trials", condition), new Date(at(minutes)), new Date(at(minutes)));
-      return join(epoch, "trials", condition, run);
-    };
-    expect(readInFlight(epoch, null)).toBeNull();
-    writeFileSync(join(opened("a", "full-1", 10), "census.json"), "{}");
-    expect(readInFlight(epoch, null)).toBeNull();
-    // Left without a census by an earlier call the Builder has already checkpointed after.
-    opened("b", "full-1", 11);
-    expect(readInFlight(epoch, at(12))).toBeNull();
-    const run = opened("c", "full-1", 20);
-    writeFileSync(join(run, "solvability.json"), "{}");
-    expect(readInFlight(epoch, at(12))).toEqual({ taskId: null, stage: "checking", startedAt: at(20) });
-    writeFileSync(join(run, "census.json"), "{}");
-    expect(readInFlight(epoch, at(12))).toBeNull();
-    const checking = reading(40, {
-      round: round({
-        checkpointAt: at(15),
-        inFlight: { taskId: null, stage: "checking", startedAt: at(16) },
-      }),
-    });
-    expect(statusLine(checking, 18)).toContain("checkpoint 25m 0s ago · checking a candidate for 24m 0s");
-  });
-
-  it("is not a quiet Builder while the run is measuring", () => {
-    const measuring = [...OPENING, transition(5, "solve", "started")];
-    const before = reading(30, { observations: measuring, round: round({ checkpointAt: at(4) }) });
-    expect(texts(reading(4, { observations: measuring }), before)).toEqual([]);
-  });
-
-  it("names each safeguard that fired since the last look once, with how many times", () => {
-    const before = reading(50, { safeguards: ["54-rebuild-seed-tool-tree-copied"] });
-    const after = {
-      ...before,
-      safeguards: [
-        ...before.safeguards,
-        "12-dcg-refused",
-        "12-dcg-refused",
-        "54-rebuild-seed-tool-tree-copied",
-      ],
-    };
-    expect(texts(before, after)).toEqual([
-      "· safeguard 12-dcg-refused ×2",
-      "· safeguard 54-rebuild-seed-tool-tree-copied",
-    ]);
-  });
-
-  it("ends with the terminal and nothing else after it", () => {
-    const before = reading(700);
-    const after = { ...before, state: "closed" as const, terminal: "completed" };
-    expect(texts(before, after)).toEqual(["◆ ended: completed"]);
-    expect(statusLine(after, 10)).toContain("ended: completed");
-  });
-
-  it("states a run whose process is gone by that, not by the stage its last round reached", () => {
-    const orphaned = reading(700, { state: "orphaned" });
-    expect(statusLine(orphaned, 10)).toContain("orphaned: the process is gone and no terminal is recorded");
-    expect(statusLine(orphaned, 10)).not.toContain("build");
-  });
-
-  it("states a round in its gate by the gate's phase, not the previous battery's solves", () => {
-    const earlier = [...OPENING, transition(5, "solve", "started"), transition(6, "measure-on", "started")];
-    const gating = [...earlier, transition(40, "build", "started"), transition(90, "controls", "started")];
-    expect(statusLine(reading(93, { observations: gating }), 10)).toContain("gating: controls 3m 0s");
-    const solving = [...gating, transition(95, "solve", "started"), transition(96, "measure-on", "started")];
-    expect(statusLine(reading(97, { observations: solving }), 10)).toContain(
-      "measuring: 0 submitted, 1 solving, 2m 0s",
-    );
-  });
-
-  it("states a remeasure round in its gate, and a gate no build row opened", () => {
-    // A `measure` move opens its round with no `build:started`, only these two rows.
-    const measured = [...OPENING, transition(5, "solve", "started"), transition(20, "claim", "completed")];
-    const remeasure = [
-      ...measured,
-      transition(30, "next", "completed"),
-      transition(31, "build", "completed", { summary: "Current adopted harness reused" }),
-      transition(31, "adopt", "completed", { summary: "Current domain tree already adopted" }),
-      transition(32, "controls", "started"),
+  it("says a quiet once when it starts and once when it ends", () => {
+    const later = START + 30 * 60_000;
+    const quiet = pulse(round, built, "open", { lines: 5, open: true, quiet: false }, later);
+    expect(quiet.said).toEqual(["⚠ quiet for 26m"]);
+    expect(pulse(round, built, "open", quiet.seen, later).said).toEqual([]);
+    const woken = [
+      ...built,
+      event(30, "build.turn", { session: "r1-b", turn: 2, error: null, usage: usage(0.5) }),
     ];
-    expect(statusLine(reading(35, { observations: remeasure }), 10)).toContain("gating: controls 3m 0s");
-    const unopened = [transition(0, "input", "completed"), transition(2, "controls", "started")];
-    expect(statusLine(reading(5, { observations: unopened }), 10)).toContain("gating: controls 3m 0s");
+    expect(pulse(round, woken, "open", quiet.seen, later).said).toEqual(["· not quiet any more"]);
   });
 
-  it("states a build round by its counts", () => {
-    const line = statusLine(
-      reading(45, {
-        round: round({
-          checkpointAt: at(44),
-          previews: 2,
-          clearPreviews: 1,
-          rehearsals: [{ taskId: "t1", verdict: "pass", submitted: true }],
-          headline: "Running design 5 rehearsal",
-        }),
-      }),
-      18,
+  it("says a process gone before its report, and not one that reported", () => {
+    const gone = pulse(round, built, "closed", { lines: 5, open: true, quiet: false }, START + 5 * 60_000);
+    expect(gone.status).toStartWith("r1  closed");
+    expect(gone.said).toEqual(["⚠ the process is gone before comparison.reported"]);
+    const reported = [...built, event(5, "comparison.reported", { reading: "held" })];
+    const done = pulse(round, reported, "closed", { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
+    expect(done.status).toStartWith("r1  reported held");
+    expect(done.said).toEqual(["◆ reported held"]);
+    // An Examiner session writes no report: its own end is the run's, and a round's report before it
+    // is not.
+    const examining = [...reported, event(6, "exam.started", { session: "x-1" })];
+    const seen = { lines: 7, open: true, quiet: false };
+    expect(pulse(round, examining, "closed", seen, START + 7 * 60_000).said).toEqual([
+      "⚠ the process is gone before exam.finished",
+    ]);
+    const examined = [...examining, event(7, "exam.finished", { session: "x-1", ended: "finished" })];
+    expect(pulse(round, examined, "closed", seen, START + 8 * 60_000).said).toEqual(["◆ exam x-1 ended"]);
+    // A report with tasks set aside on rejections nobody has settled, one its cap cut, and one
+    // that scored nothing, are each something to look at.
+    const says = (data: JsonObject) =>
+      pulse(
+        round,
+        [...built, event(5, "comparison.reported", data)],
+        "closed",
+        { ...done.seen, lines: 5 },
+        START,
+      ).said;
+    expect(says({ reading: "no-step", aside: ["v1", "v2"] })).toEqual([
+      "⚠ reported no-step, with 2 task(s) set aside on rejections no person has settled",
+    ]);
+    expect(says({ reading: "not-scored", capped: true, aside: [] })).toEqual([
+      "⚠ reported not-scored: its dollar cap cut it short",
+    ]);
+    // A cap that cut the starter's solves left the test standing.
+    expect(
+      says({ reading: "starter-unread", capped: true, scored: { wins: 4, losses: 0, ties: 0 }, aside: [] }),
+    ).toEqual([
+      "⚠ reported starter-unread: its dollar cap cut the starter's solves short, and its test stands",
+    ]);
+    expect(says({ reading: "step", aside: [] })).toEqual(["◆ reported step"]);
+    expect(says({ reading: "no-step", settled: { labelled: 2, defects: 2 } })).toEqual([
+      "◆ settled by hand as no-step: 2 labelled, 2 a check defect",
+    ]);
+    expect(says({ reading: "not-scored", unflagged: null })).toEqual(["⚠ reported not-scored"]);
+  });
+
+  it("reads a checkpoint by its own start, in a log that holds an earlier comparison's report", () => {
+    // A campaign's log holds many comparisons. A checkpoint starts no session, so only its own
+    // start says that the report before it is another's.
+    const earlier = [...built, event(5, "comparison.reported", { reading: "no-step" })];
+    const solving = [
+      ...earlier,
+      event(6, "comparison.started", { session: "g0" }),
+      event(7, "solve.started", { solve: "s9", task: "mass-04", model: "claude/claude-opus-5" }),
+    ];
+    const seen = { lines: 8, open: true, quiet: false };
+    expect(pulse(round, solving, "open", seen, START + 8 * 60_000).status).toStartWith("r1  solving");
+    // Gone with that solve unfinished and no report of its own, it is said to be gone.
+    const gone = pulse(round, solving, "closed", seen, START + 9 * 60_000);
+    expect(gone.status).toStartWith("r1  closed");
+    expect(gone.said).toEqual(["⚠ the process is gone before comparison.reported"]);
+    // Its own report ends it.
+    const ended = [
+      ...solving,
+      event(8, "solve.finished", { solve: "s9", ending: { outcome: "pass" } }),
+      event(9, "comparison.reported", { session: "g0", reading: "not-scored", capped: true }),
+    ];
+    const done = pulse(round, ended, "closed", { ...seen, lines: 10 }, START + 10 * 60_000);
+    expect(done.status).toStartWith("r1  reported not-scored");
+    expect(done.said).toEqual([]);
+  });
+
+  it("reads a comparison gone on from its log as solving, after another's report", () => {
+    // g0 was stopped, g1 ran whole, and g0 goes on: it writes no second start, so its solves after
+    // g1's report are what says the run has not reported.
+    const resumed = [
+      event(0, "comparison.started", { session: "g0" }),
+      event(1, "comparison.started", { session: "g1" }),
+      event(2, "comparison.reported", { session: "g1", reading: "no-step" }),
+      event(3, "solve.started", { solve: "s7", task: "mass-05", model: "claude/claude-opus-5" }),
+    ];
+    const seen = { lines: 4, open: true, quiet: false };
+    expect(pulse(round, resumed, "open", seen, START + 4 * 60_000).status).toStartWith("r1  solving");
+    expect(pulse(round, resumed, "closed", seen, START + 4 * 60_000).said).toEqual([
+      "⚠ the process is gone before comparison.reported",
+    ]);
+    const ended = [
+      ...resumed,
+      event(4, "solve.finished", { solve: "s7", ending: { outcome: "pass" } }),
+      event(5, "comparison.reported", { session: "g0", reading: "step" }),
+    ];
+    expect(pulse(round, ended, "closed", { ...seen, lines: 6 }, START + 6 * 60_000).status).toStartWith(
+      "r1  reported step",
     );
-    expect(line).toContain("r1 build 44m 0s · previews 2 (1 clear) · rehearsals 1/1 pass");
-    expect(line).toContain('"Running design 5 rehearsal"');
-  });
-});
-
-describe("pulse host reads", () => {
-  it("reads ps elapsed times with and without hours and days", () => {
-    expect(elapsedMs("05:07")).toBe((5 * 60 + 7) * 1000);
-    expect(elapsedMs("02:05:07")).toBe(((2 * 60 + 5) * 60 + 7) * 1000);
-    expect(elapsedMs("1-00:00:01")).toBe((24 * 3600 + 1) * 1000);
   });
 
-  it("names the oldest command under the controller, not Bun, the model CLI or another run", () => {
-    const table = parseProcessTable(
-      [
-        "  100     1 02:00:00 bun src/run/fullrun.ts",
-        "  101   100 01:00:00 node /x/claude-agent-sdk/cli.js",
-        "  102   100    10:00 sh -lc pio run -e esp32",
-        "  103   102    09:59 /home/.platformio/xtensa-gcc main.c",
-        "  104   100    00:30 sh -lc ls",
-        "  105   100 01:30:00 <defunct>",
-        "  200     1 03:00:00 bun src/run/fullrun.ts",
-        "  201   200 02:00:00 sh -lc sleep 9999",
-        "garbage",
-      ].join("\n"),
-    );
-    expect(table).toHaveLength(8);
-    expect(busyUnder(table, 100)).toEqual({ command: "sh -lc pio run -e esp32", forMs: 10 * MINUTE });
-    expect(busyUnder(table, 300)).toBeNull();
-    const piped = parseProcessTable(
-      [
-        "  401   400 05:25 /bin/sh -lc .toolchain/bun gen.ts 2>&1 | tail -3",
-        "  402   401 05:24 .toolchain/bun gen.ts",
-        "  403   401 05:24 tail -3",
-      ].join("\n"),
-    );
-    expect(busyUnder(piped, 400)?.command).toBe("/bin/sh -lc .toolchain/bun gen.ts 2>&1 | tail -3");
-    const reaped = parseProcessTable(
-      String.raw`  101   100 00:40 /bin/sh -c trap 'd(){ for c in $(pgrep -P "$1"); do d "$c"; done; }' EXIT\012(\012python3 - <<'PY'\012print(1)\012PY\012)`,
-    );
-    expect(busyUnder(reaped, 100)?.command).toBe("python3 - <<'PY' ⏎ print(1) ⏎ PY");
-    expect(busyUnder(table, null)).toBeNull();
+  it("folds the same line twice into one, as a comparison's two harnesses start a task", () => {
+    const twice = [
+      ...built,
+      event(5, "solve.started", { solve: "s2", task: "wind-01", model: "claude/claude-opus-5" }),
+      event(5, "solve.started", { solve: "s3", task: "wind-01", model: "claude/claude-opus-5" }),
+    ];
+    const look = pulse(round, twice, "open", { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
+    expect(look.said).toEqual(["· wind-01 started on claude/claude-opus-5 (×2)"]);
+    expect(look.status).toContain("2 running");
   });
 
-  it("keeps readings across looks, and reads a missing or broken file as a first look", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pulse-memory-"));
-    const path = join(dir, "nested", "pulse.json");
-    expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
-    expect(saveMemory(path, { freeGiB: 12, readings: { [RUN_ID]: reading(5) } })).toBeNull();
-    expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(reading(5));
-    writeFileSync(path, "{");
-    expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
-    writeFileSync(path, JSON.stringify({ runs: { A: { seq: 1 } } }));
-    expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
-    expect(saveMemory(join(path, "under-a-file.json"), { freeGiB: null, readings: {} })).toContain(
-      "could not keep this look",
-    );
-  });
-
-  it("reads a kept reading the delta reader cannot use as no reading, and replaces it", () => {
-    const path = join(mkdtempSync(join(tmpdir(), "pulse-memory-")), "pulse.json");
-    const { round: _round, ...roundless } = reading(5);
-    const broken = { [RUN_ID]: {}, b: roundless, c: { ...reading(5), observations: [null] }, d: reading(5) };
-    writeFileSync(path, JSON.stringify({ freeGiB: 3, readings: broken }));
-    const memory = loadMemory(path, isPulseReading);
-    expect(memory).toEqual({ freeGiB: 3, readings: { d: reading(5) } });
-    // A first look again: status lines and no events, then this look's reading is what is kept.
-    expect(texts(memory.readings[RUN_ID], reading(6))).toEqual([]);
-    memory.readings[RUN_ID] = reading(6);
-    expect(saveMemory(path, memory)).toBeNull();
-    expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(reading(6));
-  });
-
-  it("reads only the runs a look names, whatever an earlier look kept", () => {
-    const path = join(mkdtempSync(join(tmpdir(), "pulse-memory-")), "pulse.json");
-    const run = (runId: string, state: PulseReading["state"]) => ({ runId, slug: SLUG, liveness: { state } });
-    const first = run("alpha-20260925T042950810Z-aaaaaa", "live");
-    const second = run("beta-20260925T042950810Z-bbbbbb", "live");
-    // `runs pulse aaaaaa --once` keeps alpha's reading; `runs pulse bbbbbb --once` then reads beta alone.
-    expect([first, second].filter((row) => selected(row, ["aaaaaa"], new Set()))).toEqual([first]);
-    saveMemory(path, { freeGiB: null, readings: { [first.runId]: reading(5, { runId: first.runId }) } });
-    const watched = new Set(Object.keys(loadMemory(path, isPulseReading).readings));
-    expect([first, second].filter((row) => selected(row, ["bbbbbb"], watched))).toEqual([second]);
-    // An all-runs look reads both open runs, and a selector after it narrows again.
-    watched.add(second.runId);
-    expect([first, second].filter((row) => selected(row, [], watched))).toEqual([first, second]);
-    expect([first, second].filter((row) => selected(row, ["aaaaaa"], watched))).toEqual([first]);
-  });
-
-  it("says a kept run's ending once in the all-runs look, then stops reading it", () => {
-    const ended = { runId: RUN_ID, slug: SLUG, liveness: { state: "closed" as const } };
-    const before = reading(30);
-    const after = { ...reading(31), state: "closed" as const, terminal: "completed" };
-    expect(selected(ended, [], new Set([RUN_ID]))).toBe(true);
-    expect(texts(before, after)).toEqual(["◆ ended: completed"]);
-    // The look drops an ended run's reading, so the next all-runs look passes over it.
-    expect(selected(ended, [], new Set())).toBe(false);
+  it("knows a campaign's log is written by its campaign command, a round, an Examiner session or a drafting session of its name, in its worktree", () => {
+    const running = [
+      { pid: 1, cwd: "/wt", args: ["bun", "tools/d2/round.ts", "--name", "r1", "--session", "b-1"] },
+      { pid: 2, cwd: "/wt", args: ["bun", "tools/d1b/examine.ts", "--name", "r1", "--session", "x-1"] },
+      { pid: 3, cwd: "/wt", args: ["bun", "tools/d2/round.ts", "--name", "r10"] },
+      { pid: 4, cwd: "/other", args: ["bun", "tools/d2/round.ts", "--name", "r1"] },
+      { pid: 5, cwd: "/wt", args: ["bun", "tools/m0/live-solve.ts", "--task", "r1", "--cycle", "c01"] },
+      // A rehearsal is a round on a seed. The script runner that started it holds no log open.
+      { pid: 6, cwd: "/wt", args: ["bun", "tools/runs/cli.ts", "rehearse", "--name", "r1"] },
+      { pid: 7, cwd: "/wt", args: ["bun", "run", "runs", "rehearse", "--name", "r1"] },
+      { pid: 8, cwd: "/wt", args: ["bun", "tools/runs/cli.ts", "pulse", "--name", "r1"] },
+      // A launch names the command it starts and holds no log open: on 10 October a launch of a
+      // round into the tree that held the campaign's log was refused by itself, and by its package
+      // script too.
+      {
+        pid: 9,
+        cwd: "/wt",
+        args: ["bun", "tools/runs/cli.ts", "launch", "tools/d2/round.ts", "--name", "r1"],
+      },
+      { pid: 10, cwd: "/wt", args: ["bun", "run", "runs", "launch", "tools/d2/round.ts", "--name", "r1"] },
+      {
+        pid: 11,
+        cwd: "/wt",
+        args: ["bun", "tools/runs/cli.ts", "launch", "--dry-run", "tools/d1b/examine.ts", "--name", "r1"],
+      },
+      // A campaign command runs every move in its own process: the campaigns on record have no
+      // other, and read as closed while they ran (2026-10-10).
+      { pid: 12, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name", "r1", "--unattended"] },
+      { pid: 13, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name", "r10"] },
+      // The session that drafts an exam, run by itself, holds a capped root: read as closed, a stop
+      // would have released that root under it (11 October).
+      { pid: 14, cwd: "/wt", args: ["bun", "tools/d1b/draft.ts", "--name", "r1", "--session", "d-1"] },
+    ];
+    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14]);
+    const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
+    expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
   });
 });

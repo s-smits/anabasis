@@ -52,7 +52,7 @@ import { isTestFile } from "../shared/file-role.ts";
  * `luna-sessions.ts`'s five quick-launch option names, `wall-policy.ts`'s three run-data
  * directory names, `prose-classify.ts`'s three case kinds and `archive-scaffold.ts`'s
  * lane-state lookup. Each of those five files already carried module constants of exactly this
- * shape — `PROTECTED_HOME_NAMES`, `BACKENDS`, `EFFECT_STATES` — so the rule found the exception
+ * shape — `BACKENDS`, `EFFECT_STATES` — so the rule found the exception
  * rather than a new style, and all five were hoisted. The launcher's table has since gone with
  * its quick-launch options, in the 2026-09-30 rewrite. It enters the gate at zero, where it
  * costs nothing and keeps the shape from arriving.

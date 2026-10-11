@@ -1,165 +1,52 @@
 /**
- * Shared allowed paths, protected paths and toolchain locations for the host isolation policies.
+ * Shared protected paths and toolchain locations for the command wall, which a seat's commands and
+ * a check both run under (`solve-command-isolation.ts`).
  *
- * Three actors run on this host, each confined by its own mechanism: the Harness Builder authors
- * the product, the Built Harness solves tasks, and the verifier's declared checks decide
- * correctness. When each wall also states its own idea of what may be read, the order comes out
- * backwards — the verifier, which has to run whatever the Builder installed, ends up with the
- * fewest system roots, so `(allow process*)` lets a compiler start while the read rules stop it
- * opening its own toolchain and the runtime facts still advertise that compiler as available.
- *
- * So each caller keeps its own policy but builds it from the shared lists here, which is what keeps
- * the three walls agreeing on where toolchains live and what stays protected. The verifier permits
- * declared reads; authoring and solve commands open reads broadly and deny the protected paths.
+ * Until 11 October the verifier had a deny-default wall of its own, which granted declared reads
+ * and the platform roots named here; it ended with the fewest system roots of the three walls, so
+ * `(allow process*)` let a compiler start while its read rules stopped it opening its own
+ * toolchain. A check now runs under the command wall with the network closed (`docs/simplify.md`,
+ * W6), and reads open by default with the protected paths denied.
  */
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { existsSync, readdirSync, realpathSync } from "../meta/filesystem.ts";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync } from "../meta/filesystem.ts";
+import { activeDeveloperBinDirs } from "../meta/host-tool.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { keysIf } from "../meta/optional-key.ts";
+import { tmpdir } from "../meta/os.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 
-/**
- * Home-relative roots no confined actor may read.
- *
- * `.claude`, `.claude.json` and `.codex` are here because a transport keeps its own state in the
- * home: `~/.claude/projects` carries authoring transcripts and `~/.claude.json` per-project prompt
- * history. A solving session reading either would be reading the authoring of its own tasks, which
- * is what the wall between the Builder and the Built Harness exists to prevent.
- */
-export const PROTECTED_HOME_NAMES = [
-  ".ssh",
-  ".aws",
-  ".gnupg",
-  ".netrc",
-  ".npmrc",
-  ".config",
-  ".codex",
-  ".claude",
-  ".claude.json",
-] as const;
-
-/** The Seatbelt baseline every wall imports; its closure digest is recorded beside the name. */
-export const SEATBELT_BASELINE = "system.sb";
+/** What a Darwin system command answered, by the command: each is asked once per process. */
+const darwinAnswers = new Map<string, string | undefined>();
 
 /**
- * The Mach services a confined command may ask for, and the ones it may not.
- *
- * A `(deny default)` profile denies mach-lookup, and a denied lookup does not read as a denial. A
- * tool building an HTTP client asks configd for the system proxy configuration before it sends
- * anything; under a denying profile that call returns NULL, and Rust's system-configuration crate
- * treats NULL as impossible and panics — before the `--offline` flag is read, so the backtrace
- * names neither the network nor a proxy. With the allow below the same command fails with "dns
- * error: failed to lookup address information". Network access is denied either way; only the
- * diagnosis changes.
- *
- * The denies come last so they win over the allow above them, and they name the services that
- * broker secrets and consent — keychain, authorisation, privacy and the pasteboard. A cell writes
- * into a tree that a networked session later reads, so a secret it could read here would have a way
- * out. One list serves the workshop cell and the verifier wall alike.
+ * The one directory every seat's root is made under, which keeps them together for creation and
+ * cleanup at mode 0700. One parent does not separate them; the profile does that, by denying the
+ * parent and re-allowing the running seat's root after it, so another seat's root is closed by a
+ * rule that can be read and tested rather than by nobody having named it.
  */
-export const SYSTEM_SERVICE_RULES = `(allow mach-lookup)
-(deny mach-lookup
-  (global-name "com.apple.SecurityServer")
-  (global-name "com.apple.securityd")
-  (global-name "com.apple.securityd.xpc")
-  (global-name "com.apple.CoreAuthentication.daemon")
-  (global-name "com.apple.CoreAuthentication.agent")
-  (global-name "com.apple.tccd")
-  (global-name "com.apple.tccd.system")
-  (global-name "com.apple.pasteboard.1"))`;
+export const BUILT_COMMAND_SCRATCH_ROOT = join(tmpdir(), "ana-built-bash");
 
 /**
- * The one directory inside a candidate workspace that holds tools rather than candidate content:
- * the controller links its own Bun runtime here, and a Builder that installs a compiler, a board
- * package tree or a prepared cache puts it here too, so the verifier can reopen this one tree
- * read-only for installed tools. The name is shared rather than spelled per caller because a
- * mismatch costs the product real tools: admission asking for a directory nothing creates refuses
- * every workspace-installed tool for sitting outside a directory that does not exist.
+ * The host's own scratch, beside the seats' parent: a verifier's cells, which hold a check program
+ * and a task's hidden value, and the state a reviewer's or the Examiner's Claude Code keeps, which
+ * holds what it read. Every wall closes it by path, as it closes the seats' parent, so a wall that
+ * grants the shared temporary directory names no folder of the host's by pattern.
  */
-export const WORKSPACE_TOOL_TREE = ".toolchain";
+const HOST_SCRATCH_ROOT = join(tmpdir(), "ana-host");
 
-/** Where a split build's answer agent installs: inside the tool tree, so the verifier's tool search
- *  and check cell reach its instruments, and the one part of it the Harness Builder is walled from. */
-export const ANSWER_TOOL_TREE = `${WORKSPACE_TOOL_TREE}/answer`;
+/** The two roots of the host's own above, in both path forms, for a wall to close whole. */
+export function hostRoots(): string[] {
+  return [BUILT_COMMAND_SCRATCH_ROOT, HOST_SCRATCH_ROOT].flatMap(canonicalForms).sort(compareCodeUnits);
+}
 
-/** Disposable host locations a Builder cell may write outside its own workspace. What lands there
- *  remains Builder-influenceable even when the controller has pinned one exact executable for
- *  candidate measurement, which is why a path from this list is never independent operator
- *  authority and never a permitted broad read root. */
-export const BUILDER_SCRATCH_ROOTS: readonly string[] = ["/tmp", "/var/tmp", "/var/folders"].flatMap(
-  canonicalForms,
-);
-
-/**
- * The read-only platform baseline the Darwin walls grant.
- *
- * These are deliberately broad because they are meant for platform software — `sh`, `node`,
- * `python3` and the coreutils all run under them — and their contents are not inspected here, so
- * the policy assumes protected run data and credentials are kept outside them. They carry no
- * recursive content digest, as `LINUX_SYSTEM_READ_ROOTS` does, because walking `/System` fails when
- * `scandir` refuses its asset store; exact executable and input files have their own snapshots
- * instead, since granting a directory path establishes no identity for what lies underneath it.
- */
-export const DARWIN_SYSTEM_READ_ROOTS: readonly string[] = [
-  "/Applications",
-  "/Library",
-  "/System",
-  "/bin",
-  "/etc",
-  "/opt",
-  "/sbin",
-  "/usr",
-  "/var/select",
-].flatMap(canonicalForms);
-
-/**
- * The one run-data name every wall denies, the Builder's own cells included.
- *
- * The rest of `RUN_DATA_DENY_PATTERNS` is Built-Harness-only: a verifier reads a correctness model
- * as its job, and a Builder's workspace lives at `campaigns/<slug>/`, so denying `/campaigns/`
- * inside a Builder cell would deny that cell its own tree. Hidden expectations need a denial for
- * authoring and solve alike, because only the protected verifier owns their use and Builder cells
- * may write Darwin's shared temporary directory, where a staged copy would sit readable beneath an
- * allowed path.
- */
-export const HIDDEN_TASKS_DENY_PATTERN = String.raw`/hidden-tasks\.json$`;
-
-/** The directory names that mark a checkout as one of these, carrying run data of its own. */
-const RUN_DATA_NAMES = ["domains", "campaigns", "correctness-model"];
-
-/** The host-level half of verifier toolchain access: the environment homes and install roots that
- *  exist under `home` at the moment the verifier host is built. A host reads them once and hands
- *  the frozen result to every plan, so a root that a sibling run creates mid-battery moves no
- *  request's read roots and no policy hash. Left per-request, a toolchain root appearing between
- *  two requests loses a whole battery to a policy hash that changed under it. */
-export type FrozenToolchainAccess = {
-  readonly environment: Record<string, string>;
-  readonly installRoots: readonly string[];
-};
-
-const BROAD_SANDBOX_READ_ROOTS = new Set([
-  "/",
-  "/Applications",
-  "/Library",
-  "/System",
-  "/Users",
-  "/Volumes",
-  "/home",
-  "/opt",
-  "/private",
-  "/usr",
-  "/var",
-]);
-
-/** The Built shell's own scratch parent, named here with its siblings. `solve-command-isolation`
- *  creates it and drops this one entry from the list the running command is denied. */
-export const BUILT_COMMAND_SCRATCH_DENY = "/ana-built-bash";
-
-/** The directory beside the verifier's cells where the host keeps each tool's cache between runs
- *  (`engine-cell-env.ts`). Every wall below closes it by this name. */
-export const VERIFIER_CACHE_STORE = "ana-verifier-cache";
+/** A fresh folder of the host's under `HOST_SCRATCH_ROOT`, named from `prefix`. */
+export function hostScratch(prefix: string): string {
+  mkdirSync(HOST_SCRATCH_ROOT, { recursive: true, mode: 0o700 });
+  return mkdtempSync(join(HOST_SCRATCH_ROOT, prefix));
+}
 
 /** Both path forms of a root: a rule that names only the symlink form misses the access Seatbelt
  *  actually evaluates, which on Darwin is the difference between `/var` and `/private/var`. Every
@@ -182,17 +69,13 @@ export function canonicalRoots(paths: readonly string[]): string[] {
 }
 
 /**
- * Where a host toolchain installs itself, for the two walls that must name a place.
+ * Where a host toolchain installs itself.
  *
- * The Built Harness shell reads by default outside its protected roots, so this is not an
- * enumeration of every readable installation; it exists to reopen a toolchain that a denied home
- * sits on top of, and to construct PATH. A complete install allow list was tried and dropped,
- * because it stopped the shell using tools installed somewhere the list did not name.
- *
- * The verifier needs concrete directories for a different reason: it denies reads by default and
- * then executes a selected tool, so the place has to be named, and PATH needs directories to
- * search. All three consumers read this one list, so adding an installation location updates access
- * and command lookup together rather than one of them.
+ * The command wall reads by default outside its protected roots, so this is not an enumeration of
+ * every readable installation; it exists to reopen a toolchain that a denied home sits on top of,
+ * and to construct PATH. A complete install allow list was tried and dropped, because it stopped
+ * the shell using tools installed somewhere the list did not name. Both read this one list, so
+ * adding an installation location updates access and command lookup together.
  */
 export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.HOME): string[] {
   const shared = ["/usr/local"];
@@ -215,151 +98,17 @@ export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.H
   return [...shared, ...perUser].filter(existsSync).sort(compareCodeUnits);
 }
 
-/** The Darwin platform roots the verifier wall opens: the system roots that are present, plus the
- *  toolchain install roots under the process home. A verifier host reads this once at construction
- *  and hands the list to every plan, so a root appearing on the shared machine mid-census cannot
- *  move the policy hash and discard exit-0 verdicts for a wall that never changed. */
-export function darwinPlatformReadRoots(): string[] {
-  return [...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)), ...darwinToolchainInstallRoots()];
-}
-
-/**
- * The controller's own checkout, derived from this file rather than from a caller.
- *
- * A Builder's workspace is a campaign directory, not this tree. Once the account's home opens, this
- * tree sits inside it holding the verifier source, the hidden expectations and every other run's
- * recorded evidence. Closing it by path is what keeps the home grant from letting a confined
- * command read a sibling worktree's `tasks.json` and `evaluator.ts`, which repeated slugs make
- * reachable.
- */
-export function controllerCheckoutRoot(): string {
-  return resolve(Bun.fileURLToPath(new URL("../../", import.meta.url)));
-}
-
-/**
- * The directory and file names that mean run data, wherever on the host they sit.
- *
- * What these close is a sibling worktree's `domains/<slug>/correctness-model/tasks.json` and
- * `evaluator.ts`: runs repeat a slug, so a neighbouring checkout holds this very task family's
- * tasks and verifier source. An allow list shuts the neighbour by shutting everything, and then has
- * to grow a toolchain enumeration that never quite reaches a compiler. A path-name pattern closes
- * the copies instead, covering earlier runs, archives and temporary copies without enumerating
- * where any of them are, while `/usr`, `/opt` and a home toolchain stay open. Codex takes the same
- * route for the paths it must keep shut under an open read default.
- *
- * Each pattern is anchored on a path separator so a directory called `my-domains` does not match,
- * and the list applies only to the Built Harness, because the verifier reads a correctness model as
- * its job.
- */
-export const RUN_DATA_DENY_PATTERNS = [
-  "/correctness-model(/|$)",
-  // `domains` is also an ordinary library directory name, for example sympy/polys/domains. A
-  // harness domain has one more distinctive join than that: the slug, then one of the bundle or
-  // evidence roots, which is what this pattern requires and a bare `/domains/` would not.
-  "/domains/[^/]+/(agent|correctness-model|runs)(/|$)",
-  "/campaigns/",
-  String.raw`/\.env($|\.)`,
-  HIDDEN_TASKS_DENY_PATTERN,
-] as const;
-
-/**
- * The run-data denies as SBPL rules, for a profile whose read default is open.
- *
- * The pattern list is a parameter rather than a constant because the directory names above are
- * Built-Harness-only, and because two of them are ordinary dictionary words: denying `/domains/`
- * inside a Builder cell makes `import sympy` fail on `sympy/polys/domains`, a third-party package
- * that is neither run data nor the cell's own tree.
- */
-export function runDataDenyRules(patterns: readonly string[] = RUN_DATA_DENY_PATTERNS): string[] {
-  return patterns.map((pattern) => `(deny file-read* file-read-metadata (regex #"${pattern}"))`);
-}
-
-/**
- * The same run-data class as above, named as paths, for a wall that cannot match a name.
- *
- * Bubblewrap confines by mount rather than by rule, so `RUN_DATA_DENY_PATTERNS` has no Linux
- * counterpart: a tmpfs hides a path, and there is nothing with which to hide a directory name. What
- * those patterns close is a peer checkout of this same system, so the Linux wall closes the same
- * class by hiding those checkouts whole. A checkout counts as one when it sits beside a denied root
- * and carries a run-data directory of its own; the scan is one `readdir` per parent directory and
- * never descends, which lets an operator home stay open while the trees inside it that hold run
- * data do not.
- *
- * A checkout created after the command launched is not covered: the host mount is live, so a
- * directory appearing later appears inside the namespace too. That window lasts the command's
- * lifetime and has no Darwin equivalent, because a Seatbelt deny is evaluated on every open.
- */
-export function runDataDenyPaths(deniedRoots: readonly string[]): string[] {
-  const denied = new Set(deniedRoots);
-  const found = new Set<string>();
-  for (const parent of new Set(deniedRoots.map((root) => dirname(root)))) {
-    let entries: string[];
-    try {
-      entries = readdirSync(parent);
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const path = join(parent, entry);
-      if (denied.has(path)) continue;
-      if (RUN_DATA_NAMES.some((name) => existsSync(join(path, name)))) found.add(path);
-    }
-  }
-  return [...found].sort(compareCodeUnits);
-}
-
-/**
- * The per-user temporary directory a Darwin toolchain uses whatever `TMPDIR` says.
- *
- * Clang takes its scratch directory from `confstr(_CS_DARWIN_USER_TEMP_DIR)` and ignores the
- * environment, and Apple's `/usr/bin/python3` shim rewrites `TMPDIR` to the same directory before
- * it execs. Without a write grant there, `cc` is an advertised runtime the shell cannot use:
- * `clang: error: unable to make temporary file: Operation not permitted`.
- *
- * Reading the controller's own `TMPDIR` instead grants a different directory: it is this one under
- * a terminal and not under launchd, and the launch procedure sets a run-specific one, so the grant
- * lands where no compiler looks and every Built Harness compile fails the same way. The directory
- * is therefore asked of the system rather than of the environment, once per process, and a host
- * that cannot answer has no such directory to grant.
- */
-let confstrTempRoot: string | undefined | null = null;
-
-export function darwinUserTempRoot(): string | undefined {
+/** The one line a Darwin system command answers with, asked once per process: undefined on another
+ *  system, and where the command fails or says nothing. */
+function darwinAnswer(...command: string[]): string | undefined {
   if (runtimeProcess.platform !== "darwin") return undefined;
-  if (confstrTempRoot === null) {
-    const probe = Bun.spawnSync(["/usr/bin/getconf", "DARWIN_USER_TEMP_DIR"], {
-      stdout: "pipe",
-      stderr: "ignore",
-    });
+  const asked = command.join(" ");
+  if (!darwinAnswers.has(asked)) {
+    const probe = Bun.spawnSync(command, { stdout: "pipe", stderr: "ignore" });
     const found = probe.exitCode === 0 ? probe.stdout.toString().trim() : "";
-    confstrTempRoot = found === "" ? undefined : found.replace(/\/$/, "");
+    darwinAnswers.set(asked, found === "" ? undefined : found);
   }
-  return confstrTempRoot;
-}
-
-/** What the product itself creates under the user temporary directory and a verifier tool may not
- *  touch: a concurrent verification's cell (`ana-cell-`, the host's per-check workdir), Built
- *  Harness scratch, reference-solve staging and tool staging. Each is named by prefix because the
- *  rest of the path is only known once it is created, and the list is spelled out rather than
- *  derived because dropping the cell prefix lets a Built shell read a staged cell. A host Claude
- *  session keeps its CLI state in `ana-claude-cli-`, and the Builder's holds the whole authoring
- *  history, hidden expectations included, for the length of the run. The verifier's tool cache
- *  store is closed to every tool, the verifier's own included, because only the host may put bytes
- *  in it that a later verification starts from. */
-export const VERIFIER_TEMP_SIBLING_DENY_PATTERNS = [
-  "/ana-cell-",
-  BUILT_COMMAND_SCRATCH_DENY,
-  "/ana-pi-built-",
-  "/ana-reference-solve-cwd-",
-  "/ana-generated-tools-",
-  "/ana-claude-cli-",
-  `/${VERIFIER_CACHE_STORE}`,
-] as const;
-
-export function verifierTempSiblingDenyRules(
-  patterns: readonly string[] = VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
-): string[] {
-  return patterns.map((pattern) => `(deny file-read* file-read-metadata file-write* (regex #"${pattern}"))`);
+  return darwinAnswers.get(asked);
 }
 
 /**
@@ -368,22 +117,32 @@ export function verifierTempSiblingDenyRules(
  * `regex-quote` is Seatbelt's own path-to-regex boundary, the form Apple's shipped profiles and
  * Firefox's macOS sandbox use.
  *
- * A narrower, files-only version of this rule keeps concurrent verifier workdirs shut, but it also
- * refuses `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So both walls grant
- * this shape and close the product's own trees by name after it (`siblingPatterns`), which is the
- * only arrangement under which a toolchain works and a sibling's workdir stays shut.
+ * A narrower, files-only version of this rule keeps concurrent check cells shut, but it also refuses
+ * `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So the wall grants this shape
+ * and closes the host's two roots by path after it (`hostRoots`), which is the only arrangement
+ * under which a toolchain works and a sibling's cell stays shut.
  */
-export function userTempRules(
-  extraRoots: readonly string[],
-  siblingPatterns: readonly string[] = VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
-) {
-  const confstr = darwinUserTempRoot();
+export function userTempRules(extraRoots: readonly string[]) {
+  // The per-user temporary directory a Darwin toolchain uses whatever `TMPDIR` says.
+  //
+  // Clang takes its scratch directory from `confstr(_CS_DARWIN_USER_TEMP_DIR)` and ignores the
+  // environment, and Apple's `/usr/bin/python3` shim rewrites `TMPDIR` to the same directory before
+  // it execs, for a command that names the shim by its path (`toolchainPathDirs` keeps it from being
+  // found first). Without a write grant there, `cc` is an advertised runtime the shell cannot use:
+  // `clang: error: unable to make temporary file: Operation not permitted`.
+  //
+  // Reading the controller's own `TMPDIR` instead grants a different directory: it is this one under
+  // a terminal and not under launchd, and the launch procedure sets a run-specific one, so the grant
+  // lands where no compiler looks and every Built Harness compile fails the same way. The directory
+  // is therefore asked of the system rather than of the environment, once per process, and a host
+  // that cannot answer has no such directory to grant.
+  const confstr = darwinAnswer("/usr/bin/getconf", "DARWIN_USER_TEMP_DIR")?.replace(/\/$/, "");
   const roots = canonicalRoots(confstr === undefined ? extraRoots : [confstr, ...extraRoots]);
   const childTrees = roots.map(
     (root) =>
       `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" (regex-quote ${capturedJsonStringify(root)}) #"/[^/]+(/.*)?$")))`,
   );
-  return { roots, rules: [...childTrees, ...verifierTempSiblingDenyRules(siblingPatterns)] };
+  return { roots, rules: childTrees };
 }
 
 /**
@@ -401,7 +160,14 @@ export function toolchainPathDirs(): string[] {
   // Both /opt entries sit under the granted /opt read root, so neither needs a read rule of its
   // own. This host may have its only system Node under zerobrew, so the derived toolchain owner has
   // to retain that executable directory rather than assume /usr/bin holds one.
+  // The active developer directory goes ahead of /usr/bin, where Darwin keeps `python3`, `make`,
+  // `git` and `cc` as xcrun shims. A shim starts its tool with TMPDIR reset to the user temporary
+  // directory, so a command's own TMPDIR never reached a Python it started: every temp folder of
+  // every solve landed in that one shared directory, outside the solve's capped volume, and stayed
+  // when the command was gone. On 2026-10-10 one host held 1.56 million of them, 121 GB, from three
+  // days of campaigns. Started by its own path a tool keeps the TMPDIR it is given.
   const system = [
+    ...activeDeveloperBinDirs(),
     "/usr/bin",
     "/bin",
     "/usr/sbin",
@@ -426,28 +192,22 @@ export function toolchainPathDirs(): string[] {
  * no longer finds it — `rustc` fails with `rustup could not choose a version` while `~/.rustup`
  * sits readable on disk. These names put each such toolchain back on its real installation, which
  * it may read and may not write.
+ *
+ * `SDKROOT` is the same for a Darwin compiler. `/usr/bin/cc` is an xcrun shim that names the SDK for
+ * the compiler it starts; with the developer directory ahead of `/usr/bin` on PATH no shim runs, and
+ * `cc` started by its own path finds no `<stdio.h>` unless the name is set.
  */
 export function hostToolchainEnv(home: string | undefined = Bun.env.HOME) {
-  if (home === undefined || home === "") return {};
+  const sdk = darwinAnswer("/usr/bin/xcrun", "--show-sdk-path");
+  const compiler = sdk === undefined ? {} : { SDKROOT: sdk };
+  if (home === undefined || home === "") return compiler;
   const rustup = join(home, ".rustup");
   const pythonUserBase = join(home, ".local");
   return {
+    ...compiler,
     ...keysIf(existsSync(rustup), () => ({ RUSTUP_HOME: rustup })),
     ...keysIf(existsSync(pythonUserBase), () => ({ PYTHONUSERBASE: pythonUserBase })),
   };
-}
-
-export function frozenToolchainAccess(home: string | undefined): FrozenToolchainAccess {
-  return { environment: hostToolchainEnv(home), installRoots: darwinToolchainInstallRoots(home) };
-}
-
-/** Whether a declared sandbox read names an over-broad root, which both operating systems refuse
- *  after resolving the path, so a symlink or a relative spelling cannot slip one through. The
- *  platform baseline grants are a separate decision and are not subject to this check: the wall
- *  chooses those, whereas a declared read is whatever the candidate asked for. */
-export function isOverbroadSandboxReadRoot(path: string): boolean {
-  const normalized = resolve(path);
-  return BROAD_SANDBOX_READ_ROOTS.has(normalized) || /^\/(?:Users|home)\/[^/]+$/.test(normalized);
 }
 
 /** Every directory between `/` and `path`, outermost first, as a resolver walks them. */
@@ -469,8 +229,7 @@ export function ancestorDirectories(path: string): string[] {
  * A profile that denies a directory denies `lstat` on it too, and a resolver walks every ancestor
  * of the file it opens. Without this, `node t.js` fails with `EPERM: operation not permitted,
  * lstat` for every script on disk while `node -e` works, because Node realpaths its entry point and
- * a `-e` script has none. `prepareDarwinSeatbelt` in `darwin-seatbelt.ts` builds its
- * `metadataAncestors` the same way.
+ * a `-e` script has none.
  *
  * The grant is `file-read-metadata` on each ancestor directory as a literal rather than a subpath,
  * which lets a path be traversed while the directory itself stays unlistable: `stat ~` succeeds and
@@ -485,7 +244,7 @@ export function traversalMetadataRules(paths: string[]): string[] {
 
 /**
  * Whether this environment already sits inside someone else's OS sandbox, which is what makes a
- * verifier wall refuse to nest. Presence of the name is the test and not its value, because a
+ * wall refuse to nest. Presence of the name is the test and not its value, because a
  * surrounding sandbox that exports an empty `CODEX_SANDBOX` is still a surrounding sandbox, and a
  * wall that ran anyway would record isolation it does not have.
  */

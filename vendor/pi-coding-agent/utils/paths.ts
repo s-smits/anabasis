@@ -1,6 +1,6 @@
-// Copied from pi coding-agent v1.0.0 (github.com/earendil-works/pi, a13d35a, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/utils/paths.ts, verbatim but for
-// the compiler: this repository's `noUncheckedIndexedAccess` forces a `!` on indexed reads.
+// the compiler: this repository's strict options force the `!` on indexed reads and the `| undefined` on optional fields.
 import { realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as nodeResolvePath, relative, sep } from "node:path";

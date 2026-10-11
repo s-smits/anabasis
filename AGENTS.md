@@ -1,3014 +1,1188 @@
 # AGENTS.md
 
-This is the working contract for Claude Code, Codex and their subagents in this repository. Claude Code
-loads it wherever a project has no `CLAUDE.md`, so this repository keeps none. It holds principle and
-standing operator decisions; the forward queue, current head, run condition and open questions belong to
-the operator's plan and to Git history. Where this file and newer evidence disagree, the evidence wins,
-and a rule whose mechanism has left the source is dead text: say so rather than obeying it.
+The working contract for coding agents in this repository: Claude Code, Codex and their subagents.
+`CLAUDE.md` is a symlink to this file, so both read the same text.
 
-Be eager. Given an ambiguity, do the task rather than ask about it. Carry authorised work through
-implementation, checks and delivery; the authorisation survives turns and compaction. Ask only when a
-decision or a permission is genuinely missing, and then have the reviewable result ready and name the rule
-that blocks you.
+This file holds what stays true from one pull request to the next: what the system is for, who
+decides what, how a result is read, and how to write code here that passes its checks the first
+time. It holds no queue and no status. Those have other owners:
 
-<!-- weekly-best-run:start -->
-<!-- weekly-best-run:end -->
-
-**Bun only.** Every repository task, a one-off inspection included, runs on the stable Bun 1.4.2 named in
-`.bun-version`: never Node, npm, npx, compatibility prefixes, version managers or package-manager
-handshake-variable changes. A canary at the same version number is a different runtime. If the pinned Bun
-is unavailable, report the environment gap rather than reaching for what is at hand. A run already in
-flight keeps its opening's executable bytes until it finishes. The one exception is Astra, where ad hoc
-inspection, data handling and automation scripts are better in Python; repository source and its test and
-gate commands stay on TypeScript and Bun.
-
-The file runs in this order: what Anabasis does and who owns each part of it, the goals, the evidence
-rules, how to spend each paid run, the sixteen working rules and the mechanisms under them, code, lint and
-gates, and finally working in the repository, which covers worktrees, commits, stacks, subagents and
-writing style. Each skill under `.claude/skills/` owns its procedure's details, so this file names the
-skill instead of repeating it.
-
-## What Anabasis does
-
-One short prompt about a technical domain becomes two products: an agent harness that solves tasks in that
-domain, and an evaluation that decides whether those solutions are correct. The second is much the harder.
-Anyone can write twenty-five plausible tasks, but only a correctness model that accepts the right answers
-and rejects the convincing wrong ones makes a measured pass rate mean anything. The same test applies to
-every rule here: a rule matters when construction carries it into the product or a check enforces it, and
-a check that never changes a decision is decoration.
-
-```text
-INPUT      one-line prompt (+ optional public --context paths)
-   │
-BUILD      Builder session (model)  ── reads STARTER.md, maps the field into task families,
-   │       installs real tools under .toolchain, writes correctness-model/ and agent/,
-   │       rehearses with harness_inspect → harness_trial → correctness_check, then submit
-   │
-GATE       submit (code)  ── immutable snapshot → bundle contract → validation → conformance
-   │       probes → control census → F2 reference solve of every task → grounding/solvability →
-   │       adopt or refuse; every refusal returns typed findings to the same session
-   │
-MEASURE    Built Harness (model)  ── one confined solve per task with the closed tool roster;
-   │       each accepted artifact goes to the host verifier (code plus hashed installed tools)
-   │       → verified | unaccepted | non-result
-   │
-LEARN      review slot (model, advisory)  ── Main Judge battery review, diagnosis reader,
-   │       Epoch Reviewer, deterministic rebuild advice packet
-   │
-NEXT MOVE  boundary (code)  ── build | measure | rebuild | stop
-           The Builder chooses and implements the next experiment; accepted bytes own attribution
-```
-
-1. **Input.** The one line names a field, not a deliverable ("designs steel roof trusses to Eurocode 3").
-   It carries no plan, answer key, driver or hint, and public `--context` files are the only thing that
-   may go in beside it.
-2. **Build.** The Builder reads `STARTER.md` in a seeded workspace, installs the domain's real open-source
-   tools, and writes the whole bundle. Under `correctness-model/` that is `brief.json` for the domain plan
-   and public rule decisions, `tasks.json` for the public inputs and hidden expectations, `controls.json`
-   for the task-bound accepts and rejects, `evaluator.ts` for the named Boolean checks and
-   `reference/index.ts` for a reference solve over public input; under `agent/` it is `tools-spec.json`,
-   `tools.ts`, `BUILT_AGENTS.md` and `config.yaml`.
-3. **Gate.** `submit` freezes the candidate once and runs one sequence against that snapshot. A refusal
-   keeps the session alive; acceptance ends it.
-4. **Measure.** The Built Harness solves the battery behind its own file wall with the Builder's tools.
-   The host verifier runs the declared checks over each accepted artifact, and every tool run is hashed
-   and recorded as an evidence row.
-5. **Learn.** The review slot reads recorded rows and traces and writes advice. It never changes a pass,
-   an acceptance or a claim.
-6. **Next move.** Code admits construction, measurement, an adopted-product continuation or a typed stop
-   (`src/run/next-move.ts`). The existing Builder chooses the next experiment from the recorded evidence,
-   because there is no separate planner to hand it to. What a round sets out to test is the Builder's own
-   note in `MEMORY.md` or `SCRATCHPAD.md`, which the controller carries and grades nowhere (rule 11).
-
-### Design priors
-
-Ten decisions are settled. Code that quietly moves one is a defect rather than a choice, and each is here
-because moving it cost something.
-
-1. **Correctness has one owner.** The host verifier, running the declared checks and installed tools,
-   decides every pass. No model judge, review or Builder claim sets a score, and the Judge is not where
-   scores run lenient ("Open gaps").
-2. **The input is one line.** No hidden plan, custom driver or evaluator hint rescues a launch.
-3. **The Builder authors the whole bundle.** Nothing under `domains/` is hand-written or repaired. A
-   defect seen across domains is fixed where it came from, which is the Builder prompt, the shared
-   contract or the starter.
-4. **Every environment failure is a typed non-result.** Provider, runtime, sandbox, protocol,
-   verifier-host and tool failures leave `truthOk` and `pass` `null`. A battery of them yields an
-   operational result, never a capability rate and never a fail.
-5. **The Builder chooses task variance and complexity.** The loop prescribes no axis, step size, family
-   mix or parent bijection. Levels and bands describe recorded conditions and command nothing. In a split
-   build the choice is the answer agent's, since it writes the tasks; the Harness Builder never raises them.
-6. **Verifier output is protected.** Stdout, stderr, issue text, counterexamples, reference artifacts and
-   per-task failure locations never reach the Builder, the Judge, the diagnosis reader or an authoring
-   prompt. Change only protected detail, and every prompt digest must come out unchanged (rule 4). In a
-   split build this holds for both the answer agent and the Harness Builder. The Harness Builder also never
-   reads the correctness model: the candidate-isolation wall denies it correctness-model/, and it hears
-   only the findings its producers mark as agent/'s (`markHarnessSide`).
-7. **A task-only comparison keeps its product fixed.** The agent, the tools and the scoring program stay
-   put while the battery, its controls and its reference solve change, and even then the comparison needs
-   a matching measured model, isolation, thresholds and resources.
-8. **Submit freezes one immutable snapshot.** Validation, conformance, census, F2, adoption and
-   measurement consume the same bytes. Git is the Builder's memory, not the authority on what was
-   accepted.
-9. **A tool is what the host hashed.** `toolId` resolves once at submit, under the candidate's
-   `.toolchain` first and then the host PATH, and every run records its digest, source, inputs, exit and
-   outcome.
-10. **Bracket a witnessed capability boundary.** Every admitted task has a verifier-accepted witness,
-    which proves it feasible (optimum ≤ reference ≤ limit) and never difficult: run 371f8f's solver beat
-    the Builder's own reference on 5 of 6 tasks, and truss-26 and -29's solvers on 107 of 134. Nor has a
-    stronger witness yet been shown to make one difficult. On 2026-09-30 six truss-25 limits reset at
-    1.02× the best of a longer search passed 5 of 6 under the recorded 90-minute Opus solver (prediction
-    579d4990, refuted as frozen). Three of those searches ran 45 minutes and moved their limits by 0.2 to
-    2.3%; the three that ran 3.4 hours cut them by 12 to 59%, and one of the three failed, on strength
-    and member-loss resilience under the lighter limit rather than on mass. So a longer search stays an
-    optional method whose effect is measured on six tasks only, and a conformance domain such as firmware
-    has no optimum to search. Seek tasks beyond the fixed solver's observed capability in what they
-    demand, not only in where their limits sit, and locate the transition by blind measurement. The operator aims a first battery at very hard, about 3
-    of 25, so that it lands at least at hard (2026-09-30). That aim is a hypothesis rather than a
-    prerequisite, and it reaches the Builder as demand in the tasks, never as a count or an aim sentence,
-    since 29 of the 36 first batteries authored under "author above what you believe" passed whole.
-    Later batteries swing between 1/n and n−1/n and narrow into `climb.band` (below). An unbracketed
-    boundary is reported unlocated, never met with manufactured failures. **No course is
-    prescribed.** Campaign 3fd52f9e-28 followed a prescribed three-stage course and moved only its
-    published magnitudes for four consecutive batteries. So the Builder is told what was measured and
-    what a round is for, a battery that fails some of its cases, and never a count to author towards.
-    The one kind of demand the loop names is depth, more of the request's requirements acting together
-    on one answer under one shared limit, so that meeting one spends the margin another needs, because
-    it is the one recorded demand that dropped pass rates
-    while widening kept batteries whole ("Tried and taken out"). Whether naming it moves a Builder is not
-    yet measured ("Open gaps"), and which requirements, which limit and how far stay the Builder's (prior
-    5). Useful adopted work is retained.
-
-### Owners and handoffs
-
-Four owners divide the work, and what each one never owns matters as much as what it does. The Harness
-Builder, a model, owns the reading of the request, the research, the representation, the task families,
-the controls, the tools, the verifier content and its own notes; it never owns the
-verifier pin, case truth or adoption. In a split build (`--answer-agent true`, `src/run/split-build.ts`)
-an answer agent, also a model, takes the correctness model from it: the brief, the task families with
-their hidden expectations, the evaluator and its checks, the reference solve and the controls. The
-Harness Builder keeps `agent/` and reads only the public projection the controller writes to
-`public/tasks.json` and `public/resources.json`. The Built Harness, also a model, owns solving the public tasks with
-its closed roster, through one draft and one submit path, and never sees the hidden tasks, the controls,
-the verifier source or the claim state. The measurement kernel is code, and it owns identity, verifier
-acquisition, isolation, the controls census, verification, non-results, denominators, claims, rollback,
-adoption and the next move, but no domain diagnosis. The review slot is a model and only advisory: it
-holds the Main Judge, the diagnosis reader and the Epoch Reviewer, beside the deterministic rebuild-advice
-packet, which is code. It never owns case truth, denominators, claim fields or readiness.
-
-A decision with no owner is a defect, and a change names the owner it touches (`anabasis-pipeline`). A
-finding's owner is one of the nine `BUNDLE_FILES` (`src/author/feedback-routing.ts`) or `environment`,
-which no bundle edit repairs (rule 7). Each handoff is checked before anything downstream depends on it,
-in this order:
-
-1. The brief states the capability, the artifact, the constraints and correctness (`validateBrief`).
-2. The battery holds fresh, conforming tasks at the requested count, with probe batteries first (rule 11).
-3. The tools and representation give one draft, one submit path and a public projection, over one schema
-   that the writer, DraftStore, F2 and the verifier agree on (rule 13).
-4. The controls are task-bound accepts and rejects with one fact changed, and the census refuses an accept
-   that fails (rule 12).
-5. The verifier is a closed set of grounded Boolean checks that leaks no solution advice (rule 4).
-6. Adoption passes conformance, the census, the F2 reference solve of every task, grounding and the
-   fingerprint.
-7. Measurement produces one recorded battery, a case record, censored denominators and a claim.
-8. Learning produces review records and the advice packet, which route no score.
-9. The decision is `src/run/next-move.ts` choosing build, measure, rebuild or stop.
-
-Four invariants break easily without any test noticing. The first is that the three outcomes are never
-merged. Fold `unaccepted` into `non-result` and a dead provider reads as a hard battery; fold it into
-`verified` and a refusal reads as a fail.
-
-The second is that evidence is not pooled across changed identities. Evidence gathered under different
-tasks, verifier, prompt, toolkit, policy or model is not comparable, which is why a decision-relevant
-change opens a successor epoch.
-
-The third is the easiest to miss: refuse a merge whose merged state looks healthy. Before collapsing two
-types, fields or checks, ask whether the merged form has a state that reads as the good one. Each of these
-did: an optional field hashing like a guard-emitted one, so that two isolation walls claimed one identity;
-`null`-as-unknown replaced by `0`; one duration field in which an interrupted solve read as a fast one;
-and seven equal ceilings of 3 with different consumers turned into one `RETRY_LIMIT`.
-
-The fourth is that public objects are built by allowlist. Never clone a protected object and delete the
-secret keys you know about, because the key you did not know about goes out with it.
-
-### Where a run lives
-
-`campaigns/<slug>/` is controller-owned (rule 3): read it, never edit it, and reach it through
-`campaignDir()`.
-
-| path | what it answers |
+| Question | Owner |
 | --- | --- |
-| `controller/<runId>/opening.json`, `terminal.json` | frozen source SHA, prompt, budget, slots / how it ended (read via `openRecordedRun`) |
-| `case-record.jsonl` | every case: verified / unaccepted / non-result |
-| `claims/<battery>.json` | `claim.ok` and any refused clause names |
-| `promotions/<battery>.json` | `promoted` or `held`; a held version is **not** adopted |
-| `difficulty-decisions/` | one record per round, placing the latest battery on `climb.band` |
-| `versions/<battery>/` | adopted bundle bytes: diff consecutive ones to see what changed |
-| `analysis/` | `IterationAnalysis`, `rebuild-advice-latest.json` |
-| `rehearsals/`, `safeguards/`, `observability/`, `verifier-lifetime/` | `harness_trial` solves, log-only sensors, lifetimes |
-| `epoch-*/`, `epochs.json`, `budget.json`, `controller.sqlite` | comparable windows, the spend ledger |
-
-## Goals and the climb
-
-This section is the one home of the climb: what it is for, how a battery is read, which component
-hears which reading, what each one does with it, and what was tried and taken out. The working rules
-further down refer here rather than restating it, so change a climb mechanism here and in its source
-owner in the same commit.
-
-### The goal
-
-**The goal is a healthy, ambitious climb** (operator, 2026-09-29, replacing "optimise the climb toward
-really hard tasks" of 2026-09-18). The product is worth something only where a fixed solver fails for
-reasons the evaluation can prove. So each battery asks more of the field than the one before it, for a
-reason the Builder can name, and every fail that locates where the solver stops is earned. Ambition
-without health manufactures a limit, and health without ambition measures a solved exam. The public
-yardstick is the README's. On the same 25 held-out hard tasks at cycles 1, 3, 5 and 7, Anabasis verified
-6, 8, 11 and 12 and Prime-agent 8, 9, 8 and 8. Both ran on Claude Opus 5 at medium thinking with the same
-verifier, Anabasis at 120 minutes per task against 45. Widen that gap on harder tasks, never by inflating
-pass rates on easy ones.
-
-**A battery below n/n is what an ambitious round expects, and a run of n/n batteries is the failure to
-fix** (operator, 2026-09-30). A full pass measured nothing about where the solver stops. On source
-887c163ee, whose intent clause still named acceptance alone as good, six Sol runs passed every case of
-every battery with every round accepted, reserve 6a8ca0 thirteen times at 7/7 and bulk RNA-seq 36e268
-eleven times at n/n. By 2026-09-30, 236 of 298 recorded batteries across the local campaigns had passed
-every case.
-
-### What one battery can say
-
-Every case ends in one of three outcomes, and they stay apart everywhere the climb is read. A
-*verified* case reached the host verifier and passed or failed there. An *unaccepted* attempt produced
-no accepted submission; it counts as a fail, because hard tasks may fail that way. A *non-result*
-failed in the environment and counts neither way. Only verified cases place a battery, and a battery
-whose every attempt was refused at submission is placed nowhere, because it would otherwise read as a
-battery of verified failures and could end a run as infeasible in one round.
-
-From those counts a battery says one of three things. A battery that passes some but not all of its
-cases can locate a limit, and only where the checks that failed it are right (`LIMIT`,
-`src/run/climb-readout.ts`); a checker refusing a valid answer leaves the same partial count as a task
-the solver could not do. One that passes every case found no limit. One that passes nothing usually
-found a defect, though truss-27's 0/6 was a real demand, followed by 1/7 and 3/10. A full pass that
-also lost cases to non-results found no limit among the cases it scored and did not measure the rest,
-so it asks for no harder demand.
-
-A miss the wall caused measures the wall rather than the task. The readout therefore names the
-unaccepted cases whose solve ran to within 0.95 of the harness's `solve_seconds`
-(`WALL_BOUND_SHARE`, `wallBound` in `src/run/climb-history.ts`) beside each battery's counts, as "(k ran
-to the N-minute solve wall)". They stay fails in the count, since the solver did not deliver, but a
-battery whose every miss is wall-bound has located the wall. truss cb274b's 54 misses were all
-unaccepted, at about two minutes a case, while all 54 designs it did submit passed.
-
-### The three parts of the climb
-
-All three are read on verified cases.
-
-- **The initial rung** brackets the solver: a probe of 5–10 tasks that passes some cases and fails some,
-  1/n to n−1/n. A probe at n/n found no limit and one at 0/n usually a defect, so neither is a rung. It
-  graduates to the requested size once its bracket also lands at or under the aim (`batterySizingGate`),
-  since every graduation from a near-full bracket (5/6, 5/6, 7/8) went straight back to a near-full
-  battery (25/25, 21/23, 24/25). The round it graduates in asks for the tasks it adds at the demand of
-  the probe's hardest families, not of those that passed (`renderProbeSizing`), because 12 of 13
-  recorded successors would still read too easy with every probe fail held. That does not isolate the
-  added tasks as the cause: 10 of the 11 former-limit tasks carried unchanged passed in the successor,
-  and 11 of the 13 transitions changed the scoring program. A case
-  settled against its check leaves the sample (`admittedClimbRow`); without that, f0fb83's 2/6 and the
-  3/6 of 2d7812 and 3e4693 graduated on one settled check and measured a full pass next.
-- **Curriculum filtering** is the climb after it, at full size, between 1/25 and 24/25. RL curriculum
-  filtering drops prompts every sample solves or none does, because they carry no signal. In the same way
-  a battery at 0/n or n/n says nothing about where the solver stops. The unit here is the battery, since
-  each task is solved once. A full pass is answered by asking more, and an empty battery by reading what
-  blocked every case.
-- **The band** is the target inside that region: `climb.band`, 5–12 verified of 25, where the limit is
-  located rather than only bracketed. Landing there is not the end, because the next requirement moves
-  the line again.
-
-### Its shape, and how progress is read
-
-**The climb is a line that moves** (operator, 2026-09-29, from the launch film). A raised requirement
-drops the pass rate, a repair or rebuild lifts it, and the next requirement drops it again. Over the 8 or
-12 rounds of a run the swings narrow into the band. The film draws 25, 6, 5, 24, 17, 21, 12, 19, 21, 9, 12
-and 11 of 25 as an illustration. Each swing is a battery answering what the Builder changed, so the
-fluctuation is the signal, and 8 of 11 after 10 of 11 is progress though both sit above the aim.
-truss-sol-cb274b alone had the shape on 2026-09-29, at 3/8, 10/25, 15/25 and 11/25.
-
-Progress is read on that line (`wri.ts climb`, `climb-velocity/v2`), with five numbers:
-
-- **signal**: the claimed batteries between 1/n and n−1/n, counted over the first 8 and the first 12;
-- **swing**: the mean move in pass rate per battery, which is 0 for a line of full passes at any size;
-- **flat**: the stall rule of `bun run runs pulse`, `STALL_BATTERIES` (3) in a row on one side of the
-  aim, none closer than the closest before them;
-- **carried**: on each edge, the later battery's tasks with the same id, public input and family checks
-  as the battery before it (`carriedOf`). The summary line sums them over the edges whose earlier
-  battery passed every verified case with no unaccepted attempt (`fullPass`), which are the solves
-  spent re-measuring a known pass;
-- **follow-up**: each earned fail read into the battery after it: carried unchanged, changed or
-  dropped, how it came out there, and whether the agent changed between the two (`followUpOf`). A
-  fail whose task, posed the same way, passed another solve under the same solver (agent bytes, Built
-  pin, run condition, tool tree) is a **flip**, the solver's variance and not a limit, and never counts
-  as answered. In trusses-26, 13 tasks solved 59 times that way failed twice, and both fails passed in
-  the battery beside them (2026-10-02). A fail that failed every other such solve, `AGREEING_SOLVES` (3)
-  in all, is **confirmed**; the controller makes those solves before the Builder reads the fail (rule
-  10). A confirmed fail whose task the next battery carries unchanged and that passes there after the
-  agent changed is **answered**, and the scoreboard reads answered per confirmed fail. A verified fail
-  the Judge contested, one the completed review disposed of or left unsettled, is no earned fail: it
-  is counted apart, as an instrument-dispute candidate (`contested`).
-
-A zone cannot stand in for these, since 3/3 places `over-aim` and passes everything. A change that raises
-a score, adds tasks or renames levels without moving the line has not served the goal.
-
-An **earned fail** is a verified fail that the Judge did not contest and that the solve wall did not stop
-(`followUpOf`); the Judge sets no score, and a fail it contested is read apart. One swing of the line is a
-**climb step**: a battery with a confirmed earned fail, a harness change that answers it, the same task
-passing, a battery that asks more, and a partial battery again. No run completed one
-between 2026-09-23 and 2026-10-01 ("Open gaps"). Signal counts only the first of those links, and it is
-too rare to settle a comparison at the size we run. Of the 322 batteries scored in that window, 11 held a fail nobody contested,
-in a census that counted contests by the Judge as well, so an arm of eight batteries sees one with a
-probability near 0.24, and showing that a change doubled the rate would take about 650 batteries an arm.
-So read the share of the solve wall beside it (`wri.ts walls`), which moves on every battery. In truss it
-rises before a fail does: batteries that went on to fail a case used a median of 18.6% of the wall against
-6.6% for full passes, and the failing cases ran to 68% of it. In firmware it says the opposite, that the
-fails were not the solver's, because they came at 1.5% of the wall.
-
-### The band and the placement
-
-The band is `climb.band`, `[0.20, 0.50]` on the Wilson interval at `climb.confidence` 0.95, whose one z
-is `REPORTING_Z` (`src/claim/estimation.ts`), the one owner of sample size. Its ceiling moved from 0.5 to 0.75, 0.60 and 0.40 before settling at 0.50
-on 2026-09-16, and that history lives beside the row in `thresholds.frozen.yaml`. `placeOnBand`
-(`src/claim/battery-difficulty.ts`) decides the zone in two steps. The interval decides `too-easy` or
-`too-hard`, meaning significantly so: the lower bound above 0.50, or the upper bound below 0.20. Inside
-them the point count decides `under-aim`, `on-aim` or `over-aim` against `aimCounts`, the pass counts
-whose rate lies inside the band. On-aim is the calibration target, not a proved limit, and a battery too
-small to hold a whole count inside the band is refused a placement rather than misplaced. A one-case
-battery's aim is the empty range [1, 0], which had read every count as off the aim in both directions,
-and campaign 3fd52f9e-28's last round measured one case.
-
-What that means at the sizes a run actually measures is worth having in front of you, because
-"significantly too easy" starts at a different share at each size, and a small probe reaches it only at a
-full pass:
-
-| tasks | aim | too easy from | share |
-| --- | --- | --- | --- |
-| 5, 6, 7 | 1–2, 2–3, 2–3 | n of n | 100% |
-| 8 | 2–4 | 7 | 88% |
-| 10 | 2–5 | 9 | 90% |
-| 12 | 3–6 | 10 | 83% |
-| 15 | 3–7 | 12 | 80% |
-| 20 | 4–10 | 15 | 75% |
-| 25 | 5–12 | 18 | 72% |
-
-`too-hard` is almost unreachable at these sizes: nothing below 20 tasks can read it, and at 25 only 0 or
-1 of 25 does.
-
-The decision reads one sample, `decidingSample`: the host-identified changed subset when one was
-recorded, otherwise the whole battery, so unchanged successes cannot dilute what the change did. A case
-the Epoch Reviewer settled against the check that decided it counts neither way, and a veto so settled
-is dropped rather than turned into a fail (`admittedClimbRow`, `difficulty-decision/v10`), because a
-flip is the one direction that lowers passes. custom-sol-2d7812's firmware battery read 4/6 on two fails
-of a check stricter than its published rule, and on the public rules it was an all-pass.
-
-`decideDifficulty` writes one record per round under `difficulty-decisions/`. It is named after the
-round it opened and places the latest battery in its `evidence`, so decision i12 places battery i11.
-Its `placement` is null when the battery holds no verified case or `placeOnBand` refused it. Two facts
-are stated beside the placement and never instead of it: a repeated failure set (at least two cases, and
-at least half the smaller failing set, failing in both of the last two batteries of one task set) and a
-family conflict (one family significantly too easy beside one significantly too hard). Before
-`difficulty-decision/v7` both set the zone aside, so a battery whose same cases failed twice was placed
-nowhere however far above the aim it read.
-
-### Who hears the placement, and what it drives
-
-The placement is computed once and read by five parties, and only three of them act on it. Which
-component hears what is the part most often misremembered, so here it is in one place.
-
-| reader | what it receives | what it changes |
-| --- | --- | --- |
-| Builder | the readout: each of the newest 3 batteries' three counts, wall-bound misses, identity aliases, regrades and settled cases; the latest battery's families and where its passing artifacts are; the no-limit line on a full pass, and the keep line after a failed case. Never a zone, aim, share or count to author towards (prior 10). | its next battery |
-| battery sizing | the latest landing's placement | the next round's task count |
-| Epoch Reviewer | the placement in words (`readingSentence`), as a reason to look | its findings, and through them the advice |
-| controller's next move | nothing | — |
-| operator | `runs pulse` (zone, "above the aim N in a row", the stall), `runs climb`, `terminal.json`'s `onAim` and `placed` | stopping or relaunching |
-
-So the prompt a too-easy battery gives the Builder is the no-limit line, and it fires on a full pass,
-not on the zone: the latest battery has at least one verified case, no unaccepted attempt, and every
-verified case passed (`noLimitLine`). A 9 of 10 reads significantly too easy, shrinks the next battery
-and orients the reviewer, and sends the Builder its counts and the keep line (`keepFailedLine`), as any
-battery that failed a case, unaccepted attempts included, does: keep each failed task as it is, its public
-input and checks unchanged, unless a review shows a check refused a right answer. Before it, one sentence
-counts the battery's verified fails by group, the solves of each task under the same bytes and solver that
-decided whether it was solved again (`failGroups`, "1 task failed 3 of 3 solves"), and names the battery
-whose completed review settled any of them against its check, since a remeasure on a reviewed condition is
-not reviewed again and its own row carries no settlement. It names no task, check, location or cause. Until 2026-10-07 a partial battery read as counts alone, and in six chances to follow
-an earned fail the Builder changed `agent/` once and dropped or eased the failed task three times. The zone was kept from the
-Builder on purpose: a zone read back to the author decided nothing the counts beside it did not already
-say, and it read as a course (prior 10).
-
-The controller's next move (`decideNextMove`, `src/run/next-move.ts`) reads no placement at all. It
-builds when no product is adopted, stops on an environment fact that ends the session (`endsSession`),
-measures a condition that has not been measured, remeasures on unchanged bytes a battery the environment
-cut short or one holding a solve that contradicts its task's reading (rule 10), and otherwise opens a
-rebuild. `rebuild` is the retained name for authoring on the adopted product, not an order to redesign.
-The controller never stops on a reading of the tasks (`LoopState`), so stopping a flat run is the operator's call, which `bun run runs pulse` names when it
-arrives.
-
-**Battery sizing** has one owner, `POLICY.battery` in `src/critic/policy.ts` (`floor 5`, `default 25`,
-`ceiling 60`, `probe {min 5, max 10}`), which `src/run/battery-sizing.ts` re-exports and which owns the
-decisions. A fresh product measures Builder-sized probes of 5–10 tasks until one passes at least one
-scored case and lands at or under the aim, and only then the requested size. Past the probe, a landing
-that read too easy sizes the next round to the smallest battery that would still have read too easy at
-its rate (`smallestSizeHoldingTooEasy`), rounded down so that rounding never flatters the reading: a rate
-of 0.88 carries at 11 tasks, for 44% of the solves. Anything nearer the band keeps the requested size.
-The count reaches the Builder through `taskCountSentence` alone, and a probe round adds one sentence
-(`renderProbeSizing`) that names neither the aim nor its share. An out-of-range size fails rather than
-being clamped, since a silently changed size is a changed condition.
-
-### What the Builder is asked, round by round
-
-The demand side lives in five places, each saying its part once (rule 14), and a round meets them in
-this order.
-
-**The kickoff.** The request line of `src/run/direct-input.ts` asks the Builder to add no requirement
-the request does not name, and says that a stricter demand on one it does name is not an added
-requirement. Both 887c163ee Builders had declined every stricter route by quoting the first half alone,
-"Do not introduce an unrequested optimality objective" on a reserve design and "avoid arbitrary yield
-thresholds" on an expression analysis, which left them only size (primary lanes, 2026-09-30).
-Then comes the readout (`renderReadout`), with `LIMIT`, `WITNESS` (a passing artifact, like the
-reference, proves a task feasible and never difficult) and, after a full pass, the no-limit line. That
-line asks for a next battery that demands more of the field's own work within its tasks, by depth (prior
-10), in tasks the Builder expects the solver to fail. It says outright that
-more tasks, families, inputs or scenarios at the same demand measure the same reach again (a widening
-route was offered until 2026-09-30; "Tried and taken out"). It rules out carrying a task forward unchanged, says how much of the solve wall the slowest
-solve took, and asks for the changed requirement and its reasoning in the notes (rule 11). The wall
-share is there because 153 of 233 all-pass batteries from 2026-09-25 to 2026-09-30 finished inside a
-tenth of the 120-minute wall (median 5.9 minutes), sized to the Builder's own reference, while the round
-after read only that every case had passed. It ends with
-`MEASURE_SOLVES`, which sends the Builder to how the passing solves reached their answers, because a
-limit moved or an instance enlarged while the same steps would still find an answer asks nothing new.
-The rebuild advice packet sits beside it, and a finding that recurs says how many consecutive batteries
-have admitted it and since which. It sorts the issues it shows by what is known of them (`LEAD_OF`): a
-fail, verified or unaccepted, is an observation that may locate a limit, a diagnosis is a hypothesis
-until evidence shows the defect, and a Judge disagreement is pending review until a review settles it.
-Only a non-result is shown under the "Standing issues" lead, the six issues shown are shared in lead
-order so a fail is never cut for a larger non-result, and a defect evidence has shown reaches its
-bundle file as feedback. Until 2026-10-07 every verified fail stood under one "Standing issues" list,
-which read an earned fail as a defect to repair. One check carrying every failure reads three ways,
-none first: the answers are wrong, which may be a limit; the check refuses right answers; or the
-tasks leave the answer open.
-
-**Authoring.** Ambitious is what the Builder does:
-
-- It authors the next battery's tasks as ones it expects the solver to fail, on a changed public
-  requirement from the request's own field.
-- It builds depth into the first tasks, not only into a raise after they pass (`INTENT_CLAUSE`,
-  2026-09-30). Requirements side by side in one task are not yet depth: each of firmware 7a97af's five
-  first tasks combined several published requirements, such as a debounced button against light phases
-  or a peak hold against a bar level, over sound references and rejects, and all 10 of its solves
-  passed in 1.1 to 5.6 of 120 minutes, 9 with no edit-tool call after the first draft.
-- It raises what the checks hold together, not only how big the inputs are or where a limit sits: 6a8ca0
-  grew its inputs from 24 to 53 and its scenarios from 20 to 91 at unchanged check tiers and limits.
-  Tightening alone is not enough either, because 6a8ca0's limits sat at its reference's values and its
-  solver held the same optimiser, and limits reset at a longer search's best mostly still passed (prior
-  10). So the change has to be one the passing solves' own steps do not settle.
-- It carries no task unchanged across a full pass. 36e268 grew about one task a round, and 53 of the
-  tasks it measured after its full passes were bytes the solver had already passed; on 2026-09-30, 570
-  of the 1,465 tasks measured after a full pass in local campaigns were carried unchanged.
-- It records the changed requirement and its reasoning in its notes (rule 11), where a plan is carried.
-  In the Luna lanes of 2026-09-29 a plan written into the notes was carried and built, while the
-  standing push to "demand more" named nothing.
-
-The solver must not hold the grader, or no battery can fail. No tool, program or guide line analyses a
-candidate for the solver the way a check does, through the check's code or a copy of it, its instrument
-or a verdict (`NO_GRADER_IN_REACH` in `src/author/builder-start-prompt.ts`, which the Builder reads in
-`PUBLICATION_CLAUSE` and the Epoch Reviewer judges the tools against), because a solver that can ask
-the grader searches until it passes. Until 2026-09-30 such a tool counted as solving support, and every
-harness whose solver could run a check passed whole round after round: reserve 6a8ca0 (13 batteries at
-7/7) and a16848, buffer 3af96d (11 at n/n) and firmware 887c16 through an adviser importing a copy of
-the check's module, and truss 3e4693 (7 at 6/6) through the verifier's analyzer on the solver's PATH.
-The worry that had kept the ceiling off, that a solver without an analysis fails on arithmetic, did not
-show in cb274b, the one structural run whose tools left the analysis to the solver. Verified failures
-then stood at 32 in firmware, where the check observes behaviour the solver cannot fully run before
-submitting, 8 in truss, whose misses were mostly walls (79 unaccepted), and none in the reserve, buffer,
-RNA-seq or conformer batteries. Two readers enforce it without gating: the advisory
-`agent-copies-check-code` (`src/author/candidate-check.ts`) names an `agent/` file byte-identical to a
-`correctness-model/` one, and the brief's `checkOnlyTools` closes named `.toolchain` instruments to the
-Built shell and records `instrument:<toolId>` in the run condition (rule 14). The buffer 3af96d solver's
-`chem.ts` was the evaluator's own in 13 of 13 versions, and it passed 111 of 111.
-
-Controls calibrate the checks the climb rests on (rule 12). The advisory `accept-control-copies-reference`
-(`src/run/accept-control-independence.ts`) fires when at least 5 accepts are compared and between one and
-four of them are independent of the reference output, since an accept that is the reference byte for byte
-shows only that the check accepts its own answer. Buffer 3af96d copied exactly half its accepts in every
-epoch, one copy and one independent accept per task, so it stayed silent; conformer 5cc42c had one
-independent accept of six in five of six epochs, and the Builder carried it anyway.
-
-**Rehearsal and submit.** `harness_trial` solves one task blind with the measured Built solver (rule 14),
-so a passing rehearsal shows that task is within the solver's reach. Its result forecasts no battery,
-and a miss says the checks rejected the answer without saying whether the answer is wrong, a check
-refuses a right answer or the task leaves the answer open. The round prompt (`src/author/builder-session.ts`) says
-that a battery whose every rehearsal passed is on course to pass every case, so before submitting it the
-Builder raises what its hardest tasks demand once, by depth (prior 10) rather than more tasks, families
-or inputs, and rehearses one of them again. The route is named there because the no-limit line
-reaches a Builder only after a full pass in its own readout: firmware 7a97af-i02 raised by five new device
-families, stopped at what its simulator could model, and passed 5 of 5. What stopped it was the board's
-pin inputs and further bus devices, which its emulator could not drive, while the interactions
-depth asks for, such as one sensor trajectory driving several outputs that must agree, are observable
-there already. Once, and not until a
-rehearsal fails: nothing holds a submit on rehearsals, because the measured battery decides where it
-lands (`WITNESS`, in the battery contract), and a rehearsal hold of that kind cost whole rounds (96 of 99 predicted passes at ≤0.3 did pass;
-"What has cost whole rounds"). Across 241 batteries from 2026-09-25 on, the rehearsed task had sat at
-chance in its battery's solve-time order: in 111 single-rehearsal rounds it was the slowest in 18, at a
-mean rank of 0.48 against 0.50, so since 2026-10-07 the round prompt names no task to rehearse. The two Sol runs on 887c163ee each submitted on one rehearsal that passed
-in its first turn, citing "submit once a clear preview says it works" as the user's instruction with the
-sentence on a pass's reach already in front of them (primary lanes, 2026-09-30). Each `harness_trial`
-result also totals the round's graded rehearsals, because verdicts read one call at a time were never
-added up: three recorded campaigns rehearsed and shipped anyway with 12 of 16 verdicts passing.
-
-**Measurement.** Recorded solves are reused where the exam did not move (rule 10): an evaluation
-correction under the same solving condition regrades the recorded submissions, a battery the environment
-cut short or holding an unconfirmed solve is remeasured on unchanged bytes before any rebuild, and a
-repeat of an exam an at-or-above-aim battery already sat is measured afresh and recorded as `repeat`. The
-readout marks regraded cases, because a regrade is an earlier solve graded again and not a new solve.
-
-**Review.** The Epoch Reviewer reads the placement as a reason to look and never an obligation to find
-something (rule 9). A finding about easy tasks names the request obligation they leave undemanded, owned
-by `correctness-model/tasks.json`, with a `demandGap` where it has shown one. It settles a Judge
-disagreement only through a probe that shows the direction, and a settled case then leaves the climb's
-sample as described above.
-
-### Healthy
-
-Every step of the climb has to be true.
-
-- The demand comes from the field, never from a rule the Builder adds (rule 11). An invented duty,
-  deadline or report format measures the solver's reading of the author's wording.
-- A fail counts only where it is earned: the check that decided it holds the artifact to a rule the
-  public projection states. The Epoch Reviewer settles that per case (rule 9), quoting the public
-  sentence before it calls the Judge wrong.
-- An unbracketed boundary is reported unlocated, never met with manufactured failures (prior 10). The
-  three outcomes stay apart, and only verified cases place a battery.
-- The Builder is told what was measured and never a count, share or zone to author towards (prior 10).
-- Useful adopted work is retained, and a repaired check is a new condition, not a difficulty advance.
-
-### Reading the climb as the operator
-
-Read the climb before paying for it: run `bun run runs climb <run>` (or `wri.ts climb <campaign dir>`)
-whenever a new `versions/<battery>/` appears, hours before its battery scores. Each edge gets a
-structural label from check tiers and counts (`verdictOf`): `restated`, `replaced`, `adjusted`,
-`narrowed`, `widened`, `eased` or `escalated`. A label is a reading, not a forecast. In a census of 170
-edges on 2026-09-29, all three `escalated` edges and 16 of the 17 that widened on a new input or rule
-alone were followed by full passes. So name the changed public requirement from the task rows. Read each
-battery's `fails` line (held, settled against the check, unsettled) before counting a partial battery as
-a limit found, and read its wall-bound count before counting a miss as the task's. Two batteries off the
-band on the same side is a settled result ("While it runs"). The whole-run digest's 4b block lists each
-decision with the battery it reads, and the climb's `flat` line is the lead for review lanes 10 and 36.
-
-A run that has just measured an earned fail is the one worth keeping. Five of the 11 batteries with an
-uncontested fail since 2026-09-23 were the last their run measured, all four of Opus 5's among them, so
-the step each had opened was never read. Let such a run measure at least two more batteries before
-stopping it, past the remeasures that confirm the fail on unchanged bytes (rule 10), and read whether the
-harness changed between them (the adopted fingerprint's `agentHash`).
-
-### Open gaps: the four blockers to a climb
-
-Most recorded batteries pass every case ("The goal"), and the leniency is not in the grading. Since
-2026-09-23 the Judge vetoed 5 of 1,411 verifier passes (firmware 2 of 901, truss 3 of 510), and counting
-all five would move no battery out of too-easy. Of the 22 verified fails counted as limits, 17 were
-contested, and the check was the stricter side (the Judge passed 11; the review settled 6 against the
-check). It is not in the answers either, since every firmware reference passes F2, nor in the limits
-(prior 10).
-
-**A climb is the goal, and none has been measured** (operator, 2026-10-01). The fixes of the last week
-made runs more reliable, and no run from 2026-09-23 to 2026-10-01 completed one climb step ("Its shape,
-and how progress is read"). A census of that window on 2026-10-01 read 322 scored batteries in 65 runs,
-and four things stand between it and a climb. They are ranked by which binds first, so work the first
-before the fourth, and delete one in the commit that closes it. The census is six read-only lanes whose
-tables are in the ignored `notes/climb-blockers-20261001/`; a number below that names no source is theirs
-and has not been re-derived here.
-
-1. **The answer is the author's own.** Every admitted task carries a witness its Builder solved or
-   searched for (prior 10), and in all 91 runs of the window the solver was the Builder's model. So a task
-   asks only what its author could already do with the same instruments, and the solver does it again.
-   Opus 5.5 failed none of its 73 verified cases, and under gpt-6-sol no fail among 783 verified firmware
-   cases has been confirmed as the solver's. Widening the gap by effort or by search has been measured
-   and did not bind: a medium Builder over a low solver (Astra, 28 batteries) verified 139 passes and no
-   fail, and limits reset at a 3.4-hour search's best passed 5 of 6 (prior 10). An answer the author
-   did not have to find has been measured once, and it did not bind either. `examples.md` offers "A
-   planted design" as one option among several, and the plants on record (reserve 6a8ca0, RNA-seq
-   36e268) were sized so the reference could enumerate them, which the solver then did in one to three
-   minutes. On 2026-10-01 six reserve instances were built from a chosen answer at 72 to 132 units, a
-   size at which every greedy and a 12,000-move local search failed, and re-solved once through
-   `harness-query` on the recorded product by Opus 5.5 at medium: all six passed, in 2.5 to 26 minutes
-   of a 120-minute wall (prediction a25b19c0, refuted). The published rules let the solver compute every
-   check on its own candidate, so it wrote a search and ran it until the checks cleared. Where the solver
-   can check its own answer, an instance a written search reaches is an instance it passes, so size alone
-   is not the lever. Taking the check away did not bind either: the twelve firmware tasks of the two
-   first products on source 2590f776 were re-solved the same day with the simulator named in
-   `checkOnlyTools`, and all twelve passed, each in under three minutes and faster than with it
-   (prediction 7f93fb2e, sufficed). In the recorded passes 8 of 12 submissions were the draft the solver
-   had before its first simulation. So neither the size of the search nor the solver's hold on the
-   check is what these tasks lack; they ask for work the public text settles. Two kinds remain
-   unmeasured. One is an answer the field already recorded, such as a merged fix or a published result,
-   which `examples.md` offers as a construction since 2026-10-07. The other is a second author: a
-   split build, in which an answer agent writes the correctness model behind a wall from the author
-   of `agent/`, is in the source behind the launch option `--answer-agent` (default false) and has
-   not run. Owner: the witness
-   route, in `starter-pack/examples.md`.
-2. **An earned fail is not followed up.** Of the 322 batteries, 33 were partial and 11 held a fail
-   nobody contested, 8 in truss and 3 in firmware (those three are the one-minute-wall drafts below).
-   None became a step, and some ended their run ("Reading the climb as the operator"). Where it went on,
-   the task changed more often than the harness: in six chances the Builder changed `agent/` once,
-   dropped or eased the failing task three times, and twice the task passed unchanged, which reads as
-   variance. A one-fail partial is read as too easy and raised, and the next battery then passed whole 5
-   times in 6, and none of the 359 difficulty decisions on record eases. The Builder can tell which
-   task failed, since the passing solves reach it by task id and the failed task is the one without
-   one, but not where or why, which is protected (rule 6): after a partial battery `renderReadout`
-   gives it the counts, the families and the passing artifacts, and since 2026-10-07 asks it to keep
-   each failed task under the same task id unless a review shows a check refused a right answer or
-   the task leaves the answer open (`keepFailedLine`), not yet measured. The controller now solves a
-   verified fail again while every solve in its group failed, three solves in all, before the
-   Builder's next round, unless blocking feedback stands (`unconfirmedSolves`, rule 10), so a fail
-   that passes there reads as the flip it is, and the climb reader's follow-up line counts each
-   run's confirmed and answered fails and, apart, the fails the Judge contested. What still binds is
-   keeping a confirmed task while the harness changes. Owner:
-   `src/run/next-move.ts` and the battery the next round measures, and the operator's stop ("Reading
-   the climb as the operator").
-3. **The measure cannot show a change at the size we run.** Eight batteries an arm cannot separate two
-   arms on signal ("Its shape, and how progress is read"). All 14 resolved predictions that a change
-   would move a battery were refuted, all 13 that one would stay whole came true, and 100 of the 122
-   left unresolved never had their measurement. The instrument that works across fresh campaigns is the
-   share of the solve wall, which moves on every battery (`wri.ts walls`), up by about 8% a battery step
-   over 253 steps. The scoreboard now prints it for each run and for each source and Builder, beside what
-   the next battery did with each earned fail. A fixed pack does not work across them: a pack task is
-   graded by its authoring product's correctness bundle, so a pack compares rounds of one campaign or a
-   seeded continuation, and two fresh campaigns represent their artifacts differently. Comparing them
-   would need a representation fixed before either Builder starts (a shared public input, artifact
-   schema and verifier), which nothing in the loop provides. Owner: `scoreboard.ts`.
-4. **Changes outrun measurements, and runs end before they climb.** In the window, 299 commits changed
-   text a model reads and 88 runs opened on 37 sources ("What has cost whole rounds here"). 58 of the 88
-   were stopped by hand at a median age of 11.2 hours and none ended by finishing. Only 15 runs reached
-   eight batteries, all of them Sol. No Opus run placed more than three, because an Opus Builder takes a
-   median of 6.4 hours to its first battery at any number of live runs, where a Sol Builder takes 0.2 to
-   1.5 depending on the domain. Each Opus run also yields less as runs are added: 0.160 batteries per
-   run-hour at about two live runs, 0.094 at about six and 0.067 at about nine. The launcher now holds
-   the load and the live runs (`launch-run`, "Launch a run"); the rate of change has no such guard.
-   Owner: the Super Loop's pace (`run-improvement-campaign`), one measured change, or one bundle while
-   task sets sit at a full pass ("Ablated components"), at a time on a tree that holds still.
-
-The first is model-visible where it changes `examples.md` or opens a split build. The second, third
-and fourth are the controller's, the readers' and the operator's, and move no prompt.
-
-Starting every campaign from a fresh project is not one of them (operator, 2026-10-01). Each run
-tests the whole path from the one-line request, so the hours a Builder spends building its own
-instrument are part of what the run measures, and a fix that seeds a run from an earlier product
-to skip them is not wanted.
-
-Beneath the four, the task side still has these gaps. Delete a bullet in the commit that closes it.
-
-- **No firmware fail has yet been a limit, and the climb still counts them.** All 32 firmware verified
-  fails since 2026-09-23 were classified, 29 by replay against their own evaluators and 3 from the
-  record. 24 were a Builder-written host stand-in rejecting valid code (a missing `min`, `constrain`,
-  `A0` or core macro, a redefinition, a display double). 5 were one unpublished status mapping. 3 were
-  auto-accepted drafts at a one-minute solve wall the Builder set in its own `agent/config.yaml`. None
-  is a confirmed valid-demand fail. All 32 ran on stand-in batteries, 32 of 816 verified cases against
-  0 of 283 on every other substrate, and Sol Builders wrote 89 of the 92 stand-in batteries.
-  `VERIFICATION_CLAUSE` has called a stand-in the last route since 2026-09-22 and it held throughout, so
-  prose did not prevent it. The reviewers read these fails as defects: the Judge contested 23 of the 24
-  stand-in fails, each on exactly one deciding check, and every review filed a correctness-model
-  defect. None of the 8 firmware case dispositions on record carries `checkIds`, though, 6 of them
-  against the check, so `settledAgainstCheck` has never dropped a case: all 8 came from two runs whose
-  source predates 7643780b, which writes `checkIds`. A review replay on main (2026-10-01) settled the
-  recorded `esp32-display` false rejection end to end under the current Judge and reviewer, and the
-  climb then dropped it, so no link is broken; no firmware run since has had a disposition to exercise
-  it live. Owner of the stand-ins themselves: the instrument each Builder builds, which
-  `VERIFICATION_CLAUSE` steers. -40 (2026-10-01) built its own simulator and its checks ran it on Uno
-  and Pico, with no stand-in in a deciding path. Its ESP32 entries are all `simulated: false` (4 of 4 in
-  battery 1, 3 of 3 in the battery-2 draft), so ESP32 code is compiled and its behaviour is unmeasured, as
-  its brief declares: the review's ESP32-only mutation moved no check. Evidence: the ignored
-  `notes/firmware-fails-20260930/`.
-- **First tasks combine requirements that the solver still meets in minutes** (firmware 7a97af under
-  "Authoring"), and 7 of 29 firmware batteries passed with a harness that only compiled. Depth reached a
-  Builder only after a full pass or after every rehearsal passed. Owner: the last line of
-  `INTENT_CLAUSE`, which since 2026-09-30 defines depth as requirements that compete, "so that meeting
-  one spends the margin another needs". With it live, firmware -40 and buffer bbc47705-3 (2026-10-01)
-  both built first tasks that join several requirements and still passed 7/7 and 5/5. The buffer's
-  second battery, after its review's finding and with budgets about 0.2% above the stored witness,
-  passed 5/5 with a median solve of 12 minutes (the first: 3.5), its slowest a 64-minute numerical
-  search. The solver is the Builder's model at the Builder's effort and runs the checks' own simulator
-  or PHREEQC; so far its methods recover what these Builders construct, though Opus 5 truss solvers at
-  the same parity failed 4 of 98 verified cases.
-- **Graduation may dilute a bracket.** A probe at 2/6 or 3/6 grows to 25 tasks and the ~19 added tasks
-  pass, in 10 of 13 recorded regresses, and with every probe fail held 12 of 13 would still read too
-  easy. The added tasks are not isolated as the cause: 10 of the 11 former-limit tasks carried unchanged
-  passed again, and 11 of the 13 transitions changed the scoring program. The Builder heard only "Task count: exactly N tasks". Owner:
-  `renderProbeSizing`, which now names the hardest families' demand at graduation, not yet measured.
-- **The Epoch Reviewer could not name requirements exercised one at a time.** `DEMAND_GAPS` now holds
-  `requirements-one-at-a-time`, not yet measured.
-- **The expected-output oracle is unmeasured.** The firmware `rules.ts` is both the check's expectation
-  and the solver's `expected_behaviour`, so the solver can compute every expected value before it
-  submits, which `PUBLICATION_CLAUSE` calls the field's own work.
-
-All of these bullets are model-visible, so the stack that closes them is one new condition. Freeze a
-prediction per change, simulate a fresh firmware first round, and launch only on the operator's word.
-
-### Tried and taken out
-
-Each of these was built, measured and removed, and the reason is the measurement. Do not bring one back
-without new evidence that answers it.
-
-- **Stopping on an off-aim streak.** It stopped nothing while 5/5, 6/6 and 6/6 batteries kept arriving,
-  since the route is the Builder's; `runs pulse` and the climb's `flat` still count one for humans (rule 10).
-  No `climb.limitHoldRounds` exists either, by design.
-- **A zone, share or target count in the Builder's prompt.** It read as a course, and the counts beside it
-  already said what it said (prior 10).
-- **A fixed-harness difficulty session** that prescribed a level, a family composition and a lineage. It
-  never left the too-easy zone in 33 recorded rounds.
-- **Pre-registering a round in `EXPERIMENT.json`**, until 2026-09-29. By then it changed no score or byte
-  identity and graded a declaration rather than a result (rule 11).
-- **The `identical-exam-over-aim` submit refusal**, until 2026-09-29. It never fired in the recorded
-  corpus, and a repeat now measures whether a full pass was reliable (rule 10).
-- **Holding a submit on rehearsal predictions.** 96 of 99 predicted passes at ≤0.3 passed, and the wait
-  held rounds back for hours without moving a battery on the band.
-- **Counting rehearsal passes "inside a single turn"**, until 2026-09-30. On the pi backend every solve
-  records one turn, and 6a8ca0's i13 reserve-6 ran 75 minutes over 72 tool calls and still read one, so
-  the clause was always true while Builders' notes repeated it as a sign of an easy task. The round
-  tally now states the largest share of the solve wall and the most tool calls any pass took.
-- **A task-set finding forced out of every full pass** (`review-duties.ts`), until 2026-09-29. It graded
-  the review's wording and pressed the author to add rules the request never held.
-- **Pointing a full pass at each answer's distance from the reference**, until 2026-09-30. All five
-  all-pass rounds of 6a8ca0 answered it by moving limits toward the reference or enlarging instances,
-  which the solver's same method still settled in one turn; `MEASURE_SOLVES` now points at the method.
-- **Offering a widening route after a full pass** ("across what the request names and no task does
-  yet"), until 2026-09-30. Conformer 5cc42c and buffer 3af96d took it, adding conditions, families and
-  tasks, and kept passing whole; firmware 3e4693's widened edges were followed by 6/6 and 9/9, and across
-  the batteries of 2026-09-23 to 30, 71 of the 74 scored batteries after a widened edge from a full pass
-  passed whole. The one recorded demand that dropped pass rates was interaction: on the 2026-09-15 truss
-  pack series, one added interaction per task passed 22 of 23 (Sol high), while the same requirements
-  stacked inside one shared mass limit passed 7 of 20 (Sol high) and 2 of 23 (Opus 5). The intent
-  clause defines that depth, the round prompt's raise before submit and the no-limit line name it at
-  their moments, and no surface offers another route.
-- **Stating each passing solve's slack against every published limit in the opening** (`solverRecord`),
-  2026-09-29 to 30. It was added because Builders setting their next limits did not open the traces,
-  and so it pointed every round at limit distance: the twin of the reference-distance pointer above,
-  and the route the witness test did not show makes a task hard (prior 10). It was not measured on its
-  own. The same margins stay beside each passing artifact in the context tool's traces.
-- **Searching each reference as long as a solve may run** (`witness-budget`, one sentence in
-  `renderBatteryContract`), 2026-09-30, and twice before unmeasured (83a24567, d21f1a27). As a duty it
-  bound every task to one method: its truss prediction did not hold as frozen (prior 10), in firmware,
-  which has no optimum to search, the fork given it tied no limit to a solve's minutes and raised
-  difficulty by stacking requirements (prediction 62424ee4), and in a frame simulation an Opus Builder
-  started one 95-minute search with about 75 minutes of its wall left and never submitted. A longer
-  search stays an optional method in `examples.md`, "A search past the solver's wall".
-- **A second Wilson implementation** (`wilsonZ`) and the `minLevelN` floor, which discarded a placement
-  whenever fewer than four tasks changed, until 2026-09-18.
-- **The transplant census**, until 2026-09-25, which refused one deliverable passing every sibling task.
-  That is what a ladder of tightening limits looks like, and it made Builders invent constraints.
-
-### Ablated components
-
-An ablated component is switched off in source but kept there. Each removed line or block stays as a
-comment under `// ABLATED(<id>): <why>`, with its exact original text after the prefix. A line added in
-its place, or on its own, carries `ADDED(<id>)`. To restore a component, or drop an addition, work
-through the grep: remove the prefixes, delete the replacement lines, and flip back the test assertions
-under the same marker. Each entry below is a measured condition, not a settled rule. Once its run reads,
-it either moves to "Tried and taken out" or its comments are deleted.
-
-Each arm is one commit that comments its component out, and it lands like any other change (#89)
-once its run has read. Until then it waits on its own ref, `refs/arms/<id>` on origin, which is the top of the open stack
-plus that one commit (the pre-push gate places every new ref there), and its entry below names the
-ref. A ref outside `refs/heads` keeps the arm off GitHub's branch list and its pull-request prompt;
-`git fetch origin 'refs/arms/*:refs/arms/*'` brings them here. An unread arm is not published as an arm with a revert above it: a pull
-request whose tip equals its base shows no change and lands commits that cancel (operator,
-2026-10-01, replacing #118's shape). The control is the arm's parent, the tip it forked from. To run one
-arm alone, launch from its ref, so that it differs from the control in one component only. All of them are seeded from one recorded product
-(`seed-campaign.mts republish --as-slug a,b,c`) and launched with the same model, provider budget and
-expected-task count. Run them one at a time, or record the machine load beside each: the three forks of
-2026-09-30 ran at once, and each spent 123 to 247 minutes in gate calls where the seed's rounds spent 26
-to 80. Each prediction is frozen before its arm launches.
-Arms are compared on a discovery seed first. A confirmation seed, from another campaign, is launched
-only after every arm's source is fixed, and nothing read from it revises an arm.
-
-While task sets sit at a full pass, changes that pull the same way run as one bundle against main,
-and the bundle is split into its arms only after it climbs (operator, 2026-10-07): an arm alone
-cannot be separated at the size we run ("Open gaps", the third blocker), and a full pass leaves it
-no fail to move. The arm protocol above stays for single-change comparisons. The blockers in "Open
-gaps" are worked in their ranked order, so a gate is not the first lever.
-
-No component is ablated in the landed source at present. Nine arms wait on refs. The five marked
-folded landed on 2026-10-07 in the climb bundle rather than alone, as their entries say, under review
-policy v17 rather than an arm's name; each keeps its ref for that split:
-
-- **`held-findings` (arm, added, 2026-10-01).** `harness_trial` starts no solve while the round's
-  latest gate result is a `correctness_check` that found blocking rows on the very bytes being
-  rehearsed (same snapshot id).
-  It returns `blocked` at stage `candidate` with one sentence and repeats no finding (`heldFindings` in
-  `src/builder/author-feedback.ts`, read in `runTrial`). A clear check, changed bytes, or no check at
-  all lets the solve run as before. On record (1,064 rehearsals since 2026-09-23) it would have held
-  32: 5 of the 36 instrument-defect misses, none of the 7 real misses, 21 passes and 6 not-runs, none
-  on bytes that were later accepted. 23 of the 32 came in the same tool batch as the refusing check.
-  The arm is read as `harness_trial` receipts blocked at stage `candidate` straight after a
-  `correctness_check` receipt with findings on a `candidateId`, and as the defect share of rehearsal
-  misses. Grep: `rg "ADDED\(held-findings\)"`. Prediction and run: filled when this arm launches.
-  Ref `refs/arms/held-findings`: the stack top plus this one commit.
-
-- **`miss-reading` (arm, 2026-10-01; folded).** The sentence `harness_trial` returns with a graded miss, "so a
-  battery of tasks like it scores near zero" (`trialNextAction` in `src/builder/harness-trial.ts`). In
-  its place the result says the checks rejected the submitted answer, that either the answer is wrong,
-  which is a limit, or a check refuses a right answer, and that the result does not say which. Of 47
-  recorded rehearsal misses (1,064 rehearsals since 2026-09-23), 36 were a check or its instrument
-  refusing a right answer, 7 were real and 4 were under-specified tasks; 23 were never rehearsed again
-  and 3 kept the task with its public text unchanged. The pass sentence and the round tally stay.
-  Folded with a third reading, a task that leaves the answer open, and with the pass sentence's and
-  the tool description's forecasts of the battery taken out too.
-  Grep: `rg "ABLATED\(miss-reading\)|ADDED\(miss-reading\)"`. Prediction and run: filled when this
-  arm launches.
-  Ref `refs/arms/miss-reading`: the stack top plus this one commit.
-
-- **`hardest-guess` (arm, 2026-10-01; folded).** The round prompt's "A passing rehearsal is a blind solve of
-  its task, so it shows that task is within the solver's reach, and the task you expect to be hardest
-  is the one whose rehearsal says most about the battery", and the word "hardest" in the raise that
-  follows it (`roundPrompt` in `src/author/builder-session.ts`). The sentence relies on the Builder
-  predicting which task is hardest: its predicted pass probability averaged 0.41 against an observed
-  0.94, and the rehearsed task sat at chance in its battery's solve-time order (mean rank 0.48 against
-  0.50). Its first half restates the witness line the round opens with. The raise, its route "act
-  together" and the one rehearsal after it stay. Folded without the second change: "hardest" stays in
-  the raise. Grep:
-  `rg "ABLATED\(hardest-guess\)|ADDED\(hardest-guess\)"`. Prediction and run: filled when this arm
-  launches.
-  Ref `refs/arms/hardest-guess`: the stack top plus this one commit.
-
-- **`clear-coverage` (arm, 2026-10-01).** What a clear `correctness_check` says after "The validation
-  sequence found no blocking row on these bytes" (`CLEAR` in `src/gate/check-tool.ts`): that its
-  controls cannot detect an obligation both the evaluator and the corpus omit, to reconcile the
-  declared coverage and "submit when every obligation has an observation and a one-fact control", and
-  that checking unchanged bytes repeats the result. The round prompt says to submit once a clear
-  preview says it works, so the result added a condition the round does not set; a Builder with a
-  clear preview and no submit is the case that ran longest. The tool's description, sent with every
-  request, already states the omitted-obligation limit and the remembered rows, and `harness_inspect`
-  states the coverage duty. Grep: `rg "ABLATED\(clear-coverage\)|ADDED\(clear-coverage\)"`.
-  Prediction and run: filled when this arm launches.
-  Ref `refs/arms/clear-coverage`: the stack top plus this one commit.
-
-- **`rehearsal-price` (arm, 2026-10-01).** The `harness_trial` description's "Each rehearsal costs one
-  measured case from the run's provider budget" (`createHarnessTrialTool` in
-  `src/builder/harness-trial.ts`), which every Builder request carried. A rehearsal took a median 3.1
-  minutes and 4% of the solve wall, 23 of 47 rehearsal misses were never rehearsed again, and nothing
-  rations rehearsals: the provider budget owns that spend. STARTER.md still says "one measured case
-  each" once, and the starter pack's "a sample you may buy, not a step you owe" stays. Grep:
-  `rg "ABLATED\(rehearsal-price\)|ADDED\(rehearsal-price\)"`. Prediction and run: filled when this
-  arm launches.
-  Ref `refs/arms/rehearsal-price`: the stack top plus this one commit.
-
-- **`hardness-observation` (arm, 2026-10-01; folded).** In the Epoch Reviewer's lead for a battery on or below
-  the aim, "and hardness is the last of its readings rather than the first" and the closing "Record an
-  observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the
-  writer schema against the artifact and neither holds" (`PLACEMENT_LEADS.below` in
-  `src/review/epoch-reviewer.ts`); and in `record_finding`, "tasks that are harder than the harness"
-  and "or hardness" (`src/review/epoch-review-findings.ts`). The observation reaches the Builder as
-  "no check or path named; an observation, not a demonstrated defect" on the task set, so an earned
-  fail, on the battery the climb wants, arrived as an advisory against its tasks. The lead, both
-  probes and their owners stay. Folded with the lead naming real difficulty, valid answers the checks
-  reject, too little checking and an answer the tools cannot represent as competing explanations,
-  none first. The review policy string carries the arm's name while it is on. Grep:
-  `rg "ABLATED\(hardness-observation\)|ADDED\(hardness-observation\)"`. Prediction and run: filled
-  when this arm launches.
-  Ref `refs/arms/hardness-observation`: the stack top plus this one commit.
-
-- **`easy-result` (arm, 2026-10-01; folded).** In the Epoch Reviewer's lead for a battery above the aim, "and
-  tasks that were easy while leaving none undemanded are a result to report, not a defect to record"
-  (`PLACEMENT_LEADS.above` in `src/review/epoch-reviewer.ts`). A battery that passes whole found no
-  limit, and "Evidence and implementation status" records this clause as an open gap: the orientation
-  still reads easy tasks as a result. The guard against a finding on the score alone stays in "a lead,
-  not a finding on its own", and the question the lead asks, which obligation the tasks do not demand
-  or demand only one at a time, stays. The review policy string carries the arm's name while it is on.
-  Grep: `rg "ABLATED\(easy-result\)|ADDED\(easy-result\)"`. Prediction and run: filled when this arm
-  launches.
-  Ref `refs/arms/easy-result`: the stack top plus this one commit.
-
-- **`one-check-question` (arm, 2026-10-01; folded).** The rebuild advice's "One check carrying every failure
-  asks whether its rule is stated in the public contract before the count reads as solver capability"
-  (`blockingLine` in `src/author/rebuild-advice.ts`), appended after a partial battery whose verified
-  failures all sat on one declared check; the Epoch Reviewer's battery block renders the same line. It
-  met a located limit by pointing at the Builder's own contract, which the publication clause already
-  asks about once, and 11 of 47 rehearsal misses came back with their public text changed. The
-  per-check counts stay. Folded as three readings, none first, in place of the question. Grep:
-  `rg "ABLATED\(one-check-question\)|ADDED\(one-check-question\)"`.
-  Prediction and run: filled when this arm launches.
-  Ref `refs/arms/one-check-question`: the stack top plus this one commit.
-
-- **`readiness-contract` (arm, 2026-10-01).** The `contract` field of every `harness_inspect
-  readiness` result: the round's task count, `LIMIT`, "Every task must be valid and solved by your
-  reference." and `WITNESS` (`roundContract` in `src/run/builder-campaign.ts`, served by
-  `readinessResult` in `src/builder/harness-inspect.ts`), about 500 bytes per call. The same bytes
-  open the round and are the context tool's round source, which now gives the compaction recovery the
-  field was added for. The binding's `contract` plumbing is commented out with it, and `roundContract`,
-  left with one caller, sits inline in the round opening. Grep:
-  `rg "ABLATED\(readiness-contract\)|ADDED\(readiness-contract\)"`. Prediction and run: filled when
-  this arm launches.
-  Ref `refs/arms/readiness-contract`: the stack top plus this one commit.
-
-## Evidence and implementation status
-
-"Done" hides four states, so name the one that is true. A thing is present in source when the named tree
-holds the producer and its live consumer; deterministically proved when a positive and a hostile check
-exercise that consumer on that tree; live-exercised when a recorded run from that exact source reaches the
-branch; and outcome-proved when the live run supports the claimed capability or limit. Prompt assertions
-prove text, types prove shape and gates prove the conditions they test. None of them, and neither do
-started runs, PR prose, reference artifacts, static discrimination controls or a projected move, proves
-better model behaviour or a completed product vertical.
+| What is designed, in what order, and how far each part has got | the plan of record; `docs/plan.md` is the repository's copy |
+| What came over from v1, and what was replaced or dropped | `docs/transfer.md` |
+| What v1 measured, and why it did not climb | `docs/v1.md` |
+| A prompt handed whole to another session: an audit, a review | `docs/prompts.md` |
+| Where v2 stood at PR #91 and PR #168, with the three reviews of 9 October | `docs/plan-history.md` |
+| What the code does today | the source at the stack's head, and the head comment of each module |
+| How a procedure is carried out: stacking, launching, reading a run, wording a claim | the skill that owns it, under `.claude/skills/` (sections 10 and 11) |
+| How code is written here so that it passes its checks the first time | `tools/oxlint/HABITS.md` (section 12) |
+
+Newer evidence wins where one of them disagrees with this file. A sentence here whose mechanism
+has left the source is dead text: say so, and correct it in the change that found it.
+
+Do the task. Given ambiguity, take the most reasonable reading, say which one you took, and carry
+authorised work through implementation, checks and delivery. Ask only for a decision that is the
+operator's (section 3 lists them) or a permission that is missing, and ask with the reviewable
+result ready.
+
+## 1. What Anabasis v2 does
+
+One query names one technical domain. A campaign builds one **harness** for it: the guide and the
+programs with which a solving model answers that domain's tasks. Every mechanism in the repository
+serves one question:
+
+> Is the new harness better than the reference harness, for this solver, on tasks neither was
+> built on?
+
+A comparison in code answers it. Both harnesses solve the same held-out tasks afresh, under the
+same limits. A hidden check program decides whether each answer is valid. Each task is then a win,
+a loss or a tie for the new harness, and a one-sided sign test over the tasks reads a **step** or
+none.
 
 ```text
-recorded run bytes > verified evidence reader > source and tests > terminal/log line > PR body > prose
+                        OPERATOR   freezes the exam, sets the dollar cap, labels answers blind
+                            │
+   EXAM SIDE                │                      BUILD SIDE
+   Examiner (model)         │                      Builder (model)
+     writes tasks           │                        edits harness/, practises on released
+   Contract                 │                        tasks, ends with a frozen harness version
+     public rules, format   │                              │
+   Check program + engines  │                              ▼
+     hidden from every      │                      Solver (model: pi's coding agent)
+     solving model          │                        reads the task, the rules, the guide;
+        │                   │                        writes answer.json and submits
+        ▼                   ▼                              │
+   held-out tasks ───► COMPARISON (code): reference harness and new harness, the same tasks,
+                       fresh solves, one setting, terms logged before the first solve
+                            │
+                       VERIFIER (code + checks)   pass │ fail │ faulty │ non-result
+                       REFEREE (model)            rules every rejection before it counts
+                            │
+                       tally of wins, losses and ties ──► sign test ──► reading
+                            │
+                       THE LOG   one append-only file a campaign; every state is a view of it
 ```
 
-A negative capability claim ("the gate does not enforce X") is the most expensive kind to get wrong,
-because it tells every later reader to compensate for a defect that may not exist. It enters this file
-only with a named symbol, its call sites and a check run in the same turn; a session report is a lead
-toward that check. Likewise grep-confirm every threshold, constant, closed-set member and path you write
-here against `thresholds.frozen.yaml` or `src/` in the same turn, because a rule whose mechanism has left
-the source still costs a reader an investigation.
+### The five success factors
 
-Analyse against the full `source.commit` in `opening.json`, cite it, and show its first nine hex
-characters in `main_synthesis.md`; a missing object is `source-unresolved`. A fix counts as current only
-when it is an ancestor of the measured tree, and a composed stack needs every child to contain its latest
-published parent. GitHub's `CLEAN` state proves neither.
+Anabasis v2 is a training loop in which the thing trained is a harness and the loss is measured
+by running a fixed model. Read that way its success factors are the ones every learning system
+has: a training signal that carries information, a held-out set the learner cannot see, an
+evaluation no noisier than the effect it looks for, labels that are correct, and a result that
+transfers. Every session, pull request and run is judged against the five below, and a change
+that moves none of them says what it moves instead. Each is a question, how it is measured and
+its bar; the recorded values are the plan's (`docs/plan.md`, "Goal and the five factors"), and
+nowhere else.
 
-Read cases by their kind first. `verified` is an accepted submission with a verifier verdict; `unaccepted`
-means the agent ran but produced no accepted submission; `non-result` is a typed environment failure with
-`truthOk` and `pass` `null`. Report the identities and the three counts separately. Only verified cases
-enter a capability rate, and zero verified gives an operational result only; SIGTERM preserves the
-recorded denominators either way. Difficulty has its own denominator, because once any case is
-truth-verified, door-rejected attempts count as difficulty failures. An all-unaccepted battery is placed
-nowhere: rebuild, with no capability rate and no difficulty strike. An unproven served-model identity
-refuses the identity claim and nothing more; it does not turn a scored case into a non-result.
+**1. Supply: is there gradient?** A comparison registers a difference only on a task where one
+harness answers and the other does not. A task the reference solves in every attempt is a solved
+example, and one nobody has solved is an unlearnable one: neither carries signal, and a scored
+set made of them reads "no room" whatever the new harness is. The informative tasks lie between:
+the reference answers them sometimes, or never while another harness has. In most learning the
+data is fixed and the model moves; here the solver is fixed and the Examiner keeps the exam at
+its frontier, told one outcome a task and nothing else. Measured as the informative tasks in a
+comparison's scored set. Bar: at least four before each comparison starts. It binds first,
+because every other number is undefined without it.
 
-Compare runs on one shared pack or not at all. An in-run battery scores the Builder's own tasks, which is
-a much easier exam than it looks: truss `0aad0d` passed 75 of 75 there, and the same agent under a Sol
-solver passed 2 of 23 verified hard tasks. A cycle series is the independent evaluation of a real run, in
-which each cycle measures the harness exactly as the run left it at that point. An early cycle is expected
-to be incomplete (c01 may lack an operating guide, name an analyser never installed, or read a field the
-pack does not publish), and it still solves; that incompleteness is what the later cycles climb away from.
-So never repair, complete or back-port a cycle's bundle or substitute a later state. Record a differing
-condition in the sweep's caveats and read the results through it. A low score on an early cycle is the
-expected signal, and only a non-result is re-solved. A run the environment cut short keeps every level
-measured before the cut, and two runs of unequal length are compared over the shorter one's elapsed
-window, named in the comparison.
+**2. Climb: does the learner improve?** The one quantity the system exists to move is the
+reference harness. A promotion, a harness that beats the reference on held-out tasks by more
+than chance allows, twice, on fresh solves, is one step of descent; a climb is several. Measured
+as promotions a campaign, with the pairs the starter loses in each epoch beside it, which rise as
+the reference improves. Bar: two promotions in one real campaign, the starter losing more pairs
+after the second than after the first, then the same in a second domain. One step shows that the
+loop can move; two show that it can move from where it moved to.
 
-During the beta, explicit Codex or Claude credit exhaustion is a normal interruption: preserve the results
-and classify the affected work from its receipts. Only an explicit exhaustion message counts. A generic
-429, a timeout, a crash, an authoring stall or an unexplained refusal is not proof of no credits, so
-investigate what actually failed.
+**3. Honesty: what is the false-positive rate of the test?** A sign test at level 0.10 is
+designed to crown a winner between two equal harnesses about one time in ten, and the design
+value is a claim until it is measured on the real solver, whose variance is unknown: the same
+harness fails a task once and passes it next time. The measurement is an A/A test. With
+`--noise` on a checkpoint the reference is solved twice as often; its earlier solves of each
+task are one side and its later solves the other, and the two are tallied and tested as a
+comparison is (`src/builder/round.ts`). A step there is a false positive by construction. Bar: no
+step in the ten controls after the six on record. Two limits are known: ten controls still bound
+the rate loosely, and the later side always runs after the earlier, so a drift of the host or the
+provider reads as a lie. The same control gives the tie share, the floor a real comparison has to
+beat before its wins mean anything.
 
-The controller's terminal codes are a closed set of eight (`LOOP_TERMINAL_CODES`,
-`src/run/loop-terminal.ts`): `completed`, `stopped`, `fixed-product-boundary`, `build-failed`,
-`candidate-held`, `budget-limited`, `environment-blocked`, `operator-interrupted`. Only `completed` says
-the run settled its question. `fullrun` exits 0 for `completed`, 3 for `operator-interrupted`, 1 for every
-other terminal, and 2 for a refused argument or a thrown run.
+**4. Verdicts: are the labels correct?** Validity is decided by a check program nobody has
+audited against the field, and a check that rejects a right answer is label noise: in v1, 36 of
+47 rehearsal misses came from a faulty check or instrument. The Referee is the noise filter
+(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison,
+before the rejection counts, and never on a pass, a solve a limit cut or a crash; first the host
+replays the checks on the logged answer, and a verdict that does not repeat is a check defect
+ruled by the host. It reads the task with its hidden values, the public rules, the answer, the
+rejecting checks with the fields each reads, the check program's source, a valid answer for the
+task where one is on record, and a probe that changes one field and reruns the checks; never the
+harness, the trace or anything the Builder wrote. It records one ruling (`referee.finding`):
+`earned` must name the rule broken and the field that breaks it, both cited by a rejecting check;
+`check-defect` must cite a probe that decided both sides on a field the check reads; `unclear` is
+what is left, and a ruling without its evidence is refused. `earned` counts as a loss; the other
+two set the task aside for both harnesses, so a broken check scores nobody. The Referee is a
+model and is measured by agreement with a person who labels the same rejections blind
+(`tools/d2/settle.ts`, `src/review/agreement.ts`): a three-by-three table of label against
+ruling, read as two rates. Bar: on at least ten labels a kind, three in four of the rejections a
+person calls a check defect caught, at most one in ten of those a person calls earned voided, and
+three passes a comparison read by a person, since no seat reads an answer that passed.
+
+**5. Worth: how large is the effect, does it transfer, and what did it cost?** A significant
+step is not necessarily a useful one. Three numbers from one report say what a promotion is
+worth: the effect size, the reference's share of valid answers on held-out tasks against the new
+harness's at the full limit; transfer, the same harness on tasks written after it was frozen,
+which is the only reading that separates learning the domain from learning the exam; and the
+cost, in dollars and Builder sessions, of a promotion. None has a bar. Setting the three is the
+operator's decision, and until it is made no promotion is called a result worth having.
+
+Left out on purpose: the wall between the two sides is a correctness property, tested in the
+suite as a byte-identical message under a changed hidden value, and is not optimised; the
+Builder's practice results are excluded by rule 1, since a learner's score on its own training
+set is the overfitting signal and not the metric; cost stands inside factor 5, since a cheap
+system that does not climb has no cost worth reporting. The five are ordered by where they bind:
+without supply there is no gradient, without climb no result, without honesty and verdicts no
+result that can be believed, and without worth none that can be used.
+
+### Two sides and one wall
+
+The exam side knows what a right answer is. The build side tries to produce right answers. The
+value of the measurement is that the second never learns the first, so the wall between them is
+the system's main asset.
+
+What crosses from the exam side to the build side is a closed list:
+
+- the contract's public rules, its scope and conventions, the answer format and, where the check
+  program declares one, the objective: the quantity and which way is better;
+- the public part of each **released** (practice) task;
+- for a practice solve: its ending's outcome and kind, the solver's trace and, where the
+  contract states an objective, the measure the verifier took of a valid answer;
+- for each comparison: the tally and the reading, with no task named.
+
+Nothing else crosses: no held-out task, no trace of one, no check, no hidden value, no list of the
+checks that refused an answer, and none of the Referee's reasons. Section 8 states this as a rule.
+
+### What changed from v1
+
+v1 is the public repository `s-smits/anabasis`. Much of `src/meta`, `src/verify`, `tools/loc` and
+`tools/oxlint` was copied from it, so its words still appear in comments. A comment there that
+cites "AGENTS.md rule N" means v1's file, whose rules were numbered otherwise. The design around
+the copied code is different.
+
+| v1 | v2 |
+| --- | --- |
+| The Builder wrote the harness, the tasks and the checks | The Examiner writes tasks, the check program is fixed, and the Builder writes the harness only |
+| A harness was scored on its own Builder's test set, as a pass rate | Two harnesses are compared on held-out tasks, as wins against losses |
+| Every task carried an answer its author had found | No reference answers. A task is held out on the shape of its package |
+| A candidate passed a submit gate before it was measured | No gate on a harness. `check_harness` says whether it opens, and the comparison says whether it is better |
+| Difficulty was steered with a band, levels and staged test sizes | One fixed compute budget for both harnesses. No band and no levels |
+| A harness declared its own limits in `agent/config.yaml` | The host sets every limit, and that file is not read |
+| A controller loop chose build, measure, rebuild or stop | One table over the log names the move that follows, and one command makes it (section 4). It chooses no content |
+| Runs lived in `campaigns/` and `domains/` with opening, terminal and claim files | One log a campaign, under `.ana/d2/<name>/` |
+
+Words v1 used that have no meaning here: battery, epoch, climb, band, level, witness, F2, census,
+submit gate, claim, adoption, veto. Do not bring them back in new text. Two survive with a narrow
+meaning: a **cycle** and a **sweep** name a stored v1 run that a campaign takes its pack from
+(`--sweep`, `--cycle`), and **bundle** names that pack's directory (`--bundle`).
+
+## 2. The stance: code owns the conditions, models own the content
+
+Anabasis v2 is a workflow on the outside with free agents inside its steps. The split is the
+philosophy of the system, and most design questions are settled by asking on which side of it a
+decision falls.
+
+| Code decides | A model decides |
+| --- | --- |
+| Which move may start, and every refusal | What a harness contains: its programs, its guide, its tools |
+| Every limit of a solve and of a session | How a task is solved |
+| The condition a solve runs under, and its identity | What a new task asks, within the contract |
+| Whether an answer is valid | Whether a rejection was right (a ruling, with its required evidence) |
+| The comparison, the tally and the test | Why a practice solve failed, read from its trace |
+| What crosses the wall | Which failure to work on, and what to change |
+| The dollar cap and what is charged to it | |
+| The log: what is recorded, and its order | |
+
+Code keeps the first column because a model cannot observe those facts, or because the model is
+the subject of the decision, or because the value must stay identical between the two sides of a
+comparison. Models keep the second because nothing in code can reason about a domain it has not
+seen.
+
+Six consequences guide a change:
+
+1. **Give a model facts and never a course.** The host tells an agent what happened: a tally, an
+   ending, a limit and how much of it is used. It does not tell the agent what to write. A v1
+   campaign that was told a three-stage course changed only its published magnitudes for four test
+   sets in a row.
+2. **Give an author no target.** The Examiner is told one outcome for each task and no zone, share
+   or count. v1 measured why: an author told a zone, a share or a count wrote towards it, and one
+   told each answer's distance from its limit moved the limits. Since 10 October it is told the
+   budget every solve is held to, as a fact and not a target: a task that tells two harnesses
+   apart is one a better method answers within that budget and a worse one does not, which
+   nobody can write without knowing it, and ten campaigns' tasks tied without it.
+3. **Keep the Builder free.** It may change or rewrite anything in the harness. One limit stands:
+   nothing in a harness returns a finished answer for a task. Do not add a second limit in a
+   prompt or a check. Both harnesses run under one budget, and that budget prices whatever a
+   harness does.
+4. **Do not let code choose content because reasoning about it is hard.** Code may validate a
+   declared structure. A classifier in code that decides what a harness or a task should contain
+   is a model's decision made badly.
+5. **Do not let a model hold a condition.** A model's reply never sets a score, a limit, an
+   identity or a route. Where a model's output enters a decision (a ruling), code states what
+   evidence the output must carry, and refuses it otherwise.
+6. **Where in doubt, allow, and allow the whole.** A wall keeps three things: the exam side's
+   hidden values, the operator's credentials, and one seat's files from another seat's. Whatever
+   is none of the three is allowed, by the simplest rule that says so: reads open by default with
+   the protected roots closed by name, and one root a seat, readable and writable whole. Do not
+   grant a seat a list of subfolders inside its root, a path a command, or a file where the folder
+   would do: each narrower grant is one more policy to keep true on two operating systems. On the
+   record of 9 and 10 October a grant that was too narrow ended solves by the dozen, and no
+   recorded solve or session read a hidden value through one that was too wide: a denial that
+   named each worktree ended 12 solves in a row as `sandbox-crash` once two of them were removed,
+   and a probe's folder under a shared parent ended 56 (`docs/plan.md`, rows B10, B12 and B17).
+   Narrow a grant only where two would collide, as two solves writing one path in a shared `/tmp`
+   did, or where the wider one opens one of the three. A wall is probed by one command run
+   through the launch a seat's commands use, and need not prove its own identity. The source
+   holds both on `main` at `524c589`: a seat's commands write one root, but for the host's own
+   folder in it (`SolveDirs`, `src/solve/command.ts`; PR #203), and each policy is probed once a
+   process by one command run as every command of a seat is run (`walledBase` and `probeWall`,
+   the same file; PR #197).
+
+## 3. The seats
+
+Each seat has one job and a closed view. "Reads" is what the host hands it; "never" is what the
+wall keeps from it.
+
+| Seat | Job | Reads | Never | Source |
+| --- | --- | --- | --- | --- |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, and one outcome for each task of the campaign; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, as when it writes tasks | A target, a harness's name, a count of solves. It makes no solve of the exam's | `src/examiner/` |
+| **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
+| **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
+| **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
+| **Referee** (model) | Rules each rejection `earned`, `check-defect` or `unclear` before it counts | The verifier's side only: the task with hidden values, the rules, the answer, the refusing checks, the check program | The harness, the solver's trace, the Builder | `src/review/referee.ts` |
+| **Host** (code) | Everything in the first column of section 2 | The log | n/a | `src/kernel/`, `tools/` |
+| **Operator** (person) | See below | Every report and refusal | n/a | n/a |
+
+The tools of each model seat, as its source names them:
+
+- Examiner: `propose_tasks`, `read_example`, `try_answer`, `bash`, `read`, `write`, `finish`.
+  `try_answer` runs the checks on an instance with an answer of the Examiner's own and keeps
+  nothing; the shell is a walled home of its own, empty at the session's start, and nothing in
+  it enters the exam but through `propose_tasks`. In the session that drafts an exam:
+  `draft_exam`, `bash`, `read`, `write`, `finish`, the shell the same kind of walled home
+  (`src/examiner/shell.ts`), and nothing in it enters the exam but through `draft_exam`.
+- Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
+  `check_harness`, `preview_harness`, `reset_harness`, `finish`.
+- Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`.
+- Referee: `probe_check`, `read_check_program`, `record_ruling`.
+
+Until 11 October a Diagnoser named the first wrong step of each failed practice solve for the
+Builder; 20 of 20 of its readings named the solver, and the seat went (`docs/simplify.md`, E1).
+A log of before keeps its `diagnosis.*` events.
+
+### What waits for the operator
+
+Seven decisions wait for the operator's word, each time. Someone outside the loop has to fix the
+exam, pay for it, and own what cannot be undone:
+
+- freezing or refusing the contract and the check program, and admitting a check by name
+  (`accept.ts --freeze`, `--admit`). The operator writes none of it;
+- labelling drawn rejections blind;
+- the dollar cap, and which provider account spends;
+- saying whether a task that nobody answers is infeasible;
+- promoting a harness to reference (`tools/d2/promote.ts --harness <digest> --yes`). The rule
+  names the harness (section 7), and another one takes the operator's reason (`--despite`);
+- changing what a solver is given or told: the starter, the shell, the limits of a campaign;
+- stopping a live run.
+
+Bring each as one question, with the evidence and a recommendation, and go on with whatever does
+not depend on the answer. A continuing instruction ("keep going", "launch the next one")
+authorises work inside its scope and none of these seven.
+
+Write "a person" only for a duty in the list above. Four more were the operator's until
+9 October and have an owner in code since: the setting and the reference are events a command
+reads (`campaign.setting`, `harness.promoted`), the stop rule refuses the next comparison
+(section 7), and the next step is named by a table and launched by one command (section 4).
+
+Two of the seven can be given once for a campaign in place of each time: `--unattended` on that
+command freezes an exam whose reading holds no fault, and promotes the harness the rule names.
+It is the operator's flag, and a session never adds it of its own accord. Whether it becomes the
+default is the operator's open decision (`docs/plan.md`, row F29).
+
+The operator types nothing into a Builder session. Every message a Builder reads is built by the
+host from the contract, the practice tasks, the practice results and the tallies.
+
+### The harness
+
+A harness is a directory with one purpose for each part (`HARNESS.md`, which a Builder is handed
+beside it, gives the shapes with a worked example):
+
+| Part | Purpose |
+| --- | --- |
+| `agent/tools-spec.json` | Selects which of pi's coding tools the solver has |
+| `.toolchain/` | The programs, which the solver runs by name from its shell |
+| `agent/BUILT_AGENTS.md` | The guide: words about the programs and the tools, read once a task in the solver's system prompt |
+| `agent/tools.ts` | Tools of the harness's own, which the solver has beside pi's tools; each call runs alone under the wall. Whether a computation is a program, a tool or both is the Builder's choice, told what each costs a solve (until 10 October a prompt told it to leave the list empty while the solver had the shell, a second limit of the kind section 2 forbids) |
+
+A harness is named by its digest, so a change to any part is another harness, and no solve under
+the old one counts for the new. The **Starter Built Harness** is pi's coding agent as pi releases
+it, with no guide and no domain program (`src/solve/starter.ts`). Every campaign starts from it,
+it is the first reference harness, and it stays the fixed lower reference after a promotion.
+
+## 4. The Harness Builder
+
+Two names are easy to confuse, and new text keeps them apart:
+
+- The **Harness Builder** is the owner of one campaign: it takes the query and returns the
+  harness. It is the whole of the workflow in section 2.
+- The **Builder** is the inner agent that edits the harness.
+
+Older comments and `docs/plan.md`'s list of terms use "Harness Builder" for the inner agent. Do not
+copy that use.
+
+The Harness Builder's controller is in the repository in three parts. The campaign's state is
+one reading of its log (`campaignOf`, `src/builder/handover.ts`): each step's handover, which
+`bun run runs view <name>` prints. The move that follows is one
+function of the log and the campaign's opening (`decide`, `src/builder/decide.ts`): the plan's
+decision table, which returns one move with its reason, or an ending. And one command makes that
+move by the command an operator would run, reads the log again, and goes on until the campaign
+ends (`tools/d2/harness-builder.ts`, section 6). The setting, the reference and every refusal
+stay the log's and one admission's. The skill `run-improvement-campaign` remains the procedure
+for a session that runs a campaign with the operator: it reads the same table.
+
+One designed part of it is absent: one Builder conversation across sessions (`docs/plan.md`,
+row F27).
+
+The design has two layers, as v1's had:
+
+- **A controller in code.** It holds the campaign's state and names the next move: reading the
+  exam, setting the tasks apart, an Examiner session, a Builder session, a comparison, another
+  budget, a promotion, or an ending. It owns the setting, the reference and every refusal, so
+  that no flag is typed twice and no command starts past a refusal. It chooses nothing about the
+  content of a harness or a task.
+- **The Builder's view.** The inner agent is told what happened and never what to write.
+
+What the Harness Builder reads of each step is its handover, never its content:
+
+| Step | Handover |
+| --- | --- |
+| Set-up | Tasks held, released and waiting for a label; whether the checker was read, and its faults |
+| Examiner session | Tasks proposed and accepted, and the cost |
+| Builder session | The harness version it left, practice solves used, fails open or repaired, and the cost |
+| Comparison | Its terms, the tally and the reading, each harness's share of valid answers, rejections ruled or set aside, and the cost |
+| Rulings and labels | Counts by kind, and whether the bar for the reviewer is cleared |
+| Next move | The one move the plan's table names, and its reason |
+
+All of it is in the log already. One limit holds whatever is built: the Harness Builder may read
+every step, and what it passes to the Builder stays the closed list of section 1. An overarching
+agent that knew which held-out tasks were lost, and wrote freely to the agent that edits the
+harness, would be v1's fault by another route. v1's Builder saw and wrote everything; one of its
+harnesses passed 75 of 75 of its own tasks and 2 of 23 of a shared set.
+
+A session that runs the loop stands where the controller stands, so the limit binds it. It
+reads handovers from the log, it types nothing into a Builder session, and its reports reach no
+Builder, Examiner or Referee. The controller's own reasons (`campaign.move`,
+`campaign.ended`) are the operator's to read and enter no seat's message.
+
+The Builder's side is meant to be one conversation for the whole campaign, kept by compaction as
+v1 kept it. Both of v1's compaction modes are in the source: under the Claude backend the CLI
+compacts at a pinned window (`SWEEP_COMPACT_WINDOW`, `src/backends/claude.ts`), and for the other
+backends pi's loop compacts (`src/backends/pi-compaction.ts`). Each compaction is logged
+(`build.compacted`, `solve.compacted`, `exam.compacted`). What a session has when the conversation
+is lost is in the source too: the notes it carries (`src/builder/memory.ts`), and the list of
+failed practice solves with each comparison's tally (`src/builder/past.ts`). On `main` at
+`524c589` (11 October) every session is that case, since a session opens a new conversation: its
+loop starts from the system prompt and the opening message alone (`src/builder/session.ts`).
+
+When you build towards the Harness Builder, take v1's four lessons with it:
+
+1. Code states the fact, and the model chooses the response.
+2. One reading of the log, rendered once for each reader through its own filter. Until
+   21 September v1's Builder received one test set through four readers, and they disagreed: 20
+   of 25 in one paragraph and 0 of 5 in the next.
+3. The standing facts are restated where the agent reads, so a compaction needs no signal. Every
+   tool result of a Builder ends with the turn it is in, the session time used and the practice
+   solves left (`usedLine`, `src/builder/prompt.ts`); a turn that ends without a call is answered
+   with the goal and the same facts (`continuation`); and `read_opening` serves the opening
+   message again. In the seven Builder sessions on record on 9 October every one of 365 turns
+   ended in a tool call, so a message sent only between turns was never sent.
+4. The wall is a test and no convention: rule 3 of section 8 states it.
+
+## 5. The log
+
+A campaign's record is one append-only JSONL file, `.ana/d2/<name>/log.jsonl`, one event a line
+(`src/kernel/log.ts`). Every state and every report is a view over it, and nothing else is stored
+as truth.
+
+- An append is written and synced before it returns. A read refuses a torn or unknown line.
+- A task's state (`held`, `released`, `refused`, `disputed`) is a fold over the log
+  (`src/kernel/task.ts`). So are the pairs of a comparison (`src/kernel/compare.ts`), the stop
+  rule and the tasks waiting for a label (`src/kernel/reports.ts`), and the dollars billed.
+- A **condition** is everything that could change a solve's result, as one content-addressed
+  record (`src/kernel/condition.ts`): the contract, the harness, the task version, the model and
+  its effort, the price table, the runtime's packages, the compaction mode, the tool trees and the
+  sandbox policy. Two solves are comparable only when their conditions differ in the one thing
+  compared.
+- A solve's trace is in the log (`solve.turn`, `solve.call`), as are a Builder session's and an
+  Examiner session's own turns and calls.
+
+Four habits follow:
+
+1. **Add no second store.** A fact a command needs later is an event, and the command reads it
+   back. A file beside the log that holds state is a second history.
+2. **Add no second reader of one fact.** Find the fold that already reads it and call that.
+3. **Never edit a log, and never write an event by hand.** A log with a hand-written line records
+   a history that did not happen.
+4. **An old event kind stays readable.** The source keeps no compatibility paths (`tools/oxlint/HABITS.md`, 12.3), and
+   the log is the one exception, because a log is evidence: `EVENT_KINDS` still lists kinds that
+   no command writes, so that an earlier log reads.
+
+`.ana/` is ignored by Git and lies inside the repository, which every solve's, every Builder's and
+every Examiner's wall denies, with the repository's other worktrees (`worktreesOf`,
+`tools/d2/campaign.ts`): a campaign runs from a worktree kept for it, and until 10 October a
+shell in a sibling worktree could read its log. The log holds hidden values and the checks' verdicts, so it never leaves the exam
+side: not into a prompt, not into a pull request, not into a paste.
+
+## 6. A campaign's commands
+
+A campaign runs as a sequence of commands over one log. Each names the campaign (`--name`) and
+the pack it opens over: a stored one, by four flags together (`--root --sweep --cycle --bundle`),
+or none, for a campaign that opened from a prompt and whose exam its own log drafted
+(`packNamed`, `tools/d2/campaign.ts`). The head comment of each file is its manual and lists its
+flags.
+
+| Order | Command | What it puts in the log |
+| --- | --- | --- |
+| 0 | `bun tools/d1b/draft.ts --name <name> --session d-1 --examiner <model>` | For a campaign that opened from a prompt: the session in which an Examiner drafts its exam, and the draft that stood, whole (`exam.drafted`). The host reads each draft without a model before it stands |
+| 1 | `bun tools/c/accept.ts ... [--admit <checks>] [--freeze]` | What the check program was seen to do (`checker.read`), and the operator's word that the contract and that version stand (`contract.frozen`) |
+| 2 | `bun tools/d2/prepare.ts ... [--practice N] [--tasks <ids>]` | The pack's tasks held out and the practice tasks released. `--tasks` confirms each named task against today's verifier and writes nothing: a comparison names its scored tasks itself |
+| 3 | `bun tools/d1b/examine.ts ... --session x-1 --examiner <model>` | Further held-out tasks, written by an Examiner session |
+| 4 | `bun tools/d2/round.ts ... --session b-1 --builder <model>` | A Builder session, then the comparison of the harness it left with the reference |
+| 4 | `bun tools/d2/session.ts ... --session b-2 --builder <model>` | A Builder session with no comparison after it, under a dollar cap of its own. The plan's checkpoint is several of these and then one comparison |
+| 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
+| 5 | `bun tools/d2/settle.ts ... --session b-1 [--passes N]` | A person's labels for the rejections a comparison set aside, and its report once more; with `--passes`, the person's labels of N answers that passed, drawn by the comparison's id (`pass.labelled`), which change no reading |
+| 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing. A harness the rule would not promote takes `--despite "<why>"` |
+| 6 | `bun tools/d2/import.ts --name <name> --harness <dir> [--note "<why>"]` | The operator's word that a harness built elsewhere, another campaign's handover or one written by hand, is one this campaign keeps (`harness.imported`): it is kept under its digest as a session keeps one, and `--parent`, `--reference` and `promote.ts` then name it. It is no session, so `latest` is unmoved |
+| 7 | `bun tools/d2/close.ts ... --to <dir>` | Nothing. It writes what the campaign hands over, outside the repository: the reference harness as a directory that stands by itself, the public rules, and the closing report |
+| all | `bun tools/d2/harness-builder.ts ... --budget <dollars> --builder <model> --examiner <model> --reviewer <model>` | What the campaign runs by, once (`campaign.opened`); then each move the table names, made by the command of its row above and recorded with its reason, when it began and, for a move that solves, the host's load then (`campaign.move`); and how the campaign ended (`campaign.ended`) |
+
+### The campaign command
+
+The last row is the Harness Builder's controller, which runs a campaign move after move. It asks
+`decide` for the one move that follows (section 7, "What follows a reading"), prints it with its
+reason, makes it by the command of its row, and reads the log again, until the campaign ends or
+`--moves N` are made. `--dry-run` prints the move and makes none. `--unattended` is the
+operator's word, given once, for the freeze of an exam whose reading holds no fault and for the
+promotion the rule names (section 3); without it a campaign runs once every fault of its checks
+is admitted, and a step read twice is reported and not promoted, so that the campaign waits
+there for `promote.ts`.
+
+The skill `launch-run` says how it is started: niced, in a process group of its own, with its
+output in two files and the key in Bun's own `--env-file`. A move that solves waits for the
+host: a Builder session and a comparison start once the one-minute load is at or under the
+cores, and the command says once that it waits; `--loaded` starts them all the same. Each run of
+the command keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`):
+its flags, the commit, whether the tree was dirty, and the load it started under, since the log
+holds the host's code by content and no commit.
+
+**It opens a campaign over a stored pack, or from a prompt** (`--prompt "<text>"` or
+`--prompt-file <path>`, with `--solver`). From a prompt, the opening holds the prompt and the
+first move is the draft of row 0. A draft stands once the host's reading without a model finds no
+fault in it: its shape, a source on every rule, one check a rule, every control through the
+checks twice, and the smallest answer the format allows refused on every example
+(`draftReading`, `tools/d2/exam.ts`). What the reading cannot say is whether a rule is the
+field's and its source real. Every check of a drafted exam is its author's own computation,
+since nothing installs an engine of the field for a campaign, so its acceptance reading holds
+one fault a check and the campaign ends on its exam there, once: the log holds `campaign.ended`
+with the ending `exam`, and the command prints the `--admit` line to run. It goes on when the
+operator admits the checks by name, which is rule 10's word: the command run again with
+`--admit <checks>` reads the exam again and goes past that ending.
+
+**Its budget is one total.** Each move's cap is what is left of `--budget` once every billed
+dollar in the log is taken off, and the campaign ends on its budget where less is left than one
+solve is held at (`--reserve`), or than the next comparison would bill by what the last one did
+(`afforded`, `src/builder/decide.ts`): a comparison the cap cuts tallies nothing.
+
+**It ends in one of six ways**, and the log's last event says which (`campaign.ended`):
+`budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment` or `operator`. A
+move that threw after it began ends the campaign on its environment, and so do three Builder or
+Examiner sessions in a row that the provider failed before they held out a task or changed a
+harness (`crashedRun`, `src/builder/ground.ts`): such a session held out nothing because it was
+refused a turn, not because the domain gave it none, so it is not an idle session for the
+patience; one that held a task out and then crashed moved the campaign. Run again by its name, the campaign goes
+on from its log, and the count starts afresh.
+With `--handover <dir>` it then writes what it hands over (row 7): the harness is copied whole,
+with the programs a kept state names by a link, and has to open there as the harness it was kept
+as. The closing report is a view of the log, names no task and holds no check, and says what was
+audited and what was not: what the Referee ruled, what a person's labels settled, and what a
+person read of the answers that passed (`settle.ts --passes`, `readPasses` there), or that
+nobody did.
+
+**The operator steers a campaign that runs by leaving it a word** (`tools/d2/word.ts`), which
+is one event in its log (`campaign.word`): `--stop "<why>"` ends it there with the ending
+`operator`, `--tasks "<why>"` has an Examiner session write other tasks before anything else is
+built or compared, and `--budget <dollars>` sets its total from there on. The command reads a
+word at the next move's boundary and never inside a move (`pendingWords`, `src/builder/word.ts`),
+waits for none, and the event that acts on a word names it (`answers`), so each takes effect
+once. A stop followed by the same command is a pause. A word reaches no seat: no Builder,
+Examiner, solver or reviewer reads it or its reason. `bun run runs stop` is the abrupt form: it
+ends the process that writes the log, which writes no ending, and releases what its unfinished
+solves and sessions held on the host.
+
+### What the log records of a campaign's conditions
+
+**The opening** (`campaign.opened`) keeps what the campaign runs by, so that its command goes on
+by its name alone: the total and the reserve, the full limit of a solve, the Builder sessions
+before a comparison (`--sessions`, 3), the patience (`--patience`, 6), who sits in each seat,
+and the terms of its moves as a command last named them (`TERMS`, `src/builder/opening.ts`): a
+session's limits, a comparison's size, the practice tasks and an Examiner session's. A term no
+command named is its move's default. A later run that names nothing runs by the record, and one
+that names another term records it again: these are the operator's conditions.
+
+**The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, by the first
+command that begins a comparison or a Builder session, and does not change: who solves and under which limits, which
+four flags name (`--solver`, `--solver-effort`, `--solve-minutes`, `--solve-model-turns`), and
+which tasks are scored (`--tasks` or `--target`). The first command records what it names, with
+the defaults for the rest. From then on a command that names nothing runs under the record, and
+one whose flag names another is refused with both: another setting is another campaign. A
+campaign whose solves were made before a setting was recorded has one all the same, the one its
+last test-side solves ran under, and the first record is held to it (`firstRecord`). A solver
+that is another model, at another effort or under other limits is another solver, and no solve
+on record then counts.
+
+**Practice follows the supply, and the outcomes.** One release takes at most half of what is
+held, so a campaign that opens on a few tasks releases fewer than `--practice` names. Before a
+Builder session the table has more released where tasks were held out since the last release,
+and after a control that read room (section 7) it has as many again released. A release takes
+first the tasks no solve answered in two comparisons, then half of the tasks the reference
+harness failed in the last comparison, and the rest by the contract's draw
+(`tools/d2/prepare.ts`): the tasks that leave the reference room are what a Builder has to work
+on. A task that a comparison scored before its release keeps that comparison's solves on the
+exam side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
+Before a comparison the campaign holds as many scorable tasks as the comparison scores
+(`--target`), or the Examiner writes more first.
+
+### What refuses a move
+
+Whether a comparison may start is one function's to say (`admission`,
+`src/builder/admission.ts`), and a round or a checkpoint asks it before its first event, whether
+the campaign command made it or a hand started it. It refuses, among others: a log with no
+held-out task; a comparison that would leave fewer untied tasks than a first reading takes at
+its trigger (`sweepOf`); a comparison with no `--cap`; a checker that nobody has read; a campaign the stop rule has
+stopped, unless `--past-stop "<why>"` gives the operator's reason, which is logged
+(`stop.overridden`). A Builder session by itself asks its own (`admitSession`): a cap, a checker
+that has been read and the stop rule; and the session refuses a `--session` whose Builder started
+and did not end whole (`spent`, `src/builder/session.ts`). What goes on unasked is what the log holds the start of, of its own kind: a comparison
+that began, or a session that began. A command writes nothing before its last refusal: the
+admission's, then the comparison's own terms, and only then an override of the stop rule and the
+campaign's setting. A comparison that reported is finished, and run again says what it said. A
+rehearsal is exempt by name: its seats are scripts, which are paid nothing.
+
+The other verbs over a campaign's log:
+
+```text
+bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
+bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
+bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]
+bun run runs pulse | stop <name> | replay | seed | zip
+```
+
+### Defaults, and a first flag line
+
+Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.10
+(`--level`) and trigger 0.25 (`--trigger`), an objective margin of 0.01 (`--margin`), a stop past
+3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve (`--reserve`),
+`--parent latest`, `--reference promoted`, which is the harness last promoted and the starter
+until one is; a Builder session of 240 minutes, 300 turns and 24 practice solves; a solve of
+120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
+names a number. An Examiner session ends when the Examiner calls `finish` a second time, or a
+first time once the host has the tasks it asked for (`--exam-tasks`): a first `finish` short of
+them is declined once, with the need and no count, since every live session of 9 and 10 October
+proposed one batch of one to three tasks in three turns and finished.
+
+Two of them need a word for a small campaign. The reserve is what one solve is held at before it
+starts, and a campaign ends where less of its total is left than that: set `--reserve` to about
+what one solve of the solver bills, which the log of any earlier campaign under the same solver
+says (`solve.finished.billed`). With `claude-api/claude-sonnet-5-5` at high on tasks a program
+answers, 10 October: a solve 0.01 to 0.05 dollars, a Builder session 0.02 to 0.25, an Examiner
+session 0.12, a draft 0.15 to 0.19, and a campaign of two comparisons of 5 or 6 tasks at 2 or 3
+solves a side 2 to 5 dollars in all. One flag line that ran a small campaign from a prompt to a
+typed ending on 10 October, for a first campaign to start from:
+
+```text
+bun tools/d2/harness-builder.ts --name t-9 --prompt-file <file> --budget 6 --reserve 0.05 \
+  --builder claude-api/claude-sonnet-5-5 --examiner claude-api/claude-sonnet-5-5 \
+  --reviewer claude-api/claude-sonnet-5-5 --solver claude-api/claude-sonnet-5-5 --solver-effort high \
+  --solve-minutes 8 --solve-model-turns 10 --solves 2 --target 8 --practice 3 \
+  --minutes 20 --turns 60 --practice-solves 6 --exam-tasks 10 --unattended
+```
+
+What these commands and flags replaced, and when, is in `docs/simplify.md` (packages A, B and
+D) and `docs/plan-history.md`.
+
+## 7. How a comparison is read
+
+`src/kernel/compare.ts`, `src/builder/round.ts` and `src/builder/comparison.ts` own this, and their
+head comments are the full account. The short form follows.
+
+**Terms first.** A comparison writes `comparison.started` before its first solve: its two
+harnesses, its setting, its scored tasks, its solves a side, its level, its objective rule, its
+dollar cap and, where given, its prediction (`--predict`). One continued from its log keeps those
+terms, and one asked for again on other terms is refused. The scored tasks are `--target` of the
+held-out ones, the newest epoch's first and within an epoch drawn by the contract's hash, less
+two kinds the draw leaves out: a task with no valid answer after two comparisons, until a person
+labels it (`awaitingLabel`), and one the reference harness answered in every solve of two
+comparisons, which can only tie again or be lost (`exhausted`). A third of the latter stays in by
+the same hash, so that a harness that breaks what the reference answers still shows its losses.
+The Examiner is told such a task is exhausted.
+
+**Fresh solves.** Each scored task is solved under each harness, afresh, the two harnesses taking
+the first place in turn. A solve counts only when its start names the comparison. No earlier solve
+of either harness is reused, because a condition names the host's code, which changes between
+comparisons, and one frozen draw of the reference's solves would bias every later reading.
+
+**How a solve ends** (`src/kernel/solve.ts`), and its part in a pair:
+
+| Ending | Kinds | In a pair |
+| --- | --- | --- |
+| pass | | Valid. It beats an answer that is not valid, and is even with another valid one unless the comparison fixed an objective and one is the better by it |
+| fail | `rejected`, once the rejection is ruled a true fail | Not valid |
+| fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid. There is nothing to recompute, so no ruling is needed |
+| fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |
+| fail | `rejected`, ruled a check defect or unclear, or waiting for a person | The task is set aside for both harnesses |
+| non-result | `provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier` | No measurement. It is solved again and is in no pair |
+
+**The tally.** Every solve of the new harness is paired with every solve of the reference on the
+same task. The harness that wins more pairs wins the task; otherwise the task is a tie. Ties leave
+the test. Where the check program declares an **objective**, a quantity its evaluator computes of a
+valid answer with a direction (`brief.objective`, `objective(request)`, verified after the checks
+pass: `OBJECTIVE`, `src/kernel/verify.ts`), two valid answers in a pair are compared by it, and
+the better by more than the margin (`--margin`, 0.01 of the larger magnitude) wins the pair
+(`ObjectiveRule`, `src/kernel/compare.ts`). Validity is read first, so no refused answer is ever
+the better one. The objective is public, in the contract and the solver's resources, and the
+report says how many tallied tasks it decided (`objective.decided`). The rule is a term of the
+comparison, fixed at its start; a check program that declares none pairs on validity alone.
+
+**The test.** A one-sided sign test reads wins against losses, in two stages: a comparison whose
+tally is at or under the trigger (0.25: 2 to 0, 4 to 1, 5 to 2, 7 to 3) buys the repeat and
+promotes nothing, and the step and its repeat read together, wins and losses summed, clear the
+level (0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), the repeat having untied a task and won at least as
+many as it lost (`readTwice`, `src/kernel/compare.ts`). A reading under the trigger counts for the
+stop rule as a move that showed a gain. Both terms are recorded in the campaign's opening, so a
+campaign reads by its own rule whatever the tree's default. Two other readings of a tally are in
+the plan ("Statistical power and cost") and neither is built.
+
+**The reading** is one of five words (`Reading`, `src/builder/comparison.ts`):
+
+| Reading | Meaning |
+| --- | --- |
+| `step` | The test cleared its level |
+| `no-step` | A test was made and did not clear its level |
+| `not-scored` | No task was tallied, or the cap cut the test short. Nothing was tested |
+| `check-defects` | The comparison stopped on its check defects |
+| `no-change` | The session left nothing new to compare |
+
+`not-scored` and `no-step` are different results. Eight rounds on 8 October scored no task and
+were recorded as `no-step` eight times, for over 220 dollars, before the two were named apart.
+A log of before 11 October may hold `below-starter` or `starter-unread`, readings of a step
+against a promoted reference that also solved the starter (`docs/simplify.md`, B2); the starter
+is now the control the tasks written after a promotion are read with (below).
+
+**Rejections.** A rejected answer counts as not valid only once the Referee has ruled it `earned`.
+A ruling of `check-defect` or `unclear`, or no ruling, sets the task aside for both harnesses. A
+person's labels then settle it (`settle.ts`), and a label stands over a ruling. Past `--defects`
+tasks with a check defect or a check that could not run, the comparison stops, since the check
+program then needs its owner before more is spent.
+
+**The budget.** A campaign runs at one budget, the one its setting names. The binding unit is
+the model's own turns, told to the solver on every tool result and enforced
+(`--solve-model-turns`; a solve that uses them without an answer ends `turns-ended`), and the
+wall of a solve (`--solve-minutes`). A time limit on each command bounds a turn. The prompts a
+solver is given before a solve stops with no answer are every solve's (`LIMITS.turns`, 24) and
+bound no solve on record. A comparison is read at the one budget its solves were told: a
+reading at a shorter budget would be of a solver that was told the longer one (on 9 October the
+starter answered 0 of 10 solves read at two turns, and 10 of 10 once it was told two).
+
+**Beside the test.** The report holds how each harness did by itself (`valid`: on how many tasks
+every solve, some or none were valid). `--noise` on a checkpoint reads the reference against
+itself on separate solves; it should read no step, and its tie share is the noise every
+comparison has to exceed. It is the operator's, and no move of the table.
+
+**The dollar cap.** `--cap` is required. Before each solve the billed dollars of the comparison
+are summed from the log, and the solve does not start when a reserve for it and for every solve
+in flight would pass the cap.
+
+**Room.** A comparison's report says what room a harness has to gain in (`roomOf`,
+`src/kernel/reports.ts`): none where the reference harness was valid on more than three solves
+in four, so that its tasks could mostly only tie; too hard where neither harness was valid on
+one solve in four; and room otherwise. The two shares (`ROOM`) are the plan's proposal and the
+operator's to set. The two ways to room are the tasks and the objective.
+
+**After the test.** A comparison that wrote its report is finished: run again, it returns that
+report. The stop rule is as many moves in a row that could have shown a gain and showed none as
+the campaign's patience (`stopRule`, `src/kernel/reports.ts`; `--patience`, six by default
+while the system is built, since every campaign of 9 and 10 October ended on the plan's three
+before its tasks were measured). A move that counts is one of two: a harness a session changed,
+once against one reference and read by the last comparison of the two, where that comparison
+tallied a task and left room; or a whole session that left its harness as it was where a
+practice solve of it failed, since a session whose every practice solve passed had nothing to
+work on. A repeat, a control, a comparison that scored nothing or left no room do not count.
+The next comparison or session is then refused, unless the operator gives a reason to go on
+(`--past-stop`). A task with no valid answer in two comparisons goes to a person as possibly
+infeasible, unless a valid answer for it stands anywhere on record, a solve's or the one the
+host saw its author's `try_answer` pass before the proposal (`task.proposed.feasible`), or a
+limit cut its solves (`awaitingLabel`). Promotion is the operator's `promote.ts --yes`, which
+writes `harness.promoted`. A comparison that names no `--reference` is made against the harness
+last promoted, and one that names a digest is made against that harness and promotes nothing.
+
+**What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
+prints it as its last line. In the order the table asks:
+
+1. A word the operator left, where nothing has acted on it.
+2. The exam: a draft where the campaign opened from a prompt, a reading of a checker nobody has
+   read, and an ending where the reading holds a fault that nobody froze or admitted.
+3. The tasks: a pack's taken in, practice released, and tasks written where the campaign has none.
+4. The budget, the provider (three sessions in a row crashed before they held out a task or
+   changed a harness, section 6) and the stop rule, which end the campaign.
+5. A comparison that began and has not reported goes on.
+6. The reference's room on the tasks, read from the last comparison it was in, whichever side
+   it took: where it answered nearly all of them, the Examiner writes tasks it fails. After a
+   promotion that reading is the comparison the harness was promoted on; the row is the same at
+   every epoch, and nothing in the table or in any seat's prompt is a promotion's own. Tasks
+   held out since the last comparison, where no session has left a harness but the reference,
+   are read by a **control** before a Builder session is paid for: the starter compared with the
+   reference on them, which says whether they leave the reference room. With room the Builder
+   builds, on practice brought up from those tasks; without it the tasks change again.
+7. A step under the trigger is one draw: the same two harnesses are compared again on fresh
+   solves, and the two read together name the harness to promote (`unpromoted` says why another
+   is not). The repeat draws the held-out tasks the first stage did not score first, where the
+   campaign holds them (`firstStageOf`, `src/builder/round.ts`).
+8. No step with room sends the Builder to build again, once the next comparison has tasks to
+   untie: where the reference answered too many of them in every solve, the Examiner writes
+   tasks first, since a changed harness can only tie again on those. No step without room, or
+   where neither harness answered, sends the Examiner for other tasks: there is no shorter budget
+   to fall back to.
+9. Nothing new to compare: the Builder builds. Something new: it is compared once the sessions
+   before a comparison have run, or tasks are written first where the comparison would be short
+   of them.
+
+The campaign ends `no-room` after more comparisons of one harness without room than its
+patience, or as many Examiner sessions in a row that held out no task where they were asked for
+room; where they were asked for tasks, as for a campaign that holds none, it ends `exam`.
+
+## 8. Rules
+
+Cite a rule by its number in a pull request or a review.
+
+1. **The comparison decides, and nothing else does.** A harness is better when a comparison reads
+   a step. A practice result, a Builder's account, a reviewer's opinion and a passing
+   test suite say nothing about which harness is better, and none of them may set or adjust a
+   reading.
+
+2. **Only the Examiner writes the exam, and nobody coaches it.** No person and no other agent
+   writes or repairs a rule, a check or a task. That includes you: never hand-edit a pack, a check
+   program, a task, a kept harness or a log to make a command pass. A defect that shows across
+   domains is fixed in the host, a prompt or the contract code. A check ruled defective goes back
+   to its author. For a campaign that opens from a prompt the Examiner drafts the exam once,
+   before its first task, and the host holds each draft to a reading without a model; no seat
+   repairs a check afterwards (section 9 lists it).
+
+3. **Nothing crosses the wall but the closed list of section 1.** The test is exact: a change to
+   a hidden value, to a check, or to which held-out task was won must leave every message a
+   Builder or a solver reads byte-identical. For a Builder that test is in the suite
+   (`test/builder.test.ts`, "what crosses to the Builder"): two campaigns that differ in every
+   such detail, one session over each, and every context and every file of its home compared. A
+   change that touches such a message says in its pull request how it checked this. Withholding is a property of everything an agent can read:
+   prompts, tool descriptions, tool results and files in its home.
+
+4. **Terms are fixed before the first solve and never moved after a result.** The tasks, the
+   solves a side, the level, the cap and the prediction are logged first. Do not top up a set
+   that a dispute thinned, or rerun a finished comparison on other terms.
+
+5. **Both sides are solved afresh under one setting.** No stored solve stands in for a side.
+
+6. **One solve is weak evidence.** The same harness fails a task once and passes it the next
+   time: in v1's record a fail repeated on the same bytes 5 times in 21. A fail, a win or a loss
+   counts when repeated solves support it. Say so wherever a single result is shown to an agent.
+
+7. **A non-result is never a pass or a fail.** A provider failure, a sandbox crash, a kill, a
+   check that threw and a verifier that could not decide are typed, solved again where the solve's
+   side failed, and counted nowhere. A broken harness is the opposite case and is the harness's
+   own fail: a non-result there would be rerun into the same break and the harness would leave the
+   score with it. An environment failure belongs to the environment's owner, never to an author.
+
+8. **A rejection counts only once it is ruled, and a hand label stands over a ruling.** In v1,
+   36 of 47 rehearsal misses came from a faulty check or instrument. The passes were sound: 5 of
+   1,411 were overturned.
+
+9. **No reference answers, no stronger solver, no agent built to find answers.** A check verifies
+   a property, which is easier than finding an answer, so a check can be right on a task nobody
+   has solved. v1's solver matched whatever its author's side found.
+
+10. **No agent writes an instrument.** The facts a check compares come from the field's own tool:
+    an analysis engine, a compiler, a simulator, installed and pinned by digest. Nothing in the
+    system writes or edits one. A check whose author's own computation decides it is listed as a
+    fault until the operator admits it by name (`--admit`), which is meant for plain arithmetic on
+    the answer.
+
+11. **The host owns every limit.** A harness, a prompt or a file that asks for a longer wall, more
+    turns or more disk changes nothing.
+
+12. **One owner for each decision and one reading for each fact.** Before adding a check, a flag
+    or a reader, find the one that exists. Where two places decide the same thing, the pull request
+    that notices it names both and removes one.
+
+13. **Add machinery only on evidence, and remove what pays no rent.** A mechanism is built when a
+    live result shows the need for it. On 8 October, 37 pull requests were stacked while one small
+    live round had run. A gate earns its place by changing a decision correctly; given the choice,
+    remove or widen a gate before adding a wall. Map each new concept as
+    `owner → live reader → decision it changes → evidence → hostile test`, and drop it when a link
+    is missing. The change that supersedes a mechanism retires it: a pull request that gives a
+    decision a new owner, makes one rule the fallback of another, or answers a failed run with a
+    row, a threshold or a sentence deletes what it replaces in the same change, or names under
+    "Not done" what still reads the old path. Of the 122 pull requests measured on the stack
+    from #57 to #185, 3 left `src` smaller (#88, #90, #127), and each generation of a mechanism
+    stood beside the one before it (`docs/simplify.md`).
+
+14. **Stop when nothing can be learned.** A launch that cannot give a result is refused before it
+    is paid for. A comparison that tested nothing says `not-scored`. A comparison of non-results
+    gives an operational result and no result about a harness. Do not remeasure a dead provider
+    because budget remains.
+
+15. **Explicit credit exhaustion is an ordinary interruption.** When a provider reports that a
+    login is out of credit or at its session limit, keep what was recorded and classify the
+    affected work from its events. A generic 429, a timeout or a crash is not that report:
+    investigate the failure itself.
+
+## 9. Status, evidence and claims
+
+`.claude/skills/attribution-and-proof/SKILL.md` owns what one reading may be said to show, and the
+form of its report. This section holds what applies to every statement, in a pull request as much
+as after a run.
+
+### The ladder
+
+The words "built" and "done" are not used for status. A part stands on one level, and a statement
+about it names the level:
+
+| Level | Meaning |
+| --- | --- |
+| Planned | In the plan only |
+| Present in source | In the tree at a named commit, with its live reader |
+| Proved without a model | A test with its nearest hostile case, a replay of recorded logs, or a rehearsal on a seed |
+| Exercised live | An event in a real run's log shows that the mechanism did its work there |
+| Shown in an outcome | A reading that moved, repeated once on fresh solves |
+| Withdrawn | Analysis, a review or a run showed that it does not work. The entry stays, with the reason |
+
+None stands in for the next. The four middle levels are the skill's, and the plan uses the same
+words since its revision 358. The plan keeps the level of each part, and a pull request names
+what it moves: in `docs/plan.md` that is the level column of the fix plan. Keep no second status list: not in this file, not in a new file, not in a
+code comment.
+
+Read on `main` at `524c589` (11 October), three designed parts are absent from the source. Check
+the plan and the head before relying on this list, and delete a line here in the change that
+makes it false:
+
+- the Judge: the Referee has a probe and no shell, reads the check program, and is unmeasured
+  against hand labels. No seat reads an answer that passed: a person reads a drawn few
+  (`settle.ts --passes`);
+- a repairer for the check program, and an engine behind a drafted one: the Examiner drafts an
+  exam for a campaign that opens from a prompt (section 6), no seat repairs a check, and every
+  check of a drafted exam is its author's own computation, which waits for the operator's
+  `--admit`;
+- one Builder conversation across sessions.
+
+### Evidence
+
+```text
+events in a campaign's log  >  a fold over the log  >  source and tests  >  a command's printed line
+                            >  a pull request's text  >  an agent's account
+```
+
+- A prompt assertion proves text, a type proves a shape, and a test proves the conditions it
+  tested. None of them proves that a model behaves better.
+- A rehearsal (`bun run runs rehearse`) seats a script in each model seat. It proves that the path
+  runs and writes its events, and nothing about a model.
+- A test suite that passes on one operating system says nothing of the other. The OS wall has two
+  mechanisms, Seatbelt and Bubblewrap, and each is exercised only on its own platform.
+- A Referee's ruling is a model's output. Keep it apart from the verifier's verdict and from a
+  fact of the environment.
+- A session report or a subagent's report is a lead. Check a finding against the source before
+  acting on it or repeating it.
+
+A negative claim about capability, such as "nothing checks X" or "the admission does not refuse Y",
+is the most expensive kind to get wrong, because every later reader compensates for a defect that
+may not exist. Make one only with the named symbol, its call sites and a check run in the same
+turn.
 
 ### What may be claimed
 
-- **Safety:** the system refused a bad or unprovable result.
-- **Mechanism:** the intended branch executed and wrote its evidence.
-- **Capability:** verified artifacts passed the verifier under the named condition. The sentence names the
-  recorded tool source and digest, because a Builder-authored checker is not independent.
-- **Limit:** one fixed harness reached a pre-registered semantic level, and the deepest stable result was
-  observed.
-
-An advice packet reaching a second build proves the channel executed and nothing more; improvement needs
-outcome evidence. A 21/25 first battery found no limit. Static F2 and discrimination evidence prove the
-gates they run in, while a completed Built Harness task requires live evidence.
-
-## Getting the most out of each paid run
-
-A paid run is hours of solver time, and its only currency is recorded bytes. The loop is choose, prove,
-predict, launch, watch, assess and decide; `run-improvement-campaign` owns it and `launch-run` owns the
-launch. Load each launch procedure from current `origin/main`, because PR, stack and historical revisions
-select product bytes and nothing else.
-
-### Before launch
-
-1. Choose one change from a recorded failure, wasted work or an open decision, and name its owner and a
-   falsifier before writing code. While task sets sit at a full pass, the change may be one bundle of
-   changes that pull the same way ("Ablated components"), each part with its owner. Prefer deleting
-   the competing owner, then reusing the existing one, then adding the minimum.
-2. Prove the path cheaply (`system-path-simulation`). The strongest cheap proof is a script in gitignored
-   `.scratch/` that imports the exported production function and replays it over every recorded campaign
-   on disk. Before adding a refusal or a gate, count the recorded rounds on which it would have fired,
-   because a gate no campaign reaches is dead weight, and one that can only fire after the thing it
-   prevents is worse.
-3. Before editing a prompt, render the model-visible text from a recorded round's bytes and read the
-   composed result, since most defects there are one fact stated by several owners.
-4. Resolve and prove the tree. Record the full source SHA, the stack head, Bun 1.4.2, the backend, model
-   and effort pins and the provider route in the opening evidence. Prove every stack edge contains its
-   latest parent, and run the composed gate. Pin every slot, because an unpinned codex slot silently
-   measures `gpt-5.6-luna` at `xhigh`. Check the Builder and review logins and the model catalogue. The
-   Builder discovers and installs tools in-session, so require neither a pre-measured tool catalogue nor a
-   scripted native call before authoring.
-5. **Freeze a falsifiable prediction against the resolved composed SHA, before the opening**, one row per
-   moved mechanism (`run-improvement-campaign`, "3. Freeze a falsifiable prediction"). A row Git merely
-   dates is not one. For a task-only experiment, name the fixed harness, the changed families, the prior
-   pass count, the expected direction and what is left untested.
-6. Launch the one operator-supplied prompt through `launch-run`, with the resolved full SHA as source,
-   running the deterministic preflight and the launcher in the same turn:
-   `bun .claude/skills/launch-run/scripts/launch.ts truss --model astra|sol|opus --source <sha>`. A pair
-   is `--model sol,opus`, and any other request is `custom --prompt "<exact line>"`. The standard
-   prompts are the `PRESETS` table in `.claude/skills/launch-run/scripts/options.ts`: `truss`,
-   `buffer` and `recode`, each two lines, which is where a new standard prompt is added. The launcher is
-   main's; it probes the source with that tree's own `probe.ts` and gates the shared source once. Omit
-   `--project` unless continuing one, and then take it from that run's `opening.json`. Paid runs have no
-   round ceiling: they continue until a typed terminal, an exhausted budget, required user input or a
-   direct stop. `--stop-after-ms` is a soft boundary, in that the round in flight finishes and records
-   before the stop, and provider reset waits count against it, so give a generous one, or none, when the
-   question needs several rounds. `--max-batteries N` ends a run once it has measured N new batteries
-   of its own (a build or rebuild that measured) and its next move is no `measure`, so the last
-   battery's remeasures run first; a remeasure never counts, and the opening records N. "Proof run",
-   "one epoch" and "at least one" set a minimum, not a maximum.
-
-```text
-bun run fullrun -- --prompt "<request>" --provider-turn-budget N [--project <id>]
-  [--context <path> ...] [--expected-source <commit>:<digest>] [--run <runId>]
-  [--max-iterations N] [--max-batteries N] [--stop-after-ms N] [--stop-at <epoch ms>] [--max-builder-turns N]
-  [--expected-tasks N] [--iteration-budget N|none] [--product-policy fixed] [--dcg true|false]
-  [--withhold-instruments true|false]
-  [--builder-backend <kind>] [--built-backend <kind>] [--review-backend <kind|disabled|inherit>]
-```
-
-`--provider-turn-budget` is required, and the run refuses to start without an explicit positive value.
-`--context` is the only repeatable flag, `--dcg` defaults to `true`, and `--expected-source` is
-`<40-hex commit>:<64-hex executable digest>`. A Built shell withholds each program the brief's
-`checkOnlyTools` names (2026-09-30) where it resolves inside `.toolchain` by the path the verifier's
-inventory takes, never a host tool, and records it as `instrument:<toolId>` in `advisorsRemoved`, so a
-battery that withheld one is its own measured condition. The validator refuses an id no truth check
-requires, and an absent field withholds nothing. Withholding exists because a solver that could run a
-check's program passed every case round after round (truss 3e4693 ran `truss-analyze`, 7 x 6/6); its
-expected effect may be slower solves rather than verified fails, since truss cb274b, whose tools ran no
-check, missed only on walls (54 of 54 misses unaccepted at about two minutes a case, all 54 submitted
-designs passing). The declaration is the Builder's because no rule by name or file type separates the
-practitioner's compiler from a check's instrument: firmware 887c16's `arduino-cli` is an 873-byte
-Builder wrapper a check declares, like its bench simulator `firmware-sim`, and compiling with it was the
-solvers' only check before submitting in 8 verified fails. So `--withhold-instruments true` (added
-2026-09-27), the strict operator mode that withholds every check's required tool inside `.toolchain` and
-travels as `HARNESS_BUILT_WITHHOLD_INSTRUMENTS`, stays off by default. Two retired flags are refused by name
-(`src/run/launch-arguments.ts`): `--max-turns`, since the Built turn count is the host's runaway guard, and
-`--turn-budget`, renamed `--iteration-budget`. `tools/fullrun-launchd.zsh` (macOS) and
-`tools/fullrun-systemd.sh` (Linux) detach a run through `env -i` from one frozen environment map with
-absolute `HOME`, `CODEX_HOME`, `TMPDIR` and `PATH`.
-
-Before any battery spend, verify the opening (full SHA, clean source, prompt, budget, all three slots),
-and require the Built credentials, the OS wall, the verifier profile and a build-admissible candidate,
-meaning task conformance, executed task-bound controls, full-task solvability, representation coverage,
-bundle identity and isolation evidence all green. A mismatch is a failed condition, not a relabelled one,
-and a failed preflight is an environment non-result. The launching agent owns its findings through to
-closure. It makes the first controller attempt before fixing anything, fixes a true positive at its source
-and relaunches fresh, fixes a false-positive preflight with the nearest hostile test, and reports every
-controller- or provider-started attempt as spent, the unsuccessful ones included.
-
-### While it runs
-
-Watch it quietly. While someone is reading, end each reply with `bun run runs pulse --once` from main;
-when nobody is, start the detached `campaign.ts --state <file> --every 290` instead. A battery in the
-middle of its solves writes nothing for long stretches, and that silence is not a stall.
-
-What you change while it runs is for the next launch. A fix that is not an ancestor of the opening SHA
-cannot reach this run (`git merge-base --is-ancestor <fix> <opening sha>` says which), however relevant it
-looks.
-
-**Two batteries off the band on the same side is a settled result.** At that point stop editing prompts
-and authoring surfaces and send the operator one message holding both verified counts, the turns and
-margins per case, what `wri.ts climb` says moved, and one named next experiment. Then wait. A blocked
-Builder is a different matter and belongs to `builder-blocking-loop`: five refused submits in a row, a
-repeated findings set, twelve checks without acceptance, two environment previews in a row, or two hours
-without a submit.
-
-### After it ends
-
-Close out every terminal, short and zero-case runs included. Read in this order: opening, terminal, case
-denominators, claims, promotions, verified traces, review spend, safeguard census, source identity, and
-only then Builder prose or a session synthesis. Report the three case counts with the censored
-denominator, and name the opening's full SHA.
-
-Adjudicate every frozen prediction as `sufficed`, `partial`, `refuted`, `untriggered` (never launched,
-or its trigger never occurred) or `censored` (launched, then stopped before its outcome). Weight the latest
-two runs, since older ones measured source that no longer exists. Order batteries by claim `createdAt`,
-and refuse a before/after difficulty reading that lacks the chronology and the required task-set identity.
-
-Check `claims/` and `promotions/` before believing a round changed nothing. A refused claim leaves a
-version `held`, and the next round reseeds from the last *adopted* product, so a discarded round looks
-exactly like one that changed nothing. Before claiming an improvement (`attribution-and-proof`), match
-every identity except the tested variable, and grade the attribution `proven`, `likely`, `mixed` or
-`unproven`.
-
-Give each valid defect one owner, and then pick **one** move: retain and measure, fix the demonstrated
-owner, delete a mechanism with no consumer, investigate a consequential ambiguity, or stop. Keep the next
-comparison to a single variable, or to one bundle while task sets sit at a full pass ("Ablated
-components"), and batch related fixes one PR per owner, one gate per batch.
-
-### What has cost whole rounds here
-
-Eleven PRs went in against model-visible text after two batteries had already shown that text was not the
-lever, and none of them was in the source the next run measured. Another round went on a schema bump
-inside a reader, which made every recorded campaign throw on continuation.
-
-That pattern held for the whole window from 2026-09-23 to 2026-10-01. Of the 299 commits that changed text
-a model reads, 287 reached a battery, after a median of 6.4 hours, and for 276 of those 287 another such
-commit landed first, so almost no battery measured one change. The host measures one or two attributable
-changes a day, and the changes came ten to thirty-five times faster. A change made past that rate is
-unmeasured however carefully its prediction was frozen ("Open gaps", the fourth blocker).
-
-Until 2026-09-28 the round prompt asked the Builder to hold its submit until `harness_trial` agreed with
-the aim. Rehearsals passed 96 of the 99 times the Builder had predicted a pass at ≤0.3, so the wait held
-rounds back for hours and moved no battery on the band.
-
-A gate that dies at the wall without naming a failing step is usually a process spinning the CPU, and
-retrying it blindly spends another wall. Find the process first. In the same way, an empty field from a
-reader run in the wrong tree, or against an open stack, is a wrong reading rather than an absent signal,
-and a 429 is neither a harness defect nor proof of exhaustion; only an explicit exhaustion message is.
-
-The 2026-09-27 runs stopped at 5.6 GiB free. Run roots nothing removed held 32.8 GiB, and one root held
-532 Builder build directories at 5.8 GiB. `du` is no help in finding that, because it counts an APFS
-clone's blocks as the clone's own (52 cells read as 34 GiB), so measure free space instead.
-
-Predictions frozen after the opening cost the comparison they were meant to settle, and a climb read only
-after the claim landed was read hours late, because the adopted bytes had shown the same verdict before
-the battery was paid for.
-
-## Working rules
-
-1. **The Builder builds the whole domain product.** It owns the representation, the brief, the task
-   families, the task-bound controls, the operating guide, the tool contract, the declared external tools
-   and the verifier content. Never hand-write a bundle and never repair controller output by hand; a
-   defect that recurs across domains is fixed in the Builder prompt, the shared contract or the starter,
-   which is where it came from. Deterministic registration, submission, run-loop and evidence code is
-   written once in `starters/` or `vendor/`, and domain meaning and difficulty are left to the Builder.
-   Install the real public tool behind the established public interface, under `.toolchain` or on the host
-   PATH. A stand-in proves conformance to itself and to nothing else, and running an authored algorithm
-   through an installed interpreter does not make that algorithm independent.
-
-2. **Use the user's prompt exactly.** The input is one short prompt plus optional public `--context`
-   paths. The operator's own words are "ONLY GIVE IT ONE LINER!! THIS IS THE MAGIC OF THE SYSTEM." Never
-   add a hidden plan or a custom one-test driver.
-
-3. **The controller owns generated output.** That covers `domains/`, `campaigns/`, runs, claims,
-   admissions and promotion archives: never edit, repair or commit them. The campaign tree has one owner,
-   `campaignRoot()` in `src/meta/campaign-root.ts`, so never spell a campaign path yourself. An epoch is
-   one authoring workspace, meaning one Builder condition, one prompt and one authoring pass. A corrected
-   prompt, a different Builder or a reopened product starts a new one; a measurement round does not. A
-   failed candidate never replaces the current version. A requested evaluation repair is seeded once from
-   the adopted bundle, which itself stays immutable, keeps its in-flight edits when it resumes, and is
-   classified by what actually moved.
-
-4. **Do not coach the evaluator.** The operator's decision is that "evaluator coaching is reward hacking",
-   and it is treated as test-set leakage. Protected: verifier stdout and stderr, issue and remedy text,
-   verifier source and internal payloads, generated counterexamples, reference artifacts and per-task
-   failure locations. None of it may reach the Builder, the Main Judge, the diagnosis reader, the advice
-   packet or any authoring prompt. Public compiler errors and generated-module diagnostics may cross,
-   because they describe the authoring interface rather than the answer. **The test is mechanical: change
-   only protected detail, and every model-visible prompt digest must come out unchanged.** A passing
-   measured case's own artifact is not protected, since the battery already publishes its pass bit;
-   failing artifacts, reference output and F2 output stay withheld.
-
-   Two bounded exceptions exist. `harness_trial` returns one aggregate `truth.verdict` — pass, fail or
-   not-run — for the task the caller chose, over the bytes the confined Built solver submitted for it
-   *unaided*; check ids, per-check results, verifier output and diagnostics stay withheld. That one bit is
-   what a measured battery publishes for every task, and the only way a Builder learns its battery is too
-   easy before paying for it. Until 2026-09-19 the caller supplied the solve itself, making the author the
-   solver while holding the answer key. It was used twice in eight recorded sessions, and the campaigns
-   that ignored it declared "at most 2 verified passes" three rounds running and then measured 6/6. The
-   other is the Epoch Reviewer's `probe_check`, which rule 9 owns.
-
-   The Built Harness still gets the public validity relation: the requirements, constraints, precedence,
-   closed value sets, constants, cited authorities, candidates and declared runtime facts. What is
-   withheld is a sufficient construction algorithm — search order, allocation recipe, fallback chain,
-   derivation and hidden tie-break. Withholding is a property of everything the agent reads, the brief,
-   the guide, the tool descriptions and the tool return payloads together, not a list of filenames.
-
-5. **Models own content; code owns conditions.** Code owns the facts the model cannot observe, the
-   decisions where the model is the subject, and anything that has to stay byte-identical across a
-   comparison: source and model identities, isolation, the task condition, verification, denominators,
-   claims, rollback and promotion. Models own the representation, the task families, the meaning of a
-   tool, the diagnosis and the proposal for the next difficulty, and the Built Harness owns its solving
-   method. Code validates declared structure and realised bytes, and it never starts choosing domain
-   content because reasoning about that content looks hard. So: no autonomous scheduler, no model-written
-   claim check and no deterministic classifier of harness defects.
-
-6. **Use evidence as evidence.** Apply the identities, case kinds and denominators above. After five
-   consecutive provider non-results, stop scheduling new cases: let the in-flight cases finish, record
-   every unscheduled task as a typed provider non-result, and reset the count when a case recovers.
-
-   Evidence cardinality follows the work that ran. Each authoring session writes its own execution record
-   and never overwrites an earlier one, so a reader aggregates every record and picks the latest by
-   iteration time rather than by append order. Builder tool returns checkpoint that record mid-turn, and
-   those checkpoints, not file mtimes, are the liveness evidence. Tool evidence counts attempted,
-   completed, failed and could-not-run actions separately. A submit joins its attempt by session and turn,
-   never by whatever is nearby, and a clause that exists only in stdout is not durable. An admission
-   packet that routes no owner is recorded as lineage by its digest alone and selects no owner; why it
-   routed none is read from the packet that digest names.
-
-   **Unknown usage or cost stays `null`, never 0**, and a turn the provider costed is kept apart from one
-   the transport estimated. The reason is that streamed `usage` is not final, an interrupted turn never
-   receives the result message carrying its account, and every frame repeats the whole cached input
-   without a cost, so a total holding estimated turns bounds nothing. `usage.estimatedTurns` sits beside
-   `reportedTurns`, and its absence on an older record means unknown.
-
-   Order versions and checkpoints by recorded commit time, never directory order or mtime. Per-case
-   external and differential grounding coverage applies only to truth-verified cases whose accepted bytes
-   reached the verifier. Unaccepted attempts stay in the difficulty denominator and the runtime-identity
-   census, but they cannot require a tool run over bytes that do not exist.
-
-   Runtime safeguards are bounded log-only sensors: one best-effort line to
-   `campaigns/<project>/safeguards/<runId>/SAFEGUARDS_LOG.txt` plus stderr. A safeguard never changes a
-   case kind, a terminal, a route or a score, so read its line as a lead. When a recurring shape turns out
-   to have a real owner, move it into source and remove the sensor.
-
-7. **Give every decision one owner.** Actionable evidence names its producer, the exact evidence it cites
-   and the active owner. An owner is one of the nine `BUNDLE_FILES` (`src/author/feedback-routing.ts`,
-   under `agent/` and `correctness-model/`) or `environment`, so "which part is at fault" and "which file
-   to open" have one answer, and the path's own prefix is the half a repair reopens (`ownerSide`).
-   Ownership names the defective file; it is not a write mask or an automatic reset, so preserve in-flight
-   work and let the accepted bytes decide attribution. A claim-only `CampaignFeedback` row keeps its code
-   and path for routing and drops its free text at the author boundary. A typed finding a controller
-   validator produced may keep its detail in controller-owned campaign carry, projected exactly once at
-   the model-visible boundary. An unmarked finding fails closed to `generated-execution-unclassified`.
-   Author-visible detail is opt-in, where the producer built it from public authoring identities: control
-   ids, mutation classes, family names, declared check ids.
-
-8. **Spend complexity only when it changes a useful decision.** Map each concept as
-   `owner → live consumer → decision changed → evidence → hostile test`. Reuse readers and owners, derive
-   copied state rather than storing it twice, inline a rule-free one-caller wrapper, and delete what
-   nothing uses. A cut preserves isolation, identities, non-results, denominators, claims, rollback and
-   controller-owned submission.
-
-   **Take the super-Pareto form: about half the complexity for 90 to 95 percent of the result.** This is the
-   one statement of the rule, and every other place that asks for the simplest path means it. When a change
-   writes or rewrites a component, look first for the algorithm that needs roughly half the mechanism of the
-   fuller one and still does nearly all of what it would, and take it unless the part it gives up is one of
-   the guarantees just listed or a decision the recorded evidence shows it changes. It is the default rather
-   than a compromise, and the reason is speed more than tidiness. The loop learns from measured rounds, and
-   a component half the size is read, tested, replaced and measured again sooner, so the round that finds
-   the missing few percent arrives sooner too. The separate fixed-harness difficulty session is the example
-   worth keeping in mind: it prescribed a level, a family composition and a parent lineage, and across 33
-   recorded rounds it never once left the too-easy zone, while the open path that replaced it prescribes
-   none of that. The gate audit of 2026-09-25 took the same shape when it commented out the 21 of 50
-   refusals it could not show were right, instead of refining each one.
-
-   Measure both sides rather than asserting them. `reduce-complexity` puts numbers on the mechanism, and a
-   replay over recorded inputs, or the decision the component feeds, puts one on what it still does; a trade
-   stated with one side measured is a guess. Name the remainder you gave up in the commit body, so that a
-   later round needing it knows it was left out on purpose rather than missed. And do not overdo it. Working
-   code is not rewritten only to reach the ratio, a guarantee is never a percentage to trade, and when the
-   simple form turns out to lose more than the few percent, say so and keep the fuller one.
-
-   Complexity is not only the mechanism a line count sees, so look for the simplification in three more
-   places. It can be mathematical: a closed form in place of a search, or one quantity computed once where
-   three readers each approximated it. It can be an information gap closed. An explicit connection between
-   two components — one owner, one schema, the data it carries stated — adds an edge to the import graph and
-   still lowers complexity, because no reader has to guess any longer whether the connection exists or what
-   crosses it. A published limit declared without the artifact path it bounds is the opposite case: every
-   reader of the solver's margins has to guess which field the limit is about, and most guess nothing. And
-   the model is a component too, so what it reliably does in its own reasoning needs no mechanism built
-   around it.
-
-   **Keep no backwards compatibility** (2026-09-22). A reader takes the current schema and version only. A
-   legacy alias, a fallback branch, a superseded reader or a set member nothing produces is removed even
-   if older recorded runs become unreadable, and a reader meeting an older version refuses it.
-
-   Where a design choice is uncertain, prefer removing or widening a gate to adding a wall, an allowance
-   check or a refusal. The failure actually observed here is not unchecked action; it is legitimate work
-   blocked by gates that pay no rent. A gate earns its place by changing a decision correctly. Reporting
-   fidelity — carrying a field through, naming a thing accurately — is not gating and always fair game.
-
-   Code is held by the gates of **Code, lint and gates** (§3, §9, §10). **Never turn a rule off to clear a
-   finding.** A mis-targeting rule is tuned only toward precision, a fixture on each side (2026-09-22).
-
-9. **Judges advise; the verifier decides.** The Main Judge reviews only accepted artifacts that already
-   carry a boolean verifier verdict, so an unaccepted, refused, non-result or missing artifact costs no
-   call. There is no Judge control census: no control or bait reaches the Judge, and a new run writes no
-   sample, bait or standing file, while every accept and reject control is still task-bound and verified
-   through its declared check by the verifier. Each subject gets a fresh session, in groups of at most 5
-   (`ANA_REVIEW_CONCURRENCY` sets another width), stopping after 5 consecutive provider errors, with a
-   30-minute hard wall per turn, and the first valid verdict stands. The Judge sees the request, the bound
-   public task, the artifact, the public schema and design rules, the projected tool contract and the
-   declared runtime facts. It never sees the Built prompt, the solve trace, verifier output or a reference
-   artifact, nor two artifacts in one prompt. Of the five `judgeDeAnchoring` rows in
-   `thresholds.frozen.yaml`, two hold by construction: `commitAllTasksInPhaseZero` is the fresh session
-   per subject, and `fallbackConfigured: false` is the one model with no fallback. The other three,
-   `commitBeforeSeeingCandidate`, `predictionsMustBeFalsifiable` and `predictionsMustBeDisposed`, describe
-   a rank-2 paired-comparison protocol that is not implemented, so keep them unbound.
-
-   A Judge fail must cite at least 1 verbatim line of the public rules, the schema or the input, and an
-   uncited fail is a protocol non-result. A cited fail of a verifier pass is a **veto**, recorded on the
-   claim as `vetoed` and bounded by its verdicts, and a Judge fail of a verifier pass is re-sampled once;
-   `judgeCaseKind` names how each answered case stands against the verifier, and every reader counts
-   by it. Vetoes and disputed fails go to the Epoch Reviewer, and a settled veto projects only
-   its count and family. The Judge sets no score, acceptance or adoption; disagreement with the verifier
-   is a reason to inspect it.
-
-   The diagnosis reader (`src/review/diagnosis-reader.ts`) reads the solver's own traces across the
-   battery. It is offered at most 6 standing solve issues — verified fails, unaccepted submissions and
-   non-results the environment does not own, worst share first (`diagnosableIssues`) — and never a Judge
-   disagreement, because that is about the evaluation and the Epoch Reviewer settles it. For each issue
-   it sees at most 4 failing solves, distinct failure sequences first, and at most 2 passing ones of the
-   same family, compiled by `compileSolve` (`src/review/solve-steps.ts`) into numbered steps such as
-   `c04.s7` and `c04.end`, beside the harness's walls, its tool descriptions, its guide and a census of
-   tool use. Its tool `record_diagnosis` takes an owner from `DIAGNOSIS_OWNERS` (a harness file the
-   solver reads, or `solver` for no change), a first failure boundary, a cause and a falsifier. It
-   refuses an owner the solver does not read, a boundary that is not a shown step of a named solve, a
-   contrast that is not a step of a shown passing solve, and any text naming a task. One reading may
-   cover several issues. The host records how many sampled solves the reading holds for and whether it
-   cites a contrast, and grades nothing from them: until 2026-09-29 it turned those counts into a
-   confidence label. The reader opens no `verifier.json`, Judge record or accepted artifact, so
-   protected detail cannot move its `promptDigest`, which is why its boundary and falsifier may reach
-   the author. The advice renders them with support counts, as a hypothesis, and the cause stays in the record for the
-   Epoch Reviewer. The named owner routes nothing. Treat a timeout as diagnosable unless the evidence
-   gives it to the environment.
-
-   The Epoch Reviewer runs once per measured-condition digest that it has read to completion; a review
-   that failed or was cut short runs again at the next measurement of that condition, though the
-   findings it had admitted are kept. Its finding is either a *defect*, which names the file at fault
-   and is advisory or blocking, or an *observation*, which names a file or none and is always advisory.
-   Blocking needs a demonstrated violation of the request or of a declared requirement; one review may
-   record several blocking findings, and how many owners a round reopens is the continuation's decision
-   (`src/run/next-move.ts`). Its orientation states the band placement through `placeOnBand`, as the
-   climb readout does, so that the one component reading the measured tree against the request knows
-   what the round aimed for. Until 2026-09-18 it saw the counts alone and was asked about "a perfect or
-   near-perfect battery", which left the whole `over-aim` zone, whose name says no limit was measured,
-   with no stated reason to inspect anything. The placement is a reason to look and never an obligation
-   to find something: a review at any placement may end with nothing demonstrated, and say plainly
-   that the tasks were easy.
-
-   The review is held to what can change a verdict or the reference's output, and `complete` counts that
-   alone: the bundle files, every program under `correctness-model/` and `agent/` (a script a check runs as a
-   tool is named by a string, which no import walk sees) and what those import (`runtimeClosure`, the walk
-   `scoringClosureHash` uses), read smallest first so one oversized file cannot spend the read budget before
-   the rest of the contract is delivered. Every other file of the tree is background: listed in the
-   orientation and in `coverage.background` with its size and whether it was read through, returned by
-   `read_source` by name, and cited by a finding that rests on it. Until 2026-10-07 the review walked every
-   file of the snapshot, so a Builder that kept a search of over 4,000,000 characters under `reference/offline` left five
-   reviews of the d5cfcb1 run at the budget as `incomplete`, 49 to 185 continuations each, and they ran again.
-
-   The closing message is recorded as its `report`; its tools refuse only what a decision or rule 4 reads,
-   so a long claim or a fifth citation is recorded rather than bounced.
-
-   A finding about easy tasks names the obligation of the request they leave undemanded, owned by
-   `correctness-model/tasks.json`, and may carry a `demandGap` of capability-unexercised,
-   sibling-values-only, limit-cleared-widely, rule-outside-request or published-scenario-only; the
-   reviewer records one when it has shown the gap, not because the score was high. The fifth came on
-   2026-09-29, after two Opus firmware rounds each met three held submits over one finding, and one
-   of them spent about two hours on the wrong repairs: the checks ran only the published scenario, so a sketch replaying the published timeline without
-   reading its sensors passed, and the finding crossed as "a capability no task exercises", which
-   sent the Builder to widen scenarios instead. Until 2026-09-29 the host enforced more. It split
-   the request at commas, semicolons and "and", asked for a `Clause N:` line per piece, and above the
-   aim demanded either a `tasks.json` defect or a family-by-family account, which it checked by whether
-   each family's name appeared in the report, re-asking once when either was missing. That graded
-   wording rather than examination, and a task-set finding forced out of a full pass presses the author
-   to add rules the request never held, so it went with `review-duties.ts`. Earlier `tasks.json`
-   findings over the same task set are still shown again (`earlierTaskFindings`), so an unchanged task
-   set is not read as settled.
-
-   The reviewer may also execute. `probe_check` takes one accept control, one rooted path already in its
-   artifact (`$.items[0].value`, read through `jsonPathTokens`) and one change: either a replacement
-   value, or a `find` that occurs exactly once in a text leaf together with the `replace` that takes its
-   place. A call sending both or neither is refused. The edit exists because a field holding a whole source
-   file can exceed the `VALUE_MAX_CHARS` of 4,000. It runs the declared checks over the original and the
-   changed artifact and reports which checks moved, at most 8 per review (`PROBE_BUDGET`,
-   `src/review/review-probe.ts`). A measured review's probe runs only while the `.toolchain` still matches the
-   tree digest its battery recorded, the test `read_source` applies (`toolchainReach`). A probe whose original
-   did not pass, or whose change reached no verdict, is not evidence. Every defect owned under
-   `correctness-model/` other than the task set cites its `probeIds`, or `[]` for a source-only reading, and a
-   `probeDirection` (false rejection or false acceptance) is recorded only where some cited probe shows it
-   (`probeShows`), reading the named check's own state on each side: pass, fail, no verdict, or not applicable
-   to the control's task. So a probe that moved nothing never reads as a check refusing a valid answer, and
-   one whose check did not apply or reached no verdict never reads as a check letting an invalid one through.
-   An `agent/` defect is not asked for probes, since a probe runs the declared checks and says nothing about
-   the agent. Severity reads that one finding's evidence and nothing else: an observation is advice, and a
-   defect keeps the severity the reviewer chose, where `blockingEvidence` refuses a blocking one without a
-   demonstration of at least 40 characters and citations quoting pages the review was returned, whichever file
-   owns it. Until 2026-09-29 an `agent/` defect also needed a cited probe to block, and any probe would do, so
-   an unrelated evaluator probe decided whether a tool defect reopened a working product. Neither how often a
-   check was named before nor the order a review records its findings moves it. Until 2026-09-28 a first
-   recurrence of a check's name raised a finding and two held it at advice, so a firmware review whose two
-   probes showed a check refusing the published default pins was admitted as advice: that check had been named
-   in four earlier reviews, and a naming count cannot tell two defects on one check apart. What crosses to the
-   Builder is what a finding found and where: its owner, check, schema path and public inputs, its
-   `demandGap`, the probes it cites with the checks they moved, and, for a defect only, the direction
-   they show (`epoch-review-public.ts`). It carries no repair method; the Builder chooses the repair. Until
-   2026-09-29 the projection attached one from a fixed table (`GAP_ACTS`, `publicAct`), and a task-set defect
-   was refused without a public input to vary. Until 2026-10-07 only a defect's probes crossed, so a
-   probe-backed observation reached the Builder as a check name alone.
-
-   A finding settles a Judge disagreement only by naming it: `record_finding` takes `settlesCases`, the task
-   ids of listed vetoes and disputed fails the finding decides, and the host records one disposition per case,
-   `against-check` for a `correctness-model/` defect on the deciding check whose cited probe shows it the way
-   the case says (until 2026-09-29 the host took the reviewer's word for that direction and asked for no
-   probe), and `check-stands` for an observation backed by a probe that moved the check. It refuses a
-   case that is not listed, not decided by the named check, not opened with `read_source`, already settled, or
-   of the wrong kind for the probe's direction, since a false rejection cannot settle a veto, and the record
-   keeps the ids still `unsettled`. Until 2026-09-29 opening a contested artifact was enough, so one settling
-   finding attached its sentence to every defect naming that check, including ones that adjudicated none of
-   those cases. A family's Judge issue stops standing only once every case it counts is settled. A review that
-   ended incomplete or failed hands its findings on at advisory severity, with one sentence saying it did not
-   finish, and it settles no case and disputes no issue; until 2026-09-29 it handed the Builder nothing,
-   however much it had demonstrated before its provider dropped. Only a `correctness-model/` defect may
-   dispute an issue, and a dispute keeps the issue counted while withholding the agent advice. A measured
-   review is offered the standing issues of the register its own battery advanced on host and Judge
-   evidence, each with the last diagnosis recorded for it, so an issue that battery raised first is
-   disputable in it; until 2026-09-29 it was offered the register before the battery, and a dispute on a
-   new issue landed a battery late, after a build had rebuilt around it. Reusable
-   algorithms, bounded search and the host's margin table on published limits are legitimate solving
-   support. A tool, program or guide line that analyses a candidate the way a check does, through the
-   check's code or a copy of it, its instrument or a verdict, is not: until 2026-09-30 it counted as
-   support, and every harness whose solver could run a check passed every case ("The goal" counts the
-   full passes); the misses without one were walls, not failed analyses (`NO_GRADER_IN_REACH`,
-   `src/author/builder-start-prompt.ts`). While the measured `.toolchain` digest still
-   matches a recorded tool, the reviewer may read any text file of that tree by name (`toolchain:<path>`,
-   installed packages included, each at most 1 MiB) as long as the file still counts as the recorded tree
-   digest took it, and a directory reads as its listing.
-
-   An authoring review also reads the bytes of the round's failing blind rehearsals beside their
-   verdict; the Builder saw only the verdict, and passing bytes reach it through `context`. It reads the
-   previous review's probes too, as re-runnable calls (`carriedDemonstrations`,
-   `src/review/review-carry.ts`), and each is a lead until it is re-run over the current bytes.
-
-   Reviewer spend is not an axis for savings. The reviewer is the one component reading the measured tree
-   against the request, so make it smarter and let the build iterate. Cut its text only when the recorded
-   corpus shows the text bought nothing, never by token count.
-
-10. **Accepted bytes determine attribution**, never the loop's name. The frozen vocabulary is
-    `task-probe | harness-intervention | evaluation-correction | repeat | new-baseline`.
-
-    - *Build / harness intervention* is either no adopted harness yet, or a continuation that changes the
-      product: the representation, tools, families, artifact schema, verifier or solve path.
-    - *Evaluation correction* keeps the agent, the public exam, the rules and the bound submission schema
-      fixed while correcting the evaluator, the controls or the private expectations. Anything broader is
-      build.
-    - *Task probe* keeps the agent, representation, tools and scoring program fixed (`brief.json` and
-      `evaluator.ts` with its imports, which is `scoringHash`) and changes the battery, its controls, the
-      reference solve and the tests. Conformance, controls and F2 rerun before measurement.
-    - *Environment recovery* keeps the product bytes fixed; a provider coming back is not a product
-      improvement.
-
-    There is one authoring path. The fixed-harness `DIFFICULTY.json` session, which prescribed a level, a
-    family mix and a parent lineage, never left too-easy in 33 recorded rounds and is gone; what it taught
-    survives as the task freeze and the changed public-input subset. A measured candidate with at least 1
-    verified case and a written claim is selected through the retained-product transaction. A
-    zero-verified or environment-blocked one is held (`candidate-zero-verified`, `candidate-promotion.ts`)
-    and never becomes the baseline, and its kinds still reach the next round through the advice packet. No
-    candidate contests the current harness. The first admitted build is selected at adoption
-    (`selectInitialProduct`, `src/run/product-versions.ts`), and measured whatever it verifies.
-
-    Recorded solves are reused where the exam did not move (`src/run/battery-reuse.ts`). An evaluation
-    correction, wherever the battery it corrects sat on the band, with identical agentHash, task count and
-    public task digests under the same solving condition (the backend pin, the Built effort every case
-    recorded, the run condition and the tool tree: `solverConditionMoved`), *regrades* the recorded
-    submissions (`readRecordedSolves` → `gradeCase`) instead of solving them, and records `regrade: {of,
-    reused, changedPasses}`, because a correction moves the evaluator alone and a fresh solve would add the
-    solver's own variance to that one variable. A battery the environment cut short, meaning every non-result
-    solver-side and environment-owned, the hashes and the solving condition unchanged and fewer than
-    `environmentBlockedRounds` prior remeasures, is remeasured before any rebuild: `remeasureOf`
-    re-solves the censored cases and regrades the rest, and a moved condition sends the round to rebuild.
-    The same remeasure solves again each fresh fail not yet confirmed (`unconfirmedSolves`): a fail is
-    solved again while its group, the task's fresh solves of one exam (the case row's `examHash`:
-    the agent, the correctness model, the tool tree and that task's own bytes) on one pin, run
-    condition and effort, holds fewer than `AGREEING_SOLVES` solves and every one failed, so the
-    Builder never reads a fail on one solve alone. An edit of the task, the agent, the correctness
-    model or the tools starts a new group; another task's edit does not, so a fail the Builder keeps
-    (`keepFailedLine`) keeps the solves that confirmed it. One pass in the group makes
-    the fail a flip, and the case is not solved again; a pass is never solved again. A case awaiting a
-    solve is never regraded, so a round that blocking feedback gives to the Builder first solves it
-    afresh. Neither the Judge nor the review chooses which fails are solved again, so a fail the review
-    settled against its check is solved like any other, and so is a fail the solve wall cut; an
-    unaccepted attempt is not. A battery whose every case failed or was cut short is measured again
-    whole and records `regrade: {reused: 0}`, so its chain of remeasures stays bounded.
-    A *repeat* posing the exam an at-or-above-aim battery already sat is measured afresh and
-    recorded as `repeat`, because a second solve can show whether a full pass was reliable where a regrade only reads the
-    same attempts again; the submit refusal it met until 2026-09-29 (`identical-exam-over-aim`) never fired in
-    the recorded corpus. A repeat is the adopted product measured again, so promotion selects it like any
-    measured candidate with a verified case and its packet becomes the next round's evidence, whether the
-    Builder moved a note or nothing at all. Until 2026-09-29 it was held as `stale-task-identity`, its packet
-    stayed unpublished and three of them ended a run `candidate-held`, while an unedited resubmit was told
-    "Accepted" and then refused as `candidate-unchanged`; a repeat that verified nothing is still held on its
-    own battery.
-
-    The rebuild advice packet is deterministic (`analysis/<runId>-rebuild-advice.json` with
-    `rebuild-advice-latest.json` beside it), bound by digest to the iteration that consumes it, and
-    rendered once per rebuild kickoff from recorded rows, Judge reviews and admitted aggregate findings,
-    never per-case ones. A finding a bundle file holds reaches the kickoff as feedback to that file
-    instead, and one on the owner and subject (`namedSubject`) of a finding the previous battery admitted
-    says how many consecutive batteries have admitted it and since which. Until 2026-09-29 each
-    recurrence read as a fresh finding: 48 of the 171 routed findings then recorded repeated the battery
-    before, and one on `correctness-model/brief.json`'s `wiring-behavior` check ran twelve. It states each issue's owner, not what to rebuild. Each issue keeps a stable id
-    and states its recorded facts rather than a verdict on them (`issueFacts` in
-    `src/author/issue-register.ts`, which holds the register, and `rebuild-advice/v13` for the packet):
-    where it was first and last seen, how many complete rechecks have not observed it since and how many
-    of those ran under changed public rules, whether it was seen again after an absence, which condition moved when a recheck was not comparable, and
-    whether its family left the set, a review disputed it or a review settled it. Until 2026-09-29 the
-    register read those absences as `tentatively-fixed` and then `confirmed-fixed`, which is a
-    conclusion an absence cannot carry, since an absence says the failure did not show and not that
-    anything repaired it. A family leaving the set proves no fix at all. An absence counts as a complete
-    recheck only when every case of the family was truth-verified under the condition that observed the
-    issue: the same tasks, hidden expectations included, the verdict closure (`verdictClosureHash`), check
-    tools, Built pin, recorded reasoning effort, isolation and run condition, which carries the host's share of the Built
-    prompt (`src/author/issue-condition.ts`). An effort or a procedure the cases never recorded
-    compares with nothing, and the solver walls in `agent/config.yaml` are left out, because raising
-    them is a fix. A probe that moves only a hidden limit asks the verifier another question while the
-    solver reads the same bytes, which is why the hidden fields are in. A recheck that lost a case to
-    a non-result or an unaccepted attempt carries the issue unchanged, because the lost case may be the
-    one that failed. Under another
-    condition the recheck is named not comparable and counts neither way, because swapping out the failing
-    tasks or blinding the evaluator makes an issue vanish without repairing anything. An evaluation
-    correction therefore leaves its rechecks not comparable even when it regrades: the verdict closure moved,
-    and nothing settles an issue as corrected. A brief reworded or renumbered over unchanged checks is not
-    such a change, because the closure leaves out its text and constants: the recheck counts, and it is named
-    "rechecked under unchanged checks, public rules changed" (`briefPublicationHash`), because it answers whether the repair held under the new rules
-    and not whether the issue persists under the old. Until 2026-10-07 the comparison read `scoringHash`,
-    which hashes every byte of the brief, so one reworded sentence made every later battery not comparable,
-    and the six batteries of `standard-sonnetxhh-20261003T164336992Z-d5cfcb1` credited no recheck. A battery's
-    closure and rules are read only while its tree still scores to the hash its snapshot recorded. A dispute
-    carries onto a re-observation only under the condition that recorded it, public rules included, since an issue's id names where a failure showed and not what caused it,
-    and a diagnosis never carries onto a re-observation at all: it reads one battery's traces, so the
-    battery an issue line names and the one its diagnosis read are always the same. First seen and seen
-    again hold only across the same task inputs, with the id kept: one id names a failure on other task
-    records as a first sighting there, which until 2026-10-07 read "first seen baseline" for a failure the
-    baseline never had, and a return means a return on the same tasks. A family is the label the author
-    gave its tasks, so a name missing from a battery is not an issue going away while a task the issue was
-    observed under still runs under another name (`continuedUnder`): the issue is held unmeasured, with the
-    label among what moved, and the render says which families the tasks went to; it is retired only once
-    none of its tasks runs, and stays retired until its own name returns. Until 2026-10-07 a rename retired
-    it. Over the recorded campaigns, 4 of 277 consecutive version pairs renamed a family and kept its
-    tasks, in 2 of the campaigns, and one of them (firmware-23, i04 to i05) retired 2 of the 21 advice rows
-    retired at any pair; the other 19 were real removals. The packet records each family's task ids for
-    this, and the render never prints one.
-
-    `--product-policy fixed` permits measure or stop and refuses build and rebuild. A campaign runs
-    uncapped unless the operator sets `--iteration-budget N`; there is no launch default (2026-08-19).
-    `ControllerLedger` (`src/run/controller-ledger.ts`) reserves the campaign and provider-run quotas
-    together before a model call. A started call stays charged across interruption, cap changes and
-    epochs, and only an unstarted reservation may be cancelled. `budget.json` binds the database identity,
-    and missing or corrupt state refuses rather than resetting the spend. The loop ceilings live in
-    `src/critic/policy.ts`: `environmentBlockedRounds 3`, `buildFailedRounds 3` and
-    `noopSubmitStrikes 3`. None of them reads a placement; the off-aim streak that once stopped a run is
-    gone ("Tried and taken out", under "Goals and the climb").
-
-11. **Distinguish task demands from coverage and repair.** A level is an ordinal label, not an
-    explanation. New hashes, ids, family names, longer descriptions or more scenarios prove no harder
-    problem, so the Builder names the public requirement that changed and the reasoning interaction it
-    adds. Stronger checks and broader coverage may be worth having without making the solution any harder,
-    and a repaired evaluator is a new condition rather than a difficulty advance.
-
-    **The demand comes from the request's own field, never from a rule the Builder adds.** Five runs read
-    on 2026-09-24 showed three climbs that only looked like climbs. The firmware Builders invented duty
-    and report rules, so a failing battery measured the solver's reading of the author's wording. The
-    truss Builders lengthened a listed set of load cases and called it a tier. And both shipped solver
-    tools reporting every margin a check reads, so the solver could propose, read the failing state and
-    adjust. None of these, nor tightening a feasible limit toward a stronger witness, proves a task harder
-    or easier by itself; blind measurement decides, and its one reading of the third, six truss tasks, did
-    not show it (prior 10). Tightening stays legitimate, since a slack limit is a finding about its
-    reference, and a longer search stays an optional method; what the evidence does not support is
-    leading with it as the route to difficulty. Each
-    prompt says it once: the Builder system prompt owns the clauses, publication and the definition of
-    depth among them, `examples.md` the optional routes to a target the solver does not reliably meet,
-    `roundPrompt` and `renderBatteryContract` when to submit and what a witness proves, and the climb
-    readout's no-limit line asks for the changed requirement and its reasoning in the notes.
-    `test/helpers/duty-overlap.ts` holds the kickoff, the round prompt, the contract, the full-pass
-    readout and the sizing sentences to that: none may restate a sentence the system prompt carries. The round prompt asks for a submit once a clear preview says the candidate works, because the
-    measured battery, not a rehearsal, decides where it lands (`WITNESS`), and nothing holds a submit on rehearsals
-    (the 96-of-99 history is under "What has cost whole rounds").
-
-    Battery size and the difficulty decision are climb mechanisms, and "Goals and the climb" holds both:
-    the sizing gate, the placement, the facts stated beside it and who reads it.
-
-    Declared variation proves coverage, not difficulty or verifier dependence. 18 firmware tasks varied a
-    declared path while every one of them published the one display the request had named, which is why no
-    rule asks a family's tasks to vary.
-
-    A round no longer pre-registers itself. Until 2026-09-29 the Builder wrote `EXPERIMENT.json` before a
-    preview or submit, and by then it changed no score, gate or byte identity: its schema refusal had
-    become advice on 2026-09-28, and what was left was a comparison of the families it named against the
-    families whose public tasks changed, served back to the Builder, the Epoch Reviewer and the run end.
-    That graded a declaration rather than a result, so the file went, with `src/author/experiment-plan.ts`
-    and `src/review/round-plan-lines.ts`. What a round sets out to test is the Builder's note in
-    `MEMORY.md` or `SCRATCHPAD.md`, and an edit to those alone moves the commit without moving the
-    candidate's condition. Attribution stays with the bytes: `candidateExperimentAuthoring`
-    (`src/run/experiment-freeze.ts`) records the operation and the changed task ids of the accepted
-    candidate. Changed bytes establish membership, not semantic difficulty, and with no observations the
-    result stays unknown.
-
-12. **Evaluate the requested artifact, not decoration.** Every artifact-schema root must be reached by a
-    material truth check, and every advertised capability must map to checks that can fail on real tasks;
-    a root that could be removed without changing the verdict is decoration. F2 runs **every** task's
-    reference solve — it once ran only `tasks[0]` — and what it proves is the submission path, not
-    end-user correctness. A checker-required path, suffix or entrypoint is public validity, so publish it
-    in the brief and the guide. Where a checker can execute or simulate source, decide from the values it
-    produces rather than from recognising one source form. Publish every comparison rule exactly as the
-    truth path applies it: the counterfactual's direction and scope, any floors or minimum counts, and the
-    tolerance. A binary answer can be task-conditioned evidence, but refuse a boolean certification
-    constant within an affected family when no other applicable check derives it from artifact content.
-
-    Controls are what calibrate the checks. At least 5 accepts and at least 5 rejects is an authoring
-    requirement the Builder is told rather than a size the gate measures
-    (`evaluatorCalibration.minimumKnownPasses` and `minimumKnownFailures` in `thresholds.frozen.yaml`, bound
-    through `src/run/accept-control-independence.ts`, and held in the starter by
-    `test/starter-pack.test.ts`). Its one non-test consumer, `acceptIndependenceFeedback`, is advisory. What
-    the gate runs is `validateControls` (`src/correctness-bundle/controls.ts`): every control binds a real
-    task and names declared checks, joins and boundaries, and each reject's named check applies to its task.
-    The census then runs every control, and a failing accept refuses the candidate.
-
-    Build each reject from the known-correct accept for its task by changing one fact; other checks may
-    fail on it too (2026-09-14). A reject that does not fail its named check is no discrimination
-    evidence. One deliverable passing every sibling task is not refused, because that is what a ladder of
-    tightening limits looks like, and the transplant census that refused it until 2026-09-25 made Builders
-    invent constraints to get past it.
-
-13. **One representation contract before tools and truth depend on it.** The public artifact schema, the
-    writer tool schema, the DraftStore, submit compilation, the F2 witness and the verifier input must
-    agree on what is required, what is nullable and what counts as equivalent, with no undocumented
-    `""`/`0` sentinel where the schema promises `null`. A valid artifact the writer cannot express, or a
-    writer value the verifier reads differently, is a representation defect. A task probe may rewrite the
-    accept corpus, but every new accept fits the adopted schema, whose recompiled hash stays
-    byte-identical. Conformance opens every task and requires one stable worker registration and tool
-    schema across the battery. Repair the shared contract rather than teaching the mismatch in prose.
-
-14. **Keep model-visible text small and single-owned.** Stable domain and safety framing goes in the start
-    prompt, one controller-derived correction in steering, bounded continuation at a stop or submit
-    boundary, and public result shaping in the live tool result. State measured public runtime facts where
-    they save blind discovery, and never repeat one duty across the workspace card, the body, the closing
-    paragraph and the tool description. A recurring interface failure is fixed in the schema, the tool or
-    the contract, not with another tutorial sentence. The Builder's intent stays in its start prompt, and
-    `STARTER.md` owns the loop, the gate sequence and the worked domain shapes. Starter examples satisfy
-    their schemas, name only declared tools and use refusal codes the source still emits. Prompt digests
-    are condition identities; a prompt test proves delivery, not behaviour.
-
-    This file is not one of those surfaces (operator, 2026-10-01). The Builder's sandbox grants the
-    README and the `starters` tree and not AGENTS.md (`deriveCandidateIsolation`,
-    `test/candidate-isolation-policy.test.ts`), so nothing written here reaches a Builder, and an edit
-    here is not a new condition. What a Builder should know goes in `STARTER.md` or the starter pack.
-    The grant had stood since the first commit and went unused: of 390 recorded Builder path records,
-    318 read `STARTER.md` and none read this file.
-
-    The Builder has fifteen tools in `BUILDER_TOOLS` (`src/builder/builder-tool-interface.ts`).
-    `harness_inspect` is static and read-only, with four modes: `readiness`, `task`, `coverage` and
-    `feedback`. Readiness is the whole static view in one call, a named `family` lists one it cannot fit,
-    and findings past the first page are paged through `feedback` once `correctness_check` has recorded
-    them. `context` (`src/builder/context-tool.ts`) takes a question and the decision the answer settles,
-    and returns lines cited by document and line from five sources: the round's opening, the workspace
-    notes, every measured battery, **passing** solver traces with their artifacts, and the
-    `--context` files. A trace's artifact (`traces/<runId>/<taskId>/artifact`) is listed only when its
-    bytes check against the evidence log, and ends in `readMargins` lines per published limit while the
-    brief's `scoringHash` still matches. Failing traces stay out, because the failure sits there. Until
-    2026-09-23 it read the `--context` files alone, and it was called six times in 160 sessions, always
-    over an empty corpus.
-
-    `harness_trial` solves one `taskId` blind with the measured Built solver — its runtime, turn guard,
-    solve wall and confinement — graded under the harness's own `check_seconds` and `tool_run_seconds`. It
-    returns the rule-4 verdict, whether it submitted, the turns used, the minutes against the wall, tool
-    calls, cost and any typed non-result. Each costs one measured case from the provider budget, which is
-    the only bound on how many a round runs, and writes under `<campaignDir>/rehearsals/`. A passing
-    rehearsal's trace and artifact, with its margin lines, join `context`'s traces, and verdicts and
-    effort are read back from the execution record. Only parameterless `submit` freezes and accepts
-    candidate bytes.
-
-    `public_source` and `verifier_workshop` are the two tools rule 1 depends on without naming, and an
-    agent that has not met them tries to install a toolchain with `bash` and gets nowhere. `public_source`
-    fetches an exact HTTPS address, brokered by the controller, into an offline `.oss` workshop under its
-    digest. `verifier_workshop` (`inspect`, `read`, `write`, `run`, `export`) unpacks, builds and
-    smoke-tests there, in one deny-default cell with its own PATH. The wall runs both ways, which is the
-    part worth remembering: workshop commands cannot read the candidate, workspace tools cannot read
-    `.oss`, and text crosses only through the workshop's `write`. `export` is the one outbound crossing —
-    one binary, script or package file of at most 64 MiB into `.toolchain`, keeping its executable bit,
-    returning the digest and installed path, and refusing an existing destination, because an upgrade is a
-    workspace edit. A successful run proves which bytes executed, never that the tool is authoritative.
-
-    `harness_reset` works only on a reopen rebuild and refuses otherwise, so it is no escape from a bad
-    round. It returns one surface to the starter seed: `agent` keeps the tasks, controls and checks,
-    `correctness-model` keeps the tooling, and `all` starts over. It runs once per scope per reopen, in
-    one controller commit that leaves every replaced byte in Git, making rule 10's harness intervention a
-    clean start.
-
-    **`agent/config.yaml` owns each harness's runtime walls**
-    (`src/correctness-bundle/harness-config.ts`). The Builder is told it exists, not its content.
-    Every setting is one wall in seconds and bounds one thing no other setting bounds.
-
-    | section | defaults (seconds) | the one wall | host limits |
-    | --- | --- | --- | --- |
-    | solver | `solve_seconds 7200` | one whole solve of one task | ≤10×, ≥0.1× |
-    | solver | `shell_command_seconds 900` | one solver shell command, whatever timeout it passes | ≤10×, ≥0.1× |
-    | gate | `reference_solve_seconds 120` | one reference solve of one task | none |
-    | gate | `check_seconds 600` | one correctness check with its tool runs | none |
-    | gate | `tool_run_seconds 300` | one verifier tool run inside a check | none |
-
-    The host owns the rest (2026-10-07). The Built turn count is `BUILT_RUNAWAY_TURNS` (100,
-    `src/backends/pi-built.ts`), a runaway guard: a turn is the first prompt or one nudge, each with
-    unlimited tool calls, and no recorded solve used more than two of 4,235 traces, while Builders
-    raised `max_turns` believing it bounded steps. The census wall is `censusWallMs`
-    (`src/run/census-gate.ts`), the sum of the check and reference walls inside it run twice over:
-    as `census_minutes` it met 11 of 766 recorded gate runs, every item inside its own wall, and
-    the Builder's answer in 5 of the 8 sequences was to raise it. The battery width is
-    `BUILT_SOLVE_CONCURRENCY` (`src/run/session-pool.ts`), which `ANA_BUILT_CONCURRENCY` overrides:
-    it is host capacity, and Builders changed it in 3 of 363 versions. The two shell settings became
-    one: the 300 s default cut commands in 121 recorded solves while 900 s was there to ask for,
-    and only one of them asked, while an ask below the wall only took back time already granted.
-
-    The solve wall is part of the measured condition. Below a tenth of the default the solver never sees a
-    command return, so the battery would grade the wall's submit of a first draft. The floor
-    (`harnessConfigIssue`) refuses admitting a candidate or starting a solve, but never reading a recorded
-    bundle, so a replay still grades one that declared less. The Built prompt (`builtSystemPrompt`,
-    `src/solve/built-starter.ts`) names its closed roster, the solve wall, what the wall submits and that no
-    other ending submits, and leaves the method to the solver. Until 2026-09-29 it also asked the solver to
-    grade every candidate, reach a tight limit by a bounded search and widen the worst margin, which turned
-    every task into propose, grade and adjust, so a battery measured that loop rather than the solver's own
-    way of solving.
-
-    Every fresh `tools-spec.json` gives the solver a shell through `presets`: `"files"` for a file-shaped
-    answer, whose draft files become the answer and which already carries the shell, or `"shell"` beside
-    an artifact writer, and never both. That is the decision of 2026-09-14, taken after truss epochs kept
-    declining `files`. Read a battery's roster before blaming it for a failure. A Built turn is bounded by
-    silence, one model call plus one command at its ceiling. At the whole-solve wall the host submits the
-    held draft through the solver's `submit` (`submitAtWall`, `src/backends/pi-built.ts`); an accepted one
-    is graded, and otherwise a solve that called a tool is an unaccepted attempt with its traced calls,
-    not a non-result. The brief's `checkOnlyTools` (2026-09-30), or every check's tool under the strict
-    `--withhold-instruments true` (default off), closes those `.toolchain` instruments to the Built shell
-    and records `instrument:<toolId>` in the run condition, so it is a condition of its own.
-
-    For generated tools, `text` is the whole model-visible result and `details` is host and trace
-    evidence, so every promised value belongs in `text`. A result that drops bytes says where the rest is,
-    because a draft can be read again and a command's output cannot. The store is `.bash-output/` in the
-    Builder workspace, dot-prefixed so listings skip it and never fingerprinted; `.oss/.run-output/` for
-    the workshop; and `.shell-output/` in the Built session home. It is never the host temp directory,
-    where a later solve could read it. The notice (`cutOutputNotice`, or pi's own) names the lines shown,
-    the stored file and the tool that pages it, and a failed store costs the pointer, not the result. A
-    cut grep or find ends with `moreRowsNote`. Protected output is never stored or pointed at.
-
-    A Builder session has no default wall (`HARNESS_BUILDER_SESSION_CAP_MS` sets a positive-integer one),
-    and a Builder bash install may run for 2 h. An authoring review starts when a host tool call
-    completes, never inside one, and runs beside the session (`AuthoringReviews`,
-    `src/run/authoring-review.ts`) over frozen bytes. After a clear `correctness_check` whose agent,
-    correctness-model or battery bytes changed since the last review, it reads that check's snapshot;
-    after **40 min** without a review (`REVIEW_INTERVAL_MS`, `src/gate/review-clock.ts`), it reads a
-    workspace snapshot taken at the triggering call. Edits made while it runs are not read, and a draft
-    that cannot be frozen is not read live instead; the clock stays due. One review runs at a time, and
-    the clock keeps only the latest validated product, so triggers coalesce rather than queue. It restarts
-    when a review ends, and its findings ride the next tool result.
-
-    **Only submit waits** for a running review, for at most `READER_DEADLINE_MS`, 1 h
-    (`src/review/review-reader.ts`). An unread *blocking* finding comes back in place of the verdict and
-    the call counts as no submit (`review-unread`), so the same bytes sent next are a first submission.
-    Advisory-only reviews hold nothing, because an advisory finding is advice: it rides the next result
-    when a probe or a demand gap backs it, and otherwise stays in the review's evidence; up
-    to 2026-09-27, 34 holds in 19 chains cost ~79 min, two campaigns held for all-advisory reviews. No
-    probe budget or no-submit strike bounds reconnaissance before the first authoring change.
-
-    A round runs as a Codex goal (`src/author/builder-continuation.ts`). Each continuation restates the
-    request and the round's facts, a round has no turn cap unless `--max-builder-turns` sets one, and
-    three turns without a successful tool call end it as the retryable `no-progress` on the same
-    conversation. After 8 turns or 2 h without a submit the round clock asks for authoring, or, when a
-    clear `correctness_check` has had no submit since, states its age in minutes instead; the clock also
-    states host load. The byte-identical resubmit strikes remain.
-
-    **One Builder conversation spans the controller run** (`src/author/builder-conversation.ts`). A
-    settled round pauses its session while the controller measures, reviews and advises, and the next
-    round resumes it provided the system prompt, every tool schema and the transport are unchanged. The
-    session was opened on stubs routing each call by name to the open round's tools, so a call between
-    rounds is refused. A resumed round's first message says how the last round ended and where it now
-    works, and re-sends the notes block when the workspace is new to the conversation, because each
-    measured round reopens under a new pass and compaction cuts the opening turn first. It gets no list of
-    earlier attempts and standing refusals, since each refusal already arrived as a submit result; only a
-    fresh session gets one. Compaction summaries are recorded with their token counts in the prose capture
-    (pi's `compaction_end`, or the CLI transcript on the Claude route) and served to no model. A round
-    that threw, a changed contract or a closed transport opens a fresh session, and the run's settle
-    closes the last one. Per-round bounds stay per round: the turn limit, the rehearsals, the submit
-    strikes, the review clock and the execution record. A process restart loses the conversation, because
-    nothing about it is durable.
-
-    `correctness_check` runs submit's exact validation sequence, census included, on the immutable
-    snapshot, as often as the bytes change. A verdict is remembered for identical bytes; a check that
-    reached no verdict, a runtime non-result among them, or a gate that threw or the host refused, is
-    forgotten and runs again. Preview and submit share an in-flight gate in either order when the
-    candidate and installed-tool identities match, and submit reuses only a clear result. A refused
-    candidate repeats by controller-owned candidate identity, not by workspace commit. **Never cache a
-    runtime non-result as a verdict.**
-
-15. **Stop honestly when the environment produces no evidence.** A battery of typed non-results creates no
-    claim and gives a rebuild or a probe nothing to work from, so do not remeasure a dead provider merely
-    because rounds remain. The controller gives transient recovery a declared bounded allowance and then
-    records `environment-blocked`. A provider limit, a missing credential, an unsupported catalogue model,
-    a spend limit, a provider timeout or a sandbox refusal belongs to the environment owner, never to the
-    task author.
-
-    In F2, a controller deadline reached before the generated-tool worker is ready, while it waits on a
-    request, or while it closes without an accepted submit is a host non-result, while a worker that
-    answered its handshake and then broke protocol is a representation defect. A case the host broke gets
-    one fresh attempt on the same bytes in the census, and only a second host non-result stands. A census
-    whose only blocking fact is such cut-short reference solves keeps the session and the run
-    (`endsSession`): the refusal costs no strike, and the next submit of the same bytes runs the census
-    again, since a host at load cut them rather than a dead environment (887c16, 2026-09-30). Once the
-    host holds what it needed (an accepted submit, or every conformance probe settled), the generated-tool
-    worker's host-marked close-handshake timeout (`closeHandshakeTimeout`) is cleanup evidence, voiding no
-    case and refusing no candidate, in a battery case, in F2 and in the probes alike; every other close
-    failure of that worker keeps its type. The Built model worker is the host's runtime rather than the
-    Builder's bytes, so after an accepted submit any way it stops (a close timeout, a silence wall, a
-    crash) is recorded on the runtime boundary and the submit is graded, unless the controller cancelled
-    the case. Without an accepted submit, either worker's failure remains a non-result. At claim time a solvability-witness non-result gets one fresh execution, for `sandbox` or
-    `verifierUnavailable` only; `timeout` and `crash` stand on the first attempt. Persistent refusal
-    leaves a typed finding and a missing-witness readiness clause beside the score, never turning verified
-    cases into fails.
-
-16. **Accept broad requests; apply strict evidence later.** Admit broadly sensible domains, and record the
-    excluded families and the unverified capabilities rather than silently narrowing the product.
-    Adoption, measurement and the claim gates decide afterwards what the evidence supports.
-
-### The correctness model
-
-A candidate declares `correctnessContract: "check-program/v1"`, which is the only accepted value. Each
-truth check is one Boolean function in the `checks` of `correctness-model/evaluator.ts`, applicable to
-declared families, reading only its declared artifact paths, its declared public input paths and its own
-hidden operand. Missing required hidden data refuses execution rather than quietly making the check
-inapplicable. The host runs each applicable check in a fresh confined child and builds the aggregate
-verdict itself; there is no second predicate anywhere. Each check declares its evidence kind, which the
-coverage rows carry. `authored` computation may name `execution.requiredToolIds`, including an interpreter
-for the Builder's own algorithm, and keeps authored semantics. `external` evidence names an installed tool
-as the deciding instrument, flags and names as args, leaf-bound files or stdin as operands.
-
-Nothing proves provenance: an installed interpreter running the Builder's algorithm is still authored
-computation. What discloses it is the claim, which records the digest and the source
-(`workspace-toolchain` or `host`) of every tool that ran as `verifierEnvironmentHash`, while
-`externalCheckCoverage` counts host-attested launches and reject controls per check-and-tool pair. Neither
-the install location nor passing the digest and argument checks establishes independence. Preserve the
-selected command path through inventory, attestation and execution, because identical hardlinked bytes can
-dispatch differently under different names. Keep compilation, host simulation, target execution and
-hardware operation as separate scopes.
-
-### The gate
-
-`correctness_check` previews the gate `submit` runs, without the adoption; rule 14 owns the snapshot, tool
-identity, cache and retry contract they share. It runs three stages: `bundle`, `conformance` and `gates`.
-The census, F2 and grounding read recorded rows and executable bytes, never Judge prose. Refusals route by
-kind to the owning `FeedbackOwner` and return to the same session. A byte-identical resubmit of a refused
-candidate is a counted no-op strike, and three of them end the session as `authoring-stalled`; a typed
-runtime non-result is neither cached nor counted as a strike. A close-handshake timeout after all
-conformance probes have settled, or after an F2 reference submit was accepted, refuses nothing (rule 15). Provider and credential failures end the
-session with a typed terminal clause. It never compares candidates or judges quality; it admits what
-satisfies its own declared contract and refuses the rest with the exact finding.
-
-The gate audit of 2026-09-25 put one question to every refusal: are we at least 98% sure it refuses
-something actually wrong? `docs/gate-audit.md` indexes the survivors by kebab id, with what each refuses
-and why. The first pass marked components with `Gate audit 2026-09-25 … kept` lines and archived the
-unsure ones as commented-out blocks; the second (2026-09-26, stack PR #33) deleted those blocks and all
-the markers, with the archived bytes at `3be43b8`. Main keeps both until the stack lands, and **a
-commented-out refusal is not enforced, so never describe it to a model as a rule.**
-
-Two ignored ledgers under `notes/` hold how sure we are of each decision, so that a later reading can take
-one back without re-deriving why it was made. A change to a gate component or to the climb machinery
-updates its row in the same sitting, and a row resolves only from recorded run bytes, never from the
-change's own tests. The gate audit ledger, `notes/gate-audit-ledger/`, holds one card per component: what
-it refused, the stages it runs at, its firings in the corpus, the 98% sentence and a falsifier. `INDEX.md`
-gives 54 codes in nine groups (SH ID F2 CT GR BR DF LP WL): 30 kept, 23 commented out and 1 retired
-(2026-09-28, moved to advice). `CONFIDENCE.md` scores P(right), P(stall) and P(move) against a keep bar of
-P(right) ≥ 0.98 with P(stall) ≈ 0. The climb rewrite ledger, `notes/climb-rewrite-ledger/LEDGER.md`
-(2026-09-28), records per change the decision it is meant to move, the evidence before it, P(value),
-P(brittle), its class (a safe removal, a bet with a frozen prediction, or a risky change to a working
-path), the exact revert and the halfway fallback, and a resolution log marks each row kept, reverted or
-in-between.
-
-### Identities, walls and process facts
-
-The accepted candidate has one byte identity from submit through adoption. Product files become durable at
-one retained version path before `ControllerLedger` commits the selection, the promotion evidence and the
-admission together. A held row is byte-bound too, and a replay must name the same version, fingerprint and
-experiment. Preserve damaged state for review.
-
-Verifier process results and process cleanup are separate facts. A deadline bounds execution and output
-collection even when a child or a pipe will not settle, cleanup keeps a durable receipt, recovery never
-signals a saved PID, and a successful kill syscall on its own proves nothing. Each tool run gets fresh
-private `TMPDIR` and `HOME`, and the one thing restored into them is the tool's user cache, from an
-earlier gate run of the same bytes (`withToolCache`, `src/verify/engine-cell-env.ts`); a battery run
-restores it and never stores. Darwin Seatbelt and Linux Bubblewrap each need their own live proof, and an
-unavailable required wall is a typed non-result, never an unconfined run. A controller removes the
-`ana-quick-run-*` temp root its launcher made when it exits, and only a SIGKILL leaves one behind. Each
-Builder shell call gets its own `ana-builder-bash-*` `TMPDIR`, removed when the call settles. A closed
-verifier scope removes every cell that no pending receipt holds.
-
-Builder access is stated once per backend, through the host-controlled file and command tools. It may read
-the workspace, the public inputs, prior traces, the host toolchain paths, compiler scratch, the
-`src/solve` and `src/meta` authoring interfaces, `starters/`, `README.md` and this file
-(`src/builder/candidate-isolation.ts`). No prompt carries this file and no backend loads it as instructions,
-but a Builder can open it (2026-09-30). It may not read controller evidence, including evidence
-created after the session started, credentials, other accounts, or `src/correctness-bundle`, `src/verify`
-and `src/gate`. The Built Harness has a narrower file wall but outbound network, so that it can fetch a
-toolchain into its private home (2026-08-15, reaffirmed 2026-09-06). The controller brokers each
-public-source hop: the hostname resolves once, the address must be public, and the request is pinned to it
-with SNI and Host bound to the real hostname, at most 5 redirects, 64 MB and 120 s. The
-destructive-command guard is a safety net, not isolation or evidence; a recursive remove of a relative
-workspace tree and a discarding checkout or restore of the session's own file both pass its refusal
-(2026-09-14).
-
-### Run configuration
-
-A run has three model slots, set with `--builder-backend`, `--built-backend` and `--review-backend`. The
-kinds `codex`, `openrouter` and `claude` work on all three, and review also takes `disabled` or `inherit`,
-which copies the Built slot's kind, model and effort so that the review runs the battery's condition. The
-Built slot needs a slug the Pi catalogue names, so that its evidence says what was measured. One review
-pin serves the Main Judge, the diagnosis reader and the Epoch Reviewer; operator names say `review`, while
-the evidence keeps `judge:"off"` and `judgePin`. Every slot resolves its provider, credential and model
-through `src/backends/pi-providers.ts`. The Builder and review slots run in-process on one pi host session
-(`src/backends/pi-session.ts`), each with its own tools and framing, and the Built slot runs pi in its
-confined child. The Builder session persists across rounds (rule 14).
-
-Kinds live in `.harness/backends/<project>.json`, layered per slot over `default.json`, which in this
-repository sets all three slots to `claude`. The review slot is where an absence is easy to misread.
-**Dropping the review key does not disable review**; it falls through to `default.json`. Only a review key
-absent from both layers with no `HARNESS_REVIEW_BACKEND` yields
-`{enabled: false, source: "unconfigured"}`, and `{"review":{"disabled":true}}` yields the same disabled
-slot recorded as `operator`. Both run no reviewers and differ only in the recorded reason. An empty
-`{"review":{}}` is refused.
-
-Models and efforts come from `CODEX_{BUILDER,BUILT,REVIEW}_MODEL` and `CODEX_*_REASONING_EFFORT`, or their
-`CLAUDE_*` equivalents. **An unpinned codex slot defaults to `gpt-5.6-luna` at `xhigh` on all three
-slots** (`src/backends/resolve.ts`), a condition no table names, so pin it. Each effort is checked against
-the thinking levels the pi catalogue lists for its model, with no provider call. The OpenAI-completions
-route pairs `OPENROUTER_API_KEY` with the OpenRouter address, or `CUSTOM_ADDRESS` with `CUSTOM_API_KEY`
-and a `CUSTOM_CONTEXT_WINDOW` ≥ 16,384 output + 8,192 reserved input tokens.
-`--withhold-instruments true|false` travels as `HARNESS_BUILT_WITHHOLD_INSTRUMENTS`, which `fullrun`
-always sets, onto the Built slot alone. Every opening tuple must match the intended condition before
-battery spend; mixed slots are a separate condition. Export an adopted bundle with
-`bun run harness -- export <domains/slug> <dir>`, then `bun run solve` and `bun run check` on the
-controller's own paths.
-
-Claude credentials resolve process env > `.env.cloud` > `.env.local` > `.env` > the stored login file, and
-`bun run login -- status` names the winner. Every Claude slot presents the one `CLAUDE_CODE_OAUTH_TOKEN`.
-`claude setup-token` mints for the account the browser is signed in as, not for the alias or config
-directory in front of it, and session limits are per account.
-## Code, lint and gates
-
-Every rule below is an `error`, and `bun run lint` passes `--deny-warnings`, so oxlint's default
-`correctness` category is fatal too, even though it is on only as warnings (`.oxlintrc.json` sets no
-`categories`). Both hooks run lint, which means breaking a rule costs a round trip through the hook. Each
-plugin rule's source (`tools/oxlint/{ana,anti-slop}/rules/<name>.ts`) holds its argument, its exemptions
-and its measurements, so read it before arguing with a finding. The counts move whenever a rule lands, so
-read them off each plugin's `index.ts`; when this was written there were 40 `ana` and 17 `anti-slop`
-rules, 57 in all, and 15 of them carried fixers.
-
-### 1. Commands, hooks, CI
-
-`bun run gate` runs nine steps in order: runtime, format, ui-deps, typecheck, lint, source-policy,
-complexity, ui and tests. With `--at <dir>` it runs whole over a checkout, which is how pre-push proves
-branch heads, and with `--static <dir>` it leaves out `ui` and the suite and runs the tests importing a
-changed file in their place. `bun run lint -- --strict` runs oxlint, both plugins and the not-slop ledger,
-and fails on plugin findings (§3). `bun run lint -- --fix` applies the 15 plugin fixers and oxlint's own,
-so read the diff it leaves. `bun run format` writes with `biome format --write .` and `format:check` only
-checks, while `bun run typecheck` is `tsc --noEmit` on TypeScript 7.
-
-Tests run through `bun run test -- <paths…>`, the walled suite runner, and never through a bare `bun
-test`; a path that does not exist is refused rather than skipped. `bun run simplify` runs the whole-tree
-scans of §8 through `tools/oxlint/simplify-census.ts`. `bun run not-slop -- answer <id> "<why>"` answers a
-finding, and `prune` drops the rows nothing matches any longer (§3). The two policy tools treat their
-arguments differently, which is easy to misread: `bun tools/loc/source-policy.ts` checks size, refused
-names and unused exports and ignores any path you give it, while `bun tools/loc/complexity-policy.ts
-[paths…]` checks the cyclomatic ceiling and re-measures exactly the files you name. Finally, `bun run
-hooks:install` is `git config core.hooksPath .githooks`, and without it a push goes out ungated.
-
-The pre-commit hook is the last cheap moment, because a published commit cannot be un-published. It
-refuses an author email on an RFC 2606 placeholder domain (`*.test`, `*.invalid`, `*.example`,
-`example.com/.net/.org`), and it refuses staged `*.ts *.tsx *.js *.mjs` that `biome format` would change;
-it checks and never writes. It then lints those files (`ANA_LINT_PATHS`), prints the staged slop report
-(`tools/oxlint/staged-slop.ts`), which never refuses, and runs the secret scan over the added lines. Lint
-reads the bytes in the working tree, so a partially staged file is judged on what is on disk rather than
-on what was staged.
-
-The pre-push hook answers a push whose diff touches only `AGENTS.md`, `README.md`, `docs/**` or
-`.claude/**/*.md` with `git diff --check` alone. For any other push it gates what the push changed: each
-source-changing commit new to the remote runs `gate --static` over its own checkout, and the lowest pushed
-head holding the newest of them gets the whole gate. A commit whose patch (`git patch-id --stable`) the
-remote already held under the refs the push replaces is a replay that a rebase carried to a new base, and
-it waits for `bun run land` (see "Where changes go"). The same hook refuses a source push to main that
-lacks `Hotfix:` trailers, a new branch that is not on top of the open stack (a side PR against main
-excepted, below), and a push that leaves an
-open PR listing another open PR's commits; one left listing old copies of its base's commits gets a
-warning naming the `git rebase --onto` that repairs it. **There is no hook bypass by any spelling**,
-neither `--no-verify` nor `-c core.hooksPath=…`.
-
-CI does much less than its name suggests. `.github/workflows/gate.yml` runs the gate on macOS (Seatbelt)
-and Linux (Bubblewrap) on each stack merge (the merge commit `bun run land` puts on `main`), daily at 03:17
-UTC on `main`, and on dispatch, and it skips a head whose tree a completed run already read. `bun run
-land --sanitize` and `--merge` dispatch it on the stack top's head unless a run there exists, and wait for
-it: a stack lands only after it passed. The merge commit has the top's tree, so the merge's own run
-skips. Isolation code must pass on both platforms.
-
-Only Bun 1.4.2 runs any of this. `lint.ts` points oxlint at the native `tsgolint` binary, because the
-`node_modules/.bin` entry is a `node` shim. `bunfig.toml` sets `env = false`, so `.env` is never loaded
-automatically.
-
-### 2. Formatting and compiler settings
-
-Biome formats and does nothing else, since its linter is off. It writes 2 spaces at a width of 110, with
-double quotes and quoted properties preserved, and it owns every line break except under `.agents` and in
-the 14 vendored files `biome.json` names: the 3 `pi-agent-session` modules, `pi-built/jsonl.ts` and 10 of
-`pi-claude-bridge`, which stay as upstream wrote them so that a diff against upstream stays readable.
-Never hand-wrap against it. What it does not do is rewrap a comment, which makes a comment the one line
-whose width nothing measures, so wrap long ones yourself.
-
-The compiler targets `ES2025` for both target and lib, which brings iterator helpers, the `Set` methods,
-`Promise.withResolvers`, `Object.groupBy` and `toSorted`. It runs `strict`, and three further settings
-shape everyday code. `noUncheckedIndexedAccess` makes `rows[i]` a `T | undefined`, so guard it, use
-`.at()`, or loop over `entries()`. `exactOptionalPropertyTypes` means never assigning `undefined` to an
-optional key; use `keyIfDefined` (§4.33) instead. And `noUnusedLocals/Parameters` is satisfied by a `_`
-prefix. Modules resolve as `NodeNext` with `.ts` extensions in every import, under `types: ["bun"]`. The
-configuration covers `src tools vendor starters test` and `.claude/skills/**/*.{ts,mts}`. Imports have
-three subpath aliases, `#src/*`, `#tools/*` and `#skills/*` (which maps to `.claude/skills/*`), and an
-import climbing 3+ directories must use one (§5.16, which fixes it). `src`, `starters`, `tools/harness`
-and `vendor` are `relativeOnly`, because they load without the manifest, so they stay relative at any
-depth. `starters/` never imports `src/`.
-
-### 3. How lint runs
-
-`.oxlintrc.json` turns on `typeAware` and the plugins `import`, `oxc`, `typescript` (through `tsgolint`)
-and `unicorn`, beside the JS plugins `ana` and `anti-slop`, and it ignores `node_modules campaigns domains
-tmp` and the two pi-mono copies, `vendor/pi-coding-agent` and `vendor/pi-agent-session` (see "sed" under
-Writing style). `--report-unused-disable-directives` makes a stale disable a finding in its own right. The roots are
-`src tools vendor starters test packages .claude`, though `packages/` joins only once
-`packages/ui/node_modules` exists (`bun run ui:deps`).
-
-Plugin findings and stale ledger rows fail the run only in strict mode, which is `--strict`,
-`ANA_LINT_STRICT=1`, or `git config ana.lintStrict true`. That key lives in `.git/config`, is shared by
-the worktrees and is never pushed, and the maintainer clone sets it. A run that is not strict hides the
-findings as "optional", which is easy to mistake for clean. **Treat every run as strict.** Whoever
-rewrites code runs `bun run lint -- --strict` before handing it back, because a rewrite that drops an
-assertion or merges statements meets rules the old spelling passed (`no-known-value-widening`, `curly`,
-`prefer-optional-chain`).
-
-Answering a finding should be rare, because the first move is always to change the code. Never write an
-`oxlint-disable` naming an `ana/` or `anti-slop/` rule (§4.40). Instead run `bun run lint`, take the
-`[not-slop <id>]` it prints, and run `bun run not-slop -- answer <id> "<reason checkable against the
-code>"` with a reason of 3+ words. The row in `tools/oxlint/not-slop.tsv` is keyed by the rule and the
-text of the judged line, so editing the line reopens it, and a row nothing matches any longer fails a
-strict run until you `prune` it. **A rule with a fixer cannot be answered**, because its wrong report is a
-bug in the rule. The core rules (`eslint/`, `typescript/`, `unicorn/`, `import/`) may take `//
-oxlint-disable-next-line <rule> -- <reason>`.
-
-Tuning a rule runs in one direction only, a decision dated 2026-09-22 and taken after a `test/**` override
-and a `json-shape.ts` override had silenced 13 findings wholesale. Retune the rule's source so that the
-legitimate shape it mis-targeted passes and every slop case it caught still fails, with a fixture for each
-side. A finding the rule cannot separate that way is fixed in code or answered. **Never turn a rule off or
-widen an override to clear a finding** (§10).
-
-The 15 rules marked [fix] below carry fixers. Several of them leave a compile error on purpose when they
-cannot finish, such as a member missing from an import they wrote, so finish the edit.
-`FIXER-DECISIONS.md` says why each of the other rules only reports.
-
-### 4. The `ana` rules
-
-Test files are `test/**` or any `*.test.*`. The exemptions below live inside each rule, not in overrides.
-
-#### Structure
-
-- 4.1 `declarations-before-the-first-function` [fix] wants a file in the order imports, then
-  `type`/`interface`, then module `const`s, then functions. A `const` whose initialiser calls something,
-  reads a global or reads something below stays where it is. Write new files in this order.
-- 4.2 `no-inline-schema-literal` moves a table of 3+ constant primitives built inside a function to module
-  scope, under a name saying what it holds. It reports only when the binding never escapes, meaning it is
-  not passed, returned, spread or iterated, and tests are exempt. It has no fixer, because the naming is
-  the point.
-- 4.3 `no-deep-nesting` makes depth 4 in one function an error. `if`, loops, `switch` and `catch` count;
-  `try`/`finally` and nested functions do not, and neither does a guard, which is an `if` without `else`
-  of ≤3 statements, with no branching, ending in `return/continue/break/throw`. Fix it in this order:
-  guard early, split a function that does two things, then collapse a loop-in-loop into `flatMap` or a
-  `Map` lookup.
-- 4.4 `no-tangled-ternary` lets a ternary grow only along its tail, to ≤3 cases, with nothing nested in a
-  test or a consequent. Name the inner ternary, or use early returns or a `Map`. Do not invert the outer
-  test to escape it, because `no-negated-condition` fires next.
-- 4.5 `no-single-caller-helper` inlines a non-exported function with one caller and a short body, meaning
-  ≤2 statements or 5 lines in an expression and ≤3 or 7 as a statement. Tests are exempt, and so are
-  `.tsx` components, type guards, `using`/`catch`/early-return bodies, one of 3+ `&&`/`||` predicates, a
-  name used as a value, and an inline that would push the caller past 115 lines or complexity 22.
-- 4.6 `no-pass-through-wrapper` catches a body that forwards its own parameters unchanged, which is only a
-  second name, so call the callee. A wrapper that adds a default, a narrowing, a reorder, a fixed argument
-  or a receiver binding is allowed.
-- 4.7 `no-single-use-const-chain` catches 3+ `const`s, each read once in the next statement, threading one
-  value; write the chain instead (`return
-  parseJsonAs<Bundle>(text).tasks.map(byId).filter(unique)`). A comment, a type annotation or a function
-  value ends the chain.
-- 4.8 `no-renaming-temporary` [fix] replaces `const rows = bundle.rows;`, read once in the next statement,
-  with the expression itself. A binding that is annotated, a snapshot of a path reassigned later, or one
-  read inside a closure is exempt, the last because it keeps the narrowing.
-- 4.9 `no-alias-restating-return` catches a local alias used only as one function's return type over a
-  named contract (`type X = Omit<Other["tools"], "byName">`). Delete it and let the type be inferred, or
-  write `ReturnType<typeof f>`.
-
-#### Branches and conditions
-
-- 4.10 `no-arms-differing-in-one-term` merges two arms that are identical but for one value token at that
-  token, as in `return spawnUnder(linux ? bwrap : seatbelt, command)`. Arms in dispatch position, arms
-  differing in operators or strings, commented arms, and arms under 3 names or over 200 chars are exempt.
-- 4.11 `prefer-condition-over-boolean-returns` [fix true→false] rewrites `if (c) return true; return
-  false;` as `return c;`. For the reversed order the fixer stops, and you add the `!` yourself.
-- 4.12 `prefer-const-conditional` [fix, two-arm] turns `let x; if (c) x = a; else x = b;` into `const x =
-  c ? a : b`. A default followed by an override (`let w = D; if (o.w !== undefined) w = o.w`) is only
-  reported; write `const w = o.w ?? D`.
-- 4.13 `prefer-lookup-over-equality-chain` turns 3+ `if (x === "lit") return …` arms over a closed set
-  into `const T = {…} as const satisfies Record<Kind, …>`. Arms that read the subject, which is union
-  dispatch, are exempt.
-- 4.14 `no-positional-boolean-parameter` exists because `close(l, true)` is opaque at the call site; take
-  `outcome: "failed" | "clean"` instead, and not an options object (§5.6). Tests, `asserts`, callers that
-  all pass a variable named like the parameter, and a flag gating the callback beside it are exempt.
-- 4.15 `no-side-effect-in-predicate` refuses mutation inside a `filter/find/some/every` callback, such as
-  the `!seen.has(id) && seen.add(id)` dedupe. Use `new Map(rows.map((r) => [r.id, r])).values()`,
-  `Object.groupBy`, or a loop.
-
-#### Arrays and loops
-
-- 4.16 `prefer-find-over-loop` [fix] turns a `for…of` whose body is one conditional `return` of the
-  element or a boolean into `find/some/every`. A loop containing `await`, an index or entry loop, a loop
-  over a `Set/Map`, one with an `else`, and one returning something derived are exempt.
-- 4.17 `prefer-some-over-filter-length` [fix] turns `filter(p).length > 0` into `some(p)`.
-- 4.18 `prefer-includes-over-some-equals` [fix] turns `some((x) => x === "lit")` into `includes("lit")`.
-  Keep `some` when it narrows a `string` against a readonly tuple.
-- 4.19 `prefer-flatmap-over-map-filter` turns `map(f).filter(Boolean)` into `flatMap((x) => f(x) ??
-  [])`, because `filter(Boolean)` does not narrow and also drops `0`, `""` and `false`.
-- 4.20 `no-inline-block-reducer` treats a `.reduce` with a block-bodied inline arrow as a hidden loop, so
-  write the `for…of`. Named reducers and expression arrows are fine.
-- 4.21 `prefer-entries-over-keys-lookup` turns `for (k of Object.keys(o)) … o[k]` into a loop over
-  `Object.entries`.
-
-#### Calls
-
-- 4.22 `no-argument-already-carried` [fix, confined] catches `f(bundle, bundle.findings)`, where the part
-  should be read inside `f`. The fixer drops the parameter and the argument at every call, and rewrites
-  the reads.
-- 4.23 `no-transposed-argument` catches argument names crossed against parameter names. Fix whichever side
-  is wrong rather than swapping blindly.
-- 4.24 `no-property-read-on-function` catches a non-standard property read off a local function, which is
-  always `undefined` and usually a missed rename. It has no fixer, because deleting the read deletes the
-  evidence.
-
-#### Repetition
-
-- 4.25 `no-repeated-string-literal` [fix in tests] turns a 6+-character string (not a bare tag like
-  `"non-result"`) spelled 4+ times in a file, or 10 in tests, into one named constant; in source you
-  choose where the constant belongs. Import sources, object keys and strings others own, such as CLI flags
-  and media types, are exempt.
-- 4.26 `no-thrice-spelled-object` turns one 3+-property object literal spelled 3 times, or 5 in tests,
-  into one builder function. Literals made only of flags are exempt.
-
-#### Types
-
-- 4.27 `no-unknown-union` exists because `Row | unknown` *is* `unknown`, so write the real type.
-- 4.28 `unproven-unknown-parameter` requires an `unknown` parameter to be proved in the body, by a
-  predicate, a narrowing guard, a proved local, or a hand-off to a prover (`is…`, `as…`, `has…`,
-  `assert…`, `ensure…`, `require…`, `validate…`, `parse…`, `trustedJson`, `errorMessage`, `errorCode`).
-  Passing it straight on proves nothing, so declare `JsonValue` or the real type, and never hide an
-  unproved input behind a generic intersection.
-- 4.29 `require-type-for-null-default` applies to `.js/.mjs/.cjs` only, where a `= null` default types as
-  `null`. It is dormant, since no JavaScript remains at the stack head.
-
-#### Owners: use the one implementation
-
-Each of these rules points at an owner that §6 lists.
-
-- 4.30 `no-hand-rolled-error-render` [fix] replaces `e instanceof Error ? e.message : String(e)` with
-  `errorMessage(e)`, and `new Error(String(e))` with `asError(e)`. It is not applied in `packages/ui` or
-  `starters`.
-- 4.31 `require-captured-json-runtime` [fix] refuses, in `src/` and `vendor/`, the ambient `JSON.parse`,
-  `JSON.stringify` and `structuredClone`, because a generated module could replace the globals. Use
-  `capturedJsonParse` (which returns `JsonValue`), `parseJsonAs<T>(text)`, `capturedJsonStringify` and
-  `capturedStructuredClone`. Under `src/backends/oauth/**` an override also bans `JSON.parse` and
-  `parseJsonAs`, since OAuth bytes are external input: `capturedJsonParse` them and validate.
-- 4.32 `require-meta-runtime-import` [fix] refuses `node:fs`, `fs/promises`, `path`, `os`, `net`, `module`
-  and `assert/strict` outside `src/meta`. Import its wrapper instead (`filesystem.ts`, `path.ts`, `os.ts`,
-  `network.ts`, `modules.ts`, `assert.ts`), adding a missing member beside the others; its `mkdir`,
-  `mkdtemp`, `readdir` and `rm` are the promise versions. Tests and `.claude/**` are exempt.
-- 4.33 `prefer-key-if-defined` [fix] wants `{ stdout: "pipe", ...keyIfDefined("cwd", options.cwd) }`
-  rather than a guarded assignment after the literal. For `!== null` use `keyIfNotNull`, and `keyIfTruthy`
-  and `keysIf(cond, () => ({…}))` cover the remaining cases.
-- 4.34 `no-hand-rolled-sleep` refuses `new Promise((r) => setTimeout(r, ms))`. A test resolves when the
-  producer finishes (`Promise.withResolvers()`) or polls with a deadline, and production code calls
-  `Bun.sleep(ms)`.
-- 4.35 `no-lifetime-outside-owner` treats a spawn plus `child.kill()` in one file as a third
-  process-lifetime owner. Launch through `spawnCollected` / `stageCommandIsolation` and signal through
-  `killProcessGroup` / `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`). Tests are exempt.
-- 4.36 `no-hand-spelled-git` says never to spawn `"git"` yourself. Skills use `gitOutput/gitText/gitMaybe`
-  (`.claude/skills/main/git.ts`), and `src` uses `src/run/source-identity.ts`, or
-  `src/author/domain-repo.ts` for the committing Builder workspace. Tests are exempt.
-- 4.37 `no-hand-spelled-tree-root` [fix] applies in `src` and `.claude` but not in tests, and refuses
-  `join(root, "campaigns"|"domains", …)`. Use `campaignRoot/campaignDir/defaultProductDir/productRoot`
-  (`src/meta/campaign-root.ts`), or `selectedProductDir` for the tree the ledger selected.
-- 4.38 `no-hand-read-argv` applies to skill scripts and not to tests: declare a `runCommand` spec, or pass
-  `Bun.argv.slice(2)` to `parseOrDie/parseCommandOrDie/parseCliArgs` (`.claude/skills/main/cli.ts`).
-- 4.39 `no-hand-read-controller-evidence` applies to skill scripts and not to tests, and wants
-  `opening.json` and `terminal.json` read through `openRecordedRun` (`.claude/skills/main/run.ts`) rather
-  than parsed by hand.
-- 4.40 `no-inline-slop-answer` refuses an `oxlint-disable` naming a plugin rule; use the ledger instead.
-
-### 5. The `anti-slop` rules
-
-These are copied from dmmulroy/anti-slop and edited here where needed.
-
-- 5.1 `no-array-filter-map` exists because `filter().map()` on an array makes two passes; write
-  `rows.flatMap((r) => (r.ok ? [r.id] : []))`, and over a `Map`/`Set` write
-  `.values().filter().map().toArray()`.
-- 5.2 `no-chained-type-assertions` refuses `x as unknown as T`; validate instead.
-- 5.3 `no-conditional-empty-object-spread` refuses `...(ok ? { k } : {})`. Use `keyIfDefined`/`keysIf`,
-  and decide whether the key is absent or present and null.
-- 5.4 `no-known-value-widening` refuses an annotation wider than the value states, such as `const row:
-  object = {…}`, a literal returned as `Record<string, unknown>`, or `as any`. Keep the inference or use
-  `satisfies`.
-- 5.5 `no-module-mocking` refuses `vi.mock`/`jest.mock`/`unstable_mockModule`; inject through an interface
-  instead (`double(…)`, `test/helpers/doubles.ts`).
-- 5.6 `no-object-parameters` refuses a parameter typed `object`; name the owner type.
-- 5.7 `no-reduce-accumulator-copy` refuses `Object.assign({}, acc…)`, `acc.concat`, `acc.slice()` and
-  `[...acc]` at every step, which is quadratic; mutate a local and return it.
-- 5.8/5.9 `no-reflect-apply` and `no-reflect-get` want typed calls and typed access. A Proxy `get` trap
-  forwarding its own three parameters in order is exempt.
-- 5.10 `no-runtime-typeof` refuses `typeof x === "string"` in running code. Use `isString`, `isNumber`,
-  `isBoolean`, `isObject`, `isRecord`, `asRecord`, `isFunction`, `jsonKind` or `typeName` from
-  `src/meta/json-shape.ts`, the only file allowed a `typeof` predicate, or parse into a named type.
-  `typeof x === "undefined"`, an existence probe, is fine.
-- 5.11 `no-shape-in-symbol-names` refuses any identifier containing "shape"; name the role instead
-  (`CaseRow`, `toVerdict`).
-- 5.12 `no-unknown-returns` refuses a declared return of `unknown`, `Promise<unknown>`, a union with it or
-  an alias of it, method signatures included; return the parsed type.
-- 5.13 `no-unknown-type-aliases` refuses `type Payload = unknown`; write the real type.
-- 5.14 `no-unsafe-dictionary-type` refuses `Record<string, unknown|any>` and `{[k: string]: object}`. The
-  one open view is `OpenRecord` (`json-shape.ts`), and for JSON it is `JsonObject`/`JsonValue`.
-- 5.15 `no-widen-then-assert` refuses declaring a value wide and then asserting it back; keep the precise
-  type.
-- 5.16 `prefer-subpath-import` [fix] enforces the aliases of §2, and reads the alias off the nearest
-  `package.json`.
-- 5.17 `require-safety-comment-for-type-assertion` wants every `as T` (except `as const`) and every `<T>x`
-  to carry a `SAFETY: <invariant you checked>` comment right before the assertion or its statement. Only
-  whitespace, newlines included, and opening parentheses may separate them, and Biome moves the comment
-  outside the parentheses. It has no fixer, because a generated comment proves nothing, and a predicate,
-  `satisfies` or a parse is usually better than the assertion anyway.
-
-```ts
-// SAFETY: isManifest validated this two lines above.
-const manifest = parsed as Manifest;
-```
-
-### 6. The owners (`src/meta`)
-
-Each runtime surface has one owner in `src/meta`, which is what the owner rules of §4 point at. Files,
-paths and the OS go through `filesystem.ts`, `path.ts` and `os.ts`, which expose the node surfaces with
-the promise versions of `mkdir mkdtemp readdir rm`, and the network and the module loader go through
-`network.ts` and `modules.ts`, the `node:net` / `node:module` surfaces. The process belongs to
-`process.ts`, which gives `runtimeProcess` in place of `process`, with `capturedSpawn`, `capturedExecPath`
-and `parseArgs`. Subprocesses belong to `subprocess.ts`, with `runSync`, `runSyncOrThrow`,
-`runTextSyncOrThrow`, `killProcessGroup` and `terminateAndReapProcessGroupId`, and host binaries to
-`host-tool.ts`, as in `hostTool("git")`.
-
-JSON in and out goes through `json-runtime.ts` (`capturedJsonParse`, `parseJsonAs<T>`,
-`capturedJsonStringify`, `capturedStructuredClone`, `hashJsonBytes`), and the JSON types come from
-`json-shape.ts` (`JsonValue`, `JsonObject`, `OpenRecord`, and `isString`… `typeName`). Canonical JSON is
-`stable-json.ts`, with `stableJson`, `canonicalJson`, `sameJsonValue`, `hashJsonValue` and
-`compareCodeUnits`, and atomic files are `completed-json.ts`, with `writeAtomic`, `writeJsonFile`,
-`readJsonFile(OrNull)`, `writeCompleted` and `readCompleted`. Caught values are rendered by
-`runtime-values.ts` (`errorMessage`, `asError`, `errorCode`), optional keys are built by `optional-key.ts`
-(`keyIfDefined`, `keyIfNotNull`, `keyIfTruthy`, `keysIf`), and the generated trees are located by
-`campaign-root.ts` (`campaignRoot`, `campaignDir`, `defaultProductDir`, `productRoot`). Hashing is
-`digest.ts` (`sha256`…), and assertion is `assert.ts`, the `node:assert/strict` surface.
-
-`tree/filesystem-import-budget` records each file's count of `filesystem.ts` imports, an operator budget
-set on 2026-09-15. A change adds at most one, and a change that needs more is asking for a redesign.
-
-### 7. Core oxlint rules
-
-The ESLint rules come first.
-
-- `curly: multi-line` wants braces whenever the body spans lines.
-- `max-params: 5` caps a function at five parameters; name an interface or split the function, and never
-  reach for an `object` bag.
-- `no-else-return` drops the `else` after a branch that returns.
-- `no-empty` refuses an empty block, and an empty `catch {}` needs a comment saying why.
-- `no-extend-native` refuses changes to built-in prototypes, and `no-fallthrough` refuses a `switch` case
-  that falls into the next.
-- `no-implicit-coercion` wants `String(x)` rather than `"" + x`/`+x`/`!!x`.
-- `no-param-reassign` refuses assigning to a parameter, and `no-useless-assignment` a value assigned and
-  never read.
-- `no-shadow` refuses a name that shadows an outer one, and a callback `row` inside a `row` loop counts.
-- `no-unmodified-loop-condition` catches a loop whose condition nothing in the body changes.
-- `no-unused-vars` refuses unused bindings; `^_` exempts args, vars and caught errors, and rest siblings
-  are ignored.
-- `preserve-caught-error` wants `throw new Error(msg, { cause })` in a `catch`.
-
-The type-aware TypeScript rules follow.
-
-- `await-thenable` refuses awaiting what is not a promise, and is off in `test/**` because Bun's
-  `expect().rejects/.resolves` is untyped.
-- `no-array-delete`, `no-base-to-string`, `no-deprecated`, `no-for-in-array`, `no-misused-spread`,
-  `no-redundant-type-constituents`, `no-unnecessary-template-expression`, `no-unnecessary-type-assertion`,
-  `no-useless-default-assignment`, `prefer-optional-chain`, `prefer-readonly`, `restrict-plus-operands`
-  and `unbound-method` are on as well, each catching what its name describes.
-- `no-explicit-any` refuses `any`, and is off in `test/**` and `.claude/**`.
-- `no-extraneous-class` turns a static-only class into module functions.
-- `no-floating-promises` runs with `ignoreVoid: false`, so `void p` does not satisfy it; await the
-  promise, return it or `.catch` it.
-- `no-misused-promises` refuses `forEach(async …)` and `if (promise)`.
-- `no-non-null-assertion` refuses the non-null `!`, and is off in `test/**`, `packages/ui/**` and
-  `.claude/**`.
-- `no-unsafe-argument/assignment/call/member-access/return` want `any` parsed first. They are off in
-  `test/**`, `packages/ui/**` and `.claude/**`.
-- `only-throw-error` and `prefer-promise-reject-errors` want `Error` instances, made via `asError`.
-- `prefer-nullish-coalescing` lets strings and numbers keep `||`, but not booleans and objects.
-- `require-array-sort-compare` wants a comparator, which for strings is `compareCodeUnits`.
-- `restrict-template-expressions` allows only strings and numbers inside `${}`.
-- `switch-exhaustiveness-check` wants every member covered, or a `default`.
-- `strict-boolean-expressions`, which admits only `any` beside real booleans, is the most-tripped rule of
-  all, and these are the rewrites it asks for:
-
-```ts
-if (name)          // ✗ string            → name !== ""
-if (count)         // ✗ number            → count !== 0
-if (row)           // ✗ Row | undefined   → row !== undefined
-if (maybe?.length) // ✗                   → (maybe?.length ?? 0) > 0
-if (items.length)  // ✗ (also unicorn/explicit-length-check) → items.length > 0
-```
-
-The Unicorn and import rules come last.
-
-- `explicit-length-check` wants `.length > 0` rather than a bare length, as above.
-- `no-array-reverse` wants `toReversed()` in place of the mutating reverse.
-- `no-lonely-if` folds an `if` that is the only statement of an `else` into the `else`.
-- `no-negated-condition` refuses `if (!x) … else …` and `a !== b ? x : y`, so flip the arms; an `if`
-  without `else` may still be negated.
-- `prefer-array-find`, `prefer-array-flat` and `prefer-array-flat-map` want `find`, `flat` and `flatMap`
-  over their hand-built versions.
-- `prefer-at` wants `xs.at(-1)`, and `prefer-set-has` turns a constant array used only for `.includes`
-  into a `Set`.
-- `prefer-string-raw` wants a raw string where an escaped one would do the same.
-- `no-cycle` refuses an import cycle; move the shared piece down into a module both sides import.
-- `no-duplicates` merges repeated imports of one module, `type` imports included.
-
-Complexity is not in `.oxlintrc.json` at all: `tools/loc/complexity-policy.ts` runs oxlint's `complexity`
-at `max: 21` (§9). Some rules were measured and refused, so do not add them. `no-unnecessary-condition` is
-one, and `no-unnecessary-type-parameters` is explicitly `off`, because `parseJsonAs<T>`, `double<T>` and
-their kin exist to carry a contract the caller declares. `typescript/consistent-return` was false at all
-17 sites, and obeying it adds the `default` that blinds `switch-exhaustiveness-check`. `oxc/no-map-spread`
-found 49 sites, every one of them the `({ ...x, field
-})` immutable update this tree is built on. `unicorn/no-array-reduce`, `prefer-ternary`,
-`no-nested-ternary`, `max-depth` and `max-statements` were refused as well.
-
-### 8. The whole-tree scans (`bun run simplify`)
-
-`tools/oxlint/tree-*.ts` find shapes that span files. They print and never block, in `bun run simplify`
-and, narrowed to your lines, in the pre-commit slop report, so treat each row as a question and answer the
-false ones in the ledger (`tree/<kind>`). Run them during the work, not only at the end.
-
-Most of the shapes are dead or misplaced code. `single-reader-export` is a file's one 10–60-line export
-with one reader in the same directory, and the repair is to move it in. `test-only-export` /
-`test-only-module` is something only tests call, which you delete with its test or wire into a live path.
-`unread-field` is a field named nowhere else, and `orphan-module` a file nothing imports, spawns or names,
-and both are deleted. `unread-forward` is a re-export no file imports from the forwarding module, and the
-forward goes. `unproduced-set-member` is a union member nothing produces, so it goes, together
-with its branch.
-
-The rest are duplication and history. `copied-block` is ≥64 tokens repeated at ≥2 non-test sites, which
-wants one owner, and `identity-without-owner` is a repository name spelled as a literal in ≥2 files, which
-wants one constant. `superseded-schema-tag` is `x/v1` still spelled after `x/v2`, so drop the old reader,
-and `compatibility-path` is a production name containing `legacy`, which is deleted.
-`rule-without-fixture` is repaired by adding the fixture. `filesystem-import-budget` only registers the
-standing counts of §6 and asks for no repair.
-
-**No backwards compatibility** (2026-09-22). That means no `v1 || v2` readers, no migration branches and
-no `legacy` shims, and a reader meeting an older version refuses it.
-
-### 9. Size and policy gates (`tools/loc`)
-
-A file may hold 800 nonblank lines and a function 115, measured after `biome format` and over `src`,
-`tools` and `vendor` only. `test` and `packages` have no ceiling, so length there is a judgement rather
-than a finding. `copiedFileLimits` in `source-policy.json` is easy to misread, because an entry does two
-things at once: it replaces the file's 800 with its own figure, and it switches off that file's
-per-function check. Most figures sit below 800, which is the tell that they bought one long function
-rather than a long file; `src/correctness-bundle/probes.ts` is held at 436 so that `makeProbeControls` can
-be 150 lines. The figure is therefore a tighter budget than the rest of the tree gets. `staleCopyLimits`
-fails once a listed file passes the ordinary ceilings by itself, and the entry comes out then.
-
-`refusedLiterals`/`refusedCalls` in `source-policy.json` list names from systems removed on purpose
-(`Governor`, `agentLoop`, `authorEvaluator`, `climbDecision`, `mapWithConcurrency`, `createPiBackend`,
-`HARNESS_EVAL_BROKER_ORIGIN`, …). A hit means you are rebuilding a retired design, so read the list before
-naming a new function.
-
-Unused exports are looked for more widely than the import graph, on purpose. An export in `AUTHORED_ROOTS`
-(`src`, `tools`, `packages/ui/src`) needs a reader somewhere under `READER_ROOTS` (`src tools vendor
-starters test packages scripts .claude`), and **a name spelled in a comment counts as a reader**, so
-deleting a comment can orphan an export; drop the `export` the gate then names.
-
-Complexity is held at ≤ 21 per function, and `?.` counts. `complexity-baseline.json` only shrinks:
-`--write-baseline` lowers it, and a new exception has to be a visible hand edit. A long flat `switch`
-becomes a lookup table (§4.13). And `thresholds.frozen.yaml` is declared policy, so an executable
-threshold that disagrees with it is a blocking inconsistency.
-
-### 10. Per-path overrides and override debt
-
-Each block in `.oxlintrc.json` that names a path changes the rules there. `test/**` turns off
-`no-unsafe-*`, `no-non-null-assertion`, `no-explicit-any` and `await-thenable`. `packages/ui/**` turns off
-`no-unsafe-*` and `no-non-null-assertion`, and `.claude/**/*.{ts,mts}` turns off those two and
-`no-explicit-any`. `**/src/backends/oauth/**` turns nothing off and adds bans on `JSON.parse` and on
-importing `parseJsonAs`. `tools/oxlint/anti-slop/**` turns off §4.40 and lets
-`switch-exhaustiveness-check` count a `default` as exhaustive, because the AST unions there are untyped.
-`vendor/pi-claude-bridge/**` keeps the taste of the upstream it was copied from, and so turns off
-§4.2–4.4, 4.6–4.13, 4.15–4.17, 4.19–4.22, 4.25, 4.26, 4.34, 4.35, 4.40, `no-else-return`,
-`prefer-nullish-coalescing`, `no-lonely-if`, `no-negated-condition`, `prefer-array-flat`, `prefer-at` and
-`prefer-string-raw`. `vendor/harbor/**`, a TypeScript port of Python, keeps upstream's shape the same way
-and turns off §4.3, §4.5 and `no-runtime-typeof`, which Python's type dispatch needs.
-
-Every plugin rule still applies to tests, at raised floors (string 10, object 5), with in-rule test
-exemptions for §4.2, 4.5, 4.14, 4.32, 4.35–4.39. `.claude/**` may import `node:` modules (§4.32 exempts
-it), and §4.36–4.39 apply there. `packages/ui` is a browser bundle with no `src/meta` owners, which is why
-§4.30 skips it.
-
-Those blocks read at first glance like exactly what §3 forbids, which is worth answering.
-`tools/oxlint/BASELINE.md` owns them, and it reads each "off" entry as that rule's debt on the day it was
-registered: the files that already broke it, while the rule holds every other file, including every new
-one. So registering a rule with a 35-file exemption beats not registering it, because an unregistered rule
-holds nothing at all. **The lists only shrink**: never add a file, and never widen a glob to take in the
-one you are editing. An exemption ends whole, when the last file under its glob passes. Two entries are
-not debt, because there the rule is wrong about this repository: `await-thenable` in tests, where all 215
-reports were `await expect(…)`, and the anti-slop `switch-exhaustiveness-check` setting. The
-`**/*.js`/`**/*.mjs` block went on 2026-09-26, with the last JavaScript file.
-
-### 11. Writing code that passes the first time
-
-Writing to a handful of habits from the start saves the round trip through the hook. Lay a file out as
-imports, then types, then constants, then functions. Import with `.ts` extensions, through `#src/…` once
-an import climbs 3+ levels outside the `relativeOnly` trees, and through `src/meta` for
-`fs/path/os/net/module/assert`.
-
-Keep the types honest at the boundary. That means no `any`, no `as` without `SAFETY:` and no `as unknown
-as`: parse where the data enters (`parseJsonAs<T>` or a predicate) and keep the precise type from then on.
-No `unknown` goes out, whether as a return, an alias or a union member, and an `unknown` parameter is
-proved inside the function that takes it. Conditions are booleans, so write `!== ""`, `!== 0`, `!==
-undefined` and `.length > 0`.
-
-Put the positive case first, with no negated `if/else` or ternary, and keep nesting ≤3 by using guards and
-ternaries to ≤3 cases along the tail. Handle every promise, remembering that `void p` does not count, and
-pass no async callback where a sync one is expected. In a `catch`, `throw new Error(msg, { cause
-})`, and render with `errorMessage(e)`. JSON moves only through
-`capturedJsonParse`/`parseJsonAs`/`capturedJsonStringify`, and optional keys only through
-`keyIfDefined`/`keyIfNotNull`/`keysIf`.
-
-A function takes ≤5 parameters, with no boolean flags (take a string-literal union), no `object`
-parameters, no shadowing and no parameter reassignment. Prefer `flatMap` over `filter().map()`,
-`find/some/every` over searching loops, and `.at(-1)`, `toReversed()`, `.includes(lit)` and `entries()`
-over their hand-written forms. Write no two-line single-use helpers, pass-through wrappers or one-shot
-renaming `const`s, and give a string used 4+ times or an object spelled 3+ times in a file one owner.
-Functions stay ≤115 lines and complexity ≤21, files ≤800, and only what another file imports is exported.
-No "shape" in names, no `legacy`, no `setTimeout` sleeps and no module mocks; processes, git and the
-campaign tree go through their owners.
-
-Before committing, run `bun run format && bun run typecheck && bun run lint -- --strict`, plus `bun run
-test -- <nearby tests>`. Before handing back, run `bun run simplify`, and then `/simplify` on the diff.
-
-Some rules pull against each other, and each pair has a spelling that satisfies both. A tangled ternary
-and a negated condition are both avoided by naming the inner ternary rather than inverting the outer test.
-A single-caller helper against a thrice-spelled object or a lookup chain is settled by count: at 2 uses
-inline, at 3 extract. A boolean parameter, an object parameter and max-params are all satisfied by a
-string-literal union or a named interface. Key-if-defined, the empty-object spread and
-`exactOptionalPropertyTypes` all accept `keyIfDefined`, `keyIfNotNull` or `keysIf`, all three times.
-Filter-map against map-filter becomes `flatMap` returning `[]`. Deep nesting against complexity is the
-pair to watch, because a guard is free for depth but costs complexity, so split the function instead.
-Strict-boolean against nullish-coalescing is `(n ?? 0) > 0`, with a `!== undefined` guard when later lines
-need the narrowing. And the renaming temporary against narrowing is settled inside the rule: a `const`
-read in a closure below a guard is exempt, so keep it.
-
-### 12. Tests
-
-Tests do not mock modules; they inject, with `double(…)` (`test/helpers/doubles.ts`) rather than `as
-never`, and they take scratch space through `scratchDir` with `afterAll(cleanupScratch)`
-(`test/helpers/scratch.ts`). Nor do they sleep for a fixed time. Wait on `Promise.withResolvers()` or on a
-polled condition with a deadline, and do not raise a timeout to hide a slow test. Keep the positive case
-and the nearest hostile case in the smallest owning test file, and add only the case that is missing. Test
-growth is fine, which is why a cleanup is judged by its net source lines. A test proving an export nothing
-else calls is what `tree/test-only-export` flags, so test the live path instead. `bun run
-test` discovers `test/` only, as a flat tree, which means a skill script is tested only if a `test/` file
-imports it; grep `test/` to find out, and otherwise run `bun test` from the script's own directory.
-
-### 13. Adding or changing a lint rule
-
-A new rule lives in `tools/oxlint/ana/rules/<name>.ts` and is registered in `ana/index.ts` and in
-`.oxlintrc.json` as `"error"`. Its header comment carries the argument: the shape, its cost, what was
-measured and when, each exemption with the site that forced it, and "It fixes…" or "There is no fix…" with
-the reason. Before it goes in, it has to pass an admission test: at every reported site, some spelling
-passes every other rule and ceiling. The test exists because a rule whose remedy another rule refuses ends
-up turned off (§11 pairs). A fixer must also meet the four conditions in `FIXER-DECISIONS.md`: the repair
-is a fact rather than a decision, a wrong fix fails loudly where it wrote, the result is the house
-spelling, and it does not remove the occasion for a repair only a person can supply, such as a name or a
-sentence.
-
-Measure the rule over the whole tree with `bun run lint -c <one-rule config>` and never with raw `oxlint`,
-because a config without `typeAware` silently reports 0. Record the counts in `SHAPE-RULESET.md` /
-`BASELINE.md`. The rule enters either at zero sites, with the tree fixed in the same change, or with a
-baseline block (§10). Add the fixture (`test/helpers/oxlint-rule-fixture.ts`, marked `// REPORT` /
-`// ADMITTED`, with `fixedSource` for fixers) and the `FIXER-DECISIONS.md` row;
-`test/oxlint-rule-contract.test.ts` checks both.
-
-## Working in the repository
-
-The shape of a task here is: resolve the exact tree, prepare dependencies once, run focused checks while
-editing, and run one composed gate at delivery. Each cost is paid only when the changed files need it.
-
-### Worktrees
-
-Start with `scripts/worktree.sh list`. One call gives every tree's head, its branch, its uncommitted
-count, its dependency state and whether a command is standing in it, marks each `ana-run-*` tree as
-evidence, and closes with one line counting the fleet's dependency states and the volume's free space.
-Reuse a clean worktree when it already owns the intended branch and nothing is standing in it; `git status
---short --branch` in that tree settles what the uncommitted count only counts.
+| Claim | Requires |
+| --- | --- |
+| A step | A comparison that read `step`, named with its condition: the setting, the tasks, the solves a side, the level, the budget and the starter it was read on. One comparison is one draw, so a step is repeated on fresh solves, with the reference read against itself (`--noise`), before the word is used without qualification or anything is promoted |
+| No step | The same naming, and the size of the test. `no-step` says that a test of this size found no gain. It says nothing about equality |
+| A mechanism | The event it writes, in a live run's log, where its trigger occurred |
+| A refusal | The refusal's text. It establishes its own condition and nothing about the answers |
+| Which part of a harness did it | A checkpoint against the control `programs-of:<digest>`, which is the starter with that harness's installed programs alone |
+
+`step` says that under one condition the new harness gave a valid answer on more tasks than the
+reference, by more than the level leaves to chance. It does not say that the harness is better
+under another wall, budget, solver or host, or that the solver designs better: a harness that
+installs an engine the public rules name saves a solver its set-up time, and under a short wall
+that reads as a step.
+
+Keep the counts apart in every sentence: valid answers; rejected answers, by ruling; solves that
+ended with no answer, by how they ended; non-results; and tasks set aside for a label. A rate has
+a denominator, and the tasks left out of it are named beside it. Results are never compared
+across campaigns, and never across two settings.
+
+## 10. Runs with a real model
+
+A run with a real model spends the operator's money and needs the operator's word for that run. A
+launch request authorises one command and no second run beside it. The skills own the procedure:
+
+| When | Skill, under `.claude/skills/` |
+| --- | --- |
+| Deciding what to run next, and reading what a run showed | `run-improvement-campaign` |
+| Testing a path before spend | `system-path-simulation` |
+| Starting or stopping a run | `launch-run` |
+| Wording a claim afterwards | `attribution-and-proof` |
+| Doubting a reading, or asking what a fail was | `whole-run-investigation` |
+| Handing runs, or a question, to someone outside | `zip-run`, `oracle-handover` |
+
+What holds in all of them:
+
+1. **The worktree is the condition.** A run executes the source of the worktree it started in.
+   Launch from a clean worktree at a published commit, kept for that run alone. Do not edit
+   `src/` there while the run lives, and never move a campaign's folder to another worktree.
+2. **Prove the path first, without a model**: a dry run of the campaign command
+   (`bun tools/d2/harness-builder.ts --name <name> --dry-run`), a replay for a changed reader
+   (`bun run runs replay`), a rehearsal over a seed for a changed round or campaign
+   (`bun run runs seed`, `bun run runs rehearse`).
+3. **Put one prediction on record before the first solve** (`--predict`), written so that a
+   recorded count settles it. One written after the first solve started is a description. The
+   campaign command takes no `--predict`, since its comparisons are the table's: a prediction for
+   a campaign is written in the ledger of the session that starts it, before the first solve.
+4. **One or two rounds at a time on one host.** A wall counts the clock, and a loaded host moves
+   every solve's time.
+5. **Never open, print or copy the file passed as `--env-file`**, and name no account or
+   credential path in anything that is published.
+6. **Do not stop a run to fix it.** Work found while a run lives is work for the next start.
+7. **Read the log's events and the report before any agent's prose**, and resolve the prediction
+   as held or falsified with the count that settled it.
+8. **Report every attempt that started as spent**, the unsuccessful ones included.
+
+A solve and a Builder session run on either host, behind Seatbelt on macOS and Bubblewrap on Linux:
+nine Builder sessions and 308 solves finished on a Linux test host on 9 October. The disk cap holds
+on macOS, where a sparse image is mounted at the root of each solve and each Builder session. On
+Linux nothing caps a solve, a Builder session or an Examiner session: each runs its commands
+under the command wall, which binds its root from the host's disk and mounts no tmpfs there; the
+head comment of `src/verify/disk-cap.ts` says so (`docs/simplify.md`, F6). When the required wall
+is unavailable the result is a typed non-result, never an unconfined run. Each wall is probed once
+a process before its first use, by one command launched as a seat's commands are (`runWalled`): a
+canary in the repository and its first other worktree's `package.json`, which the probe never
+writes, are refused to it, and a file it writes in its own folder reads back. A probe that does not
+hold refuses the start with its lines (`walledBase`, `src/solve/command.ts`); until 10 October the
+probe ran in the test suite alone, and until 11 October it ran v1's launch, which no seat runs.
+
+## 11. Working in the repository
+
+### Runtime and commands
+
+Bun 1.4.2 only, as `package.json` pins it, for every task including one-off inspection. No Node,
+npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABITS.md`, 12.8).
+
+| Command | What it does |
+| --- | --- |
+| `bun run typecheck` | `tsc --noEmit` over `src`, `tools`, `vendor` and `test` |
+| `bun run lint` | Oxlint, type-aware, with the two repository plugins and the not-slop ledger applied. `-- --strict` makes plugin findings fail the run |
+| `bun run format` / `format:check` | Biome writes, or checks |
+| `bun run test -- <paths...>` | The suite through its wrapper. Never bare `bun test` |
+| `bun run simplify` | The whole-tree scans, as a census to read |
+| `bun run not-slop` | The ledger of answered findings: status, `-- answer <id> "<why>"`, `-- prune` |
+| `bun run commit:check` | By hand before a commit: author email, format and lint of staged files, the slop report, the secret scan |
+| `bun run secrets` | The secret scan |
+| `bun run runs <verb>` | `pulse`, `stop`, `rehearse`, `seed`, `replay`, `zip`, `view` |
+| `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
+| `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
+
+There is no composed gate script and no installed Git hook. The gate is what CI runs, in this
+order, and you run it yourself before delivery. Then read a strict lint for the files you changed:
 
 ```sh
-scripts/worktree.sh new <branch> <absolute-dir> [start-point] [--scope S]
-scripts/worktree.sh pr <number> <absolute-dir> [branch] [--scope S]
-scripts/worktree.sh setup <absolute-dir> [--scope S]
-scripts/worktree.sh run <absolute-dir> <command...>
-scripts/worktree.sh list
-scripts/worktree.sh drop <absolute-dir> [--force]
+bun run typecheck && bun run lint && bun run format:check && bun run test
+bun run lint -- --strict
 ```
 
-`new` creates the branch and runs `setup`. `pr` fetches a published PR head and puts it on a distinct
-branch, so the PR's own source branch stays available to whichever session is holding it. `setup` does
-nothing when its install marker already matches the dependency identity; otherwise it clones real
-`node_modules` copy-on-write from a matching worktree, or runs one `bun install --frozen-lockfile`. `run`
-checks Bun and reads no flags of its own, so the command keeps all of its. It prepares a `node_modules`
-that is absent, linked or prepared for other dependencies, and refuses only while another command is
-standing in the tree, which makes it the way to run Bun, tests and anything that loads repository modules.
-`drop` removes a disposable tree, refusing the checkout itself, any `ana-run-*` tree, and anything holding
-uncommitted or untracked work unless `--force`.
+Run one suite at a time; two overlapping suites each take about twice as long. While editing, run
+the owning test files only: `bun run test -- test/compare.test.ts`. The wrapper refuses a named
+path that does not exist, because Bun would treat it as a filter and silently run its neighbours.
 
-The scope says how much of the local checkout the new tree gets, so choose it before creating the tree;
-`run` then behaves the same in all three.
+CI (`.github/workflows/ci.yml`) has two jobs. `darwin` on macOS 15 runs typecheck, lint, the
+format check and the suite. `linux` on an Ubuntu VM installs Bubblewrap and runs the suite. In a
+container without user namespaces the tests that need the wall fail. Name those in the pull
+request as failures that are there without the change, and do not call the suite green.
 
-| scope | what it prepares | when to ask for it |
-| --- | --- | --- |
-| `minimal` | the worktree alone: no Bun check, no `node_modules` | documentation set; seconds |
-| `medium` (default) | a prepared `node_modules` | any module load: every test, check, Bun entry |
-| `maximum` | medium + `.toolchain`, learned test order | else it redownloads the toolchain |
+### What you never touch
 
-The documentation set is `README.md`, `AGENTS.md`, `docs/**` and `.claude/**/*.md`, exactly what pre-push
-answers with `git diff --check` alone. `minimal` replaces the raw `git worktree add` recipe for it, with
-one caveat the hook enforces and the script can only announce: a push creating a remote branch is never
-documentation-only, because an all-zero remote sha leaves the hook nothing to diff against. So prepare the
-tree before a first publish, even for a note. `maximum` names every ignored path it left behind, with the
-reason. Credentials, `campaigns/`, `domains/`, `runs/`, recorded results and a path-bound `.venv` never
-travel, because the tree's own workflow owns them.
+- `.ana/`: campaign logs, kept harnesses, launch receipts. Read them through the readers; never
+  edit, move or commit them.
+- A pack, a check program or a kept harness, by rule 2.
+- `.env`, `.accounts/` and any credential. Never copy one from another checkout to make a command
+  start.
+- `vendor/`: `pi-coding-agent` and `pi-claude-bridge` are copies of upstream. A local change is
+  marked in place and kept small. Biome and Oxlint both leave `vendor` alone.
+- Installed dependencies: no patches, and no edits under `node_modules`.
 
-Never symlink `node_modules`, because `@ana` links may resolve into another tree's `vendor/` source. The
-script never links and never treats a link as prepared, both run launchers refuse a linked tree before
-spending anything, and the copy-on-write clone already shares the blocks, so a link would buy nothing
-anyway. Never use bare `git stash` either, since stashes are shared across trees. Remove only a clean
-disposable tree this task created, with `/usr/bin/trash` and explicit paths, preserve run evidence and
-unpublished work, and never empty the Trash.
+### The stack and pull requests
 
-Classify a missing file before supplying it, with `git ls-tree -r --name-only <rev> -- <path>`. A missing
-tracked file means the revision needs correcting, and a missing dependency belongs to `setup`. Local run
-state and configuration belong to their owning workflow, so never copy or symlink `.env`, campaign, domain
-or config files from another checkout just to make a command start. A scratch script importing repository
-source belongs inside the worktree it reads: Bun resolves `@ana/*` and relative specifiers from the
-importing file, so the same script under a job scratch directory fails with `Cannot find
-module` however absolute its paths are. A clean status proves the tracked source, not that ignored
-dependencies match a rebased head.
+`.claude/skills/stack-pr/SKILL.md` owns this procedure. Read it before you branch and again
+before you push. Until 11 October v2's work was one linear stack of open pull requests; PRs #219
+and #221 merged the whole of it into `main` that day. A new subject is now a pull request on
+`main`, from a worktree of its own at `origin/main`, and the stacking rules below hold where one
+pull request depends on another that has not merged: there the top is that pull request's branch,
+and elsewhere it is `main`. Several sessions write at once. What it comes to:
 
-Install only when dependency identity moved. Add no dependency patches, which covers both
-`patchedDependencies` and edits to installed source. `worktree.sh` owns root preparation, so do not
-install again after it. In a prepared tree, frozen-install only for absent or unresolved dependencies or
-for a changed owning manifest. On a failure, preserve stderr and inspect the exact head and the
-introducing diff; a real mismatch on the intended clean revision blocks delivery, and it does not
-authorise rewriting the lock. Where branches, or installed dependencies and the lock, disagree on a
-version, take the higher one (operator decision 2026-09-03) and prove it with one frozen install.
+- **Read the stack every time**: before `git worktree add`, before opening a pull request, and
+  before a push that rewrites a branch. `bun .claude/skills/stack-pr/scripts/stack.ts` prints the
+  edges and the top; where `gh` has no GraphQL, `gh api repos/<owner>/<repo>/pulls` gives the same
+  edges. The top is the end of the longest chain, which need not be the highest number. State no
+  fact about the repository without the commit you read it at.
+- **A new subject is a new pull request on the top.** The same subject as one of your own open
+  pull requests is appended to it. Documentation and skills go on the stack too, with the row of
+  `docs/transfer.md` that the change moves.
+- **Another session's pull request is never yours to change**, whatever the fix. A pull request
+  with children takes new commits only.
+- **One worktree a pull request**, from the top, pinned by commit, with its own
+  `bun install --frozen-lockfile`. Never branch in a worktree a run was launched from. Never use
+  `git stash`: it is shared between worktrees.
+- **Every commit passes alone.** Fold a fix into the unpublished commit it corrects. Run
+  `bun run commit:check` before each commit.
+- **Push your own branch**, never `main`, never with `--no-verify`. A rewrite of a published
+  branch takes `--force-with-lease` on the head you last saw.
+- **Merging is the operator's call**, and so is a restack of the whole stack.
 
-Keep a script on its second use. Sessions write helpers readily, and almost all of them die with the
-session: up to 2026-09-26, 464 scripts went to scratch over 63 sessions, and the same ones kept coming
-back, each written from nothing. There were 18 push or restack scripts beside a `stack-hop` that already
-owns publication, and 13 replays and 7 censuses over `campaigns/`. So look first in the `package.json`
-scripts, the `tools/` CLIs (`runs`, `replay`, `outcome`, `run-triage`) and the owning skill's `scripts/`.
-Keep a helper the moment it is used a second time, by a subagent lane or a later session. It becomes a
-subcommand of the matching `tools/` CLI when it reads repository source or recorded evidence, and
-otherwise goes in the owning skill's `scripts/`, with one `SKILL.md` line saying what it answers and how
-to run it, so the next session finds it; the runs pulse went to `tools/runs/` and one `launch-run` line
-that way on 2026-09-25. Record it in the skill and not here, because this file states principle and a tool
-inventory would go stale in it. A promoted script is source, held to lint, the size policy and a test
-where one can see it, while a one-off stays in scratch, because promoting it buys nothing.
+A commit's subject is one imperative sentence that states the finished change: "Refuse a
+comparison on a checker nobody has read". Its body says what was wrong and what happens instead,
+with the counts that show it. It never narrates a revert.
 
-Look further back in `harness-builder-v4`. This history starts at one squashed `initial commit` (d21f1a2,
-2026-09-22), so `git log` and `git blame` here cannot say when or why a line was written. The full history
-is in the local clone `/Users/air/Developer/harness-builder-v4` (GitHub `s-smits/harness-builder-v4`):
-~4,900 commits from July 2026 on, and the PRs that numbers like `#978` in older notes refer to. It is
-messy, with reverts, retunings and parallel branches, so read it for provenance and date a line with
-`git log --all --follow` or `-S '<sentence>'`. Its ignored `notes/` holds the investigation notes,
-`current-state.md` and handovers written before the split, and this checkout's `notes/` holds everything
-since. Never build, run or deliver from it, because its tree is not this one's.
-
-### Tests and the gate
-
-Use `bun run test -- <paths...>`, never a bare `bun test`. The wrapper runs one `bun test --parallel`
-process, with `--max-concurrency=4` within a file and 60 s per test, ordered slowest-first from what its
-first run learned, under a disposable temporary root in the host temp directory. Its worker count is **two
-fewer than the cores, less half the load beyond the core count, and never below two** (`workerCount`,
-`tools/runtime/test-suite.ts`; `ANA_TEST_WORKERS` overrides it outright), because the cores a machine has
-are not the cores this suite gets. The idle wall, 180 s without output, widens by load ÷ cores
-(`wallSeconds`).
-
-The part worth knowing before you believe a red run is what happens next. `attribute` reads the first
-process's result and decides, across nine reasons, whether the branch failed or the machine did. Two of them
-say the machine did: every failure ended by a clock rather than an assertion (`clock-only`), or the one-minute
-load passed the core count while they ran (`crowded-host`). Either way the failed files run again alone,
-in one fresh process, beside every file whose worker crashed or that Bun aborted or never started, up to eight
-in all, and **that second verdict is the suite's**. Files the idle wall cut off get the same second run,
-however many there are. Some failures never get one. A failure the first process printed on a quiet host
-stands, and so does an error Bun raised outside any test, because nothing in the failed list speaks for it and
-a rerun cannot unsay it. A run that bailed stands, because it never ran the files after the failure that
-stopped it, and so do more than eight failed or unfinished files, which is more than a busy host explains. So
-a red run on a loaded laptop is not yet a verdict on your branch; read which of those sentences the wrapper
-printed.
-
-The gate's nine steps (§1) mean that the two policy gates, the UI gate and the formatter can each fail a
-push the contract used to leave unnamed. `ui-deps` prepares `packages/ui`'s own modules before typecheck
-and lint, because `setup` prepares only the root's, and an unprepared `@types/react` makes lint report
-findings no diff introduced. `bun run format` fixes the format step. Biome's ownership of line breaks (§2)
-is why the size ceilings are 800 and 115, and `tools/oxlint` came in on 2026-09-20 and cost 25 lint
-errors, mostly `curly` finding statements the formatter had just made multi-line. Also available are
-`bun run runs <verb> <run>`, the door to the run readers the skills own (`bun run runs --help` lists
-them), `bun run outcome` for read-only reports over recorded evidence, `bun run replay --
-<campaign>/<runId>` to re-grade a recorded battery through this tree's verifier, `bun run triage` and
-`bun run secrets`. Run one gate at a time, because two overlapping gates each took twice as long as one
-alone. `bun run land --jobs N` is the exception, because its `--static` gates are small enough that
-overlapping them still pays: over #32–#46 on 2026-09-28, four at once finished a commit every 19
-seconds against 36 for one, on a 12-core host held at a load near 50, and the top's whole gate still
-ran alone. When typecheck, lint,
-source-policy or complexity fails, pre-push lists each finding as `<rule> <location> <message>` and names
-the commit it failed on.
-
-| Changed files | While editing | Delivery proof |
-| --- | --- | --- |
-| Documentation only | `--scope minimal`, then `git diff --check` and read the diff | Commit on local main and hold it; the operator approves the push, which repeats the diff check and skips the gate |
-| Test or source | `scripts/worktree.sh run <dir> bun run test -- <owning-paths...>` | One normal push runs the composed gate |
-| Intentional dependency change | One unfrozen install at the root, review manifest plus lock | A frozen install, then source delivery |
-| Stack checkpoint with publication | The union of affected owning checks | One multi-ref push from the clean top gates what it changed; `bun run land -- <top> --sanitize` proves the replays |
-| Composition without publication, or a paid run without current exact-tree proof | Owning focused checks | One manual `bun run gate` immediately before the boundary |
-
-"Normal push runs the gate" holds only where the hooks are installed. A clone gets them once, with `bun
-run hooks:install`, and its worktrees share them; without them a push publishes ungated and says nothing
-about it (2026-09-22, PR #1). Check `git config core.hooksPath` before relying on a push as the gate, and
-otherwise run `bun run gate` yourself beforehand. Pre-push owns typecheck and lint, so run either
-separately only when it is the boundary that changed, and neither substitutes for behavioural proof. Batch
-small fixes under one owner.
-
-### Commits
-
-**Each commit a push publishes passes the gate on its own, and a defect is fixed inside the commit that
-introduced it** (operator decisions 2026-09-24, replacing the fix-forward rule of 2026-09-21 and the
-compose merges of 2026-09-05). History is read as well as run. An agent looking through it for how work is
-done here copies what it finds, and a red commit followed by its repair teaches it that pushing red is the
-way. Two runs of the same gate hold that line. Pre-push checks out every source-changing commit new to the
-remote and runs `bun run gate --static` over it, which is runtime, format, ui-deps, typecheck, lint,
-source-policy, complexity, and the test files near what that commit changed, and then the whole gate once,
-on the lowest pushed head holding the newest of them, since that is where the edited PR ends. The commits
-a restack only replayed above it are not run at push, because `bun run land` runs the same `--static` pass
-on every commit a merge would publish, where it then sits, and the whole gate on the top's head, before it
-merges anything (2026-09-28). A restack of fifteen PRs used to pay for every replayed commit and every
-moved head at each push, and three agents editing one stack paid it three times over. CI runs only daily
-on `main` (§1), so those local runs are the only gate a PR head gets. "Near" is `tools/runtime/affected-tests.ts`: a test
-that imports a changed file directly (2026-09-24). It was three imports on the day the rule landed, and
-the first push to pay for that showed why not. The slow end-to-end files sit two or three imports from
-anything near the root of the graph, so three commits of 11–17 files each selected 62–70% of the suite's
-recorded time at depth 3, against 14–19% at depth 1, and the tip then ran all of it again. Depth 1 bounds
-the cost. It has not been measured against the bugs it catches, and the tip's full suite is what backs it.
-
-A failure names the commit, and its fix goes into that commit rather than on top of it: `git commit
---fixup=<sha>` then `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1`, or `--amend` at the
-tip. Nothing was pushed, so the rewrite costs no one anything, and it costs the next push little. The
-rebase keeps the id of every commit beneath the fix, the hook and `bun run land` record each id that
-passed in `ana-gate-passed` under the common Git directory, and a commit already recorded there at the same pass, or
-at the whole gate, is not run again. That includes a tip that passed the whole gate on a checkout holding
-nothing but its own bytes, so a push whose lease was refused goes out again without paying twice.
-
-The same holds for a defect found after publication, as long as the commit sits on an open PR rather than
-on main: fold the fix in, replay the commits above it, and publish every moved head with an explicit lease
-("Where changes go"). That costs a force-push, and it buys a history in which every commit reads as the
-finished version of its own change. A working commit that could never pass alone, such as commit-R's `R:`
-removals, is squashed into the commit that completes it before anything is pushed. Main is the one history
-nothing rewrites. A rule agents keep breaking is fixed at its owner, whether that is a prompt, a skill or
-the lint rule's own message.
-
-### Shell and the guard
-
-Before sending a Bash command, scan every `$` in it. A `$VAR`, `$(…)` or `${…}` alongside `git`, after a
-`>`, or inside a heredoc trips the `dcg` guard, inside a loop as well. A blocked call never runs and costs
-the turn, so change the spelling rather than asking for an allowlist entry, and test the new spelling with
-`dcg test '<command>'`.
-
-Two different guards get called "the guard", and they admit different things, which is how this paragraph
-once came to recommend a redirect that does not work. Your own Bash calls go through the `dcg` binary
-alone. The Builder's go through `src/builder/command-guard.ts`, which runs that same binary and then adds
-`scratchRedirectResidual`. That admits a target matching `SCRATCH_TARGET`, which is `~/…`, `$HOME/…` or
-`$TMPDIR/…`, bare or braced, and a relative target expanding a plain variable, such as a loop's
-`> "scratch/opt-$i.log"`, when every `cd` in the command stays in its own tree. dcg alone admits neither
-`$HOME/…` nor `$TMPDIR/…`. Probed against 0.14.4 on 2026-09-23, `> $HOME/f`, `> $TMPDIR/f` and
-`> "$TMPDIR/f"` are all refused by `core.filesystem:redirect-truncate-dynamic-path`, quoted or not. The
-rule's own reason is the honest one: the shell expands the target at runtime, so dcg cannot prove where
-the file it is about to open with `O_TRUNC` points. What passes is a literal path, an unquoted `~/…`, or
-an append, and `>> $TMPDIR/f` is admitted because appending truncates nothing. So the shape to remember is
-a literal `/tmp/<subdir>/…` or the scratchpad's own absolute path, and `~/…` when it must be the home
-tree.
-
-Prefer these spellings: `git worktree remove --force`, `git diff -- <path> | git apply -R`, `git branch
-park <tip>` followed by `git rebase --onto`, a literal `git -C /abs/dir` with one call per tree, `git push
---force-with-lease`, and the Write tool followed by `bun <f>` or `--body-file <f>` in place of a heredoc
-holding shell text. `git clean -n -d` and `find` list what would go, and the deletion itself is the
-operator's. Never report an exit code captured with `$?` after a pipe, because it is the last stage's
-status, so a `| tail -8` in front of it makes every code you report the tail's.
-
-Foreground waits are at most 60 s. For longer work, start one background monitor that exits on the real
-condition and poll it in bounded intervals, rather than stacking sleep-and-tail calls; when the watch is
-under 30 minutes, checking every 290 s is cheaper than holding a monitor open. Watch a paid run as
-"While it runs" says.
-
-Use ponytail while authoring, and run `bun run lint -- --strict` and `bun run simplify` (the deterministic
-census, `tools/oxlint/simplify-census.ts`) during the work rather than only at the end; then run
-`/simplify` on the finished diff. Whoever wrote a rewrite lints it strictly before handing it back (§3). A
-mis-targeted finding from either tool is a reason to tune that rule's source more precisely (rule 8), and
-never to switch it off. Prefer removing unneeded work, then existing code, then stdlib or native features,
-then installed dependencies, and only then minimum new code, and let rule 8's super-Pareto form decide how
-much of the old behaviour that minimum must keep. Preserve trust validation, data-loss handling, security,
-accessibility and requested behaviour, and reuse the focused checks and the ordinary gate. If no useful cut
-remains, say "already the smallest honest form".
-
-### Versions
-
-Anabasis is in beta. It left alpha on 2026-09-24 (operator decision), and it stays below `1.0.0` until the
-operator cuts that release. The repository follows Semantic Versioning, and a version has one owner: a
-`vMAJOR.MINOR.PATCH` tag on a commit of `main`, published as the GitHub release of the same name with
-`gh release create v<X.Y.Z> --target <full sha>`. Nothing in the tree has a version of its own. The root
-`package.json` carries none, and the `version` in `packages/ui/package.json` follows the repository's, so
-a release commit sets it to the number the tag will carry. `v0.0.1` marks `main` at `fae8fdb`, the state
-before PR #7 landed, where the UI package still read `0.1.0` (operator decision 2026-09-24).
-
-The operator decides when a version is cut and which part moves, and an agent never bumps one on its own
-initiative, not even after landing a stack. An incremental release moves the patch number (`0.0.1` to
-`0.0.2`), a bigger one the minor number (`0.0.2` to `0.1.0`), and a breaking one, the operator's "proud"
-release, the major number (`0.1.0` to `1.0.0`), each resetting the parts to its right. When asked, tag the
-exact commit the operator names, or current `origin/main` when none is named, and say which commit that
-was, because local `main` can hold documentation commits that were never pushed.
-
-### Where changes go
-
-**Main takes two kinds of change directly, a skill or documentation upgrade arrives as its own PR against
-main (below), and everything else arrives as a stacked PR** (operator decisions 2026-09-24 and 2026-10-07). The first is documentation, meaning the documentation set: exactly the paths the
-pre-push hook excludes when it decides a push is documentation-only, after which it runs `git diff
---check` alone, so such a push needs nothing more. The second is a hotfix, a small fix to a defect on main
-that cannot wait for the stack. Each of its commits ends with a `Hotfix: <why>` trailer, the push is gated
-like any source push, and pre-push refuses a source-changing push to main while any commit it adds lacks
-the trailer. The declaration lives in the commit rather than in a flag, which leaves nothing to install:
-Git rejects an unknown option such as `git push --docs`, ignores an alias that shadows `push`, and hands a
-pre-push hook no `-o` option.
-
-**Commit documentation on local main and leave it there until the operator approves the push** (operator
-decision 2026-09-23). Until then it went straight to main, on the reasoning that a note carries no gate
-and so costs nothing to publish. What that missed is that the gate was never the thing standing between a
-document and its readers. A source change is read by a test, a reviewer or a failing build before anyone
-believes it, and a document is read by nobody, so the cheapest path to publication belonged to exactly the
-files whose only check is someone reading them. On 2026-09-23 two of them were written and pushed inside
-one turn. Commit the work, say where it is and what it claims, and let the operator decide; the approval
-covers the change in front of them and not the next one. Ask for it in a line of the reply that reports
-the work. It is not a question that blocks the turn or earns a round trip of its own, so finish, report,
-and name the push as the one thing left, which keeps the rule from costing what it was meant to save, the
-operator's attention. Nothing enforces this. The hook pushes a documentation commit as readily as it ever
-did, and `git diff --check` is the whole of what it asks, so this is discipline rather than a gate, said
-plainly because a rule with no consumer is one a reader should know is unenforced.
-
-Skill and helper scripts are not in the documentation set, for publication or for checks. A `.ts`, `.mts`
-or `.py` under `.claude/` needs focused checks and source delivery, and how much of the gate reaches it
-depends on the script. `ROOTS` in `tools/runtime/lint.ts` includes `.claude`, so oxlint reads every one of
-them. The suite is another matter: `bun run test` discovers a flat `test/` and never walks `.claude/`, so
-it reaches a script only through a test that imports it. When that was counted, 46 test files pulled in 44
-of 93 scripts across eleven skills, plus a few more transitively. The rest are held by lint alone, their
-behaviour checked by nothing until you run `bun test` from the script's own directory, so grep `test/` for
-the file first. A document describing source that is not on main stays with that source. Everything under
-`src/`, `tools/` and `vendor/` is source, whatever the file type.
-
-**Open a skill or documentation upgrade as its own pull request against main, unasked** (operator decision
-2026-10-07). A change to a skill (its `SKILL.md`, references, scripts and the tests that import them), to
-`AGENTS.md` or to `docs/` goes up as a PR with `--base main` once its focused checks pass, without waiting
-for the operator to ask and without riding on the stack. Kept in a local branch, or carried by a stack PR it
-has nothing to do with, it drifts: the next session reads the stale copy on main, and the upgrade lands
-weeks later in a merge nobody reviews it in. On 2026-10-07 nine investigation-skill commits sat in local
-branches for a day while the skill on main still taught the procedure they replaced. The one exception is
-the rule just above: a document or skill change that describes or reads a fix still on the stack, such as an
-`AGENTS.md` paragraph about that fix or a skill reader for a record it adds, is true only once that fix
-lands, so it is appended to the stack PR that owns the fix. Such a side PR changes nothing under `src/`,
-`vendor/` or `starters/`, and the pre-push hook does not count it as a top of the stack.
-
-Every other change is a PR on top of the one open stack, never beside it: a single chain from the bottom
-PR to the head, each based on the one before. Two independent changes still go one above the other,
-because one chain has one review order, one gate path and one merge order, while a branch off its middle
-must be rebased back in by hand. Fetch and verify the parent edges and use the composed head as the
-working baseline, since main alone is not the current production-development state while the stack is
-open. "Add stacked PR" means a new PR on the latest head, with `--base` set to that head's branch.
-Pre-push reads the open PRs with `gh` and holds two things, and when GitHub cannot be read it says so and
-lets the push through. A push that creates a branch must contain the top's head, the top being the PR no
-other open PR is based on, and it is refused when there is more than one top, except that a side PR, one
-whose changes against main touch only `.claude/`, `docs/`, `AGENTS.md`, `README.md`, `test/`,
-`skills-lock.json` and `tools/oxlint/not-slop.tsv`, need not contain the top and never counts as one; the
-hook cannot see `--base`. And a push must not leave an open PR listing commits that are not its own, whether old copies of
-its base's commits, matched by author time and subject, or another open PR's head beyond its base. The
-refusal prints the `git rebase --onto` or `gh pr edit --base` that repairs it.
-
-A hotfix lands on main beneath the stack, and the bottom takes it at the next restack. When a PR worktree
-overlaps another session, do not edit it: `scripts/worktree.sh pr <number> <dir>` puts the published head
-on a unique branch and leaves that tree alone. Once the upstream PR settles, refresh, rebase onto it,
-prove containment and push to the PR's actual source branch.
-
-To restack, write down `parent head → child head` for every edge, restack from the first stale edge and
-propagate through the later children in order, naming the first stale edge and the full affected suffix.
-If the bottom lacks current main, every descendant is behind main through inherited ancestry even when the
-internal edges pass, though main changes to surrounding documentation alone need no source restack. Fix a
-stack bottom to top, resolving each conflict once.
-
-A stack is linear. Each PR's branch is its parent's head followed by its own commits, with no merge commit
-in it, so its range reads as exactly the work it proposes, in the order it was done, and each commit in it
-has passed the gate alone. A fix goes into the commit it corrects on the PR that carries it, never into a
-new PR repairing an unmerged one, and each child above is replayed bottom-up with `git rebase --onto
-<new-parent-head> <old-parent-head> <child-head>`. That replaces the per-edge `Compose PR #<child> on
-repaired PR #<parent>` merges of 2026-09-05. Those kept every publication a fast-forward, which is what
-they were for, at the cost of ranges that interleaved the parent's repairs with the child's work: PR #8
-carried five of them between eight commits of its own. Replay on a detached HEAD so that branches checked
-out elsewhere are undisturbed, compare each replayed range with its saved one through `git range-diff`,
-and then push every moved head in one atomic push with a lease per ref, from a checkout of the top;
-`stack-hop`'s [publication procedure](.claude/skills/stack-hop/references/stack-publication.md) owns
-delivery. That push gates what it changed, and the replays above it wait for the landing.
-
-**A stack lands through `bun run land -- <top> --merge`** (`tools/runtime/land.ts`, 2026-09-28). It
-reads the stack from GitHub and requires the bottom to contain main's head and each head the one beneath
-it, which makes the merge commit's tree exactly the top's. It then runs `gate --static` on every commit
-the merge would publish, over its own checkout, and the whole gate on the top's head, skipping any pass
-already recorded in `ana-gate-passed`, and stops at the first failure with the `--fixup` that repairs it.
-What it gates is this clone's `land/<ref>` branch for each pull request, made from GitHub's head the first
-time, because every other local copy of a stack branch is stale or checked out in some other worktree. The
-fix recipe it prints rebases with `--update-refs` behind a sequence editor that keeps only `land/` branches,
-so the commits below the fix keep their ids and their recorded passes, every `land/` branch above it moves
-with it, and a branch someone else made at a pull request's head stays where it was. Fixes wait there,
-gated, until the one leased push it prints publishes them; `--sanitize` and `--merge` refuse a `land/`
-branch GitHub does not have yet. With either flag it also dispatches the Actions gate on the top's head
-before gating (unless a run there exists) and waits for it after, refusing on a failed run. Only then does
-it post `ana/stack-gate` on each head and ask GitHub's stack merge for one merge commit at
-exactly the gated top, taking the statuses back when GitHub does not merge. `--sanitize` runs the same
-proof and posts each commit's `ana/commit` verdict without merging, which is how a stack shows it is ready;
-with neither flag the script writes nothing to GitHub. A local `--no-ff` merge pushed to `main` leaves
-the PRs open (2026-09-21, 98 PRs), and the landing's merge commit is the only one the policy makes. Keep
-the hooks enabled.
-
-"At PR48 state" or "at stacked PR45" means the newest level including later fixes, while "the diff of PR
-#48" selects that PR alone. When two branches carry the named work, ask which head is meant.
-
-### Subagent sessions
-
-Honour the requested concurrency up to 200. Launch every lane together, directly from this session in one
-message, one bounded task each, with no lower cap or batching unless asked, no coordinator and no further
-delegation. Each prompt names the authority, the exact paths and revision, the observed facts, the
-question and the required output, and says read-only unless the operator asked for changes. Do a shared
-mechanical step, such as counting codes over `campaigns/` or replaying a battery, once before launch with
-an existing CLI or a new helper, and give every lane the exact command with the instruction to treat its
-rows as leads. That is the helper's second use, so keep it.
-
-Lanes editing one worktree share its files, its scratch directory and its test runs, so give each a
-disjoint path set, its own scratch subdirectory and never a shared helper name. In the readability pass of
-2026-09-22 one lane's `rep.ts` overwrote another's, and about 30 files' edits silently failed to land. A
-lane's tests read the whole tree, so while other lanes are editing, `SOLVABILITY_SOURCE_DRIFT`
-(`src/run/claim-write.ts`), parse errors in half-edited files and host-wall timeouts are all expected. A
-lane re-runs a failing file alone before reporting it, and the coordinator runs the full suite once after
-every lane has finished.
-
-When the launching session holds much context and lanes are to change a PR, split it by commit, one lane
-and worktree each. Every lane reads, then stops at a proposal naming its evidence and the commit each fix
-folds into. Answer each at most twice, steering with what other lanes and the wider system show, then let
-it commit `--fixup`s with focused checks, and fold and push once. On 2026-09-26 a reply stopped a lane
-handing timeouts to the environment, which another lane had shown ends the campaign at submit.
-
-**A comment-only pass is still a source change**, and it carries six hazards.
-
-The first is unused exports. `unusedExports` looks for a reader of each `AUTHORED_ROOTS` export under the
-deliberately wider `READER_ROOTS` (§9), and a name in a comment counts, so deleting a comment in a test
-can orphan an export in `src`; drop the `export` the gate then names. Run `source-policy.ts` whole,
-because it silently ignores paths: its last line calls `main()` where `complexity-policy.ts` calls
-`main(Bun.argv.slice(2))`. So `bun tools/loc/source-policy.ts test` prints the `src tools vendor` verdict,
-and reporting it as a pass over `test` claims a check that never ran. Report the no-argument run as what
-it is. The second is literals: any string, template or regex literal that moves changes a prompt digest,
-so compare every literal per file against the base before committing. The third is claims. A rewritten
-comment keeps only the claims checked against the code in that turn, because a shortened sentence still
-asserting a refusal nothing performs is a new false statement, not a tidier old one.
-
-The fourth is the check itself. Comparing token streams looks exact, and a bare `ts.createScanner` is not.
-With no parser driving it, it never rescans the `}` closing a `${…}` as a template tail, so the backtick
-ending that literal reads as one opening a new literal, and the next token swallows every byte up to the
-following backtick, comments included. On 2026-09-23 that called 31 of 90 comment-only files code changes,
-and it did so on exactly the substitution-heavy prompt modules most worth checking. Parse instead, with
-`createSourceFile`, and print both versions with `removeComments: true`. The failure is one-directional: a
-tokeniser never misses a real change, it just cannot tell you there is none, which was the only thing it
-was being asked.
-
-The fifth is the blind spot that remedy creates, and it runs the other way. `@ts-expect-error`,
-`oxlint-disable-next-line` and `biome-ignore` are comments that change the build, so a pass that rewrites,
-moves or drops one reads as identical, silently. Extract the directives from both versions and compare
-their text rather than their count, because a rewritten rule name leaves the count alone. On 2026-09-23, 8
-of 355 changed files carried directives and all 8 were unchanged, which took one command and is the only
-reason the comparator's verdict meant what it said.
-
-The sixth is a gate that looks as though it covers you and does not. Biome owns line breaks at 110, but it
-never rewraps a comment: clean `main` carries 210-character comment lines while `biome format .` reports
-"No fixes applied" over 1,044 files. On 2026-09-23 this pass added four lines past the limit before anyone
-looked, all of them inline `/* SAFETY: … */` justifications sharing a line with their assertion, the
-longest 233 characters. So measure the added lines yourself. Wrapping one is safe, since §5.17 accepts
-whitespace, newlines included, and opening parentheses in between, and when `biome format` then rejoins a
-call the comment had held apart, that is the base formatting returning rather than a change of yours.
-
-Transport is owned by `.claude/skills/codex-luna-swarm/SKILL.md`, whose route changes whenever a
-provider's allowance does. Session reports are research rather than evidence, so check any load-bearing
-finding against the source before acting on it. A report whose author cannot be established is
-unattributed research.
-
-### Writing style
-
-Write the way this file and the best PR bodies in this repository read: as an account of what you found
-and what it means, in sentences that carry their own reason. The reader is a colleague who was not there,
-so tell them what happened, why it is not what they would have expected, and what it does now instead. The
-opening of a recent PR body is the specimen to copy:
+A pull request's body, as the stack's bodies read:
 
 ```text
-It turned out that some of what a round hands to the next one was not being carried across
-properly, and that in a few places a reader ended up saying more than it could actually know.
-
-You would not expect much loss here. The Builder keeps one conversation for a whole run, so the
-round's own facts -- the task count, the contract the tasks are written under -- are nominally in
-context the entire time, across every compaction. But pi does compact that conversation, and the
-opening turn is exactly the part that gets cut first, because it is the oldest. So a session that
-has been running a while can genuinely no longer know how many tasks it was asked for. It then
-either buys that back with a gate call or, worse, guesses.
+Stacked on #<n>.
+Why                    what was wrong, in plain words, with the recorded number that made the case
+What changes           one line a finished change
+On the recorded logs   where a reader changed: what it now says of campaigns already run
+Not done               what was left out on purpose
+Checked                each step of each CI job, where it ran, the head's short commit, the counts;
+                       a failure that is there without the change is named as such
 ```
 
-Four things are doing the work there. The first sentence says what was wrong in plain words before naming
-a single symbol. The second paragraph raises the reader's own objection and answers it, which is what
-makes the rest land. The mechanism arrives as ordinary facts, each following from the last. And the
-consequence is concrete: a gate call, or a guess.
+Name what misbehaves: the campaign command, a round, a reader, the Builder. The file that holds it goes in
+the evidence beneath. A change with no defect behind it says so in one line. Rewrite the body
+after every push that changes the pull request.
 
-Write in full paragraphs, three or four sentences that build on each other rather than one sentence
-standing alone under a bold heading. The default a model reaches for, a clipped fragment, a dash, another
-fragment and then three noun-phrase bullets, reads as a thought interrupted before it arrived, and it
-leaves the reader to rebuild the connection between the pieces. Say the connection instead: because, so,
-which means, that is why. A list is for things that genuinely sit side by side, and most of what gets
-listed here is a sequence with a cause running through it. Fragments and headings are not wrong in
-themselves; they are wrong when they replace the sentence that would have explained.
+### Reviews and subagents
 
-Numbers belong in the prose, at the point where they earn something: "used twice in eight recorded
-sessions"; "5,406 findings named a bare root against 3,196 naming a path below one"; "37 pass, 1 fail". A
-count sitting in its own closing section has to be joined back to the claim by hand, and often is not. For
-a repair, say what fails when it is reverted, and how many tests that is.
+Launch parallel subagents from the current session in one message, one bounded task each, with no
+coordinator. Each prompt names its authority, the exact paths and commit, the observed facts, the
+question and the required output, and says read-only unless the operator asked for changes. Give a
+reviewer the code and not your conclusion. Check every finding you act on against the source.
 
-State exactly what you did and what you did not. A skipped check is said to be skipped, failed tests come
-with their output, and a claim resting on one lane's report rather than on the source says so. Nothing
-here needs selling, and a sentence that sounds like selling is usually missing its evidence.
+## 12. Code that passes the first time
 
-A small example beats an adjective: "one owner instead of five" says more than "cleaner". Where a rule
-exists because something went wrong, the incident is the explanation, so name it, date it and let it
-argue. That holds for this file, for a PR body and for a session report, which are read once against a
-settled history. It does not hold for a source comment, which is read again and again against a tree that
-keeps moving, so a run id, a campaign, a pass count or a token total in one goes quietly false while still
-reading as authoritative, and costs the next reader a wrong belief rather than merely time. In a comment,
-keep the mechanism and drop the incident: "run c66e0d's manual kill discarded 21 accepted artifacts"
-becomes "a manual kill discards every accepted artifact the round has not yet verified", which is the same
-fact and stays true. Make routine minor changes directly, and raise only the decisions the operator
-actually has to make.
+Most lint findings here are preventable by habit, and the habits are `tools/oxlint/HABITS.md`:
+the compiler's settings, how lint runs and what to do with a finding, the rewrites that pass the
+first time, the two plugins' rules, the owners in `src/meta`, the whole-tree scans, the size
+policy and how a test is written. Read it whole before the first line of code, and not for a
+change that writes none. What holds whatever is written:
 
-Several operator terms cover more than one system, so resolve them aloud in a clause rather than silently
-picking one. "Queries" may mean harness-query probes, review lanes or subagent sessions; "judges" may mean
-the in-run Judge slot or the review lanes; "the run" is reserved for the paid full run; and "cycle N" is
-most likely one cycle of a cycle series. Suffix a `cNN` name with its product.
+- The gate is what CI runs (section 11), and a strict lint for the files changed:
+  `bun run lint -- --strict`. Work in strict mode; add no finding, and give the strict count in
+  the pull request.
+- Never turn a rule off: no new `"off"` in `.oxlintrc.json` and no `oxlint-disable` comment for
+  a plugin rule. A finding that is wrong about a site is answered in the ledger or by tuning the
+  rule (`HABITS.md`, 12.2).
+- Every runtime surface has one owner in `src/meta` (`HABITS.md`, 12.8); `node:` is imported
+  nowhere else.
+- A file is at most 800 nonblank lines and a function 115, and an `export` has a reader in
+  another file (`bun tools/loc/source-policy.ts`, which reports vendor only).
 
-One operator term is not ambiguous, and it is easy to under-read. To "sed" something from a source means
-copying it across as directly as that source allows: the code, its names, its patterns, its constants and
-its messages, verbatim, with the upstream path and commit cited beside the copy. Rewrite only what this
-repository forces, such as a lint rule the upstream spelling breaks, a primitive the tree already owns or
-a name that would collide with one here, and name each departure in the report, so that a reader need not
-diff against upstream to find them. A fresh implementation of the same idea is not a sed, and neither is
-adding the upstream package as a dependency. On 2026-09-24 a test-runner fix the operator asked to sed
-from Bun's CI runner arrived as hand-written code, then as a new dependency, then as a rewrite of Bun's
-approach, before Bun's parse loop and messages were copied across (operator decision 2026-09-24).
+## 13. Writing
 
-A copy of pi-mono stays as close to upstream as it can, because that code has more use behind it than
-anything our rules would turn it into. So `vendor/pi-coding-agent` and `vendor/pi-agent-session` are not
-linted at all, and their departures are only what this repository forces, each named in the file's
-header. Everything we wrote keeps every rule, `anti-slop` and `ana` included: the files beside the
-copies, `vendor/pi-built`, and the adapted bridge, whose own override is in §10 (operator decision
-2026-10-07).
+Plain, understated European English, in commits, pull requests, comments, prompts and messages to
+the operator.
 
-### Repository map
+- State what changed and what remains, with exact results: "12 cases passed, 0 failed". No
+  "robust", "bulletproof" or "10x", no celebration, no emoji, no exclamation marks.
+- Say what a thing is. Prefer "one owner instead of five" to a sentence built on a negation and
+  its correction.
+- Separate what you verified from what you inferred, and say when a check was skipped. Every pull
+  request says what was left undone and where each check ran.
+- Use the fixed terms of section 14 with one meaning each. Suffix an ambiguous name with what it
+  belongs to: "the Builder session b-2", "comparison g2", "the buffer campaign".
+- A head comment explains why the code is as it is: the defect it answers, the record that showed
+  it, and the date. It is the module's manual; keep it true in the change that alters the code.
+- A prompt for an agent states facts and limits, each once, in the place that owns it: the system
+  prompt for what holds all session, the opening message for the campaign's state, a tool result
+  for what that call found. When the same interface failure recurs, fix the schema or the tool
+  and do not add another sentence.
+- A date is absolute: "9 October". Words such as "yesterday" go stale in a record.
 
-| path | contents |
+## 14. Terms and map
+
+### Terms
+
+| Term | Meaning |
 | --- | --- |
-| `src/` | the product: `analyse author backends builder claim correctness-bundle critic gate` |
-| | `meta observe review run solve verify` |
-| `src/meta/` | the runtime surface owners (§6) |
-| `tools/` | `gate.sh`, `oxlint/`, `loc/`, `runtime/`, `harness/`, `outcome/`, `replay/`, `runs/`, |
-| | `run-triage/`, `secrets/`, `login/`, `vm/`, the fullrun launchd/systemd launchers |
-| `test/`, `test/helpers/` | the suite; `bun run test` discovers `test/` only |
-| `vendor/` | pinned upstream copies: `pi-agent-session`, `pi-built`, `pi-claude-bridge`, |
-| | `agent-bundle`, `correctness-model-bundle`, `correctness-model-prims`, `harbor` |
-| `starters/` | Builder-visible templates and `STARTER.md`; never imports `src/` |
-| `packages/ui/` | the UI, with its own lockfile (`bun run ui:deps`) |
-| `scripts/` | `worktree.sh` |
-| `.claude/skills/` | operator skills; `main/{cli,git,run}.ts` are their shared owners |
-| `campaigns/`, `domains/`, `runs/` | controller-generated: never edited, linted or committed |
-| `docs/`, `notes/` (ignored) | prose; the gate-audit and climb-rewrite ledgers |
+| Campaign | Everything run for one query: one domain, one contract, one check program, one log |
+| Contract | The one public document: the rules, each with an id, and the answer format |
+| Check | A hidden program that tests one rule on one answer and returns pass or reject |
+| Instrument | The field's own tool that computes the facts a check compares |
+| Control | An answer with a known label, used to test a check. The do-nothing answer, the smallest the format allows, is one for every task |
+| Held-out task | A task the Builder never sees. Only held-out tasks are scored |
+| Practice task | A task released to the Builder. Once released it is never scored |
+| Valid answer | An answer that passes every check, submitted within the limits |
+| Rejection | An answer at least one check rejects: a true fail when the answer is wrong, a check defect when it was right |
+| Hand label | A person's verdict on one rejection: `earned`, `check-defect` or `unclear`; or on one answer that passed: `sound`, `wrong` or `unclear` |
+| Reference harness | The harness a new one is compared with: the starter until a step is promoted |
+| Comparison | Both harnesses solve the same held-out tasks; each task is a win, a loss or a tie |
+| Round | One Builder session followed by one comparison. A session may also run by itself, with no comparison after it |
+| Checkpoint | One comparison of two kept harnesses, with no session |
+| Step | A comparison in which the new harness wins significantly more tasks than it loses |
+| Setting | Who solves, under which limits, and which tasks are scored: recorded once in the log (section 6) |
+| Condition | Everything that could change a solve's result, as one record with an id |
+| Session | One bounded stretch of an agent's work: a Builder's ends with a frozen harness version |
+| Trace | The record of one solve: every model turn and every tool call with its result |
+
+### Map
+
+```text
+src/kernel/     the log, tasks, conditions, the verifier's contract, the comparison, the reports
+src/solve/      one solve: the starter, the prompt, the command wall's tools, the answer file
+src/builder/    a Builder session, its tools, prompt, notes and what it is told of the past; the round,
+                and what the log holds of a comparison (comparison); whether a comparison may start
+                (admission); the one reading of a campaign (handover);
+                the move that follows from a log (decide) and the reading of the log it is asked
+                of (ground), what a campaign runs by (opening), and the words the operator left
+                it (word)
+src/examiner/   an Examiner session, its prompt, and the outcomes it is told; the session that drafts
+                an exam from a prompt (draft); the walled home both sessions have (shell)
+src/review/     the Referee, the probe, agreement with hand labels
+src/verify/     the OS wall: Seatbelt, Bubblewrap, the disk cap, what each actor may read
+src/backends/   the three model backends as one pi collection, and compaction
+src/meta/       the owners of every runtime surface (`tools/oxlint/HABITS.md`, 12.8)
+tools/c/        the check program: accept, carry, rejections, repaired
+tools/d1b/      examine, draft
+tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, promote, import; exam,
+                which stages a drafted exam as a pack; close, which writes what a campaign hands
+                over; harness-builder, which runs a campaign move after move; and word, which
+                leaves the operator's word for one that runs
+tools/runs/     stop, the receipt, rehearse, seed, pulse, view, replay, zip
+tools/wri/      the whole-run investigation's reader of one log: its folds and the exam side's lanes
+                (folds), the other lanes, the rows and the overview (read)
+tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans
+tools/runtime/  the lint and test wrappers, the commit check
+tools/loc/      the size and unused-export policy
+vendor/         pi-coding-agent and pi-claude-bridge, copied
+docs/           the plan, the transfer ledger, the account of v1, the helper prompts
+.claude/skills/ the procedures (section 10), stack-pr, and main/ with the skill scripts' argument
+                parser and git helper
+.ana/           campaign logs and kept harnesses; ignored, and never edited by hand
+```

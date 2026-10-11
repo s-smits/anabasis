@@ -1,8 +1,6 @@
-// Copied from pi coding-agent v1.0.0 (github.com/earendil-works/pi, a13d35a, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/core/tools/edit-diff.ts, verbatim but for
-// the compiler: this repository's `noUncheckedIndexedAccess` forces a `!` on indexed reads.
-// Departure: generateDiffString's context branch is split out as contextHunk, so the function sits
-// under the cyclomatic ceiling rather than in the baseline; the diff it prints is unchanged.
+// the compiler: this repository's strict options force the `!` on indexed reads and the `| undefined` on optional fields.
 /**
  * Shared diff computation utilities for the edit and similar tools.
  */
@@ -384,11 +382,15 @@ export function generateDiffString(
 	contextLines = 4,
 ): { diff: string; firstChangedLine: number | undefined } {
 	const parts = Diff.diffLines(oldContent, newContent);
+	const output: string[] = [];
+
 	const oldLines = oldContent.split("\n");
 	const newLines = newContent.split("\n");
 	const maxLineNum = Math.max(oldLines.length, newLines.length);
-	const cursor: DiffCursor = { output: [], width: String(maxLineNum).length, oldLine: 1, newLine: 1 };
+	const lineNumWidth = String(maxLineNum).length;
 
+	let oldLineNum = 1;
+	let newLineNum = 1;
 	let lastWasChange = false;
 	let firstChangedLine: number | undefined;
 
@@ -402,86 +404,101 @@ export function generateDiffString(
 		if (part.added || part.removed) {
 			// Capture the first changed line (in the new file)
 			if (firstChangedLine === undefined) {
-				firstChangedLine = cursor.newLine;
+				firstChangedLine = newLineNum;
 			}
 
 			// Show the change
 			for (const line of raw) {
 				if (part.added) {
-					cursor.output.push(`+${String(cursor.newLine).padStart(cursor.width, " ")} ${line}`);
-					cursor.newLine++;
+					const lineNum = String(newLineNum).padStart(lineNumWidth, " ");
+					output.push(`+${lineNum} ${line}`);
+					newLineNum++;
 				} else {
 					// removed
-					cursor.output.push(`-${String(cursor.oldLine).padStart(cursor.width, " ")} ${line}`);
-					cursor.oldLine++;
+					const lineNum = String(oldLineNum).padStart(lineNumWidth, " ");
+					output.push(`-${lineNum} ${line}`);
+					oldLineNum++;
 				}
 			}
 			lastWasChange = true;
 		} else {
 			// Context lines - only show a few before/after changes
 			const nextPartIsChange = i < parts.length - 1 && (parts[i + 1]!.added || parts[i + 1]!.removed);
-			contextHunk(cursor, raw, lastWasChange, nextPartIsChange, contextLines);
+			const hasLeadingChange = lastWasChange;
+			const hasTrailingChange = nextPartIsChange;
+
+			if (hasLeadingChange && hasTrailingChange) {
+				if (raw.length <= contextLines * 2) {
+					for (const line of raw) {
+						const lineNum = String(oldLineNum).padStart(lineNumWidth, " ");
+						output.push(` ${lineNum} ${line}`);
+						oldLineNum++;
+						newLineNum++;
+					}
+				} else {
+					const leadingLines = raw.slice(0, contextLines);
+					const trailingLines = raw.slice(raw.length - contextLines);
+					const skippedLines = raw.length - leadingLines.length - trailingLines.length;
+
+					for (const line of leadingLines) {
+						const lineNum = String(oldLineNum).padStart(lineNumWidth, " ");
+						output.push(` ${lineNum} ${line}`);
+						oldLineNum++;
+						newLineNum++;
+					}
+
+					output.push(` ${"".padStart(lineNumWidth, " ")} ...`);
+					oldLineNum += skippedLines;
+					newLineNum += skippedLines;
+
+					for (const line of trailingLines) {
+						const lineNum = String(oldLineNum).padStart(lineNumWidth, " ");
+						output.push(` ${lineNum} ${line}`);
+						oldLineNum++;
+						newLineNum++;
+					}
+				}
+			} else if (hasLeadingChange) {
+				const shownLines = raw.slice(0, contextLines);
+				const skippedLines = raw.length - shownLines.length;
+
+				for (const line of shownLines) {
+					const lineNum = String(oldLineNum).padStart(lineNumWidth, " ");
+					output.push(` ${lineNum} ${line}`);
+					oldLineNum++;
+					newLineNum++;
+				}
+
+				if (skippedLines > 0) {
+					output.push(` ${"".padStart(lineNumWidth, " ")} ...`);
+					oldLineNum += skippedLines;
+					newLineNum += skippedLines;
+				}
+			} else if (hasTrailingChange) {
+				const skippedLines = Math.max(0, raw.length - contextLines);
+				if (skippedLines > 0) {
+					output.push(` ${"".padStart(lineNumWidth, " ")} ...`);
+					oldLineNum += skippedLines;
+					newLineNum += skippedLines;
+				}
+
+				for (const line of raw.slice(skippedLines)) {
+					const lineNum = String(oldLineNum).padStart(lineNumWidth, " ");
+					output.push(` ${lineNum} ${line}`);
+					oldLineNum++;
+					newLineNum++;
+				}
+			} else {
+				// Skip these context lines entirely
+				oldLineNum += raw.length;
+				newLineNum += raw.length;
+			}
+
 			lastWasChange = false;
 		}
 	}
 
-	return { diff: cursor.output.join("\n"), firstChangedLine };
-}
-
-/** The diff being written, and the old and new line numbers the next line carries. */
-interface DiffCursor {
-	output: string[];
-	width: number;
-	oldLine: number;
-	newLine: number;
-}
-
-function pushContext(cursor: DiffCursor, lines: readonly string[]): void {
-	for (const line of lines) {
-		cursor.output.push(` ${String(cursor.oldLine).padStart(cursor.width, " ")} ${line}`);
-		cursor.oldLine++;
-		cursor.newLine++;
-	}
-}
-
-function skipContext(cursor: DiffCursor, count: number): void {
-	if (count <= 0) return;
-	cursor.output.push(` ${"".padStart(cursor.width, " ")} ...`);
-	cursor.oldLine += count;
-	cursor.newLine += count;
-}
-
-/** Unchanged lines between changes: up to `contextLines` beside each change, the rest elided. */
-function contextHunk(
-	cursor: DiffCursor,
-	raw: string[],
-	hasLeadingChange: boolean,
-	hasTrailingChange: boolean,
-	contextLines: number,
-): void {
-	if (hasLeadingChange && hasTrailingChange) {
-		if (raw.length <= contextLines * 2) {
-			pushContext(cursor, raw);
-		} else {
-			const leadingLines = raw.slice(0, contextLines);
-			const trailingLines = raw.slice(raw.length - contextLines);
-			pushContext(cursor, leadingLines);
-			skipContext(cursor, raw.length - leadingLines.length - trailingLines.length);
-			pushContext(cursor, trailingLines);
-		}
-	} else if (hasLeadingChange) {
-		const shownLines = raw.slice(0, contextLines);
-		pushContext(cursor, shownLines);
-		skipContext(cursor, raw.length - shownLines.length);
-	} else if (hasTrailingChange) {
-		const skippedLines = Math.max(0, raw.length - contextLines);
-		skipContext(cursor, skippedLines);
-		pushContext(cursor, raw.slice(skippedLines));
-	} else {
-		// Skip these context lines entirely
-		cursor.oldLine += raw.length;
-		cursor.newLine += raw.length;
-	}
+	return { diff: output.join("\n"), firstChangedLine };
 }
 
 export interface EditDiffResult {

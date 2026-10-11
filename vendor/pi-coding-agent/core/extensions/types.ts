@@ -1,11 +1,12 @@
-// Copied from pi coding-agent v1.0.0 (github.com/earendil-works/pi, a13d35a, MIT, see LICENSE):
-// packages/coding-agent/src/core/extensions/types.ts, only the members the copied tools read. Left
-// out: the extension runtime (UI, session manager, model registry, loadout, exposure, namespaces,
-// annotations and renderers), which Anabasis does not host. The tools run with no context, so they
-// fall back to the cwd they were created with and to no session environment.
-
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// packages/coding-agent/src/core/extensions/types.ts, only the members the copied tools read, in
+// upstream's own words. Left out: the extension runtime (UI, modes, model registry, loadout, exposure,
+// namespaces, annotations, executeTool and the renderers), which nothing here hosts. ReadonlySessionManager
+// is cut to the two methods the bash tool reads. The tools run with no context, so they fall back to the
+// cwd they were created with and to no session environment.
+// Strict compiler options force the `!` on indexed reads and the `| undefined` on optional fields.
 import type { AgentToolResult, AgentToolUpdateCallback, ToolExecutionMode } from "@earendil-works/pi-agent-core";
-import type { Api, ConstrainedSamplingConfig, Model, ThinkingLevel } from "@earendil-works/pi-ai";
+import type { ConstrainedSamplingConfig, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import type { Static, TSchema } from "typebox";
 
 /** The read-only session members the bash tool reads for its PI_* environment. */
@@ -20,7 +21,7 @@ export interface ExtensionContext {
 	/** Session manager (read-only) */
 	sessionManager: ReadonlySessionManager;
 	/** Current model (may be undefined) */
-	model: Model<Api> | undefined;
+	model: Model<any> | undefined;
 	/** Current thinking level, when provided by the session runtime. */
 	thinkingLevel?: ThinkingLevel | undefined;
 }

@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 """Compare revisions on the measures a stack is supposed to move.
 
-`prompt-surface-census` answers what a model could read. This answers the other half: whether a
-branch bought its behaviour with more machinery or less. It reads every revision through git
-plumbing, so it needs no second worktree and never touches the working tree.
+Whether a branch bought its behaviour with more machinery or less. It reads every revision through
+git plumbing, so it needs no second worktree and never touches the working tree.
 
-    python3 stack-complexity.py main codex/candidate-rollback-0917
-    python3 stack-complexity.py main '#724' '#725' '#726'
-    python3 stack-complexity.py --repo /abs/repo --per-file main HEAD
+    python3 stack-complexity.py origin/main HEAD
+    python3 stack-complexity.py origin/main '#164' '#172'
+    python3 stack-complexity.py --repo /abs/worktree --per-file origin/main HEAD
 
 Name two revisions for a before and after, or a whole stack bottom-to-top for a column each: that
-answers which PR in the stack moved a measure, which a single before-and-after hides. A `#724`
+answers which PR in the stack moved a measure, which a single before-and-after hides. A `#164`
 argument is a pull request number, resolved through `gh` and fetched if the local repository has
 not seen it, so a stack can be named the way the operator names it.
 
 The first revision is read as `first...last` — the point they diverged — so work landed on the base
 since the branch was cut is not charged to the branch. `--literal-base` compares the tips as given.
 
-Measures, grouped by the question each answers. "Source" means what the source-policy gate means:
-the same exclusion classes `tools/loc/nonblank-loc.ts` applies.
+This is v1's instrument, adapted: the same code, so a correction to either copy carries to the
+other. What is v1's and not v2's was replaced rather than dropped — v2 has no cyclomatic baseline
+and no document a model reads whole, and it has two standing exemption ledgers v1 had not written.
+
+Measures, grouped by the question each answers. "Source" is what `tools/loc/source-policy.ts`
+calls authored: `src`, `tools` and `packages`, never `vendor`, which is pinned verbatim.
 
   How much is there
     files, nonblank           source files and their nonblank lines
@@ -28,17 +31,20 @@ the same exclusion classes `tools/loc/nonblank-loc.ts` applies.
   How much branching
     decisions                 if/for/while/case/catch/&&/||/?./ternary. A McCabe proxy, not McCabe:
                               comparable between two revisions of one tree and nothing else.
-    cyclomatic debt           `tools/loc/complexity-baseline.json`, the repository's own ledger of
-                              functions over CYCLOMATIC_CEILING. It only shrinks, so its entry count
-                              and its summed excess over the ceiling are exact, not a proxy.
+    per 100 lines             the same count against the source it sits in. v1 read exact branching
+                              debt off `complexity-baseline.json`; v2 holds no baseline and no
+                              cyclomatic ceiling, so the honest second reading is the density: a
+                              stack that added lines and branches together held it, and one that
+                              added branches alone raised it.
 
   How tangled
-    import edges              internal module edges: how many times one source file names another
+    import edges              internal module edges: how many times one source file names another,
+                              by relative path or by a `#` subpath `package.json` maps
     mean fan-out              edges per importing file
-    hub files                 files whose fan-out sits at or above the head revision's 90th
-                              percentile — coupling.mts's own definition. An edge through a hub is
-                              a property of the hub, so their number is the number of places where
-                              any change reaches most of the tree.
+    hub files                 files whose fan-out sits at or above that revision's own 90th
+                              percentile. An edge through a hub is a property of the hub, so their
+                              number is the number of places where any change reaches most of the
+                              tree.
     max fan-in                the most-imported module: how many files one edit can reach
 
   How wide the interface
@@ -51,9 +57,22 @@ the same exclusion classes `tools/loc/nonblank-loc.ts` applies.
                               contract a Builder has to satisfy: every one is a way to be refused.
     env knobs                 distinct environment variables read, the configuration surface
 
+  How much is excused
+    waived findings           rows of `tools/oxlint/not-slop.tsv`: a reported site a reader answered
+                              rather than changed. A rise is a finding answered; a fall is a site
+                              whose code changed until the finding stopped firing, since `bun run
+                              lint` then asks for `not-slop -- prune`.
+    copied ceilings           `copiedFileLimits` entries in `tools/loc/source-policy.json`: files
+                              held at a limit of their own, which also turns the function check off
+                              for them. AGENTS.md §12.10 keeps the map empty and says to add no
+                              entry to pass, so anything above 0 is a finding by itself.
+
   How much a model must read
-    prompt bytes              string-literal bytes in the files composing model-visible text
-    doc bytes                 the contract and starter documents a model reads whole
+    prompt bytes              string-literal bytes in the files composing model-visible text: every
+                              file that builds a prompt or declares a tool description. v1 counted
+                              starter and contract documents beside this; v2 composes every
+                              model-visible document in TypeScript and keeps none in the tree, so
+                              the literal count is the whole of it.
 
 A stack that adds behaviour usually moves the first four groups up. The trade this system is trying
 to make is mechanism the harness enforces in place of prose it asks for, so the reading that
@@ -70,87 +89,45 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, fields
 
+# `runs/` was an exclusion in v1, where it held run evidence. Here `tools/runs/` is the run CLI and
+# nine authored modules, and v2 keeps every campaign outside the tree, so only the extension stays.
 EXCLUDE = re.compile(
-    r"(^|/)generated/"
-    r"|\.jsonl$"
+    r"(^|/)generated/|\.jsonl$"
     r"|\.(md|mdx|txt)$"
     r"|(^|/)(test|tests|__tests__)/|\.(test|spec)\.[cm]?tsx?$"
     r"|(^|/)(vendor|vendored|third_party)/|\.venv/|\.uv-cache/"
     r"|(^|/)node_modules/"
 )
-SOURCE_ROOTS = ("src/", "tools/", "starters/", "packages/")
+SOURCE_ROOTS = ("src/", "tools/", "packages/")
 SOURCE_SUFFIX = (".ts", ".tsx", ".mts", ".js", ".mjs", ".py")
 
-# Files that compose text a model receives in an ordinary session: system prompts, round and
-# continuation text, advice, and the descriptions and ordinary results of the tools a session
-# calls. Each was followed to the line that hands it to its reader on 2026-10-01; the list had
-# covered 13 files and a third of this text. Kept explicit: an AST census guesses audiences, and
-# for a delta the honest move is to name the composers and let the number be exact. Modules whose
-# text only a refused or failing session reads (validators, gates, admission) are deliberately
-# out: their literals are mostly codes and paths, so renaming a code would move a "how much a
-# model reads" number for no one. A sentence moved between a listed and an unlisted file still
-# reads as growth or shrinkage, so move prompt text into a listed composer, not out of one.
+# Files that compose text a model receives in an ordinary session: system prompts, the loop's
+# continuation and advice text, and the descriptions and results of the tools a session calls.
+# Kept explicit: an AST census guesses audiences, and for a delta the honest move is to name the
+# composers and let the number be exact. The membership rule, so a new one can be added without
+# re-deriving it: a file is here when it builds prompt text or declares a tool description. That
+# is why `src/examiner/session.ts` is in and `src/builder/session.ts` is out — the Builder's whole
+# text lives in `prompt.ts`, which that session imports. Out too: the harness openers
+# (`src/solve/harness.ts`, `harness-shim.ts`) and `src/kernel/contract.ts`, whose model-visible
+# text is a campaign's data rather than this repository's literals; and the validators, whose
+# literals are codes and paths only a refused session reads.
 PROMPT_FILES = (
-    # Builder: system prompt, round prompt, continuation, opening context
-    "src/author/builder-start-prompt.ts",
-    "src/author/builder-session.ts",
-    "src/author/builder-continuation.ts",
-    "src/author/builder-memory.ts",
-    "src/run/direct-input.ts",
-    # climb-history.ts rendered readout text until its last sentence moved to climb-readout.ts,
-    # and holds only refusals since; it stays listed so a delta across that move sees both sides.
-    "src/run/climb-history.ts",
-    "src/run/climb-readout.ts",
-    "src/run/battery-sizing.ts",
-    "src/author/rebuild-advice.ts",
-    "src/author/issue-register.ts",  # issueFacts and the unmeasured gap words, split out of rebuild-advice
-    "src/review/epoch-review-public.ts",  # also the Epoch Reviewer
-    # Builder: tool descriptions and ordinary results
+    "src/builder/prompt.ts",
     "src/builder/tools.ts",
-    "src/builder/bash-install-env.ts",
-    "src/builder/tool-write.ts",
-    "src/builder/read-window.ts",
-    "src/builder/verifier-workshop-tool.ts",
-    "src/builder/context-tool.ts",
-    "src/builder/harness-inspect.ts",
-    "src/builder/harness-trial.ts",
-    "src/builder/solver-trace-text.ts",
-    "src/builder/harness-reset.ts",
-    "src/builder/author-feedback.ts",
-    "src/gate/check-tool.ts",
-    "src/gate/submit-tool.ts",
-    # Built Harness solver (dcg-rules also feeds the Builder's system prompt)
-    "src/solve/built-starter.ts",
-    "src/solve/built-bash.ts",
-    "src/solve/dcg-rules.ts",
-    "src/solve/published-margin.ts",
-    # Deleted 2026-10-07 with the first-submit hold. `blob` reads an absent file as empty, so the
-    # entry adds nothing after that and lets a delta from an earlier base count the notice removed.
-    "src/solve/submit-time-left.ts",
-    # Judge
-    "src/review/judge-framing.ts",
-    "src/review/judge-prompt-policy.ts",
-    "src/review/judge-drivers.ts",
-    # Epoch Reviewer
-    "src/review/epoch-review-prompt.ts",
-    "src/review/epoch-reviewer.ts",
-    "src/review/epoch-review-findings.ts",
-    "src/review/review-probe.ts",
-    "src/review/review-sources.ts",
-    # Diagnosis reader
-    "src/review/diagnosis-tool.ts",
-    "src/review/diagnosis-reader.ts",
-    "src/review/solve-steps.ts",
+    "src/builder/memory.ts",
+    "src/examiner/prompt.ts",
+    "src/examiner/draft.ts",
+    "src/examiner/session.ts",
+    "src/solve/prompt.ts",
+    "src/solve/starter.ts",
+    "src/solve/coding-tools.ts",
+    "src/solve/answer.ts",
+    "src/review/referee.ts",
+    "src/review/diagnoser.ts",
+    "src/review/probe.ts",
 )
-DOC_FILES = (
-    "starters/pi-built-harness/starter-pack/contract.md",
-    "starters/pi-built-harness/starter-pack/examples.md",
-    "starters/pi-built-harness/STARTER.md",
-)
-BASELINE_FILE = "tools/loc/complexity-baseline.json"
-CEILING_FILE = "tools/loc/complexity-policy.ts"
-# Every file of each revision read so far, by revision and path; `blob` fills it.
-TEXTS: dict[str, dict[str, str]] = {}
+WAIVER_FILE = "tools/oxlint/not-slop.tsv"
+POLICY_FILE = "tools/loc/source-policy.json"
 
 DECISION = re.compile(
     r"\bif\s*\(|\bfor\s*\(|\bwhile\s*\(|\bcase\s+|\bcatch\s*\(|&&|\|\||\?\?|\?\.|\s\?\s"
@@ -160,19 +137,12 @@ EXPORT = re.compile(r"^\s*export\s+(?:const|function|class|interface|type|enum|a
 # before `?`, which this does not match; `foo?.(` is a call, excluded by requiring `:` next.
 OPTIONAL = re.compile(r"[A-Za-z_$][\w$]*\?:")
 # Single- and double-quoted literals plus backtick templates, which is where prompt text lives.
-# A comment is matched first and dropped, so a quoted word inside one is not read as a literal, and
-# a literal that is a module path is dropped with its `from` or `import(`. So are the key names in a
-# `Pick<T, "a" | "b">`, which name fields of a type and reach no reader.
-LITERAL = re.compile(
-    r"//[^\n]*|/\*.*?\*/"
-    r"""|(?:\bfrom\s+|\bimport\s*\(?\s*)["'][^"'\n]*["']"""
-    r"|\b(?:Pick|Omit)<[^<>;]*>"
-    r'|"(?:[^"\\\n]|\\.)*"' r"|'(?:[^'\\\n]|\\.)*'" r"|`(?:[^`\\]|\\.)*`",
-    re.S,
-)
-# A relative import of another module in this tree, which is the only edge kind that counts:
-# a package import is not a coupling this repository can shorten.
-IMPORT = re.compile(r"""\bfrom\s+["'](\.[^"']*)["']|\bimport\s*\(\s*["'](\.[^"']*)["']""")
+LITERAL = re.compile(r'"(?:[^"\\\n]|\\.)*"' r"|'(?:[^'\\\n]|\\.)*'" r"|`(?:[^`\\]|\\.)*`", re.S)
+# An import of another module in this tree, by relative path or by a `#` subpath, which are the only
+# edge kinds that count: a package import is not a coupling this repository can shorten. v1 read
+# relative paths alone, which held there (8 `#` imports to 3,423 relative ones); v2 writes 347 of
+# its 1,184 as `#src/` or `#tools/`, so reading only `./` lost nearly a third of the graph.
+IMPORT = re.compile(r"""\bfrom\s+["']([.#][^"']*)["']|\bimport\s*\(\s*["']([.#][^"']*)["']""")
 # A finding, refusal or non-result code: kebab-case string literals in a `code`/`kind` position.
 CODE = re.compile(r"""\b(?:code|kind|check)\s*:\s*["']([a-z][a-z0-9]*(?:-[a-z0-9]+){1,6})["']""")
 ENV = re.compile(r"""(?:Bun\.env|process\.env)(?:\.([A-Z][A-Z0-9_]*)|\[["']([A-Z][A-Z0-9_]*)["']\])""")
@@ -186,8 +156,7 @@ class Measure:
     nonblank: int = 0
     test_nonblank: int = 0
     decisions: int = 0
-    cyclomatic_entries: int = 0
-    cyclomatic_excess: int = 0
+    decision_density: float = 0.0
     import_edges: int = 0
     mean_fanout: float = 0.0
     hub_files: int = 0
@@ -197,8 +166,9 @@ class Measure:
     wide_signatures: int = 0
     refusal_codes: int = 0
     env_knobs: int = 0
+    waived_findings: int = 0
+    copied_ceilings: int = 0
     prompt_bytes: int = 0
-    doc_bytes: int = 0
 
 
 LABEL = {
@@ -206,8 +176,7 @@ LABEL = {
     "nonblank": "nonblank source lines",
     "test_nonblank": "nonblank test lines",
     "decisions": "decision points (proxy)",
-    "cyclomatic_entries": "cyclomatic debt: functions",
-    "cyclomatic_excess": "cyclomatic debt: excess",
+    "decision_density": "decisions per 100 lines",
     "import_edges": "internal import edges",
     "mean_fanout": "mean fan-out",
     "hub_files": "hub files (fan-out >= p90)",
@@ -217,16 +186,18 @@ LABEL = {
     "wide_signatures": "signatures with 5+ params",
     "refusal_codes": "distinct refusal codes",
     "env_knobs": "environment knobs",
+    "waived_findings": "waived findings",
+    "copied_ceilings": "copied-file ceilings",
     "prompt_bytes": "prompt literal bytes",
-    "doc_bytes": "model-read document bytes",
 }
 GROUPS = (
     ("how much is there", ("files", "nonblank", "test_nonblank")),
-    ("how much branching", ("decisions", "cyclomatic_entries", "cyclomatic_excess")),
+    ("how much branching", ("decisions", "decision_density")),
     ("how tangled", ("import_edges", "mean_fanout", "hub_files", "max_fanin")),
     ("how wide the interface", ("exports", "optional_fields", "wide_signatures")),
     ("how many rules", ("refusal_codes", "env_knobs")),
-    ("how much a model reads", ("prompt_bytes", "doc_bytes")),
+    ("how much is excused", ("waived_findings", "copied_ceilings")),
+    ("how much a model reads", ("prompt_bytes",)),
 )
 
 
@@ -264,26 +235,10 @@ def git(repo: str, *args: str) -> str:
 
 
 def blob(repo: str, rev: str, path: str) -> str:
-    """The file at `rev` as `git show` reads it, or "" where it is absent. The first read of a
-    revision takes all of its files through one `git cat-file --batch`: a `git show` per file was
-    a thousand processes a revision and 14 of the 16 seconds a two-revision read took."""
-    if rev not in TEXTS:
-        listed = git(repo, "ls-tree", "-r", "-z", rev).split("\0")
-        entries = [entry.split("\t", 1) for entry in listed if entry]
-        blobs = [(meta.split()[2], name) for meta, name in entries if meta.split()[1] == "blob"]
-        out = subprocess.run(
-            ["git", "-C", repo, "cat-file", "--batch"],
-            input="".join(f"{sha}\n" for sha, _ in blobs).encode(), capture_output=True, check=True,
-        ).stdout
-        TEXTS[rev], at = {}, 0
-        for _, name in blobs:
-            start = out.index(b"\n", at) + 1
-            end = start + int(out[at : start - 1].rsplit(b" ", 1)[1])
-            # The newline translation that `text=True` applied to what `git show` printed.
-            text = out[start:end].decode(errors="replace")
-            TEXTS[rev][name] = text.replace("\r\n", "\n").replace("\r", "\n")
-            at = end + 1
-    return TEXTS[rev].get(path, "")
+    done = subprocess.run(
+        ["git", "-C", repo, "show", f"{rev}:{path}"], capture_output=True, text=True, check=False
+    )
+    return done.stdout if done.returncode == 0 else ""
 
 
 def is_source(path: str) -> bool:
@@ -298,7 +253,7 @@ def literal_bytes(text: str) -> int:
     """Bytes of string-literal content. Comments carry no model-visible text, and a prompt file's
     own explanation of why a clause exists is often longer than the clause, so counting whole
     files would report the reasoning as prompt."""
-    return sum(len(m.group(0).encode()) - 2 for m in LITERAL.finditer(text) if m.group(0)[0] in "\"'`")
+    return sum(len(m.group(0).encode()) - 2 for m in LITERAL.finditer(text))
 
 
 def wide_signatures(text: str) -> int:
@@ -310,20 +265,38 @@ def wide_signatures(text: str) -> int:
     return count
 
 
-def cyclomatic_debt(repo: str, rev: str) -> tuple[int, int]:
-    """The repository's own ledger of functions over the ceiling. Shrink-only, so a fall here is a
-    real repayment rather than a measurement that moved."""
+def excused(repo: str, rev: str) -> tuple[int, int]:
+    """The two standing exemptions this repository writes down, both exact: answered lint sites
+    and files held at a size limit of their own. They take the place of v1's cyclomatic baseline,
+    which v2 does not carry (AGENTS.md §12.10: there is no complexity gate in v2)."""
+    rows = [line for line in blob(repo, rev, WAIVER_FILE).splitlines() if line.strip()]
     try:
-        baseline = json.loads(blob(repo, rev, BASELINE_FILE) or "{}")
+        policy = json.loads(blob(repo, rev, POLICY_FILE) or "{}")
     except json.JSONDecodeError:
-        return 0, 0
-    ceiling = re.search(r"CYCLOMATIC_CEILING\s*=\s*(\d+)", blob(repo, rev, CEILING_FILE))
-    limit = int(ceiling.group(1)) if ceiling else 21
-    counts = [c for functions in baseline.values() for c in functions.values() if isinstance(c, int)]
-    return len(counts), sum(max(0, c - limit) for c in counts)
+        policy = {}
+    # The first line is the column header; every line under it is one answer.
+    return max(0, len(rows) - 1), len(policy.get("copiedFileLimits", {}))
 
 
-def resolve(importer: str, target: str) -> str:
+def subpath_aliases(repo: str, rev: str) -> dict[str, str]:
+    """`"#src/*": "./src/*"` in `package.json`'s `imports` as `{"#src/": "src/"}`: how this
+    revision's `#` specifiers resolve, read from the file that owns the mapping."""
+    try:
+        imports = json.loads(blob(repo, rev, "package.json") or "{}").get("imports", {})
+    except json.JSONDecodeError:
+        return {}
+    return {
+        name.rstrip("*"): target.removeprefix("./").rstrip("*")
+        for name, target in imports.items()
+        if isinstance(target, str)
+    }
+
+
+def resolve(importer: str, target: str, aliases: dict[str, str]) -> str | None:
+    """The tree path an import names, or None for a `#` name the revision's map does not hold."""
+    if target.startswith("#"):
+        prefix = next((name for name in aliases if target.startswith(name)), None)
+        return None if prefix is None else aliases[prefix] + target[len(prefix):]
     parts = importer.rsplit("/", 1)[0].split("/")
     for piece in target.split("/"):
         if piece == ".":
@@ -344,6 +317,7 @@ def measure(repo: str, rev: str, per_file: bool) -> tuple[Measure, dict[str, int
     fanout: Counter[str] = Counter()
     fanin: Counter[str] = Counter()
     paths = set(p for p in git(repo, "ls-tree", "-r", "--name-only", rev).splitlines() if p)
+    aliases = subpath_aliases(repo, rev)
 
     for path in sorted(paths):
         if is_test(path) and path.endswith(SOURCE_SUFFIX):
@@ -362,7 +336,9 @@ def measure(repo: str, rev: str, per_file: bool) -> tuple[Measure, dict[str, int
         codes.update(m.group(1) for m in CODE.finditer(text))
         knobs.update(m.group(1) or m.group(2) for m in ENV.finditer(text))
         for match in IMPORT.finditer(text):
-            target = resolve(path, match.group(1) or match.group(2) or "")
+            target = resolve(path, match.group(1) or match.group(2) or "", aliases)
+            if target is None:
+                continue
             fanout[path] += 1
             fanin[target] += 1
         if per_file:
@@ -377,13 +353,11 @@ def measure(repo: str, rev: str, per_file: bool) -> tuple[Measure, dict[str, int
         p90 = ranked[min(len(ranked) - 1, int(len(ranked) * 0.9))]
         total.hub_files = sum(1 for count in fanout.values() if count >= p90)
     total.max_fanin = max(fanin.values(), default=0)
-    total.cyclomatic_entries, total.cyclomatic_excess = cyclomatic_debt(repo, rev)
+    total.decision_density = round(total.decisions / max(1, total.nonblank) * 100, 2)
+    total.waived_findings, total.copied_ceilings = excused(repo, rev)
     for path in PROMPT_FILES:
         if path in paths:
             total.prompt_bytes += literal_bytes(blob(repo, rev, path))
-    for path in DOC_FILES:
-        if path in paths:
-            total.doc_bytes += len(blob(repo, rev, path).encode())
     return total, lines_by_file
 
 
@@ -441,12 +415,8 @@ def main() -> int:
                   + f"  {delta(row[0], row[-1]):>10}  {pct(row[0], row[-1]):>7}")
 
     print("\nmodel-visible text, per composer")
-    for path in PROMPT_FILES + DOC_FILES:
-        whole = path in DOC_FILES
-        read = (lambda rev: len(blob(args.repo, rev, path).encode())) if whole else (
-            lambda rev: literal_bytes(blob(args.repo, rev, path))
-        )
-        sizes = [read(rev) for rev in revs]
+    for path in PROMPT_FILES:
+        sizes = [literal_bytes(blob(args.repo, rev, path)) for rev in revs]
         if any(sizes):
             steps = " -> ".join(f"{s:,}" for s in sizes)
             print(f"  {sizes[-1] - sizes[0]:>+7,}  {steps}  {path}")
@@ -457,7 +427,7 @@ def main() -> int:
             path: head_files.get(path, 0) - base_files.get(path, 0)
             for path in set(base_files) | set(head_files)
         }
-        rows = sorted((d for d in moved.items() if d[1]), key=lambda kv: (-abs(kv[1]), kv[0]))[:15]
+        rows = sorted((d for d in moved.items() if d[1]), key=lambda kv: -abs(kv[1]))[:15]
         if rows:
             print("\nlargest per-file line moves")
             for path, count in rows:

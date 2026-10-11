@@ -1,9 +1,9 @@
-// The pre-commit secret gate. Two modes, one vocabulary:
-//   --staged   the lines this commit ADDS (what .githooks/pre-commit runs)
-//   default    every tracked file (what test/secret-scan.test.ts runs, so the gate covers it)
-// The staged mode reads added lines only. A pre-commit hook cannot repair history, and re-reporting
-// a line that is already committed teaches the operator to pass --no-verify, which is the one
-// outcome that makes the gate worthless.
+// The secret scan before a commit, v1's tools/secrets/scan.ts. Two modes, one vocabulary:
+//   --staged   the lines this commit ADDS (what `bun run commit:check` runs)
+//   default    every tracked file (what test/secret-scan.test.ts runs, so CI covers it)
+// The staged mode reads added lines only. A check before a commit cannot repair history, and
+// re-reporting a line that is already committed teaches the operator to skip the check, which is
+// the one outcome that makes it worthless.
 
 import { existsSync, readFileSync, statSync } from "../../src/meta/filesystem.ts";
 import { type SecretHit, WAIVER, scanText } from "./rules.ts";
@@ -110,7 +110,7 @@ function main(): void {
       "Remove the value, or — if it is a fixture — make it obviously not a credential:",
       "assemble it from parts at run time, or add the word `fake` to it. A line that must",
       `keep its literal shape carries \`${WAIVER}\` in a comment, stating the decision in the diff.`,
-      "`git commit --no-verify` bypasses this gate; a value that leaves the machine is public.",
+      "A value that leaves the machine is public.",
     ].join("\n"),
   );
   runtimeProcess.exitCode = 1;

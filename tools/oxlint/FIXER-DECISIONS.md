@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Fifty-seven rules are registered: forty `ana` and seventeen `anti-slop`, every one of them
-`error`. **Fifteen carry a fixer. Forty-two report and leave the repair to the author.**
+Fifty-six rules are registered: thirty-nine `ana` and seventeen `anti-slop`, every one of them
+`error`. **Fifteen carry a fixer. Forty-one report and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, which ones sit right on the edge and are
@@ -86,7 +86,7 @@ they are reversing a decision, and should say so.
 `no-repeated-string-literal`'s source half belongs on this list too; it is above because the rule as
 a whole ships a fixer.
 
-## The rest: thirty-three where the rule does not hold the repair
+## The rest: thirty-two where the rule does not hold the repair
 
 Not borderline. In each of these the missing piece is information the rule has no access to, and
 every one of them says so in its own doc comment — `test/oxlint-rule-contract.test.ts` refuses a
@@ -103,15 +103,17 @@ for a reason the rule states more precisely itself.
   `no-positional-boolean-parameter`, `prefer-entries-over-keys-lookup`. Which two words name the
   states, what the extracted function is called, what the entry's value is called — that is the
   change, not a step towards it.
-- **The repair is a structure the rule cannot choose** (11): `no-deep-nesting`, `no-tangled-ternary`,
+- **The repair is a structure the rule cannot choose** (10): `no-deep-nesting`, `no-tangled-ternary`,
   `no-inline-block-reducer`, `no-side-effect-in-predicate`, `prefer-lookup-over-equality-chain`,
   `no-reduce-accumulator-copy`, `no-arms-differing-in-one-term`, `no-hand-rolled-sleep`,
-  `no-single-use-const-chain`, `no-hand-read-argv`, `no-hand-read-controller-evidence`. Each
-  offers two or three correct answers — guard clause or extraction, `Record` or `Map` or
-  `satisfies`, mutating accumulator or pipeline, and for the sleep either of the two exact waits
-  or an admitted real clock, for an argument read the `runCommand` spec that declares the script's
-  options, and for a hand-read terminal the run selection `openRecordedRun` replaces as well — and
-  which one a site wants is the reading.
+  `no-single-use-const-chain`, `no-hand-read-argv`. Each offers two or three correct answers —
+  guard clause or extraction, `Record` or `Map` or `satisfies`, mutating accumulator or pipeline,
+  and for the sleep either of the two exact waits or an admitted real clock, and for an argument
+  read the `runCommand` spec that declares the script's options — and which one a site wants is
+  the reading. `no-hand-read-controller-evidence` was in this group until 10 October, when it was
+  removed: it sent a skill script to `openRecordedRun` and the controller's `opening.json` and
+  `terminal.json`, and v2 has none of the three, since a run here is its log, opened through
+  `tools/runs/`.
 - **The repair reaches other files** (5): `no-pass-through-wrapper`, `no-lifetime-outside-owner`,
   `no-module-mocking`, `no-object-parameters`, `no-inline-slop-answer`. Deleting the wrapper means
   editing every caller; moving a kill to its owner is two files and usually a deletion; an
@@ -341,7 +343,7 @@ enforceable, because a clean lint no longer means what it says. **Fifteen is the
 under the four conditions, not a target that was missed.**
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call. That is what these forty-two are for.
+what is wrong and makes the call. That is what these forty-one are for.
 
 ## A fixer's finding has no answer
 

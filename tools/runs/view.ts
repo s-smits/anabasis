@@ -24,7 +24,7 @@ import { epochLine, epochsOf, regressionLine, regressionOf } from "#src/builder/
 import { decide } from "#src/builder/decide.ts";
 import { decidedLine } from "#src/builder/move.ts";
 import { openingOf, planOf } from "#src/builder/opening.ts";
-import { type Campaign, campaignOf, type Handover } from "#src/builder/handover.ts";
+import { type Campaign, campaignOf, type Handover, openSteps } from "#src/builder/handover.ts";
 import { shortDigest } from "#src/builder/past.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
@@ -48,16 +48,28 @@ const STANDINGS = [
   ["failing-again", "failing again"],
 ] as const;
 
+const MINUTE_MS = 60_000;
+
 const dollars = (billed: number) => `$${billed.toFixed(2)}`;
 const row = (id: string, said: string) => `  ${id.padEnd(11)} ${said}`;
 
+/** How a session stands, said for its line: its ending; or cut, where the campaign went past it;
+ *  or open at the log's end, with its turns so far and when it last wrote, `now` being when the
+ *  view reads. An open session that last wrote long ago is likely a process stopped with no
+ *  ending, which the log cannot say. */
+function stateOf(step: Exclude<Handover, { readonly step: "comparison" }>, now: number): string {
+  if (step.ended !== null) return step.ended;
+  if (step.cut) return "cut before its end: a later step began without it";
+  const minutes = Math.max(0, Math.round((now - Date.parse(step.last)) / MINUTE_MS));
+  return `open at the log's end, ${plural(step.turns, "turn")} so far, last wrote at ${step.last.slice(11, 19)}Z (${plural(minutes, "minute")} before this reading)`;
+}
+
 /** One step's handover as a line. */
-function stepLine(step: Handover): string {
-  const ended = step.step === "comparison" ? "" : (step.ended ?? "running, or cut before its end");
+function stepLine(step: Handover, now: number): string {
   if (step.step === "examiner") {
     return row(
       step.id,
-      `Examiner session, ${ended}: ${String(step.proposed)} proposed, ${String(step.held)} held out, ${String(step.refused)} refused · ${dollars(step.billed)}`,
+      `Examiner session, ${stateOf(step, now)}: ${String(step.proposed)} proposed, ${String(step.held)} held out, ${String(step.refused)} refused · ${dollars(step.billed)}`,
     );
   }
   if (step.step === "builder") {
@@ -65,15 +77,19 @@ function stepLine(step: Handover): string {
       step.changed && step.harness !== null
         ? `it left ${shortDigest(step.harness)}`
         : "it left the harness as it was";
+    // A session with no end has left nothing yet.
+    const from = `from ${shortDigest(step.parent ?? "")}${step.ended === null ? "" : ` ${left}`}`;
     return row(
       step.id,
-      `Builder session, ${ended}: from ${shortDigest(step.parent ?? "")} ${left}, ${plural(step.practiceSolves, "practice solve")} · ${dollars(step.billed)}`,
+      `Builder session, ${stateOf(step, now)}: ${from}, ${plural(step.practiceSolves, "practice solve")} · ${dollars(step.billed)}`,
     );
   }
   const { tally, valid, rulings } = step;
+  // A comparison with no report is open or cut, as a session with no end is, and says its solves.
+  const unended = `${plural(step.solved, "solve")} ended, ${String(step.begun - step.solved)} ${step.cut ? "cut" : "open"}`;
   const read =
     step.reading === null
-      ? "no report yet"
+      ? `no report yet, ${step.cut ? "cut before it" : "open at the log's end"}: ${unended}`
       : `${tally === null ? "no task tallied" : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied`}, which reads ${step.reading}`;
   const ruled = [
     ...(rulings.earned > 0 ? [`${plural(rulings.earned, "rejection")} ruled earned`] : []),
@@ -97,8 +113,8 @@ function stepLine(step: Handover): string {
   );
 }
 
-/** A campaign's reading, a line each. */
-export function viewLines(name: string, campaign: Campaign): string[] {
+/** A campaign's reading, a line each, read at `now`. */
+export function viewLines(name: string, campaign: Campaign, now: number): string[] {
   const { supply, fails } = campaign;
   const checker =
     supply.faults === null
@@ -114,7 +130,7 @@ export function viewLines(name: string, campaign: Campaign): string[] {
       "set-up",
       `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted · ${checker} · reference: ${campaign.reference === null ? "the starter" : shortDigest(campaign.reference)}`,
     ),
-    ...campaign.steps.map(stepLine),
+    ...campaign.steps.map((step) => stepLine(step, now)),
     ...(fails.length === 0
       ? []
       : [row("practice", `${plural(fails.length, "failed practice solve")}: ${standing.join(", ")}`)]),
@@ -143,7 +159,11 @@ export function view(args: readonly string[]): void {
   const term = (flag: "level" | "trigger" | "target" | "practice", fallback?: string) =>
     values[flag] ?? opening?.terms[flag] ?? fallback;
   const target = term("target");
-  const lines = viewLines(name, campaignOf(events));
+  const campaign = campaignOf(events);
+  const lines = viewLines(name, campaign, Date.now());
+  // A move the command is making has no `campaign.move` until it ends, so the table is read on a
+  // log that does not hold its end yet.
+  const open = openSteps(campaign.steps);
   const decided = decide(
     events,
     planOf(
@@ -170,7 +190,9 @@ export function view(args: readonly string[]): void {
     "the climb",
     ...climb,
     ...beside,
-    "the table's move",
+    open.length === 0
+      ? "the table's move"
+      : `the table's move, on the log as it stands with ${open.join(", ")} open`,
     `  ${decidedLine(decided)}`,
   ]) {
     console.log(line);

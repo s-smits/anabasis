@@ -126,7 +126,8 @@ cut no solve of it at a limit is held out still and is left out of the scored se
 labels it; lane 8 names those.
 
 **E. case partition.** For each side, count passes, fails by kind and non-results by kind from
-`solve.finished`, and the solves that started and never finished. A fail of kind `rejected` has a
+`solve.finished`, the solves that started and never finished, and those open at the log's
+end, which a later step's start or end, or the campaign's end, would have marked cut. A fail of kind `rejected` has a
 verdict with the refusing checks; `wall-ended`, `context-ended` and `no-answer` have none. Recount
 any figure a report quotes from these rows before a rate is read.
 
@@ -135,6 +136,9 @@ dollars against its budget. For each Builder session: its parent, the digest it 
 whether it changed anything, whether what it left opens, its practice solves and the reading of each
 comparison of the harness it left, which a comparison names by its own session (`g-N`). For each Examiner session: how it ended, what it proposed and what stood
 feasible. A session that started and never finished is refused by its round and is named here.
+A step still open at the log's end is named on a line of its own, with its turns, what it held
+out or practised and when it last wrote, or, for a comparison, its solves ended and open: the
+campaign command writes a move's `campaign.move` when the move ends, so the moves leave it out.
 
 ## Lanes 1–31
 
@@ -715,9 +719,11 @@ are fails. Read each non-result's kind and reason: `provider` after its retries,
 `check`, `moved-files`, `killed`. Say whether reruns fell evenly on the two harnesses, since a
 side whose bad solves are rerun and whose good ones stand is favoured: `NON-RESULTS` gives each
 comparison's count under the reference harness and under the others. A solve that started and
-never finished was cut by a kill; its root may still be on disk. So was an Examiner session with
-a start and no ending, unless it is still running: its id is spent, and what it proposed before
-the cut is in the log and held out. A fail of kind `broken-harness` fails every task alike. For a session that crashed, name the turn and whether
+never finished, where the campaign went past it, was cut by a kill; its root may still be on disk.
+So was an Examiner session with a start and no ending that the campaign went past: its id is
+spent, and what it proposed before the cut is in the log and held out. Both triggers name what is
+open at the log's end apart: it is running, or was stopped by `bun run runs stop`, which writes no
+ending, and `bun run runs pulse` says whether its process is alive. A fail of kind `broken-harness` fails every task alike. For a session that crashed, name the turn and whether
 its round was refused as the rule says. The decision it changes is whether a count is trusted as
 written; it routes to `host` (`src/solve/run.ts`, `src/kernel/solve.ts`) for a kind that hides a
 cause, `environment` for a provider or the machine, and `harness/tools` for a harness that does

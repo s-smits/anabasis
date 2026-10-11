@@ -458,6 +458,14 @@ describe("a campaign run by its log", () => {
       why: "the operator asked for other tasks: the step was too easy",
     });
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 50 } });
+    // Two totals left before one boundary: the newest stands there and at the next, and the record
+    // answers both, so the older is never applied after it.
+    wordCommand(["--name", name, "--budget", "10"]);
+    wordCommand(["--name", name, "--budget", "100"]);
+    await harnessBuilder([...flags, "--moves", "0"], seats);
+    expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
+    await harnessBuilder([...flags, "--moves", "0"], seats);
+    expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");

@@ -227,7 +227,12 @@ function promptOf(values: Values, was: Opening | null): string | null {
  * What the campaign runs by: its record, or what this command names where that is another. A paid
  * campaign needs its total, and a rehearsal's is none.
  */
-function opened(log: string, values: Values, seats: "paid" | "scripted", heard?: Word): Opening {
+function opened(
+  log: string,
+  values: Values,
+  seats: "paid" | "scripted",
+  heard: readonly Word[] = [],
+): Opening {
   const events = read(log);
   const was = openingOf(events);
   if (seats === "paid" && values.budget === undefined && was?.budget == null) {
@@ -267,8 +272,9 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
   }
   const reserve = values.reserve ?? String(was?.budget?.reserve ?? DEFAULTS.reserve);
   // A total the operator left as a word while the command ran stands over the flag it was
-  // started with, which is older (`word.ts`).
-  const told = heard?.dollars == null ? values.budget : String(heard.dollars);
+  // started with, which is older (`word.ts`), and the newest of several words stands over the rest.
+  const newest = heard.at(-1);
+  const told = newest?.dollars == null ? values.budget : String(newest.dollars);
   const dollars = told ?? (was?.budget == null ? undefined : String(was.budget.dollars));
   const named: Opening = {
     budget: dollars === undefined ? null : capRead(dollars, reserve),
@@ -317,17 +323,17 @@ function opened(log: string, values: Values, seats: "paid" | "scripted", heard?:
     // A campaign whose commands named no term records none, as before the opening kept them.
     ...keyIfDefined("terms", Object.keys(named.terms).length === 0 ? undefined : { ...named.terms }),
   };
-  // The record as it was written, less the word it answered: a record is written again where
+  // The record as it was written, less the words it answered: a record is written again where
   // what the campaign runs by is another, and where a word asked for it.
   const { answers: _answered, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
-  if (!values["dry-run"] && (heard !== undefined || !sameJsonValue(kept, record))) {
+  if (!values["dry-run"] && (heard.length > 0 || !sameJsonValue(kept, record))) {
     // A campaign that opens from a prompt has no folder until now: one over a stored pack got
     // its own when the pack was opened. The first live campaign from a prompt stopped here
     // (2026-10-09), since the test that covered it had made the folder for another reason.
     mkdirSync(dirname(log), { recursive: true });
     append(log, OPENED, {
       ...record,
-      ...keyIfDefined("answers", heard === undefined ? undefined : [heard.at]),
+      ...keyIfDefined("answers", heard.length === 0 ? undefined : heard.map(({ at }) => at)),
     });
   }
   return named;
@@ -726,9 +732,11 @@ export async function harnessBuilder(
   /** The move this run made last: an exam read here printed its faults as it was read. */
   let last: Decided["move"] | null = null;
   for (let made = 0; ; made += 1) {
-    // A total the operator left as a word is what the campaign runs by from this move on.
-    const total = pendingWords(read(log)).findLast(({ word }) => word === "budget");
-    if (total !== undefined && !values["dry-run"]) opening = opened(log, values, paid, total);
+    // A total the operator left as a word is what the campaign runs by from this move on. The
+    // newest stands, and the record answers every one: until 11 October it answered the newest
+    // alone, and an older total left pending was applied at the next move over it.
+    const totals = pendingWords(read(log)).filter(({ word }) => word === "budget");
+    if (totals.length > 0 && !values["dry-run"]) opening = opened(log, values, paid, totals);
     const events = existsSync(log) ? read(log) : [];
     campaign ??= draftOf(events) === null ? null : await openCampaign(packNamed(values));
     const states = taskStates(events);

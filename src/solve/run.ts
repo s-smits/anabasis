@@ -273,10 +273,13 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
         sessionId: id,
         convertToLlm: (messages) => messages,
         toolExecution: "sequential",
-        // After a turn's tool calls have run, so an answer submitted in the last turn is held.
+        // After a turn's tool calls have run, so an answer submitted in the last turn is held. An
+        // accepted submit ends the solve here as its description says, and not only through its
+        // `terminate`, which pi heeds when every call of the turn returns it: on esp32 (12 October)
+        // 3 of 238 turns sent a submit beside a shell call, and the model was asked on.
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
-          return spent(turns, limits) ? { action: "end" } : undefined;
+          return spent(turns, limits) || desk.submitted !== undefined ? { action: "end" } : undefined;
         },
         getFollowUpMessages: async () => {
           if (desk.submitted !== undefined || prompts >= limits.turns) return [];

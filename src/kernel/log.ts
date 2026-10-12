@@ -52,8 +52,8 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  had stopped the campaign (`src/builder/admission.ts`).
  *  The four `campaign.*` kinds beside the setting are the Harness Builder's
  *  (`tools/d2/harness-builder.ts`): `campaign.opened` is what a campaign runs by, its total budget
- *  and its seats; `campaign.move` is a move it made, written as the move began, with the row of
- *  its decision table that chose it and its reason (`src/builder/decide.ts`), the host's load; and
+ *  and its seats; `campaign.move` is a move it made, written as the move began, with the code of
+ *  the row of its decision table that chose it and its reason (`src/builder/decide.ts`), the host's load; and
  *  `campaign.ended` is how the campaign ended, which is its last event. `campaign.word` is a word
  *  the operator left for a running campaign (`tools/d2/word.ts`): to stop, to have other tasks
  *  written, another total budget or the cause of an A/A that read a step. It is read at the next

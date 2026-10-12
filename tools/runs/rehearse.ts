@@ -220,7 +220,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         // A solve scripted to give no answer submits with none written, and needs none on record.
         // One scripted to answer a task with no answer on record gives none and is named at the
         // end as strayed: until 10 October it ended the campaign, and a rehearsal of the control
-        // after a promotion (`onReference`) fell at the first task no solve had ever answered.
+        // after a promotion (`heldSince`, `decide.ts`) fell at the first task no solve had ever answered.
         // A copied instance (`--supply`) is answered as the task it copies.
         const copied = asRecord(asRecord(task.publicInput)?.[COPY])?.of;
         const known = answers.get(task.taskId) ?? (isString(copied) ? answers.get(copied) : undefined);

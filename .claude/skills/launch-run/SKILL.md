@@ -40,7 +40,8 @@ setting does not change, and another setting is another campaign (`tools/d2/sett
 `--dry-run` prints the next move and makes none: it answers "is this campaign ready for its next
 move, and which is it?". `--moves N` makes at most that many. A campaign runs unattended: it
 freezes an exam whose reading holds no fault and promotes the harness the rule names without
-waiting. `--attended` makes both wait for the operator's word; add it only when the operator asks.
+waiting. `--attended` makes both wait for the operator's word, and the campaign keeps it until
+`--no-attended`; add it only when the operator asks.
 
 Three things about the shell line:
 

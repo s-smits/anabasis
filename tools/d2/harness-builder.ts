@@ -55,9 +55,9 @@
  *
  * **A campaign runs unattended** (row F29; the operator, 12 October): it freezes an exam whose
  * reading holds no fault and promotes a step read twice and not lost at the full limit. Under
- * `--attended` both wait for the operator's word, and a promotion stops the command with the
- * promotion to make. Going on past the stop rule takes `--past-stop "<why>"` either way. Until
- * 12 October the command waited unless `--unattended` gave the word once for the campaign.
+ * `--attended`, kept by the opening until `--no-attended`, both wait for the operator's word and a
+ * promotion stops the command. Going on past the stop rule takes `--past-stop "<why>"` either way.
+ * Until 12 October the word was `--unattended`, and a reopen that did not repeat it lost it.
  *
  * **A word the operator leaves** (`word.ts`, row F50) is read at each move's boundary: a stop
  * ends the campaign there, other tasks are written first, and another total is what the campaign
@@ -191,7 +191,7 @@ const OPTIONS = {
   handover: { type: "string" },
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
-  attended: { type: "boolean", default: false },
+  attended: { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
@@ -209,7 +209,7 @@ const flag = (name: string, value: string | undefined): string[] =>
   value === undefined ? [] : [`--${name}`, value];
 
 function flagsOf(args: readonly string[]) {
-  return parseArgs({ args: [...args], options: OPTIONS }).values;
+  return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true }).values;
 }
 
 /** Whether a command names a stored pack, by any of the four flags that name one together. */
@@ -283,6 +283,7 @@ function opened(
     sessions: values.sessions === undefined ? (was?.sessions ?? DEFAULTS.sessions) : Number(values.sessions),
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
+    attended: values.attended ?? was?.attended ?? false,
     prompt,
     solver: prompt === null ? null : solver,
     // Each term as this command names it, and as the record holds it where it names none. The
@@ -318,6 +319,7 @@ function opened(
     seats: Object.fromEntries(
       SEATS.map((each) => [each, named.seats[each] === null ? null : { ...named.seats[each] }]),
     ),
+    ...keyIfDefined("attended", named.attended || undefined),
     // A campaign over a stored pack records neither, as before a campaign could open from a prompt.
     ...keyIfDefined("prompt", named.prompt ?? undefined),
     ...keyIfDefined("solver", named.solver === null ? undefined : { ...named.solver }),
@@ -495,7 +497,7 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
   const pack = packOf(values);
   const { builder, examiner } = opening.seats;
   if (decided.move === "accept") {
-    await acceptCommand([...pack, ...flag("admit", values.admit), ...(values.attended ? [] : ["--freeze"])]);
+    await acceptCommand([...pack, ...flag("admit", values.admit), ...(opening.attended ? [] : ["--freeze"])]);
     return { ...keyIfDefined("admitted", values.admit === undefined ? undefined : admitsOf(values)) };
   }
   if (decided.move === "prepare") {
@@ -784,9 +786,9 @@ export async function harnessBuilder(
       return decided;
     }
     if (values["dry-run"] || made >= most) return decided;
-    if (decided.move === "promote" && values.attended) {
+    if (decided.move === "promote" && opening.attended) {
       console.log(
-        `under --attended a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${decided.harness} --yes, or run this command without --attended`,
+        `under --attended a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${decided.harness} --yes, or run this command with --no-attended`,
       );
       return decided;
     }

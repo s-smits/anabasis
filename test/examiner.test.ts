@@ -491,7 +491,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     // count alone, and the practice task is in none.
     expect(heard(read(s.log), tasks).counts).toBe(
       [
-        "Counted by family from the same comparisons as the lines above: each task whose last comparison had the reference harness on one side, or that a later report set aside, and no other. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
+        "Counted from the same comparisons as the lines above, by family where every family counted holds two tasks or more and otherwise in a total alone: each task whose last comparison had the reference harness on one side, or that a later report set aside, and no other. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
         "- family fixture, 5 tasks: 2 told apart, won by the other harness 2 and by the reference harness 0; 1 tied with both harnesses valid in every solve; 1 tied with neither valid in any solve, of which 0 with a valid answer on record; 0 tied otherwise; 1 set aside on a rejection not settled.",
         "Each count rests on 2 solves a side of the task's last comparison. The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
       ].join("\n"),
@@ -509,7 +509,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       "- x-1-002 (family fixture): the reference harness answered it validly in every solve",
     );
     expect(opening).toContain(
-      String.raw`- x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled; no valid answer to it is on record\n\nCounted by family from the same comparisons as the lines above`,
+      String.raw`- x-1-005 (family fixture): disputed: a rejection of an answer to it is not settled; no valid answer to it is on record\n\nCounted from the same comparisons as the lines above`,
     );
     expect(opening).toContain("- family fixture, 5 tasks: 2 told apart, won by the other harness 2");
     // Which harness won, how many solves failed and what a solver answered are not the author's.
@@ -586,7 +586,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       counts: null,
     });
     expect(heard([], [])).toEqual({ lines: [], counts: null });
-    expect(s.sent[0]).not.toContain("Counted by family");
+    expect(s.sent[0]).not.toContain("Counted from the same comparisons");
   });
 
   it("counts by family with a total the tasks read on the reference's side, and none in practice, refused or last compared between two other harnesses", () => {
@@ -661,10 +661,10 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       "b-3 (family slab): in use as practice, and so never scored",
     ]);
     // a-2, b-3 and b-4 were each scored by c-1 and are in no count: the three lines read on the
-    // reference's side are the three the total counts.
+    // reference's side are the three the total counts. Family beam counts one task, a-1, so its
+    // row would be a-1's result: the rows by family fold into the total. Until 12 October beam's
+    // row said which side won a-1, and esp32's 40 families each held one task.
     expect(counts?.split("\n").slice(1)).toEqual([
-      "- family beam, 1 task: 1 told apart, won by the other harness 1 and by the reference harness 0; 0 tied with both harnesses valid in every solve; 0 tied with neither valid in any solve, of which 0 with a valid answer on record; 0 tied otherwise; 0 set aside on a rejection not settled.",
-      "- family slab, 2 tasks: 1 told apart, won by the other harness 0 and by the reference harness 1; 0 tied with both harnesses valid in every solve; 0 tied with neither valid in any solve, of which 0 with a valid answer on record; 1 tied otherwise; 0 set aside on a rejection not settled.",
       "- every family, 3 tasks: 2 told apart, won by the other harness 1 and by the reference harness 1; 0 tied with both harnesses valid in every solve; 0 tied with neither valid in any solve, of which 0 with a valid answer on record; 1 tied otherwise; 0 set aside on a rejection not settled.",
       "Each count rests on 2 to 3 solves a side of the task's last comparison. The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
     ]);
@@ -673,6 +673,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         /: the reference harness answered it validly in (every|some|no) solve/.test(line),
       ),
     ).toHaveLength(3);
+    // One task counted alone is no count at all: it would be that task's result.
+    expect(heard(events, tasks.slice(0, 1)).counts).toBeNull();
     // Neither the lines nor the counts name a harness.
     expect([...lines, counts].join("\n")).not.toMatch(/\bh[1-5]\b/);
   });

@@ -17,6 +17,7 @@ import {
   decidedByObjective,
   detectable,
   falseRate,
+  marginOf,
   type ObjectiveRule,
   objectiveRuleIn,
   type Paired,
@@ -31,7 +32,7 @@ import {
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { unsolved, whole } from "../kernel/reports.ts";
+import { lastReports, unsolved, whole } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -101,8 +102,16 @@ export interface Report {
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
    *  where it holds four or more of a task: how often two of its solves of a task
-   *  disagree (`flips`), and its earlier solves against its later ones, the drift (`drift`). */
-  readonly noise: (Tested & { readonly flips: number | null; readonly drift: Tally }) | null;
+   *  disagree (`flips`), its earlier solves against its later ones, the drift (`drift`), and the
+   *  objective's margin its own spread sets, which a later comparison reads by (`marginOf`,
+   *  `marginRead`), null where the objective measured no two valid answers of one task. */
+  readonly noise:
+    | (Tested & {
+        readonly flips: number | null;
+        readonly drift: Tally;
+        readonly margin: ReturnType<typeof marginOf>;
+      })
+    | null;
   /** The tally were every rejection that set a task aside to stand; null when no task is set aside. */
   readonly counted: Tested | null;
   /** The task versions tallied. */
@@ -396,6 +405,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
             ...scored(itself("mirrored")),
             flips: flipsOf(itself("mirrored")),
             drift: tally(itself("in-order")),
+            margin: marginOf(itself("mirrored")),
           }
         : null,
     counted: pairs.length === first.pairs.length ? null : scored(first.pairs),
@@ -423,6 +433,21 @@ function flipsOf(pairs: readonly Paired[]): number | null {
       : (valid * (solves.length - valid)) / ((solves.length * (solves.length - 1)) / 2);
   });
   return each.length === 0 ? null : each.reduce((sum, one) => sum + one, 0) / each.length;
+}
+
+/** The objective's margin a comparison reads by where no command names one (the overhaul plan's
+ *  P2): the one the last A/A on record before comparison `id` began set (`marginOf`), with the
+ *  pairings it read; null where none had measured two valid answers of one task, and `MARGIN`
+ *  stands. Read as the log stood at the start, a comparison gone on from its log reads it again. */
+export function marginRead(events: readonly LogEvent[], id: string): ReturnType<typeof marginOf> {
+  const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === id);
+  const set = lastReports(began === -1 ? events : events.slice(0, began)).flatMap(({ data }) => {
+    const found = asRecord(asRecord(data.noise)?.margin);
+    return isNumber(found?.margin) && isNumber(found.pairings)
+      ? [{ margin: found.margin, pairings: found.pairings }]
+      : [];
+  });
+  return set.at(-1) ?? null;
 }
 
 /** The comparison of the same two harnesses that began before `fixed` did, and the tasks both

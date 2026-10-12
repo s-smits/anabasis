@@ -620,9 +620,9 @@ bun run runs pulse | stop <name> | replay | seed | zip
 ### Defaults, and a first flag line
 
 Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.02
-(`--level`, since 12 October; 0.10 before) and trigger 0.25 (`--trigger`), an objective margin of
-0.01 (`--margin`), a stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars
-a solve (`--reserve`),
+(`--level`, since 12 October; 0.10 before) and trigger 0.25 (`--trigger`), an objective margin the
+last A/A sets from the reference's own spread, 0.01 before one (`--margin` names another), a
+stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve (`--reserve`),
 `--parent latest`, `--reference promoted`, which is the harness last promoted and the starter
 until one is; a Builder session of 240 minutes, 300 turns and 24 practice solves; a solve of
 120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`

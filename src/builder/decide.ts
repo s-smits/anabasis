@@ -4,83 +4,49 @@
  * A campaign is a loop of moves over one log (`docs/plan.md`, "The process"): the exam is read,
  * tasks are written, a Builder builds, two harnesses are compared, and then something has to say
  * what comes next. Until 2026-10-09 a session said it, by a skill's walk of eight links and with
- * the operator, and the source only named the moves that may start.
- * This is the plan's decision table as one function: it takes the log and the campaign's plan and
- * returns one move with its reason, or an ending.
- *
- * It decides which move, and nothing of a move's content: what a harness holds, what a task asks
- * and how it is solved stay a model's. Its rows are asked of one reading of the log, made once
- * (`groundOf`, `ground.ts`), which adds no fold beside the owners it reads: the supply and what a
- * comparison is short of (`admission.ts`), the stop rule and the room a report shows
- * (`reports.ts`), the reference harness and the last one a session left.
+ * the operator. This is the plan's decision table as one function: it takes the log and the
+ * campaign's plan and returns one move with its reason, or an ending. It decides which move, and
+ * nothing of a move's content: what a harness holds, what a task asks and how it is solved stay a
+ * model's. Its rows are asked of one reading of the log, made once (`groundOf`, `ground.ts`).
  *
  * The order it asks in:
  *
- * 0. The operator's word, where one was left and nothing has acted on it: a stop ends the
- *    campaign there, and a word for other tasks has them written once the exam stands.
- * 1. The exam. A campaign that opened from a prompt has it drafted, three drafts at most. A
- *    checker nobody has read is read, and one whose reading holds a fault that nobody froze ends
- *    the campaign: the exam was not accepted. It is read again where the operator's command
- *    admits a check the last reading did not hold admitted.
- * 2. The tasks. A pack's tasks are taken in, practice is released, and a campaign with no task
- *    has some written.
- * 3. The budget, which ends the campaign where less is left than one solve is held at, or than
- *    the next comparison would bill by what the last one did; then the provider, where as many
- *    Builder or Examiner sessions in a row as `CRASHES` crashed before they held out a task or
- *    changed a harness, which ends it on its environment, to go on from when run again; and the
- *    stop rule, which ends it unless the operator said to go on.
- * 4. A comparison that began and has not reported goes on. Then the control: where the epoch's
- *    first A/A read the reference against itself as a step either way, its two sides are not
- *    interchangeable and no comparison against it reads anything, so the campaign ends on its
- *    control until the operator leaves the cause on record (`--cause`, `tools/d2/word.ts`);
- *    unattended, that is a typed ending the operator reads, never a wait (12 October).
- * 5. The reference's room on the tasks, read from the last comparison it was in, whichever side
- *    it took: where it answered nearly all of them, the tasks change, to ones it fails, and a
- *    comparison against it says whether they do. After a promotion that is the comparison the
- *    harness was promoted on; the reading is the same at every epoch, and no row is a
- *    promotion's own (the operator's word, 11 October: a second step is one of many).
- * 6. A step. A reading under the trigger is one draw, and the same two harnesses are compared
- *    again. The two read together clear the level (`readTwice`), and then the harness is
- *    promoted. Until 11 October the repeat read the reference against itself as well, once a
- *    setting; the table read only whether that was made and never what it read, and it is the
- *    operator's `--noise` on a checkpoint since (`docs/simplify.md`, B1).
- * 7. No step. Where the reference harness left no room, or neither harness answered, the tasks
- *    have to change: an Examiner session, until as many in a row as the campaign's patience held
- *    out nothing, two comparisons in a row read the tasks sessions held out and left none, or the
- *    last such round billed more than half of what is left (`roomEnd`, 12 October). With room,
- *    the harness did not help, and the Builder builds again.
- * 8. Nothing new to compare: the Builder builds, once the campaign holds as many scorable tasks
- *    as a comparison scores, before its first a repeat's as well (since 11 and 12 October; until
- *    then the first session built on whatever was held, and the Examiner wrote the rest between
- *    the session and the comparison). Something new: it is compared once the sessions before a
- *    comparison have run, or tasks are written where the comparison would be short of them.
- * 9. Before a Builder session, practice is brought towards the count the campaign names, where
- *    tasks were held out since the last release, and brought up again after a control that read
- *    room: the tasks that leave the reference room are what the Builder has to work on.
- * 10. Before a comparison the campaign holds as many scorable tasks as a comparison scores, or
- *    the Examiner writes more first, until as many sessions in a row as the campaign's patience add none. On 9 and 10
- *    October the two campaigns on the operator's host compared on 6 tasks where the setting
- *    asked for 12, and a harness came one win short of a step three times.
+ * 0. The operator's word: a stop ends the campaign, and a word for other tasks has them written.
+ * 1. The exam: drafted where the campaign opened from a prompt (three drafts at most), read where
+ *    nobody has read it, and the campaign ends where a reading holds a fault nobody froze. It is
+ *    read again where the operator's command admits a check the last reading did not.
+ * 2. The tasks: a pack's taken in, practice released, and some written where there are none.
+ * 3. The budget, where less is left than one solve is held at, or than the next comparison would
+ *    bill; then the provider, where `CRASHES` sessions in a row crashed (an environment ending, to
+ *    go on from when run again); and the stop rule, unless the operator said to go on.
+ * 4. A comparison that began goes on. Then the control: where the epoch's first A/A read the
+ *    reference against itself as a step either way, the campaign ends on its control until the
+ *    operator leaves the cause on record (`--cause`, `tools/d2/word.ts`), never a wait.
+ * 5. A reading a promotion owes (`owedReading`): a promoted harness's programs alone against it,
+ *    and the Starter once against each epoch's reference after set-up (epoch 0, 12 October).
+ * 6. The reference's room on the tasks, read from the last comparison it was in: where no task was
+ *    informative for it, the tasks change, and a comparison against it says whether they do.
+ * 7. A step. A reading under the trigger is one draw, and the same two harnesses are compared
+ *    again; the two read together clear the level (`readTwice`), and the harness is promoted.
+ * 8. No step. Where the reference had no room, or neither harness answered, the tasks change: an
+ *    Examiner session, until the campaign's patience of them held out nothing, two comparisons in
+ *    a row read the tasks sessions held out and left none, or the last such round billed more than
+ *    half of what is left (`roomEnd`). With room, the harness did not help, and the Builder builds.
+ * 9. Nothing new to compare: the Builder builds, once the campaign holds as many scorable tasks as
+ *    a comparison scores (before its first a repeat's as well). Something new is compared once the
+ *    sessions before a comparison have run (one before set-up stands, the plan's after), or tasks
+ *    are written where it would be short of them.
+ * 10. Before a Builder session, practice is brought towards the campaign's count where tasks were
+ *    held out since the last release, and again after a control that read room.
  * 11. No harness but the reference, and tasks held out since the last comparison: a control, the
- *    starter compared with the reference on them, before a Builder session is paid for. It reads
- *    whether the tasks leave the reference room (`roomOf`, on the reference's side), and goes
- *    through the rows of any comparison from there. On 10 October t-4, t-9 and t-10 each promoted
- *    a harness, had the Examiner write tasks for room, released one, ran three Builder sessions
- *    that changed nothing, since every practice solve passed, and stopped: whether the tasks left
- *    room was never measured.
+ *    starter compared with the reference on them, before a Builder session is paid for. On 10
+ *    October three campaigns built three times on tasks every practice solve passed.
+ * 12. An attempt past a false-promotion chance of a quarter this epoch waits for an A/A
+ *    (`riskRefused`), and a comparison the budget would cut is not begun (`afforded`).
  *
- * A setting is recorded once (`campaign.setting`, `tools/d2/setting.ts`) and does not change, so
- * every comparison of the log is read (`ground.ts`).
- *
- * A campaign runs at one budget, the one its setting names (`AGENTS.md`, section 1). Until 11
- * October the table also walked a ladder of shorter budgets: a comparison was read again at each
- * rung, the rule took the longest at which the reference harness was valid on at most half its
- * solves, a step read twice under a rung was read once more at the full limit, and the campaign
- * returned to rungs it had stood at. Every step a rung read on record was on tasks both
- * harnesses answered at the full limit, which measures a solver's set-up time and not its
- * method (t-10, the handover of 10 October in `docs/plan-history.md`), and the two ways to room
- * are the tasks (#167) and the objective (#184). The ladder went with `docs/simplify.md`, package
- * A. Room is read by which tasks were informative for the reference (`roomOf`).
+ * A setting is recorded once (`campaign.setting`) and does not change, so every comparison of the
+ * log is read. A campaign runs at one budget, the one its setting names; the ladder of shorter
+ * budgets it walked until 11 October went with `docs/simplify.md`, package A.
  */
 import { unadmitted } from "../kernel/acceptance.ts";
 import { flipP, readTwice, triggered } from "../kernel/compare.ts";
@@ -91,6 +57,7 @@ import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shap
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { supplyOf } from "./admission.ts";
+import { epochsOf } from "./climb.ts";
 import { type Compared, crashedRun, type Ground, groundOf, idleDrafts, pairOf, type Plan } from "./ground.ts";
 import { build, compare, type Decided, end, type Fresh, short, STEP } from "./move.ts";
 import { pendingWords } from "./word.ts";
@@ -110,6 +77,8 @@ const SETTING = "campaign.setting";
 const ROOMLESS = 2;
 const ROOM = "room";
 const PROMOTED = "promoted";
+/** The false-promotion chance this epoch past which an attempt waits for an A/A (`riskRefused`). */
+const RISK = 0.25;
 /** What an Examiner session's reason adds where the tasks written since the comparison are too
  *  few yet: without it two sessions in a row give one reason, as the first campaign's did. */
 const fewYet = (since: number): string =>
@@ -339,9 +308,31 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
   if (control !== null) return end("control", control);
   const next =
     owedReading(ground) ?? afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
-  if (next.move === "compare") return afforded(ground, next);
+  if (next.move === "compare") return riskRefused(ground, next) ?? afforded(ground, next);
   if (next.move !== "build") return next;
   return toPractise(ground, supply) ?? unshown(ground) ?? next;
+}
+
+/**
+ * An attempt refused past a false-promotion chance of a quarter this epoch (the overhaul plan's
+ * M2.5): P4's union bound over the attempts under the reference, indicative or not
+ * (`falsePromotion`, `climb.ts`), until an A/A has run since the last report, which a comparison of
+ * four solves a side carries, or the operator leaves a cause (`--cause`). Null where it goes on.
+ */
+function riskRefused(ground: Ground, next: Extract<Decided, { move: "compare" }>): Decided | null {
+  const { events, all } = ground;
+  const risk = epochsOf(events).at(-1)?.falsePromotion;
+  const last = all.findLast(({ reported }) => reported !== null);
+  const at = last?.reported ?? Number.POSITIVE_INFINITY;
+  const heard = events.some(
+    ({ kind, data }, index) => index > at && kind === "campaign.word" && data.word === "cause",
+  );
+  const unsafe = risk !== undefined && risk.union > RISK && last !== undefined;
+  if (next.fresh !== "latest" || !unsafe || heard || asRecord(last.report?.noise) !== null) return null;
+  return end(
+    "control",
+    `a false promotion is at most ${String(Math.round(100 * risk.union))}% over ${plural(risk.attempts, "attempt")} under this reference, past a quarter, and comparison ${last.id} read no A/A: run one (tools/d2/checkpoint.ts --noise), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again`,
+  );
 }
 
 /**

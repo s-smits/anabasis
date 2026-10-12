@@ -606,6 +606,30 @@ describe("after a promotion", () => {
   });
 });
 
+describe("the false-promotion chance", () => {
+  it("refuses an attempt past a quarter this epoch until an A/A has run, or the operator leaves a cause", () => {
+    // One attempt read at a level of 0.3, with no A/A on record: its bound is the level, past a quarter.
+    const risky = [
+      ...SET_UP,
+      built("b-1", "h1"),
+      ...compared("g-1", "h1", "no-step", { extra: { frontier: { wins: 4, losses: 4 }, level: 0.3 } }),
+      built("b-2", "h2"),
+    ];
+    expect(move(risky)).toEqual({
+      move: "end",
+      ending: "control",
+      why: "a false promotion is at most 30% over 1 attempt under this reference, past a quarter, and comparison g-1 read no A/A: run one (tools/d2/checkpoint.ts --noise), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again",
+    });
+    const cause = event("campaign.word", { word: "cause", why: "the host was loaded" });
+    expect(move([...risky, cause])).toMatchObject({ move: "compare", fresh: "latest" });
+    // Under a quarter, it goes on.
+    const safe = risky.map((each) =>
+      each.kind === "comparison.reported" ? { ...each, data: { ...each.data, level: 0.02 } } : each,
+    );
+    expect(move(safe)).toMatchObject({ move: "compare", fresh: "latest" });
+  });
+});
+
 describe("the readings a promotion owes", () => {
   const stepped = (id: string, fresh: string, old: string) => [
     ...compared(`${id}a`, fresh, "step", { old }),

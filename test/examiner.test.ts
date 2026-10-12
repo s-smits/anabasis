@@ -11,7 +11,16 @@ import {
 } from "@earendil-works/pi-ai";
 import { heard, SAID } from "../src/examiner/record.ts";
 import { SYSTEM_PROMPT } from "../src/examiner/prompt.ts";
-import { claimed, type ExamRequest, examine, keepHome, lastNote, seedHome } from "../src/examiner/session.ts";
+import {
+  claimed,
+  type ExamRequest,
+  examine,
+  examineWalled,
+  keepHome,
+  lastNote,
+  seedHome,
+} from "../src/examiner/session.ts";
+import { examinerDirs } from "../src/examiner/shell.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
@@ -28,9 +37,10 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { sha256OfFile } from "../src/meta/digest.ts";
 import { asRecord, isFunction, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join, resolve } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
@@ -399,6 +409,73 @@ describe("an Examiner session", () => {
     expect(claimed(read(s.log), "x-2")).toBeNull();
     await expect(examine(s.request)).rejects.toThrow("session x-1 is in the log already");
     expect(s.of("exam.started")).toHaveLength(1);
+  });
+});
+
+describe("an Examiner's walled shell, with the engines its campaign's checks run", () => {
+  /** The repository this suite runs in, which the wall closes to the Examiner's commands. */
+  const repo = resolve(import.meta.dir, "..");
+
+  it("runs the engine a check names, from where it lies, and no other program of its tree", async () => {
+    const bash = (command: string) => call("bash", { command });
+    let pack = "";
+    const s = setup([
+      bash("fixeng"),
+      bash("command -v solver-x || echo absent"),
+      // The tree the engine runs from is open again for reading, and the pack around it is not.
+      () => bash(`cat ${join(pack, "hidden.json")} 2>/dev/null || echo refused`),
+      bash(`(echo x > "$(command -v fixeng)") 2>/dev/null && echo written || echo refused`),
+      finish,
+      finish,
+    ]);
+    // A stored pack the wall closes: a check program that names one engine, a tool tree that holds
+    // it, its data beside it and a solver a v1 Builder left there, and the pack's hidden values.
+    pack = join(dirname(s.log), "pack");
+    const tools = join(pack, ".toolchain");
+    mkdirSync(join(pack, "checks"), { recursive: true });
+    // The fixture's check program, with its first check naming the engine it runs.
+    const brief = JSON.parse(readFileSync(join(dirname(s.log), "checks", "brief.json"), "utf8"));
+    brief.truthChecks[0].execution.requiredToolIds = ["fixeng"];
+    writeFileSync(join(pack, "checks", "brief.json"), JSON.stringify(brief));
+    mkdirSync(join(tools, "bin"), { recursive: true });
+    mkdirSync(join(tools, "share"), { recursive: true });
+    writeFileSync(join(tools, "share", "fixeng.dat"), "engine data\n");
+    // The engine finds its data beside where it was started from, as buffer's `phreeqc` does.
+    writeFileSync(join(tools, "bin", "fixeng"), '#!/bin/sh\ncat "$(dirname "$0")/../share/fixeng.dat"\n', {
+      mode: 0o755,
+    });
+    writeFileSync(join(tools, "bin", "solver-x"), "#!/bin/sh\necho solved\n", { mode: 0o755 });
+    writeFileSync(join(pack, "hidden.json"), `{"secret": "${SOLVER}"}\n`);
+    await examineWalled({
+      ...s.request,
+      repoRoot: repo,
+      packRoots: [pack],
+      diskBytes: 64 * 1024 ** 2,
+      engines: { checks: join(pack, "checks"), tools },
+    });
+    // The engine ran by name and read its own data; the solver beside it is on no path; the
+    // pack's other files stay closed; and the program that starts the engine is the host's.
+    expect(s.of("exam.call").map(({ tool, text }) => [tool, text])).toEqual([
+      ["bash", "engine data"],
+      ["bash", "absent"],
+      ["bash", "refused"],
+      ["bash", "refused"],
+      [
+        "finish",
+        "Noted, and the session goes on: the host does not yet have the tasks it needs from it. Propose further tasks, varying what they ask, and call finish again when you have none left worth proposing.",
+      ],
+      ["finish", "Finished."],
+    ]);
+    // The session's start names the engine by its digest, as the host pinned it.
+    expect(s.of("exam.started")[0]).toMatchObject({
+      engines: [{ name: "fixeng", sha256: sha256OfFile(join(tools, "bin", "fixeng")) }],
+    });
+    // It is told the engine by name, and that try_answer alone runs the checks.
+    expect(s.sent[0]).toContain(
+      "The engines the exam's checks run are installed, and run by name: fixeng. They compute; try_answer alone runs the checks on an answer.",
+    );
+    expect(s.sent[0]).not.toContain("solver-x");
+    expect(existsSync(examinerDirs(s.log, "x-1").host)).toBe(false);
   });
 });
 

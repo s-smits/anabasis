@@ -12,7 +12,8 @@
  * reference harness did on it in the last comparison that scored it, disputed, or no longer
  * scored, and whether a valid answer to it is on record, with those tasks counted by family beside
  * the lines (`src/examiner/record.ts`, 11 October). The home the
- * last session computed in, and what it said at its finish, are carried into this one.
+ * last session computed in, and what it said at its finish, are carried into this one, and its
+ * shell runs the engines the pack's checks run (12 October).
  *
  * No solve runs, so the session takes no flag for a solver, its limits or a reviewer, and costs
  * the Examiner's own turns. Until 2026-10-09 it put each instance to a stronger solver and to the
@@ -78,6 +79,9 @@ export async function examineCommand(args: readonly string[], session = examineW
     packRoots: campaign.packRoots,
     diskBytes: campaign.limits.diskBytes,
     verify: campaign.verify,
+    // The engines the campaign's checks run, installed in the Examiner's shell from the tree the
+    // verifier runs them from (`pinnedEngines`, `src/examiner/shell.ts`).
+    engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },
     // The budget every solve is held to now: the recorded setting's turns and minutes, or before
     // a setting is recorded the opening's full limit and the wall the command names
     // (`--solve-minutes`, which the campaign command gives from the campaign's terms), and the

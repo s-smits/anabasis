@@ -43,6 +43,7 @@ import {
 } from "../meta/json-runtime.ts";
 import { asRecord, isBoolean, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
+import { isSafePathSegment } from "../meta/path-segment.ts";
 import { capturedExecPath, capturedSpawn } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
@@ -99,11 +100,19 @@ export const CHECK_PROGRAM_CONTRACT = "check-program/v1";
 export type Task = PublicTask<JsonValue> & { readonly hidden: JsonValue };
 
 /** The verifier's side of a contract: the checks, and the tools only they run. */
-interface VerifierTree {
+export interface VerifierTree {
   /** The check program's directory: `brief.json`, `evaluator.ts` and whatever they read. */
   readonly checks: string;
   /** The verifier's tool tree, the only place a check's tools are found. */
   readonly tools: string;
+}
+
+/** An engine of the field, as the verifier's tool tree holds it for a check: the name a check runs
+ *  it by, the program the tree resolves the name to, and that program's sha256. */
+export interface Engine {
+  readonly name: string;
+  readonly path: string;
+  readonly sha256: string;
 }
 
 /** What a check's wall closes beside the repository and the home, as a seat's does (`Walled`,
@@ -179,6 +188,23 @@ export function requiredToolsOf(execution: CheckExecution): readonly string[] {
   return execution.evidence.kind === "external"
     ? execution.evidence.requiredToolIds
     : (execution.requiredToolIds ?? []);
+}
+
+/**
+ * The pinned list of a check program's engines: each program its checks name (`requiredToolsOf`),
+ * resolved on the search path a check's cell is given (`runTool`, `check-child.ts`), in the order
+ * the checks first name them, and named by its digest. The host reads it here, once, for every
+ * side that is given the exam's instruments (the Examiner's shell, `src/examiner/shell.ts`). A
+ * name the tree does not hold is the host's own and is left out, and a name that is no plain file
+ * name is never looked up, as a check's cell never looks one up.
+ */
+export function pinnedEngines({ checks, tools }: VerifierTree): Engine[] {
+  const path = toolTreeSearchDirs(tools).join(":");
+  const named = readBrief(checks).truthChecks.flatMap(({ execution }) => requiredToolsOf(execution));
+  return [...new Set(named)].flatMap((name) => {
+    const found = isSafePathSegment(name) ? Bun.which(name, { PATH: path }) : null;
+    return found === null ? [] : [{ name, path: found, sha256: sha256OfFile(found) }];
+  });
 }
 
 /** Declared family scope decides applicability, and nothing else does. In particular the hidden

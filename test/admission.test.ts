@@ -12,7 +12,7 @@ import {
   supplyOf,
   type Wanted,
 } from "../src/builder/admission.ts";
-import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
+import { conditionId, settingId } from "../src/kernel/condition.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
@@ -20,9 +20,11 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { conditionOf, roundSolves } from "./helpers/logged-round.ts";
 
 const AT = "2026-10-09T00:00:00.000Z";
-const [P, F] = [true, false];
+/** Eight held-out tasks, and each one's outcomes as `spell` gives them by its place. */
+const EIGHT = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const GOING = { checkpoints: 0, sinceStep: 0, stop: false };
 /** A campaign whose checker was read with no fault and is not frozen, before any comparison. */
 const SETS: Supply = {
@@ -58,22 +60,6 @@ const heldOut = (version: string): LogEvent[] => [
   event("task.gate", { version, gate: 1, outcome: "passed" }),
 ];
 const reported = (session: string, more: JsonObject) => event("comparison.reported", { session, ...more });
-const conditionOf = (task: string, harness: string, limits = LIMITS): Condition => ({
-  contract: "c1",
-  harness,
-  task,
-  model: "p/m",
-  effort: "high",
-  prices: { "p/m": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-  runtime: {},
-  compaction: "off",
-  solverTools: harness,
-  verifierTools: "t1",
-  sandbox: "p1",
-  limits,
-  host: "h",
-  side: "test",
-});
 /** A test-side solve under `limits`, which makes theirs the setting of the log's last solves. */
 function solvedUnder(solve: string, limits: typeof LIMITS) {
   const condition = conditionOf("v", "h1", limits);
@@ -91,51 +77,21 @@ const tallied = (wins: number, losses: number, setting: string) => ({
   versions: Array(8).fill("v"),
   setting,
 });
-let solveCount = 0;
-/** Comparison `session` of `old` against `fresh`, as a round logs it: each task's solves under the
- *  comparison, two a side as `outcomes` gives them (true for a valid answer), then its report. */
+/** Comparison `session` of `old` against `fresh`, as a round logs it: its solves, as `roundSolves`
+ *  spells them, then its report. */
 function roundLogged(
   session: string,
   [old, fresh]: readonly [string, string],
-  outcomes: Readonly<Record<string, readonly [readonly boolean[], readonly boolean[]]>>,
+  outcomes: Readonly<Record<string, string>>,
+  more: Partial<typeof LIMITS> = {},
 ): LogEvent[] {
-  const census = { old: [0, 0, 0], fresh: [0, 0, 0] };
-  const solves = Object.entries(outcomes).flatMap(([task, sides]) =>
-    ([old, fresh] as const).flatMap((harness, at) => {
-      const own = sides[at] ?? [];
-      const counts = census[at === 0 ? "old" : "fresh"];
-      counts[own.filter(Boolean).length] = (counts[own.filter(Boolean).length] ?? 0) + 1;
-      const condition = conditionOf(task, harness);
-      const id = conditionId(condition);
-      return [
-        event("condition.recorded", { id, condition: requireJsonValue(condition) }),
-        ...own.flatMap((valid) => {
-          solveCount += 1;
-          const solve = `s-${String(solveCount)}`;
-          const ending = valid ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" };
-          return [
-            event("solve.started", { solve, condition: id, comparison: session }),
-            event("solve.finished", { solve, ending }),
-          ];
-        }),
-      ];
-    }),
-  );
-  const versions = Object.keys(outcomes);
-  return [
-    ...solves,
-    reported(session, {
-      old,
-      fresh,
-      starter: "h0",
-      setting: settingId(conditionOf("any", "any")),
-      solves: 2,
-      versions,
-      scored: { wins: 0, losses: 0, ties: versions.length },
-      valid: census,
-    }),
-  ];
+  const { events, terms } = roundSolves(session, [old, fresh], outcomes, more);
+  const scored = { wins: 0, losses: 0, ties: terms.versions.length };
+  return [...events, reported(session, { old, fresh, starter: "h0", scored, ...terms })];
 }
+/** Each of the eight tasks with its outcomes, as `spell` gives them by its place. */
+const eight = (spell: (place: number) => string) =>
+  Object.fromEntries(EIGHT.map((task, place) => [task, spell(place)]));
 
 describe("what a log holds for the next comparison", () => {
   const [here, longer] = [solvedUnder("s-1", LIMITS), solvedUnder("s-2", { ...LIMITS, turns: 48 })];
@@ -166,14 +122,26 @@ describe("what a log holds for the next comparison", () => {
 
   it("takes the untied share from the last comparison that tallied a task, whatever setting id it carries", () => {
     // Six of the eight tasks closed by the reference in the last one: two to win.
-    const closed = (count: number) => ({ valid: { old: [8 - count, 0, count], fresh: [0, 0, 8] } });
     const log = [
-      ...here.events,
-      reported("b-1", { ...tallied(6, 0, here.setting), ...closed(0) }),
-      reported("b-2", { ...tallied(1, 1, here.setting), ...closed(6) }),
+      ...EIGHT.flatMap(heldOut),
+      ...roundLogged(
+        "b-1",
+        ["h0", "h1"],
+        eight(() => "FF PP"),
+      ),
+      ...roundLogged(
+        "b-2",
+        ["h0", "h2"],
+        eight((place) => (place < 6 ? "PP PP" : "FF PP")),
+      ),
       // One the cap cut, and one with every task set aside, tallied nothing and say nothing of it.
-      reported("b-3", { scored: null, versions: [], capped: true, setting: here.setting }),
-      reported("b-4", { scored: { wins: 0, losses: 0, ties: 0 }, versions: [], setting: here.setting }),
+      reported("b-3", { old: "h0", scored: null, versions: [], capped: true, setting: here.setting }),
+      reported("b-4", {
+        old: "h0",
+        scored: { wins: 0, losses: 0, ties: 0 },
+        versions: [],
+        setting: here.setting,
+      }),
     ];
     expect(supplyOf(log).untied).toBe(0.25);
     // A setting id names the host's code too, and a campaign runs at one setting: solves under
@@ -181,11 +149,14 @@ describe("what a log holds for the next comparison", () => {
     // 2026-10-11 they read no share, and the next comparison counted every task.
     const moved = [...log, ...longer.events];
     expect(supplyOf(moved).untied).toBe(0.25);
-    expect(
-      supplyOf([...moved, reported("b-5", { ...tallied(4, 0, longer.setting), ...closed(4) })]).untied,
-    ).toBe(0.5);
-    // A report with no count of valid solves closes nothing: every task may be won.
-    expect(supplyOf([...moved, reported("b-6", tallied(0, 0, longer.setting))]).untied).toBe(1);
+    // A comparison under the other id is the last one, and its share is the one read.
+    const again = roundLogged(
+      "b-5",
+      ["h0", "h3"],
+      eight((place) => (place < 6 ? "FF PP" : "PP PP")),
+      { turns: 48 },
+    );
+    expect(supplyOf([...moved, ...again]).untied).toBe(0.75);
   });
 
   it("counts the tasks the harness to be compared with left to win, whatever the last comparison untied", () => {
@@ -194,15 +165,14 @@ describe("what a log holds for the next comparison", () => {
     // round, a task nobody answered yet is one a changed harness may win: until 10 October no
     // more were counted than the last comparison untied, and a simulated climb read 0 to win on
     // six tasks written for room.
+    const spelled = ["PP PP", "PF PP", "FF PP", "FF PP", "FF PP", "FF PP", "FF PF", "FF FF"];
     const stepped = [
-      ...here.events,
-      reported("g-1", {
-        ...tallied(6, 0, here.setting),
-        old: "h0",
-        fresh: "h1",
-        starter: "h0",
-        valid: { old: [6, 1, 1], fresh: [1, 1, 6] },
-      }),
+      ...EIGHT.flatMap(heldOut),
+      ...roundLogged(
+        "g-1",
+        ["h0", "h1"],
+        eight((place) => spelled[place] ?? ""),
+      ),
     ];
     expect(supplyOf(stepped).untied).toBe(0.875);
     expect(supplyOf(stepped, "h1").untied).toBe(0.25);
@@ -228,14 +198,12 @@ describe("what a log holds for the next comparison", () => {
     // t-4 (10 October): the control of the promoted harness's programs against the starter tied
     // 7 of 8, 6 answered by neither, and the whole harness against those programs was refused on
     // that share.
-    const control = reported("c-1", {
-      ...tallied(0, 1, here.setting),
-      old: "h0",
-      fresh: "p1",
-      starter: "h0",
-      valid: { old: [6, 0, 2], fresh: [6, 1, 1] },
-    });
-    const log = [...here.events, control];
+    const control = roundLogged(
+      "c-1",
+      ["h0", "p1"],
+      eight((place) => ["PP PP", "PP PF"][place] ?? "FF FF"),
+    );
+    const log = [...EIGHT.flatMap(heldOut), ...control];
     // The same pair again: the reference closed two tasks, and six may be won, the ones nobody
     // answered among them.
     expect(supplyOf(log, "p1", "h0").untied).toBeCloseTo(7 / 8, 10);
@@ -244,35 +212,36 @@ describe("what a log holds for the next comparison", () => {
     expect(supplyOf(log, "p1", "h1").untied).toBeNull();
     // With no harness named, the last comparison stands, as before.
     expect(supplyOf(log, "p1").untied).toBeCloseTo(7 / 8, 10);
-    const pair = reported("c-2", {
-      ...tallied(5, 0, here.setting),
-      old: "p1",
-      fresh: "h1",
-      starter: "h0",
-      valid: { old: [6, 1, 1], fresh: [0, 0, 8] },
-    });
-    expect(supplyOf([...log, pair, control], "p1", "h1").untied).toBeCloseTo(7 / 8, 10);
+    const pair = roundLogged(
+      "c-2",
+      ["p1", "h1"],
+      eight((place) => ["PP PP", "PF PP"][place] ?? "FF PP"),
+    );
+    const later = roundLogged(
+      "c-3",
+      ["h0", "p1"],
+      eight(() => "FF FF"),
+    );
+    expect(supplyOf([...log, ...pair, ...later], "p1", "h1").untied).toBeCloseTo(7 / 8, 10);
   });
 
   it("reads no comparison the reference stood on neither side of, where no harness is named beside it", () => {
     // The stack review (12 October): a control of two other harnesses after a promotion read
     // every task untied, and the decision table built where it should have asked for tasks.
-    const tasks = ["a", "b", "c", "d", "e", "f", "g", "h"];
-    const solved = (fresh: (task: string) => boolean[]) =>
-      Object.fromEntries(tasks.map((task) => [task, [[F, F], fresh(task)] as const]));
     const log = [
-      ...tasks.flatMap(heldOut),
+      ...EIGHT.flatMap(heldOut),
       ...roundLogged(
         "g-1",
         ["h0", "h1"],
-        solved((task) => (task === "h" ? [F, F] : [P, P])),
+        eight((place) => (place === 7 ? "FF FF" : "FF PP")),
       ),
       event("harness.promoted", { harness: "h1", from: "h0", rests: [] }),
     ];
+    // The control's own new harness answers the one task nobody had, which so waits for no label.
     const control = roundLogged(
       "c-1",
       ["h0", "p1"],
-      solved(() => [F, F]),
+      eight((place) => (place === 7 ? "FF PF" : "FF FF")),
     );
     const wanted = { target: 8, trigger: 0.25 };
     for (const events of [log, [...log, ...control]]) {
@@ -282,13 +251,26 @@ describe("what a log holds for the next comparison", () => {
   });
 
   it("counts the tasks held out since that comparison, and the ones that wait for a label", () => {
-    const before = [
-      ...heldOut("v"),
-      ...here.events,
-      reported("b-1", { ...tallied(0, 0, here.setting), valid: { old: [0, 0, 8], fresh: [0, 0, 8] } }),
-    ];
+    const before = [...heldOut("v"), ...roundLogged("b-1", ["h0", "h1"], { v: "PP PP" })];
     expect(supplyOf(before)).toMatchObject({ held: 1, untied: 0, since: 0 });
     expect(supplyOf([...before, ...heldOut("w"), ...heldOut("x")])).toMatchObject({ held: 3, since: 2 });
+  });
+
+  it("takes the share over the tasks that may still be scored, once the reference's closed ones retire", () => {
+    // The stack review (12 October): two comparisons in which the reference answered a to d in
+    // every solve and e and f in one of two retire two of a to d, by the contract's hash. Of the
+    // four left two are untied, which a first reading at the trigger needs; the share over all six
+    // read a third, and the comparison was refused.
+    const twice = { a: "PP PP", b: "PP PP", c: "PP PP", d: "PP PP", e: "PF PP", f: "PF PP" };
+    const log = [
+      event("checker.read", { contract: "c", checks: "k", faults: [] }),
+      ...Object.keys(twice).flatMap(heldOut),
+      ...roundLogged("g-1", ["h0", "h1"], twice),
+      ...roundLogged("g-2", ["h0", "h2"], twice),
+    ];
+    const supply = supplyOf(log);
+    expect(supply).toMatchObject({ held: 4, exhausted: 2, untied: 0.5, since: 0 });
+    expect(shortOf(supply, { target: 4, trigger: 0.25 })).toBeNull();
   });
 
   it("reads the plan's stop rule: the checkpoints since the last step", () => {

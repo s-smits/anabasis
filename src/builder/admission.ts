@@ -55,12 +55,13 @@ import {
   exhausted,
   lastReports,
   latestBuilt,
+  pairsReported,
   promoted,
   stopRule,
 } from "../kernel/reports.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
@@ -71,8 +72,8 @@ export interface Supply {
   readonly awaiting: number;
   readonly exhausted: number;
   readonly released: number;
-  /** The share of its tallied tasks the last comparison left for the next to untie, against the
-   *  harness the next is made with; null before any such comparison. */
+  /** The share of its tallied tasks that may still be scored the last comparison left for the
+   *  next to untie, against the harness the next is made with; null before any such comparison. */
   readonly untied: number | null;
   /** The tasks held out since that comparison tallied. */
   readonly since: number;
@@ -165,7 +166,7 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
   const spent = exhausted(events).filter(
     (version) => sets.held.includes(version) && !labelled.includes(version),
   );
-  const waiting = [...labelled, ...spent];
+  const waiting = new Set([...labelled, ...spent]);
   const reports = lastReports(events);
   const starter = reports.findLast(({ data }) => isString(data.starter))?.data.starter;
   // A task the harness to be compared with was valid on in every solve there can only tie again.
@@ -183,15 +184,19 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
       data.versions.length > 0 &&
       asRecord(data.scored) !== null &&
       ofPair(data),
-  )?.data;
-  const tally = asRecord(last?.scored);
-  const versions = Array.isArray(last?.versions) ? last.versions : [];
-  const side = last?.old === named ? "old" : "fresh";
-  const full = last?.[side] === named ? asRecord(last?.valid)?.[side] : null;
-  const closed = Array.isArray(full) && isNumber(full.at(-1)) ? Number(full.at(-1)) : 0;
+  );
+  const versions = Array.isArray(last?.data.versions) ? last.data.versions.filter(isString) : [];
+  const side = last?.data.old === named ? "old" : "fresh";
+  // Over the tasks it tallied that may still be scored: until 12 October over all it tallied, and
+  // once the reference's twice-closed tasks were retired, a pool of four with two to win read a
+  // third untied and the comparison was refused (the stack review, finding 2).
+  const pool = sets.held.filter((version) => !waiting.has(version));
+  const tallied = versions.filter((version) => pool.includes(version));
+  const pairs = last === undefined ? [] : pairsReported(events, last);
+  const closed = pairs.filter((pair) => tallied.includes(pair.task) && pair[side].every(Boolean)).length;
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
   return {
-    held: sets.held.length - waiting.length,
+    held: pool.length,
     awaiting: labelled.length,
     exhausted: spent.length,
     released: sets.released.length,
@@ -199,8 +204,8 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
     // still win. Until 10 October no more were counted than the last comparison untied, and a
     // simulated climb then wrote tasks the reference failed, read 0 untied where nobody answered
     // them yet, and asked for tasks again in place of a Builder session.
-    untied: tally !== null && versions.length > 0 ? (versions.length - closed) / versions.length : null,
-    since: sets.held.filter((version) => ![...versions, ...waiting].includes(version)).length,
+    untied: tallied.length > 0 ? (tallied.length - closed) / tallied.length : null,
+    since: pool.filter((version) => !versions.includes(version)).length,
     faults: Array.isArray(reading) ? reading.length : null,
     frozen: frozenChecker(events) !== null,
     stop: stopRule(events),

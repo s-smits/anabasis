@@ -10,6 +10,7 @@ import { pendingWords } from "../src/builder/word.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tallied } from "./helpers/tally.ts";
+import { roundSolves } from "./helpers/logged-round.ts";
 
 /** Tasks by how many of their two solves were valid: none, one, both. */
 type Valid = readonly [number, number, number];
@@ -59,14 +60,19 @@ function compared(
     readonly valid?: { readonly old: Valid; readonly fresh: Valid };
     readonly noise?: boolean;
     readonly extra?: JsonObject;
+    /** Each task's solves, as `roundSolves` spells them, where a reader takes them from the solves:
+     *  the report's tasks, census and setting are then theirs. */
+    readonly solved?: Readonly<Record<string, string>>;
   } = {},
 ): LogEvent[] {
   const sides = { old: more.old ?? "start", fresh, starter: "start" };
   // The tally decides since 10 October, not the word: a step's default tally clears the trigger
   // alone and the level with its repeat (`readTwice`), and any other reading's clears neither.
   const [wins, losses, ties] = more.tally ?? (reading === "step" ? [5, 0, 7] : [4, 4, 4]);
+  const solved = more.solved === undefined ? null : roundSolves(id, [sides.old, fresh], more.solved);
   return [
     event("comparison.started", { session: id, ...sides, noise: more.noise ?? false }),
+    ...(solved?.events ?? []),
     event("comparison.reported", {
       session: id,
       ...sides,
@@ -75,6 +81,7 @@ function compared(
       versions: HELD,
       valid: { old: [...(more.valid?.old ?? HALF)], fresh: [...(more.valid?.fresh ?? HALF)] },
       setting: null,
+      ...solved?.terms,
       ...more.extra,
     }),
   ];
@@ -304,7 +311,6 @@ describe("what is built and what is compared", () => {
     // solve: one to win, where a first reading takes two, and the reference at three solves in
     // four leaves room. At twelve tasks the two cannot both hold since 10 October's trigger: one
     // task to untie means eleven closed, which is no room, and the no-room row answers.
-    const four = { versions: HELD.slice(0, 4) };
     const small = { ...PLAN, wanted: { ...PLAN.wanted, target: 4 } };
     const tied = [
       READ,
@@ -314,8 +320,7 @@ describe("what is built and what is compared", () => {
       built("b-1", "h1"),
       ...compared("g-1", "h1", "no-step", {
         tally: [1, 0, 3],
-        valid: { old: [1, 0, 3], fresh: [1, 0, 3] },
-        extra: four,
+        solved: { v1: "FF FF", v2: "PP PP", v3: "PP PP", v4: "PP PP" },
       }),
     ];
     expect(move([...tied, built("b-2", "h2")], small)).toEqual({
@@ -589,13 +594,11 @@ describe("no step", () => {
 
   it("has the tasks changed where the reference left no room, and ends once the Examiner's patience is spent", () => {
     // A comparison that scored every held task, the repeat's worth too, so that none is left unread.
-    const every: Valid = [0, 0, 24];
-    const full = { old: every, fresh: every };
-    const scoredAll = { versions: [...HELD, ...REPEAT] };
+    const every = Object.fromEntries([...HELD, ...REPEAT].map((version) => [version, "PP PP"]));
     const tied = [
       setting(40),
       ...first,
-      ...compared("g-1", "h1", "no-step", { tally: [0, 0, 24], valid: full, extra: scoredAll }),
+      ...compared("g-1", "h1", "no-step", { tally: [0, 0, 24], solved: every }),
     ];
     // Valid on every solve: the tasks change. Until 10 October a shorter budget came first, and
     // t-10 climbed in turns where it should have climbed in tasks; until 11 October a shorter

@@ -18,6 +18,7 @@ const PROPOSED = "task.proposed";
 const BUILD_STARTED = "build.started";
 const SOLVE_STARTED = "solve.started";
 const SOLVE_FINISHED = "solve.finished";
+const CONDITION_RECORDED = "condition.recorded";
 const COMPARISON_STARTED = "comparison.started";
 const GATE = "task.gate";
 const HELD = ["v1", "v2", "v3", "v4"];
@@ -76,7 +77,7 @@ let comparison: string | null = null;
 function solve(task: string, harness: string, outcome: "pass" | "rejected" | "late" | "silent"): string {
   const ran = condition(task, harness);
   const id = `s${String((solves += 1))}`;
-  record("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+  record(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
   record(SOLVE_STARTED, {
     solve: id,
     condition: conditionId(ran),
@@ -318,6 +319,27 @@ describe("the whole-run investigation's reader", () => {
     expect(detail("NEVER CHECKED")).toBe("b-1: no check_harness call");
   });
 
+  it("says an erred call is a non-zero exit, which a test reporting what is unmet gives by design", () => {
+    // Buffer on 12 October: all 44 erred calls under the child were its own test's documented exit 1.
+    const ran = condition("v1", "hc");
+    const erred = overview([
+      ...events,
+      ...["e1", "e2"].flatMap((id): LogEvent[] =>
+        (
+          [
+            [CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) }],
+            [SOLVE_STARTED, { solve: id, condition: conditionId(ran), limits: { wallSeconds: 100 } }],
+            ["solve.call", { solve: id, turn: 1, tool: "bash", isError: true }],
+            [SOLVE_FINISHED, { solve: id, ending: { outcome: "pass" }, seconds: 2, responseModels: ["m-1"] }],
+          ] as const
+        ).map(([kind, data]) => ({ at: new Date(START).toISOString(), kind, data })),
+      ),
+    ]).triggers.flatMap((trigger) => (trigger.name === "TOOL CALLS ERRED" ? [trigger.detail] : []));
+    expect(erred).toEqual([
+      "b-1: in 2 of 6 solves under the new harness, a call marked an error, as every non-zero exit is, which a test reporting what is unmet may give by design",
+    ]);
+  });
+
   it("names each check that let a reject control naming it through, by how many it refused", () => {
     // Truss on 12 October: one check refused 9 of the 10 reject controls naming it, which read as none.
     const coverage = overview([
@@ -487,7 +509,7 @@ describe("the reader on a log written before the plan after the v1 review", () =
   }
   put("anchor.drawn", { tasks: ["a1"] });
   const strong = { ...condition("t2", "hp"), side: "strong" as const };
-  put("condition.recorded", { id: conditionId(strong), condition: requireJsonValue(strong) });
+  put(CONDITION_RECORDED, { id: conditionId(strong), condition: requireJsonValue(strong) });
   put(SOLVE_STARTED, { solve: "w1", condition: conditionId(strong), limits: { wallSeconds: 100 } });
   put(SOLVE_FINISHED, { solve: "w1", ending: { outcome: "pass" }, seconds: 50 });
   put(BUILD_STARTED, { session: "b-1", parent: "hp", tasks: [] });
@@ -523,7 +545,7 @@ describe("the reader of a round compared with another harness than its session s
   /** One solve of v1 under `harness` for the round's comparison, ended as `ending` says. */
   const made = (id: string, harness: string, ending: JsonObject, seconds: number, cpu?: JsonObject) => {
     const ran = condition("v1", harness);
-    put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+    put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
     put(SOLVE_STARTED, {
       solve: id,
       condition: conditionId(ran),
@@ -672,7 +694,7 @@ describe("the reader of the load a comparison's solves started under", () => {
       for (const [index, load] of loads.entries()) {
         const ran = condition("v1", index % 2 === 0 ? "hbase" : "hy");
         const id = `${session}-${String(index)}`;
-        put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+        put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
         put(SOLVE_STARTED, {
           solve: id,
           condition: conditionId(ran),
@@ -747,7 +769,7 @@ describe("the reader of the load a comparison's solves started under", () => {
     put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
     const ran = (id: string, harness: string, load: number, ending: JsonObject, seconds: number) => {
       const made = condition("v1", harness);
-      put("condition.recorded", { id: conditionId(made), condition: requireJsonValue(made) });
+      put(CONDITION_RECORDED, { id: conditionId(made), condition: requireJsonValue(made) });
       put(SOLVE_STARTED, {
         solve: id,
         condition: conditionId(made),
@@ -779,7 +801,7 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
   const put = appendTo(log);
   const made = (id: string, harness: string, ending: JsonObject) => {
     const ran = condition("v1", harness);
-    put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+    put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
     put(SOLVE_STARTED, {
       solve: id,
       condition: conditionId(ran),
@@ -842,7 +864,7 @@ describe("the reader of misses at a limit, by comparison and side", () => {
     for (const [index, [harness, ending, seconds]] of endings.entries()) {
       const ran = condition("v1", harness);
       const id = `m${String(index)}`;
-      put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
       put(SOLVE_STARTED, {
         solve: id,
         condition: conditionId(ran),
@@ -1005,7 +1027,7 @@ describe("the reader of comparisons the campaign command named apart from its Bu
   const made = (task: string, harness: string, passed: boolean, measuredIn: string, seconds = 2) => {
     const ran = condition(task, harness);
     const id = `${measuredIn}-${task}-${harness}`;
-    put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+    put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
     put(SOLVE_STARTED, {
       solve: id,
       condition: conditionId(ran),
@@ -1123,7 +1145,7 @@ describe("the reader of a harness that answered for its solver", () => {
     const made = (task: string, harness: string, calls: readonly string[], measuredIn: string | null) => {
       const ran = condition(task, harness);
       const id = `s${String(log.length)}`;
-      put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
       put(SOLVE_STARTED, {
         solve: id,
         condition: conditionId(ran),

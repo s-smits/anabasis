@@ -734,7 +734,8 @@ A log of before 11 October may hold `below-starter` or `starter-unread`, reading
 against a promoted reference that also solved the starter (`docs/simplify.md`, B2); the starter
 is now the control the tasks written after a promotion are read with (below).
 
-**Rejections.** A rejected answer counts as not valid only once the Referee has ruled it `earned`.
+**Rejections.** A rejected answer counts as not valid only once the Referee has ruled it `earned`,
+which it can only on a probe that moved a refusing check off its refusal (`src/review/referee.ts`).
 A ruling of `check-defect` or `unclear`, or no ruling, sets the task aside for both harnesses. A
 person's labels then settle it (`settle.ts`), and a label stands over a ruling. Past `--defects`
 tasks with a check defect or a check that could not run, the comparison stops, since the check

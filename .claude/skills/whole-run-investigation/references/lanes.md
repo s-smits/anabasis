@@ -400,9 +400,10 @@ whether what it claims is what changed. When the final state did not open, the r
 last state the session practised with, and the note describes edits that were never measured:
 name the edits made after that practice from `build.call`. A change to `config.yaml` that moves
 a wall or a turn cap changes what the limits measure, though v2's limits are the host's and a
-harness's own are not read: confirm that from the condition. A session that wrote only with its
-shell leaves no `write` or `edit` call (`write_file` before 2026-10-09), so an empty list there is
-not an unchanged harness. The
+harness's own are not read: confirm that from the condition. A session that wrote with its shell
+leaves no `write` or `edit` call (`write_file` before 2026-10-09), and the row's list names only
+`.toolchain` where a shell command named the tool tree: the list is no inventory of the child,
+which the diff alone gives, and an empty one is not an unchanged harness. The
 decision it changes is what a step, or its absence, is attributed to; it routes to
 `harness/guide`, `harness/tools`, `harness/tool-tree` or `harness/config` for the part that
 moved, and to `host` (`src/builder/session.ts`) when the measured state is not the one the log

@@ -60,7 +60,7 @@ import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -149,6 +149,10 @@ interface Desk {
    *  a proposal of one is logged as feasible, and never waits for a person as possibly infeasible
    *  (`awaitingLabel`). The answer itself is kept nowhere (11 October, `docs/simplify.md`, F4). */
   readonly answered: Set<string>;
+  /** The answers that passed this session's `try_answer`, by hash, in memory alone: a task that
+   *  carries one whole is refused, since a planted answer is for `try_answer` and for no task
+   *  (`carries`; `AGENTS.md`, rule 9). */
+  readonly planted: Set<string>;
   readonly held: string[];
   readonly refused: string[];
   note: string | null;
@@ -179,6 +183,10 @@ const GATES = {
   },
 } as const;
 const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
+/** Why the gate refuses a task that carries a planted answer: the witness serves the feasibility
+ *  gate and is then discarded, so it never reaches a solver (the overhaul plan, S.4; rule 9). */
+const PLANTED =
+  "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
 /** What a first `finish` is answered with while the host has not the tasks it needs: every live
  *  Examiner session of 9 and 10 October proposed one batch of one to three tasks in three turns
@@ -186,6 +194,23 @@ const SUPPLIED = "The host has the tasks it needs. The session ends here.";
  *  opening six times for what one session could have written. The need, and no count. */
 const MORE =
   "Noted, and the session goes on: the host does not yet have the tasks it needs from it. Propose further tasks, varying what they ask, and call finish again when you have none left worth proposing.";
+
+/** Whether `value` holds, as itself or anywhere inside it, a value whose hash is in `planted`. */
+function carries(value: JsonValue, planted: ReadonlySet<string>): boolean {
+  if (planted.has(hashJsonValue(value))) return true;
+  const inner = Array.isArray(value) ? value : isRecord(value) ? Object.values(value) : [];
+  return inner.some((each) => carries(each, planted));
+}
+
+/** The verifier `try_answer` runs, keeping in the session's memory the hash of each answer it
+ *  passes (`planted`), and nothing else of it. */
+function planting(desk: Desk, verify: Verifier): Verifier {
+  return async (task, answer) => {
+    const verdict = await verify(task, answer);
+    if (verdict.kind === "pass") desk.planted.add(hashJsonValue(answer));
+    return verdict;
+  };
+}
 
 /** An instance by what a solver and the checks read of it, whatever id it carries. */
 function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
@@ -218,6 +243,7 @@ function supplied(desk: Desk): boolean {
  *  and only a killed run kills them. */
 async function measured(desk: Desk, task: TaskPackage) {
   const { contract, log, id, probe, kill } = desk.request;
+  if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === undefined) return { reason: null, said: "" };
@@ -451,7 +477,7 @@ async function toolsOf(desk: Desk): Promise<AgentTool[]> {
   return [
     proposeTool(desk),
     exampleTool(desk),
-    ...(request.verify === undefined ? [] : [tryTool(desk, request.verify)]),
+    ...(request.verify === undefined ? [] : [tryTool(desk, planting(desk, request.verify))]),
     ...(await examinerShell(
       request.shell,
       `a task enters it through ${admitting(request)} alone`,
@@ -474,6 +500,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     proposed: 0,
     seen: new Map(writtenTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
     answered: new Set(),
+    planted: new Set(),
     held: [],
     refused: [],
     note: null,

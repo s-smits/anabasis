@@ -98,7 +98,7 @@ The primary reviewer settles these from the log before any lane is launched, and
 them: they are the identities every finding binds to. `wri.ts read` prints them.
 
 **A. campaign and log.** One campaign is one folder under `.ana/d2/<name>`: `log.jsonl`, the
-staged `checks/` and `states/`. Read the log's first and last event, its sessions and its reports,
+staged `checks/` (`exams/<digest>/checks/` for a drafted exam) and `states/`. Read the log's first and last event, its sessions and its reports,
 and confirm it folds: `read` throws on a history that moves a task where it cannot go. Compare the
 host hash of the last condition with this checkout's (`wri.ts read` prints both): when they differ,
 every statement about source is about another tree, and the report says so before it says anything

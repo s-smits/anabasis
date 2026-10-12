@@ -25,7 +25,7 @@ import { type Condition, conditionId, settingId } from "../src/kernel/condition.
 import type { Contract } from "../src/kernel/contract.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
-import { billedParts, feasibleTasks } from "../src/kernel/reports.ts";
+import { billedParts, poolOf } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { ranUnder, solvesIn } from "../src/kernel/solves.ts";
 import { type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
@@ -325,7 +325,7 @@ describe("an Examiner session", () => {
       kept.versionOf("x-1-003", 9),
       kept.versionOf("x-1-004", 10),
     ];
-    expect(feasibleTasks(read(kept.log))).toEqual(new Set(proved));
+    expect(poolOf(read(kept.log)).feasible).toEqual(new Set(proved));
     expect(kept.of(TASK_FEASIBLE)).toEqual(proved.map((version) => ({ version, session: "x-1" })));
     expect(JSON.stringify(kept.of(TASK_FEASIBLE))).not.toContain('"answer":"42"');
     // The Examiner is told it has the tool, and the shell, and what neither does to the exam.
@@ -350,7 +350,7 @@ describe("an Examiner session", () => {
     });
     expect(checked).toEqual(["try", "x-1-001"]);
     expect(s.of(TASK_PROPOSED)[0]?.feasible).toBeUndefined();
-    expect(feasibleTasks(read(s.log))).toEqual(new Set());
+    expect(poolOf(read(s.log)).feasible).toEqual(new Set());
     expect(JSON.stringify(s.of(EXAM_CALL))).toContain(
       "Author proof was not retained under this task id: Refused by check-product",
     );
@@ -391,7 +391,7 @@ describe("an Examiner session", () => {
     ]);
     await examine({ ...s.request, verify: async () => ({ kind: "pass" }) });
     const version = s.versionOf("x-1-001", 7);
-    expect(feasibleTasks(read(s.log)).has(version)).toBe(true);
+    expect(poolOf(read(s.log)).feasible.has(version)).toBe(true);
     expect(s.of(TASK_FEASIBLE)).toEqual([{ version, session: "x-1" }]);
     expect(heard(read(s.log), writtenTasks(read(s.log))).lines).toEqual([
       "x-1-001 (family fixture): not yet compared; a valid answer to it is on record",
@@ -506,7 +506,7 @@ describe("an Examiner session", () => {
         asRecord(answer)?.answer === "1" ? { kind: "fail", blocking: ["check-product"] } : { kind: "pass" },
     });
     expect(s.of(TASK_FEASIBLE)).toEqual([{ version, session: "x-1" }]);
-    expect(feasibleTasks(read(s.log))).toEqual(new Set([version]));
+    expect(poolOf(read(s.log)).feasible).toEqual(new Set([version]));
     expect(heard(read(s.log), s.request.examples).lines[0]).toContain("a valid answer to it is on record");
   });
 
@@ -536,7 +536,7 @@ describe("an Examiner session", () => {
     });
     expect(checked).toEqual([EXAMPLE.taskId]);
     expect(prepared.of(TASK_FEASIBLE)).toEqual([]);
-    expect(feasibleTasks(read(prepared.log))).toEqual(new Set());
+    expect(poolOf(read(prepared.log)).feasible).toEqual(new Set());
   });
 
   it("holds a tried answer to the format before the checks, and keeps no instance feasible on one the format refuses", async () => {
@@ -769,7 +769,7 @@ describe("try_task", () => {
     // Each is on record with its condition, as the launcher writes one, and none is part of a
     // task's answers or a tally; a valid one is a witness, so its task is feasible and nothing more.
     expect(ranUnder(read(s.log))).toEqual([]);
-    expect(feasibleTasks(read(s.log))).toEqual(new Set(versions.filter((_version, nth) => nth !== 2)));
+    expect(poolOf(read(s.log)).feasible).toEqual(new Set(versions.filter((_version, nth) => nth !== 2)));
     expect(heard(read(s.log), writtenTasks(read(s.log))).lines[0]).toBe(
       "x-1-001 (family fixture): not yet compared; a valid answer to it is on record",
     );

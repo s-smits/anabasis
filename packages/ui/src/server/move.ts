@@ -48,8 +48,8 @@ function moveNamed(log: Log, named: string): Move {
 }
 
 /** The comparison's own solves of `task` under `harness`, in the order they started: where `solves`
- *  is a number, its first that many that ended in a pass or a fail, as a pair counts them (`whole`,
- *  `src/kernel/reports.ts`), so that a control's further arm stays out of the reference's side. */
+ *  is a number, its first that many that ended in a pass or a fail, as a pair counts them (`pairsOf`,
+ *  `src/kernel/compare.ts`), so that a control's further arm stays out of the reference's side. */
 function ownSolves(log: Log, move: ComparisonMove, task: string, harness: string, solves?: number): Ran[] {
   const own = ranIn(log)
     .filter(

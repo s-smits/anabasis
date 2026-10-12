@@ -11,7 +11,7 @@ import { campaignOf } from "../../../../src/builder/handover.ts";
 import { openingOf } from "../../../../src/builder/opening.ts";
 import { proposalsOf } from "../../../../src/kernel/history.ts";
 import type { LogEvent } from "../../../../src/kernel/log.ts";
-import { awaitingLabel, exhausted, lastReports, stopRule } from "../../../../src/kernel/reports.ts";
+import { lastReports, poolOf, stopRule } from "../../../../src/kernel/reports.ts";
 import { practiceRan, ranUnder, solvesIn, verdictsOf } from "../../../../src/kernel/solves.ts";
 import { taskSets } from "../../../../src/kernel/task.ts";
 import { indexOf } from "../../../../tools/wri/folds.ts";
@@ -46,18 +46,12 @@ export const practiceIn = once(({ events }) => new Set(practiceRan(events).map((
 export const verdictsIn = once(({ events }) => verdictsOf(events));
 export const indexIn = once(({ events }) => indexOf(events));
 export const overviewIn = once(({ events }) => overview(events));
-/** The held-out tasks waiting for a person's label, and the held-out ones exhausted but for those,
- *  as the supply counts them (`supplyOf`, `src/builder/admission.ts`): `awaitingLabel` keeps a
- *  task a label refused since, and `exhausted` one that waits for a label too. */
-export const awaitingIn = once((log) => {
-  const held = new Set(setsIn(log).held);
-  return new Set(awaitingLabel(log.events).filter((version) => held.has(version)));
-});
-export const exhaustedIn = once((log) => {
-  const held = new Set(setsIn(log).held);
-  const awaiting = awaitingIn(log);
-  return new Set(exhausted(log.events).filter((version) => held.has(version) && !awaiting.has(version)));
-});
+/** The one place each held-out task has (`poolOf`): the tasks waiting for a person's label and
+ *  the exhausted ones are read off it, as the supply counts them (`supplyOf`,
+ *  `src/builder/admission.ts`). */
+const poolIn = once(({ events }) => poolOf(events));
+export const awaitingIn = once((log) => new Set(poolIn(log).awaiting));
+export const exhaustedIn = once((log) => new Set(poolIn(log).exhausted));
 export const stopIn = once(({ events }) => stopRule(events));
 export const openingIn = once(({ events }) => openingOf(events));
 export const proposalsIn = once(({ events }) => proposalsOf(events));

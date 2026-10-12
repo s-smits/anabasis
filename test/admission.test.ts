@@ -43,6 +43,7 @@ const WANTED: Wanted = {
   solves: 2,
   level: 0.1,
   trigger: 0.25,
+  patience: 3,
   builds: true,
   cap: { dollars: 600, reserve: 10 },
 };
@@ -353,10 +354,7 @@ describe("whether a comparison may start", () => {
   it("lets one start that can read a step, and says its sets and its size", () => {
     expect(admission(SETS, WANTED)).toEqual({
       refusals: [],
-      notes: [
-        "4 held out · 1 released for practice · 4 to score",
-        ...sizeLines(4, { level: 0.1, trigger: 0.25 }),
-      ],
+      notes: ["4 held out · 1 released for practice · 4 to score", ...sizeLines(4, WANTED)],
     });
     // A target caps the scored set as few held-out tasks do.
     expect(admission({ ...SETS, held: 20 }, WANTED).notes[0]).toBe(
@@ -488,7 +486,7 @@ describe("a command about to start a comparison", () => {
     );
     expect(admitComparison(logOf([read1]), { ...asked, seats: "paid" })).toEqual([
       "4 held out · 0 released for practice · 4 to score",
-      ...sizeLines(4, { level: 0.1, trigger: 0.25 }),
+      ...sizeLines(4, WANTED),
       "no task is released: the Builder has nothing to practise on",
     ]);
   });

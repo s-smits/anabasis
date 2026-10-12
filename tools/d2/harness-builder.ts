@@ -771,7 +771,9 @@ export async function harnessBuilder(
       },
       opening,
     );
-    if (made === 0) for (const line of openingLines(plan.wanted, opening.patience)) console.log(line);
+    if (made === 0) {
+      for (const line of openingLines({ ...plan.wanted, patience: opening.patience })) console.log(line);
+    }
     const decided = decide(events, plan);
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,

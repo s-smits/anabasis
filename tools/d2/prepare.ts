@@ -37,7 +37,7 @@
  *
  * It is also where a person labels a task that went to them as possibly infeasible: one with no
  * valid answer on record after two comparisons that cut no solve of it at a limit, which is left
- * out of the scored set until it is labelled (`src/kernel/reports.ts`, `awaitingLabel`). `--keep <task id>` returns it to the set,
+ * out of the scored set until it is labelled (`src/kernel/reports.ts`, `poolOf`). `--keep <task id>` returns it to the set,
  * and it is read again after two more comparisons without a valid answer. `--infeasible <task id>`
  * refuses it for good. Each may be given more than once, and each label is logged with the person's
  * `--note`.
@@ -50,7 +50,7 @@
  */
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
-import { awaitingLabel, releaseOrder } from "#src/kernel/reports.ts";
+import { patienceOf, poolOf, releaseOrder } from "#src/kernel/reports.ts";
 import { SIZE, sizeLines } from "#src/kernel/size.ts";
 import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
@@ -153,7 +153,7 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   }
   const before = taskSets(read(log));
   // The tasks the operator names to score, each a held-out task, are no practice.
-  const named = values.tasks === undefined ? [] : scoredNamed(campaign, values.tasks, target);
+  const named = values.tasks === undefined ? [] : scoredNamed(campaign, values.tasks, target).tasks;
   const stray = named.find((version) => !before.held.includes(version));
   if (stray !== undefined) {
     throw new Error(
@@ -161,7 +161,7 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
     );
   }
   const kept = values.tasks === undefined ? recorded?.tasks?.join(",") : undefined;
-  const spoken = kept === undefined ? named : scoredNamed(campaign, kept, target);
+  const spoken = kept === undefined ? named : scoredNamed(campaign, kept, target).tasks;
   const pool = before.held.filter((version) => !spoken.includes(version));
   const missing = labels.length > 0 ? 0 : Math.max(0, practice - before.released.length);
   const released = Math.min(missing, Math.floor(pool.length / 2));
@@ -197,13 +197,13 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
 
   const events = read(log);
   const sets = taskSets(events);
-  const awaiting = awaitingLabel(events).filter((version) => sets.held.includes(version));
   console.log(`${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`);
-  const scored = named.length > 0 ? named.length : Math.min(target, sets.held.length - awaiting.length);
+  // What a comparison would score: the tasks the draw can take (`scoredSet`).
+  const scored = named.length > 0 ? named.length : Math.min(target, poolOf(events).scorable.length);
   const asked = {
-    solves: Number(values.solves),
     level: Number(values.level),
     trigger: Number(values.trigger),
+    patience: patienceOf(events),
   };
   for (const line of [...sizeLines(scored, asked), ...awaitingLines(campaign)]) console.log(line);
   if (named.length === 0) return 0;

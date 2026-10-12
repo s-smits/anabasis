@@ -160,24 +160,23 @@ const STEP = "step";
 const CUT: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
 const REPORTED = "comparison.reported";
 const BUILD_FINISHED = "build.finished";
-/** The events that carry what their own model turns were billed, in a `billed` field: a solve
- *  attempt, a Builder or an Examiner session, and a reviewer's reading. */
-const BILLED: ReadonlySet<string> = new Set([
-  "solve.finished",
-  BUILD_FINISHED,
-  "exam.finished",
-  "draft.finished",
-  "referee.finding",
-  "diagnosis.recorded",
-]);
 /** Each kind of start whose turns and compactions are billed where no end is on record, with the
- *  field that names the session or the solve in all four events. */
+ *  field that names the session or the solve in all four events: a Builder's session, an
+ *  Examiner's three kinds and a solve attempt. */
 const METERED = [
   { of: "build", id: "session" },
   { of: "exam", id: "session" },
   { of: "draft", id: "session" },
+  { of: "repair", id: "session" },
   { of: "solve", id: "solve" },
 ] as const;
+/** The events that carry what their own model turns were billed, in a `billed` field: the end of
+ *  each of those, and a reviewer's reading. */
+const BILLED: ReadonlySet<string> = new Set([
+  ...METERED.map(({ of }) => `${of}.finished`),
+  "referee.finding",
+  "diagnosis.recorded",
+]);
 
 /** Whether a cap can hold anything: its dollars and its reserve are numbers above nothing. One
  *  typed with a dollar sign reads as no number, and until 2026-10-09 a session by itself ran

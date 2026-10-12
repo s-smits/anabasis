@@ -66,7 +66,9 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  operator's prompt (`src/examiner/draft.ts`), the same five as an Examiner session's, and
  *  `exam.drafted` holds the draft that stood, whole: its rules with their sources, its answer
  *  format, its check program's source, its example tasks and its controls. A campaign opened from
- *  a prompt reads its exam from that event and from no file beside the log. */
+ *  a prompt reads its exam from that event and from no file beside the log. The `repair.*` kinds
+ *  are the session in which the Examiner repairs its own check program or its controls between
+ *  comparisons (`src/examiner/repair.ts`), the same five as a drafting session's. */
 const EVENT_KINDS = [
   "campaign.opened",
   "campaign.setting",
@@ -91,6 +93,11 @@ const EVENT_KINDS = [
   "draft.compacted",
   "draft.finished",
   "exam.drafted",
+  "repair.started",
+  "repair.turn",
+  "repair.call",
+  "repair.compacted",
+  "repair.finished",
   "exam.started",
   "exam.turn",
   "exam.call",

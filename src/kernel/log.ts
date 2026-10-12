@@ -58,8 +58,10 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  its decision table gave (`src/builder/decide.ts`), when it began and the host's load then; and
  *  `campaign.ended` is how the
  *  campaign ended, which is its last event. `campaign.word` is a word the operator left for a
- *  running campaign (`tools/d2/word.ts`): to stop, to have other tasks written, or another total
- *  budget. It is read at the next move's boundary, and the event that acts on it names it.
+ *  running campaign (`tools/d2/word.ts`): to stop, to have other tasks written, another total
+ *  budget or the cause of an A/A that read a step. It is read at the next move's boundary, and the
+ *  event that acts on it names it. `campaign.waited` is a solve that waited for a loaded host
+ *  before it started (`tools/d2/host.ts`): its task and harness, the load and how long.
  *  The `draft.*` kinds are the session in which an Examiner drafts a campaign's exam from the
  *  operator's prompt (`src/examiner/draft.ts`), the same five as an Examiner session's, and
  *  `exam.drafted` holds the draft that stood, whole: its rules with their sources, its answer
@@ -70,6 +72,7 @@ const EVENT_KINDS = [
   "campaign.setting",
   "campaign.move",
   "campaign.word",
+  "campaign.waited",
   "campaign.ended",
   "checker.read",
   "contract.frozen",

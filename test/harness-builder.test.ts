@@ -147,12 +147,12 @@ describe("a campaign run by its log", () => {
           ]),
         }),
     };
-    // The host is loaded at the first two looks: a move that solves waits, and the others do not.
+    // The host is loaded throughout: a solve would wait, and a move waits for nothing.
     const looks: number[] = [];
     const host = {
       load: () => {
         looks.push(looks.length);
-        return looks.length <= 2 ? 99 : 0;
+        return 99;
       },
       cores: 4,
       waitMs: 1,
@@ -162,24 +162,25 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED)).toEqual([]);
 
     const ending = await harnessBuilder([...flags, "--practice", "2"], { ...seats, host });
-    // Reading the exam and setting the tasks apart asked the host nothing. The one session
-    // looked three times: twice at a loaded host, where it said so and waited, and once at a
-    // quiet one. An Examiner session solves nothing and looks not at all.
-    expect(looks).toHaveLength(3);
+    // Reading the exam and setting the tasks apart asked the host nothing. The one session looked
+    // once, for its record, and solved nothing, so nothing waited at the gate: until 12 October
+    // the session waited at its start for a host it would never solve on. An Examiner session
+    // solves nothing and looks not at all.
+    expect(looks).toHaveLength(1);
+    expect(of(name, "campaign.waited")).toEqual([]);
     expect(ending).toEqual({
       move: "end",
       ending: "no-room",
       why: "2 Examiner sessions in a row held out no task (Builder session b-1 left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for): the tasks could not be made to leave room",
     });
-    // Each move records when it began, and a move that solves the load the host had then: the
-    // Builder session's is the quiet one the wait ended on, and the moves that solve nothing read
-    // the host not at all.
+    // Each move records when it began, and a move that solves the load the host had then; the moves
+    // that solve nothing read the host not at all.
     const moves = of(name, MOVED);
     expect(moves.every(({ began }) => isString(began))).toBe(true);
     expect(moves.map(({ move, load, cores }) => [move, load ?? null, cores ?? null])).toEqual([
       ["accept", null, null],
       ["prepare", null, null],
-      ["build", 0, 4],
+      ["build", 99, 4],
       ["examine", null, null],
       ["examine", null, null],
     ]);
@@ -322,10 +323,33 @@ describe("a campaign run by its log", () => {
         return examine({ ...request, ...script });
       },
     };
+    // The host is loaded once, at the first look after the first comparison began: its first solve
+    // waits at the gate until the load falls, and every move's start read a quiet host.
+    let loaded = true;
+    const host = {
+      load: () => {
+        const once = loaded && of(name, "comparison.started").length > 0;
+        loaded &&= !once;
+        return once ? 99 : 0;
+      },
+      cores: 4,
+      waitMs: 1,
+    };
     // Set-up, one session, the comparison and its repeat: under `--attended` the promotion is then
     // the operator's.
-    const waits = await harnessBuilder([...flags, "--attended"], seats);
+    const waits = await harnessBuilder([...flags, "--attended"], { ...seats, host });
     expect(waits).toMatchObject({ move: "promote" });
+    // The wait is on record, with the load it read, before the solve that waited began; the solves
+    // beside it read a quiet host and waited for nothing.
+    const kept = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+    const waited = kept.findIndex(({ kind }) => kind === "campaign.waited");
+    expect(of(name, "campaign.waited")).toEqual([
+      expect.objectContaining({ comparison: "g-1", load: 99, cores: 4, ms: expect.any(Number) }),
+    ]);
+    const held = kept[waited]?.data.task;
+    const began = kept.findIndex(({ kind, data }) => kind === "solve.started" && data.task === held);
+    expect(waited).toBeLessThan(began);
+    expect(of(name, MOVED).flatMap(({ load }) => (load === undefined ? [] : [load]))).toEqual([0, 0, 0]);
     // Each comparison was made under the campaign's trigger, and the move records the command.
     for (const made of of(name, MOVED).filter(({ move }) => move === "compare")) {
       expect(made.args).toEqual(expect.arrayContaining(["--trigger", "0.5", "--level", "0.1"]));

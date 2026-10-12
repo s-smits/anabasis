@@ -10,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
+import { marginRead, passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
@@ -1452,6 +1452,26 @@ describe("a checkpoint with no session", () => {
     expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(16);
     // Two solves a side split one against one, too few: an A/A there is `--noise`'s.
     expect((await checkpoint(s.compare("g3"))).noise).toBeNull();
+  });
+
+  it("reads no step on either tier where the reference meets itself, and sets the next comparison's margin from its own spread", async () => {
+    // The A/A rehearsal of the overhaul plan's P2: every solve of the reference is valid, and its
+    // objective 10 or 10.4 by turns, which halves mirrored in time hold one of each on every task.
+    const s = await setup([], (_version, side, nth) =>
+      side === "starter" ? LATE : { ending: PASS, objective: nth % 2 === 0 ? 10 : 10.4 },
+    );
+    const objective = { direction: "lower", margin: 0.01 } as const;
+    const report = await checkpoint({ ...s.compare("g2", { noise: true }), objective });
+    // The objective tells its answers apart past the margin, pairing by pairing, and decides no
+    // task: on validity and on the objective alike, the reference ties itself.
+    expect(report.noise).toMatchObject({ wins: 0, losses: 0, ties: 4, p: 1, flips: 0 });
+    // The 90th percentile of its own sixteen spreads, half of them none and half 0.4 in 10.4.
+    const own = { margin: 0.4 / 10.4, pairings: 16 };
+    expect(report.noise?.margin?.pairings).toBe(own.pairings);
+    expect(report.noise?.margin?.margin).toBeCloseTo(own.margin, 12);
+    // The next comparison reads by it from the log; this one, begun before its A/A reported, by none.
+    expect(marginRead(read(s.log), "g3")).toEqual(report.noise?.margin ?? null);
+    expect(marginRead(read(s.log), "g2")).toBeNull();
   });
 
   it("reads a step on the frontier that loses a retained task as regressed, on sets fixed before its first solve", async () => {

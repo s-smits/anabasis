@@ -193,6 +193,18 @@
   width: 1px;
 }
 
+/* A hidden block whose controls a keyboard reaches: in view while focus is in it, so that what a
+   key would press is seen. */
+.ana-sr-only.ana-shown-on-focus:focus-within {
+  clip-path: none;
+  height: auto;
+  margin: 12px 0 0;
+  overflow: visible;
+  position: static;
+  white-space: normal;
+  width: auto;
+}
+
 /* The harness strip: equal cards at their closed height in one row, the selected one marked, and
    its detail in one panel under the row at the row's width. */
 .ana-harness-lineage {

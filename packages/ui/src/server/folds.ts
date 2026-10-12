@@ -1,0 +1,63 @@
+/**
+ * The repository's folds of one log, each computed once for the log as it was read and then kept
+ * with it, so that every endpoint and the poll of the campaign list share one reading.
+ *
+ * Every fact the page shows is one of these folds' output, or computed from one, as the brief of
+ * 11 October holds it (decision 7: one reader a fact, `AGENTS.md` section 5, habit 2). A log read
+ * again after it changed is another `Log`, and the folds kept for the old one go with it.
+ */
+import { epochsOf } from "../../../../src/builder/climb.ts";
+import { campaignOf } from "../../../../src/builder/handover.ts";
+import { openingOf } from "../../../../src/builder/opening.ts";
+import { proposalsOf } from "../../../../src/kernel/history.ts";
+import type { LogEvent } from "../../../../src/kernel/log.ts";
+import { awaitingLabel, exhausted, lastReports, stopRule } from "../../../../src/kernel/reports.ts";
+import { practiceRan, ranUnder, solvesIn, verdictsOf } from "../../../../src/kernel/solves.ts";
+import { taskSets } from "../../../../src/kernel/task.ts";
+import { indexOf } from "../../../../tools/wri/folds.ts";
+import { overview } from "../../../../tools/wri/read.ts";
+
+/** One log as it was read: the unit every fold below is kept for. */
+export interface Log {
+  readonly events: readonly LogEvent[];
+}
+
+/** `make` of a log, made once for that log and kept while the log is. */
+export function once<T>(make: (log: Log) => T): (log: Log) => T {
+  const kept = new WeakMap<Log, { readonly value: T }>();
+  return (log) => {
+    const found = kept.get(log);
+    if (found !== undefined) return found.value;
+    const value = make(log);
+    kept.set(log, { value });
+    return value;
+  };
+}
+
+export const campaignIn = once(({ events }) => campaignOf(events));
+export const reportsIn = once(({ events }) => lastReports(events));
+export const epochsIn = once(({ events }) => epochsOf(events));
+export const setsIn = once(({ events }) => taskSets(events));
+/** Every solve as its own two events tell it (`solvesIn`), by id. */
+export const solvedIn = once(({ events }) => new Map(solvesIn(events).map((solve) => [solve.id, solve])));
+export const ranIn = once(({ events }) => ranUnder(events));
+/** The practice solves (`practiceRan`), by id. */
+export const practiceIn = once(({ events }) => new Set(practiceRan(events).map(({ id }) => id)));
+export const verdictsIn = once(({ events }) => verdictsOf(events));
+export const indexIn = once(({ events }) => indexOf(events));
+export const overviewIn = once(({ events }) => overview(events));
+/** The held-out tasks waiting for a person's label, and the held-out ones exhausted but for those,
+ *  as the supply counts them (`supplyOf`, `src/builder/admission.ts`): `awaitingLabel` keeps a
+ *  task a label refused since, and `exhausted` one that waits for a label too. */
+export const awaitingIn = once((log) => {
+  const held = new Set(setsIn(log).held);
+  return new Set(awaitingLabel(log.events).filter((version) => held.has(version)));
+});
+export const exhaustedIn = once((log) => {
+  const held = new Set(setsIn(log).held);
+  const awaiting = awaitingIn(log);
+  return new Set(exhausted(log.events).filter((version) => held.has(version) && !awaiting.has(version)));
+});
+export const stopIn = once(({ events }) => stopRule(events));
+export const openingIn = once(({ events }) => openingOf(events));
+export const proposalsIn = once(({ events }) => proposalsOf(events));

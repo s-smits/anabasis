@@ -30,6 +30,8 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
+      # The UI's own lock and React types, without which the lint leaves packages/ui out.
+      - run: bun run ui:gate
       - run: bun run typecheck
       - run: bun run lint -- --strict
       - run: bun run format:check

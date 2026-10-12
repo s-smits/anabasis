@@ -57,9 +57,14 @@ const TASKS = fixtureTasks(7);
 const STARTER_STRENGTH = 3;
 /** What one Builder session adds. */
 const RAISE = 2;
-/** Tasks an Examiner asked for writes, by how far above the reference's strength each is: all
- *  harder than what the reference answers, as room asks, and some past any harness so far. */
+/** Tasks an Examiner asked for writes, by how far above the reference's strength each is: one
+ *  past it, which the reference answers on some of its solves and not all, so that a task is
+ *  informative for it as room asks (`informative`, `roomOf`) and as `try_task` admits a draft;
+ *  and harder ones, some past any harness so far. */
 const ABOVE = [1, 1, 2, 2, 3, 4];
+/** How many times each harness has solved each task, by task and harness folder: a harness
+ *  answers a task one past its strength on every other solve. */
+const tried = new Map<string, number>();
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-climb-")));
 const bundle = join(root, "bundle");
 const folder = join(REPO, ".ana", "d2", NAME);
@@ -184,7 +189,7 @@ describe("the climb", () => {
         "--practice",
         "2",
         "--solves",
-        "1",
+        "2",
         "--sessions",
         "1",
         // The target the simulated climb stalled at on 10 October (climb-9): drawn by hash from
@@ -219,10 +224,17 @@ describe("the climb", () => {
             ]);
           })(),
           setting: campaign.setting({ ...campaign.test, ...scriptedModel([]) }),
-          // A solve passes where the task's base is at most the harness's strength.
+          // A solve passes where the task's base is at most the harness's strength, and one past it
+          // on every other solve: since 12 October a task the reference fails in every solve, or
+          // answers in every solve, leaves it no room, and the climb simulated on 10 October wrote
+          // only such tasks.
           solve: async (task, harness, kill, comparison) => {
             const base = asRecord(task.publicInput)?.base;
-            const passes = isNumber(base) && base <= strengthOf(harness.dir);
+            const key = `${JSON.stringify(task.publicInput)} ${harness.dir}`;
+            const nth = tried.get(key) ?? 0;
+            tried.set(key, nth + 1);
+            const strength = strengthOf(harness.dir);
+            const passes = isNumber(base) && (base <= strength || (base === strength + 1 && nth % 2 === 0));
             const answer = JSON.stringify({ answer: String(Number(base) * 6) });
             const by = scriptedModel(
               [

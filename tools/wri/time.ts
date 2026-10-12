@@ -22,6 +22,7 @@ import { plural } from "#src/meta/text.ts";
 import {
   fired,
   type Index,
+  measured,
   percent,
   type Solve,
   share,
@@ -125,10 +126,11 @@ function limitTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 26: the misses at a limit, the share of the wall each harness used, and the host's load
- *  when each comparison's solves started. */
+/** Lane 26: the misses at a limit, and over the solves each comparison measured, not the non-results
+ *  it reran, the share of the wall each harness used and the host's load when they started. */
 export function wallTriggers(log: Index): Trigger[] {
-  const wallShares = log.compared.flatMap(({ session, own, scoring }) => {
+  const results = log.compared.map((each) => ({ ...each, scoring: each.scoring.filter(measured) }));
+  const wallShares = results.flatMap(({ session, own, scoring }) => {
     // The median share of its wall a harness's solves used, or null for none under a wall. v1 read
     // this share as the measure that moves on every battery and leads a fail (lane 26).
     const under = (harness: JsonValue | undefined) =>
@@ -151,7 +153,7 @@ export function wallTriggers(log: Index): Trigger[] {
   // same wall holds less work on a loaded host: a comparison made there reaches walls an idle host
   // would not, and two comparisons under different loads were not made under one budget, whatever
   // their settings say.
-  const loads = log.compared.flatMap(({ session, scoring }) => {
+  const loads = results.flatMap(({ session, scoring }) => {
     const at = scoring.flatMap((solve) => (solve.load === null ? [] : [solve.load]));
     const middle = median(at);
     const cores = scoring.findLast((solve) => solve.cores !== null)?.cores ?? null;

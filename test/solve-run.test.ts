@@ -474,6 +474,32 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(finished()).toHaveLength(4);
   }, 120_000);
 
+  it.concurrent("returns a provider limit that names its reset at once, for the campaign to wait out", async () => {
+    const limited = fauxAssistantMessage("", {
+      stopReason: "error",
+      errorMessage: "Claude Code: usage limit (limit reached|1791811800)",
+    });
+    const { request, finished } = setup([limited, limited]);
+    const waits: number[] = [];
+    const ending = await solve(request, async (rerun) => {
+      waits.push(rerun);
+    });
+    expect(ending).toMatchObject({ outcome: "non-result", kind: "provider" });
+    expect(waits).toEqual([]);
+    expect(finished()).toHaveLength(1);
+  }, 120_000);
+
+  it.concurrent("starts no rerun once the solve is killed during its wait", async () => {
+    const closed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "WebSocket closed 1000" });
+    const kill = new AbortController();
+    const { request, finished } = setup([closed, closed]);
+    const ending = await solve({ ...request, kill: kill.signal }, async () => {
+      kill.abort();
+    });
+    expect(ending).toMatchObject({ outcome: "non-result", kind: "provider" });
+    expect(finished()).toHaveLength(1);
+  }, 120_000);
+
   it.concurrent("reruns a solve whose harness files moved, and the rerun counts", async () => {
     // The first attempt's model writes into the harness mid-solve; the second finds it settled.
     let harness = "";

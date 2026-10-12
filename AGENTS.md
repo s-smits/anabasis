@@ -173,7 +173,7 @@ numbered otherwise. The design around the copied code is different.
 | --- | --- |
 | The Builder wrote the harness, the tasks and the checks | The Examiner writes tasks, the check program is fixed, and the Builder writes the harness only |
 | A harness was scored on its own Builder's test set, as a pass rate | Two harnesses are compared on held-out tasks, as wins against losses |
-| Every task carried an answer its author had found | No reference answers. A task is held out on the shape of its package |
+| Every task carried an answer its author had found | No reference answers. A task is held out on the shape of its package and, where the host can have the reference harness solve it, only where some and not all of three fresh solves of it are valid (`try_task`); those solves are never scored |
 | A candidate passed a submit gate before it was measured | No gate on a harness. `check_harness` says whether it opens, and the comparison says whether it is better |
 | Difficulty was steered with a band, levels and staged test sizes | One fixed compute budget for both harnesses. No band and no levels |
 | A harness declared its own limits in `agent/config.yaml` | The host sets every limit, and that file is not read |
@@ -266,7 +266,7 @@ wall keeps from it.
 
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
-| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, those tasks counted by family (since 11 October), what the last session said at its `finish`, and the home that session left; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none. It makes no solve of the exam's | `src/examiner/` |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, those tasks counted by family (since 11 October), what the last session said at its `finish`, and the home that session left; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none, but how many of the reference harness's three solves of its own draft task were valid (`try_task`), and nothing else of those solves. It makes no solve of the exam's | `src/examiner/` |
 | **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
@@ -276,10 +276,11 @@ wall keeps from it.
 
 The tools of each model seat, as its source names them:
 
-- Examiner: `propose_tasks`, `read_example`, `try_answer`, `bash`, `read`, `write`, `finish`.
-  `try_answer` runs the checks on an instance with an answer of the Examiner's own and keeps
-  nothing; the shell is a walled home of its own, empty at the session's start, and nothing in
-  it enters the exam but through `propose_tasks`. In the session that drafts an exam:
+- Examiner: `propose_tasks`, or `try_task` where the host can have the reference harness solve a
+  draft task, `read_example`, `try_answer`, `bash`, `read`, `write`, `finish`. `try_answer` runs
+  the checks on an instance with an answer of the Examiner's own and keeps nothing; the shell is a
+  walled home of its own, empty at the session's start, and nothing in it enters the exam but
+  through that one gate. In the session that drafts an exam:
   `draft_exam`, `bash`, `read`, `write`, `finish`, the shell the same kind of walled home
   (`src/examiner/shell.ts`), and nothing in it enters the exam but through `draft_exam`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,

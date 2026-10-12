@@ -62,7 +62,7 @@ import {
 } from "../../vendor/pi-claude-bridge/prompt-stream.ts";
 import { updateUsage } from "../../vendor/pi-claude-bridge/usage.ts";
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
-import { asRecord, isString } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { dirname, join } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
@@ -124,6 +124,8 @@ interface Session {
   readonly parked: Map<string, (result: McpResult) => void>;
   /** Results pi sent before Claude Code called their handler. */
   readonly early: Map<string, McpResult>;
+  /** Whether a turn is reading the query, which then takes its result itself. */
+  reading: boolean;
 }
 
 /** How one API message can end a pi turn; a failure ends it by throwing. */
@@ -167,6 +169,9 @@ const LONG_CONTEXT = new Set([
 /** The live queries of this process, by the caller's session id: two sessions that run at once need
  *  two ids, or the second one's turns go into the first one's query. */
 const sessions = new Map<string, Session>();
+/** The cost Claude Code reported at the host's close of a query no turn was reading, by session id,
+ *  until `reportedCost` takes it. */
+const closings = new Map<string, Promise<number | null>>();
 
 /**
  * The diagnostic the query's last turn carries: `details.totalCostUsd` is the whole query's cost as
@@ -391,7 +396,7 @@ function open(
       env: claudeEnv(claude, { provider: model.provider, token: options.apiKey }),
     },
   });
-  const session: Session = { query: live, prompt, abort, parked, early };
+  const session: Session = { query: live, prompt, abort, parked, early, reading: false };
   sessions.set(key, session);
   // The signal is the solve's, the same on every turn, so its abort ends the query whether it comes
   // inside a turn, at the wall, or after the loop stopped with the query still open: on a submit,
@@ -488,9 +493,11 @@ async function readTurn(
   turn: AssistantMessage,
 ): Promise<TurnEnd> {
   const spent: Usage[] = [];
+  session.reading = true;
   try {
     return await readMessages(key, session, model, turn, spent);
   } finally {
+    session.reading = false;
     for (const usage of spent) addUsage(turn.usage, usage);
     calculateCost(model, turn.usage);
   }
@@ -595,18 +602,55 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
  * parked `submit` called it again 975 ms and 1,812 ms after, and Claude Code's own logs of that
  * day's solves hold such a call after 14 of 35. Interrupted first, it called nothing and was gone
  * inside a second. The timer is for a child that never answers the interrupt.
+ *
+ * A query no turn is reading is read on to the result the interrupt brings, which carries the cost,
+ * and ends there (`reportedCost`); a turn being read takes that result itself.
  */
 function close(key: string, session: Session): void {
   sessions.delete(key);
   session.prompt.end();
   const end = () => session.abort.abort();
-  void session.query.interrupt().then(end, end);
+  const interrupted = session.query.interrupt();
+  if (session.reading) void interrupted.then(end, end);
+  else {
+    void interrupted.catch(end);
+    closings.set(key, costAtClose(session).finally(end));
+  }
   setTimeout(end, INTERRUPT_MS).unref();
   for (const resolve of session.parked.values()) {
     resolve({ content: [{ type: "text", text: "the query was closed" }] });
   }
   session.parked.clear();
   session.early.clear();
+}
+
+/**
+ * What Claude Code reported session `key`'s query cost, which the meter's billed dollars are held to,
+ * or null where it reported none, as a provider other than Claude Code reports none. A session that
+ * ended on a call of its own, `finish` or `submit`, leaves Claude Code waiting on that call's result,
+ * and the query's `result` comes only after the host's close interrupts it: this waits on that close.
+ * Until 12 October every reader took the cost from the turns alone, so a session that ended the
+ * ordinary way had none, and only one that failed did: on buffer, 10.19 of 13.35 billed dollars had
+ * no figure of Claude Code's beside them.
+ */
+export async function reportedCost(key: string, turns: readonly AssistantMessage[]): Promise<number | null> {
+  const closing = await closings.get(key);
+  closings.delete(key);
+  const last = turns.flatMap((turn) => turn.diagnostics ?? []).findLast(({ type }) => type === REPORTED_COST);
+  const reported = asRecord(last?.details)?.totalCostUsd;
+  return closing ?? (isNumber(reported) ? reported : null);
+}
+
+/** The cost on the query's next `result`, or null where the query ends or is aborted first. */
+async function costAtClose(session: Session): Promise<number | null> {
+  const aborted = new Promise<null>((resolve) => {
+    session.abort.signal.addEventListener("abort", () => resolve(null), { once: true });
+  });
+  for (;;) {
+    const next = await Promise.race([session.query.next(), aborted]).catch(() => null);
+    if (next === null || next.done === true) return null;
+    if (next.value.type === "result") return next.value.total_cost_usd;
+  }
 }
 
 export function emptyTurn(model: Model<Api>): AssistantMessage {

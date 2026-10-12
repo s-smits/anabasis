@@ -54,7 +54,7 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { REPORTED_COST } from "../backends/claude.ts";
+import { reportedCost } from "../backends/claude.ts";
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
@@ -66,7 +66,7 @@ import { taskStates } from "../kernel/task.ts";
 import { CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { isString } from "../meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { RefereeFinding } from "../review/referee.ts";
@@ -416,9 +416,6 @@ export async function session(
         })
       : "crashed";
   const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
-  const reported = asRecord(
-    turns.flatMap((turn) => turn.diagnostics ?? []).findLast((d) => d.type === REPORTED_COST)?.details,
-  )?.totalCostUsd;
   // Kept before the session is recorded as ended, so a session on record as ended has its notes.
   keepMemory(dirs.home, request.memory, request.id);
   append(log, "build.finished", {
@@ -435,7 +432,7 @@ export async function session(
     reviewFaults: bench.faults,
     tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
-    reportedCost: isNumber(reported) ? reported : null,
+    reportedCost: await reportedCost(request.id, turns),
     seconds: (performance.now() - began) / 1000,
   });
   if (bench.fatal !== null) throw bench.fatal;

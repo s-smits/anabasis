@@ -38,7 +38,7 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { CLAUDE_COMPACTED, REPORTED_COST } from "../backends/claude.ts";
+import { CLAUDE_COMPACTED, reportedCost } from "../backends/claude.ts";
 import { CALL_RETRIED } from "../backends/models.ts";
 import { type Compacted, compactBeforeRequest } from "../backends/pi-compaction.ts";
 import type { Limits } from "../kernel/condition.ts";
@@ -49,7 +49,7 @@ import type { Ending } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { lstatSync, rmSync } from "../meta/filesystem.ts";
-import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
@@ -175,10 +175,6 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
   const played = await play(request, id);
   const ending = await judge(request, id, played);
   const tokens = tokensOf([...played.turns.map((turn) => turn.usage), ...played.summaries]);
-  const reported = played.turns
-    .flatMap((turn) => turn.diagnostics ?? [])
-    .findLast((diagnostic) => diagnostic.type === REPORTED_COST)?.details;
-  const reportedCost = asRecord(reported)?.totalCostUsd;
   append(log, "solve.finished", {
     solve: id,
     ending,
@@ -186,7 +182,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     prompts: played.prompts,
     tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
-    reportedCost: isNumber(reportedCost) ? reportedCost : null,
+    reportedCost: await reportedCost(id, played.turns),
     responseModels: [...new Set(played.turns.flatMap((turn) => turn.responseModel ?? []))],
     harness: played.harness,
     homeBytes: played.homeBytes,

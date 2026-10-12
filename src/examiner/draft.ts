@@ -51,13 +51,13 @@ import {
   type Usage,
 } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
-import { REPORTED_COST } from "../backends/claude.ts";
+import { reportedCost } from "../backends/claude.ts";
 import { answerFormatFault, type Contract, type Objective } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -535,9 +535,6 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
   };
   const ended = ENDINGS.find((reason) => by[reason]) ?? "stopped";
   const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
-  const reported = asRecord(
-    turns.flatMap((turn) => turn.diagnostics ?? []).findLast((d) => d.type === REPORTED_COST)?.details,
-  )?.totalCostUsd;
   append(log, "draft.finished", {
     session: request.id,
     ended,
@@ -548,7 +545,7 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
     turns: turns.length,
     tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
-    reportedCost: isNumber(reported) ? reported : null,
+    reportedCost: await reportedCost(request.id, turns),
     seconds: (performance.now() - began) / 1000,
   });
   return { stands: desk.stands, tries: desk.tries, ended };

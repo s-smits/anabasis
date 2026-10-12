@@ -76,12 +76,13 @@ interface Span {
   readonly until: number;
 }
 
-/** Whether a miss ended at a limit of its own: the kernel's kinds, or past the share of its wall
- *  read as bound by it. */
+/** Whether a miss ended at a limit of its own: the kernel's kinds, a call in the last turn its bound
+ *  allowed, as 5 of buffer's 17 on 12 October, or past the share of its wall read as bound by it. */
 const atALimit = (solve: Solve) =>
   AT_A_LIMIT.has(solve.kind) ||
+  solve.limit !== null ||
   (solve.wallSeconds > 0 && solve.seconds > solve.wallSeconds * WALL_BOUND_SHARE);
-const limitOf = (solve: Solve) => (AT_A_LIMIT.has(solve.kind) ? (solve.kind ?? "") : "wall share");
+const limitOf = (solve: Solve) => (AT_A_LIMIT.has(solve.kind) ? solve.kind : solve.limit) ?? "wall share";
 
 /** The misses at a limit by comparison and side: recode on 10 October ended 41 of its 58 scored
  *  misses on turns, and a read of the wall alone saw none. A miss at a limit says the budget was

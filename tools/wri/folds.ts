@@ -64,6 +64,8 @@ export interface Solve {
   seconds: number;
   readonly calls: string[];
   errors: number;
+  /** A limit a call met that its ending does not name, or null; a call's turn counts from 0. */
+  limit: string | null;
   /** Whether the provider named the model that served it. */
   attested: boolean;
 }
@@ -258,6 +260,7 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
         seconds: 0,
         calls: [],
         errors: 0,
+        limit: null,
         attested: false,
       });
     }
@@ -265,6 +268,7 @@ function solvesOf(events: readonly LogEvent[], conditions: ReadonlyMap<string, C
     if (solve !== undefined && kind === "solve.call") {
       solve.calls.push(text(data.tool));
       solve.errors += data.isError === true ? 1 : 0;
+      if (count(data.turn) + 1 === solve.modelTurns) solve.limit = "last turn";
     }
     if (solve !== undefined && kind === "solve.finished") {
       const ending = asRecord(data.ending);

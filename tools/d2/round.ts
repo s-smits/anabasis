@@ -22,9 +22,10 @@
  * Either way it is fixed before any solve, so that no harness's results choose it
  * (`src/builder/round.ts`, `scoredSet`).
  *
- * The defaults are the plan's (`docs/plan.md`, Tuning): 12 scored tasks, two solves a harness, the
- * sign test at 0.10, and a stop past three check defects. At those a round's comparison is 48
- * solves, all of them fresh and side by side. Until 2026-10-09 a round was about 430.
+ * The defaults are the plan's (`SIZE`, `src/kernel/size.ts`): 24 scored tasks, four solves a
+ * harness, the paired sign-flip test at 0.10, and a stop past three check defects. At those a
+ * round's comparison is 192 solves, all of them fresh and side by side; until 12 October it was 12
+ * tasks and two solves, 48 solves, and until 2026-10-09 a round was about 430.
  *
  * `--cap` is the round's dollar cap and is required: no solve starts that a reserve for it and for
  * each one running (`--reserve`, $10) would take past it, and the session's spend counts against
@@ -82,6 +83,7 @@ import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
+import { SIZE } from "#src/kernel/size.ts";
 import { plural } from "#src/meta/text.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import {
@@ -140,7 +142,7 @@ export const COMPARISON_OPTIONS = {
   reviewer: { type: "string" },
   "reviewer-effort": { type: "string", default: "high" },
   target: { type: "string" },
-  solves: { type: "string", default: "2" },
+  solves: { type: "string", default: String(SIZE.solves) },
   // The step and its repeat read together clear `level`; a first reading at or under `trigger`
   // buys the repeat (`src/kernel/compare.ts`, `readTwice`). 0.20 on each reading alone was the default from
   // #175 until 10 October's two-stage rule.
@@ -409,14 +411,27 @@ export function capNamed(
 }
 
 /**
- * A report's `valid` in lines: each harness by itself, as the tasks by how many of their solves
- * were valid. It is what the plan's first gate reads of the
- * starter, which is the reference harness of the first round (`docs/plan.md`, G0). None for a
- * report that compared nothing.
+ * A report in lines, printed with every reading: the frontier it was read on, with its untied tasks,
+ * the least share of them one reading detects four times in five (`detectable`) and the rule's
+ * false rate an attempt beside the level (`falseRate`); and `valid`,
+ * each harness by itself, as the tasks by how many of their solves were valid, which is what the
+ * plan's first gate reads of the starter, the reference harness of the first round (`docs/plan.md`,
+ * G0). None for a report that compared nothing.
  */
-export function validLines({ valid, objective }: Pick<Report, "valid" | "objective">): string[] {
+export function reportLines({
+  valid,
+  objective,
+  frontier,
+}: Pick<Report, "valid" | "objective" | "frontier">): string[] {
   if (valid === null) return [];
+  const share = frontier?.detectable ?? null;
   return [
+    ...(frontier === null
+      ? []
+      : [
+          `the step is read on ${plural(frontier.tasks.length, "frontier task")}, ${String(frontier.wins + frontier.losses)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
+          `an attempt at these margins, this reading and a repeat alike, promotes between equal harnesses ${String(Math.round(1000 * frontier.falseRate) / 10)}% of the time: the level is one reading's, and this the rule's`,
+        ]),
     `each harness by itself, as how many tasks had ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves (a count of tasks a column, not a share):`,
     `  at its limits: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
     ...(objective === null
@@ -467,6 +482,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     tasks: scoredNamed(campaign, setting.tasks, setting.target),
     solves: Number(values.solves),
     level: Number(values.level),
+    trigger: Number(values.trigger),
     objective: objectiveNamed(campaign, values.margin),
     defects: Number(values.defects),
     cap,
@@ -500,7 +516,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
   for (const line of [
-    ...validLines(report),
+    ...reportLines(report),
     ...predictionLines(read(campaign.log), session, report),
     ...awaitingLines(campaign),
   ]) {

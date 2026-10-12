@@ -37,8 +37,8 @@ serves one question:
 
 A comparison in code answers it. Both harnesses solve the same held-out tasks afresh, under the
 same limits. A hidden check program decides whether each answer is valid. Each task is then a win,
-a loss or a tie for the new harness, and a one-sided sign test over the tasks reads a **step** or
-none.
+a loss or a tie for the new harness by its difference in pair wins, and a one-sided paired
+sign-flip test over the tasks reads a **step** or none.
 
 ```text
                         OPERATOR   freezes the exam, sets the dollar cap, labels answers blind
@@ -59,7 +59,7 @@ none.
                        VERIFIER (code + checks)   pass │ fail │ faulty │ non-result
                        REFEREE (model)            rules every rejection before it counts
                             │
-                       tally of wins, losses and ties ──► sign test ──► reading
+                       tally of wins, losses and ties ──► sign-flip test ──► reading
                             │
                        THE LOG   one append-only file a campaign; every state is a view of it
 ```
@@ -93,17 +93,25 @@ the reference improves. Bar: two promotions in one real campaign, the starter lo
 after the second than after the first, then the same in a second domain. One step shows that the
 loop can move; two show that it can move from where it moved to.
 
-**3. Honesty: what is the false-positive rate of the test?** A sign test at level 0.10 is
-designed to crown a winner between two equal harnesses about one time in ten, and the design
-value is a claim until it is measured on the real solver, whose variance is unknown: the same
-harness fails a task once and passes it next time. The measurement is an A/A test. With
-`--noise` on a checkpoint the reference is solved twice as often; its earlier solves of each
-task are one side and its later solves the other, and the two are tallied and tested as a
-comparison is (`src/builder/round.ts`). A step there is a false positive by construction. Bar: no
-step in the ten controls after the six on record. Two limits are known: ten controls still bound
-the rate loosely, and the later side always runs after the earlier, so a drift of the host or the
-provider reads as a lie. The same control gives the tie share, the floor a real comparison has to
-beat before its wins mean anything.
+**3. Honesty: what is the false-positive rate of the test?** A test at level 0.10 is designed to
+crown a winner between two equal harnesses about one time in ten, and the design value is a claim
+until it is measured on the real solver, whose variance is unknown: the same harness fails a task
+once and passes it next time. The measurement is an A/A test, built as the test is: the
+reference's solves of a task split into two halves mirrored in time, tallied and tested as a
+comparison is (`src/builder/comparison.ts`). At four solves a side every comparison carries one, on
+the solves its test reads, two against two; at fewer, `--noise` on a checkpoint solves the
+reference twice as often for it, a slot being the reference, the new harness and the reference
+again (`src/builder/round.ts`). A step there is a false positive by construction. Its earlier solves against its later ones are kept apart as the drift, and how often
+two of its solves of a task disagree as the flip rate. Bar: no step in the ten controls after the
+six on record. Ten controls still bound the rate loosely. The same control gives the tie share, the
+floor a real comparison has to beat before its wins mean anything. A campaign makes many promotion
+attempts under one reference, and the level misstates even one: an attempt is two readings, and
+at 0.10 the rule promotes equal harnesses 5.8% of the time on 24 untied tasks (`falseRate`,
+`src/kernel/compare.ts`). Every reading prints that rate at its own margins, and a campaign's
+opening says the union bound over its patience's attempts and is refused past 10% (`opening`,
+`src/kernel/size.ts`). The climb reads what the attempts risk together as they come: one attempt's
+rate bounded off pairs of controls read by the promotion rule, at 95% one-sided, or the level by
+design before two controls, summed over the attempts (`falsePromotion`, `src/builder/climb.ts`).
 
 **4. Verdicts: are the labels correct?** Validity is decided by a check program nobody has
 audited against the field, and a check that rejects a right answer is label noise: in v1, 36 of
@@ -655,8 +663,10 @@ it. A third of the closed ones stays in by a hash of its own, so that a harness 
 the reference answers still shows its losses. The Examiner is told such a task is exhausted, in
 those words.
 
-**Fresh solves.** Each scored task is solved under each harness, afresh, the two harnesses taking
-the first place in turn. A solve counts only when its start names the comparison. No earlier solve
+**Fresh solves.** Each scored task is solved under each harness, afresh. A task's solves run
+together, the tasks in an order a hash of each draws, and within a task the harness that goes
+first is mirrored, so what drifts over a comparison's hours falls between tasks, which the test
+does not read. A solve counts only when its start names the comparison. No earlier solve
 of either harness is reused, because a condition names the host's code, which changes between
 comparisons, and one frozen draw of the reference's solves would bias every later reading.
 
@@ -682,11 +692,22 @@ the better one. The objective is public, in the contract and the solver's resour
 report says how many tallied tasks it decided (`objective.decided`). The rule is a term of the
 comparison, fixed at its start; a check program that declares none pairs on validity alone.
 
-**The test.** A one-sided sign test reads wins against losses, in two stages: a comparison whose
-tally is at or under the trigger (0.25: 2 to 0, 4 to 1, 5 to 2, 7 to 3) buys the repeat and
-promotes nothing, and the step and its repeat read together, wins and losses summed, clear the
-level (0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), the repeat having untied a task and won at least as
-many as it lost (`readTwice`, `src/kernel/compare.ts`). A reading under the trigger counts for the
+**The test.** A one-sided paired sign-flip test reads each task's difference in pair wins
+(`flipP`, `src/kernel/compare.ts`): were the harnesses interchangeable each untied task would be as
+likely won as lost by its margin, and p is the share of the signs that sum to at least what was
+read. It is exact, and where every task is won or lost by as many pairs it is the sign test. The
+step is read on the **frontier**, the scored tasks not exhausted; the **retained** tasks, fixed
+with them at the comparison's start from the exhausted third the draw keeps, may not lose more
+pairs than they win, and an empty retained set reads `unmeasured`, never no loss. Each family's
+tallies stand beside both, from the same rows; they show concentration, and establish no
+independence. The test runs in two stages: a comparison whose frontier is at or under the trigger
+(0.25: 2 to 0, 4 to 1, 5 to 2, 7 to 3 where every task is won by as many pairs) buys the repeat
+and promotes nothing, and the step and its repeat read together clear the level (0.10: 4 to 0, 6
+to 1, 7 to 2, 9 to 3), the repeat having untied a task and won at least as many pairs as it lost,
+neither stage losing on its retained tasks, and their untied tasks not all in one family of two
+or more (`readTwice`). Every reading prints its untied count, the least share of them it detects
+four times in five (`detectable`), and the chance an attempt at its margins promotes equal
+harnesses (`falseRate`). A reading under the trigger counts for the
 stop rule as a move that showed a gain. Both terms are recorded in the campaign's opening, so a
 campaign reads by its own rule whatever the tree's default. Two other readings of a tally are in
 the plan ("Statistical power and cost") and neither is built.
@@ -697,6 +718,8 @@ the plan ("Statistical power and cost") and neither is built.
 | --- | --- |
 | `step` | The test cleared its level |
 | `no-step` | A test was made and did not clear its level |
+| `regressed` | The frontier cleared its level and the retained tasks lost more pairs than they won. It promotes nothing |
+| `narrow` | The frontier cleared its level and its untied tasks all fall in one family of the two or more the set holds. It promotes nothing; the repeat draws other families where supply allows |
 | `not-scored` | No task was tallied, or the cap cut the test short. Nothing was tested |
 | `check-defects` | The comparison stopped on its check defects |
 | `no-change` | The session left nothing new to compare |
@@ -723,9 +746,12 @@ reading at a shorter budget would be of a solver that was told the longer one (o
 starter answered 0 of 10 solves read at two turns, and 10 of 10 once it was told two).
 
 **Beside the test.** The report holds how each harness did by itself (`valid`: on how many tasks
-every solve, some or none were valid). `--noise` on a checkpoint reads the reference against
-itself on separate solves; it should read no step, and its tie share is the noise every
-comparison has to exceed. It is the operator's, and no move of the table.
+every solve, some or none were valid), which tasks entered each of its two sets, and its overlap
+with the comparison of the same two harnesses before it. The reference read against itself on
+halves of its own solves mirrored in time stands beside every comparison of four solves a side, and
+`--noise` on a checkpoint gives one at fewer; it should read no step, and its tie share is the
+noise every comparison has to exceed, its flip rate how often two solves of a task disagree, and
+its drift its earlier solves against its later ones.
 
 **The dollar cap.** `--cap` is required. Before each solve the billed dollars of the comparison
 are summed from the log, and the solve does not start when a reserve for it and for every solve

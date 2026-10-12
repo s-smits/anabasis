@@ -20,13 +20,14 @@ import {
   targetNamed,
 } from "../tools/d2/setting.ts";
 
-/** The setting of a campaign no command has named anything for. */
+/** The setting of a campaign no command has named anything for: 24 tasks to score since
+ *  12 October (`SIZE`), 12 before. */
 const UNNAMED: Recorded = {
   solver: null,
   minutes: 120,
   modelTurns: null,
   tasks: null,
-  target: 12,
+  target: 24,
 };
 /** One an operator recorded: another solver, an eight-minute wall, forty model turns, three tasks. */
 const SHORT: Recorded = {
@@ -34,7 +35,7 @@ const SHORT: Recorded = {
   minutes: 8,
   modelTurns: 40,
   tasks: ["t-1", "t-2", "t-3"],
-  target: 12,
+  target: 24,
 };
 
 describe("what the flags of a setting name", () => {
@@ -106,7 +107,7 @@ describe("a campaign's setting, recorded once", () => {
     expect(settingAsked({}, null)).toEqual({
       named: { solver: undefined, limits: LIMITS },
       tasks: undefined,
-      target: 12,
+      target: 24,
       record: UNNAMED,
       first: true,
     });
@@ -136,7 +137,7 @@ describe("a campaign's setting, recorded once", () => {
         "solve-model-turns": "40",
       }),
     );
-    expect(asked).toMatchObject({ tasks: "t-1,t-2,t-3", target: 12 });
+    expect(asked).toMatchObject({ tasks: "t-1,t-2,t-3", target: 24 });
     // Named again as it stands, it is the same setting: a flag that agrees is no other.
     const again = settingAsked(
       { "solve-minutes": "8", "solve-model-turns": "40", tasks: "t-3,t-1,t-2" },
@@ -144,10 +145,10 @@ describe("a campaign's setting, recorded once", () => {
     );
     expect(again.record).toBeNull();
     expect(again.named).toEqual(asked.named);
-    expect(settingAsked({ target: "12" }, UNNAMED)).toMatchObject({
+    expect(settingAsked({ target: "24" }, UNNAMED)).toMatchObject({
       record: null,
       tasks: undefined,
-      target: 12,
+      target: 24,
     });
   });
 
@@ -168,7 +169,7 @@ describe("a campaign's setting, recorded once", () => {
       "--tasks t-1,t-2 names another setting than the campaign's, which was recorded as --tasks t-1,t-2,t-3",
     );
     expect(() => settingAsked({ target: "8" }, UNNAMED)).toThrow(
-      "--target 8 names another setting than the campaign's, which was recorded as --target 12",
+      "--target 8 names another setting than the campaign's, which was recorded as --target 24",
     );
     expect(() => settingAsked({ "solve-model-turns": "40" }, UNNAMED)).toThrow(
       "--solve-model-turns 40 names another setting than the campaign's, which was recorded with no --solve-model-turns",

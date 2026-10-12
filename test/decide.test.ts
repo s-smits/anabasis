@@ -9,6 +9,7 @@ import { openingOf, planOf } from "../src/builder/opening.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
+import { tallied } from "./helpers/tally.ts";
 
 /** Tasks by how many of their two solves were valid: none, one, both. */
 type Valid = readonly [number, number, number];
@@ -70,7 +71,7 @@ function compared(
       session: id,
       ...sides,
       reading,
-      scored: { wins, losses, ties },
+      ...tallied(wins, losses, ties),
       versions: HELD,
       valid: { old: [...(more.valid?.old ?? HALF)], fresh: [...(more.valid?.fresh ?? HALF)] },
       setting: null,
@@ -892,7 +893,7 @@ describe("what a campaign runs by", () => {
       sessions: 2,
       patience: 6,
       unprepared: false,
-      wanted: { target: 12, level: 0.1, trigger: 0.25 },
+      wanted: { target: 24, level: 0.1, trigger: 0.25 },
       left: { dollars: 360, reserve: 10 },
       prompted: false,
     });

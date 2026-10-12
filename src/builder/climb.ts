@@ -11,14 +11,46 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { pairings } from "../kernel/compare.ts";
+import { pairings, readTwice, TRIGGER, UNMEASURED } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, pairsReported } from "../kernel/reports.ts";
+import { lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
+import { upperBound } from "../kernel/size.ts";
 import { countedSolves, passed } from "../kernel/solves.ts";
-import { isString } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { plural } from "../meta/text.ts";
 import { short } from "./move.ts";
+import { openingOf } from "./opening.ts";
+
+/**
+ * What an epoch's promotion attempts risk together: a false promotion among them, bounded (the
+ * revised plan's M2.5, 12 October). The two-stage rule bounds one attempt, and a campaign makes
+ * many; this reads them, and the table may refuse the next comparison past a share of it.
+ */
+interface FalsePromotion {
+  /** The comparisons of a candidate against the epoch's reference that read a frontier, each the
+   *  first stage of a promotion it may buy, unsuccessful ones included. */
+  readonly attempts: number;
+  /** The A/A controls on record read in pairs as a step and its repeat (`readTwice`), each pair one
+   *  attempt between equal harnesses, and the pairs that promoted. */
+  readonly errors: number;
+  readonly pairs: number;
+  /** The one-sided confidence of `bound`. */
+  readonly confidence: number;
+  /** One attempt's rate at most: the upper bound off the pairs (`upperBound`), never none, or the
+   *  attempts' level by design where no two controls are on record. */
+  readonly bound: number;
+  /** The union bound over the attempts, min(1, the sum of their bounds), which assumes nothing of
+   *  their independence. */
+  readonly union: number;
+  /** Whether the bound was read under other tasks, from a control of another epoch, or by design for
+   *  a fixed comparison. */
+  readonly indicative: boolean;
+}
+
+/** The confidence a false-promotion bound is read at. */
+const CONFIDENCE = 0.95;
 
 /** Valid answers and solves of one harness on a set of tasks. */
 export interface Share {
@@ -47,6 +79,7 @@ export interface Epoch {
    *  it: null where no solve of that harness on those tasks is on record. */
   readonly reference_share: Share | null;
   readonly starter_share: Share | null;
+  readonly falsePromotion: FalsePromotion;
 }
 
 /** The regression reading beside a comparison: the newest candidate against the previous one. */
@@ -106,6 +139,7 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
   const solves = countedSolves(events);
   const bounds = boundsOf(events);
   const byEpoch = tasksByEpoch(events);
+  const reports = lastReports(events);
   return bounds.map(({ index: from, harness: reference }, nth) => {
     const next = bounds[nth + 1];
     const to = next?.index ?? null;
@@ -141,8 +175,61 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
       comparisons,
       reference_share: shareOf(under(referenceDigest)),
       starter_share: reference === "starter" ? null : shareOf(under(starterDigest)),
+      falsePromotion: falsePromotionOf(events, reports, within, {
+        reference: referenceDigest,
+        starter: starterDigest,
+      }),
     };
   });
+}
+
+/**
+ * An epoch's false-promotion reading (`FalsePromotion`): its attempts, from `reports` within it
+ * against `reference`, and one attempt's bound read off the campaign's A/A controls in pairs, in
+ * the log's order, each control's reference against itself as a stage of its own.
+ */
+function falsePromotionOf(
+  events: readonly LogEvent[],
+  reports: readonly Reported[],
+  within: (at: number) => boolean,
+  harnesses: { readonly reference: string | null; readonly starter: string | null },
+): FalsePromotion {
+  const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
+  const attempts = reports.filter(
+    ({ index, data }) =>
+      within(index) &&
+      data.old === harnesses.reference &&
+      data.fresh !== harnesses.starter &&
+      asRecord(data.frontier) !== null,
+  );
+  const controls = reports.filter(({ data }) => asRecord(data.noise) !== null);
+  const trigger = Number(openingOf(events)?.terms.trigger ?? TRIGGER);
+  const stage = ({ data }: Reported) => ({
+    frontier: data.noise ?? null,
+    retained: UNMEASURED,
+    families: {},
+  });
+  const pairs = Array.from({ length: Math.floor(controls.length / 2) }, (_, at) => [
+    controls[2 * at],
+    controls[2 * at + 1],
+  ]).flatMap(([one, two]) => (one === undefined || two === undefined ? [] : [[one, two] as const]));
+  const errors = pairs.filter(([one, two]) =>
+    readTwice([stage(one), stage(two)], levelOf(one), trigger),
+  ).length;
+  const measured = upperBound(errors, pairs.length, CONFIDENCE);
+  const bounds = attempts.map((attempt) => (pairs.length > 0 ? measured : levelOf(attempt)));
+  return {
+    attempts: attempts.length,
+    errors,
+    pairs: pairs.length,
+    confidence: CONFIDENCE,
+    bound: pairs.length > 0 ? measured : Math.max(0, ...bounds),
+    union: Math.min(
+      1,
+      bounds.reduce((sum, bound) => sum + bound, 0),
+    ),
+    indicative: pairs.length === 0 || controls.some(({ index }) => !within(index)),
+  };
 }
 
 /** One line an epoch, as the view prints them. */
@@ -152,7 +239,13 @@ export function epochLine(epoch: Epoch): string {
   const reference = epoch.reference === "starter" ? "the starter" : epoch.reference.slice(0, 8);
   const readings = epoch.comparisons.map(({ id, reading }) => `${id} ${reading}`).join(", ") || "none";
   const end = epoch.promoted === null ? "open" : `promoted ${epoch.promoted.slice(0, 8)}`;
-  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${end}`;
+  const risk = epoch.falsePromotion;
+  const percent = (chance: number) => `${String(Math.round(100 * chance))}%`;
+  const source =
+    risk.pairs === 0
+      ? `${percent(risk.bound)} an attempt by design, before two A/A controls, indicative`
+      : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted, at most ${percent(risk.bound)} an attempt at ${percent(risk.confidence)}${risk.indicative ? ", indicative" : ""}`;
+  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them at most ${percent(risk.union)}: ${source}; ${end}`;
 }
 
 /**

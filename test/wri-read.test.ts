@@ -156,7 +156,7 @@ const OWN = {
   // of what repeated solves used; no trigger reads either.
   budgets: [{ turns: 4, wins: 1, losses: 0, ties: 1, p: 0.5 }],
   spread: { turns: { tasks: 2, median: 2, most: 3 }, cpu: null, seconds: { tasks: 2, median: 1, most: 1 } },
-  noise: { wins: 0, losses: 0, ties: 2, p: 1 },
+  noise: { wins: 0, losses: 0, ties: 2, p: 1, differences: [0, 0] },
   counted: { wins: 4, losses: 0, ties: 0, p: 0.0625 },
   versions: ["v3", "v4"],
   aside: ["v1", "v2"],
@@ -589,7 +589,7 @@ describe("the reader of a round compared with another harness than its session s
     scored: { ...TESTED, wins: 1, p: 0.5, unsolved: 0 },
     valid: { old: [1, 0], fresh: [0, 1] },
     budgets: [{ prompts: 1, ...TESTED, ties: 1, valid: { old: [1, 0], fresh: [1, 0] } }],
-    noise: { wins: 0, losses: 4, ties: 0, p: 1 },
+    noise: { wins: 0, losses: 4, ties: 0, p: 1, differences: [-2, -2, -2, -2] },
     versions: ["v1"],
     reading: "no-step",
   });

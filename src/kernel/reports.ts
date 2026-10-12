@@ -47,7 +47,7 @@ interface Unfinished {
 }
 
 /** A comparison's last report, with where the comparison stands in the log: at its first report. */
-interface Reported {
+export interface Reported {
   readonly session: string;
   readonly index: number;
   readonly data: JsonObject;
@@ -284,10 +284,9 @@ export function roomOf(report: JsonObject, side: "old" | "fresh" = "old"): "none
  * F48; `patienceOf`).
  *
  * A move that counts is one of two. The first is a harness a Builder session changed, compared
- * with one reference, where the comparison tallied a task and left room (`roomOf`). Such a pair counts once, where it first reported, and reads as its last
- * comparison: a step its repeat does not read again was one draw, and three repeats of one
- * harness are one harness that showed no gain. On 9 October one harness compared with the starter
- * three times, each time on more tasks, stopped a campaign. The second is a whole session that
+ * with one reference, where the comparison tallied a task and left room (`roomOf`), counted once
+ * where it first reported and read as its last comparison: three repeats of one harness are one
+ * harness that showed no gain (9 October). The second is a whole session that
  * left its harness as it was, where a practice solve of the session failed: it was shown a failure
  * and declined it. A session whose every practice solve passed, or that ran none, had nothing to
  * work on, which is a fault of the supply and no evidence about the domain: all ten campaigns of
@@ -298,10 +297,8 @@ export function roomOf(report: JsonObject, side: "old" | "fresh" = "old"): "none
  * reading of the reference against itself are; one stopped on its check defects, cut by its cap,
  * or with every task set aside, which tested nothing; and one that left no room, whose answer is
  * other tasks and no other harness. Until 2026-10-11 whatever stood before the last comparison
- * under another setting id was left out too, and the id names the host's code, so a tree moved to
- * a new commit between two comparisons read the campaign's moves from the second; and a harness
- * set against the starter after it was compared with another reference was read as no move of
- * its own, a reading the comparison no longer makes (`docs/simplify.md`, A4 and B2).
+ * under another setting id was left out too, and a harness set against the starter after another
+ * reference was read as no move of its own (`docs/simplify.md`, A4 and B2).
  */
 /** The campaign's patience as its opening records it (`--patience`), or `PATIENCE`. */
 export function patienceOf(events: readonly LogEvent[]): number {
@@ -323,8 +320,7 @@ export function stopRule(events: readonly LogEvent[]) {
       isString(data.fresh) &&
       built.has(data.fresh),
   );
-  // The campaign's trigger as its opening records it (`--trigger`, a term kept as a string), or
-  // `TRIGGER`.
+  // The campaign's trigger as its opening records it (`--trigger`, a string), or `TRIGGER`.
   const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.trigger;
   const parsed = isString(named) ? Number(named) : Number.NaN;
   const trigger = Number.isFinite(parsed) ? parsed : TRIGGER;
@@ -363,15 +359,19 @@ export function stopRule(events: readonly LogEvent[]) {
  * The pairs a comparison's last report tallied, read as the comparison found them: from the log up
  * to its first report, so a task released, refused or disputed since is still the scored task it
  * was, under the report's own two harnesses and setting, counting the comparison's own solves, and
- * each side cut to the solves a side it asked for. None for a report that compared nothing, and
- * none for a comparison made before a solve's start named its comparison (2026-10-09).
+ * each side cut to the solves it asked for (under `--noise`, the reference's first mirrored half,
+ * `halves`). None for a report that compared nothing, or before a solve named its comparison.
  */
 export function pairsReported(events: readonly LogEvent[], report: Reported): Paired[] {
   const { session, index, data } = report;
   const { old, fresh, setting, solves } = data;
   const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
   if (!isString(old) || !isString(fresh) || !isString(setting) || !isNumber(solves)) return [];
-  const sides = { old, fresh, setting, comparison: session, objective: objectiveRuleIn(data) };
+  const begun = events.find(
+    ({ kind, data: start }) => kind === "comparison.started" && start.session === session,
+  );
+  const halves = begun?.data.noise === true ? ("mirrored" as const) : undefined;
+  const sides = { old, fresh, setting, comparison: session, objective: objectiveRuleIn(data), halves };
   return whole(pairsOf(events.slice(0, index + 1), versions, sides).pairs, solves).pairs;
 }
 
@@ -386,9 +386,7 @@ export function answered(events: readonly LogEvent[], id: string): Set<string> {
   );
 }
 
-/** Each pair cut to its first `solves` solves a side, and the tasks that have fewer. A reference
- *  harness read against itself is solved twice as often, and a comparison gone on from its log can
- *  leave a task one solve over on a side; a tally needs as many of each. */
+/** Each pair cut to its first `solves` solves a side, and the tasks with fewer (a resume may leave one). */
 export function whole(pairs: readonly Paired[], solves: number) {
   const enough = ({ old, fresh }: Paired) => old.length >= solves && fresh.length >= solves;
   const cut = <T>(list: readonly T[] = []) => list.slice(0, solves);
@@ -544,20 +542,24 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
  * harness won before its promotion count. Such a task can only tie again at that budget or be
  * lost, unless the comparison carried an objective that told two valid answers of it apart
  * (`separated`): a task the objective still separates is not closed, since the next harness can
- * win it (11 October; until then the rule read validity alone). Every one in the set is
- * a task a step cannot be read on: on the operator's host (9 and 10 October) a harness came one
- * win short of a step three times with most of its tasks tied, and t-10's promoted harness and
- * the starter tied 10 of 10 twice. Until 10 October both harnesses had to answer the task, so a
- * task the reference answered and a new harness lost never closed; the simulated climb of that
- * day kept drawing such tasks, three comparisons in a row read 2-0-6 and 3-0-5 on a scored set
- * of eight, and the campaign stopped one win short. The reference's own answers close a task,
- * since its answers are what the next harness has to match. A third of them stays in
- * the draw, by the contract's hash, so that a harness that breaks what the reference answers
- * still shows its losses: left out whole, the set would hold no task the new harness could lose.
- * The Examiner is told a task is exhausted, as that task's outcome (`outcomesOf`); in the counts
- * by family it stands where its last comparison's tally puts it (`standingsOf`).
+ * win it (11 October; until then the rule read validity alone). Every one in the set is a task a
+ * step cannot be read on: on the operator's host (9 and 10 October) a harness came one win short of
+ * a step three times with most of its tasks tied, and t-10's promoted harness and the starter tied
+ * 10 of 10 twice. The reference's own answers close a task (until 10 October both harnesses had to
+ * answer it): they are what the next harness has to match. A third stays in the draw by the
+ * contract's hash, a comparison's retained set (`retainable`, `compare.ts`). The Examiner is told a
+ * task is exhausted (`outcomesOf`); by family it stands where its last tally puts it (`standingsOf`).
  */
 export function exhausted(events: readonly LogEvent[]): string[] {
+  return thirds(events).out;
+}
+
+/** The third of the exhausted tasks the hash keeps in the draw: a comparison's retained set. */
+export function retainable(events: readonly LogEvent[]): string[] {
+  return thirds(events).kept;
+}
+
+function thirds(events: readonly LogEvent[]) {
   const spent = inOrder(
     taskRecords(events).flatMap(({ version, held, tallied }) => {
       const runs = tallied.filter(({ reference, old, fresh, separated }) => {
@@ -571,7 +573,7 @@ export function exhausted(events: readonly LogEvent[]): string[] {
   const kept = new Set(
     draw(spent, Math.ceil(spent.length / 3), `${isString(contract) ? contract : ""}:kept`),
   );
-  return spent.filter((task) => !kept.has(task));
+  return { out: spent.filter((task) => !kept.has(task)), kept: spent.filter((task) => kept.has(task)) };
 }
 
 /** The task versions a valid answer is on record for: a solve's, under any harness and at any

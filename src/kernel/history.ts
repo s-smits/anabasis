@@ -13,9 +13,9 @@ import { asRecord, isString } from "../meta/json-shape.ts";
 import type { LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
 
-/** A `task.proposed` event. A pack's task is proposed by its id and its family. A task an Examiner
- *  session wrote, or one carried from another checker's campaign, is logged whole, since no pack
- *  holds it. */
+/** A `task.proposed` event. A pack's task is proposed by its id and its family, carried from
+ *  another checker's campaign or not. A task an Examiner session wrote is logged whole, here and in
+ *  a campaign it is carried into, since no pack holds it. */
 interface Proposal {
   readonly version: string;
   readonly taskId: string | null;
@@ -24,8 +24,8 @@ interface Proposal {
   readonly family: string | null;
   /** The Examiner session that wrote it; null for a pack's task and for a carried one. */
   readonly session: string | null;
-  /** The stronger solve a carried task was accepted on in the campaign it came from
-   *  (`tools/c/carry.ts`); null for any other. */
+  /** The version a carried task had in the campaign it came from (`tools/c/carry.ts`); null for
+   *  any other. */
   readonly carried: string | null;
   /** The task whole, where the proposal holds it. */
   readonly task: Task | null;

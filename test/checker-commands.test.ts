@@ -394,16 +394,17 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(readFileSync(log, "utf8")).toBe(before);
   });
 
-  it("carries a session's tasks into the repaired checker's campaign on their shape alone, once", () => {
-    // An old campaign's log, written by hand: four tasks a session wrote. The first is held out
-    // there, the second names no inputs, which the gate here refuses, the third was disputed, and
-    // the fourth was released to a Builder as practice.
+  it("carries an old campaign's tasks into the repaired checker's campaign on their shape alone, every release kept, once", () => {
+    // An old campaign's log, written by hand: five tasks a session wrote. The first is held out
+    // there, the second names no inputs, which the gate here refuses, the third was disputed, the
+    // fourth was released to a Builder as practice, and the fifth was released and then disputed.
     const old = join(root, "old.jsonl");
     for (const [id, version, publicInput] of [
       ["x-1-001", "o1", { base: 4 }],
       ["x-1-002", "o2", null],
       ["x-1-003", "o3", { base: 6 }],
       ["x-1-004", "o5", { base: 8 }],
+      ["x-1-005", "o7", { base: 9 }],
     ] as const) {
       const task = { taskId: id, family: "fixture", publicInput, hidden: null };
       append(old, "task.proposed", { version, taskId: id, session: "x-1", task });
@@ -411,8 +412,13 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     }
     append(old, "task.state", { version: "o3", state: "disputed" });
     append(old, "task.state", { version: "o5", state: "released" });
-    // A pack's own task is in the old log by its id alone, and enters a campaign through prepare.ts.
+    append(old, "task.state", { version: "o7", state: "released" });
+    append(old, "task.state", { version: "o7", state: "disputed" });
+    // A pack's own tasks are in the old log by their ids alone: t-1 held out, t-2 released.
     append(old, "task.proposed", { version: "o4", taskId: "t-1" });
+    append(old, "task.proposed", { version: "o6", taskId: "t-2" });
+    append(old, "task.gate", { version: "o6", gate: 1, outcome: "passed" });
+    append(old, "task.state", { version: "o6", state: "released" });
     const carry = () =>
       command("tools/c/carry.ts", {
         from: old,
@@ -424,24 +430,48 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
       });
     const first = carry();
     expect(first.said).toContain(
-      "3 tasks a session wrote: 1 held out here, 1 released for practice as they were, 1 refused, 0 already there",
+      "7 tasks of the old campaign: 3 held out here, 3 released for practice as they were, 1 refused, 0 already there",
     );
     expect(first.said).toContain("x-1-002\trefused: no inputs");
     expect(first.code).toBe(0);
     const events = read(join(carried, LOG));
-    // A task a Builder has practised on stays practice here: a harness it built may be compared.
-    expect([...taskStates(events).values()].sort()).toEqual(["held", "refused", "released"]);
-    // Each is proposed whole under its own id, with the version it had, and put to the one gate.
-    expect(events.filter(({ kind }) => kind === "task.proposed").map(({ data }) => data)).toMatchObject([
+    // A task a Builder has practised on stays practice here, the pack's and the disputed one too:
+    // a harness it built may be compared. A disputed task never practised is read again.
+    const states = taskStates(events);
+    const proposed = events.filter(({ kind }) => kind === "task.proposed").map(({ data }) => data);
+    expect(
+      proposed.map(({ taskId, version }) => [taskId, states.get(isString(version) ? version : "")]),
+    ).toEqual([
+      ["x-1-001", "held"],
+      ["x-1-002", "refused"],
+      ["x-1-003", "held"],
+      ["x-1-004", "released"],
+      ["x-1-005", "released"],
+      ["t-1", "held"],
+      ["t-2", "released"],
+    ]);
+    // Each is proposed under its own id, with the version it had, a session's whole and a pack's by
+    // its id alone, and put to the one gate.
+    expect(proposed).toMatchObject([
       { taskId: "x-1-001", carried: "o1", task: { taskId: "x-1-001", publicInput: { base: 4 } } },
       { taskId: "x-1-002", carried: "o2" },
+      { taskId: "x-1-003", carried: "o3" },
       { taskId: "x-1-004", carried: "o5" },
+      { taskId: "x-1-005", carried: "o7" },
+      { taskId: "t-1", carried: "o4" },
+      { taskId: "t-2", carried: "o6" },
     ]);
-    expect(events.flatMap(({ kind, data }) => (kind === "task.gate" ? [data.gate] : []))).toEqual([1, 1, 1]);
+    expect(proposed.filter((data) => data.task === undefined).map(({ taskId }) => taskId)).toEqual([
+      "t-1",
+      "t-2",
+    ]);
+    expect(events.flatMap(({ kind, data }) => (kind === "task.gate" ? [data.gate] : []))).toEqual(
+      Array.from({ length: 7 }, () => 1),
+    );
     // No solve and no verdict comes with a task: a new campaign's solves are its own.
     expect(events.filter(({ kind }) => kind === "verdict" || kind === "solve.started")).toEqual([]);
     // Run again, nothing is taken twice.
-    expect(carry().said).toContain("0 refused, 3 already there");
+    expect(carry().said).toContain("0 refused, 7 already there");
     expect(read(join(carried, LOG))).toHaveLength(events.length);
   });
   it("confirms the tasks named to score against today's verifier, and releases none of them", () => {

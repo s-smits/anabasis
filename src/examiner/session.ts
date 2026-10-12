@@ -21,7 +21,8 @@
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
  * an earlier session already wrote is not taken again, whatever id it would get; the home a
- * session computed in is carried whole into the next session's (`examineWalled`, `keep`), and
+ * session computed in is carried whole into the next session's (`examineWalled`, `keep`), unless
+ * it crashed, and
  * what a session said at its `finish` opens the next (`lastNote`). Until 11 October both went
  * with the session: on that day the two buffer sessions each spent their first minutes fetching
  * and compiling the same engine and writing an optimiser around it, and the next session would
@@ -612,11 +613,12 @@ export async function examine(request: ExamRequest): Promise<Examined> {
 export function examineWalled(request: Omit<ExamRequest, "shell" | "pinned"> & Seat): Promise<Examined> {
   return inExaminerWall(request, async (shell, pinned) => {
     if (request.keep !== undefined) seedHome(shell.dirs.home, request.keep);
-    try {
-      return await examine({ ...request, shell, pinned });
-    } finally {
-      if (request.keep !== undefined) keepHome(shell.dirs.home, request.keep);
-    }
+    const examined = await examine({ ...request, shell, pinned });
+    // Not a crashed session's, which is as its last command left it: until 12 October it replaced
+    // the kept home all the same, and on buffer the next session opened in the working files of
+    // one whose turn the provider failed mid-script, under an earlier session's note.
+    if (request.keep !== undefined && examined.ended !== "crashed") keepHome(shell.dirs.home, request.keep);
+    return examined;
   });
 }
 

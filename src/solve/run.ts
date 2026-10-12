@@ -38,7 +38,7 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { CLAUDE_COMPACTED, reportedCost } from "../backends/claude.ts";
+import { CLAUDE_COMPACTED, reportedCost, resetOf } from "../backends/claude.ts";
 import { CALL_RETRIED } from "../backends/models.ts";
 import { type Compacted, compactBeforeRequest } from "../backends/pi-compaction.ts";
 import type { Limits } from "../kernel/condition.ts";
@@ -145,15 +145,26 @@ const RERUNS = 3;
  *  whoever read a fail afterwards read less than the solver had. v1 cut
  *  its traces the same way and its own investigation named that as a loss. */
 const TRACE_TEXT_BYTES = 64 * 1024;
-const backoff = (rerun: number) => Bun.sleep(30_000 * 2 ** (rerun - 1));
+/** The wait before rerun `rerun`, cut short by the solve's kill. */
+const backoff = (rerun: number, kill?: AbortSignal) =>
+  new Promise<void>((done) => {
+    const timer = setTimeout(done, 30_000 * 2 ** (rerun - 1));
+    kill?.addEventListener("abort", () => (clearTimeout(timer), done()), { once: true });
+  });
 
-/** Solve until an ending that is not the solve side's non-result, or until the reruns run out. */
+/**
+ * Solve until an ending that is not the solve side's non-result, or until the reruns run out. A
+ * provider limit that names its reset is returned at once, for the campaign to wait out
+ * (`waitOut`, `tools/d2/host.ts`): reruns minutes apart only spend themselves before it. A kill
+ * during the wait starts no rerun: on 12 October six attempts of truss's g-1 began after its stop.
+ */
 export async function solve(request: SolveRequest, wait = backoff): Promise<Ending> {
   for (let attempt = 1; ; attempt++) {
     const ending = await attemptSolve(request, `${request.id}-${String(attempt)}`);
     const solveSide = ending.outcome === "non-result" && ending.kind !== "check";
-    if (!solveSide || attempt > RERUNS || request.kill?.aborted === true) return ending;
-    await wait(attempt);
+    if (!solveSide || attempt > RERUNS || resetOf(ending.reason, new Date()) !== null) return ending;
+    if (request.kill?.aborted !== true) await wait(attempt, request.kill);
+    if (request.kill?.aborted === true) return ending;
   }
 }
 

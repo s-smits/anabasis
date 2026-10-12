@@ -511,6 +511,8 @@ async function readMessages(
   spent: Usage[],
 ): Promise<TurnEnd> {
   let apiStop: string | null = null;
+  // The reset of a limit the provider reported refusing on, said with a refused turn's error.
+  let limited = "";
   for (;;) {
     const next = await session.query.next();
     if (next.done === true) throw new Error("Claude Code ended the query without a result");
@@ -534,6 +536,9 @@ async function readMessages(
       if (turn.content.some((block) => block.type === "toolCall")) return "toolUse";
       spent.push(turn.usage);
       turn.usage = emptyUsage();
+    } else if (message.type === "rate_limit_event") {
+      const { status, resetsAt } = message.rate_limit_info;
+      limited = status === "rejected" && resetsAt !== undefined ? ` (limit reached|${String(resetsAt)})` : "";
     } else if (message.type === "result") {
       // The query stays open for a later prompt; the cost Claude Code reports is the query's so far.
       turn.diagnostics = [
@@ -546,9 +551,9 @@ async function readMessages(
       if (sessions.get(key) !== session) throw new Error("the host closed the query");
       close(key, session);
       if (message.subtype !== "success") {
-        throw new Error(`Claude Code: ${message.subtype}: ${message.errors.join("; ")}`);
+        throw new Error(`Claude Code: ${message.subtype}: ${message.errors.join("; ")}${limited}`);
       }
-      if (message.is_error) throw new Error(`Claude Code: ${message.result}`);
+      if (message.is_error) throw new Error(`Claude Code: ${message.result}${limited}`);
       throw new Error(`Claude Code: the model stopped on ${apiStop ?? "no stop reason"}`);
     }
   }
@@ -675,4 +680,46 @@ function emptyUsage(): Usage {
     totalTokens: 0,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   };
+}
+
+/**
+ * When the provider limit `said` names its reset, as the next such instant after `now`, or null
+ * where it names none or is no limit. Two spellings: a clock time after "reset", with am or pm and the zone in
+ * parentheses where given ("resets 3:50pm (Europe/Amsterdam)"; the host's zone where none is), and a
+ * message ending in the instant's Unix seconds ("limit reached|1760276400"), which this backend
+ * adds to a turn the provider refused on a limit it reported with its reset (`readMessages`).
+ */
+export function resetOf(said: string, now: Date): Date | null {
+  // A connection "reset" with a number near it is no limit.
+  if (!/\blimit\b/i.test(said)) return null;
+  const unix = /limit reached\|(\d{10})\b/i.exec(said)?.[1];
+  if (unix !== undefined) return new Date(Number(unix) * 1000);
+  const clock =
+    /\breset[s]?\b\D{0,24}?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:\(([A-Za-z_]+(?:\/[A-Za-z_+-]+)+)\))?/i.exec(
+      said,
+    );
+  if (clock === null) return null;
+  const [, h = "", m = "0", half, zone] = clock;
+  const hour = half === undefined ? Number(h) : (Number(h) % 12) + (half.toLowerCase() === "pm" ? 12 : 0);
+  if (hour > 23 || Number(m) > 59) return null;
+  try {
+    const wall = new Intl.DateTimeFormat("en-US", {
+      ...keyIfDefined("timeZone", zone),
+      hourCycle: "h23",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+    }).formatToParts(now);
+    const part = (type: string) => Number(wall.find((one) => one.type === type)?.value);
+    const [year, month, day] = [part("year"), part("month") - 1, part("day")];
+    const offset =
+      Date.UTC(year, month, day, part("hour"), part("minute")) - Math.floor(now.getTime() / 60_000) * 60_000;
+    const at = Date.UTC(year, month, day, hour, Number(m)) - offset;
+    return new Date(at > now.getTime() ? at : at + 86_400_000);
+  } catch {
+    // A zone the host does not know names no instant it can wait for.
+    return null;
+  }
 }

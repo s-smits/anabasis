@@ -88,7 +88,7 @@ import type { examine } from "#src/examiner/session.ts";
 import { supplyOf } from "#src/builder/admission.ts";
 import { decide } from "#src/builder/decide.ts";
 import { type Decided, decidedLine } from "#src/builder/move.ts";
-import type { Plan } from "#src/builder/ground.ts";
+import { crashedRun, type Plan } from "#src/builder/ground.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS, TERMS } from "#src/builder/opening.ts";
 import { pendingWords, type Word } from "#src/builder/word.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
@@ -111,7 +111,7 @@ import { standing } from "../runs/pulse.ts";
 import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
-import { gated, HOST, type Host } from "./host.ts";
+import { gated, HOST, type Host, waitOut } from "./host.ts";
 import { PRACTICE, prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { COMPARISON_OPTIONS, capRead, type Seated, SESSION_OPTIONS, solved } from "./round.ts";
@@ -689,10 +689,9 @@ export async function harnessBuilder(
   // opens from a prompt has no exam to open over until its first draft stands.
   let campaign = packed(given) ? await openCampaign(packNamed(given)) : null;
   const paid = seats.seated === solved ? "paid" : "scripted";
-  // A flag of this command that names another setting than the campaign's is refused with both,
-  // as every command refuses it, and the scored tasks are the record's where it names them. The
-  // model's turns are one of them: until 11 October the record's stood in for the flag, from when
-  // a ladder moved the budget (`docs/simplify.md`, A1), so another number ran at the record's.
+  // A flag naming another setting than the campaign's is refused with both, as every command refuses
+  // it; the scored tasks are the record's where it names them. Until 11 October the record's model
+  // turns stood in for the flag (`docs/simplify.md`, A1), so another number ran at the record's.
   const recorded = recordedSetting(read(log));
   if (recorded !== null) {
     settingAsked(
@@ -716,9 +715,8 @@ export async function harnessBuilder(
   /** The move this run made last: an exam read here printed its faults as it was read. */
   let last: Decided["move"] | null = null;
   for (let made = 0; ; made += 1) {
-    // A total the operator left as a word is what the campaign runs by from this move on. The
-    // newest stands, and the record answers every one: until 11 October it answered the newest
-    // alone, and an older total left pending was applied at the next move over it.
+    // A total the operator left as a word rules from this move on: the newest stands, and the record
+    // answers every one (until 11 October the newest alone, and an older one applied at the next move).
     const totals = pendingWords(read(log)).filter(({ word }) => word === "budget");
     if (totals.length > 0 && !values["dry-run"]) opening = opened(log, values, paid, totals);
     const events = existsSync(log) ? read(log) : [];
@@ -765,6 +763,7 @@ export async function harnessBuilder(
     try {
       left = await make(decided, { events, plan, opening, values, seats, held });
     } catch (error) {
+      if (await waitOut(log, errorMessage(error), seats.host?.sleep)) continue;
       // A move that began and threw is the environment's ending, and the campaign goes on from
       // its log when it is run again. One refused before it wrote anything leaves the log alone.
       if (read(log).length > events.length) {
@@ -786,6 +785,7 @@ export async function harnessBuilder(
       ),
     });
     last = decided.move;
+    await waitOut(log, crashedRun(read(log)).crash, seats.host?.sleep);
   }
 }
 

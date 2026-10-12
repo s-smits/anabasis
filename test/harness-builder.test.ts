@@ -31,6 +31,7 @@ import { closeCommand } from "../tools/d2/close.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settleCommand } from "../tools/d2/settle.ts";
 import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
+import { HOST } from "../tools/d2/host.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
@@ -117,6 +118,46 @@ describe("a campaign run by its log", () => {
     ]);
     expect(asked).toEqual([{ tasks: 7, minutes: 7 }]);
     expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 7 } }]);
+    expect(ending).toMatchObject({ move: "end", ending: "exam" });
+  });
+
+  it("waits out a provider limit that names its reset, on record, and makes the move again", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-limit`;
+    const flags = [...seeded(name), "--patience", "1", "--target", "10", "--practice", "3"];
+    // The first Examiner session is refused on a limit the provider says lifts in a minute.
+    const reset = Math.floor(Date.now() / 1000) + 60;
+    let refused = false;
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+      examine: (request) => {
+        if (!refused) {
+          refused = true;
+          throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
+        }
+        return examine({
+          ...request,
+          ...scripted([
+            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: "Nothing to add." }],
+          ]),
+        });
+      },
+    };
+    const slept: number[] = [];
+    const host = {
+      ...HOST,
+      sleep: async (ms: number) => {
+        slept.push(ms);
+      },
+    };
+    const ending = await harnessBuilder(flags, { ...seats, host });
+    // Slept to a minute past the named reset, and the session asked again went on to the ending.
+    expect(slept).toHaveLength(1);
+    expect(of(name, "campaign.waited")).toEqual([
+      { for: "provider", until: new Date(reset * 1000).toISOString(), ms: slept[0] ?? 0 },
+    ]);
+    expect(of(name, "campaign.ended")).toEqual([expect.objectContaining({ ending: "exam" })]);
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
   });
 

@@ -144,7 +144,10 @@ function moved(data: JsonObject): boolean {
  *  ending, so that the command run again by the campaign's name goes on once the provider is
  *  back. */
 export function crashedRun(events: readonly LogEvent[]) {
-  const since = events.findLastIndex(({ kind }) => kind === "campaign.ended");
+  // A wait for the provider's named reset starts the count again as an ending does (`waitOut`).
+  const since = events.findLastIndex(
+    ({ kind, data }) => kind === "campaign.ended" || (kind === "campaign.waited" && data.for === "provider"),
+  );
   const sessions = events
     .slice(since + 1)
     .filter(({ kind }) => kind === "exam.finished" || kind === "build.finished")

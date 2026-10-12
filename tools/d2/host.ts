@@ -8,7 +8,13 @@
  * command waited before a move that solves, so a comparison of hours that began on a quiet host
  * ran on whatever came after (finding 17). The gate is now at each solve's start, and each wait is
  * on record (`campaign.waited`), so a reader can tell the solver's time from the host's.
+ *
+ * The provider is waited for the same way. A usage limit whose message names when it resets is a
+ * wait, not a crash: on 12 October one account's limit, naming a reset an hour and forty minutes
+ * on, ended five campaigns on two hosts at once, three by the crash rule after three one-turn
+ * Examiner sessions each and two by a comparison that threw (`waitOut`).
  */
+import { resetOf } from "#src/backends/claude.ts";
 import { append } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
@@ -20,6 +26,9 @@ export interface Host {
   readonly load: () => number;
   readonly cores: number;
   readonly waitMs: number;
+  /** How the campaign sleeps out a provider's named reset (`waitOut`); `Bun.sleep` unless a test
+   *  stands in. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 /** What the gate is put on: who solves, the host a test stands in where it does, and whether the
@@ -29,6 +38,12 @@ interface Gate {
   readonly host?: Host | undefined;
   readonly loaded: boolean;
 }
+
+/** The longest wait for a provider's named reset: a session window's, five hours, and some. A reset
+ *  further on (a week's limit) is no wait, and the campaign ends on its environment as before. */
+const RESET_MOST_MS = 6 * 3_600_000;
+/** After the named minute, so that the first call is not made in the minute the limit lifts. */
+const RESET_MARGIN_MS = 60_000;
 
 /** This host, with half a minute between two looks at the load. */
 export const HOST: Host = { load: () => loadavg()[0] ?? 0, cores: availableParallelism(), waitMs: 30_000 };
@@ -68,4 +83,29 @@ export function gated(on: Gate, log: string): Seated {
       },
     };
   };
+}
+
+/**
+ * Whether the campaign waited out the provider limit `said` names: where its reset is named and at
+ * most `RESET_MOST_MS` on, the wait is recorded in `log` (`campaign.waited`, `for: "provider"`),
+ * said once, and slept to a minute past the reset. The crash rule counts no session before it
+ * (`crashedRun`), so the campaign goes on where it stood, unattended as it was. The campaign asks
+ * after a move that threw, with what it threw, and after each move, with what the last session the
+ * crash rule counts said.
+ */
+export async function waitOut(
+  log: string,
+  said: string | null,
+  sleep: (ms: number) => Promise<void> = Bun.sleep,
+  now = new Date(),
+): Promise<boolean> {
+  const reset = said === null ? null : resetOf(said, now);
+  const ms = reset === null ? Number.NaN : reset.getTime() - now.getTime() + RESET_MARGIN_MS;
+  if (!(ms > 0 && ms <= RESET_MOST_MS + RESET_MARGIN_MS) || reset === null) return false;
+  console.log(
+    `the provider's limit resets at ${reset.toISOString()}: the campaign waits for it, then goes on`,
+  );
+  append(log, "campaign.waited", { for: "provider", until: reset.toISOString(), ms });
+  await sleep(ms);
+  return true;
 }

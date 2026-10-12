@@ -48,7 +48,7 @@
  * budgets it walked until 11 October went with `docs/simplify.md`, package A.
  */
 import { unadmitted } from "../kernel/acceptance.ts";
-import { flipP, readTwice, triggered } from "../kernel/compare.ts";
+import { readsStepEitherWay, readTwice, triggered } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, roomOf } from "../kernel/reports.ts";
 import { practiceRan } from "../kernel/solves.ts";
@@ -363,7 +363,8 @@ function controlled({ events, all, reference, starter }: Ground): string | null 
   const apart = asRecord(control.report.noise)?.differences;
   const differences = Array.isArray(apart) ? apart.filter(isNumber) : [];
   const level = isNumber(control.report.level) ? control.report.level : 0;
-  const stepped = 2 * Math.min(flipP(differences), flipP(differences.map((one) => -one))) <= level;
+  // Two-sided at the level: either one-sided test at half of it.
+  const stepped = readsStepEitherWay(differences, level / 2);
   const after = control.reported;
   const heard = events.some(
     ({ kind, data }, at) => at > after && kind === "campaign.word" && data.word === "cause",

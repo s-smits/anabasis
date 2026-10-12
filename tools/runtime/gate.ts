@@ -2,7 +2,7 @@
  * The gate: what CI runs, as one command over the tree it is run in, and the same gate run over each
  * commit a push or a landing would publish, in a checkout of its own.
  *
- *   bun run gate                 install, format, typecheck, strict lint, the suite
+ *   bun run gate                 install, the UI's own gate, format, typecheck, strict lint, the suite
  *   bun run gate -- --static     the same, with the suite replaced by the tests near what HEAD changed
  *
  * The steps are `ci.yml`'s Darwin job, cheapest first, so a format slip fails in a second rather
@@ -27,6 +27,7 @@
 import {
   appendFileSync,
   closeSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -72,8 +73,14 @@ const DOCUMENTATION = [
   ":(exclude)docs/**",
   ":(exclude).claude/**/*.md",
 ];
+/** The UI's own gate, in a tree that holds the UI: `packages/ui` keeps its own lock, compiler
+ *  settings and tests, which the root's typecheck and suite do not reach, and the lint leaves it
+ *  out until its dependencies are installed (`tools/runtime/lint.ts`). A commit from before the UI
+ *  came back has no such step to run. */
+const UI_PACKAGE = "packages/ui/package.json";
 const STEPS = [
   ["install", ["install", "--frozen-lockfile"]],
+  ["ui", ["run", "ui:gate"]],
   ["format", ["run", "format:check"]],
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint", "--", "--strict"]],
@@ -217,6 +224,7 @@ async function gate(argv: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...argv], options: { static: { type: "boolean", default: false } } });
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
   for (const [name, args] of STEPS) {
+    if (name === "ui" && !existsSync(join(root, UI_PACKAGE))) continue;
     const code = step(root, name, args);
     if (code !== 0) return code;
   }

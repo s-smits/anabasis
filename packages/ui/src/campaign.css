@@ -1,0 +1,403 @@
+/* The Campaign pane's styles (`views/campaign.tsx`, `views/campaign-harnesses.tsx` and the charts
+   under `components/charts/`). Every colour and size here is a token of `styles.css`; nothing here
+   names a colour of its own. */
+
+.ana-campaign {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The campaign's line: the title on the left, its state and its money on the right, over the
+   altimeter rule `.ana-run-head` draws. */
+.ana-campaign-head {
+  align-items: end;
+}
+
+.ana-campaign-title {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 320px;
+}
+
+/* The project is the campaign's prompt or pack: one line, the whole of it on hover. */
+.ana-campaign-title .ana-eyebrow {
+  max-width: 72ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ana-campaign-status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ana-campaign-status .ana-num {
+  color: var(--ana-dim);
+  font-size: var(--ana-text-base);
+}
+
+.ana-campaign-digest {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+}
+
+.ana-campaign-qualifier {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-sm);
+}
+
+/* The chart's card: the head, the chart, the key. */
+.ana-campaign-chart {
+  display: grid;
+  gap: 12px;
+  padding: 20px 20px 16px;
+}
+
+/* A chart wider than its card scrolls inside it, never the page. */
+.ana-comparisons-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.ana-comparisons-frame .ana-climb-chart {
+  height: 340px;
+}
+
+.ana-comparisons-bar,
+.ana-comparisons-tick {
+  cursor: pointer;
+}
+
+.ana-comparisons-tick text {
+  font-size: var(--ana-text-xs);
+}
+
+.ana-comparisons-tick .is-step {
+  font-weight: 600;
+}
+
+.ana-comparisons-mark-text {
+  fill: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+}
+
+.ana-comparisons-mark-text.is-strong {
+  fill: var(--ana-dim);
+}
+
+/* A label over the plot keeps a rim of the card's colour, so a divider it crosses does not cut its
+   letters. */
+.ana-comparisons-marks .ana-comparisons-mark-text {
+  paint-order: stroke;
+  stroke: var(--ana-card);
+  stroke-linejoin: round;
+  stroke-width: 4px;
+}
+
+.ana-comparisons-key {
+  border-top: 1px solid var(--ana-border-soft);
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.ana-legend-list {
+  color: var(--ana-dim);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--ana-text-sm);
+  gap: 6px 18px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ana-legend-list li {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+}
+
+.ana-legend-list .ana-num {
+  color: var(--ana-text);
+}
+
+.ana-legend-list.is-quiet {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+}
+
+.ana-swatch {
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+  height: 10px;
+  width: 10px;
+}
+
+.ana-swatch.is-open {
+  border: 1px dashed var(--ana-faint);
+}
+
+.ana-swatch.is-quiet {
+  background: var(--ana-accent);
+  opacity: 0.4;
+}
+
+.ana-swatch.is-dot {
+  border-radius: 50%;
+}
+
+.ana-glyph {
+  flex: none;
+}
+
+.ana-comparisons-tooltip {
+  min-width: 240px;
+}
+
+.ana-comparisons-tooltip .ana-legend-list {
+  display: grid;
+  gap: 4px;
+}
+
+.ana-comparisons-tooltip .ana-legend-list li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+}
+
+.ana-sr-only {
+  border: 0;
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* The harness strip: equal cards at their closed height in one row, the selected one marked, and
+   its detail in one panel under the row at the row's width. */
+.ana-harness-lineage {
+  container-type: inline-size;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ana-harness-strip {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 2px 2px 8px;
+  position: relative;
+}
+
+.ana-harness {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius);
+  box-shadow: var(--ana-shadow);
+  display: grid;
+  flex: 0 0 172px;
+  min-width: 0;
+}
+
+.ana-harness.is-selected {
+  border-color: color-mix(in srgb, var(--ana-accent) 55%, var(--ana-border));
+  box-shadow:
+    inset 0 -2px 0 var(--ana-accent),
+    var(--ana-shadow);
+}
+
+.ana-harness-select {
+  background: none;
+  border: 0;
+  border-radius: var(--ana-radius);
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto 22px auto auto;
+  min-height: 132px;
+  padding: 16px;
+  text-align: left;
+  width: 100%;
+}
+
+.ana-harness-select:disabled {
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ana-harness:not(.is-selected) .ana-harness-select:hover {
+    background: var(--ana-border-soft);
+  }
+}
+
+.ana-harness-name {
+  font-family: var(--font-technical);
+  font-size: var(--ana-text-lg);
+}
+
+.ana-harness-name.is-digest {
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-base);
+}
+
+.ana-harness-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ana-harness-figure {
+  font-size: var(--ana-text-base);
+}
+
+.ana-harness-caption,
+.ana-harness-note,
+.ana-harness-against {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+}
+
+.ana-harness-detail {
+  background: var(--ana-card);
+  border: 1px solid color-mix(in srgb, var(--ana-accent) 30%, var(--ana-border));
+  border-radius: var(--ana-radius);
+  box-shadow: var(--ana-shadow);
+  display: grid;
+  gap: 14px 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding: 16px 18px;
+}
+
+.ana-harness-facts {
+  align-content: start;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.ana-harness-facts > div {
+  align-items: baseline;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.ana-harness-detail > :not(.ana-harness-facts) {
+  grid-column: 2;
+}
+
+.ana-harness-detail > .ana-harness-facts {
+  grid-row: span 2;
+}
+
+.ana-harness-facts dd {
+  font-size: var(--ana-text-sm);
+}
+
+.ana-harness-comparisons {
+  align-content: start;
+  display: grid;
+  font-size: var(--ana-text-sm);
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ana-harness-comparisons li {
+  align-items: baseline;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 34px 52px minmax(0, auto) minmax(0, 1fr);
+}
+
+.ana-harness-actions {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+}
+
+.ana-harness-actions .ana-button {
+  justify-self: start;
+}
+
+.ana-harness-files {
+  display: grid;
+  gap: 2px;
+}
+
+/* The two small charts side by side, one above the other on a narrow page. */
+.ana-campaign-pair {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.ana-campaign-small {
+  display: grid;
+  gap: 10px;
+  padding: 20px 20px 12px;
+}
+
+.ana-campaign-small .ana-climb-chart {
+  height: 190px;
+}
+
+.ana-campaign-counters {
+  color: var(--ana-dim);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--ana-text-sm);
+  gap: 8px 28px;
+  margin: 0;
+}
+
+.ana-campaign-counters b {
+  color: var(--ana-text);
+  font-weight: 500;
+}
+
+@media (max-width: 700px) {
+  .ana-campaign-chart,
+  .ana-campaign-small {
+    padding: 14px 12px 12px;
+  }
+
+  .ana-comparisons-frame .ana-climb-chart {
+    height: 300px;
+  }
+
+  .ana-campaign-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The panel's two columns stack where the strip is narrow: on a phone, or beside the inspector. */
+@container (max-width: 720px) {
+  .ana-harness-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ana-harness-detail > :not(.ana-harness-facts) {
+    grid-column: 1;
+  }
+
+  .ana-harness-detail > .ana-harness-facts {
+    grid-row: auto;
+  }
+}

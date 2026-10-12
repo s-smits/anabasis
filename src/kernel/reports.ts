@@ -26,11 +26,11 @@
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import {
+  closedTo,
   draw,
   objectiveRuleIn,
   type Paired,
   pairsOf,
-  separatedByObjective,
   tally,
   TRIGGER,
   triggered,
@@ -94,8 +94,9 @@ interface TalliedIn {
   readonly reference: "old" | "fresh" | null;
   /** Whether a solve of the task in this comparison ended at a limit (`AT_A_LIMIT`). */
   readonly cut: boolean;
-  /** Whether the objective told two valid answers apart in this comparison (`separatedByObjective`). */
-  readonly separated: boolean;
+  /** Whether the reference harness closed the task in this comparison (`closedTo`): valid in every
+   *  solve, and no two valid answers the objective told apart. False where it stood on neither side. */
+  readonly closed: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
 }
@@ -494,7 +495,7 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
         fresh,
         reference: side,
         cut: cut.has(made(session, task)),
-        separated: separatedByObjective(pair),
+        closed: side !== null && closedTo(pair, side),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
       });
     }
@@ -516,11 +517,11 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
  * reference at the time, so a promotion re-derives it at once: the comparisons the promoted
  * harness won before its promotion count. Such a task can only tie again at that budget or be
  * lost, unless the comparison carried an objective that told two valid answers of it apart
- * (`separated`): a task the objective still separates is not closed, since the next harness can
- * win it (11 October; until then the rule read validity alone). Every one in the set is a task a
- * step cannot be read on: on the operator's host (9 and 10 October) a harness came one win short of
- * a step three times with most of its tasks tied, and t-10's promoted harness and the starter tied
- * 10 of 10 twice. The reference's own answers close a task (until 10 October both harnesses had to
+ * (`closedTo`, `compare.ts`): a task the objective still separates is not closed, since the next
+ * harness can win it (11 October; until then the rule read validity alone). Every one in the set
+ * is a task a step cannot be read on: on the operator's host (9 and 10 October) a harness came one
+ * win short of a step three times with most of its tasks tied, and t-10's promoted harness and the
+ * starter tied 10 of 10 twice. The reference's own answers close a task (until 10 October both harnesses had to
  * answer it): they are what the next harness has to match. A third stays in the draw by the
  * contract's hash, a comparison's retained set (`retainable`, `compare.ts`). The Examiner is told a
  * task is exhausted (`outcomesOf`); by family it stands where its last tally puts it (`standingsOf`).
@@ -537,10 +538,7 @@ export function retainable(events: readonly LogEvent[]): string[] {
 function thirds(events: readonly LogEvent[]) {
   const spent = inOrder(
     taskRecords(events).flatMap(({ version, held, tallied }) => {
-      const runs = tallied.filter(({ reference, old, fresh, separated }) => {
-        const own = reference === "old" ? old : reference === "fresh" ? fresh : [];
-        return own.length > 0 && own.every(Boolean) && !separated;
-      });
+      const runs = tallied.filter(({ closed }) => closed);
       return runs.length >= UNSOLVED_RUN && held ? [[version, runs[0]?.order ?? 0]] : [];
     }),
   );

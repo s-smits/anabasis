@@ -58,11 +58,20 @@ const ENDINGS = [
   "no-room",
   "environment",
   "operator",
+  "control",
   "finished",
 ] as const satisfies readonly Ending[];
 /** The endings whose reason the controller words itself, or the operator gives: every one but an
  *  environment's. */
-const WORDED: ReadonlySet<Ending> = new Set(["budget", "stop", "exam", "no-room", "operator", "finished"]);
+const WORDED: ReadonlySet<Ending> = new Set([
+  "budget",
+  "stop",
+  "exam",
+  "no-room",
+  "operator",
+  "control",
+  "finished",
+]);
 /** What the default tier is sent of an environment ending's reason in a next move, whose type
  *  holds a reason for every move. */
 const ENVIRONMENT_WITHHELD = "withheld in the default tier: it quotes the error that ended a session";
@@ -173,6 +182,7 @@ const coreIn = once((log) => {
     prompt: openingIn(log)?.prompt ?? null,
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
+    led: openingIn(log)?.led ?? false,
     bars: barsOf(log.events),
     supply: campaign.supply,
     reference: campaign.reference,

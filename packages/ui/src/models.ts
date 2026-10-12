@@ -207,6 +207,11 @@ export interface ComparisonBar {
   readonly rulings: Rulings;
   /** The host's one-minute load when it began (`campaign.move`), null where not recorded. */
   readonly load: number | null;
+  /** The decision table's row the comparison was made by, as its move records it
+   *  (`campaign.move`): the row's code and reason, or `asked` and what the table named where a
+   *  Builder that leads its campaign made another move. Null where no move records one: a
+   *  comparison run by hand, or a campaign from before a move kept its code. */
+  readonly named: { readonly code: string; readonly why: string } | null;
   /** The handover's three: cut before a report, and its solves begun and ended. */
   readonly cut: boolean;
   readonly begun: number;
@@ -304,6 +309,10 @@ export interface CampaignReading extends Answer {
   /** Whether the freeze and a promotion wait for the operator's word (`Opening.attended`,
    *  `--attended`). The table names such a move all the same, and the campaign command waits. */
   readonly attended: boolean;
+  /** Whether the campaign's Builder leads it (`Opening.led`, `--builder-led`): past the exam's
+   *  set-up one Builder conversation makes the moves, and the table's next move is its advice.
+   *  False where the host makes every move the table names. */
+  readonly led: boolean;
   /** The three bars a promotion is read against, as the opening sets them or by default
    *  (`barsOf`, `src/builder/climb.ts`): read and printed, gating nothing. */
   readonly bars: Worth["bars"];

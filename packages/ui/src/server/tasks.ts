@@ -1,6 +1,6 @@
 /**
  * `GET /api/tasks?key=` and `GET /api/task?key=&id=`: every task version against every comparison
- * (`taskSets`, `pairsReported`, `awaitingLabel`, `exhausted`), and one task's solves across them.
+ * (`taskSets`, `pairsReported`, `poolOf`), and one task's solves across them.
  * A task's public part is served in the default tier for a practice task alone; its hidden values
  * in the exam tier alone. Both are in the log only for a task it holds whole, an Examiner's or a
  * carried one (`proposalsOf`): a pack's task is proposed by its id, and its text is in the pack,
@@ -43,8 +43,8 @@ const rowsIn = once((log): TaskRow[] => {
 
 /** What comparison `bar` came to on task `version`: its pair's outcome, or set aside, with each
  *  side's valid answers over its solves; null where it did not score the task. A set-aside task's
- *  sides are cut to the comparison's solves a side, as a pair's are (`whole`,
- *  `src/kernel/reports.ts`): under an A/A reading the reference solved it twice as often, and the
+ *  sides are cut to the comparison's solves a side, as a pair's are (`pairsOf`,
+ *  `src/kernel/compare.ts`): under an A/A reading the reference solved it twice as often, and the
  *  further arm is no part of its side. */
 function cellOf(
   log: Log,

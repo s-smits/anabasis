@@ -50,7 +50,7 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
-import { billedFor, feasibleTasks } from "../kernel/reports.ts";
+import { billedFor, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
@@ -377,7 +377,7 @@ function tried(verdict: Verdict): string {
  *
  *  An answer is held to the format first, as a solver's is (`answerFormatFault`): one the checks
  *  passed though the format refused it would mark its instance feasible on an answer no solver
- *  could submit (`awaitingLabel`). */
+ *  could submit (`poolOf`). */
 function tryTool(desk: Desk, verify: Verifier): AgentTool {
   const { request } = desk;
   return tool({
@@ -433,7 +433,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
           (sets.held.includes(version) ||
             sets.released.includes(version) ||
             sets.states.get(version) === "disputed") &&
-          !feasibleTasks(events).has(version)
+          !poolOf(events).feasible.has(version)
         ) {
           append(request.log, "task.feasible", { version, session: request.id });
         }

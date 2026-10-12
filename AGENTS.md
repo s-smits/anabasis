@@ -698,8 +698,8 @@ terms, and one asked for again on other terms is refused. The scored tasks are `
 held-out ones, the newest epoch's first, within an epoch the ones held out since the last
 comparison began before the others, and each drawn by the contract's hash, less two kinds the
 draw leaves out: a task with no valid answer after two comparisons, until a person labels it
-(`awaitingLabel`), and one the reference harness answered in every solve of two comparisons, on
-whichever side it stood, which can only tie again or be lost (`exhausted`); a task the objective
+(`poolOf`), and one the reference harness answered in every solve of two comparisons, on
+whichever side it stood, which can only tie again or be lost (`poolOf`); a task the objective
 told two valid answers apart on is not closed, since the next harness can still win it. A third of
 the closed ones stays in by a hash of its own, so that a harness that breaks what the reference
 answers still shows its losses. The Examiner is told such a task is exhausted, in those words. The
@@ -832,7 +832,7 @@ The next comparison or session is then refused, unless the operator gives a reas
 (`--past-stop`). A task with no valid answer in two comparisons goes to a person as possibly
 infeasible, unless a valid answer for it stands anywhere on record, a solve's or the one the
 host saw its author's answer pass on the task under its own id, before or after the proposal
-(`task.feasible`), or a limit cut its solves (`awaitingLabel`). Promotion is the operator's
+(`task.feasible`), or a limit cut its solves (`poolOf`). Promotion is the operator's
 `promote.ts --yes`, which writes `harness.promoted`. A comparison that names no `--reference` is
 made against the harness last promoted, and one that names a digest is made against that harness
 and promotes nothing.
@@ -858,7 +858,7 @@ prints it as its last line. In the order the table asks:
 7. A step under the trigger is one draw: the same two harnesses are compared again on fresh
    solves, and the two read together name the harness to promote (`unpromoted` says why another
    is not). The repeat draws the held-out tasks the first stage did not score first, where the
-   campaign holds them (`firstStageOf`, `src/builder/round.ts`).
+   campaign holds them (`scoredSet`, `src/builder/round.ts`).
 8. No step with room sends the Builder to build again, once the next comparison has tasks to
    untie: where the reference answered too many of them in every solve, the Examiner writes
    tasks first, since a changed harness can only tie again on those. No step without room, or

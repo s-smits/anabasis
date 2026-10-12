@@ -46,12 +46,11 @@ import { frozenChecker } from "../kernel/acceptance.ts";
 import { closedTo, sweepOf } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import {
-  awaitingLabel,
   type Cap,
-  exhausted,
   lastReports,
   latestBuilt,
   pairsReported,
+  poolOf,
   referenceOf,
   stopRule,
 } from "../kernel/reports.ts";
@@ -63,7 +62,7 @@ import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 export interface Supply {
   /** The held-out tasks that may be scored, those that wait for a person's label and are left
    *  out, those the reference harness answered in every solve of two comparisons and are left
-   *  out (`exhausted`), and the tasks released for practice. */
+   *  out (`poolOf`), and the tasks released for practice. */
   readonly held: number;
   readonly awaiting: number;
   readonly exhausted: number;
@@ -90,6 +89,8 @@ export interface Wanted {
    *  the repeat (`readTwice`, `triggered`, `src/kernel/compare.ts`). */
   readonly level: number;
   readonly trigger: number;
+  /** The campaign's patience, which a comparison's risk is said over (`sizeLines`). */
+  readonly patience: number;
   /** Whether a Builder session runs before the comparison. */
   readonly builds: boolean;
   readonly cap: Cap | null;
@@ -154,13 +155,9 @@ const said = (rows: readonly (readonly [boolean, string])[]) =>
  *  answers every task. */
 export function supplyOf(events: readonly LogEvent[], reference = "promoted", fresh?: string): Supply {
   const sets = taskSets(events);
-  // Left out of the scored set as `scoredSet` leaves them out: the tasks waiting for a person's
-  // label, and the ones both harnesses answered in every solve of two comparisons.
-  const labelled = awaitingLabel(events).filter((version) => sets.held.includes(version));
-  const spent = exhausted(events).filter(
-    (version) => sets.held.includes(version) && !labelled.includes(version),
-  );
-  const waiting = new Set([...labelled, ...spent]);
+  // The tasks that may be scored, and those left out as `scoredSet` leaves them out: the ones
+  // waiting for a person's label, and the ones the reference closed in two comparisons.
+  const { scorable: pool, awaiting, exhausted } = poolOf(events);
   const reports = lastReports(events);
   const starter = reports.findLast(({ data }) => isString(data.starter))?.data.starter;
   // A task the harness to be compared with closed there (`closedTo`: valid in every solve, and no
@@ -185,7 +182,6 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
   // Over the tasks it tallied that may still be scored: until 12 October over all it tallied, and
   // once the reference's twice-closed tasks were retired, a pool of four with two to win read a
   // third untied and the comparison was refused (the stack review, finding 2).
-  const pool = sets.held.filter((version) => !waiting.has(version));
   const tallied = versions.filter((version) => pool.includes(version));
   const pairs = last === undefined ? [] : pairsReported(events, last);
   const closed = pairs.filter((pair) => tallied.includes(pair.task) && closedTo(pair, side)).length;
@@ -199,8 +195,8 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
   return {
     held: pool.length,
-    awaiting: labelled.length,
-    exhausted: spent.length,
+    awaiting: awaiting.length,
+    exhausted: exhausted.length,
     released: sets.released.length,
     // The tasks the reference harness did not answer in every solve: those a changed harness can
     // still win, and not only those the last comparison untied: a simulated climb that counted

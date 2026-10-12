@@ -11,11 +11,10 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { type Paired, pairings, pairingsBy, readTwice, TRIGGER, UNMEASURED } from "../kernel/compare.ts";
+import { type Paired, pairings, readTwice, TRIGGER, UNMEASURED } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
-import { upperBound } from "../kernel/size.ts";
 import { countedSolves, passed } from "../kernel/solves.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -334,7 +333,7 @@ export function barsOf(events: readonly LogEvent[]): Worth["bars"] {
 function effectOf({ valid, pairs, objective }: Read, bar: number): Worth["effect"] {
   const [old, fresh] = [censusShare(valid.old), censusShare(valid.fresh)];
   if (old === null || fresh === null) return null;
-  const by = pairs.map(pairingsBy);
+  const by = pairs.map(pairings);
   const sum = (count: (one: (typeof by)[number]) => number) =>
     by.reduce((total, one) => total + count(one), 0);
   const both = sum((one) => one.valid);
@@ -525,4 +524,31 @@ export function regressionOf(events: readonly LogEvent[]): Regression | null {
 /** One line for the view: the reading, and that it is beside the test. */
 export function regressionLine(found: Regression): string {
   return `regression check: harness ${short(found.newest)} (${found.comparisons[0]}) against the candidate before it, ${short(found.previous)} (${found.comparisons[1]}), both read against ${short(found.against)} under one setting, on the ${String(found.shared)} tasks both scored: ${String(found.wins)} won, ${String(found.losses)} lost, ${String(found.ties)} tied. A reading beside the test: it decides nothing`;
+}
+
+/**
+ * The one-sided upper bound at `confidence` on a rate of which `errors` came in `trials`: the rate
+ * at which so few errors or fewer would come with chance 1 - `confidence` (Clopper and Pearson).
+ * No error is never a rate of none: none in n gives 1 - (1 - confidence)^(1/n), about 3/n at 95%.
+ * No trial bounds nothing, and reads 1.
+ */
+export function upperBound(errors: number, trials: number, confidence: number): number {
+  if (errors >= trials) return 1;
+  /** The chance of `errors` or fewer at `rate`. */
+  const atMost = (rate: number) => {
+    let [ways, sum] = [1, 0];
+    for (let k = 0; k <= errors; k += 1) {
+      sum += ways * rate ** k * (1 - rate) ** (trials - k);
+      ways = (ways * (trials - k)) / (k + 1);
+    }
+    return sum;
+  };
+  let [low, high] = [errors / trials, 1];
+  // The chance falls as the rate rises, so halving the range sixty times finds it to the bit.
+  for (let step = 0; step < 60; step += 1) {
+    const middle = (low + high) / 2;
+    if (atMost(middle) > 1 - confidence) low = middle;
+    else high = middle;
+  }
+  return high;
 }

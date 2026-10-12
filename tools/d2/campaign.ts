@@ -41,7 +41,7 @@ import { type Contract, contractHash } from "#src/kernel/contract.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { freezePrices, priceKey } from "#src/kernel/meter.ts";
-import { awaitingLabel, latestBuilt, promoted } from "#src/kernel/reports.ts";
+import { latestBuilt, poolOf, promoted } from "#src/kernel/reports.ts";
 import { type TaskPackage, taskVersion } from "#src/kernel/task.ts";
 import { checkProgramVersion, openVerifier, type Task, type Verifier } from "#src/kernel/verify.ts";
 import {
@@ -535,7 +535,7 @@ async function programsOf(campaign: Keeping, source: Kept): Promise<Kept> {
 /**
  * The held-out tasks a person has to read before they are scored again, in lines: the ones with no
  * valid answer on record after two comparisons that cut no solve of them at a limit
- * (`awaitingLabel`). They are left out of the
+ * (`poolOf`, `reports.ts`). They are left out of the
  * scored set until labelled. A command that compares prints them after its report, and
  * `prepare.ts` before one, which is also where they are labelled. None when there is none.
  */
@@ -543,7 +543,7 @@ export function awaitingLines(campaign: {
   readonly log: string;
   readonly packages: () => Map<string, TaskPackage>;
 }): string[] {
-  const awaiting = awaitingLabel(read(campaign.log));
+  const { awaiting } = poolOf(read(campaign.log));
   if (awaiting.length === 0) return [];
   const packages = campaign.packages();
   const named = awaiting.map((version) => packages.get(version)?.taskId ?? version.slice(0, 8));

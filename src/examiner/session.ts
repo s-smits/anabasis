@@ -50,9 +50,9 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
-import { billedFor } from "../kernel/reports.ts";
+import { billedFor, feasibleTasks } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { packageGate, type TaskPackage, taskStates, taskVersion } from "../kernel/task.ts";
+import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
@@ -242,24 +242,27 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   const task = request.pack(instance);
   const version = taskVersion(task);
   const { taskId, family, publicInput, hidden } = instance;
-  const answer = desk.answered.get(contentOf(instance));
-  const feasible =
-    request.verify !== undefined &&
-    answer !== undefined &&
-    (await request.verify(instance, answer)).kind === "pass";
   append(request.log, "task.proposed", {
     version,
     taskId,
     session: request.id,
     task: { taskId, family, publicInput, hidden },
-    ...keyIfDefined("feasible", feasible ? true : undefined),
   });
   const { reason, said, reference } = await measured(desk, task, stop);
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
   append(request.log, "task.gate", { version, gate: 1, ...outcome, ...keyIfDefined("reference", reference) });
   if (reason === null) {
     desk.held.push(version);
-    return `${taskId}: held out${said}.`;
+    const answer = desk.answered.get(contentOf(instance));
+    const verify = request.verify;
+    const verdict =
+      verify !== undefined && answer !== undefined
+        ? await Promise.try(() => verify(instance, answer)).catch(
+            (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
+          )
+        : null;
+    if (verdict?.kind === "pass") append(request.log, "task.feasible", { version, session: request.id });
+    return `${taskId}: held out${said}.${verdict === null || verdict.kind === "pass" ? "" : ` Author proof was not retained under this task id: ${tried(verdict)}`}`;
   }
   append(request.log, "task.state", { version, state: "refused", session: request.id });
   desk.refused.push(version);
@@ -423,7 +426,13 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
       if (verdict.kind === "pass") {
         desk.answered.set(contentOf(instance), answer);
         const version = taskVersion(request.pack(instance));
-        if (taskStates(events).has(version)) {
+        const sets = taskSets(events);
+        if (
+          (sets.held.includes(version) ||
+            sets.released.includes(version) ||
+            sets.states.get(version) === "disputed") &&
+          !feasibleTasks(events).has(version)
+        ) {
           append(request.log, "task.feasible", { version, session: request.id });
         }
       }

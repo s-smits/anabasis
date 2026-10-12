@@ -583,8 +583,9 @@ describe("the outcome an Examiner hears of a task", () => {
   it("is told, beside the outcome, which tasks a valid answer is on record for, by a solve or the author's own try", () => {
     const known = [
       ...heldOut("solved"),
-      event("task.proposed", { version: "tried", taskId: "tried", feasible: true }),
+      event("task.proposed", { version: "tried", taskId: "tried" }),
       event("task.gate", { version: "tried", gate: 1, outcome: "passed" }),
+      event("task.feasible", { version: "tried", session: "x-1" }),
       ...heldOut("never"),
       ...solved("b-1", "solved", "h1", [F, P]),
       ...solved("b-1", "never", "h1", [F, F]),
@@ -636,8 +637,9 @@ describe("where a task stands in the counts an Examiner hears", () => {
     const log = [
       ...heldOut("never"),
       ...heldOut("elsewhere"),
-      event("task.proposed", { version: "tried", taskId: "tried", feasible: true }),
+      event("task.proposed", { version: "tried", taskId: "tried" }),
       event("task.gate", { version: "tried", gate: 1, outcome: "passed" }),
+      event("task.feasible", { version: "tried", session: "x-1" }),
       // A solve outside any comparison answered `elsewhere` validly.
       ...solved(undefined, "elsewhere", "h9", [P]),
       ...["never", "elsewhere", "tried"].flatMap((task) => [
@@ -811,13 +813,14 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(awaitingLabel(compared(settled, "b-3", "h4", F))).toEqual([]);
   });
 
-  it("are not the ones the host saw their author's try_answer pass: the proposal says so", () => {
-    // The Examiner's `try_answer` passed an answer to the task before it proposed it (11 October):
-    // the task has a valid answer on record though no solve found one, so it waits for nobody.
-    const proposed = twice.map((each) =>
-      each.kind === "task.proposed" && each.data.version === "hard"
-        ? { ...each, data: { ...each.data, feasible: true } }
-        : each,
+  it("are not the ones the host saw their author's answer pass at the gate: the log says so", () => {
+    // The Examiner's `try_answer` passed an answer to the task before it proposed it (11 October),
+    // and the host saw it pass again under the task's own id: the task has a valid answer on
+    // record though no solve found one, so it waits for nobody.
+    const proposed = twice.flatMap((each) =>
+      each.kind === "task.gate" && each.data.version === "hard"
+        ? [each, event("task.feasible", { version: "hard", session: "x-1" })]
+        : [each],
     );
     expect(awaitingLabel(proposed)).toEqual([]);
     expect(awaitingLabel(compared(proposed, "b-3", "h4", F))).toEqual([]);
@@ -929,7 +932,8 @@ describe("the release before the draw", () => {
       ...solved("b-2", "f1", "h2", [P, P]),
       reported("b-2", "no-step", "h2", { ...terms, versions: ["f1"] }),
     ];
-    expect(referenceFailed(measured)).toEqual([]);
+    expect(referenceFailed(measured)).toEqual(["f2", "f3", "f4"]);
+    expect(outcomesOf(measured).get("f2")).toBe("reference-none");
   });
 
   it("takes no practice priority from a rejection set aside until its comparison is settled", () => {
@@ -941,12 +945,24 @@ describe("the release before the draw", () => {
       ...solved("b-2", "a1", "h2", [P, P]),
       reported("b-2", "no-step", "h2", { ...terms, versions: ["a1"], aside: ["f1"] }),
     ];
-    expect(referenceFailed(pending)).toEqual([]);
+    expect(referenceFailed(pending)).toEqual(["f2", "f3", "f4"]);
+    expect(outcomesOf(pending).get("f1")).toBe("disputed");
     const settled = [
       ...pending,
       reported("b-2", "no-step", "h2", { ...terms, versions: ["a1", "f1"], aside: [] }),
     ];
-    expect(referenceFailed(settled)).toEqual(["f1"]);
+    expect(referenceFailed(settled)).toEqual(["f2", "f3", "f4", "f1"]);
+  });
+
+  it("agrees with the task outcome after a later comparison between other harnesses", () => {
+    const other = [
+      ...log,
+      ...solved("control", "f1", "h3", [F, F]),
+      ...solved("control", "f1", "h4", [P, P]),
+      reported("control", "no-step", "h4", { ...terms, old: "h3", fresh: "h4", versions: ["f1"] }),
+    ];
+    expect(outcomesOf(other).get("f1")).toBe("earlier-reference");
+    expect(referenceFailed(other)).toEqual(["f2", "f3", "f4"]);
   });
 });
 

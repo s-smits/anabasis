@@ -38,6 +38,7 @@ import {
   indexOf,
   instrumentTriggers,
   items,
+  measured,
   practiceOf,
   REPORTED,
   share,
@@ -384,7 +385,7 @@ function comparisonTriggers(log: Index): Trigger[] {
     const fixed = strings(began?.tasks);
     const moved = fixed.filter((version) => !strings(last.versions).includes(version)).length;
     const seen = new Map<string, Set<string>>();
-    for (const solve of scoring.filter((each) => each.outcome === "pass" || each.outcome === "fail")) {
+    for (const solve of scoring.filter(measured)) {
       const key = `${solve.version} ${solve.harness}`;
       seen.set(key, (seen.get(key) ?? new Set()).add(text(solve.outcome)));
     }

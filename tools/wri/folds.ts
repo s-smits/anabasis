@@ -211,6 +211,8 @@ export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
 export const short = (digest: string): string => digest.slice(0, 8);
+/** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. */
+export const measured = (solve: Solve): boolean => solve.outcome === "pass" || solve.outcome === "fail";
 export const share = (part: number, whole: number): string => `${String(part)} of ${String(whole)}`;
 export const percent = (part: number): string => `${(part * 100).toFixed(1)}%`;
 export const fired = (name: keyof typeof TRIGGERS, detail: string): Trigger => ({

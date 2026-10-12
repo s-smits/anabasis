@@ -16,8 +16,7 @@ import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
-import { treeContent } from "../src/solve/harness.ts";
+import { codeOf } from "../tools/d2/campaign.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
 import {
   blankSections,
@@ -224,7 +223,8 @@ describe("the read verb's host line", () => {
   mkdirSync(join(tree, "vendor"), { recursive: true });
   writeFileSync(join(tree, "src", "a.ts"), "export const a = 1;\n");
   writeFileSync(join(tree, "vendor", "v.txt"), "v\n");
-  const treeHost = hashJsonValue(["src", "vendor"].map((part) => treeContent(join(tree, part))));
+  writeFileSync(join(tree, "package.json"), '{ "dependencies": {} }\n');
+  const treeHost = codeOf(tree).host;
   const hostLine = (host: string) => {
     const log = join(tree, ".ana", "d2", "c", "log.jsonl");
     mkdirSync(join(tree, ".ana", "d2", "c"), { recursive: true });

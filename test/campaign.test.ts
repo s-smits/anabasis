@@ -25,9 +25,10 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
 import { openHarness } from "../src/solve/harness.ts";
-import { starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
+import { codeOf, starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
 import { capNamed, ROUND_OPTIONS, roundCommand, reportLines } from "../tools/d2/round.ts";
@@ -118,6 +119,49 @@ function layOut(): void {
   writeFileSync(join(bundle, "correctness-model", "evaluator.ts"), "export const checks = {};\n");
   writeFileSync(join(bundle, "correctness-model", "tasks.json"), JSON.stringify(TASKS));
 }
+
+describe("the code a solve's condition records", () => {
+  // The stack review at 658a933b (finding 6): the host was `src` and `vendor` alone, and `typebox`,
+  // which builds the solver's bash schema, could change under one setting id.
+  const tree = realpathSync(mkdtempSync(join(tmpdir(), "ana-code-of-")));
+  afterAll(() => rmSync(tree, { recursive: true, force: true }));
+  const pinned = { typebox: "1.3.27", "cross-spawn": "7.0.6" };
+  const lock = {
+    workspaces: { "": { name: "a", dependencies: pinned, devDependencies: { oxlint: "1.0.0" } } },
+    packages: {
+      typebox: ["typebox@1.3.27", "", {}, "sha512-a"],
+      "cross-spawn": ["cross-spawn@7.0.6", "", { dependencies: { which: "^2.0.1" } }, "sha512-b"],
+      // The production tree's copy sits under its parent's key; the hoisted one is a dev tool's.
+      "cross-spawn/which": ["which@2.0.2", "", {}, "sha512-c"],
+      oxlint: ["oxlint@1.0.0", "", { dependencies: { which: "^1.0.0" } }, "sha512-d"],
+      which: ["which@1.3.1", "", {}, "sha512-e"],
+    },
+  };
+  for (const part of ["src", "vendor"]) mkdirSync(join(tree, part));
+  writeFileSync(join(tree, "src", "a.ts"), "export const a = 1;\n");
+  writeFileSync(join(tree, "package.json"), JSON.stringify({ dependencies: pinned }));
+  const hostWith = (packages: Record<string, readonly (string | JsonObject)[]>) => {
+    writeFileSync(
+      join(tree, "bun.lock"),
+      JSON.stringify({ ...lock, packages: { ...lock.packages, ...packages } }),
+    );
+    return codeOf(tree).host;
+  };
+
+  it("moves with a production package the lockfile resolves, and not with a dev tool's or a document", () => {
+    const host = hostWith({});
+    expect(hostWith({ typebox: ["typebox@1.3.28", "", {}, "sha512-f"] })).not.toBe(host);
+    expect(hostWith({ "cross-spawn/which": ["which@2.0.3", "", {}, "sha512-g"] })).not.toBe(host);
+    expect(
+      hostWith({ oxlint: ["oxlint@1.0.1", "", { dependencies: { which: "^1.0.0" } }, "sha512-h"] }),
+    ).toBe(host);
+    expect(hostWith({ which: ["which@1.3.2", "", {}, "sha512-i"] })).toBe(host);
+    hostWith({});
+    mkdirSync(join(tree, "docs"));
+    writeFileSync(join(tree, "docs", "plan.md"), "a row\n");
+    expect(codeOf(tree).host).toBe(host);
+  });
+});
 
 describe("a campaign", () => {
   /** `prepare.ts` as the operator runs it, with whatever flags `more` adds, and what it printed. */

@@ -35,8 +35,7 @@ import { freezePrices, priceKey } from "#src/kernel/meter.ts";
 import { taskVersion } from "#src/kernel/task.ts";
 import { openVerifier } from "#src/kernel/verify.ts";
 import { sha256 } from "#src/meta/digest.ts";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "#src/meta/filesystem.ts";
-import { parseJsonAs } from "#src/meta/json-runtime.ts";
+import { mkdirSync, mkdtempSync, rmSync } from "#src/meta/filesystem.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -49,7 +48,7 @@ import { firstTurn, installedPrograms, NUDGE, seedHome, systemPrompt } from "#sr
 import { type SolveRequest, solve, solverTools } from "#src/solve/run.ts";
 import { mountDiskCap } from "#src/verify/disk-cap.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
-import { worktreesOf } from "../d2/campaign.ts";
+import { codeOf, worktreesOf } from "../d2/campaign.ts";
 import {
   checkProgram,
   contractOf,
@@ -90,8 +89,6 @@ const LIMITS: Limits = {
   diskBytes: 2 * 1024 ** 3,
 };
 const REPO = resolve(import.meta.dir, "..", "..");
-/** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
-const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-core", "@earendil-works/pi-ai"];
 
 async function main(): Promise<number> {
   const { root, sweep, cycle, task: taskId, bundle, harness: state, live } = values;
@@ -128,9 +125,7 @@ async function main(): Promise<number> {
         ? stored.modelWorker.modelSelection.effort
         : // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
           (values["solver-effort"] as ThinkingLevel);
-    const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
-      readFileSync(join(REPO, "package.json"), "utf8"),
-    ).dependencies;
+    const { runtime, host } = codeOf(REPO);
     const condition: Condition = {
       contract: contractHash(contract),
       harness: harness.digest,
@@ -138,7 +133,7 @@ async function main(): Promise<number> {
       model: priceKey(model),
       effort,
       prices: freezePrices([model]),
-      runtime: Object.fromEntries(RUNTIME.map((name) => [name, pins[name] ?? "unpinned"])),
+      runtime,
       compaction: compactionMode(model, sweepOptions()),
       solverTools: harness.digest,
       verifierTools: hashJsonValue(treeContent(join(bundle, ".toolchain"))),
@@ -150,7 +145,7 @@ async function main(): Promise<number> {
       limits: LIMITS,
       // The files as they stand, not the commit: a commit to tests or tools runs no other solve, and
       // an uncommitted change to the runner does.
-      host: hashJsonValue(["src", "vendor"].map((part) => treeContent(join(REPO, part)))),
+      host,
       side: "test",
     };
     const id = conditionId(condition);

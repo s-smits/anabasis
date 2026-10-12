@@ -85,6 +85,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { SIZE } from "#src/kernel/size.ts";
 import { plural } from "#src/meta/text.ts";
+import { median } from "#src/meta/tally.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import {
   awaitingLines,
@@ -433,8 +434,14 @@ export function reportLines({
   objective,
   frontier,
   noise,
-}: Pick<Report, "valid" | "objective" | "frontier" | "noise">): string[] {
+  turns = null,
+}: Pick<Report, "valid" | "objective" | "frontier" | "noise"> & Partial<Pick<Report, "turns">>): string[] {
   if (valid === null) return [];
+  // The turns of a valid answer, over the tasks both harnesses answered: reported, in no test.
+  const both = Object.values(turns ?? {}).flatMap(({ old, fresh }) =>
+    old === null || fresh === null ? [] : [{ old, fresh }],
+  );
+  const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
   const share = frontier?.detectable ?? null;
   const from = objective?.from;
   const set =
@@ -456,6 +463,11 @@ export function reportLines({
       ? []
       : [
           `the objective (${objective.direction} is better, margin ${String(objective.margin)}, ${set}) decided ${plural(objective.decided, "task")} that validity alone would have tied`,
+        ]),
+    ...(both.length === 0
+      ? []
+      : [
+          `the median turns of a valid answer, over the ${plural(both.length, "task")} both answered: reference ${took("old")}, new ${took("fresh")} (reported, in no test)`,
         ]),
     ...(noise?.margin == null
       ? []

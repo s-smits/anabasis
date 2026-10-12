@@ -389,6 +389,8 @@ describe("a round", () => {
         noise: null,
         counted: null,
         objective: null,
+        // The turns each harness's valid answers took, by task: in no tally.
+        turns: Object.fromEntries(HELD.map((task) => [task, { old: null, fresh: 10 }])),
         versions: HELD,
         disputed: [],
         aside: [],
@@ -502,6 +504,26 @@ describe("a round", () => {
     // the count, so a reader of the report pairs as the comparison did.
     expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ objective });
     expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ objective: { ...objective, decided: 2 } });
+  });
+
+  it("reports the turns of each valid answer beside each pair, and reads them in no test", async () => {
+    // The same validity twice, the new harness's answers taking 4 turns in one run and 20 in the other.
+    const run = async (fast: number) => {
+      const s = await setup([edit, finish], (version, side) =>
+        version === "s1" ? LATE : { ending: PASS, turns: side === "fresh" ? fast : 12 },
+      );
+      return await round(s.request);
+    };
+    const [quick, slow] = [await run(4), await run(20)];
+    const tested = ({ scored, frontier, noise, reading }: typeof quick) => ({
+      scored,
+      frontier,
+      noise,
+      reading,
+    });
+    expect(tested(quick)).toEqual(tested(slow));
+    expect(quick.turns).toMatchObject({ s1: { old: null, fresh: null }, s2: { old: 12, fresh: 4 } });
+    expect(slow.turns).toMatchObject({ s2: { old: 12, fresh: 20 } });
   });
 
   it("reads a win over a promoted reference as a step, whatever the starter would answer", async () => {

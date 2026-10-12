@@ -44,10 +44,10 @@
  *    have to change: an Examiner session, until as many in a row as the campaign's patience held
  *    out nothing. With room, the harness did not help, and the Builder builds again.
  * 8. Nothing new to compare: the Builder builds, once the campaign holds as many scorable tasks
- *    as a comparison scores (since 11 October; until then the first session built on whatever
- *    was held, and the Examiner wrote the rest between the session and the comparison). Something
- *    new: it is compared once the sessions before a comparison have run, or tasks are written
- *    where the comparison would be short of them.
+ *    as a comparison scores, before its first a repeat's as well (since 11 and 12 October; until
+ *    then the first session built on whatever was held, and the Examiner wrote the rest between
+ *    the session and the comparison). Something new: it is compared once the sessions before a
+ *    comparison have run, or tasks are written where the comparison would be short of them.
  * 9. Before a Builder session, practice is brought towards the count the campaign names, where
  *    tasks were held out since the last release, and brought up again after a control that read
  *    room: the tasks that leave the reference room are what the Builder has to work on.
@@ -458,19 +458,23 @@ function onStep(ground: Ground): Decided | null {
 
 /**
  * An Examiner session, where the campaign holds fewer scorable tasks than a comparison scores,
- * and null where it holds enough. Three sessions in a row that hold out none end the campaign on
- * its exam (`written`).
+ * before its first comparison than a comparison and its repeat score, and null where it holds
+ * enough. Three sessions in a row that hold out none end the campaign on its exam (`written`).
+ * Until 12 October the first comparison was held to one target, and a repeat on a campaign
+ * holding exactly that re-scored the versions its first stage scored (buffer-141-m3's g-2): the
+ * repeat takes the tasks its first stage did not score first (`scoredSet`), where there are any.
  */
 function toTarget(ground: Ground, before: string): Decided | null {
-  const { plan, scorable, drafts } = ground;
-  const { target } = plan.wanted;
+  const { plan, scorable, drafts, all } = ground;
+  const target = (all.length === 0 ? 2 : 1) * plan.wanted.target;
   if (scorable >= target) return null;
+  const scores = all.length === 0 ? "a comparison and its repeat score" : "a comparison scores";
   return written(
     drafts,
     "tasks",
     {
       move: "examine",
-      why: `the campaign holds ${String(scorable)} of the ${plural(target, "task")} a comparison scores, and ${before}: the Examiner writes more first`,
+      why: `the campaign holds ${String(scorable)} of the ${plural(target, "task")} ${scores}, and ${before}: the Examiner writes more first`,
     },
     plan.patience,
   );

@@ -40,7 +40,9 @@ const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
 const STEM = `test-hb-${String(runtimeProcess.pid)}`;
 const OPENED = "campaign.opened";
 const MOVED = "campaign.move";
-const TASKS = fixtureTasks(7);
+// Ten held once two are released: a comparison's five and its repeat's, which a campaign holds
+// before its first comparison (12 October).
+const TASKS = fixtureTasks(12);
 const scripted = scriptedModel;
 const GRADED = gradedOf(TASKS);
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
@@ -77,9 +79,9 @@ describe("a campaign run by its log", () => {
   it("asks the Examiner for what the campaign is short of, before the first session, and tells it the campaign's wall", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-short`;
-    // Seven tasks in the pack, two released: five held of a target of eight, and two practice
-    // tasks of the three the campaign names. The session is asked for three and one, and the
-    // Examiner is told nothing of the number. The wall is the campaign's term, and until
+    // Twelve tasks in the pack, two released: ten held of the sixteen a comparison at a target of
+    // eight and its repeat score, and two practice tasks of the three the campaign names. The
+    // session is asked for six and one, and the Examiner is told nothing of the number. The wall is the campaign's term, and until
     // 11 October the Examiner was told the default of two hours whatever the term said.
     const flags = [
       ...seeded(name),
@@ -112,8 +114,8 @@ describe("a campaign run by its log", () => {
       ["prepare", null],
       ["examine", "x-1"],
     ]);
-    expect(asked).toEqual([{ tasks: 4, minutes: 7 }]);
-    expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 4 } }]);
+    expect(asked).toEqual([{ tasks: 7, minutes: 7 }]);
+    expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 7 } }]);
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
   });
 
@@ -121,8 +123,8 @@ describe("a campaign run by its log", () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-idle`;
     // A patience of two, so that the ending is reached in two idle Examiner sessions; a target of
-    // five, the pack's held-out tasks, so that the first move builds: a campaign short of its
-    // target has tasks written before the first session (11 October).
+    // five, half the pack's held-out tasks, so that the first move builds: a campaign short of its
+    // target and a repeat's has tasks written before the first session (11 and 12 October).
     const flags = [...seeded(name), "--patience", "2", "--target", "5"];
     const strayed: string[] = [];
     const solves = scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed);
@@ -279,8 +281,8 @@ describe("a campaign run by its log", () => {
 
   it("compares a step again, waits under --attended to promote it, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
     const name = `${STEM}-climb`;
-    // The seed holds five tasks to score once two are released, and the comparison scores five:
-    // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
+    // The seed holds ten tasks to score once two are released, and a comparison scores five: the
+    // row that writes tasks up to the target is tested in `test/decide.test.ts`.
     // At a trigger of its own, so that the comparisons are seen to run under the campaign's and
     // not the command's default (found by review, 11 October: the flag was not passed on).
     const flags = [
@@ -332,6 +334,13 @@ describe("a campaign run by its log", () => {
     const [first, repeat] = of(name, "comparison.reported");
     expect(first).toMatchObject({ reading: "step", scored: { wins: 5, losses: 0, ties: 0 } });
     expect(repeat).toMatchObject({ reading: "step", old: first?.old, fresh: first?.fresh });
+    // The repeat scored the five tasks its first stage did not. Until 12 October a campaign held one
+    // target before its first comparison, and buffer-141-m3's g-2 scored g-1's versions again.
+    const [once = [], again = []] = of(name, "comparison.started").map(({ tasks }) =>
+      Array.isArray(tasks) ? tasks : [],
+    );
+    expect([once.length, again.length]).toEqual([5, 5]);
+    expect(again.filter((task) => once.includes(task))).toEqual([]);
     // The table reads the reference against itself in no comparison since 2026-10-11: that is the
     // operator's `--noise` on a checkpoint.
     expect(of(name, "comparison.started").map(({ noise }) => noise)).toEqual([false, false]);
@@ -461,8 +470,8 @@ describe("a campaign run by its log", () => {
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {
     const name = `${STEM}-word`;
-    // The seed holds five tasks to score once two are released, and the comparison scores five:
-    // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
+    // The seed holds ten tasks to score once two are released, and a comparison scores five: the
+    // row that writes tasks up to the target is tested in `test/decide.test.ts`.
     const flags = [...seeded(name), "--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5"];
     const strayed: string[] = [];
     const scriptedSolves = scriptedSeats(
@@ -692,7 +701,7 @@ describe("a campaign run by its log", () => {
     };
     const strayed: string[] = [];
     const examples = TASKS.map(({ publicInput }, index) => ({
-      taskId: `ex-00${String(index + 1)}`,
+      taskId: `ex-${String(index + 1).padStart(3, "0")}`,
       answer: { answer: String(publicInput.base * 6) },
       refusedBy: null,
     }));

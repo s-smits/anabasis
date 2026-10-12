@@ -8,7 +8,7 @@ import type { Plan } from "../src/builder/ground.ts";
 import { openingOf, planOf } from "../src/builder/opening.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 
 /** Tasks by how many of their two solves were valid: none, one, both. */
 type Valid = readonly [number, number, number];
@@ -31,10 +31,14 @@ const heldOut = (version: string) => [
   event("task.gate", { version, gate: 1, outcome: "passed" }),
 ];
 const READ = event("checker.read", { contract: "c", checks: "k", faults: [] });
-/** A campaign set up: its checker read with no fault, six tasks held out and one released. */
+/** A second target's worth, which a campaign holds before its first comparison, for a repeat. */
+const REPEAT = HELD.map((version) => `r${version}`);
+/** A campaign set up: its checker read with no fault, a comparison's tasks and a repeat's held
+ *  out, and one released. */
 const SET_UP = [
   READ,
   ...HELD.flatMap(heldOut),
+  ...REPEAT.flatMap(heldOut),
   ...heldOut("p1"),
   event("task.state", { version: "p1", state: "released" }),
 ];
@@ -205,6 +209,13 @@ describe("a word the operator left", () => {
 describe("what is built and what is compared", () => {
   it("builds while no session has left a harness that is not the reference", () => {
     expect(move(SET_UP)).toMatchObject({ move: "build" });
+    // One comparison's tasks are too few before the first: its repeat would score the same
+    // versions again, as buffer-141-m3's g-2 did on 12 October. The Examiner writes a repeat's too.
+    const one = SET_UP.filter(({ data }) => !(isString(data.version) && REPEAT.includes(data.version)));
+    expect(move(one)).toEqual({
+      move: "examine",
+      why: "the campaign holds 12 of the 24 tasks a comparison and its repeat score, and no comparison has run yet: the Examiner writes more first",
+    });
     // Short of the tasks a comparison scores, the Examiner writes first, before the first session
     // is paid for: the buffer campaigns of 11 October built on three practice tasks and then
     // waited on an Examiner session between the session and the comparison.
@@ -216,7 +227,7 @@ describe("what is built and what is compared", () => {
     ];
     expect(move(six)).toEqual({
       move: "examine",
-      why: "the campaign holds 6 of the 12 tasks a comparison scores, and no comparison has run yet: the Examiner writes more first",
+      why: "the campaign holds 6 of the 24 tasks a comparison and its repeat score, and no comparison has run yet: the Examiner writes more first",
     });
     // Once a comparison has run, the rows that read it decide, whatever is held.
     expect(move([...six, built("b-1", "h1"), ...compared("g-1", "h1", "no-step")])).toMatchObject({
@@ -250,15 +261,17 @@ describe("what is built and what is compared", () => {
     ];
     expect(move([...six, built("b-1", "h1")])).toEqual({
       move: "examine",
-      why: "the campaign holds 6 of the 12 tasks a comparison scores, and harness h1 has not been compared under the campaign's setting: the Examiner writes more first",
+      why: "the campaign holds 6 of the 24 tasks a comparison and its repeat score, and harness h1 has not been compared under the campaign's setting: the Examiner writes more first",
     });
     // Three sessions in a row that hold out none end the campaign on its exam.
     const idle = ["x-1", "x-2", "x-3"].map((id) =>
       event("exam.finished", { session: id, held: [], refused: [], proposed: 0 }),
     );
     expect(move([...six, built("b-1", "h1"), ...idle])).toMatchObject({ move: "end", ending: "exam" });
-    // Held out to the count, the comparison is made.
-    expect(move([...six, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
+    // Held out to the count, a repeat's too, the comparison is made.
+    expect(
+      move([...six, built("b-1", "h1"), ...[...HELD.slice(6), ...REPEAT].flatMap(heldOut)]),
+    ).toMatchObject({
       move: "compare",
     });
   });
@@ -360,13 +373,13 @@ describe("practice, before a Builder session", () => {
     const more = [...SET_UP, ...heldOut("v13")];
     expect(move(more, { ...PLAN, practice: 1 })).toMatchObject({ move: "build" });
     expect(move(more)).toMatchObject({ move: "build" });
-    // Six of the seven held-out tasks are named to score, and half of the one that is left is none.
+    // All but one of the held-out tasks are named to score, and half of the one that is left is none.
     const named = event("campaign.setting", {
       solver: null,
       minutes: 120,
       turns: 24,
       modelTurns: null,
-      tasks: HELD,
+      tasks: [...HELD, ...REPEAT],
       target: 6,
     });
     expect(move([named, ...more], plan)).toMatchObject({ move: "build" });
@@ -538,11 +551,14 @@ describe("no step", () => {
   });
 
   it("has the tasks changed where the reference left no room, and ends once the Examiner's patience is spent", () => {
-    const full = { old: ALL, fresh: ALL };
+    // A comparison that scored every held task, the repeat's worth too, so that none is left unread.
+    const every: Valid = [0, 0, 24];
+    const full = { old: every, fresh: every };
+    const scoredAll = { versions: [...HELD, ...REPEAT] };
     const tied = [
       setting(40),
       ...first,
-      ...compared("g-1", "h1", "no-step", { tally: [0, 0, 12], valid: full }),
+      ...compared("g-1", "h1", "no-step", { tally: [0, 0, 24], valid: full, extra: scoredAll }),
     ];
     // Valid on every solve: the tasks change. Until 10 October a shorter budget came first, and
     // t-10 climbed in turns where it should have climbed in tasks; until 11 October a shorter
@@ -577,8 +593,8 @@ describe("no step", () => {
       ending: "no-room",
       why: "3 Examiner sessions in a row held out no task (comparison g-1 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change): the tasks could not be made to leave room",
     });
-    // With tasks written since, the same two are compared on them: six among eighteen, of which
-    // a draw of twelve scores four on average, where a first reading takes two.
+    // With tasks written since, the same two are compared on them: six among thirty, of which a
+    // draw of twelve scores between two and three on average, where a first reading takes two.
     const more = ["v13", "v14", "v15", "v16", "v17", "v18"].flatMap(heldOut);
     expect(move([...tied, ...more])).toMatchObject({
       move: "compare",

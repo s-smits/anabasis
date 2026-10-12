@@ -440,22 +440,28 @@ function better(rule: ObjectiveRule, one: number | null, other: number | null): 
  *  and how many each side won. A valid answer beats one that is not; two valid answers are even,
  *  unless the pair carries an objective and one is the better by it. */
 export function pairings(pair: Paired) {
-  const won = { fresh: 0, old: 0 };
-  /** Who wins one pairing: the valid answer, or between two valid ones the better by the objective. */
-  const winner = (f: number, o: number): "fresh" | "old" | null => {
-    const [freshValid, oldValid] = [pair.fresh[f] === true, pair.old[o] === true];
-    if (freshValid !== oldValid) return freshValid ? "fresh" : "old";
-    if (!freshValid || pair.objective === undefined) return null;
-    const by = better(pair.objective, pair.objective.fresh[f] ?? null, pair.objective.old[o] ?? null);
-    return by === 0 ? null : by === 1 ? "fresh" : "old";
-  };
+  const { validity, objective } = pairingsBy(pair);
+  return { fresh: validity.fresh + objective.fresh, old: validity.old + objective.old };
+}
+
+/** One task's pairings by what decided each (`pairings`): validity, where one answer was valid;
+ *  the objective, between two valid answers it told apart by more than the margin; and `valid`,
+ *  the pairings of two valid answers, which the effect bar reads the objective over (`climb.ts`). */
+export function pairingsBy(pair: Paired) {
+  const by = { validity: { fresh: 0, old: 0 }, objective: { fresh: 0, old: 0 }, valid: 0 };
   for (let f = 0; f < pair.fresh.length; f += 1) {
     for (let o = 0; o < pair.old.length; o += 1) {
-      const side = winner(f, o);
-      if (side !== null) won[side] += 1;
+      const [freshValid, oldValid] = [pair.fresh[f] === true, pair.old[o] === true];
+      if (freshValid !== oldValid) by.validity[freshValid ? "fresh" : "old"] += 1;
+      if (!freshValid || !oldValid) continue;
+      by.valid += 1;
+      const told =
+        pair.objective &&
+        better(pair.objective, pair.objective.fresh[f] ?? null, pair.objective.old[o] ?? null);
+      if (told === 1 || told === -1) by.objective[told === 1 ? "fresh" : "old"] += 1;
     }
   }
-  return won;
+  return by;
 }
 
 /** How many of `pairs` the objective decided: tasks won or lost that would tie on validity alone. */

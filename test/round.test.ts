@@ -401,6 +401,14 @@ describe("a round", () => {
         reading: "step",
         // Until a person answers the comparison's packet, which no promotion waits for.
         settled: "unsettled",
+        // The bars, read and gating nothing (the plan's W): all of the valid share gained, no
+        // transfer under the starter, and this comparison the first attempt of set-up's epoch.
+        worth: {
+          bars: { effect: 0.25, transfer: 0.15, cost: 3 },
+          effect: { gain: 1, objective: null, met: true },
+          transfer: null,
+          cost: { attempts: 1, sessions: 1, dollars: expect.any(Number), met: true },
+        },
       },
     ]);
     // Four tasks, two harnesses, two solves. A task's solves run together, so that what drifts

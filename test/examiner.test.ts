@@ -535,10 +535,13 @@ describe("try_task", () => {
     expect(asked).toHaveLength(15);
     expect(solvesIn(read(s.log)).map(({ start }) => start.comparison)).toEqual(Array(15).fill("x-1"));
     expect(billedParts(read(s.log), "x-1")).toEqual({ session: 0, comparison: 7.5 });
-    // Each is on record with its condition, as the launcher writes one, and a valid one would make
-    // its task answered: none is part of a task's record, its answers or a tally.
+    // Each is on record with its condition, as the launcher writes one, and none is part of a
+    // task's answers or a tally; a valid one is a witness, so its task is feasible and nothing more.
     expect(ranUnder(read(s.log))).toEqual([]);
-    expect(feasibleTasks(read(s.log))).toEqual(new Set());
+    expect(feasibleTasks(read(s.log))).toEqual(new Set(versions.filter((_version, nth) => nth !== 2)));
+    expect(heard(read(s.log), writtenTasks(read(s.log))).lines[0]).toBe(
+      "x-1-001 (family fixture): not yet compared; a valid answer to it is on record",
+    );
     expect(s.of("exam.started")).toMatchObject([{ tried: 3 }]);
     expect(s.sent[0]).toContain("try_task takes instances");
     expect(s.sent[0]).not.toContain("propose_tasks");

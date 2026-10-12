@@ -78,7 +78,8 @@ export function roundSolves(
     setting: settingId(conditionOf("any", "any", more)),
     solves: 2,
     versions: Object.keys(outcomes),
-    valid,
+    // The tasks valid on one solve of two are the informative ones (`informative`).
+    valid: { ...valid, informative: { old: valid.old[1] ?? 0, fresh: valid.fresh[1] ?? 0 } },
   };
   return { events, terms };
 }

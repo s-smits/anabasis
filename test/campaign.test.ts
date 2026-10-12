@@ -498,7 +498,7 @@ describe("a campaign", () => {
     // each shorter `--budget`, and a report held a row for each; the flag is refused since.
     expect(
       reportLines({
-        valid: { old: [2, 1, 5], fresh: [0, 1, 7] },
+        valid: { old: [2, 1, 5], fresh: [0, 1, 7], informative: { old: 0, fresh: 0 } },
         objective: null,
         frontier: null,
         noise: null,
@@ -521,7 +521,7 @@ describe("a campaign", () => {
       detectable: 0.95,
       falseRate: 0.01953125,
     };
-    const valid = { old: [8, 0, 0], fresh: [4, 0, 4] };
+    const valid = { old: [8, 0, 0], fresh: [4, 0, 4], informative: { old: 0, fresh: 0 } };
     expect(reportLines({ valid, objective: null, frontier, noise: null }).slice(0, 2)).toEqual([
       "the step is read on 8 frontier tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
       // Beside the level, the rule's own rate: four untied tasks a stage promote equal harnesses 2%.
@@ -534,7 +534,7 @@ describe("a campaign", () => {
     // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
     expect(
       reportLines({
-        valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
+        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
         frontier: null,
         objective: { direction: "lower", margin: 0.01, decided: 1 },
         noise: null,
@@ -546,7 +546,7 @@ describe("a campaign", () => {
     // (the overhaul plan's P2).
     const read2 = (from: number | null) =>
       reportLines({
-        valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
+        valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
         frontier: null,
         objective: { direction: "lower", margin: 0.04, from, decided: 0 },
         noise: {

@@ -28,6 +28,7 @@ import {
   type Tally,
   tally,
   UNMEASURED,
+  informative,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
@@ -68,6 +69,8 @@ type Entered = Tested & { readonly tasks: readonly string[]; readonly aside: rea
 export interface Valid {
   readonly old: readonly number[];
   readonly fresh: readonly number[];
+  /** The tasks informative for each harness (`informative`), which room is read by (`roomOf`). */
+  readonly informative: { readonly old: number; readonly fresh: number };
 }
 export interface Report {
   /** The reference harness. */
@@ -255,7 +258,12 @@ function validOf(pairs: readonly Paired[], solves: number): Valid {
     }
     return tasks;
   };
-  return { old: census("old"), fresh: census("fresh") };
+  const told = (side: "old" | "fresh") => pairs.filter((pair) => informative(pair, side)).length;
+  return {
+    old: census("old"),
+    fresh: census("fresh"),
+    informative: { old: told("old"), fresh: told("fresh") },
+  };
 }
 
 /** The last report the log holds for comparison `id`, its own or its settling, or null: a

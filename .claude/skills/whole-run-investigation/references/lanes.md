@@ -883,7 +883,7 @@ harness's own solves, `src/builder/decide.ts`), the Examiner sessions and what e
 comparison read against the promoted harness, the controls that put the starter against it, the
 Builder sessions with their parent and how many of their practice tasks were written since, and
 any comparison started and not reported. A climb is these in order: an Examiner session that
-leaves the promoted harness room (tasks it answers on fewer than three solves in four), a control
+leaves the promoted harness room (tasks informative for it: valid on some solves and not all), a control
 that confirms the room, a Builder session from the promoted harness practising on those tasks, and
 a comparison against it. Read the reference's valid share epoch by epoch: if every new task is one
 the promoted harness already answers, the campaign is measuring ties, and lane 22's power says how

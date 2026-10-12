@@ -393,6 +393,21 @@ function measures(pair: Paired, side: "old" | "fresh"): number[] {
 }
 
 /**
+ * Whether a task tells something of the harness on `side` (the overhaul plan's one definition of
+ * informative, section 4b): valid on some of its solves and not all, as `try_task` admits a draft
+ * at 0 < passes < k, or valid on all with two of its own measures apart by more than the
+ * objective's margin, so that a better answer is there to find. A task it fails in every solve, or
+ * answers alike in every solve, leaves it nothing to gain on.
+ */
+export function informative(pair: Paired, side: "old" | "fresh"): boolean {
+  const valid = pair[side].filter(Boolean).length;
+  if (valid > 0 && valid < pair[side].length) return true;
+  const own = measures(pair, side);
+  const margin = pair.objective?.margin ?? Number.POSITIVE_INFINITY;
+  return valid > 0 && own.some((one, at) => own.slice(at + 1).some((other) => apart(one, other) > margin));
+}
+
+/**
  * The objective's margin the reference's own noise sets (the overhaul plan's P2): the 90th
  * percentile of how far apart two of its valid answers to one task measure, over every pairing
  * across the two sides of `pairs`, which are the reference against itself (the A/A, `compared`,

@@ -146,10 +146,6 @@ export interface Cap {
  * (10 October): six, until a campaign climbs and the figure can be read from its record.
  */
 export const PATIENCE = 6;
-/** The shares of valid solves by which the process reads room (`roomOf`): the reference harness
- *  above `full` leaves none, and both harnesses below `empty` are held by tasks too hard for the
- *  budget. The two fractions are the plan's proposal, and the operator's to set. */
-export const ROOM = { full: 3 / 4, empty: 1 / 4 } as const;
 /** Comparisons without a valid answer after which a task with none on record goes to a person. */
 const UNSOLVED_RUN = 2;
 /** The ways a solve ends at a limit of its own: its time, its model turns or its context. Such an
@@ -233,48 +229,28 @@ export function comparedAs(events: readonly LogEvent[], harness: string) {
   );
 }
 
-/** A harness's share of valid solves, from a report's count of its tasks by how many of their
- *  solves were valid, over every scored task; null where the report holds no such count. */
-function validShare(counts: unknown): number | null {
-  if (!Array.isArray(counts) || counts.length < 2 || !counts.every(isNumber)) return null;
-  const tasks = counts.reduce((sum, each) => sum + each, 0);
-  const valid = counts.reduce((sum, each, solves) => sum + each * solves, 0);
-  return tasks === 0 ? null : valid / (tasks * (counts.length - 1));
-}
-
-/**
- * The share of its solves on which the harness on `side` of a comparison was valid, by its report,
- * at the limits the comparison ran under. Null where the report holds no such count.
- *
- * The share is over every scored task, the ones no solve answered counted as failed. Until
- * 10 October those were left out, on the reading that a task neither harness answered is hard
- * for both or has no valid answer and says nothing of room: an Examiner pressing its tasks to
- * the margin had written two of seven with no valid answer (2026-10-09). The simulated climb of
- * 10 October showed the cost: after a promotion the Examiner wrote six tasks the promoted
- * harness fails, the control read it valid on every task it answered, with the six left out, and
- * four comparisons read "no room" and ended the campaign with no Builder session on tasks that
- * were the room itself. A task the reference harness fails is room whether or not the starter
- * answers it; one with no valid answer at all goes to a person after two comparisons
- * (`awaitingLabel`), and the Examiner's `try_answer` is for writing none.
- */
-function validAt(report: JsonObject, side: "old" | "fresh"): number | null {
-  return validShare(asRecord(report.valid)?.[side]);
-}
-
 /**
  * What room a comparison's report shows a harness to gain in, as the process reads it
- * (`docs/plan.md`, "How move 7 decides"): `none` where the reference harness was valid on more
- * than three solves in four, so that its tasks could mostly only tie; `too-hard` where neither
- * harness was valid on one solve in four; and `room` otherwise, and for a report that holds no
- * count of valid solves. `side` is the reference's side of the report: `old` in a comparison
+ * (`docs/plan.md`, "How move 7 decides"): `room` where a task was informative for the reference
+ * harness (`informative`, `compare.ts`: valid on some solves and not all, or two of its valid
+ * answers apart by the objective past its margin), `too-hard` where neither harness was valid on
+ * any solve, and `none` otherwise, the tasks it fails in every solve among them, which leave it
+ * nothing to practise on. `side` is the reference's side of the report: `old` in a comparison
  * made against it, and `fresh` in the one it was promoted on, which is the reading the tasks
  * have after a promotion until a comparison against the new reference reads them again.
+ *
+ * Until 12 October room was read by shares of valid solves (the reference at most three in four,
+ * and not both harnesses under one in four), which counted a task the reference failed in every
+ * solve as room (10 October) and an objective's spread not at all (the plan's section 4b, one
+ * definition for the Examiner's `try_task` and the table).
  */
 export function roomOf(report: JsonObject, side: "old" | "fresh" = "old"): "none" | "too-hard" | "room" {
-  const [reference, other] = [validAt(report, side), validAt(report, side === "old" ? "fresh" : "old")];
-  if (reference === null || other === null) return "room";
-  if (reference > ROOM.full) return "none";
-  return reference < ROOM.empty && other < ROOM.empty ? "too-hard" : "room";
+  const valid = asRecord(report.valid);
+  const told = asRecord(valid?.informative)?.[side];
+  if (!isNumber(told) || told > 0) return "room";
+  const anyValid = (counts: unknown) =>
+    Array.isArray(counts) && counts.some((n, at) => at > 0 && isNumber(n) && n > 0);
+  return anyValid(valid?.old) || anyValid(valid?.fresh) ? "none" : "too-hard";
 }
 
 /**

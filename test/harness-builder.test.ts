@@ -461,7 +461,7 @@ describe("a campaign run by its log", () => {
     // tasks as beyond both, and the table has other tasks written rather than a harness built.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({ session: "g-3", reading: "no-step" });
     expect(after).toMatchObject({ move: "examine" });
-    expect(after.why).toContain("neither harness was valid on one solve in four");
+    expect(after.why).toContain("neither harness gave a valid answer");
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:

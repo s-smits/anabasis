@@ -775,10 +775,12 @@ are summed from the log, and the solve does not start when a reserve for it and 
 in flight would pass the cap.
 
 **Room.** A comparison's report says what room a harness has to gain in (`roomOf`,
-`src/kernel/reports.ts`): none where the reference harness was valid on more than three solves
-in four, so that its tasks could mostly only tie; too hard where neither harness was valid on
-one solve in four; and room otherwise. The two shares (`ROOM`) are the plan's proposal and the
-operator's to set. The two ways to room are the tasks and the objective.
+`src/kernel/reports.ts`): room where a task was informative for the reference harness, valid on
+some of its solves and not all, or two of its valid answers apart by the objective past the margin
+(`informative`, `src/kernel/compare.ts`, the one definition `try_task` admits a draft by too); too
+hard where neither harness gave a valid answer; and none otherwise, a task the reference fails in
+every solve among them (since 12 October; shares of valid solves before). The two ways to room are
+the tasks and the objective.
 
 **After the test.** A comparison that wrote its report is finished: run again, it returns that
 report. The stop rule is as many moves in a row that could have shown a gain and showed none as

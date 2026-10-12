@@ -508,6 +508,19 @@ describe("a campaign", () => {
       "  at its limits: reference 2/1/5, new 0/1/7",
     ]);
     expect(reportLines({ valid: null, objective: null, frontier: null, noise: null })).toEqual([]);
+    // The turns of a valid answer are said over the tasks both harnesses answered, and in no test.
+    const turns = { s1: { old: null, fresh: 3 }, s2: { old: 12, fresh: 4 }, s3: { old: 10, fresh: 6 } };
+    expect(
+      reportLines({
+        valid: { old: [0, 0, 3], fresh: [0, 0, 3], informative: { old: 0, fresh: 0 } },
+        objective: null,
+        frontier: null,
+        noise: null,
+        turns,
+      }).at(-1),
+    ).toBe(
+      "the median turns of a valid answer, over the 2 tasks both answered: reference 11, new 5 (reported, in no test)",
+    );
     // Every reading says how many of the frontier's tasks were untied and the least share of them it
     // detects four times in five, or none where they are fewer than the least sweep.
     const frontier = {

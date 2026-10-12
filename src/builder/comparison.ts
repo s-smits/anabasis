@@ -37,6 +37,7 @@ import { lastReports, unsolved, whole } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { median } from "../meta/tally.ts";
 import type { Ruling } from "../review/referee.ts";
 
 /**
@@ -138,6 +139,11 @@ export interface Report {
    *  validity alone would have tied. Null where the check program declares none, and in a report
    *  written before 10 October. */
   readonly objective: (ObjectiveRule & { readonly decided: number }) | null;
+  /** By task, the median turns each harness's valid answers took, null where it gave none: what
+   *  the comparison reports beside each pair and no tally reads (the overhaul plan's P2). */
+  readonly turns: Readonly<
+    Record<string, { readonly old: number | null; readonly fresh: number | null }>
+  > | null;
   /** `unsettled` in the comparison's own report until a person answers its packet (`settle.ts`),
    *  which no promotion waits for (the operator, 12 October); then what the labels settled, in
    *  the report `settleReading` writes after it: how many rejections were labelled, how many of
@@ -214,6 +220,7 @@ const REPORT_KEYS = [
   "reading",
   "settled",
   "objective",
+  "turns",
 ] as const satisfies readonly (keyof Report)[];
 const NOTHING_TO_LABEL: ToLabel = { aside: [], others: [] };
 export const DEFECT = "check-defect";
@@ -238,6 +245,7 @@ export const NOTHING = {
   capped: false,
   settled: null,
   objective: null,
+  turns: null,
 } as const;
 
 /** The log as comparison `id` is read once it has reported: up to its own first report. What comes
@@ -264,6 +272,20 @@ function validOf(pairs: readonly Paired[], solves: number): Valid {
     fresh: census("fresh"),
     informative: { old: told("old"), fresh: told("fresh") },
   };
+}
+
+/** By task, the median turns each side's valid answers took (`Report.turns`), null where none. */
+function turnsOf(events: readonly LogEvent[], pairs: readonly Paired[]): NonNullable<Report["turns"]> {
+  const took = new Map(solvesIn(events).map((solve) => [solve.id, solve.end?.turns]));
+  const side = (pair: Paired, named: "old" | "fresh") =>
+    median(
+      (pair.solves?.[named] ?? [])
+        .flatMap((id, at) => (pair[named][at] === true ? [took.get(id)] : []))
+        .filter(isNumber),
+    );
+  return Object.fromEntries(
+    pairs.map((pair) => [pair.task, { old: side(pair, "old"), fresh: side(pair, "fresh") }]),
+  );
 }
 
 /** The last report the log holds for comparison `id`, its own or its settling, or null: a
@@ -425,6 +447,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     ),
     withdrawn: scorable.filter((task) => !held.has(task)),
     reading: pairs.length === 0 ? ("not-scored" as const) : stepOf(stage, fixed.level),
+    turns: turnsOf(events, pairs),
     objective:
       fixed.objective === undefined ? null : { ...fixed.objective, decided: decidedByObjective(pairs) },
   };

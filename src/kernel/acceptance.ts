@@ -17,7 +17,11 @@
  * 38% of the tasks, because the verifier accepted an empty response. And a check whose author's own
  * computation decides it, with no installed instrument, is a fault until the operator admits it by
  * name: all 32 verified firmware fails in v1 ran on batteries whose instrument a Builder had
- * written, and 24 of them were that stand-in rejecting valid code.
+ * written, and 24 of them were that stand-in rejecting valid code. A check's instrument is named by
+ * the tool it runs. Until 12 October it was the brief's evidence label, which its author writes:
+ * buffer-141-m3's reading gave 7 of 7 checks `authored`, and 5 of them ran the pack's engine on
+ * their author's input. An exam with no engine behind any check, as every drafted one is (only a
+ * stored pack's tool tree installs one), stands only once the operator admits each check by name.
  *
  * This reads and decides nothing: a fault is a sentence for the checker's owner, and what share of
  * faults a checker may carry is the operator's. One thing is not read here. A control tests the
@@ -41,6 +45,9 @@ import {
   type Verdict,
   type Verifier,
 } from "./verify.ts";
+
+/** What a check that runs no engine is decided by. */
+const AUTHOR = "author";
 
 /** A control as v1's `controls.json` labels it: an answer the checks must accept, or an edit of
  *  one that a named check must refuse. */
@@ -71,8 +78,9 @@ interface Idle {
 /** What one check has been seen to do. */
 interface CheckReading {
   readonly id: string;
-  /** Whether an installed tool decides it or the author's own computation does. */
-  readonly instrument: "authored" | "external";
+  /** What decides it, named by its tool: the engines it runs, as it names them, or `author`
+   *  where it runs none and its author's own computation decides it. */
+  readonly instrument: string;
   /** Declared tools the verifier's tool path does not hold. */
   readonly missing: readonly string[];
   /** Answers it applied to and let pass, and answers it refused, controls and stored answers alike. */
@@ -246,7 +254,7 @@ export function acceptance(
       : [
           {
             id: OBJECTIVE.id,
-            instrument: "authored",
+            instrument: AUTHOR,
             missing: [],
             passed: graded.filter(({ verdict }) => verdict.kind === "pass" && verdict.objective !== undefined)
               .length,
@@ -265,7 +273,7 @@ export function acceptance(
     const naming = runs.filter((run) => run.refusedBy === id);
     return {
       id,
-      instrument: execution.evidence.kind,
+      instrument: requiredToolsOf(execution).join(", ") || AUTHOR,
       missing: requiredToolsOf(execution).filter((tool) => !found(tool)),
       passed: seen.length - refused.length,
       refused: refused.length,
@@ -350,12 +358,23 @@ export async function readChecker(given: Read) {
  *  a sentence each. An installed instrument needs no word, and a word for it is none. */
 export function authoredFaults(checks: readonly CheckReading[], admitted: ReadonlySet<string>): string[] {
   return checks.flatMap(({ id, instrument }) =>
-    instrument === "authored" && !admitted.has(id)
+    instrument === AUTHOR && !admitted.has(id)
       ? [
           `${id} is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit ${id})`,
         ]
       : [],
   );
+}
+
+/** The checks the log's last reading found no engine behind and the operator had not admitted, by
+ *  id: what an exam that stands on the operator's word waits for. */
+export function unadmitted(events: readonly LogEvent[]): string[] {
+  const reading = events.findLast(({ kind }) => kind === "checker.read")?.data;
+  const admitted = Array.isArray(reading?.admitted) ? reading.admitted : [];
+  return (Array.isArray(reading?.rows) ? reading.rows : []).flatMap((row) => {
+    const { id, instrument } = asRecord(row) ?? {};
+    return isString(id) && instrument === AUTHOR && !admitted.includes(id) ? [id] : [];
+  });
 }
 
 /** The checker the log holds as frozen, by its last `contract.frozen`; null when none is. */

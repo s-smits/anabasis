@@ -80,6 +80,7 @@
  * are the tasks (#167) and the objective (#184). The ladder went with `docs/simplify.md`, package
  * A. The two shares `roomOf` reads by are the plan's proposal and the operator's to set.
  */
+import { unadmitted } from "../kernel/acceptance.ts";
 import { flipP, readTwice, triggered } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, roomOf } from "../kernel/reports.ts";
@@ -198,9 +199,12 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
     if (more.length > 0) {
       return { move: "accept", why: `the operator admits ${more.join(", ")}: the exam is read again` };
     }
+    // The checks no engine decides are named, so that a log whose campaign ran unattended says
+    // what the operator's word is wanted for: a drafted exam's checks all, since none runs one.
+    const waiting = unadmitted(events);
     return end(
       "exam",
-      `the checker's last reading holds ${plural(supply.faults, "fault")} and nobody froze it: the exam is not accepted until its author repairs it, or the operator admits each check by name and freezes (tools/c/accept.ts)`,
+      `the checker's last reading holds ${plural(supply.faults, "fault")} and nobody froze it: the exam is not accepted until its author repairs it, or the operator admits each check by name and freezes (tools/c/accept.ts)${waiting.length === 0 ? "" : `. No engine the host installed decides ${waiting.join(", ")}, so each stands on the operator's word alone: --admit ${waiting.join(",")}`}`,
     );
   }
   if (plan.unprepared) {

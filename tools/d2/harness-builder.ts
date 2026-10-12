@@ -91,6 +91,7 @@ import { type Decided, decidedLine } from "#src/builder/move.ts";
 import type { Plan } from "#src/builder/ground.ts";
 import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS, TERMS } from "#src/builder/opening.ts";
 import { pendingWords, type Word } from "#src/builder/word.ts";
+import { unadmitted } from "#src/kernel/acceptance.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, PATIENCE, promoted } from "#src/kernel/reports.ts";
 import { openingLines } from "#src/kernel/size.ts";
@@ -594,13 +595,9 @@ function examLines(
   faults: "printed" | "unprinted",
 ): string[] {
   if (ending !== "exam") return [];
-  const reading = events.findLast(({ kind }) => kind === "checker.read")?.data;
-  const found = Array.isArray(reading?.faults) ? reading.faults.filter(isString) : [];
-  const admitted = Array.isArray(reading?.admitted) ? reading.admitted : [];
-  const authored = (Array.isArray(reading?.rows) ? reading.rows : []).flatMap((row) => {
-    const { id, instrument } = asRecord(row) ?? {};
-    return isString(id) && instrument === "authored" && !admitted.includes(id) ? [id] : [];
-  });
+  const faulted = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
+  const found = Array.isArray(faulted) ? faulted.filter(isString) : [];
+  const authored = unadmitted(events);
   return [
     ...(faults === "printed" ? [] : found.map((fault) => `fault: ${fault}`)),
     ...(authored.length === 0

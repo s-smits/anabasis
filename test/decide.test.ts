@@ -93,6 +93,13 @@ describe("the exam and the tasks, before anything is built", () => {
     expect(move([])).toMatchObject({ move: "accept" });
     const faulty = event("checker.read", { contract: "c", checks: "k", faults: ["check-a: authored"] });
     expect(move([faulty, ...HELD.flatMap(heldOut)])).toMatchObject({ move: "end", ending: "exam" });
+    // An exam no engine decides, as a drafted one, stands on the operator's word for each check, and
+    // the ending names the checks the word is still wanted for (esp32-141-m3b, 12 October).
+    const rows = ["check-a", "check-b", "check-c"].map((id) => ({ id, instrument: "author" }));
+    const drafted = event("checker.read", { faults: ["two"], rows, admitted: ["check-b"] });
+    expect(move([drafted, ...HELD.flatMap(heldOut)]).why).toEndWith(
+      ". No engine the host installed decides check-a, check-c, so each stands on the operator's word alone: --admit check-a,check-c",
+    );
     // The operator's freeze of that reading lets the campaign go on.
     const frozen = event("contract.frozen", { contract: "c", checks: "k", admitted: ["check-a"] });
     expect(move([faulty, frozen, ...SET_UP.slice(1)])).toMatchObject({ move: "build" });

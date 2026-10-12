@@ -9,13 +9,11 @@
  * artifact-writer turned the draft into the answer, a later change made that answer stale, and the
  * wall submitted the last one prepared. Four more tools served that store: `save_candidate`,
  * `restore_candidate`, `inspect_draft` and `preview_artifact`. v2 has no store: harness tools keep
- * no state, nothing goes stale and the wall submits nothing. Until 2026-10-09 v2 carried the four
- * all the same, with `read_public_resources` beside them, because milestone 0 held a solver's tool
- * rows to v1's stored sweep; and the answer still went through an artifact-writer, as that tool's
- * arguments. Of 209 solves on record none restored or inspected a candidate, so a save changed
- * nothing. And on truss, where an answer is 3 to 8 KB of JSON, 38 of 41 answers were typed into the
- * writer straight after a command had printed them: the solver had computed the answer into a file
- * and then copied it out by hand (`docs/transfer.md`).
+ * no state, nothing goes stale and the wall submits nothing. Of 209 solves on record under the four
+ * none restored or inspected a candidate, so a save changed nothing. And on truss, where an answer
+ * is 3 to 8 KB of JSON, 38 of 41 answers were typed into the artifact-writer straight after a
+ * command had printed them: the solver had computed the answer into a file and then copied it out
+ * by hand (`docs/transfer.md`).
  *
  * So a solver's working state is what it is under pi, the files in its working directory, and the
  * answer is one of them. What v1's draft store held is kept the way a filesystem keeps it. The
@@ -56,7 +54,7 @@ export interface Desk {
 export const ANSWER_FILE = "answer.json";
 /** The contract's answer format, as the home is seeded with it. */
 export const ANSWER_FORMAT_FILE = "public/answer-format.json";
-/** The largest answer, in the file's bytes (v1's draft-store.ts held an answer to the same). */
+/** The largest answer, in the file's bytes (v1's draft store held an answer to the same). */
 const ANSWER_MAX_BYTES = 1024 * 1024;
 const MISSING = 44;
 /** `submit` takes nothing for an answer, which is the file, and `malformed` in place of one. */
@@ -72,7 +70,7 @@ export function openDesk(): Desk {
   return { submitted: undefined, flagged: undefined };
 }
 
-/** A resource's digest binds its name and content (v1's public-resources.ts:54-56). */
+/** A resource's digest binds its name and content (as v1's did). */
 export function publicResource(name: string, content: JsonValue): PublicResource {
   return { name, content, digest: sha256(canonicalJson({ schema: "public-resource/v1", name, content })) };
 }

@@ -1,5 +1,5 @@
 /**
- * The one owner of where a checkout's controller trees live: `<repoRoot>/campaigns` and
+ * The one owner of where v1's controller trees lie in a checkout: `<repoRoot>/campaigns` and
  * `<repoRoot>/domains`.
  *
  * Spelled `join(repoRoot, "campaigns", …)` at each site, moving the tree means editing every one
@@ -19,16 +19,7 @@ export function campaignDir(repoRoot: string, slug: string): string {
   return join(campaignRoot(repoRoot), slug);
 }
 
-/**
- * Where a project's product sits when no retained version has been selected: the historical layout,
- * and the fallback every selection path ends at.
- *
- * This is deliberately not `selectedProductDir`. That reader opens the controller ledger and
- * follows the selection row, which is what a caller resolving "the current product" wants; a caller
- * naming the default tree — a trace root it will accept, the candidate list a battery record may
- * live under — wants this one, and asking the ledger there would answer a different question.
- * Spelled inline as `join(…, "domains", slug)`, the two are indistinguishable.
- */
+/** Where a project's product sits in v1's layout, when no retained version has been selected. */
 export function defaultProductDir(repoRoot: string, slug: string): string {
   return join(repoRoot, "domains", slug);
 }

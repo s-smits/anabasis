@@ -12,14 +12,11 @@
  *
  * The harness a comparison is made against is the reference harness: the Starter Built Harness
  * until the operator promotes another, and from then on the one last promoted (`promoted`). The
- * choice is the operator's and the record is the log's (`docs/plan.md`, Phase 6): until
- * 2026-10-09 a promotion was a flag on one command, and the next command without it was read
- * against the starter again. A Builder goes on from the harness its last session left
- * (`latestBuilt`), step or none.
+ * choice is the operator's and the record is the log's (`docs/plan.md`, Phase 6). A Builder goes
+ * on from the harness its last session left (`latestBuilt`), step or none.
  *
- * The stop rule is the plan's: three moves in a row that could have shown a gain and showed none
- * (`stopRule`). Until 2026-10-09 it pooled a gain in pass-rate points over three sessions, which
- * measured the thing the plan no longer scores by (`docs/plan.md`, Tuning).
+ * The stop rule is the plan's: as many moves in a row that could have shown a gain and showed none
+ * as the campaign's patience (`stopRule`, `patienceOf`).
  *
  * Nothing here decides a comparison or makes a solve.
  */
@@ -102,10 +99,9 @@ interface TalliedIn {
 }
 
 /**
- * What a log holds of one task, for every reader of its state: the five folds below are
- * predicates over it. Until 11 October each read the log for itself, and their arithmetic was
- * mended four times (`docs/simplify.md`, C1). Filled by `taskRecords`, which is why its fields
- * are not read-only.
+ * What a log holds of one task, for every reader of its state: the folds below are predicates
+ * over it, since while each read the log for itself their arithmetic was mended four times
+ * (`docs/simplify.md`, C1). Filled by `taskRecords`, which is why its fields are not read-only.
  */
 interface TaskRecord {
   readonly version: string;
@@ -115,8 +111,8 @@ interface TaskRecord {
   keptAt: number;
   /** Whether a solve on record gave it a valid answer, under any harness and at any limits. */
   answered: boolean;
-  /** `answered`, or its proposal says the host saw its author's answer pass (11 October), or its
-   *  gate says a reference solve under `try_task` gave a valid answer, which answers nothing. */
+  /** `answered`, or its proposal says the host saw its author's answer pass, or its gate says a
+   *  reference solve under `try_task` gave a valid answer, which answers nothing. */
   feasible: boolean;
   /** Each comparison whose last report tallied it, in the order the comparisons reported. */
   readonly tallied: TalliedIn[];
@@ -137,14 +133,13 @@ export interface Cap {
   readonly reserve: number;
 }
 
-/** Moves without a gain at which the plan stops the campaign. */
 /**
  * The campaign's patience, where its opening names none: the moves in a row that could have shown
  * a gain and showed none before the stop rule ends it, and move 7's bound on Examiner sessions in
  * a row that held out no task and on comparisons of one harness that left no room. The plan's
  * three ended every campaign of 9 and 10 October before its tasks were measured, and the operator
- * set the development phase to err towards more iterations of the Builder than fewer
- * (10 October): six, until a campaign climbs and the figure can be read from its record.
+ * set the development phase to err towards more iterations of the Builder than fewer: six, until
+ * a campaign climbs and the figure can be read from its record.
  */
 export const PATIENCE = 6;
 /** Comparisons without a valid answer after which a task with none on record goes to a person. */
@@ -176,8 +171,8 @@ const BILLED: ReadonlySet<string> = new Set([
 ]);
 
 /** Whether a cap can hold anything: its dollars and its reserve are numbers above nothing. One
- *  typed with a dollar sign reads as no number, and until 2026-10-09 a session by itself ran
- *  under it with no solve refused (the third review, row F43). */
+ *  typed with a dollar sign reads as no number, and a session run under it would refuse no solve
+ *  (the third review, row F43). */
 export function capHolds({ dollars, reserve }: Cap): boolean {
   return [dollars, reserve].every((amount) => Number.isFinite(amount) && amount > 0);
 }
@@ -254,15 +249,23 @@ export function roomOf(report: JsonObject, side: "old" | "fresh" = "old"): "none
   return anyValid(valid?.old) || anyValid(valid?.fresh) ? "none" : "too-hard";
 }
 
+/** The campaign's patience as its opening records it (`--patience`), or `PATIENCE`. */
+export function patienceOf(events: readonly LogEvent[]): number {
+  const named = events.findLast(({ kind }) => kind === "campaign.opened")?.data.patience;
+  return isNumber(named) ? named : PATIENCE;
+}
+
 /**
  * The plan's stop rule over a log: how many moves could have shown a gain, how many of them have
  * passed since the last step, and whether that is the campaign's patience (`docs/plan.md`, row
  * F48; `patienceOf`).
  *
  * A move that counts is one of two. The first is a harness a Builder session changed, compared
- * with one reference, where the comparison tallied a task and left room (`roomOf`), counted once
- * where it first reported and read as its last comparison: three repeats of one harness are one
- * harness that showed no gain (9 October). The second is a whole session that
+ * with one reference, where the comparison tallied a task and left room (`roomOf`), or read
+ * under the trigger. Such a pair counts once, where it first reported, and reads as its last
+ * comparison: a step its repeat does not read again was one draw, and three repeats of one
+ * harness are one harness that showed no gain. On 9 October one harness compared with the starter
+ * three times, each time on more tasks, stopped a campaign. The second is a whole session that
  * left its harness as it was, where a practice solve of the session failed: it was shown a failure
  * and declined it. A session whose every practice solve passed, or that ran none, had nothing to
  * work on, which is a fault of the supply and no evidence about the domain: all ten campaigns of
@@ -272,16 +275,9 @@ export function roomOf(report: JsonObject, side: "old" | "fresh" = "old"): "none
  * What does not count: a comparison of two harnesses no session made, which a control and a
  * reading of the reference against itself are; one stopped on its check defects, cut by its cap,
  * or with every task set aside, which tested nothing; and one that left no room, whose answer is
- * other tasks and no other harness. Until 2026-10-11 whatever stood before the last comparison
- * under another setting id was left out too, and a harness set against the starter after another
- * reference was read as no move of its own (`docs/simplify.md`, A4 and B2).
+ * other tasks and no other harness. Every comparison on record is read, whatever the setting id
+ * it carries, since the id names the host's code and a tree moved to a new commit changes it.
  */
-/** The campaign's patience as its opening records it (`--patience`), or `PATIENCE`. */
-export function patienceOf(events: readonly LogEvent[]): number {
-  const named = events.findLast(({ kind }) => kind === "campaign.opened")?.data.patience;
-  return isNumber(named) ? named : PATIENCE;
-}
-
 export function stopRule(events: readonly LogEvent[]) {
   const built = new Set(
     events.flatMap(({ kind, data }) =>
@@ -305,7 +301,7 @@ export function stopRule(events: readonly LogEvent[]) {
   for (const { index, data } of tallied) {
     const { old, fresh } = data;
     const pair = `${isString(fresh) ? fresh : ""} ${isString(old) ? old : ""}`;
-    // A reading under the trigger showed a gain too: it bought the repeat (11 October).
+    // A reading under the trigger showed a gain too: it bought the repeat.
     const step = data.reading === STEP || triggered(data, trigger);
     pairs.set(pair, {
       index: pairs.get(pair)?.index ?? index,
@@ -395,37 +391,8 @@ export function unsolved({ old, fresh }: Paired): boolean {
   return ![...old, ...fresh].some(Boolean);
 }
 
-/**
- * The tasks that go to a person as possibly infeasible, by version: no solve on record gave a valid
- * answer to them, and two comparisons that gave their solves room gave none either
- * (`docs/plan.md`, Phase 2). A task with no valid answer ties whatever the harnesses are and costs
- * its solves at every comparison. It may be hard, it may be wrongly checked, or it may have no
- * valid answer at all, and only a person can tell the third: on an infeasible task every rejection
- * is a true fail, correctly, every time (the review of 2026-10-09, finding 10). So it leaves the
- * scored set until it is labelled (`tools/d2/prepare.ts`).
- *
- * Two things keep a budget from sending a feasible task there, which the rule did until
- * 2026-10-09. Under a five-minute wall three of buffer's tasks had no valid answer from either
- * harness, and every solve of the same three had been valid at two hours; a second comparison at
- * that wall would have taken them out of the scored set as possibly infeasible.
- *
- * - A valid answer anywhere on record settles the question for good: under any harness, in any
- *   comparison or outside one, at any limits. Such a task is feasible, stays in the set and ties
- *   where a budget is too short for it, which costs solves and biases nothing.
- * - A comparison in which a solve of the task ended at a limit (`AT_A_LIMIT`) is not counted for
- *   it. That solve was cut, and what it would have answered is not known. A task that is cut at
- *   every comparison so never goes to a person on this rule, and stays a tie the reports show.
- *
- * What neither covers is an answer rushed under a told budget and rejected: with no valid answer
- * on record such a comparison counts, since nothing in the log tells a rushed answer from a
- * finished one.
- *
- * A label that keeps a task is a `task.state` event that holds it once more, and the two
- * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
- * and a refused task is no held-out task.
- */
-/** Versions in the order their places give, as the readers of 10 October listed them: by the first
- *  pair or solve that put a task on the list. */
+/** Versions in the order their places give: by the first pair or solve that put a task on the
+ *  list. */
 function inOrder(placed: readonly (readonly [string, number])[]): string[] {
   return placed.toSorted((one, other) => one[1] - other[1]).map(([version]) => version);
 }
@@ -437,9 +404,8 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
   // The reference harness: the one last promoted, or the one the first report was made against.
   const reference = promoted(events) ?? reports[0]?.data.old;
   const last = reports.at(-1);
-  // Until 11 October the old side was read here, and after a promotion that is the harness the
-  // promoted one replaced: the release took the tasks the starter failed and the promoted harness
-  // answered, as "the reference harness failed it in the last comparison".
+  // The reference's side of the last report: after a promotion its old side is the harness the
+  // promoted one replaced, which failed tasks the promoted harness answered.
   const lastReference = last?.data.fresh === reference ? reference : last?.data.old;
   const records = new Map<string, TaskRecord>();
   const of = (version: string): TaskRecord => {
@@ -517,14 +483,19 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
  * reference at the time, so a promotion re-derives it at once: the comparisons the promoted
  * harness won before its promotion count. Such a task can only tie again at that budget or be
  * lost, unless the comparison carried an objective that told two valid answers of it apart
- * (`closedTo`, `compare.ts`): a task the objective still separates is not closed, since the next
- * harness can win it (11 October; until then the rule read validity alone). Every one in the set
- * is a task a step cannot be read on: on the operator's host (9 and 10 October) a harness came one
- * win short of a step three times with most of its tasks tied, and t-10's promoted harness and the
- * starter tied 10 of 10 twice. The reference's own answers close a task (until 10 October both harnesses had to
- * answer it): they are what the next harness has to match. A third stays in the draw by the
- * contract's hash, a comparison's retained set (`retainable`, `compare.ts`). The Examiner is told a
- * task is exhausted (`outcomesOf`); by family it stands where its last tally puts it (`standingsOf`).
+ * (`closedTo`, `compare.ts`): a task the objective still separates is not closed, since the next harness can
+ * win it. Every one in the set is a task a step cannot be read on: on the operator's host (9 and
+ * 10 October) a harness came one win short of a step three times with most of its tasks tied, and
+ * one promoted harness and the starter tied 10 of 10 twice. The reference's own answers close a
+ * task, since its answers are what the next harness has to match: closed only where both
+ * harnesses answered it, a task the new harness lost stayed in the draw, and in the simulated
+ * climb of 10 October three comparisons in a row read 2-0-6 and 3-0-5 on a scored set of eight
+ * and the campaign stopped one win short. A third of them stays in the draw by the contract's
+ * hash, a comparison's retained set (`retainable`), so that a harness that breaks what the
+ * reference answers still shows its losses: left out whole, the set would hold no task the new
+ * harness could lose. The Examiner is told a task is exhausted, as that task's outcome
+ * (`outcomesOf`); in the counts by family it stands where its last comparison's tally puts it
+ * (`standingsOf`).
  */
 export function exhausted(events: readonly LogEvent[]): string[] {
   return thirds(events).out;
@@ -553,11 +524,40 @@ function thirds(events: readonly LogEvent[]) {
  *  limits, the one the host saw the author's `try_answer` pass before the proposal, or a reference
  *  solve's under `try_task`, which its gate counts. The one
  *  fact an author may hear beside a task's outcome that names no side: a task the reference
- *  answers in no solve is then told apart from one nobody has answered (11 October). */
+ *  answers in no solve is then told apart from one nobody has answered. */
 export function feasibleTasks(events: readonly LogEvent[]): Set<string> {
   return new Set(taskRecords(events).flatMap(({ version, feasible }) => (feasible ? [version] : [])));
 }
 
+/**
+ * The tasks that go to a person as possibly infeasible, by version: no solve on record gave a valid
+ * answer to them, and two comparisons that gave their solves room gave none either
+ * (`docs/plan.md`, Phase 2). A task with no valid answer ties whatever the harnesses are and costs
+ * its solves at every comparison. It may be hard, it may be wrongly checked, or it may have no
+ * valid answer at all, and only a person can tell the third: on an infeasible task every rejection
+ * is a true fail, correctly, every time. So it leaves the scored set until it is labelled
+ * (`tools/d2/prepare.ts`).
+ *
+ * Two things keep a budget from sending a feasible task there. Under a five-minute wall three
+ * tasks of one campaign had no valid answer from either harness, and every solve of the same
+ * three had been valid at two hours; a second comparison at that wall would have taken them out
+ * of the scored set as possibly infeasible.
+ *
+ * - A valid answer anywhere on record settles the question for good: under any harness, in any
+ *   comparison or outside one, at any limits. Such a task is feasible, stays in the set and ties
+ *   where a budget is too short for it, which costs solves and biases nothing.
+ * - A comparison in which a solve of the task ended at a limit (`AT_A_LIMIT`) is not counted for
+ *   it. That solve was cut, and what it would have answered is not known. A task that is cut at
+ *   every comparison so never goes to a person on this rule, and stays a tie the reports show.
+ *
+ * What neither covers is an answer rushed under a told budget and rejected: with no valid answer
+ * on record such a comparison counts, since nothing in the log tells a rushed answer from a
+ * finished one.
+ *
+ * A label that keeps a task is a `task.state` event that holds it once more, and the two
+ * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
+ * and a refused task is no held-out task.
+ */
 export function awaitingLabel(events: readonly LogEvent[]): string[] {
   return inOrder(
     taskRecords(events).flatMap(({ version, feasible, keptAt, tallied }) => {
@@ -568,22 +568,13 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
 }
 
 /**
- * The held-out tasks no solve has answered in `UNSOLVED_RUN` or more comparisons, cut at a limit
- * or not: what a Builder has to work on, where it is given them. A proposal for the operator, made
- * on 10 October after t-5 (subset sum) held four to five such tasks of ten while its last three
- * Builder sessions passed every practice task and changed nothing, and t-4, t-9 and t-10 stopped
- * the same way after a promotion. `awaitingLabel` is the question to a person, which leaves out a
- * task cut at a limit; this leaves nothing out, since a task cut twice is as much beyond the
- * harness as one answered wrongly twice. A valid answer anywhere on record settles it either way.
- */
-/**
  * The held-out tasks the reference harness failed in the last reported comparison: a solve under
  * the comparison's reference side that ended as a fail, and no valid one of its on that task
  * there. With `unansweredTwice` it is what a release takes before the contract's draw: the tasks
- * that leave the reference room are the ones a Builder has to work on, and on 10 October t-4,
- * t-9 and t-10 each ran three sessions after a promotion on practice tasks the promoted harness
- * passed, and changed nothing. Half of them at most are released at once (`tools/d2/prepare.ts`),
- * so that the comparison keeps tasks it can untie.
+ * that leave the reference room are the ones a Builder has to work on, and on 10 October three
+ * campaigns each ran three sessions after a promotion on practice tasks the promoted harness
+ * passed, and changed nothing. Half of them at most are released at once (`releaseOrder`), so that
+ * the comparison keeps tasks it can untie.
  */
 export function referenceFailed(events: readonly LogEvent[]): string[] {
   return inOrder(
@@ -595,15 +586,12 @@ export function referenceFailed(events: readonly LogEvent[]): string[] {
 
 /**
  * The `count` held-out tasks of `pool` a release takes, each with why, in the order they are
- * taken. A task no solve answered in two comparisons goes to the Builder before the draw: it is
- * what a session has to work on, where every released task passes. Proposed on 10 October after
- * t-5 held two such tasks at its release after g-3 and the draw released another, and its three
- * last sessions then passed every practice task and changed nothing (`unansweredTwice`). Then the
- * tasks the reference harness failed in the last comparison, half of them at most, so that the
- * comparison keeps tasks it can untie (`referenceFailed`). The rest is the contract's draw, over
- * the tasks neither list holds: until 11 October the draw ran over the half kept as well, and
- * could release it (`docs/simplify.md`, F9). Owned by the release in `tools/d2/prepare.ts`
- * until that day, and here since, beside the two folds it reads.
+ * taken. A task no solve answered in two comparisons goes to the Builder before the draw
+ * (`unansweredTwice`): it is what a session has to work on, where every released task passes.
+ * Then the tasks the reference harness failed in the last comparison, half of them at most, so
+ * that the comparison keeps tasks it can untie (`referenceFailed`). The rest is the contract's
+ * draw, over the tasks neither list holds, so that the draw cannot release the half kept back.
+ * The release in `tools/d2/prepare.ts` calls it; it stands here beside the two folds it reads.
  */
 export function releaseOrder(
   events: readonly LogEvent[],
@@ -631,6 +619,14 @@ export function releaseOrder(
   });
 }
 
+/**
+ * The held-out tasks no solve has answered in `UNSOLVED_RUN` or more comparisons, cut at a limit
+ * or not: what a Builder has to work on, where it is given them. On 10 October one campaign held
+ * four to five such tasks of ten while its last three Builder sessions passed every practice task
+ * and changed nothing. `awaitingLabel` is the question to a person, which leaves out a task cut at
+ * a limit; this leaves nothing out, since a task cut twice is as much beyond the harness as one
+ * answered wrongly twice. A valid answer anywhere on record settles it either way.
+ */
 export function unansweredTwice(events: readonly LogEvent[]): string[] {
   return inOrder(
     taskRecords(events).flatMap((record) =>
@@ -643,31 +639,26 @@ export function unansweredTwice(events: readonly LogEvent[]): string[] {
 
 /**
  * The outcome of each task some comparison scored or set aside, by task version, from the last
- * comparison that did under the setting the last report was made under: how the reference
- * harness did on it, valid in every one of its counted solves, in some, or in none. The plan lets
- * a task's author hear this of each task (`docs/plan.md`, Phase 2): without a stronger solve the
- * author would otherwise hear nothing, and a difficulty zone or a target count is what v1 found an
- * author writes towards. The reading is of the reference's side alone: which other harness was
- * compared, and what it answered on that task, are not the author's. What the other side did
- * reaches the author only as counts by family (`standingsOf`, since 11 October). Until 11 October the outcome was "one
- * harness won", "a tie between valid answers" or "no valid answer yet", which told the author
- * nothing of where the room was: after a control a task the reference failed and the starter
- * failed read as one with no valid answer, which the author's prompt says measures nothing, and
- * one the reference answered read as "won" (`docs/simplify.md`, F3). A task no comparison has
- * scored has no outcome.
+ * comparison that did: how the reference harness did on it, valid in every one of its counted
+ * solves, in some, or in none. The plan lets a task's author hear this of each task
+ * (`docs/plan.md`, Phase 2): without a stronger solve the author would otherwise hear nothing, and
+ * a difficulty zone or a target count is what v1 found an author writes towards. The reading is of
+ * the reference's side alone: which other harness was compared, and what it answered on that
+ * task, are not the author's. What the other side did reaches the author only as counts by family
+ * (`standingsOf`). An outcome that named a winner told the author nothing of where the room was:
+ * after a control a task the reference and the starter both failed read as one with no valid
+ * answer, which the author's prompt says measures nothing (`docs/simplify.md`, F3). A task no
+ * comparison has scored has no outcome.
  *
  * An outcome is the last report's of the task, whatever the setting id the report carries: a
  * campaign runs at one setting (`tools/d2/setting.ts`), and the id names the host's code too,
- * which a tree moved to a new commit changes. Until 2026-10-11 a task whose last report carried
- * another id than the last report's was `earlier-setting` (`docs/simplify.md`, A4).
+ * which a tree moved to a new commit changes.
  *
  * The reference's side is the one `TalliedIn.reference` names: `old` in a comparison made against
  * it, and `fresh` in one that measured it as the new harness, as the comparison a promotion rests
- * on did. A comparison of two harnesses neither of which is the reference, a checkpoint named
- * against another digest or one made before a promotion of a third, is read on its old side, the
- * harness it was made against. Until 11 October the old side was read always, and after a
- * promotion the Examiner heard the replaced harness's validity as the reference's: `reference-none`
- * where the promoted harness had answered every solve.
+ * on did, whose old side is the harness the promoted one replaced. A comparison of two harnesses
+ * neither of which is the reference, a checkpoint named against another digest or one made before
+ * a promotion of a third, is `earlier-reference`.
  */
 export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
   const spent = new Set(exhausted(events));
@@ -696,7 +687,7 @@ export function outcomesOf(events: readonly LogEvent[]): Map<string, Outcome> {
 
 /**
  * Where each task some comparison scored or set aside stands in the counts its author hears, by
- * task version (`Standing`; why, in `src/examiner/record.ts`, 11 October). It is read from the
+ * task version (`Standing`; why, in `src/examiner/record.ts`). It is read from the
  * record the outcome is read from (`lastRead`), so the counts and the lines agree by construction.
  * A task last compared between two other harnesses has an outcome and no standing. Told apart is
  * the comparison's own tally (`tally`, `compare.ts`), so under an objective two valid answers can
@@ -765,12 +756,10 @@ function costOf(usage: JsonValue | undefined): number {
  * run was killed from outside, so no `finished` event summed them, and the cap and the total read 0
  * for what was spent. A turn's `usage.cost.total` is the backend's price of that turn, and the
  * sum over a session's or a solve's turns is what its end carries as `billed`: equal to five
- * decimals on every session and solve of t-2 (10 October). t-5's b-1, killed at its seventh turn
- * the same day, had metered 0.12 dollars that nothing summed, and three solves of its g-1 were
- * cut the same way. A compaction of pi's loop is billed in the end's sum too, and its summary's
- * price is on its `*.compacted` event (`loopCompaction`, `src/solve/run.ts`); until 11 October
- * the turns alone were counted here, and only by the campaign's total, so a comparison gone on
- * after a kill was held to its finished solves.
+ * decimals on every session and solve of one campaign of 10 October; a Builder session of another,
+ * killed at its seventh turn the same day, had metered 0.12 dollars that nothing summed. A
+ * compaction of pi's loop is billed in the end's sum too, and its summary's price is on its
+ * `*.compacted` event (`loopCompaction`, `src/solve/run.ts`), so it is counted here as well.
  */
 function unfinished(events: readonly LogEvent[]): Unfinished[] {
   return METERED.flatMap(({ of, id }) => {

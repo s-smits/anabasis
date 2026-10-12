@@ -13,13 +13,12 @@
  * Command Line Tools keep every tool in `usr/bin`, while a full Xcode keeps `git` there and `otool`
  * and `install_name_tool` in its default toolchain. A developer directory holding neither keeps the
  * shim — on a GitHub macOS runner, which selects a full Xcode, the unchecked `usr/bin/otool` did not
- * exist and every runtime-closure attestation failed as a sandbox non-result.
+ * exist.
  *
  * The developer directory and each tool's resolved path are cached for the life of the process, so a
  * later environment or developer-directory change does not refresh them. With no PATH match the bare
  * name is returned and resolution, or failure, is left to process creation. This helper selects host
- * command paths only; verifier tool identity is recorded separately, by the verifier's own
- * executable hashing and attestation path.
+ * command paths only.
  */
 import { existsSync } from "./filesystem.ts";
 import { join } from "./path.ts";

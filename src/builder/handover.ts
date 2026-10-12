@@ -2,11 +2,9 @@
  * One reading of a campaign's log: what each step handed over.
  *
  * A campaign is a sequence of steps over one log: the set-up, Examiner sessions, Builder sessions
- * and comparisons. Until 2026-10-09 nobody held the whole of it. The launcher read the supply, the
- * pulse read what ran, the investigation's reader read everything for a person with a question, and
- * the Builder's opening message had a reader of its own (`past.ts`). v1's Builder was handed one
- * test set through four such readers until 21 September, and they disagreed: 20 of 25 in one
- * paragraph and 0 of 5 in the next.
+ * and comparisons. Readers of its parts can disagree: v1's Builder was handed one test set
+ * through four readers until 21 September, and they disagreed: 20 of 25 in one paragraph and 0 of
+ * 5 in the next.
  *
  * So the log is read here once (`campaignOf`), and each reader is a rendering of that reading
  * through its own filter: the operator's view prints it whole (`tools/runs/view.ts`), and the
@@ -17,10 +15,9 @@
  * Nothing here decides or launches anything. The move that comes next is the decision table's
  * (`decide.ts`), which the view prints once beside this reading.
  *
- * A session is read from its own events while it has no end, and from its end once it has one.
- * Until 11 October an Examiner session was read from its end alone, so one still running read
- * "0 proposed, 0 held out" and $0.00: buffer-main's x-1 on the operator's MacBook Air had held out
- * seven tasks and metered $8.23 over 116 turns when the view said so. A step with no end is `cut`
+ * A session is read from its own events while it has no end, and from its end once it has one:
+ * read from its end alone, an Examiner session still running read "0 proposed, 0 held out" and
+ * $0.00 when it had held out seven tasks and metered $8.23. A step with no end is `cut`
  * where the campaign went past it, and open at the log's end otherwise (`nextBound`); an open one
  * may be running or stopped, which the log cannot tell apart, so the view says when it last wrote.
  */

@@ -1,8 +1,8 @@
 /**
  * One reviewer session: pi's agent loop over a packet and a few host tools, ended by the tool that
- * records the reviewer's one answer. The Referee runs here, as the Diagnoser did until 11 October
- * (`docs/simplify.md`, E1). It touches no file the solver can reach, so nothing is walled: its
- * tools read the host's records and run the verifier, which walls its own checks.
+ * records the reviewer's one answer. The Referee runs here. It touches no file the solver can
+ * reach, so nothing is walled: its tools read the host's records and run the verifier, which walls
+ * its own checks.
  *
  * v1 ran a reader as one provider turn over a fixed packet (`src/review/review-reader.ts` at
  * 7af7315). Here it is a loop, since the Referee's probes and reads are calls the model chooses, and
@@ -63,8 +63,8 @@ export async function readOnce(
   // ends that query: on 8 October a live Referee's Claude Code outlived its ruling by two hours.
   const [wall, done] = [new AbortController(), new AbortController()];
   // The Claude backend keeps one live query a session id in the process. A comparison rules its
-  // rejections in parallel, and until 11 October two rulings begun in one millisecond shared an id,
-  // so the second reader's packet went into the first one's query.
+  // rejections in parallel, so the id is random: two rulings begun in one millisecond once shared
+  // an id, and the second reader's packet went into the first one's query.
   const session = `reader-${crypto.randomUUID()}`;
   const timer = setTimeout(() => wall.abort(), (reader.wallSeconds ?? WALL_SECONDS) * 1000);
   try {

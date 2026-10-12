@@ -3,8 +3,8 @@
  *
  * `task.ts` folds a task's proposal, its gates and its moves into a version's state, and refuses a
  * history that could not have happened. Its readers ask one thing more of a proposal than a state:
- * which tasks the log holds whole, since no pack holds an Examiner's or a carried one. Until
- * 2026-10-08 each reader filtered the log for that itself, in four files. Here it is read once.
+ * which tasks the log holds whole, since no pack holds an Examiner's or a carried one. Here it is
+ * read once, for every reader.
  *
  * Nothing here judges a history. An event the fold would refuse is handed over like any other; a
  * caller that needs the log to be sound asks the fold first (`taskSets`).

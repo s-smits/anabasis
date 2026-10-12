@@ -17,8 +17,8 @@
  *
  * What is fixed before the first solve. A comparison writes `comparison.started` with its
  * harnesses, its setting, its scored tasks, its solves a side, its level and its dollar cap, so
- * that what it compares is on record before any result is. One gone
- * on from its log goes on with the same tasks, and one asked for again on other terms is refused.
+ * that what it compares is on record before any result is. One gone on from its log goes on with
+ * the same tasks, and one asked for again on other terms is refused.
  * Every solve the comparison starts names it at its start, and a solve counts when it names the
  * comparison and ran under one of its harnesses and its setting. No other solve is counted, made
  * before it or beside it by another comparison: a condition names the host's code, which changes
@@ -28,9 +28,7 @@
  * The Starter Built Harness is the reference harness until a step is promoted
  * (`src/solve/starter.ts`). Once the operator has promoted another reference, the starter is the
  * control the table reads the tasks with after a promotion (`decide.ts`), and no side of a
- * comparison between two others. Until 2026-10-11 a step against a promoted reference also
- * solved the starter on the tallied tasks, a third arm read by no move but the one that
- * completed it (`docs/simplify.md`, B2).
+ * comparison between two others.
  *
  * How each harness did by itself is in the report beside the test (`valid`): on how many tasks it
  * gave a valid answer in every solve, in some and in none. For the starter this is what the
@@ -46,19 +44,17 @@
  * It should read no step, and decides nothing here. Until 12 October its later solves ran after
  * the test's own were done, so a drift read as a difference.
  *
- * Until 2026-10-11 the report also read the same solves at shorter budgets (`within`), which read
- * a solver told the longer one, and how far the use of each unit moved between repeated solves
- * (`spread`); a comparison is read at the one budget its solves were told (`docs/simplify.md`,
- * A2 and A3).
+ * A comparison is read at the one budget its solves were told: a reading of the same solves at a
+ * shorter budget would read a solver told the longer one.
  *
  * `cap` is the comparison's dollar cap. Before each solve the dollars the log holds as billed for
  * the comparison are summed (`billedFor`): its own solves and their rulings, and in a round the
  * session's spend as well; a solve of the comparison with no end on record, killed in an earlier
- * run or still running, by what its turns and compactions have metered (until 11 October not at
- * all, so a comparison gone on after a kill was held to its finished solves). The solve is not
- * started when a reserve for it and for each solve still running would take the sum past the cap.
- * A lane that cannot start a solve while others are in flight steps aside, since what they bill may be under their reserve; when none is in flight and
- * the next solve still cannot start, the cap is reached. A comparison the cap cuts short of its
+ * run or still running, by what its turns and compactions have metered. The solve is not started
+ * when a reserve for it and for each solve still running would take the sum past the cap. A lane
+ * that cannot start a solve while others are in flight steps aside, since what they bill may be
+ * under their reserve; when none is in flight and the next solve still cannot start, the cap is
+ * reached. A comparison the cap cuts short of its
  * test reads `not-scored` and is finished: its tally would be of the tasks that happened to come
  * first. A session is stopped by its own limits and not by the cap, which holds its
  * practice solves alone: none starts that the cap has no reserve for (`practiceLeft`, `tools.ts`).
@@ -99,9 +95,9 @@
  * plan's rules read the tallies; the stop rule reads the reports (`src/kernel/reports.ts`), and
  * promotion and a next session are the operator's.
  *
- * What the log holds of a comparison, and how it is read back, is `comparison.ts` since
- * 10 October: its start, its counted solves, its rejections, its tallies and its report. This
- * file keeps what runs one and what it writes.
+ * What the log holds of a comparison, and how it is read back, is `comparison.ts`: its start, its
+ * counted solves, its rejections, its tallies and its report. This file keeps what runs one and
+ * what it writes.
  */
 import { draw, type ObjectiveRule, triggered, untiedFamily } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
@@ -147,8 +143,7 @@ export interface Kept {
 
 /** What a comparison is made on, whoever asks for it. */
 interface Terms {
-  /** The Starter Built Harness: the fixed lower reference a step is also read against, once it is
-   *  no longer the reference harness itself. */
+  /** The Starter Built Harness, the fixed lower reference, as the comparison's start records it. */
   readonly starter: Kept;
   /** The scored set: held-out task versions, fixed before any solve (`scoredSet`). */
   readonly tasks: readonly string[];
@@ -240,24 +235,25 @@ const TASK_STATE = "task.state";
  * reference answers would read as progress once the newest epoch filled the target (the plan's
  * climb section, C2; `regressionOf` reads the same gap after the fact). The epoch chooses the set
  * and no result does: the hash is fixed before any task exists, and which epoch a task is in is
- * where it passed its gate (`tasksByEpoch`). Until 10 October the draw was over every epoch at
- * once, and after two promotions in the simulated climb a target of 8 over 19 held tasks drew two
- * or three the reference failed, so three comparisons read one win short and the campaign
- * stopped (`docs/plan.md`, B14). A task with no valid answer on record, after two comparisons that
- * cut no solve of it at a limit, is left out until a person has labelled it (`awaitingLabel`), and
+ * where it passed its gate (`tasksByEpoch`). A draw over every epoch at once, in a simulated climb
+ * after two promotions, drew for a target of 8 over 19 held tasks two or three the reference
+ * failed, so three comparisons read one win short and the campaign stopped (`docs/plan.md`, B14).
+ * A task with no valid answer on record, after two comparisons that cut no solve of it at a limit, is left out until a person has labelled it (`awaitingLabel`), and
  * so is one the reference answered in every solve of two comparisons under the setting, which can
  * only tie again, but for the third of them the hash keeps (`exhausted`).
  *
- * Within each epoch the tasks held out since the last comparison began come first, by the hash:
- * an epoch starts only at a promotion, so until 12 October a task written after a comparison that
- * left no room was drawn no earlier than one that comparison had already scored, and esp32's g-3
- * scored 4 of the 7 tasks written for it. `last` are tasks taken last, group by group: a repeat's
- * (`firstStageOf`). Within each epoch the draw takes the others first, by the same hash, and the
- * tasks of each group of `last` in turn only where the epoch holds too few before it, so that a
- * campaign that holds no more than the target draws the set it drew. Until 11 October a repeat
- * re-solved its first stage's tasks (p183: 12 versions, 15 dollars; `docs/next.md`, question 9),
- * which guards a solve's noise and not a lucky draw. The fresh draw buys no power (0.51 against 0.52
- * in the overhaul plan's simulation, 4b): it guards against reusing one test set across attempts.
+ * Within each epoch the tasks held out since the last comparison began come first, by the hash,
+ * and then the others: an epoch starts only at a promotion, so a draw by the hash alone took a task
+ * written after a comparison that left no room no earlier than one that comparison had already
+ * scored, and one campaign's next comparison scored 4 of the 7 tasks written for it. `last` are
+ * tasks taken last, group by group: a repeat's first stage's (`firstStageOf`). Within each epoch
+ * the draw takes the others first, by the same hash, and the tasks of each group of `last` in turn
+ * only where the epoch holds too few before it, so that a campaign that holds no more than the
+ * target draws the set it drew. A repeat that solves its first stage's tasks again guards against
+ * the noise of a solve and not against a lucky draw of tasks: one campaign's repeat solved the same
+ * 12 task versions for 15 dollars and 53 minutes (`docs/next.md`, question 9, the operator's
+ * decision). The fresh draw buys no power (0.51 against 0.52 in the overhaul plan's simulation,
+ * 4b): it guards against reusing one test set across attempts.
  */
 export function scoredSet(
   events: readonly LogEvent[],
@@ -409,9 +405,9 @@ function refuseUnreadable(terms: Terms): void {
  * practise on, and empty for a checkpoint. A comparison that reported is asked nothing.
  *
  * A comparison asks this of itself before its first event. A command asks it before it records
- * anything, so that a refused command leaves the log as it was: until 2026-10-09 a round refused
- * for a mistyped task had recorded the campaign's setting first, and the corrected command was
- * then refused as another setting (the third review, row F44).
+ * anything, so that a refused command leaves the log as it was: a round refused for a mistyped
+ * task after it had recorded the campaign's setting would have the corrected command refused as
+ * another setting.
  */
 export function refuseTerms(
   terms: Terms,
@@ -437,10 +433,10 @@ function dispute(log: string, id: string, version: string, found: { solve: strin
 
 /** What the environment said of a solve that never ran, or null: the provider wrote no output
  *  token in the solve's last attempt's record, or the wall did not hold on the host, so the solve
- *  was not started. A solve the provider cut after an hour's work holds thousands (the Sol
- *  rounds of 2026-10-08), and is a non-result the comparison solves on from. On 10 October a
- *  rehearsal whose wall refused every solve ran 56 of them to `sandbox-crash` before it was
- *  killed: a dead wall is a dead provider's case (AGENTS.md, rule 14). A solve whose start does
+ *  was not started. A solve the provider cut after an hour's work holds thousands (8 October),
+ *  and is a non-result the comparison solves on from. On 10 October a rehearsal whose wall
+ *  refused every solve ran 56 of them to `sandbox-crash` before it was killed: a dead wall is a
+ *  dead provider's case (AGENTS.md, rule 14). A solve whose start does
  *  not name the comparison is refused: no fold would count it, and the comparison would buy it
  *  again at every pass. */
 function unanswered(log: string, id: string, { solve, ending }: Practised): string | null {
@@ -457,9 +453,11 @@ function unanswered(log: string, id: string, { solve, ending }: Practised): stri
   return asRecord(record?.data.tokens)?.output === 0 ? ending.reason : null;
 }
 
-/** The rejections of the comparison that hold no ruling, on tasks still held out: each is put to
- *  the Referee again before the report (`ruleLeft`). Until 12 October one set its task aside for
- *  good, as one Referee call the provider's session limit cut did on buffer-a's g-5. */
+/** The rejections of the comparison that hold no ruling, on tasks still held out, by an earlier run
+ *  killed before its ruling or by a reader that failed or gave no answer: each is put to the
+ *  Referee again before the report (`ruleLeft`). A report that set such a rejection's task aside
+ *  would keep it aside for good: one Referee call cut by the provider's session limit cost a step
+ *  that way on 12 October. */
 function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
   const held = new Set(taskSets(events).held);
   return rejections(events, fixed, NO_LABELS).filter(({ task, ruling }) => ruling === null && held.has(task));
@@ -639,7 +637,7 @@ function write(
 ): Report {
   append(request.log, REPORTED, {
     session: request.id,
-    // The eight truss rounds of 2026-10-08 asked for no scored task, and their logs could not say so.
+    // Eight rounds of 8 October asked for no scored task, and their logs could not say so.
     tasks: request.tasks.length,
     solves: request.solves,
     level: request.level,
@@ -773,9 +771,9 @@ export function settleReading(
       `comparison ${id} reads ${report.reading} and compared nothing, so there is nothing to settle`,
     );
   }
-  // A comparison that began with shorter budgets, which were read until 2026-10-11, reported rows
-  // this source reads no longer, and the settled report would drop them in place of the report the
-  // comparison began with (the third review, row F46).
+  // A comparison that began with shorter budgets, as one begun before 11 October may have, reported
+  // rows this source reads no longer, and the settled report would drop them in place of the report
+  // the comparison began with.
   const began = startOf(before, id)?.budgets;
   if (Array.isArray(began) && began.length > 0) {
     throw new Error(

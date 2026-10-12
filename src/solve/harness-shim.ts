@@ -3,10 +3,9 @@
  * `@ana/agent-bundle` and `@earendil-works/pi-ai` resolve to this one file, so the bundle carries
  * TypeBox and nothing of pi, and runs inside the command wall without pi installed there.
  *
- * Sed from harness-builder-v4 at 7af7315: the limits and the refusal in `toolDefinition`
- * (src/solve/define-tool.ts), the brand and the argument check in `defineDraftTool`
- * (src/solve/draft-tool.ts), the result check in `evidenceResult` (define-tool.ts), and the two
- * types from src/solve/built-starter.ts. Departures, each named where it is made:
+ * Taken from v1: the limits and the refusal of its `toolDefinition`, the brand and the argument
+ * check of its `defineDraftTool`, the result check of its `evidenceResult`, and the two types of
+ * its starter. Departures, each named where it is made:
  * - `run`'s `draft` is an object every access to which throws (`NO_DRAFT`): harness tools keep no
  *   state across calls in v2.
  * - `prepareArguments` is refused rather than carried: a function cannot cross the listing to the
@@ -23,13 +22,13 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 export { Type };
 export type { Static, TSchema };
 
-/** define-tool.ts:11. */
+/** v1's limits on a tool's text. */
 const TOOL_TEXT_LIMITS = { name: 128, label: 256, description: 4_000, evidence: 64 * 1024 } as const;
 
-/** draft-tool.ts:16, the brand the caller checks a factory's tools for. */
+/** v1's brand, which the caller checks a factory's tools for. */
 export const DRAFT_TOOL = Symbol.for("anabasis/draft-tool/v1");
 
-/** define-tool.ts:13. */
+/** A tool's result, as v1 typed it. */
 export type Evidence<D = unknown> = { text: string; details?: D; terminate?: boolean };
 
 /** v1 passed its DraftStore here; v2 runs each call alone, so there is no store to pass. The
@@ -71,7 +70,7 @@ interface DraftTool {
   call(params: unknown, signal: AbortSignal): Promise<Evidence>;
 }
 
-/** built-starter.ts:155-159, with the task's own type inlined. */
+/** v1's, with the task's own type inlined. */
 interface DomainHarness {
   tools: DraftTool[];
 }

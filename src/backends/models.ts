@@ -45,7 +45,7 @@ const RETRY: RetryPolicy = { enabled: true, maxRetries: 3, baseDelayMs: 2_000 };
 /**
  * The diagnostic a turn carries when its call was made again: `details.retried`, what each attempt
  * before the last one said. A retry mends in silence otherwise, and how often a provider drops a
- * call is then in no log: the two Sol rounds of 8 October, run before the retry, lost 18 of their 33
+ * call is then in no log: two rounds of 8 October, run before the retry, lost 18 of their 33
  * finished solves to a closed WebSocket, 14.9 of 30.9 solve-hours.
  */
 export const CALL_RETRIED = "call-retried";
@@ -85,9 +85,9 @@ export function backends(options: BackendOptions): MutableModels {
 
 /**
  * `provider` with a transient failure of a model call retried in place, by pi's own classifier. pi's
- * loop has no retry of its own, so a dropped call failed the turn and the whole solve was run
- * again: on 8 October Codex closed its WebSocket mid-response ("WebSocket closed 1000") 229 s and
- * 6,038 s into two Sol solves, and pi rethrows a close once the response has begun. The stream
+ * loop has no retry of its own, so a dropped call would fail the turn and the whole solve would be
+ * run again: on 8 October Codex closed its WebSocket mid-response ("WebSocket closed 1000") 229 s
+ * and 6,038 s into two solves, and pi rethrows a close once the response has begun. The stream
  * answers with the last attempt's message alone, which pi's loop takes as a whole message.
  */
 export function retried<T extends Api>(provider: Provider<T>): Provider<T> {

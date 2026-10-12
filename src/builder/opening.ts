@@ -5,18 +5,17 @@
  *
  * The opening is the operator's conditions for the whole campaign, recorded once and again where
  * a command names another: the total budget, the full limit of a solve, the Builder sessions
- * before a comparison, who sits in each seat, whether the operator's word is waited for,
- * and, for a campaign that opens from a prompt, the prompt and who solves. None of them moves a
- * comparison's reading. The setting is the log's own record (`campaign.setting`).
+ * before a comparison, who sits in each seat, whether the operator's word is waited for, and, for
+ * a campaign that opens from a prompt, the prompt and who solves. None of them moves a comparison's
+ * reading. The setting is the log's own record (`campaign.setting`).
  *
  * It also keeps the terms of the campaign's moves as a command last named them (`TERMS`): the
  * limits of a Builder session and of an Examiner session, the size of a comparison, the practice
- * tasks, and a solve's wall and prompts until a setting is recorded. Until 2026-10-09 it kept
- * none, and a command that named nothing ran each move by its default. The second campaign from a
- * prompt was opened with a solve's wall of 8 minutes, 6 scored tasks and Builder sessions of 25
- * minutes and 6 practice solves; continued by its name alone, it recorded a setting of 120
- * minutes and 12 tasks and gave each session 240 minutes and 24 practice solves, and nothing said
- * so.
+ * tasks, and a solve's wall until a setting is recorded. Without them a command that names nothing
+ * runs each move by its default: on 9 October a campaign opened with a solve's wall of 8 minutes,
+ * 6 scored tasks and Builder sessions of 25 minutes and 6 practice solves, and, continued by its
+ * name alone, recorded a setting of 120 minutes and 12 tasks and gave each session 240 minutes and
+ * 24 practice solves, and nothing said so.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, type Cap, patienceOf } from "../kernel/reports.ts";
@@ -42,9 +41,9 @@ export interface Opening {
    *  campaign bears in a row before it ends (`--patience`; `PATIENCE`). */
   readonly patience: number;
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
-  /** Whether the freeze and a promotion wait for the operator's word (`--attended`). Until
-   *  12 October it was the running command's flag alone, so a reopen that did not name it ran an
-   *  attended campaign on unattended, and promoted without the operator. */
+  /** Whether the freeze and a promotion wait for the operator's word (`--attended`). It is kept
+   *  here and not read off the running command's flag alone, so that a reopen that does not name
+   *  the flag still waits; `--no-attended` gives it back. */
   readonly attended: boolean;
   /** The operator's prompt, for a campaign that opened from one: its exam is drafted from it
    *  (`src/examiner/draft.ts`). Null for a campaign that opened over a stored pack. */
@@ -56,10 +55,10 @@ export interface Opening {
   readonly terms: Terms;
 }
 
-/** The flags of a campaign's moves that its opening keeps: a solve's wall and prompts and the
- *  scored tasks, which the first setting records; a comparison's solves a side, level and stop on
- *  check defects; a Builder session's minutes, turns and practice solves; the practice tasks; and
- *  an Examiner session's tasks, proposals, minutes and turns. */
+/** The flags of a campaign's moves that its opening keeps: a solve's wall and the scored tasks,
+ *  which the first setting records; a comparison's solves a side, level and stop on check
+ *  defects; a Builder session's minutes, turns and practice solves; the practice tasks; and an
+ *  Examiner session's tasks, proposals, minutes and turns. */
 export const TERMS = [
   "solve-minutes",
   "target",
@@ -124,7 +123,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
 /**
  * What move 7 reads beside a log: the campaign's plan from its opening, the dollars left of its
  * total, the size its setting asks a comparison for, and what only the caller knows. A campaign
- * with no opening on record, as every one before 2026-10-09, runs by the defaults, and no total.
+ * with no opening on record, as one begun before 9 October, runs by the defaults, and no total.
  */
 export function planOf(
   events: readonly LogEvent[],

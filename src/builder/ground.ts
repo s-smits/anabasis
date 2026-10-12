@@ -8,9 +8,7 @@
  * (`reports.ts`).
  *
  * A campaign runs at one setting, recorded once (`campaign.setting`, `tools/d2/setting.ts`), so
- * every comparison of the log is read. Until 11 October a setting could be set again, and a
- * campaign walked a ladder of shorter budgets and returned to one, so the comparisons since the
- * last record were read apart (`docs/simplify.md`, package A).
+ * every comparison of the log is read.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
@@ -54,8 +52,8 @@ export interface Compared {
   readonly reported: number | null;
 }
 
-/** What the table's rows on the comparisons are read from: the log's comparisons by setting, the
- *  two harnesses in question, and what the next comparison would be short of. */
+/** What the table's rows on the comparisons are read from: the log's comparisons, the two
+ *  harnesses in question, and what the next comparison would be short of. */
 export interface Ground {
   readonly events: readonly LogEvent[];
   readonly plan: Plan;
@@ -115,9 +113,9 @@ export function pairOf(comparisons: readonly Compared[], fresh: string, old: str
 }
 
 /** The Examiner sessions in a row, up to the log's end, that ended whole and held out no task. A
- *  session that held one out moved the campaign, however few it wrote: the first campaign run by
- *  one command ended on three sessions that had written four tasks between them (2026-10-09). A
- *  session the provider failed is not idle: it was given no chance to write (`crashedRun`). */
+ *  session that held one out moved the campaign, however few it wrote: on 9 October a campaign
+ *  ended on three sessions that had written four tasks between them. A session the provider
+ *  failed is not idle: it was given no chance to write (`crashedRun`). */
 export function idleDrafts(events: readonly LogEvent[]): number {
   const sessions = events
     .filter(({ kind, data }) => kind === "exam.finished" && (data.ended !== "crashed" || moved(data)))
@@ -136,13 +134,11 @@ function moved(data: JsonObject): boolean {
 /** The Builder and Examiner sessions in a row, up to the log's end and since the campaign last
  *  ended, that the provider failed before they held out a task or changed a harness, with what
  *  the last crash said. Such a session held out no task and left no harness because its provider
- *  refused it, not because the domain gave it nothing: on 11 October six Examiner sessions of one campaign crashed in a row on a provider's
- *  session limit, each under a new id within minutes, and the campaign ended `no-room` with "the
- *  tasks could not be written", where the account was out (buffer pr193 on the operator's host);
- *  another lost a Builder session the same way (buffer-a). The table ends such a campaign on its
- *  environment after `CRASHES` of them (`decide.ts`), and the count starts again after that
- *  ending, so that the command run again by the campaign's name goes on once the provider is
- *  back. */
+ *  refused it, not because the domain gave it nothing: on 11 October six Examiner sessions of one
+ *  campaign crashed in a row on a provider's session limit, and the campaign ended `no-room`
+ *  where the account was out. The table ends such a campaign on its environment after `CRASHES`
+ *  of them (`decide.ts`), and the count starts again after that ending, so that the command run
+ *  again by the campaign's name goes on once the provider is back. */
 export function crashedRun(events: readonly LogEvent[]) {
   // A wait for the provider's named reset starts the count again as an ending does (`waitOut`).
   const since = events.findLastIndex(

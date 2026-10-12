@@ -23,8 +23,8 @@
  * permits every JSON shape while telling a caller that functions, symbols and other non-JSON
  * values are outside the input contract.
  *
- * It is not a schema. `JsonValue` says the bytes are JSON; it does not say they are a task, a
- * claim or a case record, and a reader that needs one of those still validates it with the shape
+ * It is not a schema. `JsonValue` says the bytes are JSON; it does not say they are a task or a log
+ * event, and a reader that needs one of those still validates it with the shape
  * tests below.
  *
  * Keep `unknown` for inputs that are not known to be JSON at all, because a caught error may be
@@ -38,8 +38,8 @@
  * `JsonValue` that `@earendil-works/pi-ai` exports, so a value crosses the pi boundary in either
  * direction under one name. Importing pi's type into the pi-facing code instead leaves two names
  * for one shape inside the same expression, since `asRecord` narrows to this one, and re-exporting
- * it from here would put a provider SDK underneath the verifier, claim and gate trees, where a
- * version bump is not welcome.
+ * it from here would put a provider SDK underneath the verifier and the kernel, where a version
+ * bump is not welcome.
  */
 export type JsonValue =
   | string
@@ -66,9 +66,9 @@ export type JsonObject = { [key: string]: JsonValue };
 /**
  * An object read by key, each value unknown until the reader checks the one it needs.
  *
- * Three things in this codebase are exactly that and nothing narrower. A generated module's
- * namespace exports functions such as `solve` and `evaluate`, which `JsonObject` cannot hold, so a
- * reader checks the export it needs with `isFunction` before calling it. A TypeBox schema's
+ * Three things in this codebase are exactly that and nothing narrower. A check program's namespace
+ * exports functions, its `objective` among them, which `JsonObject` cannot hold, so a reader checks
+ * the export it needs with `isFunction` before calling it. A TypeBox schema's
  * interface declares no string index signature although its keywords are enumerable at runtime.
  * And a lint rule walks an ESTree node by visitor key, where a child may be of any kind. An
  * object-shape check establishes none of those contracts by itself.
@@ -76,8 +76,8 @@ export type JsonObject = { [key: string]: JsonValue };
  * It is spelled `Record` on purpose: TypeScript lets an interface such as `TSchema` be asserted to
  * `Record<string, unknown>` in one step and refuses the same assertion to the literal
  * `{ [key: string]: unknown }`. Named for the module namespace alone it reads as belonging to one
- * caller, and the TypeBox view in draft-tool.ts and the node views in the lint plugins each
- * declare a copy of their own instead.
+ * caller, and the TypeBox view and the node views in the lint plugins each declare a copy of their
+ * own instead.
  */
 export type OpenRecord = Record<string, unknown>;
 
@@ -116,9 +116,9 @@ export function isBoolean(value: unknown): value is boolean {
  * The null test belongs here rather than at each call site because `typeof null` is `"object"`.
  * A predicate returning `value is object | null` and asking every caller to add `value !== null`
  * gets that back in several spellings — before the call, after it, either way round inside a
- * negation — and from some callers not at all. A miss is live: a null content part passing
- * `!isObject(part)` in generated-tool-worker-child.ts reaches `part.type` and throws a TypeError
- * from a function that declares "generated tool result must contain text content", which sends the
+ * negation — and from some callers not at all. A miss is live: in v1 a null content part passing
+ * `!isObject(part)` in a generated-tool worker reached `part.type` and threw a TypeError from a
+ * function that declared "generated tool result must contain text content", which sent the
  * controller after the wrong owner. A check every caller has to repair is the check that is wrong.
  */
 export function isObject(value: unknown): value is object {
@@ -131,10 +131,10 @@ export function isObject(value: unknown): value is object {
  * validate an arbitrary host value.
  *
  * Sharing it is what stops a caller admitting an array by accident. Without the check, a model
- * returning valid JSON of an unexpected shape has `validateBrief` read `.decisions.length` on
- * undefined, and the TypeError becomes a runtime non-result — a product finding misclassified as
- * an environment failure. A shape check lets the caller report an invalid artifact to the repair
- * loop instead of crashing. It is only the first step: required fields still need validating.
+ * returning valid JSON of an unexpected shape has a reader index into undefined, and the TypeError
+ * becomes a runtime non-result — a finding misclassified as an environment failure. A shape check
+ * lets the caller report the invalid value instead of crashing. It is only the first step: required
+ * fields still need validating.
  */
 export function isRecord(value: unknown): value is JsonObject {
   return isObject(value) && !Array.isArray(value);

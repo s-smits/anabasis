@@ -1,9 +1,8 @@
 /**
  * Shared path-containment checks: true when a resolved or realpathed path is the root itself or
- * lies under it. The isolation and admission guards each used to write this out, which is nine
- * chances to forget the separator that makes `/srv/shared` stop containing `/srv/sharedx`. The
- * check here is lexical, so it decides containment of a path someone else has already resolved and
- * is not a symlink defence on its own.
+ * lies under it. Each guard that writes this out is another chance to forget the separator that
+ * makes `/srv/shared` stop containing `/srv/sharedx`. The check here is lexical, so it decides
+ * containment of a path someone else has already resolved and is not a symlink defence on its own.
  *
  * Kept apart from `meta/path`, which holds only `node:path` re-exports; these two need a local
  * binding of `sep` rather than being re-exported.

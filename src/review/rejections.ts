@@ -99,7 +99,7 @@ export function drawn(events: readonly LogEvent[], count: number, seed: string):
 
 /** A person's labels as their file holds them, a word a drawn solve, and the solves still to be
  *  labelled: any whose entry is none of the `known` words, which are the three rulings of a
- *  rejection unless the caller reads another kind of label (`settle.ts --passes`). */
+ *  rejection unless the caller reads another kind of label (a pass's, in `settle.ts`). */
 export function labelled<Word extends string>(file: JsonValue, known: readonly Word[]) {
   const labels = new Map<string, Word>();
   const open: string[] = [];

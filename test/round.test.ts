@@ -10,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { predicted, toLabel } from "../src/builder/comparison.ts";
+import { passesIn, predicted, toLabel } from "../src/builder/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
@@ -396,7 +396,8 @@ describe("a round", () => {
         withdrawn: [],
         capped: false,
         reading: "step",
-        settled: null,
+        // Until a person answers the comparison's packet, which no promotion waits for.
+        settled: "unsettled",
       },
     ]);
     // Four tasks, two harnesses, two solves. A task's solves run together, so that what drifts
@@ -743,7 +744,7 @@ describe("a round", () => {
         versions: ["s2", "s3", "s4"],
         aside: ["s1"],
         reading: NO_STEP,
-        settled: null,
+        settled: "unsettled",
       });
       // The two rejections of s1 are what a person is asked to label; the other six are ruled.
       const asked = toLabel(read(s.log), "b-1");
@@ -756,13 +757,12 @@ describe("a round", () => {
 
     // Labelled a check defect, the task is disputed for good and stays out of the comparison.
     const defect = await ruledOn();
-    const [one = ""] = defect.asked.aside;
-    expect(() => settleReading(defect.s.log, "b-1", labelled([one], "earned"))).toThrow(
-      "1 of 2 rejections that set a task aside carry no label",
-    );
     expect(() => settleReading(defect.s.log, "b-1", labelled(["r-0-0"], "earned"))).toThrow(
       "is no rejected answer",
     );
+    expect(() =>
+      settleReading(defect.s.log, "b-1", new Map(), new Map([[defect.asked.aside[0] ?? "", "sound"]])),
+    ).toThrow("is no answer that passed in comparison b-1");
     const settled = settleReading(defect.s.log, "b-1", labelled(defect.asked.aside, "check-defect"));
     expect(settled).toMatchObject({
       scored: { wins: 3, losses: 0, p: 0.125 },
@@ -780,7 +780,10 @@ describe("a round", () => {
     expect(await round(defect.s.request)).toEqual(settled);
     // The labels are on record with the report, and the same labels read it back. A comparison is
     // settled once: other labels for it, or none, are refused and write nothing.
-    expect(settled.settled?.labels).toEqual(Object.fromEntries(labelled(defect.asked.aside, "check-defect")));
+    expect(settled.settled).toMatchObject({
+      labels: Object.fromEntries(labelled(defect.asked.aside, "check-defect")),
+      passes: {},
+    });
     expect(settleReading(defect.s.log, "b-1", labelled(defect.asked.aside, "check-defect"))).toEqual(settled);
     expect(() => settleReading(defect.s.log, "b-1", labelled(defect.asked.aside, "earned"))).toThrow(
       "comparison b-1 is settled already, and these labels are not the ones it was settled on",
@@ -805,6 +808,20 @@ describe("a round", () => {
       settled: { labelled: 2, defects: 0, disputed: [], restored: ["s1"] },
     });
     expect(taskStates(read(earned.s.log)).get("s1")).toBe("held");
+
+    // A packet draws up to ten rejections: a task set aside on one it did not draw stays out of
+    // this comparison, as one labelled unclear does. Until 12 October every such rejection had to
+    // carry a label. A pass's label is recorded and moves no tally.
+    const partial = await ruledOn();
+    const [one = ""] = partial.asked.aside;
+    const [valid = ""] = passesIn(read(partial.s.log), "b-1");
+    expect(
+      settleReading(partial.s.log, "b-1", labelled([one], "earned"), new Map([[valid, "wrong"]])),
+    ).toMatchObject({
+      scored: { wins: 3, losses: 0 },
+      aside: ["s1"],
+      settled: { labelled: 1, defects: 0, restored: [], passes: { [valid]: "wrong" } },
+    });
 
     // Labelled unclear, the task stays out of this comparison and is disputed nowhere.
     const unclear = await ruledOn();
@@ -846,15 +863,12 @@ describe("a round", () => {
     expect(taskStates(read(refused.s.log)).get("s1")).toBe("refused");
   });
 
-  it("settles nothing where no label is given: a comparison with no task set aside stays open to labels", async () => {
+  it("settles on a label over a ruling where no task is set aside", async () => {
     const s = await setup([edit, finish], rejecting);
     await round({ ...s.request, referee: referee(s.log) });
     expect(toLabel(read(s.log), "b-1").aside).toEqual([]);
-    expect(() => settleReading(s.log, "b-1", new Map())).toThrow(
-      "comparison b-1 has no rejection that set a task aside, and no label is given",
-    );
     expect(s.of(COMPARISON_REPORTED)).toHaveLength(1);
-    // A label over a ruling can still settle it afterwards.
+    // Every rejection ruled a true fail is still drawn into the packet, and a label stands over it.
     const [one = ""] = toLabel(read(s.log), "b-1").others;
     expect(settleReading(s.log, "b-1", new Map([[one, "check-defect"]]))).toMatchObject({
       disputed: ["s1"],

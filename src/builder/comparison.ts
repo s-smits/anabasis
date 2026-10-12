@@ -32,7 +32,7 @@ import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
 import { unsolved, whole } from "../kernel/reports.ts";
-import { ranUnder } from "../kernel/solves.ts";
+import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import type { Ruling } from "../review/referee.ts";
@@ -124,18 +124,22 @@ export interface Report {
    *  validity alone would have tied. Null where the check program declares none, and in a report
    *  written before 10 October. */
   readonly objective: (ObjectiveRule & { readonly decided: number }) | null;
-  /** What a person's labels settled, in the report `settleReading` writes after the comparison's
-   *  own: how many rejections were labelled, how many of them a check defect, the tasks those
-   *  disputed, and the tasks the labels restored to the tally. */
-  readonly settled: {
-    readonly labelled: number;
-    readonly defects: number;
-    readonly disputed: readonly string[];
-    readonly restored: readonly string[];
-    /** The labels themselves, by solve: the log's record of what a person said of each answer.
-     *  A settling logged before 2026-10-09 holds none. */
-    readonly labels?: Readonly<Record<string, Ruling>>;
-  } | null;
+  /** `unsettled` in the comparison's own report until a person answers its packet (`settle.ts`),
+   *  which no promotion waits for (the operator, 12 October); then what the labels settled, in
+   *  the report `settleReading` writes after it: how many rejections were labelled, how many of
+   *  them a check defect, the tasks those disputed, the tasks the labels restored to the tally, and
+   *  the labels themselves, by solve. Null in a report that compared nothing. */
+  readonly settled:
+    | typeof UNSETTLED
+    | {
+        readonly labelled: number;
+        readonly defects: number;
+        readonly disputed: readonly string[];
+        readonly restored: readonly string[];
+        readonly labels: Readonly<Record<string, Ruling>>;
+        readonly passes: Readonly<Record<string, PassLabel>>;
+      }
+    | null;
 }
 /** What a person is asked to label before a comparison's reading is settled. */
 interface ToLabel {
@@ -166,6 +170,12 @@ export interface Fixed {
 
 export const STARTED = "comparison.started";
 export const REPORTED = "comparison.reported";
+/** What a comparison's report says of its packet until a person has answered it. */
+export const UNSETTLED = "unsettled";
+/** A person's words on an answer that passed: a valid answer by the rules; not one, and the checks
+ *  passed it; unclear. A label changes no tally and no reading: a wrong pass is a check's fault. */
+export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
+export type PassLabel = (typeof PASS_LABELS)[number];
 /** A report's fields, as its event carries them beside the comparison's own terms. */
 const REPORT_KEYS = [
   "old",
@@ -455,6 +465,13 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         objective: objectiveRuleIn(start),
       }
     : null;
+}
+
+/** The answers that passed in comparison `id`: its own solves that ended in a pass. */
+export function passesIn(events: readonly LogEvent[], id: string): string[] {
+  return solvesIn(events).flatMap((solve) =>
+    solve.start.comparison === id && passed(solve) === true ? [solve.id] : [],
+  );
 }
 
 /** The rejections of comparison `id` a person may label, from its log: none when it has no report

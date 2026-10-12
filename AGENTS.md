@@ -550,7 +550,7 @@ operator admits the checks by name, which is rule 10's word: the command run aga
 **Its budget is one total.** Each move's cap is what is left of `--budget` once every billed
 dollar in the log is taken off, and the campaign ends on its budget where less is left than one
 solve is held at (`--reserve`), or than the next comparison would bill by what the last one did
-(`afforded`, `src/builder/decide.ts`): a comparison the cap cuts tallies nothing.
+(`unafforded`, `src/builder/decide.ts`): a comparison the cap cuts tallies nothing.
 
 **It ends in one of seven ways**, and the log's last event says which (`campaign.ended`):
 `budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment`, `operator` or
@@ -838,42 +838,55 @@ made against the harness last promoted, and one that names a digest is made agai
 and promotes nothing.
 
 **What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
-prints it as its last line. In the order the table asks:
+prints it as its last line. The table is ten rows, asked in order (`ROWS`); the first that names
+a move chose it, and the decision carries the row's code:
 
-1. A word the operator left, where nothing has acted on it.
-2. The exam: a draft where the campaign opened from a prompt, a reading of a checker nobody has
-   read, and an ending where the reading holds a fault that nobody froze or admitted.
-3. The tasks: a pack's taken in, practice released, and tasks written where the campaign has none.
-4. The budget, the provider (three sessions in a row crashed before they held out a task or
-   changed a harness, section 6) and the stop rule, which end the campaign.
-5. A comparison that began and has not reported goes on.
-6. The reference's room on the tasks, read from the last comparison it was in, whichever side
-   it took: where it answered nearly all of them, the Examiner writes tasks it fails. After a
-   promotion that reading is the comparison the harness was promoted on; the row is the same at
-   every epoch, and nothing in the table or in any seat's prompt is a promotion's own. Tasks
-   held out since the last comparison, where no session has left a harness but the reference,
-   are read by a **control** before a Builder session is paid for: the starter compared with the
-   reference on them, which says whether they leave the reference room. With room the Builder
-   builds, on practice brought up from those tasks; without it the tasks change again.
-7. A step under the trigger is one draw: the same two harnesses are compared again on fresh
-   solves, and the two read together name the harness to promote (`unpromoted` says why another
-   is not). The repeat draws the held-out tasks the first stage did not score first, where the
-   campaign holds them (`scoredSet`, `src/builder/round.ts`).
-8. No step with room sends the Builder to build again, once the next comparison has tasks to
-   untie: where the reference answered too many of them in every solve, the Examiner writes
-   tasks first, since a changed harness can only tie again on those. No step without room, or
-   where neither harness answered, sends the Examiner for other tasks: there is no shorter budget
-   to fall back to.
-9. Nothing new to compare: the Builder builds, once the campaign holds as many scorable tasks as
-   a comparison scores, and before its first comparison as many as a comparison and its repeat
-   score; before any comparison the Examiner writes the rest first, so that the release before the
-   first session has them to draw practice from. Something new: it is
-   compared once the sessions before a comparison have run, or tasks are written first where the
-   comparison would be short of them.
+1. `stop`: a stop the operator left ends the campaign.
+2. `exam`: the exam does not stand. It is drafted where the campaign opened from a prompt, read
+   where nobody has read its checker, and the campaign ends where the reading holds a fault that
+   nobody froze or admitted.
+3. `bound`: a bound is spent. The budget, the provider (three sessions in a row crashed before
+   they held out a task or changed a harness, section 6), the stop rule, the epoch's first A/A
+   read as a step with no cause on record, a comparison stopped on its check defects or cut by
+   its cap.
+4. `tasks`: the tasks are not set up. A pack's are taken in, practice is released, tasks are
+   written where the campaign has none or the operator asked for others, and before the first
+   comparison up to as many as a comparison and its repeat score, so that the release before the
+   first session has them to draw practice from.
+5. `unfinished`: a comparison that began and has not reported goes on, and a reading that cleared
+   the trigger, which is one draw, is repeated on fresh solves. The repeat draws the held-out
+   tasks the first stage did not score first, where the campaign holds them (`scoredSet`,
+   `src/builder/round.ts`).
+6. `twice`: a step and its repeat, read together, name the harness to promote (`unpromoted` says
+   why another is not).
+7. `no-room`: the last comparison the reference was in left it nothing to gain, whichever side it
+   took: no task informative for it, or none either harness answered. The Examiner writes tasks
+   it fails; there is no shorter budget to fall back to. After a promotion that reading is the
+   comparison the harness was promoted on; the row is the same at every epoch, and nothing in the
+   table or in any seat's prompt is a promotion's own.
+8. `short`: the gate would refuse the next comparison for want of tasks (`refusals`,
+   `src/builder/admission.ts`), or the pair's last comparison tallied none: the Examiner writes
+   tasks first, since a changed harness can only tie again on tasks the reference closed.
+9. `unread`: something no comparison has read is compared. A promoted harness's programs alone
+   against it, the starter once against each later epoch's reference, a harness whose sessions
+   have run, and the tasks held out since the last reading. Where no session has left a harness
+   but the reference, those tasks are read by a **control** before a Builder session is paid for:
+   the starter compared with the reference on them, which says whether they leave it room.
+10. `build`: otherwise the Builder builds.
 
-The campaign ends `no-room` after more comparisons of one harness without room than its
-patience, or as many Examiner sessions in a row that held out no task where they were asked for
-room; where they were asked for tasks, as for a campaign that holds none, it ends `exam`.
+Four holds are asked of the move a row named (`HOLDS`), and a decision a hold changed carries the
+hold's code: `risk` (a comparison past a quarter's chance of a false promotion this epoch waits
+for an A/A or a cause) and `afford` (one that what is left would not hold is not begun) end the
+campaign; `practice` releases practice before a Builder session; `unshown` sends for tasks where
+the last session changed nothing and was shown no failed practice solve.
+
+One count ends a campaign that cannot be given tasks or room (`roomless`): the readings in a row,
+up to the log's end, that left nothing to gain, where a reading is a comparison against the
+reference that left it no room or a whole Examiner session that held out no task. At the
+campaign's patience it ends `no-room` where the Examiner was asked for room, and `exam` where it
+was asked for tasks, as for a campaign that holds none. The comparison that raised the want is no
+answer to it and is not counted. A comparison with room, a promotion, and a session whose tasks no
+comparison has read yet start the count again.
 
 ## 8. Rules
 

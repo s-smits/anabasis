@@ -103,7 +103,7 @@
 import { draw, type ObjectiveRule, triggered, untiedFamily } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { billedFor, type Cap, capHolds, poolOf } from "../kernel/reports.ts";
+import { billedFor, type Cap, capHolds, lastReports, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
@@ -133,7 +133,6 @@ import {
   toLabel,
   UNSETTLED,
 } from "./comparison.ts";
-import { comparisonsOf, pairOf } from "./ground.ts";
 import { type BuildRequest, type Built, type Practised, sessionOnce } from "./session.ts";
 
 /** A harness as a solve is handed it. */
@@ -310,12 +309,13 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
  * other families first (12 October; `narrow`, `compare.ts`); none for any other comparison. The
  * one asked about is passed over: it is no first stage of itself. A repeat gone on from its log
  * goes on with the tasks its start fixed (`begin`). It is the row of the table that buys the
- * repeat read from the other side (`afterComparison`, `decide.ts`): the pair's last report.
+ * repeat read from the other side (`unfinished`, `decide.ts`): the pair's last report.
  */
 function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
   const { id, old, fresh, trigger } = repeat;
-  const others = comparisonsOf(events).filter((each) => each.id !== id);
-  const first = pairOf(others, fresh, old).at(-1);
+  const first = lastReports(events).findLast(
+    ({ session, data }) => session !== id && data.fresh === fresh && data.old === old,
+  )?.data;
   if (first === undefined || !triggered(first, trigger) || !isString(first.session)) return [];
   const own = fixedIn(events, first.session)?.tasks ?? [];
   const family = untiedFamily(first);

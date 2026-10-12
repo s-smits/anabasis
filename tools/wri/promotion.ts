@@ -217,7 +217,7 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
       return `${build.session} from ${build.parent === promoted ? "the promoted harness" : short(build.parent)}, practising ${String(build.practice.size)} (${String(fresh)} written since the promotion)`;
     });
   // After a promotion the table reads the budget rule again on the promoted harness's own solves
-  // (`src/builder/decide.ts`, afterPromotion): a setting here is that rule's move.
+  // (`noRoom`, `src/builder/decide.ts`): a setting here is that rule's move.
   const settings = log.events.flatMap(({ kind, data: setting }, index) =>
     within(index) && kind === "campaign.setting" ? [`model turns ${String(count(setting.modelTurns))}`] : [],
   );

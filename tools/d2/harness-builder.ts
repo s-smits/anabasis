@@ -39,8 +39,8 @@
  * the opening: `projectOf`, `campaign.ts`), the total budget in dollars and the
  * reserve one solve is held at (`--budget`, `--reserve`), the full limit of a solve in the model's
  * turns (`--solve-model-turns`), the Builder sessions before a comparison (`--sessions`), the
- * campaign's patience (`--patience`: the moves without a gain, the idle Examiner sessions and the
- * comparisons without room it bears in a row before it ends, six by default while the system is
+ * campaign's patience (`--patience`: the moves without a gain, and the readings that left nothing
+ * to gain, it bears in a row before it ends, six by default while the system is
  * built, since every campaign of 9 and 10 October ended on the plan's three before its tasks were
  * measured), who sits in each seat, and the terms of its moves as a command last named them
  * (`TERMS`, `src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks.
@@ -70,7 +70,7 @@
  * threw after it had begun is the environment's ending, and run again the command goes on from the
  * log. A move refused before it began is no ending: the refusal is printed, nothing kept.
  *
- * A move is recorded as it begins (`campaign.move`), with the row of the table that chose it and its
+ * A move is recorded as it begins (`campaign.move`), with the code of the table's row that chose it and its
  * reason, so the log holds what was decided before what was done. Each run of the command keeps a receipt beside the
  * log, `launch-run-<n>.json`: its flags, the commit it stands at and the load it started under
  * (`keepReceipt`, `tools/runs/receipt.ts`).
@@ -669,14 +669,14 @@ function ended(log: string, events: readonly LogEvent[], decided: Extract<Decide
   });
 }
 
-/** What writes a move's event as it begins (the overhaul plan's P9): the move, the row that chose
+/** What writes a move's event as it begins (the overhaul plan's P9): the move, the code of the row that chose
  *  it, its reason and start, and what `make` names it by, so a move that throws is on record with
  *  the reason it was made for. Until 12 October it was written when the move ended. */
 function beginning(log: string, decided: Exclude<Decided, { move: "end" }>, started: JsonObject) {
   return (named: JsonObject) =>
     append(log, MOVED, {
       move: decided.move,
-      ...keyIfDefined("row", decided.row),
+      code: decided.code,
       why: decided.why,
       ...started,
       ...named,

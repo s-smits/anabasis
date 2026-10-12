@@ -81,9 +81,11 @@ export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 
 /** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
 export const SEATS = ["builder", "examiner", "reviewer"] as const;
-/** The Builder sessions before a comparison, after the campaign's first, where nothing names
- *  them: the plan's checkpoint is several sessions and then one comparison. */
-export const SESSIONS = 3;
+/** The Builder sessions before a comparison once set-up stands (epoch 0, `owedReading` in
+ *  `decide.ts`), where nothing names them: the plan's checkpoint is several sessions and then one
+ *  comparison (L5), since one session's change is rarely detectable. Before set-up each session's
+ *  harness is compared, and until 12 October three were the default after the first comparison. */
+export const SESSIONS = 2;
 const SETTING = "campaign.setting";
 
 /** What a log's last opening holds a campaign to run by, or null where it holds none. */

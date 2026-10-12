@@ -100,29 +100,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   const opening = openingOf(events);
   const setting = recordedSetting(events);
   const reference = promoted(events);
-  // A step is named with the comparisons that read it and its last tally against the reference.
-  /** Where an imported harness came from, by its digest (`tools/d2/import.ts`). */
-  const imported = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "harness.imported" && isString(data.harness) && isString(data.from)
-        ? [[data.harness, data.from]]
-        : [],
-    ),
-  );
-  const promotions = events.flatMap(({ kind, at, data }) => {
-    if (kind !== "harness.promoted" || !isString(data.harness)) return [];
-    const from = imported.get(data.harness);
-    const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
-    const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");
-    const last = comparisons.findLast((each) => each.fresh === data.harness && each.tally !== null);
-    const held =
-      last?.tally === null || last === undefined
-        ? ". No comparison of it tallied a task"
-        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}`;
-    return [
-      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}`,
-    ];
-  });
+  const promotions = promotionLines(events, comparisons);
   const ruled = comparisons.reduce(
     (sum, { rulings }) => ({
       earned: sum.earned + rulings.earned,
@@ -206,6 +184,39 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a budget of $${String(budget.dollars)}`}.`,
     "",
   ].join("\n\n");
+}
+
+/** A promotion a line: the comparisons that read its step, its last tally against the reference
+ *  it was promoted over, and whether it is set-up (epoch 0) or a rung of the climb. */
+function promotionLines(events: readonly LogEvent[], comparisons: readonly Compared[]): string[] {
+  /** Where an imported harness came from, by its digest (`tools/d2/import.ts`). */
+  const imported = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "harness.imported" && isString(data.harness) && isString(data.from)
+        ? [[data.harness, data.from]]
+        : [],
+    ),
+  );
+  return events.flatMap(({ kind, at, data }, index) => {
+    if (kind !== "harness.promoted" || !isString(data.harness)) return [];
+    // The first over the Starter is set-up, epoch 0, and the climb counts from it (`owedReading`).
+    const nth = events.slice(0, index).filter((each) => each.kind === "harness.promoted").length;
+    const rung = nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`;
+    const from = imported.get(data.harness);
+    const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
+    const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");
+    // Read against the reference it was promoted over: a reading it owed after is not its step.
+    const last = comparisons.findLast(
+      (each) => each.fresh === data.harness && each.old === data.from && each.tally !== null,
+    );
+    const held =
+      last?.tally === null || last === undefined
+        ? ". No comparison of it tallied a task"
+        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}`;
+    return [
+      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}`,
+    ];
+  });
 }
 
 /** The public contract as a solver reads it, for whoever takes the harness over. */

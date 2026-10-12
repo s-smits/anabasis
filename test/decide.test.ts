@@ -303,9 +303,20 @@ describe("what is built and what is compared", () => {
     });
   });
 
-  it("runs the plan's sessions before the next comparison, and one before the first", () => {
-    const after = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "no-step")];
+  it("runs one session a comparison until set-up stands, and the plan's sessions after", () => {
     const three = { ...PLAN, sessions: 3 };
+    // Before any promotion each session's harness is compared: set-up is a harness that holds the
+    // engine, and a session's worth is enough to read against the empty Starter.
+    const first = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "no-step")];
+    expect(move([...first, built("b-2", "h2")], three)).toMatchObject({ move: "compare", fresh: "latest" });
+    // Once set-up is promoted (epoch 0), the plan's sessions run before each comparison.
+    const after = [
+      ...SET_UP,
+      built("b-1", "h1"),
+      ...compared("g-1", "h1", "step"),
+      ...compared("g-2", "h1", "step"),
+      event("harness.promoted", { harness: "h1", from: "start" }),
+    ];
     expect(move([...after, built("b-2", "h2")], three)).toEqual({
       move: "build",
       why: "1 of 3 Builder sessions before the next comparison have run",
@@ -586,6 +597,51 @@ describe("after a promotion", () => {
     // A harness promoted while valid on half its tasks leaves itself room: the Builder builds
     // against it on the same tasks, and no Examiner session is a promotion's own.
     expect(move(promotedOn(HALF))).toMatchObject({ move: "build" });
+  });
+});
+
+describe("the readings a promotion owes", () => {
+  const stepped = (id: string, fresh: string, old: string) => [
+    ...compared(`${id}a`, fresh, "step", { old }),
+    ...compared(`${id}b`, fresh, "step", { old }),
+  ];
+  const setUp = (programs: boolean) => [
+    ...SET_UP,
+    built("b-1", "h1"),
+    ...stepped("g-1", "h1", "start"),
+    event("harness.promoted", { harness: "h1", from: "start", programs }),
+  ];
+
+  it("reads a promoted harness's programs alone against it, once, where it installed some", () => {
+    expect(move(setUp(true))).toEqual({
+      move: "compare",
+      fresh: "promoted",
+      reference: "programs-of:promoted",
+      why: "harness h1 was promoted with programs it installed: they are read alone against it, for what its guide and tools add to them",
+    });
+    // Made, it is a reading and no gate: the table goes on as it would have.
+    const read = [...setUp(true), ...compared("g-2", "h1", "step", { old: "p1" })];
+    expect(move(read)).toEqual(move(setUp(false)));
+    expect(move(setUp(false))).not.toMatchObject({ reference: "programs-of:promoted" });
+  });
+
+  it("reads the starter against each later epoch's reference once, and not against set-up's", () => {
+    // Set-up's own promotion was read against the starter: it owes no control of it.
+    expect(move(setUp(false))).not.toMatchObject({ fresh: "starter" });
+    const second = [
+      ...setUp(false),
+      built("b-2", "h2"),
+      ...stepped("g-2", "h2", "h1"),
+      event("harness.promoted", { harness: "h2", from: "h1", programs: false }),
+    ];
+    expect(move(second)).toEqual({
+      move: "compare",
+      fresh: "starter",
+      reference: "promoted",
+      why: "harness h2 is this epoch's reference: the starter is read against it once, as the lower control",
+    });
+    const controlled = [...second, ...compared("g-3", "start", "no-step", { old: "h2", noise: true })];
+    expect(move(controlled)).not.toMatchObject({ fresh: "starter" });
   });
 });
 
@@ -1004,7 +1060,7 @@ describe("what a campaign runs by", () => {
       pastStop: "why",
     });
     expect(plan).toEqual({
-      sessions: 3,
+      sessions: 2,
       patience: 6,
       unprepared: true,
       // The setting on record names twelve tasks to score, which stands over the caller's nine.

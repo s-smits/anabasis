@@ -238,7 +238,9 @@ export function epochLine(epoch: Epoch): string {
     found === null ? `${named} unread` : `${named} valid ${String(found.valid)} of ${String(found.solves)}`;
   const reference = epoch.reference === "starter" ? "the starter" : epoch.reference.slice(0, 8);
   const readings = epoch.comparisons.map(({ id, reading }) => `${id} ${reading}`).join(", ") || "none";
-  const end = epoch.promoted === null ? "open" : `promoted ${epoch.promoted.slice(0, 8)}`;
+  // The first harness promoted over the Starter is set-up, epoch 0, and the climb counts from it.
+  const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
+  const end = epoch.promoted === null ? "open" : `promoted ${epoch.promoted.slice(0, 8)} ${rung}`;
   const risk = epoch.falsePromotion;
   const percent = (chance: number) => `${String(Math.round(100 * chance))}%`;
   const source =

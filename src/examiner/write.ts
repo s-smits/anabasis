@@ -1,0 +1,449 @@
+/**
+ * The Examiner's task-writing mode: the agent that writes tasks, and the host that holds each one
+ * out (`writing`, which `examine` seats, `session.ts`).
+ *
+ * The session is given the domain's public contract, its checks by id and assertion, and every task
+ * the campaign holds, each with its outcome so far and readable whole. It proposes instances, and
+ * the host puts each to the task's one gate (`src/kernel/task.ts`): the shape of its package. An
+ * instance that passes is a held-out task from then on, and every comparison may score it. The
+ * Examiner is told that, or why the gate refused.
+ *
+ * No solve runs here unless the host can have the reference harness solve a draft task
+ * (`try_task`): no stronger solver passes a task first, and the measured solver does not solve it
+ * for its author (`docs/plan.md`, Phase 2). v1's solver matched whatever its author's side found,
+ * and when sessions here did put each instance to a stronger solver, the first lost 14 of 25 tasks
+ * at that solve and the second spent $48.45, of which the Examiner's own turns were $2.01. What a
+ * task's author hears instead comes from the comparisons, one outcome a task with the tasks
+ * counted by family or in a total beside them, at the next session's opening (`record.ts`).
+ *
+ * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
+ * an earlier session already wrote is not taken again, whatever id it would get; the home a
+ * session computed in is carried whole into the next session's (`Wall.keep`, `shell.ts`), unless
+ * it crashed, and what a session said at its `finish` opens the next. On 11 October two sessions
+ * of one campaign each spent their first minutes fetching and compiling the same engine and
+ * writing an optimiser around it.
+ *
+ * The session ends at `finish`, at its wall or its turns, or when the host has the tasks it was
+ * asked for. An instance is logged whole with its proposal, hidden values too, so a later solve of
+ * it needs the log and nothing beside it; no tool here returns a line of the log.
+ */
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { Type } from "typebox";
+import { openingOf } from "../builder/opening.ts";
+import { answerFormatFault, type Contract } from "../kernel/contract.ts";
+import { writtenTasks } from "../kernel/history.ts";
+import { append, type LogEvent, read } from "../kernel/log.ts";
+import { billedFor, poolOf } from "../kernel/reports.ts";
+import type { Ending } from "../kernel/solve.ts";
+import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
+import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
+import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
+import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
+import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
+import { hashJsonValue } from "../meta/stable-json.ts";
+import { text, tool } from "../solve/answer.ts";
+import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
+import { heard } from "./record.ts";
+
+/** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
+interface Terms {
+  /** Names the session in the log, and prefixes the ids of the tasks it writes. */
+  readonly id: string;
+  readonly log: string;
+  /** `puts` is the instances the session may put to the gate. */
+  readonly limits: { readonly wallSeconds: number; readonly turns: number; readonly puts: number };
+  readonly contract: Contract;
+  /** The checks as the Examiner is shown them. */
+  readonly checks: readonly CheckRow[];
+  /** The tasks the campaign holds, the pack's and the ones earlier sessions wrote. Each is listed
+   *  at the opening with its outcome so far and counted (`record.ts`), and shown whole on request. */
+  readonly tasks: readonly Task[];
+  /** Held-out tasks at which the host has what it asked for and ends the session. The Examiner is
+   *  never told the number. */
+  readonly wanted: number;
+  /** An instance as a package: the caller's rule ids and check program for it. */
+  readonly pack: (task: Task) => TaskPackage;
+  /** The budget every solve is held to, as a fact for the Examiner: the solver's own turns, null
+   *  where unlimited, and the minutes. Null where the caller knows none, as a test may. */
+  readonly budget: { readonly modelTurns: number | null; readonly minutes: number } | null;
+  /** The campaign's verifier, for `try_answer`: the checks run on an instance with an answer of the
+   *  Examiner's own. Null, the tool is not given. */
+  readonly verify: Verifier | null;
+  /** One fresh solve of a draft task by the reference harness, under the setting every solve of a
+   *  comparison is held to, made at the asking of `session`: its start names the session, so no
+   *  comparison counts it and no Builder is shown it (`pairsOf`, `practiceRan`). It is the solve
+   *  launcher a comparison uses, called (`tools/d1b/examine.ts`). Given, a task is held out by
+   *  `try_task` on `TRIED` such solves; null, by `propose_tasks` on its package's shape. */
+  readonly probe: ((task: TaskPackage, session: string, kill: AbortSignal) => Promise<Ending>) | null;
+}
+
+/** What a task-writing session's tools share. */
+interface Desk {
+  readonly request: Terms;
+  proposed: number;
+  /** The instances this campaign has been given so far, by content, so that none is taken twice:
+   *  this session's, and the ones earlier sessions wrote. */
+  readonly seen: Map<string, "now" | "earlier">;
+  /** The last author answer that passed on each instance, kept only in session memory and
+   *  rechecked on the final task before recording proof. */
+  readonly answered: Map<string, JsonValue>;
+  /** Every answer that passed, by hash: a task that carries one whole is refused, since a planted
+   *  answer is for `try_answer` and for no task (`carries`; `AGENTS.md`, rule 9). */
+  readonly planted: Set<string>;
+  readonly held: string[];
+  readonly refused: string[];
+}
+
+/** The most of an example one result shows. */
+const SHOWN_CHARS = 20_000;
+/** The reference harness's solves of one draft task under `try_task`: the least the operator's
+ *  ruling of 12 October names. Every paper the overhaul's research read that kept tasks at a
+ *  frontier admitted them by a measurement of the target, none blind (one at four attempts and a
+ *  pass-rate band); its probe asks for three or more fresh solves at the campaign's budget, and a
+ *  task admitted at a pass rate strictly between 0 and 1. */
+const TRIED = 3;
+/** The tool a task is held out by, as the Examiner is told it: on its package's shape, or on that
+ *  and the reference harness's solves of it. */
+const GATES = {
+  propose_tasks: {
+    label: "Propose tasks",
+    description:
+      "Put task instances to the host's gate, which reads the shape of each package. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out, or refused with the gate's reason. A task that is held out is in the exam from then on.",
+  },
+  try_task: {
+    label: "Try tasks",
+    description: `Put task instances to the host's gate, one at a time. The gate reads the shape of each package, and then the reference harness solves the task ${String(TRIED)} times under the budget; it is held out only where some of those solves gave a valid answer and not all. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out with how many solves were valid, or refused with the gate's reason; no solve's answer or trace is returned. A task that is held out is in the exam from then on, and those solves are never scored.`,
+  },
+} as const;
+/** What only the checks read of an instance, as each tool that takes one describes it. */
+const HIDDEN = Type.Unknown({ description: "What only the checks receive; null when a task has none." });
+/** Why the gate refuses a task that carries a planted answer: the witness serves the feasibility
+ *  gate and is then discarded, so it never reaches a solver (the overhaul plan, S.4; rule 9). */
+const PLANTED =
+  "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
+const SUPPLIED = "The host has the tasks it needs. The session ends here.";
+/** What a first `finish` is answered with while the host has not the tasks it needs: every live
+ *  Examiner session of 9 and 10 October proposed one batch of one to three tasks in three turns
+ *  and finished, of two hundred turns and twelve tasks it had, so a campaign paid a session's
+ *  opening six times for what one session could have written. The need, and no count. */
+const MORE =
+  "Noted, and the session goes on: the host does not yet have the tasks it needs from it. Propose further tasks, varying what they ask, and call finish again when you have none left worth proposing.";
+
+/** Whether `value` holds, as itself or anywhere inside it, a value whose hash is in `planted`. */
+function carries(value: JsonValue, planted: ReadonlySet<string>): boolean {
+  if (planted.has(hashJsonValue(value))) return true;
+  const inner = Array.isArray(value) ? value : isRecord(value) ? Object.values(value) : [];
+  return inner.some((each) => carries(each, planted));
+}
+
+/** An instance by what a solver and the checks read of it, whatever id it carries. */
+function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
+  return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
+}
+
+/** An instance as a tool's arguments carry it, under `taskId`. A hidden value sent as JSON text is
+ *  the JSON it encodes, for a try as for a proposal: on 12 October tries sent "null" where their
+ *  proposals sent null, and no proof of a task was kept. */
+function instanceOf(
+  taskId: string,
+  given: { readonly family: string; readonly public_input: unknown; readonly hidden: unknown },
+): Task {
+  return {
+    taskId,
+    family: given.family,
+    // SAFETY: a tool's arguments are JSON the provider parsed.
+    publicInput: given.public_input as JsonValue,
+    // SAFETY: as above.
+    hidden: decodedJsonText((given.hidden ?? null) as JsonValue),
+  };
+}
+
+/** A verdict as the Examiner reads it. */
+function tried(verdict: Verdict): string {
+  if (verdict.kind === "pass") {
+    return "Every applicable check passed this answer: the instance has a valid answer.";
+  }
+  if (verdict.kind === "fail") {
+    return `Refused by ${verdict.blocking.join(", ") || "no check: the answer was missing"}.`;
+  }
+  if (verdict.kind === "faulty") return `Check ${verdict.check} could not decide: ${verdict.reason}`;
+  return `The checks could not run: ${verdict.reason}`;
+}
+
+/** What the gate reads of one package: its shape, and under `try_task` the reference harness's
+ *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
+ *  is held out only where some of them and not all gave a valid answer, and a solve that ended in no
+ *  reading leaves it unmeasured. The Examiner hears the counts; no answer and no trace of a solve
+ *  reaches it. The session bounds them: `stop` is the session's own signal, which its wall, its end
+ *  and a killed run abort, and it is the kill a comparison's solves take (`probe`), so a wall that
+ *  fires mid-try leaves no solve running and the task refused unmeasured. */
+async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
+  const { contract, log, id, probe } = desk.request;
+  if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
+  const packaged = packageGate(contract, task);
+  if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
+  if (probe === null) return { reason: null, said: "" };
+  const before = billedFor(read(log), id);
+  const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, stop)));
+  const solves = endings.filter(({ outcome }) => outcome !== "non-result").length;
+  const valid = endings.filter(({ outcome }) => outcome === "pass").length;
+  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves`;
+  const unmeasured = `${String(TRIED - solves)} of the reference harness's ${String(TRIED)} solves of it ended in no reading, so it is not measured`;
+  const roomless = `${counted}, and a task is held out only where it answers some and not all`;
+  const some = valid > 0 && valid < TRIED;
+  return {
+    reason: solves < TRIED ? unmeasured : some ? null : roomless,
+    said: `; ${counted}`,
+    reference: { valid, solves, billed: billedFor(read(log), id) - before },
+  };
+}
+
+/** The gate for one instance the Examiner proposed, and the line it is told (`measured`). A task
+ *  held out whose content its author's answer passed before is put to the checks again under its
+ *  own id, and is on record as feasible only where it passes there. */
+async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
+  const { request } = desk;
+  const { log, id: session, verify } = request;
+  const task = request.pack(instance);
+  const version = taskVersion(task);
+  const { taskId, family, publicInput, hidden } = instance;
+  append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
+  const { reason, said, reference } = await measured(desk, task, stop);
+  const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
+  append(log, "task.gate", {
+    version,
+    gate: 1,
+    ...outcome,
+    ...keyIfDefined("reference", reference),
+  });
+  if (reason !== null) {
+    append(log, "task.state", { version, state: "refused", session });
+    desk.refused.push(version);
+    return `${taskId}: refused: ${reason}`;
+  }
+  desk.held.push(version);
+  const answer = desk.answered.get(contentOf(instance));
+  if (verify === null || answer === undefined) return `${taskId}: held out${said}.`;
+  const verdict = await Promise.try(() => verify(instance, answer)).catch(
+    (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
+  );
+  if (verdict.kind !== "pass") {
+    return `${taskId}: held out${said}. Author proof was not retained under this task id: ${tried(verdict)}`;
+  }
+  append(log, "task.feasible", { version, session });
+  return `${taskId}: held out${said}.`;
+}
+
+/** Whether the host has the tasks it asked for. */
+const supplied = (desk: Desk): boolean => desk.held.length >= desk.request.wanted;
+
+/** The tool that holds tasks out, under the name the session's gate has. */
+function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
+  const { id, limits } = desk.request;
+  const spent = () => desk.proposed >= limits.puts;
+  /** One instance of a batch: why it was not taken, or the gate's line of it. */
+  const taken = async (instance: Omit<Task, "taskId">, stop: AbortSignal): Promise<string> => {
+    const content = contentOf(instance);
+    const before = desk.seen.get(content);
+    if (before === "now") return "An instance proposed before was not taken again.";
+    if (before === "earlier") return "An instance an earlier session wrote was not taken again.";
+    if (spent()) return "An instance was not taken: this session can propose no further task.";
+    if (supplied(desk)) return `An instance was not taken. ${SUPPLIED}`;
+    desk.seen.set(content, "now");
+    desk.proposed += 1;
+    return await gated(
+      desk,
+      { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` },
+      stop,
+    );
+  };
+  return tool({
+    name,
+    ...GATES[name],
+    parameters: Type.Object({
+      tasks: Type.Array(
+        Type.Object({
+          family: Type.String({ minLength: 1 }),
+          public_input: Type.Unknown({ description: "What the solver reads of the task." }),
+          hidden: HIDDEN,
+        }),
+        { minItems: 1 },
+      ),
+    }),
+    executionMode: "sequential",
+    // The session's signal, which its wall, its end and a killed run abort (`measured`).
+    execute: async (_id, args, signal = new AbortController().signal) => {
+      if (supplied(desk)) throw new Error(SUPPLIED);
+      if (spent()) throw new Error("This session can propose no further task. Call finish.");
+      const lines: string[] = [];
+      for (const given of args.tasks) lines.push(await taken(instanceOf("", given), signal));
+      return {
+        ...text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`),
+        terminate: supplied(desk),
+      };
+    },
+  });
+}
+
+function exampleTool(tasks: readonly Task[]): AgentTool {
+  const examples = new Map(tasks.map((task) => [task.taskId, task]));
+  return tool({
+    name: "read_example",
+    label: "Read an example",
+    description: "Return one task of the exam whole: its family, its public input and its hidden values.",
+    parameters: Type.Object({
+      task: Type.String({ description: "A task's id, from the opening message." }),
+    }),
+    executionMode: "parallel",
+    execute: async (_id, args) => {
+      const example = examples.get(args.task);
+      if (example === undefined) {
+        throw new Error(`${args.task} is not one of the tasks: ${[...examples.keys()].join(", ")}`);
+      }
+      const { taskId, family, publicInput, hidden } = example;
+      return text(
+        capturedJsonStringify({ taskId, family, publicInput, hidden }, null, 2).slice(0, SHOWN_CHARS),
+      );
+    },
+  });
+}
+
+/** The checks run on one instance with an answer of the Examiner's: which refuse it, or that none
+ *  does. Without it the Examiner wrote tasks it could not know to be feasible: on 10 October the
+ *  notes of nine sessions said in eight that feasibility rested on hand estimates, and two of
+ *  seven tasks of one session asked for more than their input allowed. Nothing of a try is kept
+ *  but its trace and, where the checks pass, that the instance has a valid answer: no task, no
+ *  answer. An instance the campaign already holds is checked under that task's own id, and a pass
+ *  proves the task where it is held out, in practice or disputed.
+ *
+ *  An answer is held to the format first, as a solver's is (`answerFormatFault`): one the checks
+ *  passed though the format refused it would mark its instance feasible on an answer no solver
+ *  could submit (`poolOf`). */
+function tryTool(desk: Desk, verify: Verifier): AgentTool {
+  const { request } = desk;
+  const { log, contract } = request;
+  /** Puts on record that a held task has a valid answer, where the log does not say so yet. */
+  const prove = (events: readonly LogEvent[], version: string) => {
+    const sets = taskSets(events);
+    const inExam =
+      sets.held.includes(version) ||
+      sets.released.includes(version) ||
+      sets.states.get(version) === "disputed";
+    if (inExam && !poolOf(events).feasible.has(version)) {
+      append(log, "task.feasible", { version, session: request.id });
+    }
+  };
+  return tool({
+    name: "try_answer",
+    label: "Try an answer",
+    description:
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try enters no task in the exam, and no answer is recorded; where the checks pass, the host records that the instance has a valid answer and holds the answer for this session alone, so a task proposed with that content, before or after the try, is not later read as possibly infeasible. The gate's reading of the instance's package is given first, where it would refuse it.",
+    parameters: Type.Object({
+      family: Type.String({ minLength: 1 }),
+      public_input: Type.Unknown({ description: "What the solver would read of the task." }),
+      hidden: HIDDEN,
+      answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
+    }),
+    executionMode: "parallel",
+    execute: async (_id, args, signal) => {
+      const candidate = instanceOf("try", args);
+      // SAFETY: a tool's arguments are JSON the provider parsed.
+      const answer = args.answer as JsonValue;
+      const events = read(log);
+      const content = contentOf(candidate);
+      const instance =
+        [...writtenTasks(events), ...request.tasks].find((task) => contentOf(task) === content) ?? candidate;
+      const packaged = packageGate(contract, request.pack(instance));
+      const gate =
+        packaged.outcome === "passed" ? "" : `The gate would refuse this instance: ${packaged.reason}\n`;
+      if (signal?.aborted === true) throw new Error("The session has ended.");
+      const unformed = answerFormatFault(contract, answer);
+      if (unformed !== null) {
+        return text(
+          `${gate}This answer does not follow the answer format, so a solver's answer like it is refused before any check reads it, and no check was run: ${unformed}`,
+        );
+      }
+      const verdict = await verify(instance, answer);
+      if (verdict.kind === "pass") {
+        desk.answered.set(content, answer);
+        desk.planted.add(hashJsonValue(answer));
+        prove(events, taskVersion(request.pack(instance)));
+      }
+      return text(`${gate}${tried(verdict)}`);
+    },
+  });
+}
+
+/** The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, and
+ *  the home carried from the campaign's last session where the wall keeps one (`keep`). */
+export function writing(request: Terms, pinned: readonly Engine[], keep: string | undefined) {
+  const { limits, verify, wanted } = request;
+  const before = read(request.log);
+  const desk: Desk = {
+    request,
+    proposed: 0,
+    seen: new Map(writtenTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
+    answered: new Map(),
+    planted: new Set(),
+    held: [],
+    refused: [],
+  };
+  // How a task is held out: on its package's shape, or on that and `TRIED` solves of the reference
+  // harness where the host can have it solve one.
+  const gate = request.probe === null ? "propose_tasks" : "try_task";
+  const attempts = request.probe === null ? undefined : TRIED;
+  // What the last Examiner session that finished said at its `finish`, where one did.
+  const note = before.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data
+    .note;
+  return {
+    kind: "exam" as const,
+    system: systemPrompt(attempts),
+    opening: firstMessage(request.contract, request.checks, heard(before, request.tasks), limits, {
+      brief: openingOf(before)?.prompt ?? null,
+      budget: request.budget,
+      lastNote: isString(note) && note.trim() !== "" ? note : null,
+    }),
+    started: {
+      limits: { wallSeconds: limits.wallSeconds, turns: limits.turns, proposals: limits.puts, tasks: wanted },
+      checks: request.checks.map(({ id }) => id),
+      examples: request.tasks.map(({ taskId }) => taskId),
+      engines: pinned.map(({ name, sha256 }) => ({ name, sha256 })),
+      ...keyIfDefined("tried", attempts),
+    },
+    tools: [
+      proposeTool(desk, gate),
+      exampleTool(request.tasks),
+      ...(verify === null ? [] : [tryTool(desk, verify)]),
+    ],
+    enters: `a task enters it through ${gate} alone`,
+    home:
+      keep === undefined
+        ? undefined
+        : "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first",
+    checked: undefined,
+    nudge: "Propose further tasks",
+    finish:
+      "End the session. Say in one or two sentences what kinds of task you wrote and what you would try next.",
+    declined: MORE,
+    done: (): "supplied" | null => (supplied(desk) ? "supplied" : null),
+    counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
+    result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused, repair: null }),
+    // The next session's home is seeded with what the campaign keeps of the last one's.
+    enter: (home: string) => {
+      if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });
+    },
+    // The campaign's copy of a session's home, made whole when the session ends and replacing the
+    // one before: it is the exam side's, under the campaign's folder beside the log, which every
+    // wall closes. No link is followed, as the Builder's carry follows none. Not a crashed
+    // session's, which is as its last command left it: until 12 October it replaced the kept home
+    // all the same, and on buffer the next session opened in the working files of one whose turn
+    // the provider failed mid-script, under an earlier session's note.
+    leave: (home: string, ended: string) => {
+      if (keep === undefined || ended === "crashed") return;
+      rmSync(keep, { recursive: true, force: true });
+      if (existsSync(home)) cpSync(home, keep, { recursive: true });
+    },
+  };
+}

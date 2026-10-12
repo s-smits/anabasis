@@ -84,8 +84,8 @@
  *
  * Not run here: see `campaign.ts`.
  */
-import { type draftExam, draftOf } from "#src/examiner/draft.ts";
-import type { examine } from "#src/examiner/session.ts";
+import { draftOf } from "#src/examiner/draft.ts";
+import type { Session } from "#src/examiner/session.ts";
 import { supplyOf } from "#src/builder/admission.ts";
 import { decide } from "#src/builder/decide.ts";
 import { type Decided, decidedLine } from "#src/builder/move.ts";
@@ -123,9 +123,9 @@ import { recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
 export interface Seats {
   readonly seated: Seated;
   /** An Examiner session: `examine`, unless a rehearsal's script stands in for it. */
-  readonly examine?: typeof examine | undefined;
-  /** The session that drafts the exam of a campaign opened from a prompt: `draftExam`, or a script. */
-  readonly draft?: typeof draftExam | undefined;
+  readonly examine?: Session<"write"> | undefined;
+  /** The session that drafts the exam of a campaign opened from a prompt: `examine`, or a script. */
+  readonly draft?: Session<"draft"> | undefined;
   /** The host a solve starts into (`host.ts`): the host's own unless a test stands in for it. */
   readonly host?: Host | undefined;
 }

@@ -55,7 +55,7 @@ import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { verdictsOf } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
-import { examine } from "#src/examiner/session.ts";
+import { examine, type Session } from "#src/examiner/session.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
@@ -311,12 +311,12 @@ function draftedSource(name: string): DraftedSource {
  * none left proposes copies of the source's answered tasks while `--supply` lasts, and then
  * finishes with none, which the campaign reads as a session that held out no task.
  */
-function scriptedExaminer(later: Task[], answered: readonly Task[], supply: number): typeof examine {
+function scriptedExaminer(later: Task[], answered: readonly Task[], supply: number): Session<"write"> {
   let copies = 0;
   return (request) => {
-    const own = later.splice(0, request.limits.tasks);
+    const own = later.splice(0, request.wanted);
     const copied: Task[] = [];
-    while (own.length + copied.length < request.limits.tasks && copies < supply && answered.length > 0) {
+    while (own.length + copied.length < request.wanted && copies < supply && answered.length > 0) {
       const source = answered[copies % answered.length];
       if (source === undefined) break;
       copies += 1;

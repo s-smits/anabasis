@@ -12,7 +12,7 @@
  *
  * The session stops at a draft that stands, at `--tries` drafts put to the reading, or at its
  * minutes and turns. No solve runs, so it takes no flag for a solver and costs the Examiner's
- * own turns. The Examiner has a shell in a walled home of its own (`draftWalled`), under the disk
+ * own turns. The Examiner has a shell in a walled home of its own (`examine`, with a wall), under the disk
  * cap of a campaign's solves, closed to this repository and its other worktrees.
  *
  * What stands is not frozen. Its checks are their author's own computation, which the acceptance
@@ -23,7 +23,7 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { openingOf } from "#src/builder/opening.ts";
-import { type Drafted, draftWalled } from "#src/examiner/draft.ts";
+import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -42,9 +42,12 @@ const OPTIONS = {
   jobs: { type: "string", default: "4" },
 } as const;
 
-/** `bun tools/d1b/draft.ts`. `session` runs the Examiner's session: `draftWalled`, unless a caller
+/** `bun tools/d1b/draft.ts`. `session` runs the Examiner's session: `examine`, unless a caller
  *  with no model stands in for it. */
-export async function draftCommand(args: readonly string[], session = draftWalled): Promise<Drafted> {
+export async function draftCommand(
+  args: readonly string[],
+  session: Session<"draft"> = examine,
+): Promise<Examined> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { name, session: id, examiner } = values;
   if (name === undefined || id === undefined || examiner === undefined) {
@@ -58,24 +61,25 @@ export async function draftCommand(args: readonly string[], session = draftWalle
     );
   }
   stayAwake();
-  const drafted = await session({
-    id,
-    repoRoot: REPO,
-    otherTrees: worktreesOf(REPO),
-    diskBytes: LIMITS.diskBytes,
-    prompt,
-    reading: (draft) => draftReading(dirname(log), draft, Number(values.jobs)),
-    model: modelNamed(examiner),
-    // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
-    effort: values["examiner-effort"] as ThinkingLevel,
-    limits: {
-      wallSeconds: Number(values.minutes) * 60,
-      turns: Number(values.turns),
-      tries: Number(values.tries),
+  const drafted = await session(
+    {
+      id,
+      mode: "draft",
+      prompt,
+      reading: (draft) => draftReading(dirname(log), draft, Number(values.jobs)),
+      model: modelNamed(examiner),
+      // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
+      effort: values["examiner-effort"] as ThinkingLevel,
+      limits: {
+        wallSeconds: Number(values.minutes) * 60,
+        turns: Number(values.turns),
+        puts: Number(values.tries),
+      },
+      models: examinerSession,
+      log,
     },
-    models: examinerSession,
-    log,
-  });
+    { repoRoot: REPO, otherTrees: worktreesOf(REPO), diskBytes: LIMITS.diskBytes },
+  );
   console.log(JSON.stringify(drafted, null, 2));
   return drafted;
 }

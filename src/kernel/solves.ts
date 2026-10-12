@@ -89,7 +89,7 @@ export function solvesIn(events: readonly LogEvent[]): Solve[] {
 }
 
 /** Every solve a log holds but those an Examiner session asked for to try a draft task
- *  (`try_task`, `src/examiner/session.ts`), whose starts name the session where a comparison's name
+ *  (`try_task`, `src/examiner/write.ts`), whose starts name the session where a comparison's name
  *  the comparison. Those are the Examiner's: never scored, and no part of a task's record, its
  *  answers, a share or a tally. */
 export function countedSolves(events: readonly LogEvent[]): Solve[] {

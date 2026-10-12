@@ -75,7 +75,7 @@ export interface Supply {
   /** The share of its tallied tasks that may still be scored the last comparison left for the
    *  next to untie, against the harness the next is made with; null before any such comparison. */
   readonly untied: number | null;
-  /** The tasks held out since that comparison tallied. */
+  /** The tasks held out since that comparison reported, which have no share on record. */
   readonly since: number;
   /** The faults of the checker's last reading (`tools/c/accept.ts`), null where the log holds no
    *  reading, and whether the operator has frozen the checker. */
@@ -194,6 +194,13 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
   const tallied = versions.filter((version) => pool.includes(version));
   const pairs = last === undefined ? [] : pairsReported(events, last);
   const closed = pairs.filter((pair) => tallied.includes(pair.task) && pair[side].every(Boolean)).length;
+  // Held out since it reported: until 12 October every task it did not tally, and on esp32 five
+  // tasks an earlier comparison had tied with the reference valid in every solve counted whole.
+  const since = new Set(
+    events.flatMap(({ kind, data }, at) =>
+      at > (last?.index ?? -1) && kind === "task.gate" && data.outcome === "passed" ? [data.version] : [],
+    ),
+  );
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
   return {
     held: pool.length,
@@ -205,7 +212,7 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
     // simulated climb then wrote tasks the reference failed, read 0 untied where nobody answered
     // them yet, and asked for tasks again in place of a Builder session.
     untied: tallied.length > 0 ? (tallied.length - closed) / tallied.length : null,
-    since: pool.filter((version) => !versions.includes(version)).length,
+    since: pool.filter((version) => since.has(version)).length,
     faults: Array.isArray(reading) ? reading.length : null,
     frozen: frozenChecker(events) !== null,
     stop: stopRule(events),

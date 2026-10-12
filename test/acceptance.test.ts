@@ -15,6 +15,7 @@ import {
   regraded,
   runControls,
   runDoNothing,
+  unadmitted,
 } from "../src/kernel/acceptance.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
@@ -74,8 +75,8 @@ describe("a checker's acceptance", () => {
     expect(faults).toEqual([]);
     // `span` applies to the roof task alone: its three controls, one of them refused by it.
     expect(checks).toEqual([
-      { id: "mass", instrument: "external", missing: [], passed: 3, refused: 1, named: 1, caught: 1 },
-      { id: "span", instrument: "authored", missing: [], passed: 2, refused: 1, named: 1, caught: 1 },
+      { id: "mass", instrument: "fe", missing: [], passed: 3, refused: 1, named: 1, caught: 1 },
+      { id: "span", instrument: "author", missing: [], passed: 2, refused: 1, named: 1, caught: 1 },
     ]);
   });
 
@@ -148,6 +149,47 @@ describe("a checker's acceptance", () => {
     expect(authoredFaults(checks, new Set(["span"]))).toEqual([]);
   });
 
+  it("names a check's instrument by the tool it runs, whatever its brief labels it, and refuses an exam no engine decides until every check is admitted", async () => {
+    // buffer-141-m3 (12 October): checks labelled `authored` that ran the pack's engine read as
+    // their author's own computation. esp32-141-m3b's draft: nine checks, no tool behind any.
+    const engined: Brief = {
+      ...brief,
+      truthChecks: brief.truthChecks.map((check) =>
+        check.id === "span"
+          ? { ...check, execution: { ...check.execution, requiredToolIds: ["ccx", "gmsh"] } }
+          : check,
+      ),
+    };
+    const runs = await runControls(verify, [roof, mast], SOUND, 2);
+    const read = acceptance(engined, [roof, mast], runs, [], everyTool).checks;
+    expect(read.map(({ id, instrument }) => [id, instrument])).toEqual([
+      ["mass", "fe"],
+      ["span", "ccx, gmsh"],
+    ]);
+    expect(authoredFaults(read, new Set())).toEqual([]);
+    const drafted: Brief = {
+      ...brief,
+      truthChecks: brief.truthChecks.map((check) => ({
+        ...check,
+        execution: { ...check.execution, evidence: { kind: "authored" } },
+      })),
+    };
+    const none = acceptance(drafted, [roof, mast], runs, [], everyTool).checks;
+    expect(none.map(({ instrument }) => instrument)).toEqual(["author", "author"]);
+    expect(authoredFaults(none, new Set(["span"]))).toEqual([
+      "mass is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit mass)",
+    ]);
+    expect(authoredFaults(none, new Set(["mass", "span"]))).toEqual([]);
+    // The log's last reading names what the operator's word is still wanted for.
+    const logged = (admitted: string[]): LogEvent => ({
+      at: "2026-10-12T00:00:00.000Z",
+      kind: "checker.read",
+      data: { rows: none.map(({ id, instrument }) => ({ id, instrument })), admitted },
+    });
+    expect(unadmitted([logged(["span"])])).toEqual(["mass"]);
+    expect(unadmitted([logged(["span"]), logged(["mass", "span"])])).toEqual([]);
+  });
+
   it("reads the objective as its author's own computation, seen to measure a valid answer or none", async () => {
     const measured: Brief = { ...brief, objective: { quantity: "mass in kg", direction: "lower" } };
     const weighed: Verifier = async (task, answer) => {
@@ -160,7 +202,7 @@ describe("a checker's acceptance", () => {
     expect(faults).toEqual([]);
     expect(checks.at(-1)).toEqual({
       id: "objective",
-      instrument: "authored",
+      instrument: "author",
       missing: [],
       passed: 2,
       refused: 0,

@@ -450,9 +450,9 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const reading = log.of("checker.read").at(-1);
   const frozen = log.of("contract.frozen").at(-1);
   const rows = records(reading?.rows);
-  // The brief's evidence kind, which the reading copies: 5 of buffer's 7 `authored` checks ran the
-  // pack's installed engine on 12 October.
-  const authored = rows.filter((row) => row.instrument === "authored").length;
+  // Named by the tool it runs since 12 October (`acceptance.ts`): until then the brief's evidence
+  // kind, and 5 of buffer's 7 `authored` checks ran the pack's installed engine.
+  const authored = rows.filter((row) => row.instrument === "author").length;
   const passes = log.solves.filter((solve) => solve.outcome === "pass").length;
   const trees = new Set([...log.conditions.values()].map((condition) => condition.verifierTools)).size;
   const faults = strings(reading?.faults);
@@ -484,7 +484,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "INSTRUMENT AUTHORED",
-            `${share(authored, rows.length)} checks declare their author's computation as their evidence, which says nothing of the tools they run`,
+            `${share(authored, rows.length)} checks run no engine, so their author's own computation decides them`,
           ),
         ]
       : []),

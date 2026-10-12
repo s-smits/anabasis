@@ -189,7 +189,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     const sound = accept();
     // Three controls and three stored verdicts: the check let three answers pass and refused three.
     expect(sound.said).toContain("3 controls twice, 3 stored verdicts");
-    expect(sound.said).toContain("check-product\tauthored\t3\t3\t1 of 1");
+    expect(sound.said).toContain("check-product\tauthor\t3\t3\t1 of 1");
     // The smallest answer the format allows is put to both tasks, and the check rejects it on each.
     expect(sound.said).toContain('the do-nothing answer {"answer":""}: rejected on 2 of 2 tasks');
     expect(sound.said).toContain("no fault");

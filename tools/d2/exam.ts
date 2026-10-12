@@ -7,10 +7,10 @@
  * the log whenever it is missing, and never read back as the truth. A campaign whose exam is
  * drafted again before it is frozen stages the new draft beside the old.
  *
- * Every check of a staged exam declares its author's own computation as its evidence. Nothing
- * installs an engine of the field for a campaign, so no check can honestly declare one, and the
- * acceptance reading lists each as a fault until the operator admits it by name
- * (`tools/c/accept.ts`). A check reads the whole answer and the whole public input: the paths a
+ * Every check of a staged exam declares its author's own computation as its evidence and names no
+ * tool. Nothing installs an engine of the field for a drafted exam, so no check can run one, and
+ * the acceptance reading names each check's instrument `author` and lists it as a fault until the
+ * operator admits it by name (`tools/c/accept.ts`). A check reads the whole answer and the whole public input: the paths a
  * v1 check declared kept a tool's operands inside what the check could read, and these checks
  * run no tool.
  */

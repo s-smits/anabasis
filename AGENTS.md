@@ -878,7 +878,8 @@ Cite a rule by its number in a pull request or a review.
     an analysis engine, a compiler, a simulator, installed and pinned by digest. Nothing in the
     system writes or edits one. A check whose author's own computation decides it is listed as a
     fault until the operator admits it by name (`--admit`), which is meant for plain arithmetic on
-    the answer.
+    the answer. The reading names each check's instrument by the tools it runs, or `author`, so an
+    exam no engine decides, as every drafted one, waits for the operator's word on each check.
 
 11. **The host owns every limit.** A harness, a prompt or a file that asks for a longer wall, more
     turns or more disk changes nothing.

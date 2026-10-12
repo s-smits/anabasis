@@ -116,7 +116,7 @@ record("checker.read", {
   contract: "c1",
   checks: "k1",
   faults: [],
-  rows: [{ id: "check-a", instrument: "authored", passed: 3, refused: 1, caught: 1, named: 1 }],
+  rows: [{ id: "check-a", instrument: "author", passed: 3, refused: 1, caught: 1, named: 1 }],
 });
 for (const version of ["t1", ...HELD]) {
   record(PROPOSED, { version });
@@ -215,7 +215,7 @@ describe("the whole-run investigation's reader", () => {
 
   it("starts the instrument lanes on an authored check and a rejection ruled a check defect", () => {
     expect(detail("INSTRUMENT AUTHORED")).toBe(
-      "1 of 1 checks declare their author's computation as their evidence, which says nothing of the tools they run",
+      "1 of 1 checks run no engine, so their author's own computation decides them",
     );
     expect(detail("CHECK DEFECT RULED")).toBe("1 of 3; by check: check-a 1");
     expect(detail("REFUSED UNREAD")).toBe("2 of 3 refused answers no reviewer ruled on");

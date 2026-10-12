@@ -160,11 +160,12 @@ staged `checks/brief.json`: which fields of the answer it declares, which public
 rules it cites, and which tool it names. Then take a sample of passes, spread over families and
 over both harnesses and weighted to the checks that refused none, and for each say from the published rules alone what the answer would have to
 get wrong to still pass: a field no check reads, a rule no check cites, a tolerance wider than the
-rule's. An `authored` instrument computes with its author's own code, and what its pass means is
-that the author's computation agreed. The row's instrument is the brief's `evidence.kind`, a label:
-an `authored` check may still run an installed engine on its author's input, as 5 of buffer's 7
-did on 12 October, so read from the check program and its `requiredToolIds` which tool each check
-runs, and weigh its pass by what computed it. With no pass in the log — a campaign stopped before its first
+rule's. An `author` instrument computes with its author's own code, and what its pass means is
+that the author's computation agreed. The row's instrument names the tools the check runs, or
+`author` where it runs none (since 12 October; a reading of before holds the brief's
+`evidence.kind`, a label, under which 5 of buffer's 7 `authored` checks ran an installed engine on
+their author's input). A tool named is not yet a field engine: read from the check program what it
+hands the tool and what it computes itself, and weigh its pass by what computed it. With no pass in the log — a campaign stopped before its first
 solve — the rows beside the brief are the whole lane, and the reading is what a pass would establish
 were one taken; say that, and do not come back `could not read` for the missing sample. `wri.ts grade` puts one constructed answer to the campaign's
 checker and writes nothing; use it to show a gap, on the Mac. Do not read a pass rate here. The

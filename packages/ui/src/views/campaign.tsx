@@ -119,7 +119,19 @@ function Readouts({ reading }: { reading: CampaignReading }) {
         <MetricCard
           label="Next move"
           value={
-            nextMove === null ? "Not known" : <span title={nextMove.line}>{MOVE_WORD[nextMove.move]}</span>
+            nextMove === null ? (
+              "Not known"
+            ) : (
+              <span
+                title={
+                  nextMove.row === undefined
+                    ? nextMove.line
+                    : `row ${String(nextMove.row)} · ${nextMove.line}`
+                }
+              >
+                {MOVE_WORD[nextMove.move]}
+              </span>
+            )
           }
           detail={
             nextMove === null
@@ -155,7 +167,8 @@ function NoComparison({ reading }: { reading: CampaignReading }) {
 /** The set-up as the view's first line says it, with the prompt the campaign opened from, who sits
  *  in each seat and the terms the opening keeps, one click away. */
 function SetUp({ reading }: { reading: CampaignReading }) {
-  const { prompt, supply, seats, terms, attended } = reading;
+  const { prompt, supply, seats, terms, attended, bars } = reading;
+  const points = (share: number) => String(Math.round(100 * share));
   const checker =
     supply.faults === null
       ? "checker never read"
@@ -189,6 +202,10 @@ function SetUp({ reading }: { reading: CampaignReading }) {
             <dd>the freeze and a promotion wait for the operator's word</dd>
           </div>
         ) : null}
+        <div>
+          <dt>bars</dt>
+          <dd>{`effect ${points(bars.effect)} points · transfer within ${points(bars.transfer)} points · cost ${String(bars.cost)} attempts, gating nothing`}</dd>
+        </div>
       </dl>
     </Disclosure>
   );

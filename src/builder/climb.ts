@@ -319,7 +319,7 @@ function censusShare(census: unknown): number | null {
 }
 
 /** The bars as the opening sets them, and the plan's where it names none (`BARS`). */
-function barsOf(events: readonly LogEvent[]): Worth["bars"] {
+export function barsOf(events: readonly LogEvent[]): Worth["bars"] {
   const terms = openingOf(events)?.terms;
   const bar = (name: keyof typeof BARS) => {
     const set = Number(terms?.[name]);

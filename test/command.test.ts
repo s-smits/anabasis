@@ -295,7 +295,7 @@ describe("a solve's walled commands", () => {
   );
 
   it.skipIf(runtimeProcess.platform !== "darwin")(
-    "close the host's /tmp to a command: what another seat left there is neither read nor run, and a command leaves nothing there",
+    "close the host's /tmp and /var/tmp to a command: what another seat left there is neither read nor run, and a command leaves nothing there",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-closed-tmp-")));
       const dirs = solveDirs(`closed-tmp-${String(runtimeProcess.pid)}-${String(Date.now())}`);
@@ -305,8 +305,11 @@ describe("a solve's walled commands", () => {
       const canary = join("/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
       const program = join("/tmp", `ana-h1-program-${String(runtimeProcess.pid)}`);
       const left = join("/tmp", `ana-h1-left-${String(runtimeProcess.pid)}`);
+      // And what a v1 run left in /var/tmp on 12 October: a folder an Examiner listed and read.
+      const kept = join("/private/var/tmp", `ana-h1-canary-${String(runtimeProcess.pid)}`);
       writeFileSync(canary, "left by the host");
       writeFileSync(program, "#!/bin/sh\necho ran\n", { mode: 0o755 });
+      writeFileSync(kept, "left in var tmp");
       try {
         makeSeatDirs(dirs);
         const base = solveIsolationPolicy({ repoRoot });
@@ -319,9 +322,17 @@ describe("a solve's walled commands", () => {
             `${program} 2>/dev/null || echo unrun`,
             `echo x > ${left} 2>/dev/null || echo unwritten`,
             `mkdir ${left}.d 2>/dev/null || echo unmade`,
+            `cat ${kept} 2>/dev/null || echo unkept`,
+            `cat /var/tmp/${basename(kept)} 2>/dev/null || echo unkept`,
+            `ls /private/var/tmp 2>/dev/null || echo unlisted`,
+            `ls /var/tmp/ 2>/dev/null || echo unlisted`,
           ].join("; "),
         );
         expect(closed.output).not.toContain("left by the host");
+        expect(closed.output).not.toContain("left in var tmp");
+        expect(closed.output).not.toContain(basename(kept));
+        expect(closed.output.match(/^unkept$/gm)).toHaveLength(2);
+        expect(closed.output.match(/^unlisted$/gm)).toHaveLength(2);
         expect(closed.output).not.toMatch(/^ran$/m);
         for (const word of ["unseen", "unrun", "unwritten", "unmade"]) expect(closed.output).toContain(word);
         expect(existsSync(left)).toBe(false);
@@ -341,6 +352,7 @@ describe("a solve's walled commands", () => {
         await release();
         rmSync(canary, { force: true });
         rmSync(program, { force: true });
+        rmSync(kept, { force: true });
         rmSync(dirs.host, { recursive: true, force: true });
         rmSync(repoRoot, { recursive: true, force: true });
       }

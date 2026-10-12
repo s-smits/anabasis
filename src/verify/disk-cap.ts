@@ -28,6 +28,7 @@
 import { mkdirSync, rmSync, statSync } from "../meta/filesystem.ts";
 import { dirname, resolve } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
 
 interface DiskCap {
   /** The one directory the solve's writable roots (work, home, temp) all sit inside. */
@@ -62,6 +63,8 @@ export type ReleaseDiskCap = () => Promise<void>;
 /** hdiutil sizes in 512-byte sectors; its `-size 1b` means a sector too, not a byte. */
 const SECTOR_BYTES = 512;
 
+/** Null, or why hdiutil failed in its own words. No call passes `-quiet`, which drops those words:
+ *  until 12 October every failure on a loaded runner read "hdiutil detach exited 1:" and no more. */
 async function hdiutil(args: readonly string[]): Promise<string | null> {
   const child = Bun.spawn(["/usr/bin/hdiutil", ...args], {
     stdin: "ignore",
@@ -70,12 +73,6 @@ async function hdiutil(args: readonly string[]): Promise<string | null> {
   });
   const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
   return code === 0 ? null : `hdiutil ${args[0]} exited ${code}: ${stderr.trim()}`;
-}
-
-/** Move the spent image to the Trash rather than unlinking it, so a release that ran against the
- *  wrong path can still be undone by hand. */
-async function trash(path: string): Promise<void> {
-  await Bun.spawn(["/usr/bin/trash", path], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).exited;
 }
 
 /**
@@ -92,34 +89,19 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
   // Beside the root rather than inside it, so the image is not part of what it caps.
   const image = `${root}.sparseimage`;
   const sectors = String(Math.ceil(cap.bytes / SECTOR_BYTES));
-  const created = await hdiutil([
-    "create",
-    "-sectors",
-    sectors,
-    "-type",
-    "SPARSE",
-    "-fs",
-    "APFS",
-    "-volname",
-    "disk-cap",
-    "-quiet",
-    image,
-  ]);
-  if (created !== null) throw new Error(created);
-  const attached = await hdiutil([
-    "attach",
-    "-nobrowse",
-    "-noautoopen",
-    "-owners",
-    "on",
-    "-quiet",
-    "-mountpoint",
-    root,
-    image,
-  ]);
-  if (attached !== null) {
-    await trash(image);
-    throw new Error(attached);
+  const volume = ["-type", "SPARSE", "-fs", "APFS", "-volname", "disk-cap"];
+  const failed =
+    (await hdiutil(["create", "-sectors", sectors, ...volume, image])) ??
+    (await hdiutil(["attach", "-nobrowse", "-noautoopen", "-owners", "on", "-mountpoint", root, image]));
+  if (failed !== null) {
+    // What this call made goes, so the root can be claimed again: until 12 October a failed create
+    // left it, and a retry failed at EEXIST (the stack review, finding 5). An attach that failed
+    // after mounting is released as any volume is, and one left attached keeps its root.
+    const left = await releaseDiskCap(root).then(
+      () => "",
+      (error: unknown) => `; ${errorMessage(error)}`,
+    );
+    throw new Error(`${failed}${left}`);
   }
   return () => releaseDiskCap(root);
 }
@@ -154,19 +136,26 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
 export async function releaseDiskCap(root: string, listing: HolderListing = LSOF): Promise<void> {
   if (runtimeProcess.platform === "darwin") {
     // A mountpoint is on another device than its parent.
-    if (statSync(root).dev !== statSync(dirname(root)).dev) {
+    const mounted = () => statSync(root).dev !== statSync(dirname(root)).dev;
+    if (mounted()) {
       const wedged = await endHolders(root, listing);
       if (wedged !== null) throw new Error(`the volume at ${root} is left attached: ${wedged}`);
-      // "resource busy" is a file open on the volume, a working directory among them.
-      const detached = await hdiutil(["detach", root, "-quiet"]);
-      if (detached !== null) {
+      // "resource busy" is a file open on the volume, a working directory among them. A detach
+      // that failed with the volume gone, as one exits 1 with "No such file or directory", has
+      // released it: on a loaded Darwin runner (12 October) both detaches exited 1 and the
+      // release threw, from campaign tests that passed on an idle host.
+      const detached = await hdiutil(["detach", root]);
+      if (detached !== null && mounted()) {
         const still = await endHolders(root, listing);
         if (still !== null) throw new Error(`the volume at ${root} is left attached: ${still}`);
-        const forced = await hdiutil(["detach", root, "-force", "-quiet"]);
-        if (forced !== null) throw new Error(forced);
+        const forced = await hdiutil(["detach", root, "-force"]);
+        if (forced !== null && mounted()) throw new Error(forced);
       }
     }
-    await trash(`${root}.sparseimage`);
+    // To the Trash rather than unlinked, so a release run against the wrong path can be undone.
+    const image = `${root}.sparseimage`;
+    await Bun.spawn(["/usr/bin/trash", image], { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
+      .exited;
   }
   rmSync(root, { recursive: true, force: true });
 }

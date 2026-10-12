@@ -167,6 +167,43 @@ describe("the disk cap", () => {
     },
   );
 
+  // A failed create left the root it claimed, and a retry of the same root failed at EEXIST (the
+  // stack review, 12 October); under `-quiet` the failure said nothing of why.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "frees the root a failed mount claimed, says hdiutil's reason, and the root can be claimed again",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      // One sector holds no APFS volume.
+      await expect(mountDiskCap({ root, bytes: 1 })).rejects.toThrow(
+        /^hdiutil create exited 1: hdiutil: create failed/,
+      );
+      expect(existsSync(root)).toBe(false);
+      const release = await mountDiskCap({ root, bytes: CAP_BYTES });
+      await release();
+      expect(existsSync(root)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
+  // On a loaded Darwin runner both detaches exited 1 and the release threw (12 October). A detach
+  // finds a volume already gone so, as one that detached it in between leaves it: here the listing.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "is released where a detach exits 1 because the volume is already gone",
+    async () => {
+      const parent = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-disk-cap-")));
+      const root = join(parent, "solve");
+      await mountDiskCap({ root, bytes: CAP_BYTES });
+      const lsof = join(parent, "lsof");
+      writeFileSync(lsof, '#!/bin/sh\n/usr/bin/hdiutil detach "$4" >/dev/null 2>&1\n', { mode: 0o755 });
+      await releaseDiskCap(root, { lsof, ps: "/bin/ps", boundMs: 30_000 });
+      expect(spawnSync("/sbin/mount", []).stdout).not.toContain(root);
+      expect(existsSync(root)).toBe(false);
+      expect(existsSync(`${root}.sparseimage`)).toBe(false);
+      rmSync(parent, { recursive: true, force: true });
+    },
+  );
+
   // Two rounds once ran a Builder session under one id: the second claim failed to mount, and its
   // cleanup removed the first's command profiles under it.
   it("refuses a root another solve already holds, before touching it", async () => {

@@ -99,6 +99,7 @@ const reported = (session: string, reading: string, fresh: string | null, more: 
     session,
     reading,
     fresh,
+    starter: "h1",
     scored: { wins: 0, losses: 0, ties: 1 },
     versions: ["v1"],
     ...more,
@@ -564,6 +565,21 @@ describe("the outcome an Examiner hears of a task", () => {
     expect(outcomesOf(beside).get("kept")).toBe("earlier-reference");
   });
 
+  it("keeps the starter as the reference when a control comparison reported first", () => {
+    const controlFirst = [
+      ...heldOut("kept"),
+      ...solved("control", "kept", "h3", [P, P]),
+      ...solved("control", "kept", "h4", [P, P]),
+      reported("control", "no-step", "h4", { ...terms, old: "h3", starter: "h1", versions: ["kept"] }),
+      ...solved("b-1", "kept", "h1", [F, F]),
+      ...solved("b-1", "kept", "h2", [P, P]),
+      reported("b-1", "no-step", "h2", { ...terms, versions: ["kept"] }),
+    ];
+    expect(outcomesOf(controlFirst).get("kept")).toBe("reference-none");
+    expect(standingsOf(controlFirst).get("kept")).toEqual({ cell: "other-won", solves: 2 });
+    expect(referenceFailed(controlFirst)).toEqual(["kept"]);
+  });
+
   it("is told, beside the outcome, which tasks a valid answer is on record for, by a solve or the author's own try", () => {
     const known = [
       ...heldOut("solved"),
@@ -875,6 +891,35 @@ describe("the release before the draw", () => {
     ];
     expect(referenceFailed(lost)).toEqual([]);
     expect(referenceFailed([...lost, promotion])).toEqual(["a1"]);
+  });
+
+  it("keeps reference failures through empty reports and comparisons between other harnesses", () => {
+    for (const reading of ["no-change", "not-scored", "check-defects"]) {
+      for (const versions of [[], ["f1"]]) {
+        const empty = [
+          ...log,
+          ...solved("empty", "f1", "h1", [P, P]),
+          reported("empty", reading, "h2", { ...terms, versions, scored: null }),
+        ];
+        expect(referenceFailed(empty)).toEqual(failed);
+        expect(releaseOrder(empty, tasks, 4, "seed")).toEqual(releaseOrder(log, tasks, 4, "seed"));
+      }
+    }
+    const control = [
+      ...solved("control", "a1", "h3", [F, F]),
+      ...solved("control", "a1", "h4", [P, P]),
+      reported("control", "no-step", "h4", { ...terms, old: "h3", versions: ["a1"] }),
+    ];
+    expect(referenceFailed([...log, ...control])).toEqual(failed);
+    const afterPromotion = [...log, event("harness.promoted", { harness: "h2", from: "h1", rests: ["b-1"] })];
+    expect(referenceFailed([...afterPromotion, ...control])).toEqual([]);
+    const measured = [
+      ...log,
+      ...solved("b-2", "f1", "h1", [P, P]),
+      ...solved("b-2", "f1", "h2", [P, P]),
+      reported("b-2", "no-step", "h2", { ...terms, versions: ["f1"] }),
+    ];
+    expect(referenceFailed(measured)).toEqual([]);
   });
 });
 

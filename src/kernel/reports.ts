@@ -14,6 +14,7 @@
  * until the operator promotes another, and from then on the one last promoted (`promoted`). The
  * choice is the operator's and the record is the log's (`docs/plan.md`, Phase 6). A Builder goes
  * on from the harness its last session left (`latestBuilt`), step or none.
+ * A control or an unscored report cannot replace the reference's last measurement (12 October 2026).
  *
  * The stop rule is the plan's: as many moves in a row that could have shown a gain and showed none
  * as the campaign's patience (`stopRule`, `patienceOf`).
@@ -120,9 +121,8 @@ interface TaskRecord {
    *  and every task set aside, as `TalliedIn.order` counts them, where it was first set aside. */
   asideAt: number;
   asideOrder: number;
-  /** What the solves of the last reported comparison under the reference harness did with it, on
-   *  the side `TalliedIn.reference` names and on the old side where it names neither, and the
-   *  place of its first failed solve there among the log's solves. */
+  /** The reference's solves in its last scored comparison, and the place of its first failed
+   *  solve there among the log's solves. */
   readonly lastReference: { valid: boolean; failed: boolean; failedAt: number };
 }
 
@@ -401,11 +401,15 @@ function inOrder(placed: readonly (readonly [string, number])[]): string[] {
 function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
   const held = new Set(taskSets(events).held);
   const reports = lastReports(events);
-  // The reference harness: the one last promoted, or the one the first report was made against.
-  const reference = promoted(events) ?? reports[0]?.data.old;
-  const last = reports.at(-1);
-  // The reference's side of the last report: after a promotion its old side is the harness the
-  // promoted one replaced, which failed tasks the promoted harness answered.
+  const reference =
+    promoted(events) ?? reports.map(({ data }) => data.starter).find(isString) ?? reports[0]?.data.old;
+  const last = reports.findLast(
+    ({ data }) =>
+      Array.isArray(data.versions) &&
+      data.versions.length > 0 &&
+      asRecord(data.scored) !== null &&
+      (data.old === reference || data.fresh === reference),
+  );
   const lastReference = last?.data.fresh === reference ? reference : last?.data.old;
   const records = new Map<string, TaskRecord>();
   const of = (version: string): TaskRecord => {
@@ -568,7 +572,7 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
 }
 
 /**
- * The held-out tasks the reference harness failed in the last reported comparison: a solve under
+ * The held-out tasks the reference harness failed in its last scored comparison: a solve under
  * the comparison's reference side that ended as a fail, and no valid one of its on that task
  * there. With `unansweredTwice` it is what a release takes before the contract's draw: the tasks
  * that leave the reference room are the ones a Builder has to work on, and on 10 October three

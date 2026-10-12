@@ -713,6 +713,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     solved(unsolved, "h2", [false, false]);
     solved(packed, "h1", [true, false]);
     solved(packed, "h2", [true, true]);
+    // Reports written before 9 October did not name the starter; the first old side still stands.
     append(s.log, "comparison.reported", {
       session: "b-1",
       reading: "no-step",
@@ -877,6 +878,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         reading: "no-step",
         old,
         fresh,
+        starter: "h1",
         solves: side,
         setting: settingId(condition("any", "any")),
         versions: ids.map((id) => `v-${id}`),

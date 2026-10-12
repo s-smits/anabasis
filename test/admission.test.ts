@@ -7,6 +7,7 @@ import {
   admitComparison,
   admitSession,
   sessionAdmission,
+  shortOf,
   type Supply,
   supplyOf,
   type Wanted,
@@ -21,6 +22,7 @@ import { join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 
 const AT = "2026-10-09T00:00:00.000Z";
+const [P, F] = [true, false];
 const GOING = { checkpoints: 0, sinceStep: 0, stop: false };
 /** A campaign whose checker was read with no fault and is not frozen, before any comparison. */
 const SETS: Supply = {
@@ -56,24 +58,25 @@ const heldOut = (version: string): LogEvent[] => [
   event("task.gate", { version, gate: 1, outcome: "passed" }),
 ];
 const reported = (session: string, more: JsonObject) => event("comparison.reported", { session, ...more });
+const conditionOf = (task: string, harness: string, limits = LIMITS): Condition => ({
+  contract: "c1",
+  harness,
+  task,
+  model: "p/m",
+  effort: "high",
+  prices: { "p/m": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+  runtime: {},
+  compaction: "off",
+  solverTools: harness,
+  verifierTools: "t1",
+  sandbox: "p1",
+  limits,
+  host: "h",
+  side: "test",
+});
 /** A test-side solve under `limits`, which makes theirs the setting of the log's last solves. */
 function solvedUnder(solve: string, limits: typeof LIMITS) {
-  const condition: Condition = {
-    contract: "c1",
-    harness: "h1",
-    task: "v",
-    model: "p/m",
-    effort: "high",
-    prices: { "p/m": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-    runtime: {},
-    compaction: "off",
-    solverTools: "h1",
-    verifierTools: "t1",
-    sandbox: "p1",
-    limits,
-    host: "h",
-    side: "test",
-  };
+  const condition = conditionOf("v", "h1", limits);
   const id = conditionId(condition);
   return {
     events: [
@@ -88,6 +91,51 @@ const tallied = (wins: number, losses: number, setting: string) => ({
   versions: Array(8).fill("v"),
   setting,
 });
+let solveCount = 0;
+/** Comparison `session` of `old` against `fresh`, as a round logs it: each task's solves under the
+ *  comparison, two a side as `outcomes` gives them (true for a valid answer), then its report. */
+function roundLogged(
+  session: string,
+  [old, fresh]: readonly [string, string],
+  outcomes: Readonly<Record<string, readonly [readonly boolean[], readonly boolean[]]>>,
+): LogEvent[] {
+  const census = { old: [0, 0, 0], fresh: [0, 0, 0] };
+  const solves = Object.entries(outcomes).flatMap(([task, sides]) =>
+    ([old, fresh] as const).flatMap((harness, at) => {
+      const own = sides[at] ?? [];
+      const counts = census[at === 0 ? "old" : "fresh"];
+      counts[own.filter(Boolean).length] = (counts[own.filter(Boolean).length] ?? 0) + 1;
+      const condition = conditionOf(task, harness);
+      const id = conditionId(condition);
+      return [
+        event("condition.recorded", { id, condition: requireJsonValue(condition) }),
+        ...own.flatMap((valid) => {
+          solveCount += 1;
+          const solve = `s-${String(solveCount)}`;
+          const ending = valid ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" };
+          return [
+            event("solve.started", { solve, condition: id, comparison: session }),
+            event("solve.finished", { solve, ending }),
+          ];
+        }),
+      ];
+    }),
+  );
+  const versions = Object.keys(outcomes);
+  return [
+    ...solves,
+    reported(session, {
+      old,
+      fresh,
+      starter: "h0",
+      setting: settingId(conditionOf("any", "any")),
+      solves: 2,
+      versions,
+      scored: { wins: 0, losses: 0, ties: versions.length },
+      valid: census,
+    }),
+  ];
+}
 
 describe("what a log holds for the next comparison", () => {
   const [here, longer] = [solvedUnder("s-1", LIMITS), solvedUnder("s-2", { ...LIMITS, turns: 48 })];
@@ -167,8 +215,8 @@ describe("what a log holds for the next comparison", () => {
       ended: "finished",
     });
     expect(supplyOf([built, ...stepped], "latest").untied).toBe(0.25);
-    // A harness the comparison did not read closed nothing on record.
-    expect(supplyOf(stepped, "h9").untied).toBe(1);
+    // A harness no comparison read has no share on record, and every task counts.
+    expect(supplyOf(stepped, "h9").untied).toBeNull();
     // The campaign's reference harness is the starter until one is promoted, and that one after.
     expect(supplyOf(stepped, "promoted").untied).toBe(0.875);
     const promotion = event("harness.promoted", { harness: "h1", from: "h0", rests: [] });
@@ -204,6 +252,33 @@ describe("what a log holds for the next comparison", () => {
       valid: { old: [6, 1, 1], fresh: [0, 0, 8] },
     });
     expect(supplyOf([...log, pair, control], "p1", "h1").untied).toBeCloseTo(7 / 8, 10);
+  });
+
+  it("reads no comparison the reference stood on neither side of, where no harness is named beside it", () => {
+    // The stack review (12 October): a control of two other harnesses after a promotion read
+    // every task untied, and the decision table built where it should have asked for tasks.
+    const tasks = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    const solved = (fresh: (task: string) => boolean[]) =>
+      Object.fromEntries(tasks.map((task) => [task, [[F, F], fresh(task)] as const]));
+    const log = [
+      ...tasks.flatMap(heldOut),
+      ...roundLogged(
+        "g-1",
+        ["h0", "h1"],
+        solved((task) => (task === "h" ? [F, F] : [P, P])),
+      ),
+      event("harness.promoted", { harness: "h1", from: "h0", rests: [] }),
+    ];
+    const control = roundLogged(
+      "c-1",
+      ["h0", "p1"],
+      solved(() => [F, F]),
+    );
+    const wanted = { target: 8, trigger: 0.25 };
+    for (const events of [log, [...log, ...control]]) {
+      expect(supplyOf(events).untied).toBe(1 / 8);
+      expect(shortOf(supplyOf(events), wanted)).toBe("untied");
+    }
   });
 
   it("counts the tasks held out since that comparison, and the ones that wait for a label", () => {

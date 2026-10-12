@@ -171,10 +171,12 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
   // A task the harness to be compared with was valid on in every solve there can only tie again.
   const kept = reference === "promoted" ? (promoted(events) ?? "starter") : reference;
   const named = kept === "latest" ? latestBuilt(events) : kept === "starter" ? starter : kept;
+  // With no harness named beside it, any comparison that read the reference: until 12 October any
+  // at all, and a later control of two other harnesses read every task untied (the stack review).
   const ofPair = (data: JsonObject) =>
-    fresh === undefined ||
-    (data.old === named && data.fresh === fresh) ||
-    (data.old === fresh && data.fresh === named);
+    fresh === undefined
+      ? data.old === named || data.fresh === named
+      : (data.old === named && data.fresh === fresh) || (data.old === fresh && data.fresh === named);
   const last = reports.findLast(
     ({ data }) =>
       Array.isArray(data.versions) &&

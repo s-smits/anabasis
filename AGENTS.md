@@ -318,7 +318,8 @@ reads (`campaign.setting`, `harness.promoted`), the stop rule refuses the next c
 Two of the seven are given once, for every campaign: the campaign command freezes an exam whose
 reading holds no fault, and promotes the harness the rule names, without waiting. A campaign runs
 unattended to a typed ending, as a goal runs until it is met (operator, 12 October, deciding
-`docs/plan.md` row F29). `--attended` takes both back to the operator's word for one campaign.
+`docs/plan.md` row F29). `--attended` takes both back to the operator's word for one campaign,
+which keeps it until `--no-attended`.
 Admitting a check that has a fault, and going on past the stop rule, still take the word each time
 (`--admit`, `--past-stop`).
 

@@ -5,7 +5,7 @@
  *
  * The opening is the operator's conditions for the whole campaign, recorded once and again where
  * a command names another: the total budget, the full limit of a solve, the Builder sessions
- * before a comparison, who sits in each seat,
+ * before a comparison, who sits in each seat, whether the operator's word is waited for,
  * and, for a campaign that opens from a prompt, the prompt and who solves. None of them moves a
  * comparison's reading. The setting is the log's own record (`campaign.setting`).
  *
@@ -41,6 +41,10 @@ export interface Opening {
    *  campaign bears in a row before it ends (`--patience`; `PATIENCE`). */
   readonly patience: number;
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
+  /** Whether the freeze and a promotion wait for the operator's word (`--attended`). Until
+   *  12 October it was the running command's flag alone, so a reopen that did not name it ran an
+   *  attended campaign on unattended, and promoted without the operator. */
+  readonly attended: boolean;
   /** The operator's prompt, for a campaign that opened from one: its exam is drafted from it
    *  (`src/examiner/draft.ts`). Null for a campaign that opened over a stored pack. */
   readonly prompt: string | null;
@@ -101,6 +105,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     sessions: isNumber(data.sessions) ? data.sessions : SESSIONS,
     patience: patienceOf(events),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
+    attended: data.attended === true,
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
     terms: Object.fromEntries(

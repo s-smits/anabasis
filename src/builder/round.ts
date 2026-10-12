@@ -439,6 +439,14 @@ function unanswered(log: string, id: string, { solve, ending }: Practised): stri
   return asRecord(record?.data.tokens)?.output === 0 ? ending.reason : null;
 }
 
+/** The rejections of the comparison that hold no ruling, on tasks still held out: each is put to
+ *  the Referee again before the report (`ruleLeft`). Until 12 October one set its task aside for
+ *  good, as one Referee call the provider's session limit cut did on buffer-a's g-5. */
+function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
+  const held = new Set(taskSets(events).held);
+  return rejections(events, fixed, NO_LABELS).filter(({ task, ruling }) => ruling === null && held.has(task));
+}
+
 /**
  * What runs a comparison's solves: the jobs' pool, the Referee's part, and the reasons it stops
  * taking jobs. A solve that throws ends the pool and is thrown again by `settle` once every solve
@@ -470,13 +478,12 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     !capped &&
     new Set([...dropped, ...defective]).size <= request.defects;
   const silent = new Set<string>();
-  /** Put one rejected answer to the Referee, where one is seated. */
+  /** Put one rejected answer to the Referee where one is seated, and again by `ruleLeft` if unruled. */
   const rule = async (solve: string, task: string): Promise<void> => {
     if (request.referee === undefined) return;
     try {
       if ((await request.referee(solve, task, kill)).ruling === DEFECT) defective.add(task);
     } catch (error) {
-      // A rejection nobody ruled on is put to the Referee again before the report (`ruleLeft`).
       faults.push(`${solve}: ${errorMessage(error)}`);
     }
   };
@@ -526,25 +533,14 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     };
     await Promise.all(Array.from({ length: Math.max(1, request.concurrency) }, worker));
   };
-  /** Put to the Referee the rejections left unruled, by an earlier run of the comparison killed
-   *  between a solve's end and its ruling, or by a reader that failed or gave no answer; and stop
-   *  the comparison before its report where one still has none, to go on from its log and ask
-   *  again. Until 12 October such a rejection set its task aside in the report, for good: on
-   *  buffer-a's g-5 one Referee call cut by the provider's session limit cost the step. */
+  /** Put to the Referee the rejections left unruled, and stop before the report while one has none. */
   const ruleLeft = async (): Promise<void> => {
-    const unruled = () => {
-      const events = read(log);
-      const held = new Set(taskSets(events).held);
-      return rejections(events, fixed, NO_LABELS).filter(
-        ({ task, ruling }) => ruling === null && held.has(task),
-      );
-    };
-    const left = unruled();
+    const left = unruledOf(read(log), fixed);
     for (let at = 0; at < left.length && going(); at += request.concurrency) {
       const lane = left.slice(at, at + request.concurrency);
       await Promise.all(lane.map(({ solve, task }) => rule(solve, task)));
     }
-    const still = request.referee === undefined || !going() ? [] : unruled();
+    const still = request.referee === undefined || !going() ? [] : unruledOf(read(log), fixed);
     if (still.length > 0) {
       throw new Error(
         `the Referee gave no ruling on ${still.map(({ solve }) => solve).join(", ")}, so the comparison stops before its report: run it again and it goes on from its log, where they are put to the Referee again`,

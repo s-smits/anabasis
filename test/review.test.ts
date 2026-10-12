@@ -297,10 +297,16 @@ describe("the Referee", () => {
       earned({ rule: "R9", field: SPAN }),
       earned({ rule: "R1", field: "$.depth" }),
       earned({ rule: "R1", field: "$.members[0].area" }),
-      earned({ rule: "R1", field: SPAN }),
+      fauxAssistantMessage(fauxToolCall("probe_check", { path: SPAN, value: "9" }), toolUse),
+      earned({ rule: "R1", field: SPAN, probes: [1] }),
     ]);
     failed(s.record);
-    expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "earned", rule: "R1", field: SPAN });
+    expect(await referee(s.reader, fail(s))).toMatchObject({
+      ruling: "earned",
+      rule: "R1",
+      field: SPAN,
+      probes: [1],
+    });
     expect(s.sent[1]).toContain("names the public rule the answer breaks, one a refusing check cites: R1");
     expect(s.sent[2]).toContain("one a refusing check cites: R1");
     expect(s.sent[3]).toContain("a path that exists in the answer");
@@ -309,8 +315,34 @@ describe("the Referee", () => {
       ruling: "earned",
       rule: "R1",
       field: SPAN,
-      turns: 5,
+      turns: 6,
     });
+  });
+
+  it("refuses an earned ruling as evidence unless its probe moved a refusing check off its refusal, and leaves the fail unclear", async () => {
+    // truss-141-m3's rulings of 12 October, replayed in shape: 8 of 8 on `mass-budget` cited a
+    // probe that moved nothing, and one of the 12 cited none. A span of 11 is still over the
+    // check's 10, so the check refuses it as it refused 12; the members are a field it never reads.
+    const earned = (probes: number[]) =>
+      ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "Over the limit.", probes });
+    const s = setup([
+      earned([]),
+      fauxAssistantMessage(fauxToolCall("probe_check", { path: SPAN, value: "11" }), toolUse),
+      earned([1]),
+      fauxAssistantMessage(fauxToolCall("probe_check", { path: "$.members[0].area", value: "1" }), toolUse),
+      earned([2]),
+      ruling({ ruling: "unclear", reason: "No probe moved the check.", probes: [1, 2] }),
+    ]);
+    failed(s.record);
+    expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "unclear", probes: [1, 2] });
+    const refused =
+      "an earned ruling cites a probe that changed $.span and moved a check that cites R1 off its refusal";
+    // Each call is sent the whole reading so far: the refusals are one, then two, then three.
+    expect([1, 3, 5].map((call) => (s.sent[call] ?? "").split(refused).length - 1)).toEqual([1, 2, 3]);
+    expect(read(s.log).at(-1)?.data.probeRows).toEqual([
+      expect.objectContaining({ id: 1, moved: [] }),
+      expect.objectContaining({ id: 2, moved: [] }),
+    ]);
   });
 
   it("sets an answer the checks accepted for the task beside the one under review", async () => {

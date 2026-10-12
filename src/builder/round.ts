@@ -251,10 +251,10 @@ const TASK_STATE = "task.state";
  * scored 4 of the 7 tasks written for it. `last` are tasks taken last, group by group: a repeat's
  * (`firstStageOf`). Within each epoch the draw takes the others first, by the same hash, and the
  * tasks of each group of `last` in turn only where the epoch holds too few before it, so that a
- * campaign that holds no more than the target draws the set it drew.
- * Until 11 October a repeat re-solved its first stage's tasks: the p183 campaign's repeat solved the
- * same 12 task versions for 15 dollars and 53 minutes, which guards against the noise of a solve and
- * not against a lucky draw of tasks (`docs/next.md`, question 9, the operator's decision).
+ * campaign that holds no more than the target draws the set it drew. Until 11 October a repeat
+ * re-solved its first stage's tasks (p183: 12 versions, 15 dollars; `docs/next.md`, question 9),
+ * which guards a solve's noise and not a lucky draw. The fresh draw buys no power (0.51 against 0.52
+ * in the overhaul plan's simulation, 4b): it guards against reusing one test set across attempts.
  */
 export function scoredSet(
   events: readonly LogEvent[],

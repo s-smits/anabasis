@@ -498,6 +498,9 @@ function onStep(ground: Ground): Decided | null {
  * Until 12 October the first comparison was held to one target, and a repeat on a campaign
  * holding exactly that re-scored the versions its first stage scored (buffer-141-m3's g-2): the
  * repeat takes the tasks its first stage did not score first (`scoredSet`), where there are any.
+ * Holding a repeat's draw buys no power, since a repeat on fresh tasks finds a true step about as
+ * often as one on the same tasks (0.51 against 0.52 in the overhaul plan's simulation, section
+ * 4b): it is held against reusing one test set across attempts, as `scoredSet` says.
  */
 function toTarget(ground: Ground, before: string): Decided | null {
   const { plan, scorable, drafts, all } = ground;

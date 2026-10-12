@@ -6,9 +6,8 @@
  * the rest of this file necessary: a solver that can install things needs somewhere to install them
  * that is not the draft it is judged on, so a command may write its seat's root, which holds the
  * seat's HOME and its temporary folder, but for the host's own folder in it, and nothing else.
- * Darwin additionally permits the temporary children system toolchains take without asking, since
- * they resolve their scratch directory through `confstr` and never read `TMPDIR`; product staging
- * paths there are denied separately. The host home and the repository stay closed, except for the
+ * The host's shared temporary folders, `/tmp`, `/var/tmp` and Darwin's per-user one, are closed to
+ * it whole. The host home and the repository stay closed, except for the
  * runtime and toolchain roots the enclosing solve policy reopens read-only so an installed
  * interpreter can still find itself, and for the tool tree, which a tree inside the seat's root
  * has to really lie inside that root to be (`commandReadAllows`, 11 October).
@@ -245,18 +244,18 @@ function darwinCommandProfile(
   const closed = hostRoots();
   const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].sort();
   const { roots: readAllows, manifests } = commandReadAllows(base, readDenies, dirs);
-  // The shared temporary directory a toolchain writes without asking: the confstr one clang uses,
-  // as Apple's python3 shim does for a command that names it by its path. `/tmp` is no longer
-  // granted. `mktemp` and Python follow `TMPDIR`, which is the seat's own folder, and what a
-  // command spells as `/tmp/...` outright landed in a folder every seat of every campaign on the
-  // host shares: on 10 October reference solves of two campaigns ran a PHREEQC that a third
-  // campaign's Builder had installed under `/tmp` four hours before. Linux gives each command an
-  // empty `/tmp` of its own; a Seatbelt rule cannot, so Darwin closes it, and such a write is
-  // refused where Linux would keep it private. `/var/tmp` is the same, and was left open until
-  // 12 October: a v1 run's folder there held a held-out task's text and a graded solve of it, and an
-  // Examiner listed and read inside it.
-  const userTemp = userTempRules([]);
-  const sharedTmp = canonicalRoots(["/tmp", "/var/tmp"]);
+  // The host's shared temporary folders. `mktemp` and Python follow `TMPDIR`, which is the seat's
+  // own folder, and what a command spells as `/tmp/...` outright landed in a folder every seat of
+  // every campaign on the host shares: on 10 October reference solves of two campaigns ran a
+  // PHREEQC that a third campaign's Builder had installed under `/tmp` four hours before. Linux
+  // gives each command an empty `/tmp` of its own; a Seatbelt rule cannot, so Darwin closes it, and
+  // such a write is refused where Linux would keep it private. `/var/tmp` is the same, and was left
+  // open until 12 October: a v1 run's folder there held a held-out task's text and a graded solve of
+  // it, and an Examiner listed and read inside it. The per-user one, `confstr`'s, is the same
+  // again but for the files and folders `mktemp` and Apple's `/usr/bin` shims make in it, which
+  // take it whatever `TMPDIR` says (`userTempRules`).
+  const userTemp = userTempRules();
+  const sharedTmp = canonicalRoots(["/tmp", "/var/tmp", ...userTemp.roots]);
   const profile = [
     "(version 1)",
     // The same read posture as the session that owns this command and as the Builder's authoring
@@ -268,22 +267,12 @@ function darwinCommandProfile(
     // not (`src/kernel/verify.ts`).
     base.network ? "(allow network*)" : "(deny network*)",
     ...sbRule("deny file-write*", "subpath", writeDenies),
-    // The writes outside the scratch tree a toolchain takes without asking. They open one level
-    // down, directories included, because a `mktemp -d` there has a name only the tool knows, so
-    // the grant cannot be narrower without refusing the tool outright. That leaves another tenant's
-    // tree under the same root open, which is the Darwin wall's stated limit; the Linux path closes
-    // it with a private tmpfs instead. What the host keeps there, every seat's root and its own
-    // scratch, is closed by subpath below.
-    ...userTemp.rules,
-    // The directory itself is not listed, though a file in it still opens by its name. Its listing
-    // is every tenant's names, which Linux hides under a tmpfs, and Bun reads the listing of each
-    // ancestor of its working directory as it starts: on 11 October that was 33,673 entries, and
-    // 26 ms of the 48 a walled `bun -e 1` took below it.
-    ...sbRule("deny file-read-data", "literal", [...new Set(userTemp.roots.flatMap(canonicalForms))].sort()),
-    // The host's `/tmp` and `/var/tmp`, closed whole: what another seat left there is neither read
-    // nor run, and a command leaves nothing there for the next. The seat's root is opened again
-    // further down, after it, for a controller whose own temporary directory lies under `/tmp`.
+    // The host's shared temporary folders, closed whole: what another process left there is
+    // neither read nor run, and a command leaves nothing there for the next. Their listings are
+    // every tenant's names, which Linux hides under a tmpfs. The seat's root, which lies in the
+    // per-user one, is opened again further down, after it, and so is a tool tree there.
     ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", sharedTmp),
+    ...userTemp.rules,
     ...sbRule("deny file-read*", "subpath", readDenies),
     ...traversalMetadataRules(readAllows),
     // Seatbelt prefers the rule naming the more specific operation over the one naming the family,

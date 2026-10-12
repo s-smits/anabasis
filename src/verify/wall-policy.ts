@@ -112,37 +112,38 @@ function darwinAnswer(...command: string[]): string | undefined {
 }
 
 /**
- * The confstr temp root and `extraRoots` in both path forms, which each wall records in its policy
- * identity, and the rules granting a toolchain every direct child of them and what lies beneath it.
- * `regex-quote` is Seatbelt's own path-to-regex boundary, the form Apple's shipped profiles and
- * Firefox's macOS sandbox use.
+ * The per-user temporary directory a Darwin toolchain takes whatever `TMPDIR` says, in both path
+ * forms, and what the command wall grants inside it once it has closed it whole
+ * (`darwinCommandProfile`). `mktemp` takes it before `TMPDIR` on macOS 15, and Apple's `/usr/bin`
+ * shims, `cc` and `python3` among them, reset `TMPDIR` to it, so without a grant `mktemp -d` fails
+ * in every command and a check's tool that names `/usr/bin/cc` cannot compile (`unable to make
+ * temporary file`). The grant is what those tools make there: a regular file directly in it, and a
+ * folder named as `mktemp` names one (a prefix, a dot and ten letters or digits) or as Python's
+ * `tempfile` does (`tmp` and eight of its own), with what lies in it. Any other folder there is
+ * another process's, and stays closed with everything in it, as the directory's listing does, so a
+ * folder of the grant's shape is found only by its random name.
  *
- * A narrower, files-only version of this rule keeps concurrent check cells shut, but it also refuses
- * `mktemp -d`, `mkdir /tmp/x` and every python `TemporaryDirectory()`. So the wall grants this shape
- * and closes the host's two roots by path after it (`hostRoots`), which is the only arrangement
- * under which a toolchain works and a sibling's cell stays shut.
+ * Until 12 October every child of the directory was granted, folders and all, so a command read and
+ * wrote every other process's folder there: a v1 run's, another agent's scratch, a test suite's.
+ * `vnode-type` keeps the first grant to files, and Seatbelt's regex takes no counted repetition, so
+ * the names are spelled out class by class. The directory is asked of the system rather than of the
+ * environment, once per process, since `confstr` is what those tools read and `TMPDIR` does not move
+ * it; a host that cannot answer has no such directory to grant.
  */
-export function userTempRules(extraRoots: readonly string[]) {
-  // The per-user temporary directory a Darwin toolchain uses whatever `TMPDIR` says.
-  //
-  // Clang takes its scratch directory from `confstr(_CS_DARWIN_USER_TEMP_DIR)` and ignores the
-  // environment, and Apple's `/usr/bin/python3` shim rewrites `TMPDIR` to the same directory before
-  // it execs, for a command that names the shim by its path (`toolchainPathDirs` keeps it from being
-  // found first). Without a write grant there, `cc` is an advertised runtime the shell cannot use:
-  // `clang: error: unable to make temporary file: Operation not permitted`.
-  //
-  // Reading the controller's own `TMPDIR` instead grants a different directory: it is this one under
-  // a terminal and not under launchd, and the launch procedure sets a run-specific one, so the grant
-  // lands where no compiler looks and every Built Harness compile fails the same way. The directory
-  // is therefore asked of the system rather than of the environment, once per process, and a host
-  // that cannot answer has no such directory to grant.
+export function userTempRules() {
   const confstr = darwinAnswer("/usr/bin/getconf", "DARWIN_USER_TEMP_DIR")?.replace(/\/$/, "");
-  const roots = canonicalRoots(confstr === undefined ? extraRoots : [confstr, ...extraRoots]);
-  const childTrees = roots.map(
-    (root) =>
-      `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" (regex-quote ${capturedJsonStringify(root)}) #"/[^/]+(/.*)?$")))`,
-  );
-  return { roots, rules: childTrees };
+  const roots = confstr === undefined ? [] : canonicalForms(confstr);
+  const made = `([^/]+[.]${"[A-Za-z0-9]".repeat(10)}|tmp${"[a-z0-9_]".repeat(8)})`;
+  const rules = roots.flatMap((root) => {
+    const under = `(regex-quote ${capturedJsonStringify(root)})`;
+    return [
+      `(allow file-read* file-read-metadata file-write* (require-all (regex (string-append #"^" ${under} #"/[^/]+$")) (vnode-type REGULAR-FILE)))`,
+      `(allow file-read* file-read-metadata file-write* (regex (string-append #"^" ${under} #"/${made}(/.*)?$")))`,
+      // A `stat` of the directory itself, which a tool makes before it writes there.
+      `(allow file-read-metadata (literal ${capturedJsonStringify(root)}))`,
+    ];
+  });
+  return { roots, rules };
 }
 
 /**

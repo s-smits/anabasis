@@ -26,6 +26,7 @@ import {
   solveDirs,
 } from "../src/solve/command.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
+import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 import { hostScratch } from "../src/verify/wall-policy.ts";
 
@@ -226,8 +227,8 @@ describe("a solve's walled commands", () => {
 
   it("refuse a command a stored pack by the pack's path, which no folder's name stands in for", async () => {
     // A pack laid out as the buffer pack is, its hidden values under `correctness-model`.
-    const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-pack-repo-")));
-    const pack = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-pack-")));
+    const repoRoot = toolchainTemp("ana-command-pack-repo");
+    const pack = toolchainTemp("ana-command-pack");
     const bundle = join(pack, "fixture", "workspace");
     const hidden = join(bundle, "correctness-model", "expected.json");
     mkdirSync(dirname(hidden), { recursive: true });
@@ -242,8 +243,9 @@ describe("a solve's walled commands", () => {
         return (await run(walled(base, dirs), `cat ${hidden} 2>/dev/null || echo pack-refused`)).output;
       };
       expect(await readUnder([pack, bundle])).toBe("pack-refused\n");
-      // Left out of the policy, the same file is read on Darwin, where the temporary directory is
-      // open: its folder's name closes nothing. Linux hides the whole temporary directory.
+      // Left out of the policy, the same file is read on Darwin in a folder named as `mktemp` names
+      // one, which the wall grants a toolchain: its folder's name closes nothing. Linux hides the
+      // whole temporary directory.
       if (runtimeProcess.platform === "darwin") expect(await readUnder([])).toBe("pack-canary\n");
     } finally {
       await release();

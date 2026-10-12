@@ -241,18 +241,33 @@ describe("an Examiner session", () => {
         hidden: { seed: 1 },
         answer: { answer: "1", unit: "N" },
       }),
-      propose(7, 8),
+      // A hidden value sent as JSON text is read as the JSON it encodes, for the checks and for the
+      // mark: on 12 October tries sent "null" where their proposals sent null, and no mark was kept.
+      call("try_answer", {
+        family: "fixture",
+        public_input: { base: 9 },
+        hidden: '{"seed": 1}',
+        answer: { answer: "42", unit: "N" },
+      }),
+      propose(7, 8, 9),
       finish,
       finish,
     ]);
+    const checked: unknown[] = [];
     await examine({
       ...kept.request,
-      verify: async (_task, answer) =>
-        asRecord(answer)?.answer === "42" ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] },
+      verify: async (task, answer) => {
+        checked.push(task.hidden);
+        return asRecord(answer)?.answer === "42"
+          ? { kind: "pass" }
+          : { kind: "fail", blocking: ["check-product"] };
+      },
     });
+    expect(checked).toEqual([{ seed: 1 }, { seed: 1 }, { seed: 1 }]);
     expect(kept.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
       ["x-1-001", true],
       ["x-1-002", null],
+      ["x-1-003", true],
     ]);
     expect(JSON.stringify(kept.of("task.proposed"))).not.toContain('"answer":"42"');
     // The Examiner is told it has the tool, and the shell, and what neither does to the exam.

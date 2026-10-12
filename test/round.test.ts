@@ -1486,6 +1486,23 @@ describe("the scored set", () => {
     expect(after.slice(1)).toEqual(scoredSet(heldOut(held), 3, "contract-a"));
   });
 
+  it("takes the tasks held out since the last comparison began first within an epoch, then the rest by hash", () => {
+    // esp32-141-m3b, 12 October: an epoch starts only at a promotion, so the tasks an Examiner wrote
+    // after a comparison that left no room were drawn by the hash among the ones it had scored,
+    // and g-3 scored 4 of the 7 written for it.
+    const first = scoredSet(heldOut(held), 4, "contract-a");
+    const started = { at, kind: "comparison.started", data: { session: "g-1", tasks: first } } as const;
+    const written = ["v7", "v8", "v9"];
+    const events: LogEvent[] = [...heldOut(held), started, ...heldOut(written)];
+    const next = scoredSet(events, 4, "contract-a");
+    expect(next.slice(0, 3).toSorted()).toEqual(written);
+    expect(next.slice(3)).toEqual(scoredSet(heldOut(held), 1, "contract-a"));
+    // A task held out before that comparison began, scored by it or not, is no newer than another.
+    expect(
+      scoredSet([...events, { ...started, data: { session: "g-2", tasks: next } }], 9, "contract-a"),
+    ).toEqual(scoredSet(heldOut([...held, ...written]), 9, "contract-a"));
+  });
+
   it("is every held-out task where the campaign holds fewer than were asked for", () => {
     expect(scoredSet(heldOut(held), 12, "contract-a").toSorted()).toEqual(held);
     expect(scoredSet([], 12, "contract-a")).toEqual([]);

@@ -244,9 +244,13 @@ const TASK_STATE = "task.state";
  * so is one the reference answered in every solve of two comparisons under the setting, which can
  * only tie again, but for the third of them the hash keeps (`exhausted`).
  *
- * `last` are tasks taken last: a repeat's first stage's (`firstStageOf`). Within each epoch the
- * draw takes the others first, by the same hash, and the tasks of `last` only where the epoch holds
- * too few others, so that a campaign that holds no more than the target draws the set it drew.
+ * Within each epoch the tasks held out since the last comparison began come first, by the hash:
+ * an epoch starts only at a promotion, so until 12 October a task written after a comparison that
+ * left no room was drawn no earlier than one that comparison had already scored, and esp32's g-3
+ * scored 4 of the 7 tasks written for it. `last` are tasks taken last: a repeat's first stage's
+ * (`firstStageOf`). Within each epoch the draw takes the others first, by the same hash, and the
+ * tasks of `last` only where the epoch holds too few others, so that a campaign that holds no
+ * more than the target draws the set it drew.
  * Until 11 October a repeat re-solved its first stage's tasks: the p183 campaign's repeat solved the
  * same 12 task versions for 15 dollars and 53 minutes, which guards against the noise of a solve and
  * not against a lucky draw of tasks (`docs/next.md`, question 9, the operator's decision).
@@ -265,13 +269,19 @@ export function scoredSet(
     .map((epoch) => epoch.filter((version) => held.has(version)));
   const reserved = Math.min(Math.floor(count / OLDER_SHARE), older.flat().length);
   const taken = new Set(last);
-  /** `wanted` of an epoch's tasks: the ones not taken last first, then the ones that are. */
-  const drawn = (epoch: readonly string[], wanted: number) => {
-    const others = epoch.filter((version) => !taken.has(version));
-    const before = draw(others, Math.min(wanted, others.length), contract);
-    const after = epoch.filter((version) => taken.has(version));
-    return [...before, ...draw(after, wanted - before.length, contract)];
-  };
+  const began = events.findLastIndex(({ kind }) => kind === STARTED);
+  const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
+  /** `wanted` of an epoch's tasks, tier by tier and each by the hash: of the ones not taken last,
+   *  those held out since the last comparison began and then the others; then the ones taken last. */
+  const drawn = (epoch: readonly string[], wanted: number) =>
+    [
+      epoch.filter((version) => !taken.has(version) && since.has(version)),
+      epoch.filter((version) => !taken.has(version) && !since.has(version)),
+      epoch.filter((version) => taken.has(version)),
+    ].reduce<string[]>(
+      (got, tier) => [...got, ...draw(tier, Math.min(wanted - got.length, tier.length), contract)],
+      [],
+    );
   const scored = drawn(newest, Math.min(count - reserved, newest.length));
   for (const epoch of older) {
     scored.push(...drawn(epoch, Math.min(count - scored.length, epoch.length)));

@@ -315,7 +315,9 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
               proposed: count(end.proposed),
               held: listed(end.held),
               refused: listed(end.refused),
-              billed: count(end.billed),
+              // With the solves it asked for to try a draft task (`try_task`), which name it where a
+              // comparison's name the comparison: until 12 October no step held them.
+              billed: count(end.billed) + billedParts(events, id).comparison,
             };
       return [{ step: "examiner", id, ...read, ...counts }];
     }

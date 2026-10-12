@@ -31,6 +31,7 @@ import { unpromoted } from "#src/builder/decide.ts";
 import { openingOf, planOf } from "#src/builder/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { comparedAs, promoted } from "#src/kernel/reports.ts";
+import { existsSync } from "#src/meta/filesystem.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -93,6 +94,8 @@ export async function promoteCommand(args: readonly string[]): Promise<number> {
     harness: kept.digest,
     from: now,
     rests,
+    // Whether it installed programs, which a reading of them alone then owes (`owedReading`).
+    programs: existsSync(join(kept.dir, ".toolchain")),
     ...keyIfDefined("despite", why === null ? undefined : despite),
   });
   console.log(

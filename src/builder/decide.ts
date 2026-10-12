@@ -109,6 +109,7 @@ const SETTING = "campaign.setting";
  *  none, so a second says the Examiner cannot make room for this reference. */
 const ROOMLESS = 2;
 const ROOM = "room";
+const PROMOTED = "promoted";
 /** What an Examiner session's reason adds where the tasks written since the comparison are too
  *  few yet: without it two sessions in a row give one reason, as the first campaign's did. */
 const fewYet = (since: number): string =>
@@ -336,7 +337,8 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
   }
   const control = controlled(ground);
   if (control !== null) return end("control", control);
-  const next = afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
+  const next =
+    owedReading(ground) ?? afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
   if (next.move === "compare") return afforded(ground, next);
   if (next.move !== "build") return next;
   return toPractise(ground, supply) ?? unshown(ground) ?? next;
@@ -519,6 +521,31 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
 }
 
 /**
+ * A reading a promotion owes (the overhaul plan's P3, as ruled on 12 October). The first harness
+ * promoted over the empty Starter is set-up, epoch 0, and the climb counts from it (`epochLine`).
+ * A promoted harness that installed programs has them read alone against it (`programs-of`): what
+ * its guide and tools add to them, and at epoch 0 what the first win was. After each later
+ * promotion the Starter is read against the new reference once, the lower control and never the
+ * reference (`starter_share`). A reading and never a gate. Null where none is owed.
+ */
+function owedReading(ground: Ground): Decided | null {
+  const { events, all, reference, starter } = ground;
+  const at = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  if (at === -1 || reference === null || reference === starter) return null;
+  const since = all.filter((each) => each.at > at);
+  if (events[at]?.data.programs === true && !since.some(({ fresh }) => fresh === reference)) {
+    const why = `harness ${short(reference)} was promoted with programs it installed: they are read alone against it, for what its guide and tools add to them`;
+    return (
+      toTarget(ground, why) ?? { move: "compare", fresh: PROMOTED, reference: `programs-of:${PROMOTED}`, why }
+    );
+  }
+  const later = events.slice(0, at).some(({ kind }) => kind === "harness.promoted");
+  if (!later || since.some(({ fresh, old }) => fresh === starter && old === reference)) return null;
+  const why = `harness ${short(reference)} is this epoch's reference: the starter is read against it once, as the lower control`;
+  return toTarget(ground, why) ?? compare(why, "starter");
+}
+
+/**
  * The tasks change where the harness now the reference answered nearly all of them: its room is
  * read from the last comparison it was in, whichever side it took (`roomOf`), until a comparison
  * against it as the reference reads the tasks again or tasks are held out since. A harness is
@@ -642,7 +669,8 @@ function onLatest(ground: Ground): Decided {
     ({ kind, data }, index) =>
       kind === "build.finished" && index > lastAt && data.ended !== "killed" && data.ended !== "crashed",
   ).length;
-  const needed = all.length === 0 ? 1 : plan.sessions;
+  // One session a comparison until set-up stands (epoch 0, `owedReading`), and the plan's after.
+  const needed = reference === ground.starter ? 1 : plan.sessions;
   // Under a setting no comparison has run in yet, the harness is read there at once.
   if (all.length > 0 && sessions < needed) {
     return build(

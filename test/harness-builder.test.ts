@@ -242,7 +242,7 @@ describe("a campaign run by its log", () => {
       {
         budget: null,
         limit: null,
-        sessions: 3,
+        sessions: 2,
         patience: 2,
         seats: { builder: null, examiner: null, reviewer: null },
         // The level is pinned whether or not a command named it: this tree's default.
@@ -549,7 +549,7 @@ describe("a campaign run by its log", () => {
     const report = readFileSync(join(to, "REPORT.md"), "utf8");
     // The step is named with the comparisons that read it and its last tally beside it.
     expect(report).toContain(
-      `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
+      `harness ${handed.harness.slice(0, 8)}, set-up (epoch 0), read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
     );
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");

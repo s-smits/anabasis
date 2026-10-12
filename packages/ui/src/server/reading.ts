@@ -26,7 +26,7 @@
  * report's own `p` is one-sided.
  */
 import { type Decided, decidedLine, type Ending } from "../../../../src/builder/move.ts";
-import { regressionOf } from "../../../../src/builder/climb.ts";
+import { barsOf, regressionOf } from "../../../../src/builder/climb.ts";
 import { openSteps } from "../../../../src/builder/handover.ts";
 import { reported } from "../../../../src/builder/comparison.ts";
 import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
@@ -172,6 +172,7 @@ const coreIn = once((log) => {
     prompt: openingIn(log)?.prompt ?? null,
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
+    bars: barsOf(log.events),
     supply: campaign.supply,
     reference: campaign.reference,
     starter: starterIn(log),

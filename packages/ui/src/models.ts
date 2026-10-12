@@ -24,7 +24,7 @@
  * shows, never a silent empty list.
  */
 import type { Supply } from "../../../src/builder/admission.ts";
-import type { regressionOf, Share } from "../../../src/builder/climb.ts";
+import type { regressionOf, Share, Worth } from "../../../src/builder/climb.ts";
 import type { Handover } from "../../../src/builder/handover.ts";
 import type { Decided, Ending as CampaignEnding } from "../../../src/builder/move.ts";
 import type { Seat, Terms } from "../../../src/builder/opening.ts";
@@ -304,6 +304,9 @@ export interface CampaignReading extends Answer {
   /** Whether the freeze and a promotion wait for the operator's word (`Opening.attended`,
    *  `--attended`). The table names such a move all the same, and the campaign command waits. */
   readonly attended: boolean;
+  /** The three bars a promotion is read against, as the opening sets them or by default
+   *  (`barsOf`, `src/builder/climb.ts`): read and printed, gating nothing. */
+  readonly bars: Worth["bars"];
   readonly supply: Supply;
   /** Digests: the harness last promoted, and the starter as the comparisons name it. Null where the
    *  log names none. */

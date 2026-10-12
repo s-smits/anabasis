@@ -134,6 +134,25 @@ test("an attended campaign says so in its set-up, and that a promotion the table
   expect(paneOf({ ...unattended, nextMove: promote })).not.toContain(waits);
 });
 
+test("the set-up names the bars a promotion is read against, and the next move the row of the table that chose it", () => {
+  const reading = readingOf(fixture.name);
+  // No opening of the fixture sets a bar, so each stands at its default.
+  expect(reading.bars).toEqual({ effect: 0.25, transfer: 0.15, cost: 3 });
+  const html = paneOf(reading);
+  expect(html).toContain("<dt>bars</dt>");
+  expect(html).toContain("effect 25 points · transfer within 15 points · cost 3 attempts, gating nothing");
+  const promote = {
+    move: "promote",
+    why: "a step read twice",
+    harness: "h",
+    line: "next · promote",
+  } as const;
+  expect(paneOf({ ...reading, nextMove: { ...promote, row: 7 } })).toContain(
+    'title="row 7 · next · promote"',
+  );
+  expect(paneOf({ ...reading, nextMove: promote })).toContain('title="next · promote"');
+});
+
 test("a campaign that ended with no promotion names its ending and draws no divider", () => {
   const reading = readingOf(fixture.units);
   expect(reading.promotions).toHaveLength(0);

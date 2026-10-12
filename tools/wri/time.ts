@@ -267,12 +267,14 @@ function causeOf(log: Index, spans: readonly Span[], index: number, gap: number)
  *  read nothing on buffer on 10 October, whose longest gap was 19.5 minutes, and gave recode's two
  *  longer ones as a count and the time of the first, with nothing of what ran. */
 export function costTriggers(log: Index): Trigger[] {
-  const done = log.solves.flatMap((solve) => (solve.outcome === null ? [] : [solve.seconds]));
+  // A solve that measured: truss's 30 provider and killed attempts of under 10 s on 12 October put the
+  // median at 6.2 minutes against 24.6 over its passes and rejections.
+  const done = log.solves.filter(measured).map((solve) => solve.seconds);
   const scaled = (median(done) ?? 0) * SILENCE_SOLVES;
   const threshold = Math.max(scaled, SILENCE_FLOOR_SECONDS) * 1_000;
   const why =
     scaled > SILENCE_FLOOR_SECONDS
-      ? `${String(SILENCE_SOLVES)} times the median finished solve`
+      ? `${String(SILENCE_SOLVES)} times the median measured solve`
       : "the floor";
   const times = log.events.map(({ at }) => Date.parse(at));
   const gaps = times

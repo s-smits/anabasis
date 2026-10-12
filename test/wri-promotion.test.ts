@@ -145,6 +145,33 @@ describe("lane 31: a promotion and the climb after it", () => {
     ]);
   });
 
+  it("gives a rest comparison's load over the solves it measured, not the non-results it reran", () => {
+    // Buffer's g-1 on 12 October: a median load of 15.3 over its 70 starts, and 37.9 over the 48 that measured.
+    const { log, put, compare } = campaign();
+    const reported = compare("g-1", "hbase", "hn", { ...STEP, versions: [] });
+    const cut = { outcome: "non-result", kind: "provider" };
+    for (const [id, load, ending] of [
+      ["r1", 30, { outcome: "pass" }],
+      ["r2", 2, cut],
+      ["r3", 3, cut],
+    ] as const) {
+      put("solve.started", {
+        solve: id,
+        limits: { wallSeconds: 480 },
+        load: [load, 1, 1],
+        comparison: "g-1",
+      });
+      put("solve.finished", { solve: id, ending, seconds: 50 });
+    }
+    reported();
+    put("harness.promoted", {
+      harness: "hn",
+      from: "hbase",
+      rests: [{ comparison: "g-1", against: "hbase", reading: "step" }],
+    });
+    expect(triggered(log)("PROMOTED")[0]).toContain("; load median 30.0");
+  });
+
   it("names a step won against a reference that answered nothing on most tasks, and no other", () => {
     const read = triggered(promoted(false).log);
     expect(read("PROMOTED")[0]).toContain("by the operator");

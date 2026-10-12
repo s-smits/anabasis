@@ -15,7 +15,7 @@
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { countBy } from "#src/meta/tally.ts";
+import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import {
   type Compared,
@@ -24,6 +24,7 @@ import {
   fired,
   type Index,
   items,
+  measured,
   share,
   short,
   spendOf,
@@ -112,13 +113,15 @@ function restSaid(log: Index, { session, last }: Compared): string {
       ? []
       : [`${unit} ${String(count(record[unit]))} ${testSaid(record)}`];
   });
-  const solves = log.solves.filter((solve) => solve.comparison === session);
-  const loads = solves.flatMap(({ load }) => (load === null ? [] : [load])).toSorted((a, b) => a - b);
+  // Over the solves it measured, as lane 26 reads them: buffer's g-1 read 15.3 over its 70 starts on 12
+  // October and 37.9 over the 48 that were not non-results.
+  const solves = log.solves.filter((solve) => solve.comparison === session && measured(solve));
+  const loads = solves.flatMap(({ load }) => (load === null ? [] : [load]));
   const cores = solves.find((solve) => solve.cores !== null)?.cores ?? null;
   const load =
     loads.length === 0
       ? ""
-      : `; load median ${(loads[Math.floor(loads.length / 2)] ?? 0).toFixed(1)}${cores === null ? "" : ` on ${String(cores)} cores`}`;
+      : `; load median ${(median(loads) ?? 0).toFixed(1)}${cores === null ? "" : ` on ${String(cores)} cores`}`;
   return `${session} ${testSaid(last.scored)} at level ${String(count(last.level))}, untied ${untied(last.scored)}${noise}${budgets.length > 0 ? `; by budget ${budgets.join(", ")}` : ""}${load}`;
 }
 

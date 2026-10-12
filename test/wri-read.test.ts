@@ -667,7 +667,14 @@ describe("the reader of the load a comparison's solves started under", () => {
       ["g-1", [5, 7, 6, 6]],
     ]);
     expect(said("LOAD MOVED")).toEqual([
-      "median load when each comparison's solves started: b-1 32.0; g-1 6.0",
+      "median load when each comparison's solves started, its first half then its second: b-1 32.0 then 39.0; g-1 6.0 then 6.0",
+    ]);
+  });
+
+  it("names a comparison whose load moved within it, where it is the campaign's only one", () => {
+    // esp32's g-1 on 12 October: its solves started at loads from 5.8 to 56.0 on 12 cores.
+    expect(read([["g-1", [6, 8, 7, 45, 50, 56]]])("LOAD MOVED")).toEqual([
+      "median load when each comparison's solves started, its first half then its second: g-1 7.0 then 50.0",
     ]);
   });
 

@@ -45,11 +45,14 @@ const UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
 /** The share of tasks a reference answers on none of its solves above which a step is read as an
  *  engine against none: abl175-new's starter answered none on 9 of 12 and 7 of 12 (10 October). */
 const BARE = 0.5;
-/** A path under the host's temporary folder, as a shell command or a tool's argument names it. A
- *  solve's own temporary folder is under its root (`/var/folders/…` on the Mac), never here. */
-const SHARED_TMP = /(^|[\s"'=:;(|&>])\/(private\/)?tmp(\/|[\s"';)|&]|$)/;
-/** A path under `/tmp`, to the first character a shell or JSON ends a word on. */
-export const SHARED_PATH = /(?:^|[\s"'=:;(|&>])(\/(?:private\/)?tmp\/[^\s"'\\;)|&<>*]+)/g;
+/** A path under one of the host's temporary folders, `/tmp` or `/var/tmp`, in either spelling, as a
+ *  shell command or a tool's argument names it: the two the wall closes (`darwinCommandProfile`).
+ *  Until 12 October `/var/tmp` was not read here, where it held a v1 solve of a held task that every
+ *  seat could read on buffer. A solve's own temporary folder is under its root (`/var/folders/…` on
+ *  the Mac), never here. */
+const SHARED_TMP = /(^|[\s"'=:;(|&>])\/(private\/)?(var\/)?tmp(\/|[\s"';)|&]|$)/;
+/** A path under those folders, to the first character a shell or JSON ends a word on. */
+export const SHARED_PATH = /(?:^|[\s"'=:;(|&>])(\/(?:private\/)?(?:var\/)?tmp\/[^\s"'\\;)|&<>*]+)/g;
 /** The paths a reader is shown, of those more than one solve or session named: a path one solve
  *  writes and another runs is the leak, and a solve's own scratch file is named by it alone. */
 const MOST_PATHS = 6;

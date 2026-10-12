@@ -218,6 +218,17 @@ describe("lane 31: a promotion and the climb after it", () => {
     ]);
   });
 
+  it("reads /var/tmp as the host's too, in either spelling, and a solve's own folder as its own", () => {
+    const { log, put, solve } = campaign();
+    put("campaign.opened", { budget: 300, terms: {} });
+    solve("p1", "v1", "hn", "g-1", ["ls /private/var/tmp/run/bin/phreeqc", "cat /var/tmp/run/notes.txt"]);
+    solve("p2", "v2", "hn", "g-1", ["cat /var/tmp/run/notes.txt", "ls /var/folders/x/T/own"]);
+    solve("p3", "v3", "hn", "g-1", ["ls /var/folders/x/T/own"]);
+    expect(triggered(log)("SHARED TEMPORARY FOLDER")).toEqual([
+      "2 solves by side: g-1 new hn 2; programs under it: /private/var/tmp/run/bin/phreeqc by p1; named by more than one solve or session: /var/tmp/run/notes.txt by 2",
+    ]);
+  });
+
   it("fires none of its triggers on a campaign that promoted nothing and named no /tmp", () => {
     const { log, put } = campaign();
     put("campaign.opened", { budget: 300, terms: {} });

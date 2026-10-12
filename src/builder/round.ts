@@ -5,7 +5,8 @@
  * A checkpoint is three steps over one log.
  * 1. Solving. Each task of the scored set is solved `solves` times under each of the two
  *    harnesses, all of it afresh. The scored set is the caller's, fixed before any solve
- *    (`scoredSet`), so no harness's results choose it, and so are its two sets: the exhausted
+ *    (`scoredSet`), so no result of this comparison chooses it, though the reference harness's
+ *    results in earlier ones do (`exhausted`, `awaitingLabel`); so are its two sets: the exhausted
  *    third the draw keeps is retained, the rest the frontier (`begin`). A task's solves run
  *    together, the tasks in an order a hash of each draws, and within a task the harness that goes
  *    first is mirrored (`unsolvedJobs`): what drifts over the hours falls between tasks, which the

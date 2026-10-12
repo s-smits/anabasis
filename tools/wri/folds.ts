@@ -360,7 +360,9 @@ function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "bu
 const ROLE_EVENTS = {
   solver: ["solve.started", "solve.finished", "solve.turn"],
   builder: ["build.started", BUILD_END, "build.turn"],
-  examiner: ["exam.started", EXAM_END, "exam.turn"],
+  // A drafting session is the Examiner's, as the host's budget counts it: esp32's d-1 billed $1.57
+  // that read as no role's on 12 October.
+  examiner: ["exam.started", EXAM_END, "exam.turn", "draft.started", "draft.finished", "draft.turn"],
   referee: ["referee.finding"],
   // A seat until 11 October (`docs/simplify.md`, E1): a log of before holds what it billed.
   diagnoser: ["diagnosis.recorded"],

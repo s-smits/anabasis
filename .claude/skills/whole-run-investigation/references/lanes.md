@@ -434,16 +434,20 @@ prompt that the condition contradicts.
 Starts from `TOOLS EDITED (lane 15)`, and is standing: it opens on every campaign that holds a
 report.
 
-The question is whether anything in the harness does the judging for the solver. The Builder's
-prompt forbids it by the public rules, since the Builder sees no check: no tool, program or guide
-line may say whether a candidate meets a rule, or compute for a named case what an accepted
-answer must contain. Nothing in the code enforces that. v1 found it in three domains: users of
-grader-like advisers passed 444 of 447. Read every tool in the child and in the parent: what it
+The question is whether anything in the harness answers for the solver. The Builder's prompt
+(`src/builder/prompt.ts`) has held one limit since the operator's lift of 9 October: a program or
+tool may run the field's engine on a candidate, test it against a public rule and say what it does
+not meet, but none returns a finished answer for a task or for a case the solver names, and none
+both proposes a candidate and judges it; output the solver can submit unchanged is a finished
+answer. Nothing in the code enforces that. v1 found grader-like advisers in three domains, whose
+users passed 444 of 447. Read every tool and program in the child and in the parent: what it
 takes, what it returns, and whether its return is a verdict, a margin against a published limit,
-or a quantity the solver must still judge. Reusable computation is allowed and wanted; a tool
-that returns "meets rule R" is the grader moved into reach. Then read how solves used it from
-`solve.call`: propose, ask, adjust, ask again, record is the pattern of a solver searching
-against a verdict. Count the solves with that pattern under each harness. The Builder cannot have
+or a quantity the solver must still judge. Reusable computation and a test against a public rule
+are allowed; a part that searches and judges in one, or prints what the solver submits unchanged,
+is the limit crossed, and `ANSWER FROM A PROGRAM` (lane 19) reads the second from the log. Then
+read how solves used each part from `solve.call`: propose, ask, adjust, ask again, record is the
+pattern of a solver searching against a verdict, which the prompt permits while the solver carries
+each candidate from the search to the test. Count the solves with that pattern under each harness. The Builder cannot have
 copied a check it never saw, so a mirror here is rebuilt from the public rules, and whether that
 is a fault depends on lane 11: where the rules publish the arithmetic, the tool only saves the
 solver the typing. The decision it changes is whether a gain is the harness helping the solver

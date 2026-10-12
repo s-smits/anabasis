@@ -723,13 +723,15 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       ],
       // No comparison has scored a task, so there is nothing to count, and the opening says none.
       counts: null,
+      turns: null,
     });
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
     expect(heard([], [EXAMPLE])).toEqual({
       lines: ["e-1 (family fixture): not yet compared; no valid answer to it is on record"],
       counts: null,
+      turns: null,
     });
-    expect(heard([], [])).toEqual({ lines: [], counts: null });
+    expect(heard([], [])).toEqual({ lines: [], counts: null, turns: null });
     expect(s.sent[0]).not.toContain("Counted from the same comparisons");
   });
 
@@ -738,16 +740,24 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     const add = (kind: EventKind, data: JsonObject) =>
       events.push({ at: "2026-10-11T00:00:00.000Z", kind, data });
     let solves = 0;
-    const solved = (comparison: string, taskId: string, harness: string, valid: readonly boolean[]) => {
+    // Each solve took the turns given, and 11 where none is given.
+    const solved = (
+      comparison: string,
+      taskId: string,
+      harness: string,
+      valid: readonly boolean[],
+      turns: readonly number[] = [],
+    ) => {
       const ran = condition(`v-${taskId}`, harness);
       add("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-      for (const pass of valid) {
+      for (const [nth, pass] of valid.entries()) {
         solves += 1;
         const solve = `t-${String(solves)}`;
         add("solve.started", { solve, condition: conditionId(ran), comparison });
         add("solve.finished", {
           solve,
           ending: pass ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+          turns: turns[nth] ?? 11,
         });
       }
     };
@@ -776,13 +786,13 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     // c-1, against the reference h1 at two solves a side.
     solved("c-1", "a-1", "h1", [false, false]);
     solved("c-1", "a-1", "h2", [true, false]);
-    solved("c-1", "a-2", "h1", [true, true]);
+    solved("c-1", "a-2", "h1", [true, true], [2, 2]);
     solved("c-1", "a-2", "h2", [true, true]);
     solved("c-1", "b-1", "h1", [false, false]);
     solved("c-1", "b-1", "h2", [false, false]);
-    solved("c-1", "b-2", "h1", [true, false]);
+    solved("c-1", "b-2", "h1", [true, false], [7, 1]);
     solved("c-1", "b-2", "h2", [false, true]);
-    solved("c-1", "b-3", "h1", [true, true]);
+    solved("c-1", "b-3", "h1", [true, true], [3, 3]);
     solved("c-1", "b-3", "h2", [true, true]);
     solved("c-1", "b-4", "h1", [false, false]);
     solved("c-1", "b-4", "h2", [false, false]);
@@ -791,12 +801,12 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     solved("c-2", "a-2", "h3", [true, true]);
     solved("c-2", "a-2", "h4", [false, false]);
     reported("c-2", "h3", "h4", 2, ["a-2"]);
-    solved("c-3", "b-1", "h1", [true, true, true]);
+    solved("c-3", "b-1", "h1", [true, true, true], [4, 6, 5]);
     solved("c-3", "b-1", "h5", [false, false, false]);
     reported("c-3", "h1", "h5", 3, ["b-1"]);
     add("task.state", { version: "v-b-3", state: "released" });
     add("task.state", { version: "v-b-4", state: "refused" });
-    const { lines, counts } = heard(events, tasks);
+    const { lines, counts, turns } = heard(events, tasks);
     expect(lines).toEqual([
       "a-1 (family beam): the reference harness answered it validly in no solve of the last comparison; a valid answer to it is on record",
       "a-2 (family beam): the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none; a valid answer to it is on record",
@@ -819,7 +829,14 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     ).toHaveLength(3);
     // One task counted alone is no count at all: it would be that task's result.
     expect(heard(events, tasks.slice(0, 1)).counts).toBeNull();
+    // The turns of the reference's valid answers, from the comparison each line reads: b-1's three
+    // in c-3 and b-2's one valid answer in c-1. a-2's answers in c-1 are not its last comparison's,
+    // b-3 is practice, and no turn of another harness (11) is among them.
+    expect(turns?.split("\n")).toEqual([
+      "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above, by family and fewest first. These are measurements and no target.",
+      "- family slab: 4, 5, 6, 7",
+    ]);
     // Neither the lines nor the counts name a harness.
-    expect([...lines, counts].join("\n")).not.toMatch(/\bh[1-5]\b/);
+    expect([...lines, counts, turns].join("\n")).not.toMatch(/\bh[1-5]\b/);
   });
 });

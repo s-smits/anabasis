@@ -188,7 +188,9 @@ export function wallTriggers(log: Index): Trigger[] {
 }
 
 /** The parts of the campaign's clock: each Builder and Examiner session and each comparison, from
- *  its start to its end. One a stop cut ends at the campaign's ending, which a stop writes. */
+ *  its start to its end. One a stop cut ends at the campaign's ending, which a stop writes. A
+ *  comparison so cut goes on under its id with no second start, so it opens again where the campaign
+ *  resumes: buffer's g-1 ran 13.3 minutes so on 12 October that had read as between moves. */
 function spansOf(log: Index): Span[] {
   const spans: Span[] = [];
   const open = new Map<string, { part: string; from: number }>();
@@ -197,13 +199,16 @@ function spansOf(log: Index): Span[] {
     if (started !== undefined) spans.push({ ...started, until });
     open.delete(key);
   };
+  let cut: [string, { part: string; from: number }][] = [];
   for (const { at, kind, data } of log.events) {
     const time = Date.parse(at);
+    for (const [key, { part }] of cut.splice(0)) open.set(key, { part, from: time });
     for (const [part, start, end] of SPANS) {
       const key = `${start}:${text(data.session)}`;
       if (kind === start && !open.has(key)) open.set(key, { part, from: time });
       if (kind === end) close(key, time);
     }
+    if (kind === "campaign.ended") cut = [...open].filter(([, span]) => span.part === "comparisons");
     if (kind === "campaign.ended") for (const key of open.keys()) close(key, time);
   }
   const last = Date.parse(log.events.at(-1)?.at ?? "");

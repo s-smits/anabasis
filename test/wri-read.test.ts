@@ -894,6 +894,20 @@ describe("the reader of the campaign's clock", () => {
     );
   });
 
+  it("counts a comparison a stop cut from its start to the stop, and again from the resume to its report", () => {
+    // Buffer's g-1 on 12 October: a provider's limit ended the campaign mid-comparison, and the
+    // reopened campaign went on with it under the same id and no second start.
+    const log = timed([
+      [0, COMPARISON_STARTED, { session: "g-1", old: "hp", fresh: "hc", tasks: [] }],
+      [30, "campaign.ended", { ending: "environment" }],
+      [90, SOLVE_STARTED, { solve: "s1", comparison: "g-1", limits: { wallSeconds: 900 } }],
+      [120, REPORTED, { ...REPORT, session: "g-1", old: "hp", fresh: "hc", reading: "no-step" }],
+    ]);
+    expect(overview(log).rows[0]?.lines).toContain(
+      "hours: comparisons 1.0 (50%), between moves 1.0 (50%), of 2.0",
+    );
+  });
+
   it("counts a drafting session's dollars as the Examiner's, as the host's budget does", () => {
     const log = timed([
       [0, "draft.started", { session: "d-1" }],

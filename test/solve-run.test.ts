@@ -392,6 +392,23 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(last.finished()[0]?.data).toMatchObject({ turns: 3 });
   }, 120_000);
 
+  it.concurrent("ends on a submit sent in the same turn as a shell call", async () => {
+    // pi ends its loop on a turn only where every call returned `terminate`, which a shell call never
+    // does: until 12 October the model was asked again after its answer was in.
+    const both = fauxAssistantMessage(
+      [
+        fauxToolCall("bash", { command: `printf %s '{"answer":"42"}' > answer.json` }),
+        fauxToolCall("submit", {}),
+      ],
+      toolUse,
+    );
+    const scale = fauxAssistantMessage(fauxToolCall("scale_base", { factor: 1 }), toolUse);
+    const { request, sent, finished } = setup([both, scale, scale]);
+    expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
+    expect(finished()[0]?.data).toMatchObject({ turns: 1, prompts: 1 });
+    expect(sent).toHaveLength(1);
+  }, 120_000);
+
   it.concurrent("ends wall-ended when the wall falls mid-command", async () => {
     const sleep = fauxAssistantMessage(fauxToolCall("bash", { command: "sleep 20" }), toolUse);
     const { request, events } = setup([sleep, sleep], { limits: { ...LIMITS, wallSeconds: 3 } });

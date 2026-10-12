@@ -150,7 +150,8 @@ function restTriggers(log: Index, { at, data }: Epoch): Trigger[] {
   const harness = text(data.harness);
   const byTable = log.events.some(
     ({ kind, data: move }, index) =>
-      index > at && kind === "campaign.move" && move.move === "promote" && move.harness === harness,
+      // The move is written as it begins, before the promotion it makes (12 October).
+      index < at && kind === "campaign.move" && move.move === "promote" && move.harness === harness,
   );
   const despite = items(asRecord(data.despite)?.faults ?? data.despite).length;
   const rests = items(data.rests).flatMap((rest) => {

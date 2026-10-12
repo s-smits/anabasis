@@ -67,10 +67,10 @@
  * `--handover <dir>` it then writes what it hands over there: the reference harness as a directory
  * that stands by itself, the public rules and the closing report (`close.ts`, row F51). A move that
  * threw after it had begun is the environment's ending, and run again the command goes on from the
- * log. A move refused before it wrote anything is no ending: the refusal is printed, nothing kept.
+ * log. A move refused before it began is no ending: the refusal is printed, nothing kept.
  *
- * A move is recorded once it is made (`campaign.move`), with the reason the table gave, so the log
- * holds what was decided beside what was done. Each run of the command keeps a receipt beside the
+ * A move is recorded as it begins (`campaign.move`), with the row of the table that chose it and its
+ * reason, so the log holds what was decided before what was done. Each run of the command keeps a receipt beside the
  * log, `launch-run-<n>.json`: its flags, the commit it stands at and the load it started under
  * (`keepReceipt`, `tools/runs/receipt.ts`).
  *
@@ -192,6 +192,7 @@ const OPTIONS = {
  *  dollars, the Builder sessions before a comparison, and a seat's effort. */
 const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
 const OPENED = "campaign.opened";
+const MOVED = "campaign.move";
 const ENDED = "campaign.ended";
 /** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
  *  command wants a name, and the script is what is asked. */
@@ -489,19 +490,25 @@ function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn
   };
 }
 
-/** Make one decided move by the command an operator would run, and return what names it in the
- *  log: a session's or a comparison's id, a budget, a harness, or nothing. */
-async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Promise<JsonObject> {
+/** Make one decided move by the command an operator would run, after `begin` is given what names
+ *  it in the log: a session's or a comparison's id, a harness, the checks admitted, or nothing. */
+async function make(
+  decided: Exclude<Decided, { move: "end" }>,
+  turn: Turn,
+  begin: (named: JsonObject) => void,
+): Promise<void> {
   const { events, opening, values, seats } = turn;
   const pack = packOf(values);
   const { builder, examiner } = opening.seats;
   if (decided.move === "accept") {
+    begin(keyIfDefined("admitted", values.admit === undefined ? undefined : admitsOf(values)));
     await acceptCommand([...pack, ...flag("admit", values.admit), ...(opening.attended ? [] : ["--freeze"])]);
-    return { ...keyIfDefined("admitted", values.admit === undefined ? undefined : admitsOf(values)) };
+    return;
   }
   if (decided.move === "prepare") {
     const practice = decided.practice === undefined ? values.practice : String(decided.practice);
     // The campaign's terms, so what it prints of a comparison's size is the campaign's.
+    begin({});
     await prepareCommand([
       ...pack,
       ...flag("practice", practice),
@@ -509,18 +516,20 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
       ...flag("level", values.level),
       ...flag("trigger", values.trigger),
     ]);
-    return {};
+    return;
   }
   if (decided.move === "promote") {
+    begin({ harness: decided.harness });
     await promoteCommand([...flag("name", values.name), "--harness", decided.harness, "--yes"]);
-    return { harness: decided.harness };
+    return;
   }
   if (decided.move === "compare") {
     const { session, args } = comparisonOf(decided, turn);
-    await checkpointCommand(args, turn.held);
     // The comparison's own flags beside the pack's, so the log says what command the move ran
     // (11 October: the trigger had been left off, and no record could show it).
-    return { session, args: args.slice(pack.length) };
+    begin({ session, args: args.slice(pack.length) });
+    await checkpointCommand(args, turn.held);
+    return;
   }
   if (decided.move === "draft" || decided.move === "examine") {
     const stand = decided.move === "draft" ? seats.draft : seats.examine;
@@ -539,9 +548,10 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
       "--examiner-effort",
       examiner?.effort ?? DEFAULTS.effort,
     ];
+    begin({ session });
     if (decided.move === "draft") {
       await draftCommand([...flag("name", values.name), ...seat], seats.draft);
-      return { session };
+      return;
     }
     await examineCommand(
       [
@@ -556,10 +566,11 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
       ],
       seats.examine,
     );
-    return { session };
+    return;
   }
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);
   const session = nextId(events, "b");
+  begin({ session });
   await sessionCommand(
     [
       ...pack,
@@ -576,7 +587,6 @@ async function make(decided: Exclude<Decided, { move: "end" }>, turn: Turn): Pro
     ],
     turn.held,
   );
-  return { session };
 }
 
 /** The checks `--admit` names, which is the operator's word for each. */
@@ -652,11 +662,29 @@ function ended(log: string, events: readonly LogEvent[], decided: Extract<Decide
   });
 }
 
+/** What writes a move's event as it begins (the overhaul plan's P9): the move, the row that chose
+ *  it, its reason and start, and what `make` names it by, so a move that throws is on record with
+ *  the reason it was made for. Until 12 October it was written when the move ended. */
+function beginning(log: string, decided: Exclude<Decided, { move: "end" }>, started: JsonObject) {
+  return (named: JsonObject) =>
+    append(log, MOVED, {
+      move: decided.move,
+      ...keyIfDefined("row", decided.row),
+      why: decided.why,
+      ...started,
+      ...named,
+      ...keyIfDefined(
+        "answers",
+        decided.move === "examine" && decided.answers ? [...decided.answers] : undefined,
+      ),
+    });
+}
+
 /**
  * What a move records of its start: when it began, and for a move that solves the host's load
- * then; each solve waits at the host's gate itself (`gated`). The event is written when the move
- * ends and carries the reason from when it was decided, which a reader took for the end's (the
- * runs session's note, 10 October); and a solve's times are the host's as much as the solver's,
+ * then; each solve waits at the host's gate itself (`gated`). The event is written as the move
+ * begins (`beginning`): until 12 October it was written at its end with the reason from when it was
+ * decided, which a reader took for the end's; and a solve's times are the host's as much as the solver's,
  * since a wall counts the clock (eight campaigns on one host of 12 cores held its load between 14
  * and 26 that night).
  */
@@ -758,32 +786,21 @@ export async function harnessBuilder(
       );
       return decided;
     }
-    const started = startOf(decided, seats);
-    let left: JsonObject;
+    const begin = beginning(log, decided, startOf(decided, seats));
     try {
-      left = await make(decided, { events, plan, opening, values, seats, held });
+      await make(decided, { events, plan, opening, values, seats, held }, begin);
     } catch (error) {
       if (await waitOut(log, errorMessage(error), seats.host?.sleep)) continue;
       // A move that began and threw is the environment's ending, and the campaign goes on from
-      // its log when it is run again. One refused before it wrote anything leaves the log alone.
+      // its log when it is run again. One refused before it began leaves the log alone.
       if (read(log).length > events.length) {
         append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
       }
       throw error;
     }
-    if (read(log).length === events.length) {
+    if (read(log).length <= events.length + 1) {
       throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
     }
-    append(log, "campaign.move", {
-      move: decided.move,
-      why: decided.why,
-      ...started,
-      ...left,
-      ...keyIfDefined(
-        "answers",
-        decided.move === "examine" && decided.answers ? [...decided.answers] : undefined,
-      ),
-    });
     last = decided.move;
     await waitOut(log, crashedRun(read(log)).crash, seats.host?.sleep);
   }

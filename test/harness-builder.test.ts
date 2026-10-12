@@ -159,6 +159,14 @@ describe("a campaign run by its log", () => {
     ]);
     expect(of(name, "campaign.ended")).toEqual([expect.objectContaining({ ending: "exam" })]);
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
+    // Each move is on record from its start with the row that chose it, the one that threw too.
+    expect(of(name, MOVED).map(({ move, session, row }) => [move, session ?? null, row])).toEqual([
+      ["accept", null, 1],
+      ["prepare", null, 2],
+      ["examine", "x-1", 8],
+      // The id the move that threw had is not used again.
+      ["examine", "x-2", 8],
+    ]);
   });
 
   it("runs from set-up to an ending on one command, with every move on record: a session with nothing to work on sends it to the Examiner", async () => {
@@ -213,6 +221,7 @@ describe("a campaign run by its log", () => {
     expect(ending).toEqual({
       move: "end",
       ending: "no-room",
+      row: 9,
       why: "2 Examiner sessions in a row held out no task (Builder session b-1 left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for): the tasks could not be made to leave room",
     });
     // Each move records when it began, and a move that solves the load the host had then; the moves

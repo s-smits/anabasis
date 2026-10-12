@@ -609,7 +609,7 @@ function campaignOf(log: Index): string[] {
 }
 
 /** The steps open at the log's end, each with what it has done so far. A move the campaign command
- *  is making writes its `campaign.move` when it ends, so the moves above leave it out. */
+ *  is making writes its `campaign.move` as it begins, so the moves above count it. */
 function openLine(steps: readonly Handover[]): string[] {
   const open = new Set(openSteps(steps));
   const said = steps.flatMap((step) => {

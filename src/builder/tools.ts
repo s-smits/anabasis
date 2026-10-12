@@ -352,6 +352,8 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
         );
       } else if (finding.ruling === "unclear") {
         lines.push("The Referee could not settle whether this fail counts, so it is counted.");
+      } else if (finding.ruling === null) {
+        lines.push("The Referee did not finish reading this fail.");
       }
     } catch (error) {
       bench.faults.push(`${solve}: ${errorMessage(error)}`);

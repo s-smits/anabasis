@@ -568,21 +568,26 @@ describe("a round", () => {
     });
     const refereed: string[] = [];
     const ruled = referee(s.log, { s1: "check-defect" });
+    const failedOnce = new Set<string>();
     const reading = async (solve: string, version: string): Promise<RefereeFinding> => {
       refereed.push(version);
-      if (version === "s3") throw new Error("the reader failed");
+      if (version === "s3" && !failedOnce.has(solve)) {
+        failedOnce.add(solve);
+        throw new Error("the reader failed");
+      }
       return await ruled(solve, version);
     };
     const report = await round({ ...s.request, referee: reading });
-    // s2's check could not run, s1's rejections are ruled a check defect and s3's are ruled by
-    // nobody. One task is left, which no sign test at 0.10 can pass.
+    // s2's check could not run and s1's rejections are ruled a check defect. s3's reader failed
+    // once on each, and each was put to it again before the report and ruled earned. Two tasks
+    // are left, which no sign test at 0.10 can pass.
     expect(report).toMatchObject({
-      scored: { wins: 1, losses: 0, p: 0.5 },
-      // Were the rejections of s1 and s3 to stand, the new harness would have won those as well.
+      scored: { wins: 2, losses: 0, p: 0.25 },
+      // Were the rejections of s1 to stand, the new harness would have won that as well.
       counted: { wins: 3, losses: 0, p: 0.125 },
-      versions: ["s4"],
+      versions: ["s3", "s4"],
       disputed: ["s2"],
-      aside: ["s1", "s3"],
+      aside: ["s1"],
       reading: NO_STEP,
     });
     // Only the task whose check could not run is disputed for good. A ruling sets a task aside for
@@ -594,9 +599,49 @@ describe("a round", () => {
     ]);
     // A disputed task is solved no further: s2 once, and never again.
     expect(s.asked.filter(({ version }) => version === "s2")).toEqual([{ version: "s2", side: "fresh" }]);
-    // Only a rejected answer is read: the two of s1 and of s3, and neither of s4's late solves.
-    expect(refereed.toSorted()).toEqual(["s1", "s1", "s3", "s3"]);
+    // Only a rejected answer is read: the two of s1 and of s3, s3's twice, and neither of s4's
+    // late solves.
+    expect(refereed.toSorted()).toEqual(["s1", "s1", "s3", "s3", "s3", "s3"]);
     expect(s.of(COMPARISON_REPORTED)[0]?.reviewFaults).toHaveLength(2);
+  });
+
+  it("puts a rejection the Referee gave no answer on to it again, and stops before the report while one has none", async () => {
+    // buffer-a's g-5 (12 October): a Referee call the provider's session limit cut was logged
+    // unclear, set a won task aside in the report, and no later run put it again.
+    /** A Referee that gives no answer, logged as `src/review/referee.ts` logs one. */
+    const silent =
+      (log: string) =>
+      async (solve: string): Promise<RefereeFinding> => {
+        append(log, "referee.finding", { solve, ruling: null, error: "the session limit is reached" });
+        return { ruling: null, check: null, rule: null, field: null, reason: "r", probes: [] };
+      };
+    // Silent on each rejection the first time it is asked: each is asked again before the report,
+    // and the step is read on all four tasks.
+    const s = await setup([edit, finish], rejecting);
+    const asked = new Set<string>();
+    const once = async (solve: string, version: string): Promise<RefereeFinding> => {
+      if (asked.has(solve)) return await referee(s.log)(solve, version);
+      asked.add(solve);
+      return await silent(s.log)(solve);
+    };
+    expect(await round({ ...s.request, referee: once })).toMatchObject({
+      scored: { wins: 4, losses: 0 },
+      aside: [],
+      versions: HELD,
+    });
+    // The reference's eight rejections, two a task, each asked twice.
+    expect(asked.size).toBe(8);
+    // Silent every time: the comparison stops with no report, goes on from its log, asks again,
+    // and reads the step once the Referee answers.
+    const t = await setup([edit, finish], rejecting);
+    await expect(round({ ...t.request, referee: silent(t.log) })).rejects.toThrow(
+      "the Referee gave no ruling on",
+    );
+    expect(t.of(COMPARISON_REPORTED)).toEqual([]);
+    expect(await round({ ...t.request, referee: referee(t.log) })).toMatchObject({
+      scored: { wins: 4, losses: 0 },
+      aside: [],
+    });
   });
 
   it("sets every rejection aside where no reviewer is seated, and reads it once a person has labelled them", async () => {

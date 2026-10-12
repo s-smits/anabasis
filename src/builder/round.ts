@@ -70,9 +70,9 @@
  * Past `defects` tasks with a check that could not run or a rejection the Referee ruled a check
  * defect, the checkpoint stops, since the check program then needs its owner before more is spent.
  * A task a person released or refused while the comparison ran is left out and named
- * (`withdrawn`), and no further solve of it is started. A rejection an earlier run of the
- * comparison left unruled, killed before its ruling or failed by its reader, is put to the Referee
- * when the comparison goes on.
+ * (`withdrawn`), and no further solve of it is started. A rejection left unruled, by an earlier
+ * run killed before its ruling or by a reader that failed or gave no answer, is put to the Referee
+ * again before the report, and one still unruled stops the comparison, to go on from its log.
  *
  * A checkpoint that wrote its report is finished, and run again it returns that report and does
  * nothing: topping up a set a dispute thinned, after the tallies could be seen, would be a second
@@ -466,7 +466,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     try {
       if ((await request.referee(solve, task, kill)).ruling === DEFECT) defective.add(task);
     } catch (error) {
-      // A rejection nobody ruled on sets its task aside, as one waiting for a person does.
+      // A rejection nobody ruled on is put to the Referee again before the report (`ruleLeft`).
       faults.push(`${solve}: ${errorMessage(error)}`);
     }
   };
@@ -516,6 +516,31 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     };
     await Promise.all(Array.from({ length: Math.max(1, request.concurrency) }, worker));
   };
+  /** Put to the Referee the rejections left unruled, by an earlier run of the comparison killed
+   *  between a solve's end and its ruling, or by a reader that failed or gave no answer; and stop
+   *  the comparison before its report where one still has none, to go on from its log and ask
+   *  again. Until 12 October such a rejection set its task aside in the report, for good: on
+   *  buffer-a's g-5 one Referee call cut by the provider's session limit cost the step. */
+  const ruleLeft = async (): Promise<void> => {
+    const unruled = () => {
+      const events = read(log);
+      const held = new Set(taskSets(events).held);
+      return rejections(events, fixed, NO_LABELS).filter(
+        ({ task, ruling }) => ruling === null && held.has(task),
+      );
+    };
+    const left = unruled();
+    for (let at = 0; at < left.length && going(); at += request.concurrency) {
+      const lane = left.slice(at, at + request.concurrency);
+      await Promise.all(lane.map(({ solve, task }) => rule(solve, task)));
+    }
+    const still = request.referee === undefined || !going() ? [] : unruled();
+    if (still.length > 0) {
+      throw new Error(
+        `the Referee gave no ruling on ${still.map(({ solve }) => solve).join(", ")}, so the comparison stops before its report: run it again and it goes on from its log, where they are put to the Referee again`,
+      );
+    }
+  };
   /**
    * Solve `tasks` under `arms` until each has its solves, and say whether the comparison goes on.
    * It throws what stopped the solves, if a solve or a kill did.
@@ -531,19 +556,8 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     }
     if (thrown !== null) throw thrown;
     if (kill.aborted) throw new Error("the comparison was killed; run it again and it goes on from its log");
+    await ruleLeft();
     return going();
-  };
-  /** Put to the Referee the rejections an earlier run of the comparison left unruled: it was killed
-   *  between a solve's end and its ruling, or its reader failed. */
-  const ruleLeft = async (): Promise<void> => {
-    const held = new Set(taskSets(before).held);
-    const unruled = rejections(before, fixed, NO_LABELS).filter(
-      ({ task, ruling }) => ruling === null && held.has(task),
-    );
-    for (let at = 0; at < unruled.length && going(); at += request.concurrency) {
-      const lane = unruled.slice(at, at + request.concurrency);
-      await Promise.all(lane.map(({ solve, task }) => rule(solve, task)));
-    }
   };
   return { solveAll, ruleLeft, faults, capped: () => capped };
 }

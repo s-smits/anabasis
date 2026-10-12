@@ -525,8 +525,9 @@ dollar in the log is taken off, and the campaign ends on its budget where less i
 solve is held at (`--reserve`), or than the next comparison would bill by what the last one did
 (`afforded`, `src/builder/decide.ts`): a comparison the cap cuts tallies nothing.
 
-**It ends in one of six ways**, and the log's last event says which (`campaign.ended`):
-`budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment` or `operator`. A
+**It ends in one of seven ways**, and the log's last event says which (`campaign.ended`):
+`budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment`, `operator` or
+`control` (an A/A that read a step, section 7). A
 move that threw after it began ends the campaign on its environment, and so do three Builder or
 Examiner sessions in a row that the provider failed before they held out a task or changed a
 harness (`crashedRun`, `src/builder/ground.ts`): such a session held out nothing because it was
@@ -751,7 +752,11 @@ with the comparison of the same two harnesses before it. The reference read agai
 halves of its own solves mirrored in time stands beside every comparison of four solves a side, and
 `--noise` on a checkpoint gives one at fewer; it should read no step, and its tie share is the
 noise every comparison has to exceed, its flip rate how often two solves of a task disagree, and
-its drift its earlier solves against its later ones.
+its drift its earlier solves against its later ones. The epoch's first is its control: read
+two-sided at the comparison's level, since which half is which is arbitrary, a step there either
+way ends the campaign on its control, as its two sides are not interchangeable, and no comparison
+against that reference reads anything until the operator leaves the cause on record
+(`tools/d2/word.ts --cause`); run again, the campaign goes on. The A/As after it stand as readings.
 
 **The dollar cap.** `--cap` is required. Before each solve the billed dollars of the comparison
 are summed from the log, and the solve does not start when a reserve for it and for every solve

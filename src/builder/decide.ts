@@ -29,7 +29,11 @@
  *    Builder or Examiner sessions in a row as `CRASHES` crashed before they held out a task or
  *    changed a harness, which ends it on its environment, to go on from when run again; and the
  *    stop rule, which ends it unless the operator said to go on.
- * 4. A comparison that began and has not reported goes on.
+ * 4. A comparison that began and has not reported goes on. Then the control: where the epoch's
+ *    first A/A read the reference against itself as a step either way, its two sides are not
+ *    interchangeable and no comparison against it reads anything, so the campaign ends on its
+ *    control until the operator leaves the cause on record (`--cause`, `tools/d2/word.ts`);
+ *    unattended, that is a typed ending the operator reads, never a wait (12 October).
  * 5. The reference's room on the tasks, read from the last comparison it was in, whichever side
  *    it took: where it answered nearly all of them, the tasks change, to ones it fails, and a
  *    comparison against it says whether they do. After a promotion that is the comparison the
@@ -76,11 +80,11 @@
  * are the tasks (#167) and the objective (#184). The ladder went with `docs/simplify.md`, package
  * A. The two shares `roomOf` reads by are the plan's proposal and the operator's to set.
  */
-import { readTwice, triggered } from "../kernel/compare.ts";
+import { flipP, readTwice, triggered } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, roomOf } from "../kernel/reports.ts";
 import { practiceRan } from "../kernel/solves.ts";
-import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { supplyOf } from "./admission.ts";
@@ -259,10 +263,41 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
       why: `comparison ${open.id} began and has not reported: it goes on from its log`,
     };
   }
+  const control = controlled(ground);
+  if (control !== null) return end("control", control);
   const next = afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
   if (next.move === "compare") return afforded(ground, next);
   if (next.move !== "build") return next;
   return toPractise(ground, supply) ?? unshown(ground) ?? next;
+}
+
+/**
+ * Why the campaign ends on its control, or null. The control is the epoch's first A/A, the
+ * reference read against itself beside the first comparison against it that carries one
+ * (`comparison.ts`). Read two-sided at that comparison's level, since which half is which is
+ * arbitrary, it reads a step at most as often as the level; a step there is false by
+ * construction, so what it measures is the comparison and not either harness: the host, the
+ * provider or the solver moved between halves of one harness's solves. It holds until the
+ * operator leaves a cause after its report (`--cause`). The A/As after it stand as readings, and
+ * the climb reads them for its false promotion (`climb.ts`).
+ */
+function controlled({ events, all, reference, starter }: Ground): string | null {
+  const control = all.find(
+    ({ old, report }) =>
+      old === (reference ?? starter) && Array.isArray(asRecord(report?.noise)?.differences),
+  );
+  if (control?.report == null || control.reported === null) return null;
+  const apart = asRecord(control.report.noise)?.differences;
+  const differences = Array.isArray(apart) ? apart.filter(isNumber) : [];
+  const level = isNumber(control.report.level) ? control.report.level : 0;
+  const stepped = 2 * Math.min(flipP(differences), flipP(differences.map((one) => -one))) <= level;
+  const after = control.reported;
+  const heard = events.some(
+    ({ kind, data }, at) => at > after && kind === "campaign.word" && data.word === "cause",
+  );
+  return stepped && !heard
+    ? `comparison ${control.id} read the reference against itself as a step, so its two sides are not interchangeable and no comparison against it reads anything until the cause is on record: leave it with tools/d2/word.ts --cause "<the cause>", and the campaign goes on when run again`
+    : null;
 }
 
 /**

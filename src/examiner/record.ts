@@ -25,7 +25,10 @@
  * facts. The counts are taken in the same pass as the lines, from the same record of each task
  * (`lastRead`, `reports.ts`), so the two agree by construction; the other side's result is told
  * by family and never for a task, so that an author is not shown which of its tasks one pair of
- * harnesses split. They carry the sentence rule 6 asks for, with the solves a side they rest on.
+ * harnesses split. A family of one task would tell it for that task, so where any family counted
+ * holds one the rows by family fold into the total: on 12 October esp32's 40 families each held
+ * one task, and 13 of buffer's 14. They carry the sentence rule 6 asks for, with the solves a side
+ * they rest on.
  *
  * Each sentence says what its fold does. Until 11 October the exhausted line said "answered by
  * both harnesses", where the rule reads the reference's own solves alone (`exhausted`,
@@ -79,7 +82,7 @@ const SETTLED = new Map([
 ]);
 /** What the counts say before their rows, and after them. */
 const COUNTS = {
-  head: "Counted by family from the same comparisons as the lines above: each task whose last comparison had the reference harness on one side, or that a later report set aside, and no other. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
+  head: "Counted from the same comparisons as the lines above, by family where every family counted holds two tasks or more and otherwise in a total alone: each task whose last comparison had the reference harness on one side, or that a later report set aside, and no other. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
   weak: "The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
 } as const;
 
@@ -114,11 +117,12 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
   return { lines, counts: counts(families) };
 }
 
-/** The counts, a row a family in the order the tasks first name it, a total where there are two
- *  families or more, and what the counts rest on; null where no task stands in them. */
+/** The counts, a row a family in the order the tasks first name it where no family is of one
+ *  task, a total where there are two families or more, and what the counts rest on; null where
+ *  fewer than two tasks stand in them, since a count of one task is that task's result. */
 function counts(families: ReadonlyMap<string, readonly Standing[]>): string | null {
   const every = [...families.values()].flat();
-  if (every.length === 0) return null;
+  if (every.length < 2) return null;
   const row = (name: string, standings: readonly Standing[]) => {
     const counted = countBy(standings, ({ cell }) => cell);
     const of = (cell: Standing["cell"]) => counted[cell] ?? 0;
@@ -126,7 +130,8 @@ function counts(families: ReadonlyMap<string, readonly Standing[]>): string | nu
     const none = of("tied-none") + of("tied-none-known");
     return `- ${name}, ${plural(standings.length, "task")}: ${String(apart)} told apart, won by the other harness ${String(of("other-won"))} and by the reference harness ${String(of("reference-won"))}; ${String(of("tied-every"))} tied with both harnesses valid in every solve; ${String(none)} tied with neither valid in any solve, of which ${String(of("tied-none-known"))} with a valid answer on record; ${String(of("tied-mixed"))} tied otherwise; ${String(of("aside"))} set aside on a rejection not settled.`;
   };
-  const rows = [...families].map(([family, standings]) => row(`family ${family}`, standings));
+  const byFamily = [...families.values()].every((standings) => standings.length > 1);
+  const rows = byFamily ? [...families].map(([family, standings]) => row(`family ${family}`, standings)) : [];
   const sizes = [...new Set(every.flatMap(({ solves }) => solves ?? []))].toSorted((a, b) => a - b);
   const [fewest] = sizes;
   const most = sizes.at(-1) ?? 0;

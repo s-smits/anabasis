@@ -222,7 +222,8 @@ describe("the solve isolation's policy", () => {
         },
       });
       expect(output).toStartWith("ran\n");
-      expect(output).toContain("Operation not permitted");
+      // Seatbelt refuses the read; Bubblewrap leaves the path out of the mount, so it is not there.
+      expect(output).toContain(onDarwin ? "Operation not permitted" : "No such file or directory");
       expect(output).not.toContain("module");
     });
   }, 60_000);

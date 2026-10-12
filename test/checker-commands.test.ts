@@ -577,8 +577,8 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     // The seed's comparisons began under the rule of one reading at a time, so the campaign's
     // command is refused the two-stage rule's defaults until the operator names both terms once.
     expect(rehearse("--campaign", "--dry-run").said).toContain("name --level and --trigger once for it");
-    expect(rehearse("--campaign", "--level", "0.1", "--trigger", "0.25", "--dry-run").said).toContain(
-      `next · ${tabled}`,
-    );
+    // One attempt: a longer patience at 0.10 passes the bound an opening may risk (`openingLines`).
+    const terms = ["--level", "0.1", "--trigger", "0.25", "--patience", "1"];
+    expect(rehearse("--campaign", ...terms, "--dry-run").said).toContain(`next · ${tabled}`);
   });
 });

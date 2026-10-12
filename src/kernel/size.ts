@@ -96,27 +96,28 @@ export function sizeLines(tasks: number, asked: Asked): string[] {
 }
 
 /**
- * What a campaign of `tasks` scored tasks, read at `asked` and ending after `patience` moves with
- * no gain, can show and risks, said at its opening: `sizeLines`, and the chance of a false
- * promotion over `patience` attempts under one reference by the union bound, which assumes nothing
- * of their independence; and why it is refused, where that bound passes `FALSE_CAP`. A campaign
- * whose comparisons buy repeats makes more attempts than its patience, which the climb reads as
- * they come (`climb.ts`, `falsePromotion`).
+ * What a campaign that scores `target` tasks, read at its level and trigger and ending after
+ * `patience` moves with no gain, can show and risks, said at its opening: `sizeLines`, and the
+ * chance of a false promotion over `patience` attempts under one reference by the union bound,
+ * which assumes nothing of their independence. An opening whose bound passes `FALSE_CAP` is
+ * refused, with the patience and the level that hold it; the campaign command only calls this. A
+ * campaign whose comparisons buy repeats makes more attempts than its patience, which the climb
+ * reads as they come (`climb.ts`, `falsePromotion`).
  */
-export function opening(tasks: number, asked: Asked, patience: number) {
-  const { level, trigger } = asked;
-  const rate = falseRate(units(tasks, 0), level, trigger);
-  const union = Math.min(1, patience * rate);
+export function openingLines(wanted: Asked & { readonly target: number }, patience: number): string[] {
+  const { target, level, trigger } = wanted;
+  const risked = (at: number) => Math.min(1, patience * falseRate(units(target, 0), at, trigger));
+  const union = risked(level);
   const bound = `over the patience's ${plural(patience, "attempt")} under one reference a false promotion comes at most ${percent(union)} of the time`;
-  // The most attempts the cap holds at this rate.
-  const most = Math.floor(FALSE_CAP / rate);
-  return {
-    lines: [...sizeLines(tasks, asked), bound],
-    refusal:
-      union <= FALSE_CAP
-        ? null
-        : `${bound}, past the ${percent(FALSE_CAP)} a campaign may open on: ${most < 1 ? "no patience holds it at this --level" : `--patience ${String(most)} or less holds it`}, and so may a lower --level or another --target`,
-  };
+  if (union <= FALSE_CAP) return [...sizeLines(target, wanted), bound];
+  // The most attempts the cap holds at this level, and the highest level in hundredths at this patience.
+  const most = Math.floor((FALSE_CAP * patience) / union);
+  const lower = Array.from({ length: Math.round(100 * level) }, (_, at) => (at + 1) / 100).findLast(
+    (at) => risked(at) <= FALSE_CAP,
+  );
+  throw new Error(
+    `${bound}, past the ${percent(FALSE_CAP)} a campaign may open on: ${most < 1 ? "no patience holds it at this --level" : `--patience ${String(most)} or less holds it`}, and ${lower === undefined ? "no --level in hundredths does at this patience" : `so does --level ${String(lower)} or lower`}`,
+  );
 }
 
 /** A chance in percent, to a tenth, and one under that said as under it, never as none. */

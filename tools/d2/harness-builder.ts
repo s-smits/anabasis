@@ -37,44 +37,42 @@
  *
  * **What it runs by** is recorded once, as `campaign.opened`: the total budget in dollars and the
  * reserve one solve is held at (`--budget`, `--reserve`), the full limit of a solve in the model's
- * turns (`--solve-model-turns`), the Builder sessions before a comparison (`--sessions`),
- * the campaign's patience (`--patience`: the moves without a gain, the idle Examiner sessions and
- * the comparisons without room it bears in a row before it ends, six by default while the system
- * is built, since every campaign of 9 and 10 October ended on the plan's three before its tasks
- * were measured), who sits in each seat, and the terms of its moves as a command last named them (`TERMS`,
- * `src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks. A later
- * run that names nothing runs by the record, and one that names another records it again: these
- * are the operator's conditions, and a comparison logs its own terms at its start. The setting is
- * the log's own record (`campaign.setting`), named by the first command that begins. A flag that
- * names another setting afterwards is refused with both, as every command refuses it.
+ * turns (`--solve-model-turns`), the Builder sessions before a comparison (`--sessions`), the
+ * campaign's patience (`--patience`: the moves without a gain, the idle Examiner sessions and the
+ * comparisons without room it bears in a row before it ends, six by default while the system is
+ * built, since every campaign of 9 and 10 October ended on the plan's three before its tasks were
+ * measured), who sits in each seat, and the terms of its moves as a command last named them
+ * (`TERMS`, `src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks.
+ * A later run that names nothing runs by the record, and one that names another records it again:
+ * these are the operator's conditions, and a comparison logs its own terms at its start. The
+ * setting is the log's own record (`campaign.setting`), and every command refuses another.
  *
  * **The budget is one total** (`docs/plan.md`, row F49). Each move's cap is what is left of it:
- * the total less every billed dollar the log holds. Where less is left than one solve is held at,
- * the campaign ends on its budget. A cap was typed for each move until now, and nothing summed
- * them.
+ * the total less every billed dollar the log holds, and where less is left than one solve is held
+ * at, the campaign ends on its budget. **What it risks** is said as it opens, and an opening whose
+ * false promotion over its patience may pass 10% is refused (`openingLines`, `src/kernel/size.ts`).
  *
  * **A campaign runs unattended** (row F29; the operator, 12 October): it freezes an exam whose
  * reading holds no fault and promotes a step read twice and not lost at the full limit. Under
  * `--attended`, kept by the opening until `--no-attended`, both wait for the operator's word and a
  * promotion stops the command. Going on past the stop rule takes `--past-stop "<why>"` either way.
- * Until 12 October the word was `--unattended`, and a reopen that did not repeat it lost it.
  *
  * **A word the operator leaves** (`word.ts`, row F50) is read at each move's boundary: a stop
  * ends the campaign there, other tasks are written first, and another total is what the campaign
  * runs by from that move on. A word changes nothing in the move that was running when it came.
  *
  * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
- * on tasks that could not be made to leave room, on its environment or on the operator's word,
- * and the last event of its log says which (`campaign.ended`). With `--handover <dir>` it then writes what it hands over
- * there: the reference harness as a directory that stands by itself, the public rules and the
- * closing report (`close.ts`, row F51). A move that threw after it had begun is the environment's
- * ending, and run again the command goes on from the log. A move refused before it wrote
- * anything is no ending: the refusal is printed and nothing is recorded.
+ * on tasks that could not be made to leave room, on its environment, on the operator's word or on
+ * its control (`decide.ts`), and its log's last event says which (`campaign.ended`). With
+ * `--handover <dir>` it then writes what it hands over there: the reference harness as a directory
+ * that stands by itself, the public rules and the closing report (`close.ts`, row F51). A move that
+ * threw after it had begun is the environment's ending, and run again the command goes on from the
+ * log. A move refused before it wrote anything is no ending: the refusal is printed, nothing kept.
  *
- * A move is recorded once it is made (`campaign.move`), with the reason the table gave, so the
- * log holds what was decided beside what was done. Each run of the command keeps a receipt
- * beside the log, `launch-run-<n>.json`: its flags, the commit the worktree stands at and the
- * load it started under (`keepReceipt`, `tools/runs/receipt.ts`).
+ * A move is recorded once it is made (`campaign.move`), with the reason the table gave, so the log
+ * holds what was decided beside what was done. Each run of the command keeps a receipt beside the
+ * log, `launch-run-<n>.json`: its flags, the commit it stands at and the load it started under
+ * (`keepReceipt`, `tools/runs/receipt.ts`).
  *
  * **A move that solves waits for the host.** A Builder session and a comparison start once the
  * host's one-minute load is at or under its cores, since a solve's wall counts the clock.
@@ -95,6 +93,7 @@ import { type Opening, openingOf, planOf, SEATS, type Seat, SESSIONS, TERMS } fr
 import { pendingWords, type Word } from "#src/builder/word.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, PATIENCE, promoted } from "#src/kernel/reports.ts";
+import { openingLines } from "#src/kernel/size.ts";
 import { taskStates, taskVersion } from "#src/kernel/task.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -773,6 +772,7 @@ export async function harnessBuilder(
       },
       opening,
     );
+    if (made === 0) for (const line of openingLines(plan.wanted, opening.patience)) console.log(line);
     const decided = decide(events, plan);
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,

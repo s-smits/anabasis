@@ -239,17 +239,17 @@ function supplied(desk: Desk): boolean {
  *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
  *  is held out only where some of them and not all gave a valid answer, and a solve that ended in no
  *  reading leaves it unmeasured. The Examiner hears the counts; no answer and no trace of a solve
- *  reaches it. The session's wall does not cut them: they run under a comparison's own (`probe`),
- *  and only a killed run kills them. */
-async function measured(desk: Desk, task: TaskPackage) {
-  const { contract, log, id, probe, kill } = desk.request;
+ *  reaches it. The session bounds them: `stop` is the session's own signal, which its wall, its end
+ *  and a killed run abort, and it is the kill a comparison's solves take (`probe`), so a wall that
+ *  fires mid-try leaves no solve running and the task refused unmeasured. */
+async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
+  const { contract, log, id, probe } = desk.request;
   if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === undefined) return { reason: null, said: "" };
   const before = billedFor(read(log), id);
-  const signal = kill ?? new AbortController().signal;
-  const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, signal)));
+  const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, stop)));
   const solves = endings.filter(({ outcome }) => outcome !== "non-result").length;
   const valid = endings.filter(({ outcome }) => outcome === "pass").length;
   const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves`;
@@ -267,7 +267,7 @@ async function measured(desk: Desk, task: TaskPackage) {
 }
 
 /** The gate for one instance the Examiner proposed: the line it is told (`measured`). */
-async function gated(desk: Desk, instance: Task): Promise<string> {
+async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
   const { request } = desk;
   const task = request.pack(instance);
   const version = taskVersion(task);
@@ -279,7 +279,7 @@ async function gated(desk: Desk, instance: Task): Promise<string> {
     task: { taskId, family, publicInput, hidden },
     ...keyIfDefined("feasible", desk.answered.has(contentOf(instance)) ? true : undefined),
   });
-  const { reason, said, reference } = await measured(desk, task);
+  const { reason, said, reference } = await measured(desk, task, stop);
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
   append(request.log, "task.gate", { version, gate: 1, ...outcome, ...keyIfDefined("reference", reference) });
   if (reason === null) {
@@ -314,7 +314,8 @@ function proposeTool(desk: Desk): AgentTool {
       ),
     }),
     executionMode: "sequential",
-    execute: async (_id, args) => {
+    // The session's signal, which its wall, its end and a killed run abort (`measured`).
+    execute: async (_id, args, signal = new AbortController().signal) => {
       if (supplied(desk)) throw new Error(SUPPLIED);
       if (desk.proposed >= request.limits.proposals) {
         throw new Error("This session can propose no further task. Call finish.");
@@ -339,7 +340,7 @@ function proposeTool(desk: Desk): AgentTool {
           desk.seen.set(content, "now");
           desk.proposed += 1;
           const taskId = `${request.id}-${String(desk.proposed).padStart(3, "0")}`;
-          lines.push(await gated(desk, { taskId, family, publicInput, hidden: kept }));
+          lines.push(await gated(desk, { taskId, family, publicInput, hidden: kept }, signal));
         }
       }
       return {

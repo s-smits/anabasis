@@ -544,6 +544,37 @@ describe("try_task", () => {
     expect(s.sent[0]).not.toContain("propose_tasks");
     expect(s.sent.join("\n")).not.toContain(SOLVER);
   });
+  it("ends at the session's wall with no solve of the reference harness left running", async () => {
+    const s = setup([call("try_task", { tasks: [instance(2)] }), finish, finish]);
+    const running = new Set<string>();
+    // Each solve would pass long after the wall, unless the kill a comparison's solves take
+    // stops it first; the launcher records its end either way.
+    const probe = (task: TaskPackage, session: string, kill: AbortSignal) =>
+      new Promise<Ending>((settle) => {
+        const solve = `w-${String(s.of("solve.started").length + 1)}`;
+        running.add(solve);
+        append(s.log, "solve.started", { solve, task: task.taskId, comparison: session });
+        const end = (ending: Ending) => {
+          if (!running.delete(solve)) return;
+          clearTimeout(late);
+          append(s.log, "solve.finished", { solve, ending });
+          settle(ending);
+        };
+        const late = setTimeout(() => end(PASS), 5_000);
+        kill.addEventListener("abort", () => end({ outcome: "non-result", kind: "killed", reason: "wall" }));
+      });
+    const started = performance.now();
+    const examined = await examine({ ...s.request, limits: { ...LIMITS, wallSeconds: 0.5 }, probe });
+    expect(examined.ended).toBe("wall");
+    expect(performance.now() - started).toBeLessThan(4_000);
+    expect(running.size).toBe(0);
+    expect(s.of("solve.finished").map(({ ending }) => asRecord(ending)?.kind)).toEqual([
+      "killed",
+      "killed",
+      "killed",
+    ]);
+    expect(s.of("task.gate")).toMatchObject([{ outcome: "refused", reference: { valid: 0, solves: 0 } }]);
+  });
 });
 
 describe("an Examiner's walled shell, with the engines its campaign's checks run", () => {

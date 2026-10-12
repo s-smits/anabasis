@@ -354,7 +354,8 @@ function SlotTooltip({
   );
 }
 
-/** The comparisons chart, its legend and a table of the same counts for a screen reader. */
+/** The comparisons chart, its legend and a table of the same counts for a screen reader and a
+ *  keyboard, whose buttons open a comparison as its column does. */
 export const ComparisonsChart = memo(function ComparisonsChart({ bars, promotions, starter, onOpen }: Props) {
   const slots = useMemo(() => comparisonSlots(bars), [bars]);
   const byKey = useMemo(() => new Map(slots.map((slot) => [slot.key, slot])), [slots]);
@@ -465,7 +466,7 @@ export const ComparisonsChart = memo(function ComparisonsChart({ bars, promotion
         </div>
       </div>
       <ChartKey bars={bars} slots={slots} promotions={promotions} />
-      <CountsTable slots={slots} />
+      <CountsTable slots={slots} onOpen={onOpen} />
     </>
   );
 });

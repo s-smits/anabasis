@@ -1,10 +1,12 @@
 // The Campaign pane, rendered from the readings the server's handlers give of the fixture's
 // campaigns (`fixture-campaign.ts`), and so through the repository's folds.
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
+import { CountsTable } from "../src/components/charts/comparisons-key.tsx";
 import type { CampaignReading, ComparisonBar, Outcome } from "../src/models.ts";
 import { type Navigation, type RouteChange, routeOf } from "../src/route.ts";
 import { CampaignPane } from "../src/views/campaign.tsx";
@@ -186,6 +188,47 @@ test("a column opens its comparison by the move's place in the log, which a roun
   expect(reading.harnesses.flatMap((card) => card.comparedIn).find(({ id }) => id === round.id)?.move).toBe(
     round.move,
   );
+});
+
+test("each comparison opens from the keyboard: a native button in the counts table, which comes into view with focus", () => {
+  const reading = readingOf(fixture.name);
+  /** The props of an element this test reads: a button's, and any element's hiding. */
+  interface Read {
+    readonly type?: string;
+    readonly disabled?: boolean;
+    readonly tabIndex?: number;
+    readonly "aria-hidden"?: boolean;
+    readonly onClick?: () => void;
+    readonly children?: ReactNode;
+  }
+  const buttons: Read[] = [];
+  const visit = (node: ReactNode): void => {
+    if (Array.isArray(node)) {
+      // SAFETY: an array among React children holds React children.
+      for (const each of node as readonly ReactNode[]) visit(each);
+      return;
+    }
+    if (!isValidElement(node)) return;
+    // SAFETY: every element CountsTable returns is a host element, whose props are DOM attributes.
+    const props = node.props as Read;
+    expect(props["aria-hidden"]).not.toBe(true);
+    if (node.type === "button") buttons.push(props);
+    visit(props.children);
+  };
+  const opened: number[] = [];
+  visit(CountsTable({ slots: comparisonSlots(reading.comparisons), onOpen: (move) => opened.push(move) }));
+  // A native button that is enabled and in the tab order is focused by Tab and pressed by Enter and
+  // Space, either of which fires its click.
+  for (const button of buttons) {
+    expect([button.type, button.disabled ?? false, (button.tabIndex ?? 0) >= 0]).toEqual([
+      "button",
+      false,
+      true,
+    ]);
+    button.onClick?.();
+  }
+  expect(opened).toEqual(reading.comparisons.map((bar) => bar.move));
+  expect(paneOf(reading)).toContain('<div class="ana-sr-only ana-shown-on-focus"><table class="ana-table">');
 });
 
 test("what the view prints beside the readouts is one click or one line away: the set-up, the open steps, the regression, the last write", () => {

@@ -227,7 +227,8 @@ describe("a campaign run by its log", () => {
       budget: null,
       limit: null,
       sessions: 1,
-      patience: 6,
+      // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`).
+      patience: 1,
       seats: { builder: null, examiner: null, reviewer: null },
       terms: { practice: "2" },
     });
@@ -265,7 +266,9 @@ describe("a campaign run by its log", () => {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
     };
     const said = spyOn(console, "log");
-    const ending = await harnessBuilder(flags, seats);
+    // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`),
+    // and the opening keeps it for the command it prints.
+    const ending = await harnessBuilder([...flags, "--patience", "1"], seats);
     const lines = said.mock.calls.map(([line]) => (isString(line) ? line : ""));
     said.mockRestore();
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
@@ -297,6 +300,9 @@ describe("a campaign run by its log", () => {
       "5",
       "--trigger",
       "0.5",
+      // The patience the opening's bound holds at these terms (`openingLines`).
+      "--patience",
+      "1",
     ];
     const strayed: string[] = [];
     // Under the new harness every held-out task is answered, and under the reference none.
@@ -472,7 +478,8 @@ describe("a campaign run by its log", () => {
     const name = `${STEM}-word`;
     // The seed holds ten tasks to score once two are released, and a comparison scores five: the
     // row that writes tasks up to the target is tested in `test/decide.test.ts`.
-    const flags = [...seeded(name), "--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5"];
+    const terms = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5", "--patience", "2"];
+    const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];
     const scriptedSolves = scriptedSeats(
       { held: { old: "none", fresh: "pass" }, starter: "none" },
@@ -566,6 +573,8 @@ describe("a campaign run by its log", () => {
       "5",
       "--margin",
       "0.2",
+      "--patience",
+      "2",
     ];
     const strayed: string[] = [];
     const scriptedSolves = scriptedSeats(
@@ -675,7 +684,7 @@ describe("a campaign run by its log", () => {
     const prompt = "Multiplying a base by six, as a fixture.";
     const solver = ["--solver", "claude/claude-opus-5-5"];
     const terms = ["--practice", "2", "--solves", "1", "--solve-minutes", "8", "--practice-solves", "5"];
-    const flags = ["--name", name, ...solver, ...terms, "--target", "5"];
+    const flags = ["--name", name, ...solver, ...terms, "--target", "5", "--patience", "2"];
     const exam = {
       domain: "Fixture products",
       scope: "A task gives a base and asks for six times it.",
@@ -737,6 +746,8 @@ describe("a campaign run by its log", () => {
       "claude/claude-opus-5-5",
       "--prompt",
       prompt,
+      "--patience",
+      "1",
       "--moves",
       "0",
     ];

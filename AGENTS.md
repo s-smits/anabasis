@@ -108,8 +108,9 @@ floor a real comparison has to beat before its wins mean anything. A campaign ma
 attempts under one reference, and the level misstates even one: an attempt is two readings, and
 at 0.10 the rule promotes equal harnesses 5.8% of the time on 24 untied tasks (`falseRate`,
 `src/kernel/compare.ts`). Every reading prints that rate at its own margins, and a campaign's
-opening says the union bound over its patience's attempts and is refused past 10% (`opening`,
-`src/kernel/size.ts`). The climb reads what the attempts risk together as they come: one attempt's
+opening says the union bound over its patience's attempts and the campaign command refuses one
+past 10% (`openingLines`, `src/kernel/size.ts`): at 24 tasks, 0.10 and a patience of six that is
+34.8%, so such a campaign names a patience of one or a level of 0.02. The climb reads what the attempts risk together as they come: one attempt's
 rate bounded off pairs of controls read by the promotion rule, at 95% one-sided, or the level by
 design before two controls, summed over the attempts (`falsePromotion`, `src/builder/climb.ts`).
 

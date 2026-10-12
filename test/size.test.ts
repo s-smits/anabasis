@@ -4,7 +4,7 @@
 import { describe, expect, it } from "bun:test";
 import { planOf } from "../src/builder/opening.ts";
 import { flipP, sweepOf } from "../src/kernel/compare.ts";
-import { clearing, FALSE_CAP, opening, SIZE, sizeLines, upperBound } from "../src/kernel/size.ts";
+import { clearing, FALSE_CAP, openingLines, SIZE, sizeLines, upperBound } from "../src/kernel/size.ts";
 import { COMPARISON_OPTIONS, ROUND_OPTIONS } from "../tools/d2/round.ts";
 
 const LEVEL = 0.1;
@@ -94,30 +94,30 @@ describe("what a comparison of a given size can show, said before it runs", () =
 });
 
 describe("what a campaign's opening risks", () => {
+  const wanted = { target: SIZE.tasks, ...ASKED };
+
   it("is the union bound over its patience's attempts, and an opening past 10% is refused with what holds it", () => {
     // At the size and the patience nothing names another, six attempts at 5.8% each: 34.8%.
-    const wide = opening(SIZE.tasks, ASKED, 6);
-    expect(wide.lines).toEqual([
-      ...sizeLines(SIZE.tasks, ASKED),
-      "over the patience's 6 attempts under one reference a false promotion comes at most 34.8% of the time",
-    ]);
-    expect(wide.refusal).toBe(
-      "over the patience's 6 attempts under one reference a false promotion comes at most 34.8% of the time, past the 10% a campaign may open on: --patience 1 or less holds it, and so may a lower --level or another --target",
+    expect(() => openingLines(wanted, 6)).toThrow(
+      "over the patience's 6 attempts under one reference a false promotion comes at most 34.8% of the time, past the 10% a campaign may open on: --patience 1 or less holds it, and so does --level 0.02 or lower",
     );
     expect(FALSE_CAP).toBe(0.1);
     // One attempt holds it, and so does a lower level at the same patience: 1.3% an attempt at 0.02.
-    expect(opening(SIZE.tasks, ASKED, 1).refusal).toBeNull();
-    const strict = opening(SIZE.tasks, { level: 0.02, trigger: 0.25 }, 6);
-    expect(strict.refusal).toBeNull();
-    expect(strict.lines.at(-1)).toBe(
+    expect(openingLines(wanted, 1)).toEqual([
+      ...sizeLines(SIZE.tasks, ASKED),
+      "over the patience's 1 attempt under one reference a false promotion comes at most 5.8% of the time",
+    ]);
+    expect(openingLines({ ...wanted, level: 0.02 }, 6).at(-1)).toBe(
       "over the patience's 6 attempts under one reference a false promotion comes at most 7.6% of the time",
     );
     // A rate too small for a tenth of a percent is said as under it, never as none.
-    expect(opening(SIZE.tasks, { level: 0.001, trigger: 0.25 }, 6).lines[2]).toContain(
-      "under 0.1% of the time",
-    );
+    expect(openingLines({ ...wanted, level: 0.001 }, 6).at(2)).toContain("under 0.1% of the time");
     // A set no two readings can promote on risks nothing.
-    expect(opening(1, ASKED, 6).refusal).toBeNull();
+    expect(openingLines({ ...wanted, target: 1 }, 6).at(-1)).toContain("at most 0% of the time");
+    // Where a patience of one is past the cap, no patience holds it.
+    expect(() => openingLines({ ...wanted, level: 0.3, trigger: 0.5 }, 1)).toThrow(
+      "no patience holds it at this --level",
+    );
   });
 });
 

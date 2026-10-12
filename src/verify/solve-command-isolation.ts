@@ -237,9 +237,11 @@ function darwinCommandProfile(
   // host shares: on 10 October reference solves of two campaigns ran a PHREEQC that a third
   // campaign's Builder had installed under `/tmp` four hours before. Linux gives each command an
   // empty `/tmp` of its own; a Seatbelt rule cannot, so Darwin closes it, and such a write is
-  // refused where Linux would keep it private.
+  // refused where Linux would keep it private. `/var/tmp` is the same, and was left open until
+  // 12 October: a v1 run's folder there held a held-out task's text and a graded solve of it, and an
+  // Examiner listed and read inside it.
   const userTemp = userTempRules([]);
-  const sharedTmp = [...new Set(canonicalForms("/tmp"))].sort();
+  const sharedTmp = canonicalRoots(["/tmp", "/var/tmp"]);
   const profile = [
     "(version 1)",
     // The same read posture as the session that owns this command and as the Builder's authoring
@@ -263,9 +265,9 @@ function darwinCommandProfile(
     // ancestor of its working directory as it starts: on 11 October that was 33,673 entries, and
     // 26 ms of the 48 a walled `bun -e 1` took below it.
     ...sbRule("deny file-read-data", "literal", [...new Set(userTemp.roots.flatMap(canonicalForms))].sort()),
-    // The host's `/tmp`, closed whole: what another seat left there is neither read nor run, and a
-    // command leaves nothing there for the next. The seat's root is opened again further down,
-    // after it, for a controller whose own temporary directory lies under `/tmp`.
+    // The host's `/tmp` and `/var/tmp`, closed whole: what another seat left there is neither read
+    // nor run, and a command leaves nothing there for the next. The seat's root is opened again
+    // further down, after it, for a controller whose own temporary directory lies under `/tmp`.
     ...sbRule("deny file-read* file-read-metadata file-write*", "subpath", sharedTmp),
     ...sbRule("deny file-read*", "subpath", readDenies),
     ...traversalMetadataRules(readAllows),
@@ -321,7 +323,7 @@ export function commandIsolationPolicy(
   /*
    * What the Linux command wall overmounts, now that its reads open by default: the session's
    * denied roots, which are the repository, its other worktrees, a stored pack and the operator
-   * home; and the shared temporary directory. The temporary directory holds every
+   * home; and the shared temporary directories. The temporary directory holds every
    * other seat's root and every concurrent verification's staged workdir, so it is hidden whole
    * and this seat's root is bound back inside it — a separation the Darwin profile spends two rules
    * on only because a Seatbelt deny cannot be reopened by a mount.
@@ -332,7 +334,7 @@ export function commandIsolationPolicy(
    * build script spelling `/tmp` a private directory rather than the read-only root bind, where a
    * `mkdir` answers "Read-only file system".
    */
-  const readDenies = [...new Set([...base.deniedReadRoots, tmpdir(), "/tmp"])].sort();
+  const readDenies = [...new Set([...base.deniedReadRoots, tmpdir(), "/tmp", "/var/tmp"])].sort();
   return {
     ...shared,
     profile: null,

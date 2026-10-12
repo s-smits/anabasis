@@ -680,6 +680,29 @@ describe("the reader of a round compared with another harness than its session s
   });
 });
 
+describe("the reader of what each Examiner session's tasks came to", () => {
+  it("says how many reports each session opened after, since a tally at the log's end is none it heard", () => {
+    // Buffer on 12 October: all six sessions opened before the first comparison, and heard nothing.
+    const log: LogEvent[] = [];
+    const put = appendTo(log);
+    const wrote = (session: string, version: string) => {
+      put("exam.started", { session });
+      put(PROPOSED, { version, session });
+      put(GATE, { version, gate: 1, outcome: "passed" });
+    };
+    wrote("x-1", "v1");
+    const terms = { session: "g-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
+    put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: [] });
+    put(REPORTED, { ...REPORT, ...terms, reading: "no-step" });
+    wrote("x-2", "v2");
+    expect(
+      overview(log).triggers.flatMap((trigger) =>
+        trigger.name === "OUTCOMES BY SESSION" ? [trigger.detail] : [],
+      ),
+    ).toEqual(["x-1, opened after 0 reports: not compared 1; x-2, opened after 1 report: not compared 1"]);
+  });
+});
+
 describe("the reader of the load a comparison's solves started under", () => {
   /** A log of one comparison a row: its id, the one-minute load each of its solves started under,
    *  and the host's cores where the log holds them. */

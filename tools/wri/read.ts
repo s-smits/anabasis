@@ -33,6 +33,7 @@ import {
   type Compared,
   count,
   EXAM_END,
+  EXAM_START,
   fired,
   type Index,
   indexOf,
@@ -68,7 +69,6 @@ export interface Overview {
 }
 
 const FEW_CALLS = 3;
-const EXAM_START = "exam.started";
 /** The Builder tools that write one named file: pi's two, and the one tool sessions had before them. */
 const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
 

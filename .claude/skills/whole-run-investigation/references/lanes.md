@@ -376,7 +376,8 @@ one route. v2 tells the Examiner one outcome of every task the campaign holds an
 at (`src/examiner/record.ts`). That is the one channel by which a better exam is asked for, so
 read whether it carried. `OUTCOMES BY SESSION` gives, for each session's held-out tasks, how many
 the reference harness answered in every solve, in some, in none, and how many no comparison has
-scored. Read them in session order, and what changed in the instances between sessions:
+scored, as they stand at the log's end, beside the reports the session opened after: one that
+opened after none heard no outcome, and its tally is no effect of the channel. Read them in session order, and what changed in the instances between sessions:
 families, the number of requirements meeting in one limit, sizes. The public inputs are in
 `task.proposed`; describe how they differ and quote none. An author told the reference failed a
 task can reach that outcome with tasks whose solves vary widely in what they need: such tasks

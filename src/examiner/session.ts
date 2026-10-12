@@ -30,8 +30,10 @@ import {
 } from "@earendil-works/pi-ai";
 import { type Static, type TSchema, Type } from "typebox";
 import { reportedCost } from "../backends/claude.ts";
+import { openingOf } from "../builder/opening.ts";
 import { append, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
+import { billedAll } from "../kernel/reports.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -220,6 +222,34 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
 }
 
 /**
+ * `compact` held to the campaign's whole budget, which is read before each request and again after
+ * a compaction, which bills too: where it holds no reserve for one more, `spent` is aborted and the
+ * request is refused. The log's sum counts this session's own turns while it is unfinished
+ * (`billedAll`), so a session inside a live Builder's conversation is held as the Builder is. A log
+ * with no opening, or an opening with no budget, holds nothing.
+ */
+function withinBudget(
+  log: string,
+  spent: AbortController,
+  compact: ReturnType<typeof loopCompaction>,
+): ReturnType<typeof loopCompaction> {
+  const afforded = () => {
+    const events = read(log);
+    const budget = openingOf(events)?.budget;
+    if (budget === null || budget === undefined) return;
+    if (budget.dollars - billedAll(events) >= budget.reserve) return;
+    spent.abort();
+    throw new Error("the campaign budget has no reserve left");
+  };
+  return async (context, cut) => {
+    afforded();
+    const update = await compact(context, cut);
+    afforded();
+    return update ?? undefined;
+  };
+}
+
+/**
  * One session of `mode`: the Examiner works with the mode's tools until its work is done, it calls
  * `finish`, or a limit ends it. Everything it does is in the log under the mode's kind: its start,
  * its turns and calls, and its end with what it billed.
@@ -264,9 +294,11 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     () => wall.abort(),
     Math.max(0, limits.wallSeconds * 1000 - (performance.now() - began)),
   );
-  // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
-  const done = new AbortController();
-  const signal = AbortSignal.any([wall.signal, done.signal, ...(request.kill ? [request.kill] : [])]);
+  // `done` is aborted when the loop returns, whatever returned it, so the model's own process is
+  // closed; `spent` where the campaign's budget holds no reserve for the next request.
+  const [done, spent] = [new AbortController(), new AbortController()];
+  const kill = request.kill ? [request.kill] : [];
+  const signal = AbortSignal.any([wall.signal, done.signal, spent.signal, ...kill]);
   const turns: AssistantMessage[] = [];
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
@@ -295,21 +327,21 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
         },
         getFollowUpMessages: async () =>
           over() ? [] : [user(`You have not called finish. ${mode.nudge}, or call finish.`)],
-        prepareRequest: loopCompaction(log, kind, id, stream, summaries),
+        prepareRequest: withinBudget(log, spent, loopCompaction(log, kind, id, stream, summaries)),
       },
       traceSink(log, kind, id, () => turns.length),
       signal,
       stream,
     );
   } catch (error) {
-    crash = errorMessage(error);
+    if (!spent.signal.aborted) crash = errorMessage(error);
   } finally {
     clearTimeout(timer);
     done.abort();
     rmSync(state, { recursive: true, force: true });
   }
   const killed = request.kill?.aborted === true;
-  crash ??= wall.signal.aborted || killed ? null : failedTurn(turns);
+  crash ??= wall.signal.aborted || killed || spent.signal.aborted ? null : failedTurn(turns);
   const work = mode.done();
   const by = {
     stands: work === "stands",

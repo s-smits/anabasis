@@ -18,7 +18,8 @@
  *
  * `--cap` is the session's dollar cap and is required, as a comparison's is: no practice solve
  * starts that a reserve for it (`--reserve`, $10) would take past the cap. The Builder's own turns
- * are billed when the session ends, and are held by `--turns` and `--minutes`.
+ * are billed while the session is live, before another campaign move can spend more; the final
+ * session total records them once. They are held by `--turns` and `--minutes`.
  *
  * Before its first event the session asks whether it may start (`admitSession`,
  * `src/builder/admission.ts`): on a checker nobody has read, or after the plan's stop rule has
@@ -32,9 +33,10 @@
  * Not run here: see `campaign.ts`.
  */
 import { admitSession } from "#src/builder/admission.ts";
-import { sessionOnce } from "#src/builder/session.ts";
+import { sessionOnce, type BuildRequest } from "#src/builder/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { solverLast } from "#src/kernel/solves.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, stayAwake } from "./campaign.ts";
 import {
@@ -53,7 +55,11 @@ import { firstRecord, keepSetting, recordedSetting, settingAsked } from "./setti
 /** `bun tools/d2/session.ts`, and under a simulation's `seated` the same session with its seats
  *  scripted. Returns what the session left: the harness it froze, or null where it left the one it
  *  started from. */
-export async function sessionCommand(args: readonly string[], seated: Seated = solved) {
+export async function sessionCommand(
+  args: readonly string[],
+  seated: Seated = solved,
+  campaignTools?: BuildRequest["campaign"],
+) {
   const { values } = parseArgs({ args: [...args], options: SESSION_OPTIONS });
   const { session } = values;
   const pack = packNamed(values, " and --session");
@@ -94,7 +100,7 @@ export async function sessionCommand(args: readonly string[], seated: Seated = s
   for (const note of notes) console.log(`· ${note}`);
   keepSetting(campaign.log, setting);
   stayAwake();
-  const { kept, broken } = await sessionOnce({ ...request, cap });
+  const { kept, broken } = await sessionOnce({ ...request, cap, ...keyIfDefined("campaign", campaignTools) });
   console.log(JSON.stringify({ session, harness: kept?.digest ?? null, broken }, null, 2));
   console.log(
     kept === null

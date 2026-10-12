@@ -236,13 +236,15 @@ First say what happened to the link:
 - **unreached**: the link did not move, so the change never did what it was for. Repair its path
   (step 2), containment included, before naming another link.
 
-Then choose one move. For the campaign itself the plan's table names it, and the view prints it
+Then choose one move. The plan's table suggests one, and the view prints it
 as its last line (`decide`, `src/builder/decide.ts`): read the exam, set the tasks apart, have
 tasks written, build, compare, repeat a step, set the budget again, promote, or end. The stop
 rule ends it (three moves in a row that could have shown a gain and showed none: a changed
 harness counts once against one reference, where its comparison left room, and so does a session
-that changed nothing), and so does the budget. One command makes the table's moves in turn,
-under one total budget:
+that changed nothing), and so does the budget. After exam preparation, one live Builder
+conversation chooses actions through campaign tools under one total budget. The table is prompt
+advice; code keeps admissions and scoring. With `--no-builder-led`, or in a campaign opened
+before the term, the host makes each move the table names:
 
 ```sh
 bun tools/d2/harness-builder.ts <the pack's flags> --name <name> --dry-run   # the move, and nothing made
@@ -256,8 +258,8 @@ a default over the log, and what it cannot read is yours to bring. The moves it 
 the system's own: change one flag and run again; fix the one owner the evidence names; delete a
 mechanism nothing reads; investigate one consequential ambiguity.
 
-After a repeated step the harness is the one to promote, and after the promotion the Examiner
-writes the next epoch's tasks, the ones the harness now the reference fails. A campaign runs at
+After a repeated step the harness is eligible for promotion. The Builder can request it, then
+ask the Examiner for the next epoch's tasks. Both actions keep the same Builder conversation. A campaign runs at
 one budget since 11 October (`docs/simplify.md`, package A): there is no shorter budget to read a
 step under and no budget rule to set one again. Build for difficulty from the one lever v1 found
 to work, several requirements that share one limit (`docs/plan.md`, row F52).

@@ -417,6 +417,8 @@ describe("a row of the table", () => {
       fresh: "latest",
       reference: "promoted",
       why: "comparison g-1 cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together",
+      // The repeat names the reading it repeats, so that its harness is the one that reading froze.
+      repeats: "g-1",
     } as const;
     expect(decide(stepped, PLAN)).toEqual({ ...again, code: "unfinished" });
     // A 4-3 clears no trigger; a 6-2 (p 0.14) buys the repeat, whatever its word.

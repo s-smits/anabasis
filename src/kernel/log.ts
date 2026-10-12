@@ -37,7 +37,8 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  call, so the trace is in the log rather than in a file beside it. `condition.recorded` holds a
  *  condition under the id its solves name (`condition.ts`), so a comparison can be checked from
  *  the log alone. The four `build.*` kinds are a Builder session's: what it was given, its own
- *  turns and calls, and how it ended (`src/builder/session.ts`). `solve.compacted`,
+ *  turns and calls, and how it ended (`src/builder/session.ts`). `build.checkpoint` keeps a
+ *  frozen harness inside a live Builder conversation, before a comparison. `solve.compacted`,
  *  `build.compacted` and `exam.compacted` are a compaction in pi's own loop, and what its summary
  *  spent (`src/backends/pi-compaction.ts`). The `exam.*` kinds are an Examiner session's: the same
  *  four (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to
@@ -83,6 +84,7 @@ const EVENT_KINDS = [
   "harness.promoted",
   "harness.imported",
   "build.started",
+  "build.checkpoint",
   "build.turn",
   "build.call",
   "build.compacted",

@@ -5,9 +5,13 @@ description: "Start an authorised Anabasis v2 campaign through its one command, 
 
 # Start and stop a campaign
 
-One command runs a campaign move after move over its log (`tools/d2/harness-builder.ts`): it
-reads the log, asks the decision table for the one move that follows, prints it with its reason,
-makes it by the command an operator would run, and reads the log again. A start request
+One command prepares the exam and opens one live Builder conversation
+(`tools/d2/harness-builder.ts`). The Builder edits the harness and calls campaign tools for the
+Examiner, practice release, comparison and promotion. The decision table supplies public advice;
+the commands keep their admissions, budget and privacy checks. That is a campaign that opens now.
+`--no-builder-led` opens one whose every move the host makes as the table names it, a Builder
+session among them; the opening keeps the term either way, so a later command of the campaign
+need not name it, and a campaign opened before the term runs by the host. A start request
 authorises that command once; it does not authorise a second run beside it.
 
 Until 11 October a launcher (`bun run runs launch`) read the log and the host and then started
@@ -27,7 +31,7 @@ set -m
 nice -n 19 bun --env-file=<file> tools/d2/harness-builder.ts \
   --name <name> --project <project> <the pack's four flags, or --prompt-file <file> --solver <model>> \
   --budget <dollars> --builder <model> --examiner <model> --reviewer <model> \
-  [--solve-model-turns N] [--sessions N] [--level 0.1 --trigger 0.25] [--attended] \
+  [--solve-model-turns N] [--minutes N] [--turns N] [--level 0.1 --trigger 0.25] [--attended] \
   > <dir>/launch.out 2> <dir>/launch.err &
 ```
 
@@ -41,8 +45,14 @@ setting does not change, and another setting is another campaign (`tools/d2/sett
 `--dry-run` prints the next move and makes none: it answers "is this campaign ready for its next
 move, and which is it?". `--moves N` makes at most that many. A campaign runs unattended: it
 freezes an exam whose reading holds no fault and promotes the harness the rule names without
-waiting. `--attended` makes both wait for the operator's word, and the campaign keeps it until
-`--no-attended`; add it only when the operator asks.
+waiting when the Builder requests an eligible promotion. `--attended` makes both wait for the
+operator's word, and the campaign keeps it until `--no-attended`; add it only when the operator
+asks. `--sessions` now shapes comparison advice only. `--minutes` covers the whole live
+conversation, including its nested tools: a wall that falls inside a comparison or an Examiner
+session is read where that action ends, and a conversation that ends at its limits is followed by
+a new one on the Builder's notes, so the command goes on to a typed ending. `finish` ends the
+conversation and this run of the command; it does not compare or promote the harness, and the
+same command run again goes on with a new conversation.
 
 Three things about the shell line:
 
@@ -81,7 +91,7 @@ A comparison (`tools/d2/checkpoint.ts`, `tools/d2/round.ts`) is refused by its a
   rejected, 14 on one check.
 - **Too few tasks to read a step.** At `--trigger 0.25` a first reading takes two untied tasks,
   all won. A comparison of fewer scored tasks is refused, and so is one the campaign's own tie
-  share leaves too few untied. The campaign command then runs an Examiner session for more.
+  share leaves too few untied. The Builder receives advice to ask the Examiner for more.
 - **No dollar cap.** The campaign command passes each move what is left of its total; a command
   started by hand names `--cap`. No solve starts that a reserve for it and for each one running
   (`--reserve`) would take past the cap, and a comparison the cap cuts short reads `not-scored`.
@@ -105,7 +115,8 @@ same log in this worktree, and a flag the move's command would refuse at its fir
 ## What comes before a comparison
 
 A comparison reads sets that earlier moves put in the campaign's log (`tools/d2/campaign.ts`
-lists them). The campaign command makes each move in its order; by hand they are:
+lists them). The host prepares the exam before the conversation; later the Builder chooses
+when to request task writing or practice release, and in a host-run campaign the table does. By hand they are:
 
 | the log needs | from |
 | --- | --- |
@@ -136,8 +147,8 @@ process is gone before `comparison.reported`" is a run to read in its `.err`.
 The view prints the campaign as its log reads: the set-up, what each Examiner session, Builder
 session and comparison handed over, and the climb. Its last line is the one move the table names
 for this log (`decide`, `src/builder/decide.ts`), asked with the five flags above and, for those
-it does not name, the terms the campaign's opening keeps: what the campaign command would make
-next. The view starts nothing.
+it does not name, the terms the campaign's opening keeps: advice the Builder receives. The
+Builder may choose a different admitted action. The view starts nothing.
 
 ## Stop a run
 

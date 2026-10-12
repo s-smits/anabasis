@@ -26,11 +26,12 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
+import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
+import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settleCommand } from "../tools/d2/settle.ts";
-import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
-import { HOST } from "../tools/d2/host.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
@@ -77,6 +78,11 @@ const of = (name: string, kind: string): JsonObject[] =>
   read(join(REPO, ".ana", "d2", name, LOG_FILE)).flatMap((event: LogEvent) =>
     event.kind === kind ? [event.data] : [],
   );
+
+/** The campaign command with the host making every move the table names: a campaign that opens
+ *  now is led by its Builder unless its command says otherwise (`test/builder-led.test.ts`). */
+const harnessBuilder = (args: readonly string[], seats?: Seats) =>
+  command([...args, "--no-builder-led"], seats);
 
 describe("a campaign run by its log", () => {
   it("asks the Examiner for what the campaign is short of, before the first session, and tells it the campaign's wall", async () => {

@@ -4,8 +4,9 @@
  * The plan's D2 is "one Builder session scored on tasks it never saw". A session is given a copy of
  * the harness it starts from, a walled shell over that copy, practice solves on released tasks,
  * and the Referee's ruling of what fails there. It ends by freezing what the copy holds as a
- * harness version. It is one session: the loop over sessions and a promotion are the campaign's
- * (`decide.ts`). Whether the new harness is better is the comparison's to say
+ * harness version. In the campaign command, the same agent also calls campaign tools without
+ * ending its conversation; the host supplies advice from `decide.ts` and checks each move.
+ * Whether the new harness is better is the comparison's to say
  * (`src/kernel/compare.ts`), on tasks this session never saw.
  *
  * What v1's Builder (harness-builder-v4 at 7af7315) did and this one does not: write tasks and
@@ -80,7 +81,7 @@ import { mountDiskCap } from "../verify/disk-cap.ts";
 import { campaignOf } from "./handover.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, shortDigest } from "./past.ts";
-import { continuation, firstMessage, SYSTEM_PROMPT, type Used, usedLine } from "./prompt.ts";
+import { continuation, firstMessage, SAID, systemPrompt, type Used, usedLine } from "./prompt.ts";
 import {
   type Bench,
   endingWith,
@@ -169,6 +170,8 @@ export interface BuildRequest {
   readonly cap?: Cap | undefined;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
+  /** Campaign tools and advice, supplied by the host. The Builder remains the only build-side agent. */
+  readonly campaign?: (bench: Bench) => { readonly tools: AgentTool[]; readonly hook: () => string };
 }
 
 export interface Built {
@@ -266,8 +269,14 @@ export async function session(
     effort: request.effort,
     limits: { ...limits },
   });
+  const wall = new AbortController();
+  // Campaign actions running, and whether the wall fell while one ran (`Bench.within`).
+  const nested = { running: 0, overdue: false };
   const bench: Bench = {
     request,
+    said: SAID[request.campaign === undefined ? "host" : "builder"],
+    tasks: request.tasks,
+    reference: request.reference,
     home: dirs.home,
     parent: parent.digest,
     tree: null,
@@ -281,46 +290,62 @@ export async function session(
     halt: new AbortController(),
     fatal: null,
     note: null,
-  };
-  const recorded = read(log);
-  // The campaign as its log reads, once: the same rows the operator's view prints (`handover.ts`).
-  const campaign = campaignOf(recorded);
-  const opening = firstMessage(
-    request.contract,
-    request.tasks.map(({ version, task }) => ({
-      taskId: task.taskId,
-      family: task.family,
-      ...record(recorded, version, parent.digest),
-    })),
-    // The count it opens with is the one `practice` holds it to: its own, or its cap's where fewer.
-    { ...limits, practiceSolves: practiceLeft(bench, recorded) },
-    {
-      start: shortDigest(parent.digest),
-      fails: failsTold(
-        campaign.fails,
-        new Map(request.tasks.map(({ version, task }) => [version, task.taskId])),
-      ),
-      comparisons: comparisonsTold(campaign.steps),
-      memory: builderMemoryBlock(dirs.home),
+    within: async (action) => {
+      nested.running += 1;
+      try {
+        return await action();
+      } finally {
+        nested.running -= 1;
+        if (nested.running === 0 && nested.overdue) wall.abort();
+      }
     },
-  );
+  };
+  const opening = () => {
+    const recorded = read(log);
+    const campaign = campaignOf(recorded);
+    return firstMessage(
+      request.contract,
+      bench.tasks.map(({ version, task }) => ({
+        taskId: task.taskId,
+        family: task.family,
+        ...record(recorded, version, parent.digest),
+      })),
+      // The count it opens with is the one `practice` holds it to: its own, or its cap's where fewer.
+      { ...limits, practiceSolves: practiceLeft(bench, recorded) },
+      {
+        start: shortDigest(parent.digest),
+        fails: failsTold(
+          campaign.fails,
+          new Map(bench.tasks.map(({ version, task }) => [version, task.taskId])),
+        ),
+        comparisons: comparisonsTold(campaign.steps),
+        memory: builderMemoryBlock(dirs.home),
+      },
+    );
+  };
+  const campaign = request.campaign?.(bench);
+  const first = opening();
   const turns: AssistantMessage[] = [];
   // What the session has used of its limits, as every tool result and every continuation says it.
   // A session under a cap reads what its practice solves billed from the log.
   const used = (): Used => ({
     turns: turns.length,
     seconds: (performance.now() - began) / 1000,
-    practiceLeft: practiceLeft(bench, request.cap === undefined ? [] : read(log)),
+    practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
     practised: bench.opened !== null,
   });
   const tools = [
     ...walled(bench),
     practiceTool(bench),
     traceTool(bench),
-    openingTool(opening),
+    openingTool(campaign === undefined ? first : opening, bench.said),
     finishTool(bench),
-  ].map((each) => endingWith(each, () => usedLine(used(), limits)));
-  const wall = new AbortController();
+    ...(campaign?.tools ?? []),
+  ].map((each) =>
+    endingWith(each, () =>
+      [usedLine(used(), limits), campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
+    ),
+  );
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
   const signal = AbortSignal.any([
@@ -331,14 +356,19 @@ export async function session(
   ]);
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
-  const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
+  const system = createInitialSystemMessage(systemPrompt(bench.said), tools.map(toToolDeclaration));
   const models = request.models(join(dirs.host, "model"));
   const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
+  const compact = loopCompaction(log, "build", request.id, stream, summaries);
+  const trace = traceSink(log, "build", request.id, () => turns.length);
   let crash: string | null = null;
-  const timer = setTimeout(() => wall.abort(), limits.wallSeconds * 1000);
+  const timer = setTimeout(() => {
+    if (nested.running > 0) nested.overdue = true;
+    else wall.abort();
+  }, limits.wallSeconds * 1000);
   try {
     await runAgentLoop(
-      [user(opening)],
+      [user([first, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"))],
       { messages: system === undefined ? [] : [system], tools },
       {
         model,
@@ -347,7 +377,7 @@ export async function session(
         convertToLlm: (messages) => messages,
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
-          if (message.role === "assistant") turns.push(message);
+          if (campaign === undefined && message.role === "assistant") turns.push(message);
           // `finish` ends the session even beside another call in its turn, where pi would go on.
           return bench.note !== null || turns.length >= limits.turns ? { action: "end" } : undefined;
         },
@@ -357,22 +387,38 @@ export async function session(
             ? [
                 user(
                   [
-                    continuation(used(), limits, await triedState(bench)),
+                    continuation(used(), limits, await triedState(bench), bench.said),
                     memoryOverCapNotice(dirs.home) ?? "",
+                    campaign?.hook() ?? "",
                   ]
                     .filter((part) => part !== "")
                     .join("\n\n"),
                 ),
               ]
             : [],
-        prepareRequest: loopCompaction(log, "build", request.id, stream, summaries),
+        prepareRequest: async (context, kill) => {
+          campaign?.hook();
+          if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
+          const update = await compact(context, kill);
+          campaign?.hook();
+          if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
+          return update ?? undefined;
+        },
       },
-      traceSink(log, "build", request.id, () => turns.length),
+      (event) => {
+        // Meter a campaign's model turn before its tool can spend on another seat.
+        if (campaign !== undefined && event.type === "message_end" && event.message.role === "assistant") {
+          turns.push(event.message);
+          trace({ type: "turn_end", message: event.message, toolResults: [] });
+        } else if (campaign === undefined || event.type !== "turn_end") {
+          trace(event);
+        }
+      },
       signal,
       stream,
     );
   } catch (error) {
-    crash = errorMessage(error);
+    if (!signal.aborted) crash = errorMessage(error);
   } finally {
     clearTimeout(timer);
     done.abort();

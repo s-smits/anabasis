@@ -24,6 +24,7 @@ import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, roomOf } from "../kernel/reports.ts";
 import { practiceRan } from "../kernel/solves.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { epochsOf } from "./climb.ts";
@@ -88,11 +89,12 @@ const SHORT = ["no-held", "held-short", "untied-short"] as const;
 
 const end = (ending: Ending, why: string): Move => ({ move: "end", ending, why });
 /** A comparison of the latest harness, or of the starter as a control, with the reference one. */
-const compare = (why: string, fresh: "latest" | "starter" = "latest"): Move => ({
+const compare = (why: string, fresh: "latest" | "starter" = "latest", repeats?: string): Move => ({
   move: "compare",
   fresh,
   reference: "promoted",
   why,
+  ...keyIfDefined("repeats", repeats),
 });
 
 /** The move that follows from the log, with the code of the row or the hold that chose it. */
@@ -407,6 +409,8 @@ function unfinished(ground: Ground): Move | null {
   return bought && twice(ground) === null
     ? compare(
         `comparison ${read.id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`,
+        "latest",
+        read.id,
       )
     : null;
 }

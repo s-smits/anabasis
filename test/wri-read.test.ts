@@ -318,6 +318,29 @@ describe("the whole-run investigation's reader", () => {
     expect(detail("NEVER CHECKED")).toBe("b-1: no check_harness call");
   });
 
+  it("names each check that let a reject control naming it through, by how many it refused", () => {
+    // Truss on 12 October: one check refused 9 of the 10 reject controls naming it, which read as none.
+    const coverage = overview([
+      ...events,
+      {
+        at: new Date(START).toISOString(),
+        kind: "checker.read",
+        data: {
+          contract: "c1",
+          checks: "k1",
+          faults: [],
+          rows: [
+            { id: "check-a", instrument: "external", passed: 3, refused: 1, caught: 10, named: 10 },
+            { id: "check-b", instrument: "external", passed: 3, refused: 1, caught: 9, named: 10 },
+          ],
+        },
+      },
+    ]).triggers.flatMap((trigger) => (trigger.name === "CONTROL COVERAGE" ? [trigger.detail] : []));
+    expect(coverage).toEqual([
+      "1 of 2 checks let through a reject control naming them, or were named by none: check-b refused 9 of 10",
+    ]);
+  });
+
   it("fires nothing it has no event for, and prints each trigger with its lane", () => {
     const names = seen.triggers.map((trigger) => trigger.name);
     for (const absent of [

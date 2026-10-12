@@ -469,7 +469,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "CONTROL COVERAGE",
-            `${share(uncaught.length, rows.length)} checks refused no reject control naming them`,
+            `${share(uncaught.length, rows.length)} checks let through a reject control naming them, or were named by none: ${uncaught.map((row) => `${text(row.id)} refused ${String(count(row.caught))} of ${String(count(row.named))}`).join(", ")}`,
           ),
         ]
       : []),

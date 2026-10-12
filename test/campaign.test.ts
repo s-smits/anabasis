@@ -497,12 +497,17 @@ describe("a campaign", () => {
     // these lines are what its gate reads. Until 2026-10-11 the same solves were also read at
     // each shorter `--budget`, and a report held a row for each; the flag is refused since.
     expect(
-      reportLines({ valid: { old: [2, 1, 5], fresh: [0, 1, 7] }, objective: null, frontier: null }),
+      reportLines({
+        valid: { old: [2, 1, 5], fresh: [0, 1, 7] },
+        objective: null,
+        frontier: null,
+        noise: null,
+      }),
     ).toEqual([
       "each harness by itself, as how many tasks had 0, 1, 2 valid answers in 2 solves (a count of tasks a column, not a share):",
       "  at its limits: reference 2/1/5, new 0/1/7",
     ]);
-    expect(reportLines({ valid: null, objective: null, frontier: null })).toEqual([]);
+    expect(reportLines({ valid: null, objective: null, frontier: null, noise: null })).toEqual([]);
     // Every reading says how many of the frontier's tasks were untied and the least share of them it
     // detects four times in five, or none where they are fewer than the least sweep.
     const frontier = {
@@ -517,13 +522,13 @@ describe("a campaign", () => {
       falseRate: 0.01953125,
     };
     const valid = { old: [8, 0, 0], fresh: [4, 0, 4] };
-    expect(reportLines({ valid, objective: null, frontier }).slice(0, 2)).toEqual([
+    expect(reportLines({ valid, objective: null, frontier, noise: null }).slice(0, 2)).toEqual([
       "the step is read on 8 frontier tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
       // Beside the level, the rule's own rate: four untied tasks a stage promote equal harnesses 2%.
       "an attempt at these margins, this reading and a repeat alike, promotes between equal harnesses 2% of the time: the level is one reading's, and this the rule's",
     ]);
     expect(
-      reportLines({ valid, objective: null, frontier: { ...frontier, detectable: null } }).at(0),
+      reportLines({ valid, objective: null, frontier: { ...frontier, detectable: null }, noise: null }).at(0),
     ).toEndWith("detects four times in five no share of them");
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
@@ -532,8 +537,36 @@ describe("a campaign", () => {
         valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
         frontier: null,
         objective: { direction: "lower", margin: 0.01, decided: 1 },
+        noise: null,
       }).at(-1),
-    ).toBe("the objective (lower is better, margin 0.01) decided 1 task that validity alone would have tied");
+    ).toBe(
+      "the objective (lower is better, margin 0.01, as named) decided 1 task that validity alone would have tied",
+    );
+    // Where no command named it, the line says what set it, and the A/A says the margin it sets next
+    // (the overhaul plan's P2).
+    const read2 = (from: number | null) =>
+      reportLines({
+        valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
+        frontier: null,
+        objective: { direction: "lower", margin: 0.04, from, decided: 0 },
+        noise: {
+          wins: 0,
+          losses: 0,
+          ties: 2,
+          p: 1,
+          differences: [0, 0],
+          flips: 0,
+          drift: { wins: 0, losses: 0, ties: 2 },
+          margin: { margin: 0.05, pairings: 8 },
+        },
+      }).slice(-2);
+    expect(read2(57)).toEqual([
+      "the objective (lower is better, margin 0.04, the 90th percentile of the reference's own spread over 57 A/A pairings) decided 0 tasks that validity alone would have tied",
+      "this comparison's A/A sets the objective's margin at 0.05, over 8 pairings of the reference's valid answers: the next comparison reads by it",
+    ]);
+    expect(read2(null)[0]).toContain(
+      "margin 0.04, the default: no A/A on record had measured two valid answers of one task)",
+    );
     const campaign = await openCampaign(ARGS);
     expect(read(campaign.log).some(({ data }) => data.session === "z-8")).toBe(false);
   });

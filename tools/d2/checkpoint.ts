@@ -126,7 +126,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     solves: Number(values.solves),
     level: Number(values.level),
     trigger: Number(values.trigger),
-    objective: objectiveNamed(campaign, values.margin),
+    objective: objectiveNamed(campaign, values.margin, id),
     defects: Number(values.defects),
     noise: values.noise,
     cap,

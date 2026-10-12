@@ -95,6 +95,9 @@ export interface Used {
 export interface ObjectiveRule {
   readonly direction: "lower" | "higher";
   readonly margin: number;
+  /** Where no command named the margin, what set it: the reference's own A/A pairings it was read
+   *  from (`marginOf`), or null where none was on record and `MARGIN` stood. */
+  readonly from?: number | null;
 }
 
 /** One task version's counted solves under the reference harness and under the new: true for a
@@ -160,6 +163,11 @@ export const TRIGGER = 0.25;
 const POWER = 0.8;
 /** What a report holds for a retained set no task was tallied in: no reading, never no loss. */
 export const UNMEASURED = "unmeasured" as const;
+/** The objective's margin before an A/A has set one (`marginOf`): `--margin`'s default from
+ *  10 October, whatever the domain's own noise, until 12 October. */
+export const MARGIN = 0.01;
+/** The share of the reference's own A/A pairings its margin covers (`marginOf`). */
+const COVERED = 0.9;
 
 /**
  * The chance of each total of `sizes` taken with a plus sign, where each is taken so with chance
@@ -363,9 +371,9 @@ export function falseRate(differences: readonly number[], level: number, trigger
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
  *  none: a direction and a margin that is a number from nothing up. */
 export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
-  const { direction, margin } = asRecord(data.objective) ?? {};
+  const { direction, margin, from } = asRecord(data.objective) ?? {};
   return (direction === "lower" || direction === "higher") && isNumber(margin) && margin >= 0
-    ? { direction, margin }
+    ? { direction, margin, ...keyIfDefined("from", isNumber(from) || from === null ? from : undefined) }
     : undefined;
 }
 
@@ -373,11 +381,42 @@ export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
 // better one, decide nothing and are not built: their formulas and what they read of the recorded
 // comparisons are in `docs/plan.md`, "Statistical power and cost" (row C3).
 
+/** How far apart two measures are, as a share of the larger magnitude: what a margin is read against. */
+function apart(one: number, other: number): number {
+  const larger = Math.max(Math.abs(one), Math.abs(other));
+  return larger === 0 ? 0 : Math.abs(one - other) / larger;
+}
+
+/** The measures of one side's valid answers to a task, where its pair carries an objective. */
+function measures(pair: Paired, side: "old" | "fresh"): number[] {
+  return (pair.objective?.[side] ?? []).filter(isNumber);
+}
+
+/**
+ * The objective's margin the reference's own noise sets (the overhaul plan's P2): the 90th
+ * percentile of how far apart two of its valid answers to one task measure, over every pairing
+ * across the two sides of `pairs`, which are the reference against itself (the A/A, `compared`,
+ * `comparison.ts`). At that margin the objective sets apart no more than one in ten of the
+ * reference's own pairings, so the tier never reads as a gain what its noise alone would. Null
+ * where no pairing holds two measured valid answers. Until 12 October the margin was `MARGIN`
+ * whatever a domain's noise.
+ */
+export function marginOf(
+  pairs: readonly Paired[],
+): { readonly margin: number; readonly pairings: number } | null {
+  const spreads = pairs
+    .flatMap((pair) =>
+      measures(pair, "fresh").flatMap((one) => measures(pair, "old").map((other) => apart(one, other))),
+    )
+    .toSorted((a, b) => a - b);
+  const at = spreads[Math.ceil(COVERED * spreads.length) - 1];
+  return at === undefined ? null : { margin: at, pairings: spreads.length };
+}
+
 /** Which of two valid answers' measures is the better by more than the rule's margin: 1 for the
  *  first, -1 for the second, 0 where neither is or one is missing. */
 function better(rule: ObjectiveRule, one: number | null, other: number | null): -1 | 0 | 1 {
-  if (one === null || other === null) return 0;
-  if (Math.abs(one - other) <= rule.margin * Math.max(Math.abs(one), Math.abs(other))) return 0;
+  if (one === null || other === null || apart(one, other) <= rule.margin) return 0;
   const lower = one < other ? 1 : -1;
   return rule.direction === "lower" ? lower : lower === 1 ? -1 : 1;
 }

@@ -299,6 +299,13 @@ export function stepOf(stage: Stage, level: number): "step" | "no-step" | "regre
   return narrowed([stage]) ? "narrow" : "step";
 }
 
+/** The one family every untied frontier task of a report falls in, where they all fall in one:
+ *  a repeat then draws others first (`firstStageOf`, `round.ts`). Null otherwise. */
+export function untiedFamily(report: JsonObject): string | null {
+  const untied = stageOf(report)?.untied ?? [];
+  return untied.length === 1 ? (untied[0] ?? null) : null;
+}
+
 /** Whether one comparison's reading buys the repeat (`buys`). It is what the stop rule counts as a
  *  move that showed a gain (`stopRule`): a 2-0 at level 0.10 reads `no-step` and buys the repeat,
  *  and counted as no gain it ended a campaign of patience 3 before the repeat was bought

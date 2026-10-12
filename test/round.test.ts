@@ -146,7 +146,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
   const record = (kind: EventKind, data: JsonObject) => append(log, kind, data);
   for (const version of ["p1", ...HELD, "s5"]) {
     record("task.proposed", { version, family: FAMILIES.get(version) ?? "f2" });
-    record("task.gate", { version, gate: 1, outcome: "passed" });
+    record("task.gate", gatePassed(version));
   }
   record(TASK_STATE, { version: "p1", state: "released" });
   /** The host's code as a condition names it, which an edit between two rounds moves. */
@@ -316,6 +316,9 @@ async function setup(responses: FauxResponseStep[], table: Table) {
 const step: Table = (_version, side) => (side === "fresh" ? PASS : LATE);
 /** The same with an answer a check rejects where there was none, which someone has to rule on. */
 const rejecting: Table = (_version, side) => (side === "fresh" ? PASS : side === "old" ? REJECTED : LATE);
+
+/** A task's first gate passed, as the log holds it. */
+const gatePassed = (version: string) => ({ version, gate: 1, outcome: "passed" });
 
 /** Whether a round stopped, task by task, at the first solve of the last task it reached: the
  *  third of three in a row that had no solve run (`SILENT`, `round.ts`). */
@@ -1354,7 +1357,7 @@ describe("a checkpoint with no session", () => {
     const s = await setup([], (version, side) => ((version === "s1") === (side === "old") ? PASS : LATE));
     for (const version of ["s6", "s7", "s8", "s9"]) {
       append(s.log, "task.proposed", { version, family: version < "s8" ? "f3" : "f4" });
-      append(s.log, "task.gate", { version, gate: 1, outcome: "passed" });
+      append(s.log, "task.gate", gatePassed(version));
     }
     // Two comparisons in which the reference answered s1 in every solve exhaust it, and the hash
     // keeps a third of the exhausted, here s1 itself, in the draw as retained.
@@ -1376,7 +1379,7 @@ describe("a checkpoint with no session", () => {
     const s = await setup([], (version, side) => (side === "old" && version !== "s1" ? LATE : PASS));
     for (const version of ["s6", "s7", "s8", "s9"]) {
       append(s.log, "task.proposed", { version, family: "f3" });
-      append(s.log, "task.gate", { version, gate: 1, outcome: "passed" });
+      append(s.log, "task.gate", gatePassed(version));
     }
     const report = await checkpoint(s.compare("g1", { tasks: ["s1", "s6", "s7", "s8", "s9"] }));
     expect(report).toMatchObject({
@@ -1569,10 +1572,10 @@ describe("a session with no comparison after it", () => {
 
 describe("the scored set", () => {
   const at = "2026-10-09T00:00:00.000Z";
-  const heldOut = (versions: readonly string[]): LogEvent[] =>
+  const heldOut = (versions: readonly string[], family?: string): LogEvent[] =>
     versions.flatMap((version) => [
-      { at, kind: "task.proposed", data: { version } } as const,
-      { at, kind: "task.gate", data: { version, gate: 1, outcome: "passed" } } as const,
+      { at, kind: "task.proposed", data: { version, ...keyIfDefined("family", family) } } as const,
+      { at, kind: "task.gate", data: gatePassed(version) } as const,
     ]);
   const held = ["v1", "v2", "v3", "v4", "v5", "v6"];
 
@@ -1687,7 +1690,7 @@ describe("the scored set", () => {
       const first = scoredSet(heldOut(eight), 4, "contract-a");
       const events = [...heldOut(eight), ...compared("g-1", first, 2, 0)];
       const taken = firstStageOf(events, { id: "g-2", ...pair }, 0.25);
-      expect(taken).toEqual(first);
+      expect(taken).toEqual([first]);
       const repeat = scoredSet(events, 4, "contract-a", taken);
       expect(repeat.filter((version) => first.includes(version))).toEqual([]);
       expect(repeat).toEqual(
@@ -1696,14 +1699,75 @@ describe("the scored set", () => {
       // Six held: the two others first, then two of the first stage's by the same hash.
       const six = heldOut(eight.slice(0, 6));
       const drawn = scoredSet(six, 4, "contract-a");
-      const filled = scoredSet(six, 4, "contract-a", drawn);
+      const filled = scoredSet(six, 4, "contract-a", [drawn]);
       expect(filled.slice(0, 2).toSorted()).toEqual(
         eight.slice(0, 6).filter((version) => !drawn.includes(version)),
       );
       expect(filled.slice(2)).toEqual(scoredSet(heldOut(drawn), 2, "contract-a"));
       // A repeat is no first stage of itself: run again once it has reported, it names the same tasks.
       const reported = [...events, ...compared("g-2", repeat, 1, 0)];
-      expect(firstStageOf(reported, { id: "g-2", ...pair }, 0.25)).toEqual(first);
+      expect(firstStageOf(reported, { id: "g-2", ...pair }, 0.25)).toEqual([first]);
+    });
+
+    it("draws other families first where the first stage's untied tasks all fell in one, as far as the campaign holds them", () => {
+      // Four tasks of f1 and four of f2; the first stage untied two tasks, both of f1, and read 2-0.
+      const proposed = [...heldOut(eight.slice(0, 4), "f1"), ...heldOut(eight.slice(4), "f2")];
+      const first = ["v1", "v2", "v5", "v6"];
+      const narrow = compared("g-1", first, 2, 0).map((event) =>
+        event.kind === "comparison.reported"
+          ? {
+              ...event,
+              data: {
+                ...event.data,
+                families: {
+                  f1: {
+                    frontier: { wins: 2, losses: 0, ties: 0 },
+                    retained: { wins: 0, losses: 0, ties: 0 },
+                  },
+                  f2: {
+                    frontier: { wins: 0, losses: 0, ties: 2 },
+                    retained: { wins: 0, losses: 0, ties: 0 },
+                  },
+                },
+              },
+            }
+          : event,
+      );
+      const events = [...proposed, ...narrow];
+      // f1's others are taken last, and the first stage's own after them.
+      const taken = firstStageOf(events, { id: "g-2", ...pair }, 0.25);
+      expect(taken).toEqual([["v3", "v4"], first]);
+      // The repeat takes f2's two the first stage did not score, then f1's two fresh ones.
+      const repeat = scoredSet(events, 4, "contract-a", taken);
+      expect(repeat.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
+      expect(repeat.slice(2).toSorted()).toEqual(["v3", "v4"]);
+      // Where every task is of the one family, the repeat still scores the tasks the first stage did not.
+      const alike = [...heldOut(eight, "f1"), ...narrow];
+      expect(
+        scoredSet(alike, 4, "contract-a", firstStageOf(alike, { id: "g-2", ...pair }, 0.25)).toSorted(),
+      ).toEqual(["v3", "v4", "v7", "v8"]);
+      // Where both families were untied, only the first stage's own tasks are taken last.
+      const both = compared("g-1", first, 2, 0).map((event) =>
+        event.kind === "comparison.reported"
+          ? {
+              ...event,
+              data: {
+                ...event.data,
+                families: {
+                  f1: {
+                    frontier: { wins: 1, losses: 0, ties: 1 },
+                    retained: { wins: 0, losses: 0, ties: 0 },
+                  },
+                  f2: {
+                    frontier: { wins: 1, losses: 0, ties: 1 },
+                    retained: { wins: 0, losses: 0, ties: 0 },
+                  },
+                },
+              },
+            }
+          : event,
+      );
+      expect(firstStageOf([...proposed, ...both], { id: "g-2", ...pair }, 0.25)).toEqual([first]);
     });
 
     it("draws the set the first stage drew where the campaign holds exactly the target", () => {

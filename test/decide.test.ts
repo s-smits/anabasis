@@ -28,6 +28,7 @@ const PLAN: Plan = {
   wanted: { target: 12, level: 0.1, trigger: 0.25 },
 };
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
+const EXAM_FINISHED = "exam.finished" as const;
 const heldOut = (version: string) => [
   event("task.proposed", { version, taskId: version }),
   event("task.gate", { version, gate: 1, outcome: "passed" }),
@@ -280,7 +281,7 @@ describe("what is built and what is compared", () => {
     });
     // Three sessions in a row that hold out none end the campaign on its exam.
     const idle = ["x-1", "x-2", "x-3"].map((id) =>
-      event("exam.finished", { session: id, held: [], refused: [], proposed: 0 }),
+      event(EXAM_FINISHED, { session: id, held: [], refused: [], proposed: 0 }),
     );
     expect(move([...six, built("b-1", "h1"), ...idle])).toMatchObject({ move: "end", ending: "exam" });
     // Held out to the count, a repeat's too, the comparison is made.
@@ -532,7 +533,7 @@ describe("after a promotion", () => {
       move: "examine",
       why: "harness h1 is the reference, and comparison g-2 found it valid on more than three solves in four: the tasks have to change, to ones it fails",
     });
-    const written = event("exam.finished", { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
+    const written = event(EXAM_FINISHED, { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
     // The tasks written are read by a control before a Builder session is paid for: the starter
     // against the promoted harness. t-4, t-9 and t-10 (10 October) built three times here instead.
     expect(move([...log, written, ...heldOut("v13")])).toEqual({
@@ -545,7 +546,7 @@ describe("after a promotion", () => {
 
   it("reads the control, and builds where the tasks leave the promoted harness room, on practice brought up from them", () => {
     const log = promotedOn(ALL);
-    const written = event("exam.finished", { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
+    const written = event(EXAM_FINISHED, { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
     const control = (
       reading: string,
       valid: { old: Valid; fresh: Valid },
@@ -579,7 +580,7 @@ describe("after a promotion", () => {
     // An Examiner session that held out nothing leaves the reference's reading as it was: the
     // tasks still have to change, until the patience is spent. Until 11 October the Builder built
     // here, on tasks the reference answered in every solve.
-    const idle = event("exam.finished", { session: "x-2", held: [], refused: [], proposed: 0 });
+    const idle = event(EXAM_FINISHED, { session: "x-2", held: [], refused: [], proposed: 0 });
     expect(move([...log, idle])).toMatchObject({ move: "examine" });
     expect(move([...log, idle, idle, idle])).toMatchObject({ move: "end", ending: "no-room" });
     // A harness promoted while valid on half its tasks leaves itself room: the Builder builds
@@ -633,7 +634,7 @@ describe("no step", () => {
     // Once as many Examiner sessions as the campaign's patience held out nothing, the campaign
     // ends on its room.
     const idle = ["x-1", "x-2", "x-3"].map((id) =>
-      event("exam.finished", { session: id, held: [], refused: [], proposed: 0 }),
+      event(EXAM_FINISHED, { session: id, held: [], refused: [], proposed: 0 }),
     );
     expect(move([...tied, ...idle])).toEqual({
       move: "end",
@@ -650,11 +651,46 @@ describe("no step", () => {
     // One session wrote one task: too few for the next comparison yet (a first reading takes two
     // untied), and not nothing.
     const session = (id: string, held: readonly string[]) =>
-      event("exam.finished", { session: id, held: [...held], refused: [], proposed: held.length });
+      event(EXAM_FINISHED, { session: id, held: [...held], refused: [], proposed: held.length });
     const few = [session("x-1", ["v13"]), ...heldOut("v13")];
     expect(move([...tied, ...few])).toMatchObject({ move: "examine" });
     expect(move([...tied, ...few, ...idle.slice(1)])).toMatchObject({ move: "examine" });
     expect(move([...tied, ...few, ...idle])).toMatchObject({ move: "end", ending: "no-room" });
+  });
+
+  it("ends no-room at the second reading in a row of an Examiner session's tasks that left the reference none", () => {
+    // esp32-141-m3b (12 October): every Examiner session held out tasks, which reset the count of
+    // idle sessions, and every comparison on them left the reference none, five times over.
+    const full = { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } } as const;
+    const examined = (id: string, version: string) => [
+      event(EXAM_FINISHED, { session: id, held: [version], refused: [], proposed: 1 }),
+      ...heldOut(version),
+    ];
+    // A comparison on the pack's tasks is no Examiner session's answer, so it starts no count.
+    const once = [...first, ...compared("g-1", "h1", "no-step", full)];
+    expect(move(once)).toMatchObject({ move: "examine" });
+    const twice = [...once, ...examined("x-1", "v13"), ...compared("g-2", "h1", "no-step", full)];
+    expect(move(twice)).toMatchObject({ move: "examine" });
+    const thrice = [...twice, ...examined("x-2", "v14"), ...compared("g-3", "h1", "no-step", full)];
+    expect(move(thrice)).toEqual({
+      move: "end",
+      ending: "no-room",
+      why: "2 comparisons in a row (g-2, g-3) read the tasks an Examiner session held out and left the reference none: the tasks could not be made to leave room",
+    });
+    // Room in between starts the count again.
+    const roomy = compared("g-3", "h1", "no-step", { tally: [0, 0, 12], valid: { old: HALF, fresh: HALF } });
+    expect(move([...twice, ...examined("x-2", "v14"), ...roomy])).toMatchObject({ move: "build" });
+    // Where the last Examiner session and the comparison that read its tasks billed more than half
+    // of what is left, the campaign ends on its budget before another round.
+    const dear = [
+      ...once,
+      event(EXAM_FINISHED, { session: "x-1", held: ["v13"], refused: [], proposed: 1, billed: 6 }),
+      ...heldOut("v13"),
+      ...compared("g-2", "h1", "no-step", full),
+    ];
+    const left = { ...PLAN, left: { dollars: 10, reserve: 0.5 } };
+    expect(move(dear, left)).toMatchObject({ move: "end", ending: "budget" });
+    expect(move(dear, { ...PLAN, left: { dollars: 13, reserve: 0.5 } })).toMatchObject({ move: "examine" });
   });
 
   it("reads room in the tasks neither harness answered: they are the ones a better harness could answer", () => {
@@ -827,8 +863,7 @@ describe("the budget and the bounds", () => {
   });
 
   it("ends where three Examiner sessions in a row held out no task", () => {
-    const session = (id: string) =>
-      event("exam.finished", { session: id, held: [], refused: [], proposed: 0 });
+    const session = (id: string) => event(EXAM_FINISHED, { session: id, held: [], refused: [], proposed: 0 });
     expect(move([READ, session("x-1"), session("x-2")])).toMatchObject({ move: "examine" });
     expect(move([READ, session("x-1"), session("x-2"), session("x-3")])).toEqual({
       move: "end",
@@ -842,8 +877,7 @@ describe("the budget and the bounds", () => {
   // could not be written"; another lost a Builder session the same way. The provider's failure is
   // the environment's ending, and the campaign goes on from its log once it is run again.
   it("ends on its environment, not its exam, where three sessions in a row crashed, and goes on once run again", () => {
-    const EXAM = "exam.finished";
-    const crashed = (kind: typeof EXAM | "build.finished", id: string) =>
+    const crashed = (kind: typeof EXAM_FINISHED | "build.finished", id: string) =>
       event(kind, {
         session: id,
         held: [],
@@ -853,17 +887,19 @@ describe("the budget and the bounds", () => {
         crash: "limit reached",
       });
     const idle = (id: string) =>
-      event(EXAM, { session: id, held: [], refused: [], proposed: 0, ended: "finished" });
+      event(EXAM_FINISHED, { session: id, held: [], refused: [], proposed: 0, ended: "finished" });
     // A crashed session is not idle: two crashes and one idle session are one idle session.
-    expect(move([READ, crashed(EXAM, "x-1"), crashed(EXAM, "x-2"), idle("x-3")])).toMatchObject({
+    expect(
+      move([READ, crashed(EXAM_FINISHED, "x-1"), crashed(EXAM_FINISHED, "x-2"), idle("x-3")]),
+    ).toMatchObject({
       move: "examine",
     });
     const dead = [
       READ,
       idle("x-1"),
-      crashed(EXAM, "x-2"),
+      crashed(EXAM_FINISHED, "x-2"),
       crashed("build.finished", "b-1"),
-      crashed(EXAM, "x-3"),
+      crashed(EXAM_FINISHED, "x-3"),
     ];
     expect(move(dead)).toEqual({
       move: "end",
@@ -872,7 +908,7 @@ describe("the budget and the bounds", () => {
     });
     // A session that held a task out and then lost a turn to the provider is crashed with its
     // tasks held: it moved the campaign, breaks the run of crashes, and is no idle session.
-    const held = event(EXAM, {
+    const held = event(EXAM_FINISHED, {
       session: "x-9",
       held: ["v9"],
       refused: [],
@@ -881,7 +917,13 @@ describe("the budget and the bounds", () => {
       crash: "limit reached",
     });
     expect(
-      move([READ, crashed(EXAM, "x-1"), held, crashed(EXAM, "x-2"), crashed(EXAM, "x-3")]),
+      move([
+        READ,
+        crashed(EXAM_FINISHED, "x-1"),
+        held,
+        crashed(EXAM_FINISHED, "x-2"),
+        crashed(EXAM_FINISHED, "x-3"),
+      ]),
     ).toMatchObject({
       move: "examine",
     });
@@ -889,12 +931,20 @@ describe("the budget and the bounds", () => {
     // Run again after that ending, the count starts afresh: the next session is tried.
     const ended = event("campaign.ended", { ending: "environment", why: "3 sessions in a row crashed" });
     expect(move([...dead, ended])).toMatchObject({ move: "examine" });
-    expect(move([...dead, ended, crashed(EXAM, "x-4"), crashed(EXAM, "x-5")])).toMatchObject({
+    expect(
+      move([...dead, ended, crashed(EXAM_FINISHED, "x-4"), crashed(EXAM_FINISHED, "x-5")]),
+    ).toMatchObject({
       move: "examine",
     });
     // A session that ended whole between crashes breaks the run.
     expect(
-      move([READ, crashed(EXAM, "x-1"), crashed(EXAM, "x-2"), idle("x-3"), crashed(EXAM, "x-4")]),
+      move([
+        READ,
+        crashed(EXAM_FINISHED, "x-1"),
+        crashed(EXAM_FINISHED, "x-2"),
+        idle("x-3"),
+        crashed(EXAM_FINISHED, "x-4"),
+      ]),
     ).toMatchObject({
       move: "examine",
     });

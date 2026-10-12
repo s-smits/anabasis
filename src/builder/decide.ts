@@ -46,7 +46,9 @@
  *    operator's `--noise` on a checkpoint since (`docs/simplify.md`, B1).
  * 7. No step. Where the reference harness left no room, or neither harness answered, the tasks
  *    have to change: an Examiner session, until as many in a row as the campaign's patience held
- *    out nothing. With room, the harness did not help, and the Builder builds again.
+ *    out nothing, two comparisons in a row read the tasks sessions held out and left none, or the
+ *    last such round billed more than half of what is left (`roomEnd`, 12 October). With room,
+ *    the harness did not help, and the Builder builds again.
  * 8. Nothing new to compare: the Builder builds, once the campaign holds as many scorable tasks
  *    as a comparison scores, before its first a repeat's as well (since 11 and 12 October; until
  *    then the first session built on whatever was held, and the Examiner wrote the rest between
@@ -89,7 +91,7 @@ import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shap
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { supplyOf } from "./admission.ts";
-import { crashedRun, type Ground, groundOf, idleDrafts, pairOf, type Plan } from "./ground.ts";
+import { type Compared, crashedRun, type Ground, groundOf, idleDrafts, pairOf, type Plan } from "./ground.ts";
 import { build, compare, type Decided, end, type Fresh, short, STEP } from "./move.ts";
 import { pendingWords } from "./word.ts";
 
@@ -102,6 +104,10 @@ const DRAFTS = 3;
  *  provider without end, and no more, since each costs an id and the operator's wait. */
 const CRASHES = DRAFTS;
 const SETTING = "campaign.setting";
+/** No-room readings in a row that end the campaign `no-room` (the overhaul plan's section 4a,
+ *  research 04): each is an Examiner session's tasks read by a comparison that left the reference
+ *  none, so a second says the Examiner cannot make room for this reference. */
+const ROOMLESS = 2;
 const ROOM = "room";
 /** What an Examiner session's reason adds where the tasks written since the comparison are too
  *  few yet: without it two sessions in a row give one reason, as the first campaign's did. */
@@ -114,7 +120,68 @@ const fewYet = (since: number): string =>
  *  harness passes nearly all, as the table has it. */
 function supplied(ground: Ground, last: JsonObject | undefined, why: string): Decided {
   const none = last !== undefined && roomOf(last) === "none";
+  if (none) {
+    const over = roomEnd(ground);
+    if (over !== null) return over;
+  }
   return written(ground.drafts, none ? "room" : "tasks", { move: "examine", why }, ground.plan.patience);
+}
+
+/**
+ * The comparisons in a row, up to the last that reported, that read tasks an Examiner session held
+ * out since the reading before and left the reference none (`roomOf` on its side): each an answer to
+ * "the tasks have to change" read and found wanting. A comparison against another reference, one on
+ * no new task, or one with room ends the run. Until 12 October the bound was Examiner sessions in a
+ * row that held out nothing (`idleDrafts`), which every session that held out a task reset, so
+ * esp32-141-m3b examined and read no room five times over and never ended.
+ */
+function roomless({ events, all, reference, starter }: Ground): Compared[] {
+  const against = reference ?? starter;
+  const read = all.filter(({ report, reported }) => report !== null && reported !== null);
+  const found = read.map(({ old, fresh, report, reported }, at) => {
+    const side = old === against ? "old" : fresh === against ? "fresh" : null;
+    const before = read[at - 1]?.reported ?? -1;
+    const wrote = events.some(
+      ({ kind, data }, index) =>
+        index > before &&
+        index < (reported ?? 0) &&
+        kind === "exam.finished" &&
+        Array.isArray(data.held) &&
+        data.held.length > 0,
+    );
+    return side !== null && wrote && report !== null && roomOf(report, side) === "none";
+  });
+  return read.slice(found.lastIndexOf(false) + 1);
+}
+
+/**
+ * The campaign's ending where the tasks cannot be made to leave room: `no-room` at `ROOMLESS` such
+ * readings in a row, and `budget` where the last Examiner session and the comparison that read its
+ * tasks billed more than half of what is left, so another round could not be read. Null otherwise.
+ */
+function roomEnd(ground: Ground): Decided | null {
+  const { events, plan } = ground;
+  const run = roomless(ground);
+  const last = run.at(-1);
+  if (last === undefined) return null;
+  if (run.length >= ROOMLESS) {
+    return end(
+      "no-room",
+      `${plural(run.length, "comparison")} in a row (${run.map(({ id }) => id).join(", ")}) read the tasks an Examiner session held out and left the reference none: the tasks could not be made to leave room`,
+    );
+  }
+  if (plan.left == null) return null;
+  const exam = events.findLast(
+    ({ kind }, index) => kind === "exam.finished" && index < (last.reported ?? 0),
+  )?.data;
+  const session = isString(exam?.session) ? exam.session : "";
+  const examined = (isNumber(exam?.billed) ? exam.billed : 0) + billedParts(events, session).comparison;
+  const round = examined + billedParts(events, last.id).comparison;
+  if (round <= plan.left.dollars / 2) return null;
+  return end(
+    "budget",
+    `the last Examiner session and comparison ${last.id}, which read its tasks and found no room, billed $${round.toFixed(2)}, more than half of the $${plan.left.dollars.toFixed(2)} left: another round could not be read`,
+  );
 }
 
 /** An Examiner session, unless as many in a row as the campaign's patience have already held out
@@ -692,6 +759,8 @@ function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): 
   if (tasksShort === null && since > 0) {
     return compare(`comparison ${id} left no room, and tasks were written since`, fresh);
   }
+  const over = roomEnd(ground);
+  if (over !== null) return over;
   return written(
     ground.drafts,
     "room",

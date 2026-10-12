@@ -853,15 +853,16 @@ describe("the reader of a comparison whose solves were told a bound, on a host w
 });
 
 describe("the reader of misses at a limit, by comparison and side", () => {
-  /** A log of one comparison, g-1 of hp against hc, whose solves each end as a row says. */
-  const read = (endings: readonly (readonly [string, JsonObject, number])[]) => {
+  /** A log of one comparison, g-1 of hp against hc, whose solves each end as a row says, after a
+   *  submit in the turn it gives. */
+  const read = (endings: readonly (readonly [string, JsonObject, number, number?])[]) => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     put("task.proposed", { version: "v1" });
     put(GATE, { version: "v1", gate: 1, outcome: "passed" });
     const terms = { session: "g-1", old: "hp", fresh: "hc", starter: "hp", setting: SETTING };
     put(COMPARISON_STARTED, { ...terms, solves: 1, level: 0.1, tasks: ["v1"] });
-    for (const [index, [harness, ending, seconds]] of endings.entries()) {
+    for (const [index, [harness, ending, seconds, turn = 0]] of endings.entries()) {
       const ran = condition("v1", harness);
       const id = `m${String(index)}`;
       put(CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) });
@@ -871,6 +872,7 @@ describe("the reader of misses at a limit, by comparison and side", () => {
         limits: { wallSeconds: 100, modelTurns: 8 },
         comparison: "g-1",
       });
+      put("solve.call", { solve: id, turn, tool: "submit", isError: false });
       put(SOLVE_FINISHED, { solve: id, ending, seconds, responseModels: ["m-1"] });
     }
     put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
@@ -893,6 +895,18 @@ describe("the reader of misses at a limit, by comparison and side", () => {
     ).toEqual([
       "g-1: 2 of 3 reference misses and 1 of 1 new at a limit (context-ended 1, turns-ended 1, wall share 1; turns 8)",
     ]);
+  });
+
+  it("counts a miss that answered in the last turn its bound allowed as at a limit", () => {
+    // Buffer on 12 October: 5 of the reference's 17 misses submitted in their 16th turn of 16.
+    expect(
+      read([
+        ["hp", refused, 40, 7],
+        ["hp", refused, 40, 6],
+        ["hc", refused, 40, 7],
+        ["hc", { outcome: "pass" }, 40, 7],
+      ]),
+    ).toEqual(["g-1: 1 of 2 reference misses and 1 of 1 new at a limit (last turn 2; turns 8)"]);
   });
 
   it("stays quiet on misses a check refused inside the wall, and on a pass that used all of it", () => {

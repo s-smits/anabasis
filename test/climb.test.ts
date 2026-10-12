@@ -288,8 +288,10 @@ describe("the climb", () => {
       // each epoch is stronger than the one before.
       expect(promotions.length).toBeGreaterThanOrEqual(2);
       expect(epochs.length).toBeGreaterThanOrEqual(3);
-      const [first, second] = epochs;
-      if (first === undefined || second === undefined) throw new Error("fewer than two epochs");
+      // An epoch may hold out no task: since 12 October the first holds a repeat's draw as well, and
+      // where its tasks leave the promoted harness room, the next is promoted on them.
+      const [first, second] = epochs.filter((epoch) => epoch.tasks.length > 0);
+      if (first === undefined || second === undefined) throw new Error("fewer than two epochs wrote tasks");
       expect(hardest(second)).toBeGreaterThan(hardest(first));
       const strengths = promotions.map(({ harness }) =>
         strengthOf(join(folder, "states", isString(harness) ? harness : "")),

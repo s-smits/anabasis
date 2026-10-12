@@ -344,13 +344,15 @@ function opened(
 
 /**
  * The held-out tasks an Examiner session is asked for where no flag names them: what the campaign
- * is short of a comparison's target, plus what the next release takes for practice. Undefined
- * where it is short of neither, and the command's default stands. Until 11 October it was that
- * default, 12, whatever the campaign held: the buffer campaigns of that day were short 9.
+ * is short of a comparison's target, before its first comparison of a repeat's as well, plus what
+ * the next release takes for practice; undefined where it is short of neither. Until 11 October it
+ * was the command's default, 12 (buffer was short 9), and until 12 October one target, so a repeat
+ * on a campaign holding exactly that re-scored its first stage's versions (buffer-141-m3's g-2).
  */
 function examTasks({ events, plan }: Turn): string | undefined {
   const supply = supplyOf(events);
-  const short = Math.max(0, plan.wanted.target - supply.held);
+  const draws = events.some(({ kind }) => kind === "comparison.started") ? 1 : 2;
+  const short = Math.max(0, draws * plan.wanted.target - supply.held);
   const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
   return short + practice > 0 ? String(short + practice) : undefined;
 }

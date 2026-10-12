@@ -10,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { passesIn, predicted, toLabel } from "../src/builder/comparison.ts";
+import { passesIn, predicted, swapped, toLabel } from "../src/builder/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
@@ -861,6 +861,37 @@ describe("a round", () => {
       settled: { labelled: 2, defects: 2, disputed: [] },
     });
     expect(taskStates(read(refused.s.log)).get("s1")).toBe("refused");
+  });
+
+  it("reads a settled comparison again with its labels in place of the verdicts they overturn", async () => {
+    const settledOn = async (
+      labels: (asked: ReturnType<typeof toLabel>, log: string) => Parameters<typeof settleReading>,
+    ) => {
+      const s = await setup([edit, finish, again, finish], rejecting);
+      await round({ ...s.request, referee: referee(s.log, { s1: "check-defect" }) });
+      expect(swapped(read(s.log), "b-1")).toBeNull();
+      settleReading(...labels(toLabel(read(s.log), "b-1"), s.log));
+      return swapped(read(s.log), "b-1");
+    };
+    // The reference's rejections of s1 labelled earned: they stand as fails, s1 is a win, and the
+    // 3-0 that read no step reads a step at 4-0. The decision flips: its packet was too small.
+    expect(
+      await settledOn(({ aside }, log) => [
+        log,
+        "b-1",
+        new Map(aside.map((solve) => [solve, "earned"] as const)),
+      ]),
+    ).toMatchObject({ decided: NO_STEP, swapped: "step", scored: { wins: 4, losses: 0 } });
+    // Every rejection labelled a check defect reads as a valid answer, and every pass labelled
+    // wrong as a fail: the reference wins all four, and the decision holds.
+    expect(
+      await settledOn(({ aside, others }, log) => [
+        log,
+        "b-1",
+        new Map([...aside, ...others].map((solve) => [solve, "check-defect"] as const)),
+        new Map(passesIn(read(log), "b-1").map((solve) => [solve, "wrong"] as const)),
+      ]),
+    ).toMatchObject({ decided: NO_STEP, swapped: NO_STEP, scored: { wins: 0, losses: 4, ties: 0 } });
   });
 
   it("settles on a label over a ruling where no task is set aside", async () => {

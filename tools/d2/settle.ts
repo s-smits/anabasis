@@ -31,7 +31,11 @@
  * disputes its task, which leaves this comparison and every later one; one labelled unclear, or set
  * aside on a rejection the packet did not draw, stays out of this comparison. A pass's label
  * changes no tally and no reading: a wrong pass is a check's fault, for the check program's owner,
- * and the closing report names it. An entry that is neither empty nor a known label is refused by
+ * and the closing report names it. Once settled it prints, over every settled packet of the
+ * campaign, the Referee's agreement with the labels, of each kind and over all three as PABAK
+ * beside kappa, and each settled comparison's decision read again with its labels in place of the
+ * verdicts they overturn (`swapped`); a decision that flips means its packet was too small to stand
+ * on. Both are reports, and nothing reads them back. An entry that is neither empty nor a known label is refused by
  * name, so a mistyped label is not read as no label; an empty one is still to be read, and nothing
  * is recorded until none is. A comparison is settled once: run again with the same file it says
  * what it said, and with other labels it is refused. A packet with nothing in it settles at once.
@@ -49,7 +53,15 @@
  *
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
-import { PASS_LABELS, passesIn, toLabel, UNSETTLED } from "#src/builder/comparison.ts";
+import {
+  PASS_LABELS,
+  passesIn,
+  REPORTED,
+  reported,
+  swapped,
+  toLabel,
+  UNSETTLED,
+} from "#src/builder/comparison.ts";
 import { settleReading } from "#src/builder/round.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
@@ -58,11 +70,11 @@ import { stopRule } from "#src/kernel/reports.ts";
 import { refusedBy, verdictsOf } from "#src/kernel/solves.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { RULINGS } from "#src/review/agreement.ts";
+import { agreement, RULINGS } from "#src/review/agreement.ts";
 import { labelled } from "#src/review/rejections.ts";
 import { openCampaign, packNamed } from "./campaign.ts";
 import { type Campaign, reportLines } from "./round.ts";
@@ -130,6 +142,38 @@ function labelsIn<Word extends string>(
   return open.length > 0 ? null : labels;
 }
 
+/** What a campaign's settled packets say: the Referee's agreement with their labels, and each
+ *  settled comparison's decision read again with the verdicts its labels overturned swapped in. */
+function labelLines(events: readonly LogEvent[]): string[] {
+  const ids = new Set(
+    events.flatMap(({ kind, data }) => (kind === REPORTED && isString(data.session) ? [data.session] : [])),
+  );
+  const labels = new Map(
+    [...ids].flatMap((id) => {
+      const settled = reported(events, id)?.settled;
+      return settled === undefined || settled === null || settled === UNSETTLED
+        ? []
+        : Object.entries(settled.labels);
+    }),
+  );
+  const measured = agreement(events, labels);
+  const rate = (value: number | null) => (value === null ? "none" : value.toFixed(2));
+  const each = RULINGS.map((kind) => `${kind} ${rate(measured.specific[kind])}`).join(", ");
+  return [
+    `the Referee against ${plural(labels.size, "labelled rejection")}, ${String(measured.unruled.length)} of them unruled: agreement of each kind ${each}; over all three ${rate(measured.observed)}, PABAK ${rate(measured.pabak)} beside kappa ${rate(measured.kappa)}`,
+    ...[...ids].flatMap((id) => {
+      const again = swapped(events, id);
+      if (again === null) return [];
+      const { wins, losses, ties } = again.scored;
+      const flips =
+        again.swapped === again.decided ? "it holds" : "it flips, so its packet was too small to stand on";
+      return [
+        `${id}: decided ${again.decided}, and ${again.swapped} at ${String(wins)}-${String(losses)}-${String(ties)} with its labels in place of the verdicts they overturn: ${flips}`,
+      ];
+    }),
+  ];
+}
+
 export async function settleCommand(args: readonly string[]): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { session } = values;
@@ -164,7 +208,7 @@ export async function settleCommand(args: readonly string[]): Promise<number> {
   const report = settleReading(campaign.log, session, rejections, passes);
   console.log(capturedJsonStringify(report, null, 2));
   console.log(capturedJsonStringify(stopRule(read(campaign.log)), null, 2));
-  for (const line of reportLines(report)) console.log(line);
+  for (const line of [...reportLines(report), ...labelLines(read(campaign.log))]) console.log(line);
   return 0;
 }
 

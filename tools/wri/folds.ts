@@ -410,6 +410,8 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const reading = log.of("checker.read").at(-1);
   const frozen = log.of("contract.frozen").at(-1);
   const rows = records(reading?.rows);
+  // The brief's evidence kind, which the reading copies: 5 of buffer's 7 `authored` checks ran the
+  // pack's installed engine on 12 October.
   const authored = rows.filter((row) => row.instrument === "authored").length;
   const passes = log.solves.filter((solve) => solve.outcome === "pass").length;
   const trees = new Set([...log.conditions.values()].map((condition) => condition.verifierTools)).size;
@@ -442,7 +444,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "INSTRUMENT AUTHORED",
-            `${share(authored, rows.length)} checks decide by their author's own computation`,
+            `${share(authored, rows.length)} checks declare their author's computation as their evidence, which says nothing of the tools they run`,
           ),
         ]
       : []),

@@ -37,6 +37,11 @@ const MOVE_WORD = {
   end: "End",
 } as const satisfies Record<Decided["move"], string>;
 
+/** The moves the host makes itself whoever leads the campaign: the exam's set-up, and an ending
+ *  (`SETUP`, `tools/d2/harness-builder.ts`). Any other the table names is advice to a Builder
+ *  that leads. */
+const HOSTS_OWN: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare", "end"]);
+
 /** What the campaign command does with a move the table names where the opening is attended, which
  *  the table does not read (`tools/d2/harness-builder.ts`). */
 const ATTENDED_WAITS = new Map<Decided["move"], string>([
@@ -89,6 +94,7 @@ function Readouts({ reading }: { reading: CampaignReading }) {
   const lastReading = row.lastReading;
   const lastBar = reading.comparisons.find((bar) => bar.id === lastReading?.id);
   const ended = row.ending;
+  const advised = reading.led && nextMove !== null && !HOSTS_OWN.has(nextMove.move);
   const open =
     reading.open.length === 0 ? "" : `, on the log as it stands with ${reading.open.join(", ")} open`;
   return (
@@ -117,7 +123,7 @@ function Readouts({ reading }: { reading: CampaignReading }) {
       />
       {ended === null ? (
         <MetricCard
-          label="Next move"
+          label={advised ? "Table advises" : "Next move"}
           value={
             nextMove === null ? (
               "Not known"
@@ -128,7 +134,7 @@ function Readouts({ reading }: { reading: CampaignReading }) {
           detail={
             nextMove === null
               ? "the decision table could not be asked"
-              : `${nextMove.why}${open}${reading.attended ? (ATTENDED_WAITS.get(nextMove.move) ?? "") : ""}`
+              : `${nextMove.why}${open}${reading.attended ? (ATTENDED_WAITS.get(nextMove.move) ?? "") : ""}${advised ? "; the Builder leads this campaign and may make another move" : ""}`
           }
           tone={nextMove?.move === "end" ? "warn" : "neutral"}
         />
@@ -159,7 +165,7 @@ function NoComparison({ reading }: { reading: CampaignReading }) {
 /** The set-up as the view's first line says it, with the prompt the campaign opened from, who sits
  *  in each seat and the terms the opening keeps, one click away. */
 function SetUp({ reading }: { reading: CampaignReading }) {
-  const { prompt, supply, seats, terms, attended, bars } = reading;
+  const { prompt, supply, seats, terms, attended, led, bars } = reading;
   const points = (share: number) => String(Math.round(100 * share));
   const checker =
     supply.faults === null
@@ -188,6 +194,14 @@ function SetUp({ reading }: { reading: CampaignReading }) {
             <dd className="ana-num">{value}</dd>
           </div>
         ))}
+        <div>
+          <dt>led by</dt>
+          <dd>
+            {led
+              ? "its Builder: one conversation makes the moves past the exam's set-up, with the table as advice"
+              : "the host: it makes each move the table names"}
+          </dd>
+        </div>
         {attended ? (
           <div>
             <dt>attended</dt>

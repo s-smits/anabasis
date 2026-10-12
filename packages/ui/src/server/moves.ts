@@ -120,14 +120,24 @@ function validShare(counts: readonly number[]): Share {
   return { valid, solves: tasks * Math.max(0, counts.length - 1) };
 }
 
-/** The host's one-minute load as each comparison the campaign command made began, by its id. Read
- *  from `campaign.move`, which no fold reads. */
-const loadsIn = once(
+/** What the campaign's command recorded of each comparison as it began, by the comparison's id:
+ *  the host's one-minute load, and the table's row it was made by. Read from `campaign.move`, which
+ *  no fold reads. */
+const recordsIn = once(
   ({ events }) =>
     new Map(
       events.flatMap(({ kind, data }) =>
-        kind === "campaign.move" && data.move === "compare" && isString(data.session) && isNumber(data.load)
-          ? [[data.session, data.load] as const]
+        kind === "campaign.move" && data.move === "compare" && isString(data.session)
+          ? [
+              [
+                data.session,
+                {
+                  load: isNumber(data.load) ? data.load : null,
+                  named:
+                    isString(data.code) && isString(data.why) ? { code: data.code, why: data.why } : null,
+                },
+              ] as const,
+            ]
           : [],
       ),
     ),
@@ -155,7 +165,7 @@ export const barsIn = once((log): ComparisonBar[] => {
   const moves = movesIn(log);
   const reports = new Map(reportsIn(log).map((report) => [report.session, report]));
   const pairs = pairsIn(log);
-  const loads = loadsIn(log);
+  const records = recordsIn(log);
   const starter = starterIn(log);
   const comparisons = moves
     .flatMap((move) => (move.step === "comparison" ? [move] : []))
@@ -201,7 +211,8 @@ export const barsIn = once((log): ComparisonBar[] => {
               differences: report.noise.differences,
             },
       rulings: move.rulings,
-      load: loads.get(move.id) ?? null,
+      load: records.get(move.id)?.load ?? null,
+      named: records.get(move.id)?.named ?? null,
       cut: move.cut,
       begun: move.begun,
       solved: move.solved,

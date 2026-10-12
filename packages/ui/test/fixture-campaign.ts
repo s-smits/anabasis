@@ -557,7 +557,14 @@ function compare(w: Writer, planned: Planned): Map<string, string> {
     // A report is strings, numbers and lists and records of them, as `write` in round.ts spreads it.
     ...asRecord(told),
   });
-  w.record(MOVE, { move: "compare", why: "a harness to compare", session: id, load: 1.6, cores: 8 });
+  w.record(MOVE, {
+    move: "compare",
+    code: "new",
+    why: "a harness to compare",
+    session: id,
+    load: 1.6,
+    cores: 8,
+  });
   return made;
 }
 

@@ -225,6 +225,15 @@ describe("a campaign's reading", () => {
 });
 
 describe("what a comparison came to", () => {
+  test("gives each comparison the table's row its move recorded, and none where no move recorded one", async () => {
+    const { answer: reading } = await ask("campaign", { key: KEY }, "default");
+    const named = reading.comparisons.map((bar) => bar.named);
+    expect(named.filter((each) => each !== null).length).toBeGreaterThan(0);
+    for (const each of named) {
+      if (each !== null) expect(each).toEqual({ code: "new", why: "a harness to compare" });
+    }
+  });
+
   test("names every task a comparison fixed: its outcome, set aside, or why its report left it out", async () => {
     const { answer: reading } = await ask("campaign", { key: KEY }, "default");
     for (const bar of reading.comparisons) {

@@ -61,7 +61,7 @@ import { answerFormatFault, type Contract, type Objective } from "../kernel/cont
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { rmSync } from "../meta/filesystem.ts";
-import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
+import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
@@ -412,7 +412,7 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
       // SAFETY: as above.
       publicInput: public_input as JsonValue,
       // SAFETY: as above.
-      hidden: (hidden ?? null) as JsonValue,
+      hidden: decodedJsonText((hidden ?? null) as JsonValue),
     })),
     // SAFETY: as above.
     accept: args.accept_controls.map(({ task, answer }) => ({ task, answer: answer as JsonValue })),

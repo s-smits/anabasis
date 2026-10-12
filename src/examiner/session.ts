@@ -60,7 +60,7 @@ import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
+import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -218,19 +218,6 @@ function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): strin
   return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
 }
 
-/** A tried instance's hidden value as the JSON it encodes, where it arrived as JSON text. On
- *  12 October the tries of two campaigns sent it as the string "null" where the proposals of the
- *  same instances sent null (19 of 19 calls checked), so no try matched a proposal and no feasible
- *  mark was kept. Text that is no JSON stays the string it is. */
-function decoded(hidden: JsonValue): JsonValue {
-  if (!isString(hidden)) return hidden;
-  try {
-    return capturedJsonParse(hidden);
-  } catch {
-    return hidden;
-  }
-}
-
 /** Whether the host has the tasks it asked for. */
 function supplied(desk: Desk): boolean {
   return desk.held.length >= desk.request.limits.tasks;
@@ -324,7 +311,10 @@ function proposeTool(desk: Desk): AgentTool {
       const lines: string[] = [];
       for (const { family, public_input, hidden } of args.tasks) {
         // SAFETY: a tool's arguments are JSON the provider parsed.
-        const [publicInput, kept] = [public_input as JsonValue, (hidden ?? null) as JsonValue];
+        const [publicInput, kept] = [
+          public_input as JsonValue,
+          decodedJsonText((hidden ?? null) as JsonValue),
+        ];
         const content = contentOf({ family, publicInput, hidden: kept });
         const before = desk.seen.get(content);
         if (before !== undefined) {
@@ -417,7 +407,12 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
         JsonValue,
         JsonValue,
       ];
-      const instance: Task = { taskId: "try", family: args.family, publicInput, hidden: decoded(hidden) };
+      const instance: Task = {
+        taskId: "try",
+        family: args.family,
+        publicInput,
+        hidden: decodedJsonText(hidden),
+      };
       const packaged = packageGate(request.contract, request.pack(instance));
       const gate =
         packaged.outcome === "passed"

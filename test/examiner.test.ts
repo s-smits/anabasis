@@ -288,7 +288,17 @@ describe("an Examiner session", () => {
         hidden: '{"seed": 1}',
         answer: { answer: "42", unit: "N" },
       }),
-      propose(7, 8, 9),
+      call("try_answer", {
+        family: "fixture",
+        public_input: { base: 10 },
+        hidden: { seed: 1 },
+        answer: { answer: "42", unit: "N" },
+      }),
+      // And a proposal's the same way, so it keys as the try of its instance did (12 October,
+      // the Oracle's reading: a proposal kept the string until then).
+      call("propose_tasks", {
+        tasks: [...[7, 8, 9].map(instance), { ...instance(10), hidden: '{"seed": 1}' }],
+      }),
       finish,
       finish,
     ]);
@@ -302,11 +312,12 @@ describe("an Examiner session", () => {
           : { kind: "fail", blocking: ["check-product"] };
       },
     });
-    expect(checked).toEqual([{ seed: 1 }, { seed: 1 }, { seed: 1 }]);
+    expect(checked).toEqual([{ seed: 1 }, { seed: 1 }, { seed: 1 }, { seed: 1 }]);
     expect(kept.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
       ["x-1-001", true],
       ["x-1-002", null],
       ["x-1-003", true],
+      ["x-1-004", true],
     ]);
     expect(JSON.stringify(kept.of("task.proposed"))).not.toContain('"answer":"42"');
     // The Examiner is told it has the tool, and the shell, and what neither does to the exam.

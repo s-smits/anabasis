@@ -78,8 +78,9 @@ export interface CampaignRow {
   readonly name: string;
   /** The worktree's folder name, the small label beside the name. */
   readonly tree: string;
-  /** v2 records no project, so it is read: the opening's prompt, else the campaign's own name,
-   *  since no event names the pack a campaign over a stored pack was opened on. */
+  /** The project the campaign's opening names (`--project`, `Opening.project`), or `NO_PROJECT`
+   *  for a campaign whose opening names none: one opened before 12 October, or run by the hand
+   *  commands alone, which write no opening. */
   readonly project: string;
   /** `running` while a process writes the log (`writers`, `tools/runs/pulse.ts`), `ended` once its
    *  last event is `campaign.ended`, and `open` otherwise: stopped with no ending, or between
@@ -287,6 +288,8 @@ export type NextMove = Decided & { readonly line: string };
 
 export interface CampaignReading extends Answer {
   readonly row: CampaignRow;
+  /** The operator's prompt the campaign opened from (`Opening.prompt`); null for one over a pack. */
+  readonly prompt: string | null;
   /** Who sits in each model seat, and who solves: the setting's solver, else the opening's. */
   readonly seats: {
     readonly builder: Seat | null;
@@ -660,6 +663,10 @@ export const EXAM_ONLY: ReadonlySet<Endpoint> = new Set<Endpoint>(["event"]);
 export const API_PREFIX = "/api/";
 export const TOKEN_HEADER = "x-anabasis-token";
 export const TOKEN_PARAMETER = "token";
+
+/** Where a campaign stands whose opening names no project. A project is an id of letters, digits,
+ *  `.`, `_` and `-` (`isSafePathSegment`), so no project can be spelled so. */
+export const NO_PROJECT = "No project recorded";
 
 export function shortHash(value: string | null | undefined, length = 12): string {
   if (!hasText(value)) return "not recorded";

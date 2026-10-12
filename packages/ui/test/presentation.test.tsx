@@ -81,7 +81,7 @@ test("the selection falls back to the newest campaign of the route's project, an
   const units = campaigns.campaigns.find((row) => row.name === fixture.units);
   const named = selectionOf(campaigns, routeOf(`?campaign=${encodeURIComponent(units?.key ?? "")}`));
   expect([named.project, named.campaign]).toEqual([units?.project ?? null, units?.key ?? null]);
-  expect(units?.project.startsWith("Convert a length")).toBe(true);
+  expect([newest.project, units?.project]).toEqual([fixture.projects.vowels, fixture.projects.units]);
   const gone = selectionOf(campaigns, routeOf("?campaign=elsewhere%2Fgone"));
   expect(gone.campaign).toBe(newest.campaign);
   expect(selectionOf(null, routeOf("")).campaign).toBeNull();

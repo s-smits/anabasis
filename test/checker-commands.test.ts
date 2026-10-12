@@ -610,7 +610,7 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     // command is refused the two-stage rule's defaults until the operator names both terms once.
     expect(rehearse("--campaign", "--dry-run").said).toContain("name --level and --trigger once for it");
     // At 0.02 the default patience holds the bound an opening may risk (`openingLines`).
-    const terms = ["--level", "0.02", "--trigger", "0.25"];
+    const terms = ["--project", "fixture", "--level", "0.02", "--trigger", "0.25"];
     expect(rehearse("--campaign", ...terms, "--dry-run").said).toContain(`next · ${tabled}`);
   });
 });

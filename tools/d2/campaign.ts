@@ -27,7 +27,7 @@
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
-import { openingOf } from "#src/builder/opening.ts";
+import { type Opening, openingOf } from "#src/builder/opening.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { departure } from "#src/kernel/acceptance.ts";
 import {
@@ -61,6 +61,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { plural } from "#src/meta/text.ts";
 import { join, resolve } from "#src/meta/path.ts";
+import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { hostTool } from "#src/meta/host-tool.ts";
@@ -572,4 +573,34 @@ export function stayAwake(): void {
   if (runtimeProcess.platform === "darwin") {
     capturedSpawn(["caffeinate", "-s", "-w", String(runtimeProcess.pid)]).unref();
   }
+}
+
+/**
+ * The project a campaign's opening names (the operator, 12 October): `named`, the campaign
+ * command's `--project`, or the one its opening holds where the flag names none. Every campaign
+ * belongs to one, as every v1 run joined one, and is named as v1's were. The opening is not written
+ * without one, so a campaign opened, or continued from an opening that names none, takes the flag
+ * once; one that names another than its record is refused, since a campaign moved between projects
+ * would leave both projects' records wrong. The project groups campaigns for the operator
+ * (`packages/ui`) and enters no move and no seat.
+ */
+export function projectOf(log: string, named: string | undefined, was: Opening | null): string {
+  const recorded = was?.project ?? null;
+  const project = named ?? recorded;
+  if (project === null) {
+    throw new Error(
+      `name --project, the project this campaign belongs to: ${log} names none, and a campaign is opened under one`,
+    );
+  }
+  if (!isSafePathSegment(project)) {
+    throw new Error(
+      `--project ${project}: a project is named as v1's were, by letters, digits, '.', '_' and '-'`,
+    );
+  }
+  if (recorded !== null && project !== recorded) {
+    throw new Error(
+      `--project ${project}: this campaign belongs to project ${recorded}, and keeps it; another project takes a campaign of its own`,
+    );
+  }
+  return project;
 }

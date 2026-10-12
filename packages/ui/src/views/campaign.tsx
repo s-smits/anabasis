@@ -152,10 +152,10 @@ function NoComparison({ reading }: { reading: CampaignReading }) {
   );
 }
 
-/** The set-up as the view's first line says it, with who sits in each seat and the terms the
- *  opening keeps, one click away. */
+/** The set-up as the view's first line says it, with the prompt the campaign opened from, who sits
+ *  in each seat and the terms the opening keeps, one click away. */
 function SetUp({ reading }: { reading: CampaignReading }) {
-  const { supply, seats, terms, attended } = reading;
+  const { prompt, supply, seats, terms, attended } = reading;
   const checker =
     supply.faults === null
       ? "checker never read"
@@ -166,6 +166,7 @@ function SetUp({ reading }: { reading: CampaignReading }) {
   });
   return (
     <Disclosure title="Set-up">
+      {prompt === null ? null : <p className="ana-campaign-prompt">{prompt}</p>}
       <p className="ana-campaign-setup">
         {`${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted · ${checker}`}
       </p>

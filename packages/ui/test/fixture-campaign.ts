@@ -21,8 +21,8 @@
  * made with `--despite` and a return to the starter, a comparison cut before its report with a
  * ruled rejection, rejections ruled earned, a check defect and unclear, one comparison settled by a
  * person's labels each way, a task waiting for a label, a disputed task, a non-result solved again,
- * and twenty-five task versions. A second campaign under the same prompt, `early`, holds no
- * comparison yet; a third, `units`, under another prompt, ended on its budget with no promotion,
+ * and twenty-five task versions. A second campaign in the same project, `early`, holds no
+ * comparison yet; a third, `units`, in another project, ended on its budget with no promotion,
  * after a control whose A/A reading the later sample lost 0 to 4.
  *
  * The reports are the comparison's own reading of its solves (`compared`,
@@ -98,9 +98,11 @@ export interface Fixture {
   readonly name: string;
   readonly log: string;
   readonly key: string;
-  /** The other two: one with no comparison yet, under the same prompt; one under another prompt. */
+  /** The other two: one with no comparison yet, in the same project; one in another project. */
   readonly early: string;
   readonly units: string;
+  /** The projects their openings name: the main campaign's and `early`'s, then `units`'s. */
+  readonly projects: { readonly vowels: string; readonly units: string };
   readonly harnesses: {
     readonly starter: string;
     readonly a: string;
@@ -125,6 +127,8 @@ const MODEL = "faux/solver-1";
 const SEAT = { model: "faux/seat-1", effort: "high" } as const;
 const PROMPT =
   "Count the vowels in a short invented word, such as one a game might make up, and give the count as a whole number.";
+/** The projects the campaigns are opened under (`--project`). */
+const PROJECTS = { vowels: "vowel-counts", units: "unit-conversion" } as const;
 const UNITS_PROMPT =
   "Convert a length between two invented units, given the rate between them, and give the result as a whole number.";
 const LIMITS = {
@@ -316,8 +320,9 @@ function writer(log: string, t0: string, starter: string) {
 }
 
 /** The opening, the drafted exam, its reading and its freeze. */
-function opened(w: Writer, prompt: string, budget: number, attended = false): void {
+function opened(w: Writer, project: string, prompt: string, budget: number, attended = false): void {
   w.record("campaign.opened", {
+    project,
     ...keyIfDefined("attended", attended || undefined),
     budget: { dollars: budget, reserve: 0.5 },
     limit: 10,
@@ -608,7 +613,7 @@ function folderOf(root: string, name: string): string {
 function firstPart(w: Writer) {
   const { starter, a, b } = HARNESSES;
   const practice = ["word-p1", "word-p2"];
-  opened(w, PROMPT, 40);
+  opened(w, PROJECTS.vowels, PROMPT, 40);
   examined(w, "x-1", [...practice, ...range("word", 1, 12)], ["word-r1"]);
   prepared(w, practice);
   const [practiceSolve = ""] = built(w, "b-1", { parent: starter, harness: a, practice }, ["format", "pass"]);
@@ -773,23 +778,23 @@ function secondPart(w: Writer): string {
   return cut.get("word-17 old 0") ?? "";
 }
 
-/** A campaign under the same prompt with no comparison yet, opened `--attended`: its exam, its
- *  tasks and its practice. */
+/** A campaign in the same project with no comparison yet, opened `--attended`: its exam, its tasks
+ *  and its practice. */
 function earlyCampaign(root: string, name: string): void {
   const dir = folderOf(root, name);
   const w = writer(join(dir, LOG_FILE), "2026-09-25T09:00:00.000Z", HARNESSES.starter);
-  opened(w, PROMPT, 20, true);
+  opened(w, PROJECTS.vowels, PROMPT, 20, true);
   examined(w, "x-1", ["word-p8", "word-p9", ...range("word", 31, 36)], []);
   prepared(w, ["word-p8", "word-p9"]);
 }
 
-/** A campaign under another prompt that ended on its budget with two comparisons and no
+/** A campaign in another project that ended on its budget with two comparisons and no
  *  promotion. */
 function unitsCampaign(root: string, name: string): void {
   const dir = folderOf(root, name);
   const w = writer(join(dir, LOG_FILE), "2026-09-20T09:00:00.000Z", UNITS.starter);
   const practice = ["unit-p1", "unit-p2"];
-  opened(w, UNITS_PROMPT, 6);
+  opened(w, PROJECTS.units, UNITS_PROMPT, 6);
   examined(w, "x-1", [...practice, ...range("unit", 1, 6)], []);
   prepared(w, practice);
   built(w, "b-1", { parent: UNITS.starter, harness: UNITS.a, practice }, ["pass", "rejected"]);
@@ -857,6 +862,7 @@ export function writeFixtureCampaign(root: string): Fixture {
       key: `${resolve(root).split("/").at(-1) ?? ""}/${name}`,
       early: "early",
       units: "units",
+      projects: PROJECTS,
       harnesses: HARNESSES,
       awaiting: versionOf("word-06"),
       disputed: versionOf("word-05"),

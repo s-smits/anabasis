@@ -1,8 +1,8 @@
 /**
  * `GET /api/campaigns`: every campaign the server finds (`logs.ts`), one row each, newest first.
  *
- * The project is read, since v2 records none: the opening's prompt, else the campaign's name, since
- * no event names a stored pack (`reading.ts`). Running is a process that writes the log (`writers`,
+ * The project is the one the campaign's opening names, or `NO_PROJECT` (`reading.ts`). Running is a
+ * process that writes the log (`writers`,
  * `tools/runs/pulse.ts`). Newest first is by the time of a log's first event. A log that cannot be
  * read is an issue beside the rows, never a missing row without a word.
  */

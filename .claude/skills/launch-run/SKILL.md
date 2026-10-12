@@ -25,14 +25,15 @@ with its output in two files, and the key in Bun's own `--env-file`:
 cd <the worktree>
 set -m
 nice -n 19 bun --env-file=<file> tools/d2/harness-builder.ts \
-  --name <name> <the pack's four flags, or --prompt-file <file> --solver <model>> \
+  --name <name> --project <project> <the pack's four flags, or --prompt-file <file> --solver <model>> \
   --budget <dollars> --builder <model> --examiner <model> --reviewer <model> \
   [--solve-model-turns N] [--sessions N] [--level 0.1 --trigger 0.25] [--attended] \
   > <dir>/launch.out 2> <dir>/launch.err &
 ```
 
 Its flags are the command's own, listed at the head of `tools/d2/harness-builder.ts`. What it
-runs by is recorded once (`campaign.opened`), so the command run again by the campaign's name
+runs by is recorded once (`campaign.opened`), its project among it, which a campaign is not opened
+without and keeps, so the command run again by the campaign's name
 alone goes on from the log with the same terms, and one that names another term records it
 again. A flag that names another setting than the campaign's record is refused with both: the
 setting does not change, and another setting is another campaign (`tools/d2/setting.ts`).

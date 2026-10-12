@@ -41,7 +41,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
-import { asRecord, isFunction, type JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, isFunction, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
@@ -343,6 +343,49 @@ describe("an Examiner session", () => {
     expect(s.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
       ["x-1-001", null],
     ]);
+  });
+
+  it("refuses a task that carries a planted answer whole, in its public input or hidden values, and holds one that does not", async () => {
+    // A planted answer passes try_answer; the first instance proposed hides it, the second shows
+    // it inside the public input, and the third holds none of it.
+    const planted = { answer: "12", unit: "N" };
+    const s = setup([
+      call("try_answer", {
+        family: "fixture",
+        public_input: { base: 2 },
+        hidden: { seed: 1 },
+        answer: planted,
+      }),
+      call("propose_tasks", {
+        tasks: [
+          { family: "fixture", public_input: { base: 2 }, hidden: { seed: 1, witness: planted } },
+          { family: "fixture", public_input: { base: 3, given: [planted] }, hidden: { seed: 1 } },
+          instance(2),
+        ],
+      }),
+      finish,
+      finish,
+    ]);
+    const examined = await examine({ ...s.request, verify: async () => ({ kind: "pass" }) });
+    const refused = "refused: it carries, whole, an answer that passed try_answer in this session";
+    const result = s.of("exam.call")[1]?.text;
+    const told = isString(result) ? result.split("\n") : [];
+    expect(told.map((line) => line.slice(0, 9 + refused.length))).toEqual([
+      `x-1-001: ${refused}`,
+      `x-1-002: ${refused}`,
+      "x-1-003: held out.",
+    ]);
+    expect(examined.held).toEqual([s.versionOf("x-1-003", 2)]);
+    // The prompt names the lever, plant-and-grow, where the planted answer goes, and that size
+    // alone is no growth.
+    for (const said of [
+      "several of the domain's requirements sharing one limit",
+      "grow a planted task",
+      "The planted answer is for try_answer alone",
+      "Growing a task by size alone grows nothing",
+    ]) {
+      expect(systemPrompt(undefined)).toContain(said);
+    }
   });
 
   it("holds an instance out on the shape of its package, and says why another is refused", async () => {

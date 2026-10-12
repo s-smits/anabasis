@@ -645,6 +645,20 @@ describe("an Examiner's walled shell, with the engines its campaign's checks run
     expect(s.sent[0]).not.toContain("solver-x");
     expect(existsSync(examinerDirs(s.log, "x-1").host)).toBe(false);
   });
+
+  it("keeps the home of a session that ended, and not of one whose turn the provider failed", async () => {
+    const bash = (command: string) => call("bash", { command });
+    const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
+    const s = setup([bash("echo half > half.txt"), failed, bash("echo whole > whole.txt"), finish, finish]);
+    const keep = join(dirname(s.log), "examiner-home");
+    mkdirSync(keep);
+    writeFileSync(join(keep, "kept.txt"), "kept\n");
+    const walled = { ...s.request, repoRoot: repo, packRoots: [], diskBytes: 64 * 1024 ** 2, keep };
+    expect((await examineWalled(walled)).ended).toBe("crashed");
+    expect(readdirSync(keep)).toEqual(["kept.txt"]);
+    expect((await examineWalled({ ...walled, id: "x-2" })).ended).toBe("finished");
+    expect(readdirSync(keep).sort()).toEqual(["kept.txt", "whole.txt"]);
+  });
 });
 
 describe("what an Examiner hears of the tasks its campaign holds", () => {

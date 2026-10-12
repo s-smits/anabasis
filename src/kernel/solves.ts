@@ -161,10 +161,13 @@ export function ended<Each extends Solve>(solves: readonly Each[]): (Each & Ende
     .sort((a, b) => a.finished - b.finished);
 }
 
-/** Whether a solve passed: true for a pass, false for a fail of any kind, and null for a
- *  non-result or a solve with no ending, which are no measurement. */
+/** Whether a solve passed: true for a pass, false for a fail of any kind and for a solver's flag
+ *  that the task is malformed, which is the flagging side's own fail in every tally, and null for a
+ *  non-result or a solve with no ending, which are no measurement. A flag counted nowhere would
+ *  take a task its harness was losing out of the tally (rule 7's reason for a broken harness). */
 export function passed({ ending }: Pick<Solve, "ending">): boolean | null {
-  return ending?.outcome === "pass" ? true : ending?.outcome === "fail" ? false : null;
+  if (ending?.outcome === "pass") return true;
+  return ending?.outcome === "fail" || ending?.outcome === "flagged" ? false : null;
 }
 
 /** The last verdict a log holds for each solve, by the solve. */

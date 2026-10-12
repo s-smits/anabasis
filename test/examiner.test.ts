@@ -487,13 +487,21 @@ describe("an Examiner session", () => {
 describe("try_task", () => {
   it("holds a task out at some valid solves of the reference harness and not all, tells the Examiner the counts alone, and leaves its solves to no comparison", async () => {
     // Each base's three solves by the reference harness, seeded: valid in one, two, none and all of
-    // them, and one that ends in no reading.
+    // them, and one that ends in no reading. A solver's flag that the task is malformed is a solve
+    // that answered nothing validly, as in every tally.
     const seeded = new Map<number, readonly Ending[]>([
       [2, [PASS, REJECTED, REJECTED]],
       [3, [PASS, PASS, REJECTED]],
       [4, [REJECTED, REJECTED, REJECTED]],
       [5, [PASS, PASS, PASS]],
-      [6, [PASS, REJECTED, { outcome: "non-result", kind: "provider", reason: "overloaded" }]],
+      [
+        6,
+        [
+          PASS,
+          { outcome: "flagged", reason: "the base is given twice" },
+          { outcome: "non-result", kind: "provider", reason: "overloaded" },
+        ],
+      ],
     ]);
     const s = setup([call("try_task", { tasks: [2, 3, 4, 5, 6].map(instance) }), finish, finish]);
     const asked: string[] = [];

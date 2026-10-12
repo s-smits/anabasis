@@ -393,6 +393,7 @@ describe("a round", () => {
         disputed: [],
         aside: [],
         short: [],
+        flagged: [],
         withdrawn: [],
         capped: false,
         reading: "step",
@@ -452,6 +453,35 @@ describe("a round", () => {
       reading: NO_STEP,
     });
     expect(s.asked).toHaveLength(16);
+  });
+
+  it("counts a solver's flag as its side's fail: a harness that flags the tasks it would fail gains nothing", async () => {
+    const FLAG: Ending = { outcome: "flagged", reason: "the task is malformed" };
+    // The new harness answers s2 to s4, which the reference fails, and fails s1, which the
+    // reference answers.
+    const against =
+      (s1: Ending): Table =>
+      (version, side) => {
+        if (version === "s1") return side === "fresh" ? s1 : PASS;
+        return side === "fresh" ? PASS : LATE;
+      };
+    const lost = await round((await setup([edit, finish], against(LATE))).request);
+    expect(lost).toMatchObject({ scored: { wins: 3, losses: 1 }, short: [], flagged: [] });
+    // Flagged in place of failed, s1 is lost all the same, and the report names it apart.
+    expect(await round((await setup([edit, finish], against(FLAG))).request)).toMatchObject({
+      scored: lost.scored,
+      versions: lost.versions,
+      short: [],
+      flagged: ["s1"],
+    });
+    // A task both sides flag costs neither: it ties.
+    const both = await setup([edit, finish], (version, side) =>
+      version === "s1" ? FLAG : side === "fresh" ? PASS : LATE,
+    );
+    expect(await round(both.request)).toMatchObject({
+      scored: { wins: 3, losses: 0, ties: 1 },
+      flagged: ["s1"],
+    });
   });
 
   it("sets two valid answers apart by the objective the comparison fixed, and says how many it decided", async () => {

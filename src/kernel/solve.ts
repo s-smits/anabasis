@@ -21,6 +21,15 @@
  * is the task's defect: the task is dropped and the run goes on. One from the verifier stops the
  * run, since a broken verifier makes one of every check: a relative tree path once turned every
  * verdict of a regrade into one.
+ *
+ * A flag is the solver's word that the task is malformed, given in `submit`'s place of an answer
+ * (`src/solve/answer.ts`), with why. It is its own outcome, reported apart, and in every tally the
+ * flagging side's own fail (`passed`, `src/kernel/solves.ts`), for rule 7's reason for a broken
+ * harness: counted nowhere, a flag would take a task its harness was losing out of the tally. So a
+ * task that really is malformed costs nothing, both sides flag it and it ties, and a harness that
+ * flags a task the other side answers loses it. It is not run again inside the solve, since the
+ * solver chose it. Added on 12 October (the overhaul plan's M3, research 06): offered such an
+ * outcome, solvers that cheated on impossible tasks in 54% of them did so in 9% (ImpossibleBench).
  */
 export type Ending =
   | { readonly outcome: "pass" }
@@ -29,6 +38,7 @@ export type Ending =
       readonly kind: "rejected" | "wall-ended" | "turns-ended" | "context-ended" | "no-answer";
     }
   | { readonly outcome: "fail"; readonly kind: "broken-harness"; readonly reason: string }
+  | { readonly outcome: "flagged"; readonly reason: string }
   | {
       readonly outcome: "non-result";
       readonly kind: "provider" | "sandbox-crash" | "killed" | "moved-files" | "check" | "verifier";

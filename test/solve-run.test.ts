@@ -14,6 +14,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
+import { passed } from "../src/kernel/solves.ts";
 import type { Verdict } from "../src/kernel/verify.ts";
 import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -132,6 +133,7 @@ describe("an attempt's ending", () => {
     turns: [],
     prompts: 1,
     submitted: undefined,
+    flagged: undefined,
     wallEnded: false,
     turnsEnded: false,
     moved: false,
@@ -158,6 +160,14 @@ describe("an attempt's ending", () => {
       kind: "sandbox-crash",
       reason: "the model process died",
     });
+  });
+
+  it("is flagged where the solver said the task is malformed, after an answer and before a crash", async () => {
+    const flagged = { flagged: "the span is given twice, as 4 m and 5 m", crash: "the model process died" };
+    expect(await ending(flagged).ending).toEqual({ outcome: "flagged", reason: flagged.flagged });
+    expect(await ending({ ...flagged, submitted: { answer: "42" } }).ending).toEqual({ outcome: "pass" });
+    // Its own outcome, and in every tally the flagging side's fail.
+    expect(passed({ ending: { outcome: "flagged", reason: flagged.flagged } })).toBe(false);
   });
 
   it("judges a submitted answer even when the wall fell after it, and logs the verdict", async () => {
@@ -356,6 +366,17 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(sent[0]).toContain("The case has 5 minutes of solve time, and every tool result ends with");
     expect(sent[1]).not.toContain(NUDGE);
     expect(sent[2]).toContain(JSON.stringify(NUDGE));
+  }, 120_000);
+
+  it.concurrent("ends flagged once, with no verdict, where the solver says the task is malformed", async () => {
+    const reason = "The span is given twice, as 4 m and 5 m.";
+    const { events, finished, request } = setup([
+      fauxAssistantMessage(fauxToolCall("submit", { malformed: reason }), toolUse),
+    ]);
+    expect(await solve(request, noWait)).toEqual({ outcome: "flagged", reason });
+    // Not run again as a non-result is, and judged by no check.
+    expect(finished()).toHaveLength(1);
+    expect(events().some(({ kind }) => kind === "verdict")).toBe(false);
   }, 120_000);
 
   it.concurrent("ends at the model's turns where it is given a number of them, and says each turn", async () => {

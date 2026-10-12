@@ -48,6 +48,8 @@ export interface PublicResource {
 export interface Desk {
   /** The answer submit accepted; once set, the solve has answered. */
   submitted: JsonValue | undefined;
+  /** Why the solver judged the task malformed, where it said so in place of an answer. */
+  flagged: string | undefined;
 }
 
 /** The solver's answer, by its name in the working directory. */
@@ -57,9 +59,17 @@ export const ANSWER_FORMAT_FILE = "public/answer-format.json";
 /** The largest answer, in the file's bytes (v1's draft-store.ts held an answer to the same). */
 const ANSWER_MAX_BYTES = 1024 * 1024;
 const MISSING = 44;
+/** `submit` takes nothing for an answer, which is the file, and `malformed` in place of one. */
+const SUBMIT_PARAMETERS = Type.Object({
+  malformed: Type.Optional(
+    Type.String({
+      description: `Only for a malformed task: why no answer could meet it as posed. ${ANSWER_FILE} is then not read.`,
+    }),
+  ),
+});
 
 export function openDesk(): Desk {
-  return { submitted: undefined };
+  return { submitted: undefined, flagged: undefined };
 }
 
 /** A resource's digest binds its name and content (v1's public-resources.ts:54-56). */
@@ -84,19 +94,25 @@ function answerIn(bytes: Buffer, contract: Contract): { answer: JsonValue } | { 
 
 /**
  * `submit`: the answer file under `home`, read by one walled command, checked and kept. An answer
- * once sent stays the answer, whatever the file holds afterwards.
+ * once sent stays the answer, whatever the file holds afterwards. Or, with `malformed`, the
+ * solver's word that the task is malformed in place of an answer, which ends the solve flagged
+ * (`src/kernel/solve.ts`) and reads no file. It is an outcome the solver may choose, and tells it
+ * nothing of the task.
  */
-export function submitTool(desk: Desk, contract: Contract, home: string, exec: WallExec): SolverTool {
+export function submitTool(desk: Desk, contract: Contract, home: string, exec: WallExec) {
   const file = shellQuote(join(home, ANSWER_FILE));
   return {
     name: "submit",
     label: "Submit",
-    description: `Send ${ANSWER_FILE} from your working directory as your answer. It holds the answer as JSON, in the format ${ANSWER_FORMAT_FILE} gives. A file that does not is refused with the reason, and you may submit again. An accepted submit ends the task and returns no verdict.`,
+    description: `Send ${ANSWER_FILE} from your working directory as your answer. It holds the answer as JSON, in the format ${ANSWER_FORMAT_FILE} gives. A file that does not is refused with the reason, and you may submit again. An accepted submit ends the task and returns no verdict. If you judge the task malformed, so that no answer could meet it as posed, give malformed instead, saying why: that ends the task with no answer read.`,
     promptSnippet: `Send ${ANSWER_FILE} as your answer, which ends the task`,
-    parameters: Type.Object({}),
+    parameters: SUBMIT_PARAMETERS,
     executionMode: "sequential",
-    execute: async (_id, _params, signal) => {
+    execute: async (_id, { malformed }, signal) => {
       if (desk.submitted !== undefined) return { ...text("Submitted."), terminate: true };
+      const why = malformed?.trim() ?? "";
+      desk.flagged ??= why === "" ? undefined : why;
+      if (desk.flagged !== undefined) return { ...text("Flagged."), terminate: true };
       const { exitCode, output } = await exec(
         `[ -f ${file} ] || exit ${String(MISSING)}; head -c ${String(ANSWER_MAX_BYTES + 1)} ${file}`,
         { signal },
@@ -114,7 +130,7 @@ export function submitTool(desk: Desk, contract: Contract, home: string, exec: W
       desk.submitted = read.answer;
       return { ...text("Submitted.", { answerDigest: hashJsonValue(read.answer) }), terminate: true };
     },
-  };
+  } satisfies SolverTool<typeof SUBMIT_PARAMETERS>;
 }
 
 /** A tool whose arguments are typed by its own parameters, in a list of any tools. */

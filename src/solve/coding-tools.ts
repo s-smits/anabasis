@@ -25,7 +25,7 @@
  * through the shell: in the Starter solves of six campaigns the commands that wrote a file by
  * heredoc held most of what a solver typed (`docs/transfer.md`).
  */
-import { Type } from "typebox";
+import { type TSchema, Type } from "typebox";
 import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
 import { createBashToolDefinition } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import { createEditToolDefinition } from "../../vendor/pi-coding-agent/core/tools/edit.ts";
@@ -42,8 +42,9 @@ import { type CommandWall, heldSeconds, runWalled } from "./command.ts";
 export const CODING_TOOLS = ["read", "bash", "edit", "write"] as const;
 type CodingTool = (typeof CODING_TOOLS)[number];
 
-/** A tool as pi defines one: an agent tool with the lines it adds to the system prompt. */
-export type SolverTool = ToolDefinition;
+/** A tool as pi defines one: an agent tool with the lines it adds to the system prompt, its
+ *  arguments typed by `Parameters`. */
+export type SolverTool<Parameters extends TSchema = TSchema> = ToolDefinition<Parameters>;
 
 /** One walled command with its output whole, which is what a file tool's operations are made of. */
 export type WallExec = (

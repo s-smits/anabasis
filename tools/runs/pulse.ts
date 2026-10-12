@@ -218,7 +218,7 @@ function status(
   process: Process,
   now: number,
 ): string {
-  const said = ["pass", "fail", "non-result"].flatMap((outcome) => {
+  const said = ["pass", "fail", "flagged", "non-result"].flatMap((outcome) => {
     const n = solves.filter(({ ending }) => ending?.outcome === outcome).length;
     return n === 0 ? [] : [`${String(n)} ${outcome}`];
   });

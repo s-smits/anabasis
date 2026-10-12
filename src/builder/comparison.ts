@@ -114,6 +114,8 @@ export interface Report {
   readonly aside: readonly string[];
   /** Task versions left out as short of `solves` counted solves under a harness. */
   readonly short: readonly string[];
+  /** Tallied task versions with a solve a solver flagged as malformed, counted as its side's fail. */
+  readonly flagged: readonly string[];
   /** Task versions that left the held-out set while the comparison ran: released for practice, or
    *  refused by a person as infeasible. */
   readonly withdrawn: readonly string[];
@@ -194,6 +196,7 @@ const REPORT_KEYS = [
   "disputed",
   "aside",
   "short",
+  "flagged",
   "withdrawn",
   "capped",
   "reading",
@@ -218,6 +221,7 @@ export const NOTHING = {
   disputed: [],
   aside: [],
   short: [],
+  flagged: [],
   withdrawn: [],
   capped: false,
   settled: null,
@@ -258,7 +262,8 @@ export function reported(events: readonly LogEvent[], id: string): Report | null
 }
 
 /** The test-side solves a comparison may count: the ones whose start names it, under one of its
- *  harnesses and its setting. Each says whether it ended in a pass or a fail and so counts. */
+ *  harnesses and its setting. Each says whether it ended in a pass or a fail, a flag among the
+ *  fails, and so counts (`passed`). */
 export function solvesUnder(events: readonly LogEvent[], fixed: Fixed) {
   const settings = new Map(
     [...conditionsOf(events)].map(([condition, ran]) => [condition, settingId(ran)] as const),
@@ -269,7 +274,7 @@ export function solvesUnder(events: readonly LogEvent[], fixed: Fixed) {
     harnesses.has(solve.under.harness) &&
     solve.start.comparison === fixed.id &&
     settings.get(solve.condition) === fixed.setting
-      ? [{ ...solve, counts: solve.ending?.outcome === "pass" || solve.ending?.outcome === "fail" }]
+      ? [{ ...solve, counts: passed(solve) !== null }]
       : [],
   );
 }
@@ -357,6 +362,9 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     untied: where(({ wins, losses }) => wins + losses),
     families: where(({ wins, losses, ties }) => wins + losses + ties),
   };
+  const flags = new Set(
+    solvesIn(events).flatMap((solve) => (solve.ending?.outcome === "flagged" ? [solve.id] : [])),
+  );
   const mean = (side: "old" | "fresh") => {
     const billed = pairs.flatMap((pair) => (pair.used?.[side] ?? []).flatMap((used) => used.billed ?? []));
     return billed.length === 0 ? null : billed.reduce((sum, each) => sum + each, 0) / billed.length;
@@ -394,6 +402,9 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     versions: pairs.map(({ task }) => task),
     aside: live.filter((task) => open.has(task)),
     short: live.filter((task) => first.short.includes(task)),
+    flagged: pairs.flatMap(({ task, solves }) =>
+      [...(solves?.old ?? []), ...(solves?.fresh ?? [])].some((solve) => flags.has(solve)) ? [task] : [],
+    ),
     withdrawn: scorable.filter((task) => !held.has(task)),
     reading: pairs.length === 0 ? ("not-scored" as const) : stepOf(stage, fixed.level),
     objective:

@@ -303,6 +303,21 @@ describe("the climb", () => {
   );
 });
 
+describe("an epoch's shares", () => {
+  it("count a comparison's solves of the epoch's tasks, and none an Examiner session had made to try one", () => {
+    // Task v1 held out after the reference answered one of three solves of it under try_task.
+    const log = [
+      event("exam.started", { session: "x-1" }),
+      ...solved("x-1", "v1", "h0", [true, false, false]),
+      ...heldOut("v1"),
+      event("comparison.started", { session: "g-1", starter: "h0" }),
+      ...solved("g-1", "v1", "h0", [true, true]),
+      reported("g-1", "h0", "h1", ["v1"]),
+    ];
+    expect(epochsOf(log)).toMatchObject([{ tasks: ["v1"], reference_share: { valid: 2, solves: 2 } }]);
+  });
+});
+
 describe("the regression reading beside a comparison", () => {
   it("reads the newest candidate against the one before it on the tasks both comparisons scored, and nothing where the conditions differ in more than the harness", () => {
     // g-1 read h2 against the reference h1 on v1..v3; g-2 read h3 against h1 on v2..v4. On v2 h3

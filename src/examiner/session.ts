@@ -54,6 +54,8 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
+import { billedFor } from "../kernel/reports.ts";
+import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
@@ -67,7 +69,7 @@ import type { CommandWall } from "../solve/command.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import { openingOf } from "../builder/opening.ts";
-import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
+import { type CheckRow, firstMessage, NUDGE, systemPrompt } from "./prompt.ts";
 import { heard } from "./record.ts";
 import { examinerShell, inExaminerWall, type Seat } from "./shell.ts";
 
@@ -106,6 +108,12 @@ export interface ExamRequest {
   /** The campaign's verifier, for `try_answer`: the checks run on an instance with an answer of the
    *  Examiner's own. Absent, the tool is not given. */
   readonly verify?: Verifier | undefined;
+  /** One fresh solve of a draft task by the reference harness, under the setting every solve of a
+   *  comparison is held to, made at the asking of `session`: its start names the session, so no
+   *  comparison counts it and no Builder is shown it (`pairsOf`, `practiceRan`). It is the solve
+   *  launcher a comparison uses, called (`tools/d1b/examine.ts`). Given, a task is held out by
+   *  `try_task` on `TRIED` such solves; absent, by `propose_tasks` on its package's shape. */
+  readonly probe?: ((task: TaskPackage, session: string, kill: AbortSignal) => Promise<Ending>) | undefined;
   /** The Examiner's shell, where the session has one: `bash`, `read` and `write` in a walled home
    *  of its own. Absent, the Examiner computes nothing (`examineWalled` gives one). */
   readonly shell?: CommandWall | undefined;
@@ -151,6 +159,25 @@ interface Desk {
 
 /** The most of an example one result shows. */
 const SHOWN_CHARS = 20_000;
+/** The reference harness's solves of one draft task under `try_task`: the least the operator's
+ *  ruling of 12 October names. Every paper the overhaul's research read that kept tasks at a
+ *  frontier admitted them by a measurement of the target, none blind (one at four attempts and a
+ *  pass-rate band); its probe asks for three or more fresh solves at the campaign's budget, and a
+ *  task admitted at a pass rate strictly between 0 and 1. */
+export const TRIED = 3;
+/** The tool a task is held out by, as the Examiner is told it: on its package's shape, or on that
+ *  and the reference harness's solves of it (`admitting`). */
+const GATES = {
+  propose_tasks: {
+    label: "Propose tasks",
+    description:
+      "Put task instances to the host's gate, which reads the shape of each package. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out, or refused with the gate's reason. A task that is held out is in the exam from then on.",
+  },
+  try_task: {
+    label: "Try tasks",
+    description: `Put task instances to the host's gate, one at a time. The gate reads the shape of each package, and then the reference harness solves the task ${String(TRIED)} times under the budget; it is held out only where some of those solves gave a valid answer and not all. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out with how many solves were valid, or refused with the gate's reason; no solve's answer or trace is returned. A task that is held out is in the exam from then on, and those solves are never scored.`,
+  },
+} as const;
 const ENDINGS = ["finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
 /** What a first `finish` is answered with while the host has not the tasks it needs: every live
@@ -183,8 +210,38 @@ function supplied(desk: Desk): boolean {
   return desk.held.length >= desk.request.limits.tasks;
 }
 
-/** The gate for one instance the Examiner proposed: the line it is told. */
-function gated(desk: Desk, instance: Task): string {
+/** What the gate reads of one package: its shape, and under `try_task` the reference harness's
+ *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
+ *  is held out only where some of them and not all gave a valid answer, and a solve that ended in no
+ *  reading leaves it unmeasured. The Examiner hears the counts; no answer and no trace of a solve
+ *  reaches it. The session's wall does not cut them: they run under a comparison's own (`probe`),
+ *  and only a killed run kills them. */
+async function measured(desk: Desk, task: TaskPackage) {
+  const { contract, log, id, probe, kill } = desk.request;
+  const packaged = packageGate(contract, task);
+  if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
+  if (probe === undefined) return { reason: null, said: "" };
+  const before = billedFor(read(log), id);
+  const signal = kill ?? new AbortController().signal;
+  const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, signal)));
+  const solves = endings.filter(({ outcome }) => outcome !== "non-result").length;
+  const valid = endings.filter(({ outcome }) => outcome === "pass").length;
+  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves`;
+  const reason =
+    solves < TRIED
+      ? `${String(TRIED - solves)} of the reference harness's ${String(TRIED)} solves of it ended in no reading, so it is not measured`
+      : valid === 0 || valid === TRIED
+        ? `${counted}, and a task is held out only where it answers some and not all`
+        : null;
+  return {
+    reason,
+    said: `; ${counted}`,
+    reference: { valid, solves, billed: billedFor(read(log), id) - before },
+  };
+}
+
+/** The gate for one instance the Examiner proposed: the line it is told (`measured`). */
+async function gated(desk: Desk, instance: Task): Promise<string> {
   const { request } = desk;
   const task = request.pack(instance);
   const version = taskVersion(task);
@@ -196,24 +253,30 @@ function gated(desk: Desk, instance: Task): string {
     task: { taskId, family, publicInput, hidden },
     ...keyIfDefined("feasible", desk.answered.has(contentOf(instance)) ? true : undefined),
   });
-  const packaged = packageGate(request.contract, task);
-  append(request.log, "task.gate", { version, gate: 1, ...packaged });
-  if (packaged.outcome === "passed") {
+  const { reason, said, reference } = await measured(desk, task);
+  const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
+  append(request.log, "task.gate", { version, gate: 1, ...outcome, ...keyIfDefined("reference", reference) });
+  if (reason === null) {
     desk.held.push(version);
-    return `${taskId}: held out.`;
+    return `${taskId}: held out${said}.`;
   }
   append(request.log, "task.state", { version, state: "refused", session: request.id });
   desk.refused.push(version);
-  return `${taskId}: refused: ${packaged.reason}`;
+  return `${taskId}: refused: ${reason}`;
+}
+
+/** The tool that holds a task out, by its name: `propose_tasks` on the package's shape, or
+ *  `try_task` on the reference harness's solves as well, where the session can have it solve one. */
+function admitting(request: ExamRequest): "propose_tasks" | "try_task" {
+  return request.probe === undefined ? "propose_tasks" : "try_task";
 }
 
 function proposeTool(desk: Desk): AgentTool {
   const { request } = desk;
+  const name = admitting(request);
   return tool({
-    name: "propose_tasks",
-    label: "Propose tasks",
-    description:
-      "Put task instances to the host's gate, which reads the shape of each package. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out, or refused with the gate's reason. A task that is held out is in the exam from then on.",
+    name,
+    ...GATES[name],
     parameters: Type.Object({
       tasks: Type.Array(
         Type.Object({
@@ -250,7 +313,7 @@ function proposeTool(desk: Desk): AgentTool {
           desk.seen.set(content, "now");
           desk.proposed += 1;
           const taskId = `${request.id}-${String(desk.proposed).padStart(3, "0")}`;
-          lines.push(gated(desk, { taskId, family, publicInput, hidden: kept }));
+          lines.push(await gated(desk, { taskId, family, publicInput, hidden: kept }));
         }
       }
       return {
@@ -391,7 +454,7 @@ async function toolsOf(desk: Desk): Promise<AgentTool[]> {
     ...(request.verify === undefined ? [] : [tryTool(desk, request.verify)]),
     ...(await examinerShell(
       request.shell,
-      "a task enters it through propose_tasks alone",
+      `a task enters it through ${admitting(request)} alone`,
       request.keep === undefined
         ? undefined
         : "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first",
@@ -416,6 +479,8 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     note: null,
     declined: false,
   };
+  // How many solves of the reference harness try a draft task, where the host can have it solve one.
+  const attempts = request.probe === undefined ? undefined : TRIED;
   append(log, "exam.started", {
     session: request.id,
     model: priceKey(model),
@@ -424,6 +489,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     checks: request.checks.map(({ id }) => id),
     examples: request.examples.map(({ taskId }) => taskId),
     engines: (request.pinned ?? []).map(({ name, sha256 }) => ({ name, sha256 })),
+    ...keyIfDefined("tried", attempts),
   });
   const tools = await toolsOf(desk);
   const wall = new AbortController();
@@ -433,7 +499,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   const turns: AssistantMessage[] = [];
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
-  const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
+  const system = createInitialSystemMessage(systemPrompt(attempts), tools.map(toToolDeclaration));
   // Under the host's own scratch, which every wall closes (`wall-policy.ts`): the Examiner's
   // Claude Code keeps its session here, the tasks' hidden expectations included.
   const home = hostScratch("claude-cli-examiner-");

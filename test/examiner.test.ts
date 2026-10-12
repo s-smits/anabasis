@@ -10,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { heard, SAID } from "../src/examiner/record.ts";
-import { SYSTEM_PROMPT } from "../src/examiner/prompt.ts";
+import { systemPrompt } from "../src/examiner/prompt.ts";
 import {
   claimed,
   type ExamRequest,
@@ -25,6 +25,9 @@ import { type Condition, conditionId, settingId } from "../src/kernel/condition.
 import type { Contract } from "../src/kernel/contract.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
+import { billedParts, feasibleTasks } from "../src/kernel/reports.ts";
+import type { Ending } from "../src/kernel/solve.ts";
+import { ranUnder, solvesIn } from "../src/kernel/solves.ts";
 import { type TaskPackage, taskSets, taskStates, taskVersion } from "../src/kernel/task.ts";
 import type { Task } from "../src/kernel/verify.ts";
 import {
@@ -63,6 +66,8 @@ const CHECKS = [
   { id: "check-unit", assertion: "The unit is N.", families: "all" as const },
 ];
 const LIMITS = { wallSeconds: 600, turns: 12, proposals: 4, tasks: 24 };
+const PASS: Ending = { outcome: "pass" };
+const REJECTED: Ending = { outcome: "fail", kind: "rejected" };
 const EXAMPLE: Task = { taskId: "e-1", family: "fixture", publicInput: { base: 2 }, hidden: { seed: 5 } };
 const scratches: string[] = [];
 const toolUse = { stopReason: "toolUse" } as const;
@@ -76,6 +81,30 @@ const instance = (base: number | null) => ({
   hidden: { seed: 1 },
 });
 const propose = (...bases: (number | null)[]) => call("propose_tasks", { tasks: bases.map(instance) });
+/** A solve's condition, as the launcher records one: the task version, the harness and the test side. */
+const condition = (task: string, harness: string): Condition => ({
+  contract: "c1",
+  harness,
+  task,
+  model: "faux/solver",
+  effort: "medium",
+  prices: { "faux/solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+  runtime: {},
+  compaction: "off",
+  solverTools: harness,
+  verifierTools: "t1",
+  sandbox: "p1",
+  limits: {
+    wallSeconds: 600,
+    turns: 12,
+    shellDefaultSeconds: 30,
+    shellMaxSeconds: 60,
+    concurrency: 1,
+    diskBytes: 1024,
+  },
+  host: "h",
+  side: "test",
+});
 
 afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
@@ -174,8 +203,8 @@ describe("an Examiner session", () => {
     // need and no count, share or zone (10 October); until 11 October a session was asked it in
     // a mode of its own after a promotion, and the opening carries no such paragraph.
     expect(s.sent[0]).not.toContain("leave no room");
-    expect(SYSTEM_PROMPT).toContain("What the exam needs from every session is the same");
-    expect(SYSTEM_PROMPT).toContain("Harder is yours to judge from the domain");
+    expect(systemPrompt(undefined)).toContain("What the exam needs from every session is the same");
+    expect(systemPrompt(undefined)).toContain("Harder is yours to judge from the domain");
     // It is told how a task is scored: a valid answer within the budget, with no objective to rank
     // two of them, and neither the size of the budget nor any count.
     expect(s.sent[0]).toContain("the harness that gives more valid answers wins");
@@ -412,6 +441,68 @@ describe("an Examiner session", () => {
   });
 });
 
+describe("try_task", () => {
+  it("holds a task out at some valid solves of the reference harness and not all, tells the Examiner the counts alone, and leaves its solves to no comparison", async () => {
+    // Each base's three solves by the reference harness, seeded: valid in one, two, none and all of
+    // them, and one that ends in no reading.
+    const seeded = new Map<number, readonly Ending[]>([
+      [2, [PASS, REJECTED, REJECTED]],
+      [3, [PASS, PASS, REJECTED]],
+      [4, [REJECTED, REJECTED, REJECTED]],
+      [5, [PASS, PASS, PASS]],
+      [6, [PASS, REJECTED, { outcome: "non-result", kind: "provider", reason: "overloaded" }]],
+    ]);
+    const s = setup([call("try_task", { tasks: [2, 3, 4, 5, 6].map(instance) }), finish, finish]);
+    const asked: string[] = [];
+    // The launcher's record of each solve, as a comparison's solve writes it, with the answer the
+    // Examiner must never be shown, and its price.
+    const probe = async (task: TaskPackage, session: string) => {
+      const base = Number(asRecord(task.publicInput)?.base);
+      const ending = seeded.get(base)?.[asked.filter((each) => each === `${session} ${String(base)}`).length];
+      asked.push(`${session} ${String(base)}`);
+      if (ending === undefined) throw new Error(`no fourth solve of base ${String(base)} is seeded`);
+      const solve = `s-${String(asked.length)}`;
+      const ran = condition(taskVersion(task), "h-reference");
+      append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      append(s.log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
+      append(s.log, "verdict", { solve, answer: { answer: SOLVER, unit: "N" } });
+      append(s.log, "solve.finished", { solve, ending, billed: 0.5 });
+      return ending;
+    };
+    const examined = await examine({ ...s.request, limits: { ...LIMITS, proposals: 5 }, probe });
+    const versions = [2, 3, 4, 5, 6].map((base, nth) => s.versionOf(`x-1-00${String(nth + 1)}`, base));
+    expect(examined).toEqual({ held: versions.slice(0, 2), refused: versions.slice(2), ended: "finished" });
+    expect(taskSets(read(s.log)).held).toEqual(versions.slice(0, 2));
+    const counted = (valid: number) =>
+      `the reference harness answered it validly in ${String(valid)} of 3 solves`;
+    expect(s.of("exam.call")[0]?.text).toBe(
+      [
+        `x-1-001: held out; ${counted(1)}.`,
+        `x-1-002: held out; ${counted(2)}.`,
+        `x-1-003: refused: ${counted(0)}, and a task is held out only where it answers some and not all`,
+        `x-1-004: refused: ${counted(3)}, and a task is held out only where it answers some and not all`,
+        "x-1-005: refused: 1 of the reference harness's 3 solves of it ended in no reading, so it is not measured",
+      ].join("\n"),
+    );
+    // Its cost a task, on the gate's event; the solves are the session's, named by it, and no
+    // comparison's: a comparison counts the solves whose start names it (`pairsOf`).
+    expect(s.of("task.gate").map(({ reference }) => reference)).toEqual(
+      [1, 2, 0, 3, 1].map((valid, nth) => ({ valid, solves: nth === 4 ? 2 : 3, billed: 1.5 })),
+    );
+    expect(asked).toHaveLength(15);
+    expect(solvesIn(read(s.log)).map(({ start }) => start.comparison)).toEqual(Array(15).fill("x-1"));
+    expect(billedParts(read(s.log), "x-1")).toEqual({ session: 0, comparison: 7.5 });
+    // Each is on record with its condition, as the launcher writes one, and a valid one would make
+    // its task answered: none is part of a task's record, its answers or a tally.
+    expect(ranUnder(read(s.log))).toEqual([]);
+    expect(feasibleTasks(read(s.log))).toEqual(new Set());
+    expect(s.of("exam.started")).toMatchObject([{ tried: 3 }]);
+    expect(s.sent[0]).toContain("try_task takes instances");
+    expect(s.sent[0]).not.toContain("propose_tasks");
+    expect(s.sent.join("\n")).not.toContain(SOLVER);
+  });
+});
+
 describe("an Examiner's walled shell, with the engines its campaign's checks run", () => {
   /** The repository this suite runs in, which the wall closes to the Examiner's commands. */
   const repo = resolve(import.meta.dir, "..");
@@ -480,30 +571,6 @@ describe("an Examiner's walled shell, with the engines its campaign's checks run
 });
 
 describe("what an Examiner hears of the tasks its campaign holds", () => {
-  const condition = (task: string, harness: string): Condition => ({
-    contract: "c1",
-    harness,
-    task,
-    model: "faux/solver",
-    effort: "medium",
-    prices: { "faux/solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-    runtime: {},
-    compaction: "off",
-    solverTools: harness,
-    verifierTools: "t1",
-    sandbox: "p1",
-    limits: {
-      wallSeconds: 600,
-      turns: 12,
-      shellDefaultSeconds: 30,
-      shellMaxSeconds: 60,
-      concurrency: 1,
-      diskBytes: 1024,
-    },
-    host: "h",
-    side: "test",
-  });
-
   it("is one outcome a task: one harness won, a tie between valid answers, no valid answer yet, or disputed", async () => {
     const s = setup([propose(1, 2, 3, 4, 5), finish, finish, finish, finish]);
     await examine({ ...s.request, limits: { ...LIMITS, proposals: 6 } });

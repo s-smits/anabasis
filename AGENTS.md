@@ -579,12 +579,21 @@ solves and sessions held on the host.
 ### What the log records of a campaign's conditions
 
 **The opening** (`campaign.opened`) keeps what the campaign runs by, so that its command goes on
-by its name alone: the total and the reserve, the full limit of a solve, the Builder sessions
-before a comparison (`--sessions`, 3), the patience (`--patience`, 6), who sits in each seat,
-and the terms of its moves as a command last named them (`TERMS`, `src/builder/opening.ts`): a
-session's limits, a comparison's size, the practice tasks and an Examiner session's. A term no
-command named is its move's default. A later run that names nothing runs by the record, and one
-that names another term records it again: these are the operator's conditions.
+by its name alone: the project it belongs to, the total and the reserve, the full limit of a
+solve, the Builder sessions before a comparison (`--sessions`, 3), the patience (`--patience`, 6),
+who sits in each seat, and the terms of its moves as a command last named them (`TERMS`,
+`src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks and an
+Examiner session's. A term no command named is its move's default. A later run that names nothing
+runs by the record, and one that names another term records it again: these are the operator's
+conditions.
+
+**Every campaign belongs to a project** (`--project`, since 12 October), as every v1 run joined
+one, and is named as v1's were: letters, digits, `.`, `_` and `-`. The opening is not written
+without one, so a campaign is opened under a project, and one whose opening was written before
+then takes the flag the next time its command runs. A later run need not name it; one that names
+another is refused (`projectOf`, `tools/d2/campaign.ts`). The project groups campaigns on the
+operator's page and enters no move and no seat. Campaigns run by the hand commands of rows 0 to
+7 alone write no opening and so have no project.
 
 **The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, by the first
 command that begins a comparison or a Builder session, and does not change: who solves and under which limits, which
@@ -664,7 +673,7 @@ solves a side 2 to 5 dollars in all. One flag line that ran a small campaign fro
 typed ending on 10 October, for a first campaign to start from:
 
 ```text
-bun tools/d2/harness-builder.ts --name t-9 --prompt-file <file> --budget 6 --reserve 0.05 \
+bun tools/d2/harness-builder.ts --name t-9 --project queues --prompt-file <file> --budget 6 --reserve 0.05 \
   --builder claude-api/claude-sonnet-5-5 --examiner claude-api/claude-sonnet-5-5 \
   --reviewer claude-api/claude-sonnet-5-5 --solver claude-api/claude-sonnet-5-5 --solver-effort high \
   --solve-minutes 8 --solve-model-turns 10 --solves 2 --target 8 --practice 3 \
@@ -1272,6 +1281,7 @@ the operator.
 | Term | Meaning |
 | --- | --- |
 | Campaign | Everything run for one query: one domain, one contract, one check program, one log |
+| Project | What the operator files campaigns under, named at a campaign's opening (`--project`) and kept by it |
 | Contract | The one public document: the rules, each with an id, and the answer format |
 | Check | A hidden program that tests one rule on one answer and returns pass or reject |
 | Instrument | The field's own tool that computes the facts a check compares |

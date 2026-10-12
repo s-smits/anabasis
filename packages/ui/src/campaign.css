@@ -21,12 +21,22 @@
   flex: 1 1 320px;
 }
 
-/* The project is the campaign's prompt or pack: one line, the whole of it on hover. */
+/* The project the campaign's opening names: one line, the whole of it on hover. */
 .ana-campaign-title .ana-eyebrow {
   max-width: 72ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The prompt the campaign opened from, in the page's one editorial voice, at the head of Set-up. */
+.ana-campaign-prompt {
+  color: var(--ana-text);
+  font-family: var(--font-editorial);
+  font-size: var(--ana-text-base);
+  font-style: italic;
+  margin: 0 0 12px;
+  max-width: 80ch;
 }
 
 .ana-campaign-status {

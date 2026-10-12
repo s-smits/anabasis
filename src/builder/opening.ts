@@ -9,6 +9,12 @@
  * a campaign that opens from a prompt, the prompt and who solves. None of them moves a comparison's
  * reading. The setting is the log's own record (`campaign.setting`).
  *
+ * It names the project the campaign belongs to (`--project`), as a v1 run named the project whose
+ * tree it joined. Until 12 October a v2 campaign was its name and its worktree, and the operator's
+ * page could group campaigns only by their prompts, which differ in a word. The project is the
+ * operator's choice at the opening and stays the campaign's. An opening written before then names
+ * none.
+ *
  * It also keeps the terms of the campaign's moves as a command last named them (`TERMS`): the
  * limits of a Builder session and of an Examiner session, the size of a comparison, the practice
  * tasks, and a solve's wall until a setting is recorded. Without them a command that names nothing
@@ -31,6 +37,9 @@ export interface Seat {
 }
 /** What a campaign runs by, as `campaign.opened` records it (`tools/d2/harness-builder.ts`). */
 export interface Opening {
+  /** The project the campaign belongs to (`--project`); null for an opening written before
+   *  12 October, when no opening named one. */
+  readonly project: string | null;
   /** The dollars the campaign may bill in all, and the reserve one solve is held at; null for a
    *  rehearsal's, whose seats are paid nothing. */
   readonly budget: Cap | null;
@@ -100,6 +109,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
   const seat = (name: (typeof SEATS)[number]) => seated(asRecord(asRecord(data.seats)?.[name]));
   const terms = asRecord(data.terms);
   return {
+    project: isString(data.project) ? data.project : null,
     budget:
       isNumber(budget?.dollars) && isNumber(budget.reserve)
         ? { dollars: budget.dollars, reserve: budget.reserve }

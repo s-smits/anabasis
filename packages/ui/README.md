@@ -19,7 +19,9 @@ The server binds 127.0.0.1:5173 (`PORT` changes the port) and prints the page's 
 token drawn at its start; every API request needs it, and a `Host` that is not the loopback is
 refused. The page reads every campaign under `.ana/d2/` in the repository's worktrees, writes
 nothing, and shows the exam side only on a server started with `--exam-side`, which belongs on a
-host no Builder or solver shares.
+host no Builder or solver shares. The Project picker lists the projects the campaigns' openings
+name (`--project` on the campaign command); a campaign whose opening names none stands under
+"No project recorded".
 
 To look at the page without a campaign of your own, write the test fixture's three campaigns to a
 directory and point the server at it:

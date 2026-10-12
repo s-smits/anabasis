@@ -4,14 +4,16 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { reported, toLabel } from "../../../src/builder/comparison.ts";
 import { campaignOf } from "../../../src/builder/handover.ts";
 import { pairings } from "../../../src/kernel/compare.ts";
-import { read } from "../../../src/kernel/log.ts";
+import { LOG_FILE, read } from "../../../src/kernel/log.ts";
 import {
   appendFileSync,
   cpSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from "../../../src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../../../src/meta/json-runtime.ts";
 import { asRecord, isString } from "../../../src/meta/json-shape.ts";
@@ -22,6 +24,7 @@ import { spawnTextSync } from "../../../test/helpers/bun-spawn-sync.ts";
 import {
   type AnswerOf,
   type Endpoint,
+  NO_PROJECT,
   type Outcome,
   PARAMETERS,
   type Query,
@@ -597,6 +600,26 @@ describe("what the server cannot read", () => {
       const diff = await ask("harness-diff", { key, a: fixture.harnesses.starter, b: a }, "default", root);
       expect({ target, leaked: diff.text.includes(MARKERS.hidden) }).toEqual({ target, leaked: false });
     }
+  });
+
+  test("lists each campaign under the project its opening names, and one whose opening names none apart", async () => {
+    const { answer } = await ask("campaigns", {}, "default");
+    const projects = Object.fromEntries(answer.campaigns.map(({ name, project }) => [name, project]));
+    expect(projects).toEqual({
+      [fixture.name]: fixture.projects.vowels,
+      [fixture.early]: fixture.projects.vowels,
+      [fixture.units]: fixture.projects.units,
+    });
+    // An opening written before a project was named, as every log before 12 October holds: no
+    // project is guessed for it from its prompt or its name.
+    const { root } = copy();
+    const units = join(root, ".ana", "d2", fixture.units, LOG_FILE);
+    const unnamed = readFileSync(units, "utf8").replaceAll(`"project":"${fixture.projects.units}",`, "");
+    expect(unnamed).not.toContain(fixture.projects.units);
+    writeFileSync(units, unnamed);
+    const listed = (await ask("campaigns", {}, "default", root)).answer.campaigns;
+    expect(listed.find(({ name }) => name === fixture.units)?.project).toBe(NO_PROJECT);
+    expect(listed.find(({ name }) => name === fixture.name)?.project).toBe(fixture.projects.vowels);
   });
 
   test("reads a log again only once its size or its time moved, and keeps it otherwise", () => {

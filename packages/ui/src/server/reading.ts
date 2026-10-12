@@ -6,10 +6,10 @@
  * asks it (`decidedOn`, `tools/runs/view.ts`), so that the page and the view name one move on one
  * log by construction, and the reader's rows and triggers are `overview`'s.
  *
- * v2 records no project, so it is read: the opening's prompt, else the campaign's name. A campaign
- * over a stored pack names its pack on its commands' flags (`--sweep`, `--cycle`, `--bundle`) and
- * in no event: `campaign.opened` keeps neither prompt nor pack for one (`opened`,
- * `tools/d2/harness-builder.ts`), and the receipt beside the log that holds the flags is no event.
+ * A campaign's project is the one its opening names (`Opening.project`, `--project` on the campaign
+ * command since 12 October). An opening written before then names none, and a campaign run by the
+ * hand commands alone has no opening: both stand under `NO_PROJECT`, and no project is guessed for
+ * them from a prompt or a name.
  *
  * The reader's triggers of lanes 1 to 12, the exam side's (`triggerShown`), are withheld in the
  * default tier, and the reading says how many: an expected absence and no issue, which is kept for
@@ -34,7 +34,14 @@ import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
 import { recordedSetting } from "../../../../tools/d2/setting.ts";
 import { decidedOn } from "../../../../tools/runs/view.ts";
-import type { CampaignReading, CampaignRow, Issue, NextMove, Tier } from "../models.ts";
+import {
+  type CampaignReading,
+  type CampaignRow,
+  type Issue,
+  type NextMove,
+  NO_PROJECT,
+  type Tier,
+} from "../models.ts";
 import { campaignIn, type Log, once, openingIn, overviewIn, reportsIn, stopIn } from "./folds.ts";
 import { harnessesIn, promotionsIn, spendIn } from "./lineage.ts";
 import { type Found, type Process, sourceOf } from "./logs.ts";
@@ -72,7 +79,7 @@ const factsIn = once((log) => {
   const last = reportsIn(log).at(-1);
   const report = last === undefined ? null : reported(events, last.session);
   return {
-    prompt: opening?.prompt ?? null,
+    project: opening?.project ?? NO_PROJECT,
     ending: endingOf(log),
     lastEventAt: events.at(-1)?.at ?? null,
     lastReading:
@@ -98,14 +105,14 @@ export function campaignRow(
   log: Log,
   { process, tier }: { readonly process: Process | null; readonly tier: Tier },
 ): CampaignRow {
-  const { prompt, ending, ...facts } = factsIn(log);
+  const { project, ending, ...facts } = factsIn(log);
   const status = ending === null ? "open" : "ended";
   const said = ending !== null && (examTier(tier) || WORDED.has(ending.ending));
   return {
     key: found.key,
     name: found.name,
     tree: found.label,
-    project: prompt ?? found.name,
+    project,
     status: process === "open" ? "running" : status,
     ending:
       ending === null
@@ -146,6 +153,7 @@ const coreIn = once((log) => {
   const bars = barsIn(log);
   const { sinceStep } = stopIn(log);
   return {
+    prompt: openingIn(log)?.prompt ?? null,
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
     supply: campaign.supply,

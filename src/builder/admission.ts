@@ -47,7 +47,7 @@
  * for the host's load before a move that solves (`quiet`).
  */
 import { frozenChecker } from "../kernel/acceptance.ts";
-import { sweepOf } from "../kernel/compare.ts";
+import { closedTo, sweepOf } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import {
   awaitingLabel,
@@ -169,7 +169,8 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
   const waiting = new Set([...labelled, ...spent]);
   const reports = lastReports(events);
   const starter = reports.findLast(({ data }) => isString(data.starter))?.data.starter;
-  // A task the harness to be compared with was valid on in every solve there can only tie again.
+  // A task the harness to be compared with closed there (`closedTo`: valid in every solve, and no
+  // two valid answers the objective told apart) can only tie again.
   const kept = reference === "promoted" ? (promoted(events) ?? "starter") : reference;
   const named = kept === "latest" ? latestBuilt(events) : kept === "starter" ? starter : kept;
   // With no harness named beside it, any comparison that read the reference: until 12 October any
@@ -193,7 +194,7 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
   const pool = sets.held.filter((version) => !waiting.has(version));
   const tallied = versions.filter((version) => pool.includes(version));
   const pairs = last === undefined ? [] : pairsReported(events, last);
-  const closed = pairs.filter((pair) => tallied.includes(pair.task) && pair[side].every(Boolean)).length;
+  const closed = pairs.filter((pair) => tallied.includes(pair.task) && closedTo(pair, side)).length;
   // Held out since it reported: until 12 October every task it did not tally, and on esp32 five
   // tasks an earlier comparison had tied with the reference valid in every solve counted whole.
   const since = new Set(

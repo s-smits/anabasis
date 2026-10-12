@@ -16,7 +16,7 @@ import { conditionId, settingId } from "../src/kernel/condition.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
-import type { JsonObject } from "../src/meta/json-shape.ts";
+import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
@@ -289,6 +289,42 @@ describe("what a log holds for the next comparison", () => {
     const supply = supplyOf(log);
     expect(supply).toMatchObject({ held: 4, exhausted: 2, untied: 0.5, since: 0 });
     expect(shortOf(supply, { target: 4, trigger: 0.25 })).toBeNull();
+  });
+
+  it("counts a task the objective still separates as untied, though the reference answered it in every solve", () => {
+    // Both sides answer every task in every solve: closed on validity alone. On `a` the new
+    // harness's answers measure the better by more than the margin, so the next harness can still
+    // win it, as `exhausted` spares it. Until 12 October the supply read validity alone: 0 untied
+    // here, and the comparison refused.
+    const { events, terms } = roundSolves(
+      "o-1",
+      ["h0", "h1"],
+      eight(() => "PP PP"),
+    );
+    const starts = events.flatMap(({ kind, data }) =>
+      kind === "solve.started" && isString(data.solve) ? [data.solve] : [],
+    );
+    // Task a's four solves come first: the old harness's two, then the new's.
+    const measures = [10, 10, 5, 5];
+    const verdicts = starts
+      .slice(0, 4)
+      .map((solve, at) =>
+        event("verdict", { solve, kind: "pass", answer: {}, objective: measures[at] ?? 0 }),
+      );
+    const log = [
+      ...EIGHT.flatMap(heldOut),
+      ...events,
+      ...verdicts,
+      reported("o-1", {
+        old: "h0",
+        fresh: "h1",
+        starter: "h0",
+        scored: { wins: 1, losses: 0, ties: 7 },
+        ...terms,
+        objective: { direction: "lower", margin: 0.01 },
+      }),
+    ];
+    expect(supplyOf(log).untied).toBe(1 / 8);
   });
 
   it("reads the plan's stop rule: the checkpoints since the last step", () => {

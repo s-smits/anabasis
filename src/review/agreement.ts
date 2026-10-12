@@ -9,6 +9,11 @@
  *
  * Two rates carry the risk, and they pull apart. A check defect the Referee lets stand turns a broken
  * check into a scored task; an earned fail it voids removes a real limit from the count.
+ *
+ * Beside them, since 12 October, the agreement of each kind and over all three (the overhaul plan's
+ * M3, research 06): on kinds as uneven as these, most fails earned, Cohen's kappa can be low while
+ * the share read alike is high, so kappa is reported beside PABAK, the share read alike corrected
+ * for three kinds and not for how they are spread, and never alone.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { isString } from "../meta/json-shape.ts";
@@ -35,6 +40,13 @@ interface Agreement {
   /** The two rates; null where no fail carries the label they are a share of. */
   readonly caught: number | null;
   readonly voided: number | null;
+  /** Of each kind, twice the fails both called it over the fails either did; null where neither did. */
+  readonly specific: Readonly<Record<Ruling, number | null>>;
+  /** The share of ruled fails both read alike, Cohen's kappa and PABAK; null where none was ruled,
+   *  and kappa null where chance alone would have them agree on every one. */
+  readonly observed: number | null;
+  readonly kappa: number | null;
+  readonly pabak: number | null;
 }
 
 /** The last ruling the log holds for each labelled solve, set against its label. */
@@ -51,12 +63,31 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
     if (!isString(found) || ruling === undefined) unruled.push(solve);
     else table[label][ruling] += 1;
   }
+  const labelled = (kind: Ruling) => RULINGS.reduce((sum, ruling) => sum + table[kind][ruling], 0);
+  const ruled = (kind: Ruling) => RULINGS.reduce((sum, label) => sum + table[label][kind], 0);
   const share = (label: Ruling) => {
-    const row = table[label];
-    const total = row.earned + row["check-defect"] + row.unclear;
-    return total === 0 ? null : row["check-defect"] / total;
+    const total = labelled(label);
+    return total === 0 ? null : table[label]["check-defect"] / total;
   };
-  return { table, unruled, caught: share("check-defect"), voided: share("earned") };
+  const total = RULINGS.reduce((sum, kind) => sum + labelled(kind), 0);
+  const alike = RULINGS.reduce((sum, kind) => sum + table[kind][kind], 0) / total;
+  const chance = RULINGS.reduce((sum, kind) => sum + labelled(kind) * ruled(kind), 0) / total ** 2;
+  return {
+    table,
+    unruled,
+    caught: share("check-defect"),
+    voided: share("earned"),
+    // SAFETY: built from RULINGS, so every Ruling key is present.
+    specific: Object.fromEntries(
+      RULINGS.map((kind) => {
+        const either = labelled(kind) + ruled(kind);
+        return [kind, either === 0 ? null : (2 * table[kind][kind]) / either];
+      }),
+    ) as Record<Ruling, number | null>,
+    observed: total === 0 ? null : alike,
+    kappa: total === 0 || chance === 1 ? null : (alike - chance) / (1 - chance),
+    pabak: total === 0 ? null : (RULINGS.length * alike - 1) / (RULINGS.length - 1),
+  };
 }
 
 /** Whether the rulings clear the bar. A rate with nothing to be a share of clears nothing: a set

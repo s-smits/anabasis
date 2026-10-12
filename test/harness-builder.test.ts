@@ -454,7 +454,18 @@ describe("a campaign run by its log", () => {
     await settleCommand([...pack, "--session", "g-1"]);
     expect(lastOf()).toMatchObject({ settled: "unsettled" });
     answer({ [a]: "sound", [b]: "wrong", [c]: "sound" });
+    const said = spyOn(console, "log");
     await settleCommand([...pack, "--session", "g-1"]);
+    const lines = said.mock.calls.map(([line]) => (isString(line) ? line : ""));
+    said.mockRestore();
+    // It prints the Referee's agreement, here on no labelled rejection, and g-1 read again with the
+    // wrong pass a fail: one task fewer won, and a decision that holds.
+    expect(lines).toContain(
+      "the Referee against 0 labelled rejections, 0 of them unruled: agreement of each kind earned none, check-defect none, unclear none; over all three none, PABAK none beside kappa none",
+    );
+    expect(lines.find((line) => line.startsWith("g-1: "))).toMatch(
+      /^g-1: decided step, and step at 4-0-1 .*: it holds$/,
+    );
     await settleCommand([...pack, "--session", "g-1"]);
     // A pass's label moves no tally: g-1 reads as it did.
     expect(lastOf()).toMatchObject({

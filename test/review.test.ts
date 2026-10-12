@@ -454,6 +454,21 @@ describe("the Referee's agreement with hand labels", () => {
     expect(measured.table.earned).toEqual({ earned: 1, "check-defect": 1, unclear: 1 });
     expect(measured).toMatchObject({ caught: 0.5, unruled: [] });
     expect(measured.voided).toBeCloseTo(1 / 3);
+    // Of each kind and over all three: 2 of 5 read alike, and 10 of 25 would by chance alone
+    // (three labels earned and two a defect, against two rulings each and one unclear), so kappa
+    // reads no agreement at all where PABAK reads a little.
+    expect(measured.specific).toEqual({ earned: 2 / 5, "check-defect": 2 / 4, unclear: 0 });
+    expect(measured.observed).toBeCloseTo(2 / 5);
+    expect(measured.kappa).toBeCloseTo(0);
+    expect(measured.pabak).toBeCloseTo(0.1);
+    expect(agreement(events, new Map())).toMatchObject({ observed: null, kappa: null, pabak: null });
+    // Every fail labelled and ruled earned: they agree on all, and chance alone would too.
+    expect(agreement(events, new Map([["c", "earned"]] as const))).toMatchObject({
+      specific: { earned: 1, "check-defect": null, unclear: null },
+      observed: 1,
+      kappa: null,
+      pabak: 1,
+    });
   });
 
   it("clears a bar written beforehand, and nothing when a label is unruled or a rate has no fails", () => {

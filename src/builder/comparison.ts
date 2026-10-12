@@ -30,7 +30,7 @@ import {
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
-import { type LogEvent, read } from "../kernel/log.ts";
+import type { LogEvent } from "../kernel/log.ts";
 import { unsolved, whole } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
@@ -300,8 +300,7 @@ export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: Re
  * sets them aside, and the reference harness against itself where that was asked for, with how
  * the plan reads them.
  */
-export function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
-  const all = read(log);
+export function compared(all: readonly LogEvent[], fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
   const events = asReported(all, fixed.id);
   // A dispute stands whenever it was made: a settling's own come after the comparison's report.
   const states = taskStates(all);
@@ -425,6 +424,56 @@ function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
   if (before === undefined || !isString(before.data.session)) return null;
   const scoredThen = new Set(Array.isArray(before.data.tasks) ? before.data.tasks.filter(isString) : []);
   return { with: before.data.session, tasks: fixed.tasks.filter((task) => scoredThen.has(task)) };
+}
+
+/**
+ * Comparison `id`'s reading with its packet's labels in place of the verdicts they overturn, beside
+ * the reading it was decided on: a rejected answer labelled a check defect read as a valid answer,
+ * an answer that passed labelled wrong as a true fail, a rejection labelled earned as a true fail
+ * and one labelled unclear left aside. It is read as the comparison's own report found it, before
+ * its settling disputed anything. Null until it is settled. A decision that flips means its packet
+ * was too small to stand on (the overhaul plan's M3, research 06): a report, and no move reads it.
+ */
+export function swapped(
+  events: readonly LogEvent[],
+  id: string,
+): { decided: Reading; swapped: Reading; scored: Tested } | null {
+  const own = asReported(events, id);
+  const settled = reported(events, id)?.settled;
+  const fixed = fixedIn(events, id);
+  const decided = reported(own, id)?.reading;
+  if (
+    fixed === null ||
+    decided === undefined ||
+    settled === undefined ||
+    settled === null ||
+    settled === UNSETTLED
+  ) {
+    return null;
+  }
+  const wrong = Object.keys(settled.passes).filter((solve) => settled.passes[solve] === "wrong");
+  const endings = new Map<string, JsonObject>([
+    ...Object.keys(settled.labels).flatMap((solve) =>
+      settled.labels[solve] === DEFECT ? [[solve, { outcome: "pass" }] as const] : [],
+    ),
+    ...wrong.map(
+      (solve) =>
+        [solve, { outcome: "fail", kind: "rejected", reason: "a person labelled the pass wrong" }] as const,
+    ),
+  ]);
+  const swappedIn = own.map((event) => {
+    const ending =
+      event.kind === "solve.finished" && isString(event.data.solve)
+        ? endings.get(event.data.solve)
+        : undefined;
+    return ending === undefined ? event : { ...event, data: { ...event.data, ending } };
+  });
+  const labels = new Map<string, Ruling>([
+    ...Object.entries(settled.labels),
+    ...wrong.map((solve) => [solve, EARNED] as const),
+  ]);
+  const found = compared(swappedIn, fixed, labels);
+  return { decided, swapped: found.reading, scored: found.scored };
 }
 
 /** What the operator predicted of comparison `id` before its first solve, or null where they

@@ -694,7 +694,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   };
   await work.ruleLeft();
   if (!(await work.solveAll(fixed.tasks))) return stopped();
-  const found = compared(log, fixed, NO_LABELS);
+  const found = compared(read(log), fixed, NO_LABELS);
   const told: Report = { ...head, ...found, disputed: disputed(), capped: work.capped(), settled: UNSETTLED };
   return write(asked, told, beside());
 }
@@ -798,7 +798,7 @@ export function settleReading(
     const version = versionOf.get(solve) ?? "";
     return dispute(log, id, version, { solve, reason }) ? [version] : [];
   });
-  const found = compared(log, fixed, labels);
+  const found = compared(read(log), fixed, labels);
   const settled: Report = {
     old: report.old,
     fresh: report.fresh,

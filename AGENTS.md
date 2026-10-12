@@ -130,7 +130,10 @@ what is left, and a ruling without its evidence is refused. `earned` counts as a
 two set the task aside for both harnesses, so a broken check scores nobody. The Referee is a
 model and is measured by agreement with a person who labels the same rejections blind
 (`tools/d2/settle.ts`, `src/review/agreement.ts`): a three-by-three table of label against
-ruling, read as two rates. Bar: on at least ten labels a kind, three in four of the rejections a
+ruling, read as two rates, beside each kind's agreement and PABAK beside kappa, never kappa alone.
+Once a packet is settled, `settle.ts` prints them over every settled packet, and reads each settled
+comparison again with its labels in place of the verdicts they overturn (`swapped`): a decision
+that flips means its packet was too small. Both are reports. Bar: on at least ten labels a kind, three in four of the rejections a
 person calls a check defect caught, at most one in ten of those a person calls earned voided, and
 three passes a comparison read by a person, since no seat reads an answer that passed.
 

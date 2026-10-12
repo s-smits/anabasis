@@ -131,6 +131,7 @@ export interface Played {
   /** What each compaction's summary spent (`pi-compaction.ts`). */
   readonly summaries: readonly Usage[];
   readonly submitted: JsonValue | undefined;
+  readonly flagged: string | undefined;
   readonly wallEnded: boolean;
   /** Whether the model used every turn it was given, where it was given a number of them. */
   readonly turnsEnded: boolean;
@@ -278,7 +279,9 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
           return spent(turns, limits) || desk.submitted !== undefined ? { action: "end" } : undefined;
         },
         getFollowUpMessages: async () => {
-          if (desk.submitted !== undefined || prompts >= limits.turns) return [];
+          if (desk.submitted !== undefined || desk.flagged !== undefined || prompts >= limits.turns) {
+            return [];
+          }
           prompts += 1;
           return [user(NUDGE)];
         },
@@ -307,6 +310,7 @@ async function play(request: SolveRequest, id: string): Promise<Played> {
     prompts,
     summaries,
     submitted: desk.submitted,
+    flagged: desk.flagged,
     wallEnded: wall.signal.aborted,
     turnsEnded: spent(turns, limits),
     moved: treeStamp(request.harness) !== before,
@@ -449,7 +453,8 @@ function traceText(content: readonly { type: string; text?: string }[]): string 
 }
 
 /** The ending of what was played. A kill or a harness that moved voids it; otherwise an answer the
- *  host holds is judged whatever failed after it was submitted, as v1's close rule had it. The
+ *  host holds is judged whatever failed after it was submitted, as v1's close rule had it, and a
+ *  flag the host holds ends it flagged. The
  *  answer is checked against the contract's format by the host before any check reads it, then
  *  judged; a verdict is logged either way, with the answer, so that a fail can be read and regraded
  *  from the log alone. */
@@ -481,6 +486,8 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
     }
     return verdict?.kind === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" };
   }
+  // A flag the host holds stands as an answer does, whatever failed after it.
+  if (played.flagged !== undefined) return { outcome: "flagged", reason: played.flagged };
   if (played.crash !== null) return { outcome: "non-result", kind: "sandbox-crash", reason: played.crash };
   if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
   if (played.wallEnded) return { outcome: "fail", kind: "wall-ended" };

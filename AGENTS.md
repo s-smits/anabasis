@@ -297,7 +297,8 @@ The tools of each model seat, as its source names them:
   (`src/examiner/shell.ts`), and nothing in it enters the exam but through `draft_exam`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness`, `reset_harness`, `finish`.
-- Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`.
+- Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`;
+  `submit` with `malformed` is its word that the task is malformed in place of one.
 - Referee: `probe_check`, `read_check_program`, `record_ruling`.
 
 Until 11 October a Diagnoser named the first wrong step of each failed practice solve for the
@@ -687,6 +688,7 @@ comparisons, and one frozen draw of the reference's solves would bias every late
 | fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |
 | fail | `rejected`, ruled a check defect or unclear, or waiting for a person | The task is set aside for both harnesses |
 | non-result | `provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier` | No measurement. It is solved again and is in no pair |
+| flagged | | Not valid: the solver's word, with why, that the task is malformed (`submit` with `malformed`), counted as the flagging side's own fail and reported apart (`flagged` in the report). A task both sides flag ties; one the other side answers is lost |
 
 **The tally.** Every solve of the new harness is paired with every solve of the reference on the
 same task. The harness that wins more pairs wins the task; otherwise the task is a tie. Ties leave
@@ -869,6 +871,8 @@ Cite a rule by its number in a pull request or a review.
    side failed, and counted nowhere. A broken harness is the opposite case and is the harness's
    own fail: a non-result there would be rerun into the same break and the harness would leave the
    score with it. An environment failure belongs to the environment's owner, never to an author.
+   A solver's flag that a task is malformed is its side's own fail for the same reason: counted
+   nowhere, it would take a task its harness was losing out of the tally. It is reported apart.
 
 8. **A rejection counts only once it is ruled, and a hand label stands over a ruling.** In v1,
    36 of 47 rehearsal misses came from a faulty check or instrument. The passes were sound: 5 of

@@ -135,6 +135,7 @@ export const HOME_TOOL_TREE = `harness/${TOOL_TREE_DIR}`;
 export function endingText(ending: Ending): string {
   if (ending.outcome === "pass") return "pass";
   if (ending.outcome === "non-result") return `no result (${ending.kind})`;
+  if (ending.outcome === "flagged") return "flagged (the solver judged the task malformed)";
   return ending.kind === "broken-harness"
     ? `fail (broken harness: ${ending.reason})`
     : `fail (${ending.kind})`;

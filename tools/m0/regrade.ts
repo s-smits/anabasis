@@ -42,7 +42,7 @@ async function main(): Promise<number> {
     const rows = all.flatMap(({ expected, ...row }) => (expected === null ? [] : [{ ...row, expected }]));
     const apart = countBy(
       all.filter((row) => row.expected === null),
-      ({ ending }) => (ending.outcome === "pass" ? "pass" : `${ending.outcome} ${ending.kind}`),
+      ({ ending }) => ("kind" in ending ? `${ending.outcome} ${ending.kind}` : ending.outcome),
     );
     const { priced } = pricedRows(rows);
     const billed = priced.reduce((total, solve) => total + solve.billed, 0);

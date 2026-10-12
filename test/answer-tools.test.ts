@@ -43,15 +43,8 @@ function solving(desk: Desk = openDesk()) {
     return { exitCode: await child.exited, output: Buffer.concat([Buffer.from(out), Buffer.from(err)]) };
   };
   const tool = submitTool(desk, CONTRACT, home, exec);
-  const submit = async () => {
-    // SAFETY: submit takes no arguments and reads neither its call id nor a context.
-    const result: AgentToolResult<unknown> = await tool.execute(
-      "call",
-      {},
-      undefined,
-      undefined,
-      undefined as never,
-    );
+  const submit = async (params: { malformed?: string } = {}) => {
+    const result: AgentToolResult<unknown> = await tool.execute("call", params, undefined);
     const [first] = result.content;
     return { text: first?.type === "text" ? first.text : "", terminate: result.terminate === true };
   };
@@ -65,7 +58,7 @@ describe("submit", () => {
     expect(tool.name).toBe("submit");
     expect(tool.promptSnippet).toBe("Send answer.json as your answer, which ends the task");
     expect(tool.description).toBe(
-      "Send answer.json from your working directory as your answer. It holds the answer as JSON, in the format public/answer-format.json gives. A file that does not is refused with the reason, and you may submit again. An accepted submit ends the task and returns no verdict.",
+      "Send answer.json from your working directory as your answer. It holds the answer as JSON, in the format public/answer-format.json gives. A file that does not is refused with the reason, and you may submit again. An accepted submit ends the task and returns no verdict. If you judge the task malformed, so that no answer could meet it as posed, give malformed instead, saying why: that ends the task with no answer read.",
     );
     answer('{ "span": 4,\n  "note": "first" }\n');
     expect(desk.submitted).toBeUndefined();
@@ -120,6 +113,26 @@ describe("submit", () => {
     expect(commands).toEqual([
       `[ -f '${home}/answer.json' ] || exit 44; head -c 1048577 '${home}/answer.json'`,
     ]);
+  });
+
+  it("ends the task flagged where the solver says it is malformed, and reads no file", async () => {
+    const { desk, commands, submit, answer } = solving();
+    answer('{"span": 4}');
+    // A reason of nothing is no flag: the file is read as an answer.
+    const blank = solving();
+    expect(await blank.submit({ malformed: "  " })).toMatchObject({
+      text: "Submit blocked: there is no answer.json in your working directory. Write your answer there as JSON, in the format public/answer-format.json gives, then submit again.",
+    });
+    expect(blank.desk.flagged).toBeUndefined();
+    expect(await submit({ malformed: " The span is given twice, as 4 m and 5 m. " })).toEqual({
+      text: "Flagged.",
+      terminate: true,
+    });
+    expect(desk).toEqual({ submitted: undefined, flagged: "The span is given twice, as 4 m and 5 m." });
+    expect(commands).toEqual([]);
+    // Once flagged, a submit sends nothing: the task has ended.
+    expect(await submit()).toEqual({ text: "Flagged.", terminate: true });
+    expect(desk.submitted).toBeUndefined();
   });
 
   it("refuses a directory in the answer's place", async () => {

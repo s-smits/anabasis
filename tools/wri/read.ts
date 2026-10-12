@@ -253,11 +253,13 @@ function harnessTriggers(log: Index): Trigger[] {
       scoredSet: new Set(compared.flatMap((each) => [...each.scoredSet])),
     };
     const child = text(finished?.harness);
-    // pi's `write` and `edit` since 2026-10-09, and `write_file` in the sessions before it.
+    // pi's `write` and `edit` since 2026-10-09, `write_file` in the sessions before it, and the tool tree
+    // where a shell command named it: esp32's b-1 kept 9 tool files on 12 October, its file tools none.
     const written = [
       ...new Set(calls.flatMap(({ tool, args }) => (FILE_WRITERS.has(tool) ? [text(args?.path)] : []))),
+      ...new Set(calls.flatMap(({ args }) => text(args?.command).match(/\.toolchain/) ?? [])),
     ];
-    const toolFiles = written.filter((path) => path.includes("tools"));
+    const toolFiles = written.filter((path) => /tools|\.toolchain/.test(path));
     // A stop writes no end record, so a session it cut says nothing of what it changed: recode's
     // b-1 wrote its harness for forty minutes and this read none of it (2026-10-10). Its file-tool
     // calls are what the end record would have said, so they stand in for `changed` wherever a
@@ -270,7 +272,7 @@ function harnessTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "HARNESS CHANGED",
-              `${session}: ${short(parent)} to ${finished === null ? "what a stop left unsaved" : short(child)}; written by its file tools: ${written.join(", ") || "nothing"}`,
+              `${session}: ${short(parent)} to ${finished === null ? "what a stop left unsaved" : short(child)}; written by its file tools and shell: ${written.join(", ") || "nothing"}`,
             ),
           ]
         : []),
@@ -289,7 +291,7 @@ function harnessTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "TOOLS CALLED",
-              `${session}: ${tally(
+              `${short(child)}, left by ${session}, over ${plural(fresh.length, "test-side solve")}: ${tally(
                 countBy(
                   fresh.flatMap((solve) => solve.calls),
                   (tool) => tool,

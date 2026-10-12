@@ -252,7 +252,7 @@ describe("the whole-run investigation's reader", () => {
 
   it("reads what the Builder did before it stopped", () => {
     expect(detail("HARNESS CHANGED")).toBe(
-      "b-1: hp to hc; written by its file tools: agent/tools.mjs, agent/BUILT_AGENTS.md",
+      "b-1: hp to hc; written by its file tools and shell: agent/tools.mjs, agent/BUILT_AGENTS.md",
     );
     // A session a stop cut leaves no end record, and its writes are all there is of its harness.
     const stopped: LogEvent[] = [
@@ -271,7 +271,7 @@ describe("the whole-run investigation's reader", () => {
     const cut = (name: string) =>
       overview(stopped).triggers.findLast((trigger) => trigger.name === name)?.detail;
     expect(cut("HARNESS CHANGED")).toBe(
-      "b-2: hc to what a stop left unsaved; written by its file tools: agent/tools.mjs",
+      "b-2: hc to what a stop left unsaved; written by its file tools and shell: agent/tools.mjs",
     );
     // Its writes stand in for the end record wherever a trigger asks whether it touched the
     // harness: recode's cut session wrote its tool chain and called neither check nor practice,
@@ -285,6 +285,28 @@ describe("the whole-run investigation's reader", () => {
       "b-2: hc > none, ended not yet: open at the log's end, 1 practice solve, reading none",
     );
     expect(detail("TOOLS EDITED")).toBe("b-1: agent/tools.mjs");
+    // The tally is of the solves under the harness the session left, whichever comparison ran them.
+    expect(detail("TOOLS CALLED")).toBe("hc, left by b-1, over 4 test-side solves: submit 4");
+    // A tool tree written by shell is the tree too: esp32's b-1 kept 9 tool files on 12 October and
+    // its file tools wrote none of them.
+    const shelled = overview([
+      ...stopped,
+      {
+        at: new Date(START).toISOString(),
+        kind: "build.call",
+        data: {
+          session: "b-2",
+          tool: "bash",
+          args: { command: "mv .toolchain/lib/a.js .toolchain/lib/a.cjs" },
+        },
+      },
+    ]).triggers.flatMap(({ name, detail: said }) =>
+      said.startsWith("b-2:") && (name === "HARNESS CHANGED" || name === "TOOLS EDITED") ? [said] : [],
+    );
+    expect(shelled).toEqual([
+      "b-2: hc to what a stop left unsaved; written by its file tools and shell: agent/tools.mjs, .toolchain",
+      "b-2: agent/tools.mjs, .toolchain",
+    ]);
     expect(detail("FINAL BYTES NEVER PRACTISED")).toBe(
       "b-1: no practice solve ran under hc, the harness measured; the last ran under hb",
     );

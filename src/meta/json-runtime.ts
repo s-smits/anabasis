@@ -1,5 +1,5 @@
 import { sha256 } from "./digest.ts";
-import type { JsonValue } from "./json-shape.ts";
+import { isString, type JsonValue } from "./json-shape.ts";
 
 const freeze = Object.freeze.bind(Object);
 const defineProperty = Object.defineProperty.bind(Object);
@@ -24,6 +24,18 @@ export const capturedJsonStringify: <T>(
   space?: string | number,
 ) => undefined extends T ? string | undefined : string = JSON.stringify.bind(JSON);
 export const capturedStructuredClone = globalThis.structuredClone;
+
+/** A value a model sent as JSON, decoded where it arrived as JSON text: a tool's argument the
+ *  provider passed as the string `"null"` where the same call elsewhere passed null (an Examiner's
+ *  hidden values, 12 October: 19 of 19 tries checked). Text that is no JSON stays the string it is. */
+export function decodedJsonText(value: JsonValue): JsonValue {
+  if (!isString(value)) return value;
+  try {
+    return capturedJsonParse(value);
+  } catch {
+    return value;
+  }
+}
 
 /**
  * Read JSON bytes as a declared contract.

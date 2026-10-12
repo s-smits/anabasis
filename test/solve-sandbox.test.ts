@@ -35,6 +35,7 @@ import { LINUX_BWRAP_ID } from "../src/verify/linux-bwrap.ts";
 import { guardedAncestors, moveBlockingRules } from "../src/verify/seatbelt-path-guard.ts";
 import { commandIsolationPolicy } from "../src/verify/solve-command-isolation.ts";
 import { userTempRules } from "../src/verify/wall-policy.ts";
+import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import {
   HOST_SOLVE_ISOLATION_PROFILE_ID,
   type SolveIsolationPolicy,
@@ -46,7 +47,9 @@ const CAP_BYTES = 16 * 1024 * 1024;
 
 const made: string[] = [];
 function workRepo(): string {
-  const root = mkdtempSync(join(tmpdir(), "ana-solve-sandbox-"));
+  // Named as `mktemp` names a folder, so that a policy that does not deny it lets a walled command
+  // read it, as a folder anywhere else outside the denied trees would be read (`toolchainTemp`).
+  const root = toolchainTemp("ana-solve-sandbox");
   made.push(root);
   return root;
 }
@@ -240,18 +243,41 @@ describe("the solve isolation's policy", () => {
 
   // On Linux an overmount leaves the directory empty, so its listing names no tenant either way.
   it.skipIf(!onDarwin)(
-    "lists nothing of the shared temporary directory, and opens a file in it by its name",
+    "closes the per-user temporary directory but for what mktemp and the shims make in it, and keeps TMPDIR on the seat's root",
     async () => {
-      const [shared] = userTempRules([]).roots;
+      const [shared] = userTempRules().roots;
       if (shared === undefined) throw new Error("this host names no user temporary directory");
-      const tree = mkdtempSync(join(shared, "ana-unlisted-"));
-      made.push(tree);
-      writeFileSync(join(tree, "named.txt"), "NAMED\n");
-      await inSeat(workRepo(), [], async (_wall, run) => {
+      // Another process's folder there, and a file it left directly in it.
+      const other = mkdtempSync(join(shared, "ana-other-"));
+      const left = join(shared, `ana-left-${String(runtimeProcess.pid)}.txt`);
+      const named = join(shared, `ana-named-${String(runtimeProcess.pid)}`);
+      made.push(other, left, named);
+      writeFileSync(join(other, "secret.txt"), "OTHER\n");
+      writeFileSync(left, "LEFT\n");
+      await inSeat(workRepo(), [], async (wall, run) => {
         const said = await run(
-          `ls ${shared} >/dev/null 2>&1 && echo listed || echo unlisted; cat ${tree}/named.txt`,
+          [
+            `ls ${shared} >/dev/null 2>&1 && echo listed || echo unlisted`,
+            `ls ${other} >/dev/null 2>&1 && echo other-listed || echo other-unlisted`,
+            `cat ${other}/secret.txt 2>/dev/null || echo other-unread`,
+            `{ echo x > ${other}/planted; } 2>/dev/null || echo other-unwritten`,
+            `mkdir ${named} 2>/dev/null || echo unnamed`,
+            `cat ${left}`,
+            'made=$(mktemp -d) && echo kept > "$made/f" && cat "$made/f" && rm -r "$made"',
+            'echo "$TMPDIR"',
+          ].join("; "),
         );
-        expect(said).toBe("unlisted\nNAMED\n");
+        expect(said.split("\n").slice(0, 8)).toEqual([
+          "unlisted",
+          "other-unlisted",
+          "other-unread",
+          "other-unwritten",
+          "unnamed",
+          "LEFT",
+          "kept",
+          wall.dirs.temp,
+        ]);
+        expect(existsSync(join(other, "planted"))).toBe(false);
       });
     },
     60_000,

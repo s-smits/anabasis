@@ -69,7 +69,7 @@ import { plural } from "../meta/text.ts";
 
 /** What an Examiner is told of the tasks at its opening: one line a task, and the counts by
  *  family that the same pass took, or null where no task stands in them. */
-export interface Heard {
+interface Heard {
   readonly lines: string[];
   readonly counts: string | null;
   /** The turns the reference harness's valid answers took, by family, or null where none is on
@@ -78,7 +78,7 @@ export interface Heard {
 }
 
 /** How each outcome is said. */
-export const SAID: Readonly<Record<Outcome, string>> = {
+const SAID: Readonly<Record<Outcome, string>> = {
   "reference-every": "the reference harness answered it validly in every solve of the last comparison",
   "reference-some":
     "the reference harness answered it validly in some solves of the last comparison and not in others",

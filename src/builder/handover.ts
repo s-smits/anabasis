@@ -300,7 +300,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       const { read, closed, window } = soFar(events, index, id, "exam");
       const end = events[closed]?.data;
       // One `task.proposed` an instance the session took, and one gate or refusal of it
-      // (`src/examiner/session.ts`), so the counts of an open session are its proposals so far.
+      // (`src/examiner/write.ts`), so the counts of an open session are its proposals so far.
       const proposals = window.flatMap((event) =>
         event.kind === "task.proposed" && event.data.session === id ? [event.data.version] : [],
       );

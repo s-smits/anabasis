@@ -4,7 +4,6 @@
 // comparison are the real ones; the seats are scripts, which are paid nothing.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
-import { draftExam } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import {
@@ -102,7 +101,7 @@ describe("a campaign run by its log", () => {
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
       examine: (request) => {
-        asked.push({ tasks: request.limits.tasks, minutes: request.budget?.minutes });
+        asked.push({ tasks: request.wanted, minutes: request.budget?.minutes });
         return examine({
           ...request,
           ...scripted([
@@ -844,7 +843,7 @@ describe("a campaign run by its log", () => {
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, examples, strayed),
       draft: (request) =>
-        draftExam({
+        examine({
           ...request,
           ...scripted([
             ["draft_exam", wrong],

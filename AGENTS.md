@@ -1114,6 +1114,8 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run commit:check` | What the pre-commit hook runs, and by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
 | `bun run runs <verb>` | `pulse`, `stop`, `rehearse`, `seed`, `replay`, `zip`, `view` |
+| `bun run ui:dev` | The page that shows a campaign as its log reads, on the loopback with a token (`packages/ui/README.md`). `-- --exam-side` adds the exam side's content: start that where no Builder or solver runs |
+| `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
 | `bun run land -- <pull request>` | Proves every commit a landing would publish where it sits; `--sanitize` posts each verdict, `--merge` also merges ("The stack and pull requests") |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
@@ -1135,8 +1137,8 @@ Run one suite at a time; two overlapping suites each take about twice as long. W
 the owning test files only: `bun run test -- test/compare.test.ts`. The wrapper refuses a named
 path that does not exist, because Bun would treat it as a filter and silently run its neighbours.
 
-CI (`.github/workflows/ci.yml`) has two jobs. `darwin` on macOS 15 runs typecheck, lint, the
-format check and the suite. `linux` on an Ubuntu VM installs Bubblewrap and runs the suite. In a
+CI (`.github/workflows/ci.yml`) has two jobs. `darwin` on macOS 15 runs the UI's own gate,
+typecheck, lint, the format check and the suite. `linux` on an Ubuntu VM installs Bubblewrap and runs the suite. In a
 container without user namespaces the tests that need the wall fail. Name those in the pull
 request as failures that are there without the change, and do not call the suite green.
 
@@ -1319,6 +1321,9 @@ tools/wri/      the whole-run investigation's reader of one log: its folds and t
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans
 tools/runtime/  the lint and test wrappers, the commit check
 tools/loc/      the size and unused-export policy
+packages/ui/    the page over a campaign's log: a server on the loopback that renders the folds
+                above and reads nothing for itself (src/server), and four panes, Campaign, Moves,
+                Tasks and Log (src/views). It writes nothing. Its design rules are its DESIGN.md
 vendor/         pi-coding-agent and pi-claude-bridge, copied
 docs/           the plan, the transfer ledger, the account of v1, the helper prompts
 .claude/skills/ the procedures (section 10), stack-pr, and main/ with the skill scripts' argument

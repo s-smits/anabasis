@@ -55,6 +55,7 @@ import {
   rmSync,
 } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
+import { asRecord, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { plural } from "#src/meta/text.ts";
@@ -238,25 +239,62 @@ function packOpened(dir: string, log: string, args: CampaignArgs) {
 }
 
 /**
+ * The code a solve runs, as its condition records it (`src/kernel/condition.ts`): the agent
+ * runtime's pins by name, and the host, `src` and `vendor` of `tree` as they stand with every
+ * production package its lockfile resolves. Until 12 October the host was the two trees alone, and
+ * a package such as `typebox`, which builds the solver's bash schema, could change under one
+ * setting id (the stack review at 658a933b, finding 6).
+ */
+export function codeOf(tree: string) {
+  const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
+    readFileSync(join(tree, "package.json"), "utf8"),
+  ).dependencies;
+  const lock = join(tree, "bun.lock");
+  const resolved = existsSync(lock) ? asRecord(Bun.JSONC.parse(readFileSync(lock, "utf8"))) : null;
+  const packages = asRecord(resolved?.packages) ?? {};
+  const named = (entry: JsonValue | undefined) =>
+    ["dependencies", "optionalDependencies", "peerDependencies"].flatMap((field) =>
+      Object.keys(asRecord(asRecord(entry)?.[field]) ?? {}),
+    );
+  const production = new Map<string, JsonValue | undefined>();
+  /** Each of `names` from the package at `parent`: Bun keys a nested copy under its parent's key,
+   *  and a name resolves to the nearest copy up the chain. */
+  const visit = (parent: readonly string[], names: readonly string[]): void => {
+    for (const name of names) {
+      const place = [...parent.map((_, cut) => [...parent.slice(0, parent.length - cut), name]), [name]].find(
+        (each) => packages[each.join("/")] !== undefined,
+      );
+      const key = place?.join("/") ?? "";
+      if (place === undefined || production.has(key)) continue;
+      const entry = packages[key];
+      production.set(key, entry);
+      visit(place, named(Array.isArray(entry) ? entry[2] : undefined));
+    }
+  };
+  visit([], named(asRecord(resolved?.workspaces)?.[""]));
+  const trees = ["src", "vendor"].map((part) => treeContent(join(tree, part)));
+  return {
+    runtime: Object.fromEntries(RUNTIME.map((name) => [name, pins[name] ?? "unpinned"])),
+    host: hashJsonValue([...trees, resolved === null ? null : Object.fromEntries(production)]),
+  };
+}
+
+/**
  * What a campaign's solves are recorded under (`src/kernel/condition.ts`): the condition of one
  * solve of a task under a harness by a solver, and the setting of every solve by that solver,
- * whatever its task and harness, as the id a comparison counts solves under. The runtime's pins
- * and the two tree hashes are read once: each hash is a walk of a tree of thousands of files, and
- * neither moves inside a run.
+ * whatever its task and harness, as the id a comparison counts solves under. The code it runs
+ * (`codeOf`) is read once: each tree is a walk of thousands of files, and none moves inside a run.
  */
 function recordedUnder({ contract, tools, limits }: Standing) {
-  const pins = parseJsonAs<{ dependencies: Record<string, string> }>(
-    readFileSync(join(REPO, "package.json"), "utf8"),
-  ).dependencies;
   const verifierTools = hashJsonValue(treeContent(tools));
-  const host = hashJsonValue(["src", "vendor"].map((part) => treeContent(join(REPO, part))));
+  const { runtime, host } = codeOf(REPO);
   /** What every solve by `by` runs under whatever its task and harness: its condition less those. */
   const settingOf = (by: Solver): Setting => ({
     contract: contractHash(contract),
     model: priceKey(by.model),
     effort: by.effort,
     prices: freezePrices([by.model]),
-    runtime: Object.fromEntries(RUNTIME.map((name) => [name, pins[name] ?? "unpinned"])),
+    runtime,
     compaction: compactionMode(by.model, sweepOptions()),
     verifierTools,
     sandbox: hashJsonValue({

@@ -41,10 +41,9 @@ import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
-import { treeContent } from "#src/solve/harness.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
+import { codeOf } from "../d2/campaign.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
@@ -92,10 +91,10 @@ function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
   return value;
 }
 
-/** The host's code as a condition names it (`tools/d2/campaign.ts`), for a tree that holds it. */
+/** The host's code as a condition names it (`codeOf`), for a tree that holds it. */
 function hostOf(tree: string): string | undefined {
-  const parts = ["src", "vendor"].map((part) => join(tree, part));
-  return parts.every((part) => existsSync(part)) ? hashJsonValue(parts.map(treeContent)) : undefined;
+  const parts = ["src", "vendor", "package.json"].map((part) => join(tree, part));
+  return parts.every((part) => existsSync(part)) ? codeOf(tree).host : undefined;
 }
 
 /**

@@ -52,7 +52,7 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { billedFor } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
+import { packageGate, type TaskPackage, taskStates, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
@@ -141,14 +141,10 @@ interface Desk {
   /** The instances this campaign has been given so far, by content, so that none is taken twice:
    *  this session's, and the ones earlier sessions wrote. */
   readonly seen: Map<string, "now" | "earlier">;
-  /** The instances, by content, the host saw a valid answer to in this session's `try_answer`:
-   *  a proposal of one is logged as feasible, and never waits for a person as possibly infeasible
-   *  (`awaitingLabel`). The answer itself is kept nowhere (`docs/simplify.md`, F4). */
-  readonly answered: Set<string>;
-  /** The answers that passed this session's `try_answer`, by hash, in memory alone: a task that
-   *  carries one whole is refused, since a planted answer is for `try_answer` and for no task
-   *  (`carries`; `AGENTS.md`, rule 9). */
-  readonly planted: Set<string>;
+  /** Author answers kept only in session memory, rechecked on the final task before recording
+   *  proof. A task that carries one whole is refused, since a planted answer is for `try_answer`
+   *  and for no task (`carries`; `AGENTS.md`, rule 9). */
+  readonly answered: Map<string, JsonValue>;
   readonly held: string[];
   readonly refused: string[];
   note: string | null;
@@ -198,16 +194,6 @@ function carries(value: JsonValue, planted: ReadonlySet<string>): boolean {
   return inner.some((each) => carries(each, planted));
 }
 
-/** The verifier `try_answer` runs, keeping in the session's memory the hash of each answer it
- *  passes (`planted`), and nothing else of it. */
-function planting(desk: Desk, verify: Verifier): Verifier {
-  return async (task, answer) => {
-    const verdict = await verify(task, answer);
-    if (verdict.kind === "pass") desk.planted.add(hashJsonValue(answer));
-    return verdict;
-  };
-}
-
 /** An instance by what a solver and the checks read of it, whatever id it carries. */
 function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
   return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
@@ -227,7 +213,8 @@ function supplied(desk: Desk): boolean {
  *  fires mid-try leaves no solve running and the task refused unmeasured. */
 async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   const { contract, log, id, probe } = desk.request;
-  if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
+  const planted = new Set([...desk.answered.values()].map((answer) => hashJsonValue(answer)));
+  if (carries([task.publicInput, task.hidden], planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === undefined) return { reason: null, said: "" };
@@ -255,12 +242,17 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   const task = request.pack(instance);
   const version = taskVersion(task);
   const { taskId, family, publicInput, hidden } = instance;
+  const answer = desk.answered.get(contentOf(instance));
+  const feasible =
+    request.verify !== undefined &&
+    answer !== undefined &&
+    (await request.verify(instance, answer)).kind === "pass";
   append(request.log, "task.proposed", {
     version,
     taskId,
     session: request.id,
     task: { taskId, family, publicInput, hidden },
-    ...keyIfDefined("feasible", desk.answered.has(contentOf(instance)) ? true : undefined),
+    ...keyIfDefined("feasible", feasible ? true : undefined),
   });
   const { reason, said, reference } = await measured(desk, task, stop);
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
@@ -388,7 +380,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
     name: "try_answer",
     label: "Try an answer",
     description:
-      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try keeps no answer and enters no task in the exam; where the checks pass, the host keeps that the instance has a valid answer, so a task proposed with that content is not later read as possibly infeasible. The gate's reading of the instance's package is given first, where it would refuse it.",
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try enters no task in the exam, and no answer is recorded; where the checks pass, the host records that the instance has a valid answer and holds the answer for this session alone, so a task proposed with that content, before or after the try, is not later read as possibly infeasible. The gate's reading of the instance's package is given first, where it would refuse it.",
     parameters: Type.Object({
       family: Type.String({ minLength: 1 }),
       public_input: Type.Unknown({ description: "What the solver would read of the task." }),
@@ -403,12 +395,17 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
         JsonValue,
         JsonValue,
       ];
-      const instance: Task = {
+      const candidate: Task = {
         taskId: "try",
         family: args.family,
         publicInput,
         hidden: decodedJsonText(hidden),
       };
+      const events = read(request.log);
+      const instance =
+        [...writtenTasks(events), ...request.examples].find(
+          (task) => contentOf(task) === contentOf(candidate),
+        ) ?? candidate;
       const packaged = packageGate(request.contract, request.pack(instance));
       const gate =
         packaged.outcome === "passed"
@@ -423,7 +420,13 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
         );
       }
       const verdict = await verify(instance, answer);
-      if (verdict.kind === "pass") desk.answered.add(contentOf(instance));
+      if (verdict.kind === "pass") {
+        desk.answered.set(contentOf(instance), answer);
+        const version = taskVersion(request.pack(instance));
+        if (taskStates(events).has(version)) {
+          append(request.log, "task.feasible", { version, session: request.id });
+        }
+      }
       return text(`${gate}${tried(verdict)}`);
     },
   });
@@ -470,7 +473,7 @@ async function toolsOf(desk: Desk): Promise<AgentTool[]> {
   return [
     proposeTool(desk),
     exampleTool(desk),
-    ...(request.verify === undefined ? [] : [tryTool(desk, planting(desk, request.verify))]),
+    ...(request.verify === undefined ? [] : [tryTool(desk, request.verify)]),
     ...(await examinerShell(
       request.shell,
       `a task enters it through ${admitting(request)} alone`,
@@ -492,8 +495,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     request,
     proposed: 0,
     seen: new Map(writtenTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
-    answered: new Set(),
-    planted: new Set(),
+    answered: new Map(),
     held: [],
     refused: [],
     note: null,

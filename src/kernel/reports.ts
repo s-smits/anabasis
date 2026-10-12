@@ -433,7 +433,10 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
     if (!isString(data.version)) continue;
     if (kind === "task.state" && data.state === "held") of(data.version).keptAt = index;
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
-    const witnessed = (kind === "task.proposed" && data.feasible === true) || (isNumber(tried) && tried > 0);
+    const witnessed =
+      (kind === "task.proposed" && data.feasible === true) ||
+      kind === "task.feasible" ||
+      (isNumber(tried) && tried > 0);
     if (witnessed) of(data.version).feasible = true;
   }
   const made = (comparison: string, task: string) => `${comparison} ${task}`;
@@ -444,7 +447,14 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
     const valid = passed(solve);
     if (valid === true) Object.assign(of(task), { answered: true, feasible: true });
     if (isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)) cut.add(made(comparison, task));
-    if (valid !== null && last !== undefined && comparison === last.session && harness === lastReference) {
+    if (
+      valid !== null &&
+      last !== undefined &&
+      comparison === last.session &&
+      harness === lastReference &&
+      Array.isArray(last.data.versions) &&
+      last.data.versions.includes(task)
+    ) {
       const record = of(task).lastReference;
       if (valid) record.valid = true;
       else Object.assign(record, { failed: true, failedAt: Math.min(record.failedAt, at) });
@@ -525,8 +535,8 @@ function thirds(events: readonly LogEvent[]) {
 }
 
 /** The task versions a valid answer is on record for: a solve's, under any harness and at any
- *  limits, the one the host saw the author's `try_answer` pass before the proposal, or a reference
- *  solve's under `try_task`, which its gate counts. The one
+ *  limits, the one the host saw the author's `try_answer` pass before or after the proposal, or a
+ *  reference solve's under `try_task`, which its gate counts. The one
  *  fact an author may hear beside a task's outcome that names no side: a task the reference
  *  answers in no solve is then told apart from one nobody has answered. */
 export function feasibleTasks(events: readonly LogEvent[]): Set<string> {

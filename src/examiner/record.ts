@@ -27,7 +27,8 @@
  * so that an author is not shown which of its tasks one pair of harnesses split. A family of one
  * task would tell it for that task, so where any family counted holds one the rows by family fold
  * into the total: on 12 October one campaign's 40 families each held one task, and 13 of another's
- * 14. They carry the sentence rule 6 asks for, with the solves a side they rest on.
+ * 14. No answer or trace is given. They carry the sentence rule 6 asks for, with the solves a side
+ * they rest on.
  *
  * The lines are followed, by family, by the solver's own turns each valid answer of the reference
  * harness took (`turns`): the overhaul plan's turn distribution of the reference's valid answers,

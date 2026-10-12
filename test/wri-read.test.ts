@@ -900,8 +900,26 @@ describe("the reader of the campaign's clock", () => {
     ]);
     // Solves of five minutes put it at 25 minutes, past the silence between moves.
     expect(silences(300)).toEqual([
-      "2 gaps over 25.0 min, 5 times the median finished solve: 30.0 min builder command; 28.0 min examiner turn (118,906 output tokens)",
+      "2 gaps over 25.0 min, 5 times the median measured solve: 30.0 min builder command; 28.0 min examiner turn (118,906 output tokens)",
     ]);
+  });
+
+  it("reads a silence against the solves that measured, not the non-results reran in seconds", () => {
+    // Truss on 12 October: 30 provider and killed attempts of under 10 s put the median at 6.2 minutes.
+    const solved = (id: string, ending: JsonObject, seconds: number): [number, EventKind, JsonObject][] => [
+      [0, SOLVE_STARTED, { solve: id, limits: { wallSeconds: 900 } }],
+      [0, SOLVE_FINISHED, { solve: id, ending, seconds }],
+    ];
+    const log = timed([
+      ...solved("p1", { outcome: "pass" }, 300),
+      ...["n1", "n2", "n3"].flatMap((id) => solved(id, { outcome: "non-result", kind: "provider" }, 2)),
+      [20, "exam.started", { session: "x-1" }],
+      [40, "exam.finished", { session: "x-1", ended: "finished" }],
+      [70, "exam.started", { session: "x-2" }],
+    ]);
+    expect(
+      overview(log).triggers.flatMap((trigger) => (trigger.name === "LONG SILENCES" ? [trigger.detail] : [])),
+    ).toEqual(["1 gap over 25.0 min, 5 times the median measured solve: 30.0 min between moves"]);
   });
 
   it("stays quiet on gaps under the floor, however short the solves", () => {

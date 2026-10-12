@@ -760,8 +760,8 @@ Row A puts the hours by role beside the billed dollars: each Builder and Examine
 each comparison from its start to its end, a session a stop cut to the stop, and the rest of the
 campaign's span as between moves; on 10 October recode's Builder took 52% of the hours against
 43% of the dollars. `LONG SILENCES` reads every gap between two events longer than five of the
-campaign's median finished solve, and never under ten minutes, and names the five longest by
-what ended them: a command whose time covers most of the gap, a model turn with its output
+campaign's median measured solve, a pass or a fail, and never under ten minutes, and names the
+five longest by what ended them: a command whose time covers most of the gap, a model turn with its output
 tokens, or nothing open between moves. A fixed twenty minutes read nothing on buffer on
 10 October, whose longest gap was 19.5 minutes; recode's two gaps over it were each an Examiner
 turn of over 56,000 output tokens. For each silence, confirm what was running from the events on either side: a

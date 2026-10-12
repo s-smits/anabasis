@@ -859,6 +859,21 @@ describe("the reader of the campaign's clock", () => {
       "hours: builder 2.0 (57%), comparisons 1.0 (29%), examiner 0.5 (14%), between moves 0.5 (14%), of 3.5",
     );
   });
+
+  it("counts a drafting session's dollars as the Examiner's, as the host's budget does", () => {
+    const log = timed([
+      [0, "draft.started", { session: "d-1" }],
+      [10, "draft.finished", { session: "d-1", ended: "finished", billed: 3 }],
+      [20, "exam.started", { session: "x-1" }],
+      [30, "exam.finished", { session: "x-1", ended: "finished", billed: 1 }],
+      [40, "referee.finding", { solve: "p1", ruling: "earned", billed: 1 }],
+    ]);
+    const { rows, triggers } = overview(log);
+    expect(rows[0]?.lines).toContain("billed dollars: examiner 4.00, referee 1.00");
+    expect(triggers.filter((trigger) => trigger.name === "SPEND LED BY A ROLE")).toEqual([
+      { lane: 28, name: "SPEND LED BY A ROLE", detail: "examiner: 80.0% of billed dollars" },
+    ]);
+  });
 });
 
 describe("the reader of comparisons the campaign command named apart from its Builder sessions", () => {

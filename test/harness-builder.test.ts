@@ -40,9 +40,10 @@ const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
 const STEM = `test-hb-${String(runtimeProcess.pid)}`;
 const OPENED = "campaign.opened";
 const MOVED = "campaign.move";
-// Ten held once two are released: a comparison's five and its repeat's, which a campaign holds
-// before its first comparison (12 October).
-const TASKS = fixtureTasks(12);
+// Fourteen held once two are released: a comparison's seven and its repeat's, which a campaign holds
+// before its first comparison (12 October). At the default level, 0.02 since 12 October, a step
+// takes six tasks all won (`sweepOf`), and seven still read one after a pass labelled wrong.
+const TASKS = fixtureTasks(16);
 const scripted = scriptedModel;
 const GRADED = gradedOf(TASKS);
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
@@ -79,8 +80,8 @@ describe("a campaign run by its log", () => {
   it("asks the Examiner for what the campaign is short of, before the first session, and tells it the campaign's wall", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-short`;
-    // Twelve tasks in the pack, two released: ten held of the sixteen a comparison at a target of
-    // eight and its repeat score, and two practice tasks of the three the campaign names. The
+    // Sixteen tasks in the pack, two released: fourteen held of the twenty a comparison at a target
+    // of ten and its repeat score, and two practice tasks of the three the campaign names. The
     // session is asked for six and one, and the Examiner is told nothing of the number. The wall is the campaign's term, and until
     // 11 October the Examiner was told the default of two hours whatever the term said.
     const flags = [
@@ -88,7 +89,7 @@ describe("a campaign run by its log", () => {
       "--patience",
       "1",
       "--target",
-      "8",
+      "10",
       "--practice",
       "3",
       "--solve-minutes",
@@ -123,8 +124,8 @@ describe("a campaign run by its log", () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-idle`;
     // A patience of two, so that the ending is reached in two idle Examiner sessions; a target of
-    // five, half the pack's held-out tasks, so that the first move builds: a campaign short of its
-    // target and a repeat's has tasks written before the first session (11 and 12 October).
+    // five, which the pack's held-out tasks hold twice, so that the first move builds: a campaign
+    // short of its target and a repeat's has tasks written before the first session (11 and 12 October).
     const flags = [...seeded(name), "--patience", "2", "--target", "5"];
     const strayed: string[] = [];
     const solves = scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, strayed);
@@ -204,7 +205,7 @@ describe("a campaign run by its log", () => {
         patience: 2,
         seats: { builder: null, examiner: null, reviewer: null },
         // The level is pinned whether or not a command named it: this tree's default.
-        terms: { level: "0.1", practice: "2", target: "5", trigger: "0.25" },
+        terms: { level: "0.02", practice: "2", target: "5", trigger: "0.25" },
       },
     ]);
     // The ending is the log's last event, and run again the command says it and adds nothing.
@@ -240,7 +241,7 @@ describe("a campaign run by its log", () => {
     // Its comparisons began under the rule of one reading at a time, so the two-stage rule's
     // trigger is not defaulted for it: the operator names both terms once.
     expect(harnessBuilder([...flags, "--moves", "0"], seats)).rejects.toThrow(
-      "name --level and --trigger once for it (the plan's are --level 0.1 --trigger 0.25)",
+      "name --level and --trigger once for it (the plan's are --level 0.02 --trigger 0.25)",
     );
     // Naming the trigger alone would pin the level to the start's, under the summed rule.
     expect(harnessBuilder([...flags, "--trigger", "0.25", "--moves", "0"], seats)).rejects.toThrow(
@@ -285,8 +286,8 @@ describe("a campaign run by its log", () => {
 
   it("compares a step again, waits under --attended to promote it, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
     const name = `${STEM}-climb`;
-    // The seed holds ten tasks to score once two are released, and a comparison scores five: the
-    // row that writes tasks up to the target is tested in `test/decide.test.ts`.
+    // The seed holds fourteen tasks to score once two are released, and a comparison scores seven:
+    // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
     // At a trigger of its own, so that the comparisons are seen to run under the campaign's and
     // not the command's default (found by review, 11 October: the flag was not passed on).
     const flags = [
@@ -298,7 +299,7 @@ describe("a campaign run by its log", () => {
       "--sessions",
       "1",
       "--target",
-      "5",
+      "7",
       "--trigger",
       "0.5",
       // The patience the opening's bound holds at these terms (`openingLines`).
@@ -352,7 +353,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, MOVED).flatMap(({ load }) => (load === undefined ? [] : [load]))).toEqual([0, 0, 0]);
     // Each comparison was made under the campaign's trigger, and the move records the command.
     for (const made of of(name, MOVED).filter(({ move }) => move === "compare")) {
-      expect(made.args).toEqual(expect.arrayContaining(["--trigger", "0.5", "--level", "0.1"]));
+      expect(made.args).toEqual(expect.arrayContaining(["--trigger", "0.5", "--level", "0.02"]));
     }
     expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
@@ -366,7 +367,7 @@ describe("a campaign run by its log", () => {
     const [first, repeat] = of(name, "comparison.reported");
     expect(first).toMatchObject({
       reading: "step",
-      scored: { wins: 5, losses: 0, ties: 0 },
+      scored: { wins: 7, losses: 0, ties: 0 },
       settled: "unsettled",
     });
     expect(repeat).toMatchObject({
@@ -375,12 +376,12 @@ describe("a campaign run by its log", () => {
       fresh: first?.fresh,
       settled: "unsettled",
     });
-    // The repeat scored the five tasks its first stage did not. Until 12 October a campaign held one
+    // The repeat scored the seven tasks its first stage did not. Until 12 October a campaign held one
     // target before its first comparison, and buffer-141-m3's g-2 scored g-1's versions again.
     const [once = [], again = []] = of(name, "comparison.started").map(({ tasks }) =>
       Array.isArray(tasks) ? tasks : [],
     );
-    expect([once.length, again.length]).toEqual([5, 5]);
+    expect([once.length, again.length]).toEqual([7, 7]);
     expect(again.filter((task) => once.includes(task))).toEqual([]);
     // The table reads the reference against itself in no comparison since 2026-10-11: that is the
     // operator's `--noise` on a checkpoint.
@@ -424,7 +425,7 @@ describe("a campaign run by its log", () => {
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:
     // up to ten of its rejected answers, and it has none, since the reference answered nothing,
-    // and three of the five answers that passed, the new harness's. The labels are recorded once a
+    // and three of the seven answers that passed, the new harness's. The labels are recorded once a
     // label stands on each, and once only.
     const pack = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name];
     const folder = join(REPO, ".ana", "d2", name, "settle-g-1");
@@ -464,7 +465,7 @@ describe("a campaign run by its log", () => {
       "the Referee against 0 labelled rejections, 0 of them unruled: agreement of each kind earned none, check-defect none, unclear none; over all three none, PABAK none beside kappa none",
     );
     expect(lines.find((line) => line.startsWith("g-1: "))).toMatch(
-      /^g-1: decided step, and step at 4-0-1 .*: it holds$/,
+      /^g-1: decided step, and step at 6-0-1 .*: it holds$/,
     );
     await settleCommand([...pack, "--session", "g-1"]);
     // A pass's label moves no tally: g-1 reads as it did.
@@ -507,7 +508,7 @@ describe("a campaign run by its log", () => {
     const report = readFileSync(join(to, "REPORT.md"), "utf8");
     // The step is named with the comparisons that read it and its last tally beside it.
     expect(report).toContain(
-      `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2. In g-2 it won 5, lost 0 and tied 0`,
+      `harness ${handed.harness.slice(0, 8)}, read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
     );
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");
@@ -539,9 +540,9 @@ describe("a campaign run by its log", () => {
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {
     const name = `${STEM}-word`;
-    // The seed holds ten tasks to score once two are released, and a comparison scores five: the
-    // row that writes tasks up to the target is tested in `test/decide.test.ts`.
-    const terms = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "5", "--patience", "2"];
+    // The seed holds fourteen tasks to score once two are released, and a comparison scores six:
+    // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
+    const terms = ["--practice", "2", "--solves", "1", "--sessions", "1", "--target", "6", "--patience", "2"];
     const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];
     const scriptedSolves = scriptedSeats(
@@ -569,7 +570,7 @@ describe("a campaign run by its log", () => {
     const stopped = await harnessBuilder(flags, seats);
     // The comparison ran whole and read what it would have read, and the campaign stopped after it.
     expect(of(name, "comparison.reported")).toMatchObject([
-      { session: "g-1", reading: "step", scored: { wins: 5, losses: 0, ties: 0 } },
+      { session: "g-1", reading: "step", scored: { wins: 6, losses: 0, ties: 0 } },
     ]);
     expect(stopped).toMatchObject({
       move: "end",
@@ -633,7 +634,7 @@ describe("a campaign run by its log", () => {
       "--sessions",
       "1",
       "--target",
-      "5",
+      "6",
       "--margin",
       "0.2",
       "--patience",
@@ -672,7 +673,7 @@ describe("a campaign run by its log", () => {
     await harnessBuilder([...flags, "--moves", "1"], seats);
     expect(of(name, MOVED).at(-1)?.args).toEqual(expect.arrayContaining(["--margin", "0.2"]));
     expect(of(name, "comparison.reported")).toMatchObject([
-      { session: "g-1", reading: "step", scored: { wins: 5, losses: 0, ties: 0 } },
+      { session: "g-1", reading: "step", scored: { wins: 6, losses: 0, ties: 0 } },
     ]);
     // The solves in flight when the host failed were killed, and solved again: no other strayed.
     expect(strayed.filter((line) => !line.includes('"kind":"killed"'))).toEqual([]);
@@ -747,7 +748,7 @@ describe("a campaign run by its log", () => {
     const prompt = "Multiplying a base by six, as a fixture.";
     const solver = ["--solver", "claude/claude-opus-5-5"];
     const terms = ["--practice", "2", "--solves", "1", "--solve-minutes", "8", "--practice-solves", "5"];
-    const flags = ["--name", name, ...solver, ...terms, "--target", "5", "--patience", "2"];
+    const flags = ["--name", name, ...solver, ...terms, "--target", "6", "--patience", "2"];
     const exam = {
       domain: "Fixture products",
       scope: "A task gives a base and asks for six times it.",
@@ -850,10 +851,10 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED)).toHaveLength(1);
     // The Builder session recorded the setting, with the scored tasks the campaign opened with:
     // t-2 (10 October) opened with --target 6 and its first session recorded the default 12.
-    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 5 }]);
+    expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 6 }]);
     expect(of(name, "task.state").filter(({ state }) => state === "released")).toHaveLength(2);
     expect(of(name, "comparison.started")).toMatchObject([{ solves: 1 }]);
-    expect(of(name, "comparison.started")[0]?.tasks).toHaveLength(5);
+    expect(of(name, "comparison.started")[0]?.tasks).toHaveLength(6);
     expect(
       of(name, MOVED)
         .slice(2)
@@ -866,7 +867,7 @@ describe("a campaign run by its log", () => {
     ]);
     expect(of(name, "checker.read").at(-1)).toMatchObject({ faults: [], admitted: ["check-product"] });
     expect(of(name, "comparison.reported")).toMatchObject([
-      { reading: "step", scored: { wins: 5, losses: 0, ties: 0 } },
+      { reading: "step", scored: { wins: 6, losses: 0, ties: 0 } },
     ]);
     expect(next).toMatchObject({ move: "compare" });
     expect(strayed).toEqual([]);

@@ -3,7 +3,8 @@
 // The power itself is the test's own arithmetic (`test/compare.test.ts`).
 import { describe, expect, it } from "bun:test";
 import { planOf } from "../src/builder/opening.ts";
-import { flipP, sweepOf } from "../src/kernel/compare.ts";
+import { flipP, sweepOf, TRIGGER } from "../src/kernel/compare.ts";
+import { PATIENCE } from "../src/kernel/reports.ts";
 import { clearing, FALSE_CAP, openingLines, SIZE, sizeLines, upperBound } from "../src/kernel/size.ts";
 import { COMPARISON_OPTIONS, ROUND_OPTIONS } from "../tools/d2/round.ts";
 
@@ -24,9 +25,15 @@ describe("a comparison's size", () => {
     expect(COMPARISON_OPTIONS.solves.default).toBe(String(SIZE.solves));
     const plan = planOf([], { unprepared: false, level: LEVEL, trigger: 0.25 }, null);
     expect(plan.wanted.target).toBe(SIZE.tasks);
-    // The level and the trigger are the opening's, and the A/A control moves neither.
-    expect(ROUND_OPTIONS.level.default).toBe("0.1");
+    // The level and the trigger are the opening's, and the A/A control moves neither. The level is
+    // 0.02 since 12 October: over the default patience it risks 7.6%, under the cap an opening holds.
+    expect(ROUND_OPTIONS.level.default).toBe("0.02");
     expect(ROUND_OPTIONS.trigger.default).toBe("0.25");
+    const defaults = { level: Number(ROUND_OPTIONS.level.default), trigger: TRIGGER };
+    expect(openingLines({ target: SIZE.tasks, ...defaults }, PATIENCE).at(-1)).toBe(
+      "over the patience's 6 attempts under one reference a false promotion comes at most 7.6% of the time",
+    );
+    expect(sweepOf(defaults.level)).toBe(6);
   });
 });
 
@@ -97,7 +104,8 @@ describe("what a campaign's opening risks", () => {
   const wanted = { target: SIZE.tasks, ...ASKED };
 
   it("is the union bound over its patience's attempts, and an opening past 10% is refused with what holds it", () => {
-    // At the size and the patience nothing names another, six attempts at 5.8% each: 34.8%.
+    // At the size and the patience nothing names another, and the level 0.10 that was the default
+    // until 12 October, six attempts at 5.8% each: 34.8%.
     expect(() => openingLines(wanted, 6)).toThrow(
       "over the patience's 6 attempts under one reference a false promotion comes at most 34.8% of the time, past the 10% a campaign may open on: --patience 1 or less holds it, and so does --level 0.02 or lower",
     );

@@ -8,6 +8,7 @@ import {
   draw,
   falseRate,
   flipP,
+  informative,
   marginOf,
   objectiveRuleIn,
   pairings,
@@ -569,6 +570,23 @@ describe("a task's pairings", () => {
         even,
       ]),
     ).toBe(1);
+  });
+
+  it("calls a task informative for a side valid on some solves and not all, or apart past the margin", () => {
+    const pair = (old: boolean[], measured: (number | null)[] = []) => ({
+      task: "t",
+      old,
+      fresh: [P, P],
+      objective: { direction: "lower" as const, margin: 0.05, old: measured, fresh: [1, 1] },
+    });
+    expect(informative(pair([P, F]), "old")).toBe(true);
+    // Failed in every solve, or valid in every solve with no objective: nothing to gain on.
+    expect(informative(pair([F, F]), "old")).toBe(false);
+    expect(informative(pair([P, P]), "old")).toBe(false);
+    // Valid in every solve, its own answers apart by the margin or less: no room (#144's hostile case).
+    expect(informative(pair([P, P], [100, 104]), "old")).toBe(false);
+    // Apart by more than the margin: a better answer is there to find.
+    expect(informative(pair([P, P], [100, 110]), "old")).toBe(true);
   });
 
   it("sets the objective's margin at the 90th percentile of the reference's own spread in its A/A", () => {

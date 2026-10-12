@@ -80,7 +80,12 @@ function compared(
       reading,
       ...tallied(wins, losses, ties),
       versions: HELD,
-      valid: { old: [...(more.valid?.old ?? HALF)], fresh: [...(more.valid?.fresh ?? HALF)] },
+      valid: {
+        old: [...(more.valid?.old ?? HALF)],
+        fresh: [...(more.valid?.fresh ?? HALF)],
+        // Informative: valid on some of a task's solves and not all (`informative`).
+        informative: { old: (more.valid?.old ?? HALF)[1], fresh: (more.valid?.fresh ?? HALF)[1] },
+      },
       setting: null,
       ...solved?.terms,
       ...more.extra,
@@ -339,7 +344,8 @@ describe("what is built and what is compared", () => {
       built("b-1", "h1"),
       ...compared("g-1", "h1", "no-step", {
         tally: [1, 0, 3],
-        solved: { v1: "FF FF", v2: "PP PP", v3: "PP PP", v4: "PP PP" },
+        // v1 is informative for the reference, valid on one solve of two: room (`informative`).
+        solved: { v1: "PF PP", v2: "PP PP", v3: "PP PP", v4: "PP PP" },
       }),
     ];
     expect(move([...tied, built("b-2", "h2")], small)).toEqual({
@@ -518,7 +524,7 @@ describe("a step", () => {
     });
     expect(move([...twice, ...named, promoted])).toEqual({
       move: "examine",
-      why: "comparison b-3 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change",
+      why: "comparison b-3 read no step, and no task was informative for the reference harness: the tasks have to change",
     });
     // One step is one draw, whatever came after it.
     expect(move([...stepped, ...later])).toMatchObject({ move: "build" });
@@ -542,7 +548,7 @@ describe("after a promotion", () => {
     const log = promotedOn(ALL);
     expect(move(log)).toEqual({
       move: "examine",
-      why: "harness h1 is the reference, and comparison g-2 found it valid on more than three solves in four: the tasks have to change, to ones it fails",
+      why: "harness h1 is the reference, and comparison g-2 found no task informative for it: the tasks have to change, to ones it fails on some solves",
     });
     const written = event(EXAM_FINISHED, { session: "x-1", held: ["v13"], refused: [], proposed: 1 });
     // The tasks written are read by a control before a Builder session is paid for: the starter
@@ -669,11 +675,11 @@ describe("no step", () => {
     // budget was the fallback once the Examiner's patience was spent.
     expect(move(tied)).toEqual({
       move: "examine",
-      why: "comparison g-1 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change",
+      why: "comparison g-1 read no step, and no task was informative for the reference harness: the tasks have to change",
     });
-    // The tasks no solve answered are counted as the reference's failures, and are room: recode's
-    // g-1 (10 October) read three in four with two tasks unanswered left out, where the row read
-    // 7 of 12, and a simulated climb read "no room" four times on tasks written for room.
+    // Tasks the reference fails in every solve are not informative for it either (12 October, one
+    // definition of informative for `try_task` and the table): with the rest answered on every
+    // solve, the tasks change. Until then they counted as room.
     const unanswered = [
       setting(40),
       ...first,
@@ -684,8 +690,8 @@ describe("no step", () => {
       }),
     ];
     expect(move(unanswered)).toMatchObject({
-      move: "build",
-      why: "comparison g-1 read no step with room to gain: harness h1 did not help",
+      move: "examine",
+      why: "comparison g-1 read no step, and no task was informative for the reference harness: the tasks have to change",
     });
     // Once as many Examiner sessions as the campaign's patience held out nothing, the campaign
     // ends on its room.
@@ -695,7 +701,7 @@ describe("no step", () => {
     expect(move([...tied, ...idle])).toEqual({
       move: "end",
       ending: "no-room",
-      why: "3 Examiner sessions in a row held out no task (comparison g-1 read no step, and the reference harness was valid on more than three solves in four: the tasks have to change): the tasks could not be made to leave room",
+      why: "3 Examiner sessions in a row held out no task (comparison g-1 read no step, and no task was informative for the reference harness: the tasks have to change): the tasks could not be made to leave room",
     });
     // With tasks written since, the same two are compared on them: six among thirty, of which a
     // draw of twelve scores between two and three on average, where a first reading takes two.
@@ -749,23 +755,20 @@ describe("no step", () => {
     expect(move(dear, { ...PLAN, left: { dollars: 13, reserve: 0.5 } })).toMatchObject({ move: "examine" });
   });
 
-  it("reads room in the tasks neither harness answered: they are the ones a better harness could answer", () => {
-    // Eight tasks answered by both on every solve, and four by nobody: the reference was valid on
-    // two solves in three, which is room. Until 10 October the four were left out of the share,
-    // and the simulated climb then read "no room" four times on tasks written for room, with no
-    // Builder session between them.
-    const mixed = { old: [4, 0, 8], fresh: [4, 0, 8] } as const;
-    const read = (unsolved: number) =>
-      compared("g-1", "h1", "no-step", {
-        tally: [0, 0, 12],
-        valid: mixed,
-        extra: { scored: { wins: 0, losses: 0, ties: 12, unsolved } },
-      });
-    expect(move([...first, ...read(4)])).toMatchObject({
+  it("reads room only in tasks informative for the reference: valid on some solves and not all", () => {
+    // Eight tasks answered by both on every solve and four by nobody tell the reference nothing.
+    // Until 12 October that was room, read as a share of valid solves (two in three); since, one
+    // definition of informative serves `try_task` and the table (the overhaul plan's section 4b).
+    const read = (valid: { old: Valid; fresh: Valid }) =>
+      compared("g-1", "h1", "no-step", { tally: [0, 0, 12], valid });
+    expect(move([...first, ...read({ old: [4, 0, 8], fresh: [4, 0, 8] })])).toMatchObject({
+      move: "examine",
+    });
+    // One task it answered on one solve of two is room, whatever the rest.
+    expect(move([...first, ...read({ old: [4, 1, 7], fresh: [4, 0, 8] })])).toEqual({
       move: "build",
       why: "comparison g-1 read no step with room to gain: harness h1 did not help",
     });
-    expect(move([...first, ...read(0)])).toMatchObject({ move: "build" });
   });
 
   it("ends the campaign where the tasks could not be made to leave room", () => {
@@ -781,7 +784,7 @@ describe("no step", () => {
     const nobody = [setting(40), ...first, ...compared("g-1", "h1", "no-step", empty)];
     expect(move(nobody)).toEqual({
       move: "examine",
-      why: "comparison g-1 read no step, and neither harness was valid on one solve in four: other tasks are written",
+      why: "comparison g-1 read no step, and neither harness gave a valid answer: other tasks are written",
     });
     const more = ["v13", "v14", "v15", "v16", "v17", "v18"].flatMap(heldOut);
     expect(move([...nobody, ...more])).toMatchObject({

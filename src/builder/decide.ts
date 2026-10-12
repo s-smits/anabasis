@@ -80,7 +80,7 @@
  * harnesses answered at the full limit, which measures a solver's set-up time and not its
  * method (t-10, the handover of 10 October in `docs/plan-history.md`), and the two ways to room
  * are the tasks (#167) and the objective (#184). The ladder went with `docs/simplify.md`, package
- * A. The two shares `roomOf` reads by are the plan's proposal and the operator's to set.
+ * A. Room is read by which tasks were informative for the reference (`roomOf`).
  */
 import { unadmitted } from "../kernel/acceptance.ts";
 import { flipP, readTwice, triggered } from "../kernel/compare.ts";
@@ -567,7 +567,7 @@ function afterPromotion(ground: Ground): Decided | null {
     "room",
     {
       move: "examine",
-      why: `harness ${short(reference)} is the reference, and comparison ${last.id} found it valid on more than three solves in four: the tasks have to change, to ones it fails`,
+      why: `harness ${short(reference)} is the reference, and comparison ${last.id} found no task informative for it: the tasks have to change, to ones it fails on some solves`,
     },
     plan.patience,
   );
@@ -778,12 +778,12 @@ function afterComparison(ground: Ground, last: JsonObject, latest: string, fresh
   }
   return room === "none" ? noRoom(ground, last, since, fresh) : tooHard(ground, id, since, fresh);
 }
-/** After a comparison in which the reference harness answered nearly everything: other tasks,
+/** After a comparison that found no task informative for the reference harness: other tasks,
  *  until as many Examiner sessions in a row as the campaign's patience held out none. */
 function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): Decided {
   const { tasksShort } = ground;
   const id = isString(last.session) ? last.session : "";
-  const nearlyAll = "the reference harness was valid on more than three solves in four";
+  const nearlyAll = "no task was informative for the reference harness";
   if (tasksShort === null && since > 0) {
     return compare(`comparison ${id} left no room, and tasks were written since`, fresh);
   }
@@ -808,7 +808,7 @@ function noRoom(ground: Ground, last: JsonObject, since: number, fresh: Fresh): 
  */
 function tooHard(ground: Ground, id: string, since: number, fresh: Fresh): Decided {
   const { tasksShort } = ground;
-  const said = `comparison ${id} read no step, and neither harness was valid on one solve in four`;
+  const said = `comparison ${id} read no step, and neither harness gave a valid answer`;
   if (tasksShort === null && since > 0) {
     return compare(`comparison ${id} left neither harness an answer, and tasks were written since`, fresh);
   }

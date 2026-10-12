@@ -20,6 +20,7 @@ import {
   promoted,
   referenceFailed,
   releaseOrder,
+  roomOf,
   standingsOf,
   stopRule as stopOf,
   unansweredTwice,
@@ -195,18 +196,38 @@ describe("the stop rule", () => {
     expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toMatchObject({ checkpoints: 3 });
   });
 
-  it("counts no comparison that left no room, by the reference's share of valid solves and the new harness's", () => {
-    // A report lists its tasks by how many of their two solves were valid: none, one, both.
-    const full = { valid: { old: [0, 0, 4], fresh: [0, 0, 4] } };
-    const hard = { valid: { old: [4, 0, 0], fresh: [3, 1, 0] } };
+  it("reads room by the tasks informative for the reference, too-hard where nobody answered", () => {
+    const report = (old: number[], fresh: number[], told: number) => ({
+      valid: { old, fresh, informative: { old: told, fresh: 0 } },
+    });
+    expect(roomOf(report([0, 0, 12], [0, 0, 12], 0))).toBe("none");
+    expect(roomOf(report([0, 0, 12], [0, 0, 12], 1))).toBe("room");
+    expect(roomOf(report([12, 0, 0], [12, 0, 0], 0))).toBe("too-hard");
+    // The reference failing everything the new harness answered leaves the reference none.
+    expect(roomOf(report([12, 0, 0], [0, 0, 12], 0))).toBe("none");
+    // The reference's side is `fresh` in the comparison it was promoted on.
+    expect(
+      roomOf({ valid: { old: [12, 0, 0], fresh: [0, 3, 9], informative: { old: 0, fresh: 3 } } }, "fresh"),
+    ).toBe("room");
+  });
+
+  it("counts no comparison that left no room: no task informative for the reference", () => {
+    // A report lists its tasks by how many of their two solves were valid: none, one, both, and how
+    // many were informative for each harness, valid on some solves and not all (`informative`).
+    const valid = (old: number[], fresh: number[]) => ({
+      valid: { old, fresh, informative: { old: old[1] ?? 0, fresh: fresh[1] ?? 0 } },
+    });
+    const full = valid([0, 0, 4], [0, 0, 4]);
+    // Failed in every solve: since 12 October no room either, though the new harness answered one.
+    const hard = valid([4, 0, 0], [3, 1, 0]);
     expect(stopRule([...sessions, flat("b-1", "h2", full), flat("b-2", "h3", hard)])).toEqual({
       checkpoints: 0,
       sinceStep: 0,
       stop: false,
     });
-    // Three solves in four is room still, and so is one harness valid on one solve in four.
-    const most = { valid: { old: [0, 2, 2], fresh: [0, 0, 4] } };
-    const some = { valid: { old: [4, 0, 0], fresh: [2, 2, 0] } };
+    // A task the reference answered on one solve of two is room, however few.
+    const most = valid([0, 2, 2], [0, 0, 4]);
+    const some = valid([3, 1, 0], [2, 2, 0]);
     expect(stopRule([...sessions, flat("b-1", "h2", most), flat("b-2", "h3", some)])).toMatchObject({
       checkpoints: 2,
       sinceStep: 2,

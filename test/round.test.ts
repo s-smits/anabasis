@@ -384,7 +384,7 @@ describe("a round", () => {
         },
         overlap: null,
         // Each harness by itself: the reference answered no task validly, the new one all, twice.
-        valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
+        valid: { old: [4, 0, 0], fresh: [0, 0, 4], informative: { old: 0, fresh: 0 } },
         billed: { old: BILLED, fresh: BILLED },
         noise: null,
         counted: null,
@@ -1155,23 +1155,21 @@ describe("a round", () => {
     expect(s.asked).toHaveLength(48);
   });
 
-  // Tasks nobody answers are no room: the reference harness is valid on every solve of the tasks
-  // anyone answered, and what it leaves a harness to gain is nothing (2026-10-09, a campaign
-  // whose Examiner wrote two tasks with no valid answer).
-  it("counts a comparison towards the stop where the tasks the reference failed were answered by nobody: they were its room", async () => {
-    // Two of four tasks answered by both, two by nobody: the reference was valid on half its
-    // solves, which leaves a harness room, and three harnesses that gained nothing there count.
-    // Until 10 October the two were left out and no such comparison counted.
+  // Tasks nobody answers are no room, and neither are tasks the reference answers in every solve:
+  // none is informative for it (`informative`), so a harness that gained nothing there showed no
+  // want of a gain. From 10 to 12 October the reference's half share of valid solves was room.
+  it("counts no comparison towards the stop where the tasks the reference failed were answered by nobody", async () => {
+    // Two of four tasks answered by both on every solve, two by nobody.
     const two: Table = (version) => (version === "s1" || version === "s2" ? PASS : LATE);
     const s = await setup([edit, finish, again, finish, third, finish], two);
     for (const id of ["b-1", "b-2", "b-3"]) {
       expect(await round(s.next(id))).toMatchObject({
         scored: { wins: 0, losses: 0, ties: 4, unsolved: 2 },
-        valid: { old: [2, 0, 2], fresh: [2, 0, 2] },
+        valid: { old: [2, 0, 2], fresh: [2, 0, 2], informative: { old: 0, fresh: 0 } },
         reading: NO_STEP,
       });
     }
-    expect(stopRule(read(s.log))).toEqual({ checkpoints: 3, sinceStep: 3, stop: false });
+    expect(stopRule(read(s.log))).toEqual({ checkpoints: 0, sinceStep: 0, stop: false });
   });
 
   // Fix row F48: where the reference harness is valid on every solve, no harness could have shown

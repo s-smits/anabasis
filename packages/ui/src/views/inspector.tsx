@@ -114,7 +114,8 @@ export function DiffView({ diff }: { diff: HarnessDiff }) {
         <p className="ana-exam-side">The two harnesses' agent files are the same.</p>
       ) : null}
       {diff.files.map((file) => {
-        const lines = diffLines(file.diff);
+        // A file the server could not diff in its bound has no lines, and its issue says why.
+        const lines = file.diff === null ? [] : diffLines(file.diff);
         const added = lines.filter((line) => line.kind === "add").length;
         const removed = lines.filter((line) => line.kind === "remove").length;
         return (
@@ -123,7 +124,13 @@ export function DiffView({ diff }: { diff: HarnessDiff }) {
               <code>{file.path}</code>
               <Badge tone={CHANGE_TONES[file.change]}>{file.change}</Badge>
               <span className="ana-num">
-                +{added} −{removed}
+                {file.diff === null ? (
+                  "not diffed"
+                ) : (
+                  <>
+                    +{added} −{removed}
+                  </>
+                )}
               </span>
             </header>
             <table className="ana-diff-lines">

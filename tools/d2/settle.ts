@@ -46,8 +46,8 @@
  *
  * Where a task itself looks infeasible, say so with `prepare.ts --infeasible <task id> --note`,
  * which refuses the task and logs the note. A task disputed here on a check's fault is a repair
- * owed to the check program's owner, and the labels file is what `tools/c/repaired.ts --labels`
- * takes. Labels made beside a log that holds the Referee's rulings measure the Referee only as far
+ * owed to the check program's owner, and a repair is held to these labels where the settled report
+ * holds them (`tools/c/repaired.ts`). Labels made beside a log that holds the Referee's rulings measure the Referee only as far
  * as a packet keeps them from the person: its bar is cleared on labels drawn before it reads
  * (`tools/c/rejections.ts`).
  *
@@ -57,7 +57,7 @@ import {
   PASS_LABELS,
   passesIn,
   REPORTED,
-  reported,
+  settledLabels,
   swapped,
   toLabel,
   UNSETTLED,
@@ -148,14 +148,7 @@ function labelLines(events: readonly LogEvent[]): string[] {
   const ids = new Set(
     events.flatMap(({ kind, data }) => (kind === REPORTED && isString(data.session) ? [data.session] : [])),
   );
-  const labels = new Map(
-    [...ids].flatMap((id) => {
-      const settled = reported(events, id)?.settled;
-      return settled === undefined || settled === null || settled === UNSETTLED
-        ? []
-        : Object.entries(settled.labels);
-    }),
-  );
+  const labels = settledLabels(events);
   const measured = agreement(events, labels);
   const rate = (value: number | null) => (value === null ? "none" : value.toFixed(2));
   const each = RULINGS.map((kind) => `${kind} ${rate(measured.specific[kind])}`).join(", ");

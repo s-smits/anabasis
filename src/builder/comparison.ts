@@ -572,3 +572,20 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
     mine.flatMap(({ solve, ruling }) => ((ruling !== EARNED) === aside ? [solve] : []));
   return { aside: pick(true), others: pick(false) };
 }
+
+/** A person's label of each rejected answer, by its solve, over every settled packet of the log:
+ *  what stands over the Referee's ruling of the same rejection wherever one is read
+ *  (`tools/d2/settle.ts`, `tools/c/repaired.ts`). */
+export function settledLabels(events: readonly LogEvent[]): Map<string, Ruling> {
+  const ids = new Set(
+    events.flatMap(({ kind, data }) => (kind === REPORTED && isString(data.session) ? [data.session] : [])),
+  );
+  return new Map(
+    [...ids].flatMap((id) => {
+      const settled = reported(events, id)?.settled;
+      return settled === undefined || settled === null || settled === UNSETTLED
+        ? []
+        : Object.entries(settled.labels);
+    }),
+  );
+}

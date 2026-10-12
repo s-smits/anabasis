@@ -33,6 +33,11 @@
  * told what the shell is and what the wall's probe found of the network, and not what to use it for.
  * Nothing hidden exists at drafting, and the wall closes the repository, where the log lies. Its
  * commands are in the log as its calls (`draft.call`).
+ *
+ * Its loop (`author`) is the one the Examiner's repair session runs as well (`repair.ts`, the
+ * overhaul plan's P10): each puts one whole thing to a reading the host makes without a model, is
+ * told the faults, and ends where one stands, at `finish` or at a limit, its events under its own
+ * kind.
  */
 import {
   type AgentMessage,
@@ -50,7 +55,7 @@ import {
   toToolDeclaration,
   type Usage,
 } from "@earendil-works/pi-ai";
-import { type Static, Type } from "typebox";
+import { type Static, type TSchema, Type } from "typebox";
 import { reportedCost } from "../backends/claude.ts";
 import { answerFormatFault, type Contract, type Objective } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
@@ -107,18 +112,17 @@ export interface Draft {
 interface DraftLimits {
   readonly wallSeconds: number;
   readonly turns: number;
-  /** Drafts the session may put to the host's reading. */
+  /** Drafts, or repairs, the session may put to the host's reading. */
   readonly tries: number;
 }
 
-interface DraftRequest {
+/** An Examiner's session that writes one whole thing and puts it to the host's reading until one
+ *  stands: who sits, its limits, its log and its shell. The drafting session is one, and since
+ *  12 October the session that repairs a check program or its controls is the other
+ *  (`repair.ts`). */
+export interface Authoring {
   /** Names the session in the log. */
   readonly id: string;
-  /** The operator's prompt, as the campaign's opening holds it. */
-  readonly prompt: string;
-  /** What the host reads of a draft without a model: its shape (`draftFaults`), and then its
-   *  controls through its checks. One sentence a fault, none where the draft stands. */
-  readonly reading: (draft: Draft) => Promise<readonly string[]>;
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: DraftLimits;
@@ -135,17 +139,51 @@ interface DraftRequest {
   readonly began?: number | undefined;
 }
 
+interface DraftRequest extends Authoring {
+  /** The operator's prompt, as the campaign's opening holds it. */
+  readonly prompt: string;
+  /** What the host reads of a draft without a model: its shape (`draftFaults`), and then its
+   *  controls through its checks. One sentence a fault, none where the draft stands. */
+  readonly reading: (draft: Draft) => Promise<readonly string[]>;
+}
+
+/** What one kind of such a session is told and puts. */
+export interface Kind<Parameters extends TSchema, Thing> {
+  /** The log's kind for its events, `draft.*` or `repair.*`, and the word for what it puts. */
+  readonly kind: "draft" | "repair";
+  readonly system: string;
+  /** Its opening message, before the sentence that tells its limits. */
+  readonly opening: string;
+  /** What its start event holds beside the session, the model, the effort and the limits. */
+  readonly started: JsonObject;
+  /** The tool that puts the thing, and the thing the tool's arguments carry. */
+  readonly put: Pick<AgentTool<Parameters>, "name" | "label" | "description" | "parameters">;
+  readonly thing: (args: Static<Parameters>) => Thing;
+  /** What the host reads of the thing without a model: one sentence a fault, none where it stands. */
+  readonly reading: (thing: Thing) => Promise<readonly string[]>;
+  /** What the host keeps of the thing that stood, before the session ends. */
+  readonly stood: (thing: Thing) => void;
+  /** What the session is told when one stands, before it is told that it ends. */
+  readonly stands: string;
+  /** What `finish` is described as: the end of a session in which none stood. */
+  readonly finish: string;
+  /** The tools it reads with beside its shell; none for a draft, which has nothing to read. */
+  readonly reads?: readonly AgentTool[] | undefined;
+  /** What its home holds at its start, and through which tool the host runs the checks for it, as
+   *  its shell is described (`examinerShell`); a draft's home starts empty and names no engine. */
+  readonly home?: { readonly holds: string; readonly checked: string } | undefined;
+}
+
 export interface Drafted {
-  /** Whether a draft of this session stands as the campaign's exam. */
+  /** Whether a draft of this session stands as the campaign's exam, or its repair stands. */
   readonly stands: boolean;
-  /** The drafts it put to the host. */
+  /** The drafts, or repairs, it put to the host. */
   readonly tries: number;
   readonly ended: "stands" | "finished" | "wall" | "turns" | "killed" | "crashed" | "stopped";
 }
 
 /** What a session's tools share. */
 interface Desk {
-  readonly request: DraftRequest;
   tries: number;
   stands: boolean;
   note: string | null;
@@ -165,7 +203,6 @@ const OUTSIDE = [
   [/\bfetch\s*\(/, "the network"],
   [/\bMath\s*\.\s*random\b|\bDate\s*\.\s*now\b/, "a random number or the clock"],
 ] as const;
-const NUDGE = "You have not called finish. Put a draft with draft_exam, or call finish.";
 const CONTROL = {
   task: Type.Integer({
     minimum: 0,
@@ -388,52 +425,48 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
   };
 }
 
-function draftTool(desk: Desk): AgentTool {
-  const { request } = desk;
+/** The tool that puts a whole thing of `of`'s kind to the host's reading: one try of the
+ *  session's, the faults the reading found, or the session's end where it found none. */
+function putTool<Parameters extends TSchema, Thing>(
+  desk: Desk,
+  limits: DraftLimits,
+  of: Kind<Parameters, Thing>,
+): AgentTool {
+  const { kind } = of;
   return tool({
-    name: "draft_exam",
-    label: "Draft the exam",
-    description:
-      "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
-    parameters: DRAFT_PARAMETERS,
+    ...of.put,
     executionMode: "sequential",
     execute: async (_id, args) => {
-      if (desk.tries >= request.limits.tries) {
-        throw new Error("This session can put no further draft. Call finish.");
+      if (desk.tries >= limits.tries) {
+        throw new Error(`This session can put no further ${kind}. Call finish.`);
       }
       desk.tries += 1;
-      const draft = draftedFrom(args);
-      const faults = await request.reading(draft);
+      const thing = of.thing(args);
+      const faults = await of.reading(thing);
       if (faults.length === 0) {
-        append(request.log, "exam.drafted", {
-          session: request.id,
-          draft: parseJsonAs<JsonObject>(capturedJsonStringify(draft)),
-        });
+        of.stood(thing);
         desk.stands = true;
-        return {
-          ...text("The draft stands: it is the campaign's exam. The session ends here."),
-          terminate: true,
-        };
+        return { ...text(`${of.stands} The session ends here.`), terminate: true };
       }
-      const left = request.limits.tries - desk.tries;
+      const left = limits.tries - desk.tries;
       return text(
         [
-          `The draft does not stand. ${plural(faults.length, "fault")}:`,
+          `The ${kind} does not stand. ${plural(faults.length, "fault")}:`,
           ...faults.map((fault) => `- ${fault}`),
           left > 0
-            ? `Mend them and put the whole draft again. This session can put ${plural(left, "more draft")}.`
-            : "This session can put no further draft. Call finish.",
+            ? `Mend them and put the whole ${kind} again. This session can put ${plural(left, `more ${kind}`)}.`
+            : `This session can put no further ${kind}. Call finish.`,
         ].join("\n"),
       );
     },
   });
 }
 
-function finishTool(desk: Desk): AgentTool {
+function finishTool(desk: Desk, description: string): AgentTool {
   return tool({
     name: "finish",
     label: "Finish",
-    description: "End the session without an exam. Say in one or two sentences why none could be drafted.",
+    description,
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     executionMode: "sequential",
     execute: async (_id, args) => {
@@ -450,19 +483,29 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
   return draft === null ? null : parseJsonAs<Draft>(capturedJsonStringify(draft));
 }
 
-export async function draftExam(request: DraftRequest): Promise<Drafted> {
-  const { log, limits, model } = request;
-  const began = request.began ?? performance.now();
-  if (read(log).some(({ kind, data }) => kind === "draft.started" && data.session === request.id)) {
-    throw new Error(`session ${request.id} is in the log already; a session's id names one session`);
+/**
+ * One session of `of`'s kind: the Examiner writes the thing, puts it to the host's reading, and
+ * mends it on the faults it is told, until one stands, it calls `finish`, or a limit ends it.
+ * Everything it does is in the log under the kind: its start, its turns and calls, and its end
+ * with what it billed.
+ */
+export async function author<Parameters extends TSchema, Thing>(
+  session: Authoring,
+  of: Kind<Parameters, Thing>,
+): Promise<Drafted> {
+  const { log, limits, model, id } = session;
+  const { kind } = of;
+  const began = session.began ?? performance.now();
+  if (read(log).some((event) => event.kind === `${kind}.started` && event.data.session === id)) {
+    throw new Error(`session ${id} is in the log already; a session's id names one session`);
   }
-  const desk: Desk = { request, tries: 0, stands: false, note: null };
-  append(log, "draft.started", {
-    session: request.id,
+  const desk: Desk = { tries: 0, stands: false, note: null };
+  append(log, `${kind}.started`, {
+    session: id,
     model: priceKey(model),
-    effort: request.effort,
+    effort: session.effort,
     limits: { ...limits },
-    prompt: request.prompt,
+    ...of.started,
   });
   // The wall runs from the seat's start, before the shell's network probe is awaited: until
   // 11 October it began after the probe, and after the mount and the wall's own probe, so a
@@ -474,45 +517,53 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
   );
   let shell: AgentTool[];
   try {
-    shell = await examinerShell(request.shell, "a draft enters it through draft_exam alone");
+    shell = await examinerShell(
+      session.shell,
+      `a ${kind} enters it through ${of.put.name} alone`,
+      of.home?.holds,
+      of.home?.checked,
+    );
   } catch (error) {
     clearTimeout(timer);
     throw error;
   }
-  const tools = [draftTool(desk), ...shell, finishTool(desk)];
+  const tools = [putTool(desk, limits, of), ...(of.reads ?? []), ...shell, finishTool(desk, of.finish)];
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
-  const signal = AbortSignal.any([wall.signal, done.signal, ...(request.kill ? [request.kill] : [])]);
+  const signal = AbortSignal.any([wall.signal, done.signal, ...(session.kill ? [session.kill] : [])]);
   const turns: AssistantMessage[] = [];
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
-  const system = createInitialSystemMessage(SYSTEM_PROMPT, tools.map(toToolDeclaration));
+  const system = createInitialSystemMessage(of.system, tools.map(toToolDeclaration));
   // Under the host's own scratch, which every wall closes (`wall-policy.ts`): the Examiner's
-  // Claude Code keeps its session here, the draft's checks and hidden values included.
+  // Claude Code keeps its session here, the checks and hidden values it wrote or read included.
   const home = hostScratch("claude-cli-examiner-");
   const over = () => desk.stands || desk.note !== null;
   let crash: string | null = null;
   try {
-    const models = request.models(home);
+    const models = session.models(home);
     const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
-    const opening = `The operator's prompt:\n\n${request.prompt}\n\nThis session has ${plural(Math.round(limits.wallSeconds / 60), "minute")}, ${plural(limits.turns, "turn")} and ${plural(limits.tries, "draft")}.`;
+    const opening = `${of.opening}\n\nThis session has ${plural(Math.round(limits.wallSeconds / 60), "minute")}, ${plural(limits.turns, "turn")} and ${plural(limits.tries, kind)}.`;
     await runAgentLoop(
       [user(opening)],
       { messages: system === undefined ? [] : [system], tools },
       {
         model,
-        reasoning: request.effort,
-        sessionId: request.id,
+        reasoning: session.effort,
+        sessionId: id,
         convertToLlm: (messages) => messages,
         toolExecution: "sequential",
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
           return over() || turns.length >= limits.turns ? { action: "end" } : undefined;
         },
-        getFollowUpMessages: async () => (over() ? [] : [user(NUDGE)]),
-        prepareRequest: loopCompaction(log, "draft", request.id, stream, summaries),
+        getFollowUpMessages: async () =>
+          over()
+            ? []
+            : [user(`You have not called finish. Put a ${kind} with ${of.put.name}, or call finish.`)],
+        prepareRequest: loopCompaction(log, kind, id, stream, summaries),
       },
-      traceSink(log, "draft", request.id, () => turns.length),
+      traceSink(log, kind, id, () => turns.length),
       signal,
       stream,
     );
@@ -523,20 +574,20 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
     done.abort();
     rmSync(home, { recursive: true, force: true });
   }
-  const cut = wall.signal.aborted || request.kill?.aborted === true;
+  const cut = wall.signal.aborted || session.kill?.aborted === true;
   crash ??= cut ? null : failedTurn(turns);
   const by = {
     stands: desk.stands,
     finished: desk.note !== null,
-    killed: request.kill?.aborted === true,
+    killed: session.kill?.aborted === true,
     wall: wall.signal.aborted,
     crashed: crash !== null,
     turns: turns.length >= limits.turns,
   };
   const ended = ENDINGS.find((reason) => by[reason]) ?? "stopped";
   const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
-  append(log, "draft.finished", {
-    session: request.id,
+  append(log, `${kind}.finished`, {
+    session: id,
     ended,
     stands: desk.stands,
     tries: desk.tries,
@@ -545,10 +596,35 @@ export async function draftExam(request: DraftRequest): Promise<Drafted> {
     turns: turns.length,
     tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
-    reportedCost: await reportedCost(request.id, turns),
+    reportedCost: await reportedCost(id, turns),
     seconds: (performance.now() - began) / 1000,
   });
   return { stands: desk.stands, tries: desk.tries, ended };
+}
+
+export function draftExam(request: DraftRequest): Promise<Drafted> {
+  return author(request, {
+    kind: "draft",
+    system: SYSTEM_PROMPT,
+    opening: `The operator's prompt:\n\n${request.prompt}`,
+    started: { prompt: request.prompt },
+    put: {
+      name: "draft_exam",
+      label: "Draft the exam",
+      description:
+        "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
+      parameters: DRAFT_PARAMETERS,
+    },
+    thing: draftedFrom,
+    reading: request.reading,
+    stood: (draft) =>
+      append(request.log, "exam.drafted", {
+        session: request.id,
+        draft: parseJsonAs<JsonObject>(capturedJsonStringify(draft)),
+      }),
+    stands: "The draft stands: it is the campaign's exam.",
+    finish: "End the session without an exam. Say in one or two sentences why none could be drafted.",
+  });
 }
 
 /** One drafting session with a shell under the solver's command wall and disk cap (`shell.ts`). */

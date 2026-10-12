@@ -823,6 +823,16 @@ describe("the tasks that go to a person as possibly infeasible", () => {
     expect(awaitingLabel(compared(proposed, "b-3", "h4", F))).toEqual([]);
   });
 
+  it("accepts a later author proof without changing the scored solves", () => {
+    const proved = [...twice, event("task.feasible", { version: "hard", session: "x-2" })];
+    expect(feasibleTasks(proved)).toEqual(new Set(["hard", "easy"]));
+    expect(awaitingLabel(proved)).toEqual([]);
+    expect(standingsOf(proved).get("hard")).toEqual({ cell: "tied-none-known", solves: 2 });
+    expect(lastReports(proved).flatMap((report) => pairsReported(proved, report))).toEqual(
+      lastReports(twice).flatMap((report) => pairsReported(twice, report)),
+    );
+  });
+
   it("are not the ones the starter answered, though the test's two harnesses did not", () => {
     const lower = (log: readonly LogEvent[], session: string) => {
       const whole = compared(log, session, "h2", F);
@@ -920,6 +930,23 @@ describe("the release before the draw", () => {
       reported("b-2", "no-step", "h2", { ...terms, versions: ["f1"] }),
     ];
     expect(referenceFailed(measured)).toEqual([]);
+  });
+
+  it("takes no practice priority from a rejection set aside until its comparison is settled", () => {
+    const pending = [
+      ...log,
+      ...solved("b-2", "f1", "h1", [F, F]),
+      ...solved("b-2", "f1", "h2", [P, P]),
+      ...solved("b-2", "a1", "h1", [P, P]),
+      ...solved("b-2", "a1", "h2", [P, P]),
+      reported("b-2", "no-step", "h2", { ...terms, versions: ["a1"], aside: ["f1"] }),
+    ];
+    expect(referenceFailed(pending)).toEqual([]);
+    const settled = [
+      ...pending,
+      reported("b-2", "no-step", "h2", { ...terms, versions: ["a1", "f1"], aside: [] }),
+    ];
+    expect(referenceFailed(settled)).toEqual(["f1"]);
   });
 });
 

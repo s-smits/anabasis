@@ -306,9 +306,12 @@ The tools of each model seat, as its source names them:
 
 - Examiner: `propose_tasks`, or `try_task` where the host can have the reference harness solve a
   draft task, `read_example`, `try_answer`, `bash`, `read`, `write`, `finish`. `try_answer` runs
-  the checks on an instance with an answer of the Examiner's own and keeps nothing; the shell is a
-  walled home of its own, empty at the session's start, and nothing in it enters the exam but
-  through that one gate. In the session that drafts an exam:
+  the checks on an instance with an answer of the Examiner's own. The log keeps no answer: where
+  the checks pass, the session holds it in memory until the task's final id, so that a task
+  proposed with that content is checked against it again and logged feasible
+  (`task.proposed.feasible`, or `task.feasible` for one proposed before), by version and session.
+  The shell is a walled home of its own, empty at the session's start, and nothing in it enters
+  the exam but through that one gate. In the session that drafts an exam:
   `draft_exam`, `bash`, `read`, `write`, `finish`, the shell the same kind of walled home
   (`src/examiner/shell.ts`), and nothing in it enters the exam but through `draft_exam`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
@@ -828,10 +831,11 @@ work on. A repeat, a control, a comparison that scored nothing or left no room d
 The next comparison or session is then refused, unless the operator gives a reason to go on
 (`--past-stop`). A task with no valid answer in two comparisons goes to a person as possibly
 infeasible, unless a valid answer for it stands anywhere on record, a solve's or the one the
-host saw its author's `try_answer` pass before the proposal (`task.proposed.feasible`), or a
-limit cut its solves (`awaitingLabel`). Promotion is the operator's `promote.ts --yes`, which
-writes `harness.promoted`. A comparison that names no `--reference` is made against the harness
-last promoted, and one that names a digest is made against that harness and promotes nothing.
+host saw its author's `try_answer` pass before or after the proposal (`task.proposed.feasible`,
+`task.feasible`), or a limit cut its solves (`awaitingLabel`). Promotion is the operator's
+`promote.ts --yes`, which writes `harness.promoted`. A comparison that names no `--reference` is
+made against the harness last promoted, and one that names a digest is made against that harness
+and promotes nothing.
 
 **What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
 prints it as its last line. In the order the table asks:

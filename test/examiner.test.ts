@@ -47,6 +47,8 @@ import { dirname, join, resolve } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
+const TRY_ANSWER = "try_answer";
+const TASK_PROPOSED = "task.proposed";
 const SOLVER = "solver-canary-7f3a";
 const CONTRACT: Contract = {
   answerFormat: {
@@ -233,7 +235,7 @@ describe("an Examiner session", () => {
 
   it("runs the checks on an instance with an answer of its own, where the campaign lends it its verifier, and keeps nothing", async () => {
     const tried = (answer: number) =>
-      call("try_answer", {
+      call(TRY_ANSWER, {
         family: "fixture",
         public_input: { base: 7 },
         hidden: null,
@@ -242,7 +244,7 @@ describe("an Examiner session", () => {
     // Without a verifier the tool is not given; with one, the checks say which refuse the answer.
     const bare = setup([finish, finish, finish]);
     await examine(bare.request);
-    expect(bare.sent[0]).not.toContain('{"name":"try_answer"');
+    expect(bare.sent[0]).not.toContain(`{"name":"${TRY_ANSWER}"`);
     const s = setup([tried(42), tried(41), finish, finish]);
     const asked: unknown[] = [];
     await examine({
@@ -254,7 +256,7 @@ describe("an Examiner session", () => {
           : { kind: "fail", blocking: ["check-product"] };
       },
     });
-    expect(s.sent[0]).toContain('{"name":"try_answer"');
+    expect(s.sent[0]).toContain(`{"name":"${TRY_ANSWER}"`);
     expect(asked).toEqual([
       ["try", { base: 7 }, { answer: "42", unit: "N" }],
       ["try", { base: 7 }, { answer: "41", unit: "N" }],
@@ -262,19 +264,19 @@ describe("an Examiner session", () => {
     expect(JSON.stringify(s.of("exam.call")[0])).toContain("Every applicable check passed this answer");
     expect(JSON.stringify(s.of("exam.call")[1])).toContain("Refused by check-product.");
     // A try is no proposal: no task was held out, and no answer entered the log but in the trace.
-    expect(s.of("task.proposed")).toEqual([]);
+    expect(s.of(TASK_PROPOSED)).toEqual([]);
     expect(s.of("exam.finished")[0]).toMatchObject({ proposed: 0 });
 
     // What a pass keeps is the fact: a proposal with the content the host saw answered is logged
     // feasible, and one whose content moved, by its public input or its hidden values, is not.
     const kept = setup([
-      call("try_answer", {
+      call(TRY_ANSWER, {
         family: "fixture",
         public_input: { base: 7 },
         hidden: { seed: 1 },
         answer: { answer: "42", unit: "N" },
       }),
-      call("try_answer", {
+      call(TRY_ANSWER, {
         family: "fixture",
         public_input: { base: 8 },
         hidden: { seed: 1 },
@@ -312,23 +314,120 @@ describe("an Examiner session", () => {
           : { kind: "fail", blocking: ["check-product"] };
       },
     });
-    expect(checked).toEqual([{ seed: 1 }, { seed: 1 }, { seed: 1 }, { seed: 1 }]);
-    expect(kept.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
+    // Four tries, and a recheck at its proposal of each of the three that passed: every check read
+    // the hidden value as the JSON it encodes.
+    expect(checked).toEqual(Array.from({ length: 7 }, () => ({ seed: 1 })));
+    expect(kept.of(TASK_PROPOSED).map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
       ["x-1-001", true],
       ["x-1-002", null],
       ["x-1-003", true],
       ["x-1-004", true],
     ]);
-    expect(JSON.stringify(kept.of("task.proposed"))).not.toContain('"answer":"42"');
+    expect(JSON.stringify(kept.of(TASK_PROPOSED))).not.toContain('"answer":"42"');
     // The Examiner is told it has the tool, and the shell, and what neither does to the exam.
     expect(s.sent[0]).toContain("try_answer runs the checks on an instance with an answer of yours");
     expect(s.sent[0]).toContain("bash, read and write are yours in a home of your own");
   });
 
+  it("rechecks an author answer on the final task id before keeping a pre-proposal proof", async () => {
+    const s = setup([
+      call(TRY_ANSWER, { ...instance(7), answer: { answer: "42", unit: "N" } }),
+      propose(7),
+      finish,
+      finish,
+    ]);
+    const checked: string[] = [];
+    await examine({
+      ...s.request,
+      verify: async (task) => {
+        checked.push(task.taskId);
+        return task.taskId === "try" ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] };
+      },
+    });
+    expect(checked).toEqual(["try", "x-1-001"]);
+    expect(s.of(TASK_PROPOSED)[0]?.feasible).toBeUndefined();
+    expect(feasibleTasks(read(s.log))).toEqual(new Set());
+  });
+
+  it("keeps a valid author answer tried after the task was proposed", async () => {
+    const s = setup([
+      propose(7),
+      call(TRY_ANSWER, {
+        ...instance(7),
+        answer: { answer: "42", unit: "N" },
+      }),
+      finish,
+      finish,
+    ]);
+    await examine({ ...s.request, verify: async () => ({ kind: "pass" }) });
+    const version = s.versionOf("x-1-001", 7);
+    expect(feasibleTasks(read(s.log)).has(version)).toBe(true);
+    expect(s.of("task.feasible")).toEqual([{ version, session: "x-1" }]);
+    expect(heard(read(s.log), writtenTasks(read(s.log))).lines).toEqual([
+      "x-1-001 (family fixture): not yet compared; a valid answer to it is on record",
+    ]);
+  });
+
+  it("keeps a late proof for an earlier pack task, and none for different content or a refused answer", async () => {
+    const s = setup([
+      call(TRY_ANSWER, {
+        family: EXAMPLE.family,
+        public_input: EXAMPLE.publicInput,
+        hidden: EXAMPLE.hidden,
+        answer: { answer: "12", unit: "N" },
+      }),
+      propose(7),
+      call(TRY_ANSWER, { ...instance(7), answer: { answer: "1", unit: "N" } }),
+      call(TRY_ANSWER, { ...instance(7), hidden: { seed: 2 }, answer: { answer: "42", unit: "N" } }),
+      finish,
+      finish,
+    ]);
+    const version = taskVersion(s.request.pack(EXAMPLE));
+    append(s.log, TASK_PROPOSED, { version, taskId: EXAMPLE.taskId });
+    append(s.log, "task.gate", { version, gate: 1, outcome: "passed" });
+    await examine({
+      ...s.request,
+      verify: async (_task, answer) =>
+        asRecord(answer)?.answer === "1" ? { kind: "fail", blocking: ["check-product"] } : { kind: "pass" },
+    });
+    expect(s.of("task.feasible")).toEqual([{ version, session: "x-1" }]);
+    expect(feasibleTasks(read(s.log))).toEqual(new Set([version]));
+    expect(heard(read(s.log), s.request.examples).lines[0]).toContain("a valid answer to it is on record");
+  });
+
+  it("does not log a proof for an unprepared example or one rejected under its own task id", async () => {
+    const tried = call(TRY_ANSWER, {
+      family: EXAMPLE.family,
+      public_input: EXAMPLE.publicInput,
+      hidden: EXAMPLE.hidden,
+      answer: { answer: "12", unit: "N" },
+    });
+    const bare = setup([tried, finish, finish]);
+    await examine({ ...bare.request, verify: async () => ({ kind: "pass" }) });
+    expect(bare.of("task.feasible")).toEqual([]);
+    expect(bare.of("exam.finished")[0]?.ended).toBe("finished");
+
+    const prepared = setup([tried, finish, finish]);
+    const version = taskVersion(prepared.request.pack(EXAMPLE));
+    append(prepared.log, TASK_PROPOSED, { version, taskId: EXAMPLE.taskId });
+    append(prepared.log, "task.gate", { version, gate: 1, outcome: "passed" });
+    const checked: string[] = [];
+    await examine({
+      ...prepared.request,
+      verify: async (task) => {
+        checked.push(task.taskId);
+        return task.taskId === "try" ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] };
+      },
+    });
+    expect(checked).toEqual([EXAMPLE.taskId]);
+    expect(prepared.of("task.feasible")).toEqual([]);
+    expect(feasibleTasks(read(prepared.log))).toEqual(new Set());
+  });
+
   it("holds a tried answer to the format before the checks, and keeps no instance feasible on one the format refuses", async () => {
     // Checks that pass every answer, and an answer the format refuses: a number, and no unit.
     const s = setup([
-      call("try_answer", {
+      call(TRY_ANSWER, {
         family: "fixture",
         public_input: { base: 7 },
         hidden: { seed: 1 },
@@ -351,7 +450,7 @@ describe("an Examiner session", () => {
     expect(told).toContain("This answer does not follow the answer format");
     expect(told).toContain("no check was run");
     expect(told).not.toContain("Every applicable check passed this answer");
-    expect(s.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
+    expect(s.of(TASK_PROPOSED).map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
       ["x-1-001", null],
     ]);
   });
@@ -423,7 +522,7 @@ describe("an Examiner session", () => {
     expect(s.of("solve.started")).toEqual([]);
     expect(s.of("exam.word")).toEqual([]);
     // The instance is in the log whole, so a later solve of it needs nothing else.
-    expect(s.of("task.proposed")[0]).toMatchObject({
+    expect(s.of(TASK_PROPOSED)[0]).toMatchObject({
       version: held,
       taskId: "x-1-001",
       session: "x-1",
@@ -447,7 +546,7 @@ describe("an Examiner session", () => {
     expect(examined.held).toHaveLength(2);
     // The second call of the turn was answered that the host has what it needs, and no turn followed.
     expect(JSON.stringify(s.of("exam.call").at(-1))).toContain("The host has the tasks it needs");
-    expect(s.of("task.proposed")).toHaveLength(2);
+    expect(s.of(TASK_PROPOSED)).toHaveLength(2);
     expect(s.of("exam.turn")).toHaveLength(1);
   });
 
@@ -470,7 +569,7 @@ describe("an Examiner session", () => {
     await examine(spent.request);
     expect(spent.sent[2]).toContain("An instance was not taken: this session can propose no further task.");
     expect(spent.sent[3]).toContain("This session can propose no further task.");
-    expect(spent.of("task.proposed")).toHaveLength(4);
+    expect(spent.of(TASK_PROPOSED)).toHaveLength(4);
     // A second session is a new process, and the same instance under a new id is the same task.
     const again = setup([propose(7), finish, finish, propose(7, 8), finish, finish]);
     await examine(again.request);
@@ -689,7 +788,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     );
     // The pack's own task is in the log as `prepare.ts` leaves it: by its id, and held out.
     const packed = taskVersion(s.request.pack(EXAMPLE));
-    append(s.log, "task.proposed", { version: packed, taskId: EXAMPLE.taskId });
+    append(s.log, TASK_PROPOSED, { version: packed, taskId: EXAMPLE.taskId });
     append(s.log, "task.gate", { version: packed, gate: 1, outcome: "passed" });
     let solves = 0;
     /** Two solves of a task under a harness, each valid or rejected. */
@@ -892,7 +991,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       { taskId: "b-4", family: "slab" },
     ];
     for (const { taskId } of tasks) {
-      add("task.proposed", { version: `v-${taskId}`, taskId });
+      add(TASK_PROPOSED, { version: `v-${taskId}`, taskId });
       add("task.gate", { version: `v-${taskId}`, gate: 1, outcome: "passed" });
     }
     // c-1, against the reference h1 at two solves a side.

@@ -66,7 +66,9 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  format, its check program's source, its example tasks and its controls. A campaign opened from
  *  a prompt reads its exam from that event and from no file beside the log. The `repair.*` kinds
  *  are the session in which the Examiner repairs its own check program or its controls between
- *  comparisons (`src/examiner/repair.ts`), the same five as a drafting session's. */
+ *  comparisons (`src/examiner/repair.ts`), the same five as a drafting session's. `task.feasible`
+ *  is a proposed task an author's answer passed `try_answer` on after its proposal, by version and
+ *  never the answer. */
 const EVENT_KINDS = [
   "campaign.opened",
   "campaign.setting",
@@ -103,6 +105,7 @@ const EVENT_KINDS = [
   "exam.word",
   "exam.finished",
   "task.proposed",
+  "task.feasible",
   "task.gate",
   "task.state",
   "solve.started",

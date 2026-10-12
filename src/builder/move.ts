@@ -7,7 +7,7 @@
  */
 
 /** How a campaign ends, as its last event says it. */
-export type Ending = "budget" | "stop" | "exam" | "no-room" | "environment" | "operator";
+export type Ending = "budget" | "stop" | "exam" | "no-room" | "environment" | "operator" | "control";
 
 /** The one move a campaign's log leads to, with its reason, or its ending. */
 export type Decided =

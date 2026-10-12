@@ -389,6 +389,41 @@ describe("practice, before a Builder session", () => {
   });
 });
 
+describe("the control", () => {
+  /** A comparison `id` of `harness` with the starter whose reference, read against itself,
+   *  differed by `apart` task by task. */
+  const aa = (id: string, harness: string, apart: readonly number[]) =>
+    compared(id, harness, "step", {
+      tally: [8, 0, 4],
+      extra: { level: 0.1, noise: { wins: 0, losses: 0, ties: 4, differences: [...apart] } },
+    });
+  const epoch = (apart: readonly number[]) => [...SET_UP, built("b-1", "h1"), ...aa("g-1", "h1", apart)];
+  const WHY =
+    'comparison g-1 read the reference against itself as a step, so its two sides are not interchangeable and no comparison against it reads anything until the cause is on record: leave it with tools/d2/word.ts --cause "<the cause>", and the campaign goes on when run again';
+
+  it("ends the campaign where the epoch's first A/A reads a step either way, until the cause is on record", () => {
+    // Read two-sided at the level: 5 tasks all one way is p 1/32 a side, 1/16 both; 4 is 1/8.
+    for (const apart of [
+      [2, 2, 2, 2, 2],
+      [-2, -2, -2, -2, -2],
+    ]) {
+      expect(move(epoch(apart))).toEqual({ move: "end", ending: "control", why: WHY });
+    }
+    expect(move(epoch([2, 2, 2, 2]))).toMatchObject({ move: "compare", fresh: "latest" });
+    // The operator's cause on record: the table moves as it would have, a repeat of the step.
+    const cause = event("campaign.word", { word: "cause", why: "the host was loaded while g-1 ran" });
+    expect(move([...epoch([2, 2, 2, 2, 2]), cause])).toEqual(move(epoch([2, -2, 0, 0])));
+    // An A/A that reads no step, or none, ends nothing.
+    expect(move(epoch([2, -2, 0, 0]))).toMatchObject({ move: "compare" });
+    expect(move(epoch([]))).toMatchObject({ move: "compare" });
+  });
+
+  it("is the epoch's first A/A: those after it stand as readings", () => {
+    const later = [...epoch([2, -2, 0, 0]), ...aa("g-2", "h1", [2, 2, 2, 2, 2])];
+    expect(move(later)).not.toMatchObject({ move: "end" });
+  });
+});
+
 describe("a step", () => {
   const stepped = [...SET_UP, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
 
@@ -399,7 +434,8 @@ describe("a step", () => {
       reference: "promoted",
       why: "comparison g-1 cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together",
     });
-    // A comparison the operator asked for with the reference against itself changes no move.
+    // A comparison the operator asked for with the reference against itself changes no move
+    // while its A/A reads no step (`the control`).
     const noised = [
       ...SET_UP,
       built("b-1", "h1"),

@@ -4,6 +4,7 @@
  *   bun tools/d2/word.ts --name buffer --stop "the host is needed for something else"
  *   bun tools/d2/word.ts --name buffer --tasks "the last three batches all tied"
  *   bun tools/d2/word.ts --name buffer --budget 250
+ *   bun tools/d2/word.ts --name buffer --cause "the host was loaded while g-3 ran"
  *
  * Until 2026-10-09 the operator could steer a campaign only by running a command, which meant
  * stopping the one that ran (`docs/plan.md`, row F50). A word is one event in the campaign's log
@@ -15,6 +16,9 @@
  *             `operator`). Run again, its command goes on from the log.
  *   --tasks   an Examiner session writes other tasks before anything else is built or compared.
  *   --budget  the campaign's total in dollars from there on: what is left of it caps each move.
+ *   --cause   the cause of an A/A that read a step, on record: the campaign, ended on its control,
+ *             compares again when run again (`decide.ts`). It stands where it was left, and a
+ *             later A/A that reads a step ends the campaign again.
  *
  * Each takes effect once: the event that acts on a word names it. Nothing here reaches a seat. A
  * word is the operator's to the campaign's controller, and no Builder, Examiner, solver or
@@ -35,15 +39,18 @@ const OPTIONS = {
   stop: { type: "string" },
   tasks: { type: "string" },
   budget: { type: "string" },
+  cause: { type: "string" },
 } as const;
 
 /** `bun tools/d2/word.ts`. Returns the word it left. */
 export function wordCommand(args: readonly string[]): string {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const { name, stop, tasks, budget } = values;
-  const given = [stop, tasks, budget].filter((each) => each !== undefined).length;
+  const { name, stop, tasks, budget, cause } = values;
+  const given = [stop, tasks, budget, cause].filter((each) => each !== undefined).length;
   if (name === undefined || given !== 1) {
-    throw new Error('name --name and one word: --stop "<why>", --tasks "<why>" or --budget <dollars>');
+    throw new Error(
+      'name --name and one word: --stop "<why>", --tasks "<why>", --budget <dollars> or --cause "<why>"',
+    );
   }
   const log = campaignLog(name);
   if (!existsSync(log) || openingOf(read(log)) === null) {
@@ -55,11 +62,15 @@ export function wordCommand(args: readonly string[]): string {
   if (dollars !== undefined && (!Number.isFinite(dollars) || dollars <= 0)) {
     throw new Error(`--budget ${String(budget)}: the campaign's total is a number of dollars above nothing`);
   }
-  const other = tasks === undefined ? "budget" : "tasks";
-  const word = stop === undefined ? other : "stop";
+  const word =
+    [
+      ["stop", stop],
+      ["tasks", tasks],
+      ["cause", cause],
+    ].find(([, why]) => why !== undefined)?.[0] ?? "budget";
   append(log, "campaign.word", {
     word,
-    ...keyIfDefined("why", (stop ?? tasks)?.trim()),
+    ...keyIfDefined("why", (stop ?? tasks ?? cause)?.trim()),
     ...keyIfDefined("dollars", dollars),
   });
   console.log(`left for campaign ${name}: ${word}. It is read at the next move's boundary`);

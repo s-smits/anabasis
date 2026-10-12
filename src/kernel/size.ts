@@ -1,180 +1,65 @@
 /**
- * The size of a comparison: what one of so many tasks can show, said before it runs.
+ * The size of a comparison: how many tasks and how many solves a side it buys where nothing names
+ * another (`SIZE`), and what one of so many tasks can show, said before it runs (`sizeLines`).
  *
  * The plan fixes the sample size before each round and never changes it once results are visible
- * (`docs/plan.md`, principle 7), so the size is a choice made on arithmetic. This is that
- * arithmetic: the plan's table of statistical power is `power`, row by row
- * (`test/size.test.ts`), and a launch says with `sizeLines` what the comparison it is about to buy
- * can read. v1 had no such reading: 11 of 322 batteries held a fail nobody contested, and showing
- * a doubled rate would have taken about 650 batteries an arm.
+ * (`docs/plan.md`, principle 7), so the size is a choice made on arithmetic, and the arithmetic is
+ * the comparison's own test (`flipP`, `power` and `detectable`, `compare.ts`): exact, with no
+ * normal approximation, since the sizes in question are the ones where an approximation is worst.
+ * Nothing here decides.
  *
- * Everything here is exact, on the comparison's own test (`signP`, `compare.ts`): binomial sums by
- * the recurrence `signP` uses, with no normal approximation, since the sizes in question are the
- * ones where an approximation is worst. Nothing here decides.
+ * Solves come before tasks (12 October). At four solves a side a task the two harnesses split is
+ * won or lost by four pairs for each valid answer that parts them, which the test reads, and a
+ * task ties only where both gave as many; a campaign short of tasks still reads each one closely.
+ * Twenty-four untied tasks detect a harness that wins 73% of them four times in five, where twelve
+ * need 81%. A comparison buys tasks and the power is in untied ones: the tie share between them is
+ * what the reference read against itself measures (`round.ts`, `noise`), and until it has been
+ * read the size is said as if no task tied, which is the best case.
  *
- * The model, wherever a chance is given: tasks are independent, and each scored task is a win
- * with one chance, a loss with another and a tie otherwise. The untied count is then binomial in
- * the tasks, the wins binomial in the untied, and the test clears when the wins reach the fewest
- * that `signP` passes at that untied count. Real tasks are not alike, and a set that is a mixture
- * reads as its mean only in this model.
+ * A rate read off so many trials is bounded above (`upperBound`), which is how the climb reads the
+ * chance of a false promotion off pairs of A/A controls (`climb.ts`).
  *
- * A comparison buys tasks, and the plan's table is in untied ones. What lies between is the tie
- * share: with so many solves a side, a task ties when both harnesses give as many valid answers
- * (`compare.ts`). `taskChances` gives one task's chances of a win and of a loss from each harness's
- * chance of a valid answer, taken as the same on every task, which real tasks are not. With two
- * solves a side and no true difference, 38% of tasks tie when a solve is valid half the time, 51%
- * at four times in five and 69% at nine in ten, so a budget is set where the reference harness is
- * valid about half the time (`docs/plan.md`, Statistical power and cost).
- *
- * Until 2026-10-09 this file also read a pool by how each task stood against the parent and summed
- * the rounds that fell short of a step. A comparison now scores every held-out task, so there is
- * no standing to read a pool by.
+ * Until 12 October this file also held a model of tasks alike, each a win, a loss or a tie by fixed
+ * chances (`chanceOfStep`, `taskChances`, `chanceOfPromotion`), which printed a worked case at a
+ * launch; the measured tie share replaces the modelled one, and the two-stage rule's chances are
+ * enumerated in its tests (`test/compare.test.ts`).
  */
 import { plural } from "../meta/text.ts";
-import { signP, sweepOf } from "./compare.ts";
+import { detectable, falseRate, flipP, sweepOf } from "./compare.ts";
 
-/** One scored task's chances in the model: of a win and of a loss. The rest is a tie. */
-export interface Each {
-  readonly win: number;
-  readonly loss: number;
-}
-
-/** A scored set's result: so many wins beside so many losses. */
+/** A scored set's result: so many tasks won beside so many lost. */
 export interface Result {
   readonly wins: number;
   readonly losses: number;
 }
 
-/** How a comparison is sized: the solves of a task under each harness, and the sign test's level. */
+/** The levels a comparison reads at: the one the step and its repeat clear together, and the one a
+ *  first reading clears to buy the repeat (`src/builder/move.ts`). */
 export interface Asked {
-  readonly solves: number;
-  /** The level the step and its repeat clear together, and the one a first reading clears to buy
-   *  the repeat (`src/builder/move.ts`). */
   readonly level: number;
   readonly trigger: number;
 }
 
-/** The true shares of untied tasks won that a size's power is stated for: the plan's three. */
-const SHARES = [0.65, 0.75, 0.85] as const;
+/** A comparison's size where nothing names another: the scored tasks and the solves a side. */
+export const SIZE = { tasks: 24, solves: 4 } as const;
+/** The chance of a false promotion over a campaign's attempts under one reference, by the union
+ *  bound, past which its opening is refused (`opening`; 12 October). */
+export const FALSE_CAP = 0.1;
 /** How many of the smallest clearing results a line names. */
 const NAMED = 3;
-/** The plan's worked case: the reference harness valid half the time, as its budget is set to make
- *  it, and a new harness valid three times in four. */
-const WORKED = { old: 0.5, fresh: 0.75 } as const;
 
-/** The chance of each count of successes among `trials` independent ones, from none to all: the
- *  recurrence `signP` runs, started from the likelier end so that the first term does not vanish. */
-export function binomial(trials: number, chance: number): number[] {
-  if (chance > 0.5) return binomial(trials, 1 - chance).toReversed();
-  const terms: number[] = [];
-  let term = (1 - chance) ** trials;
-  for (let count = 0; count <= trials; count += 1) {
-    terms.push(term);
-    term = (term * (trials - count) * chance) / ((count + 1) * (1 - chance));
-  }
-  return terms;
+/** `wins` tasks won and `losses` lost, each by one pair. */
+function units(wins: number, losses: number): number[] {
+  return [...Array.from({ length: wins }, () => 1), ...Array.from({ length: losses }, () => -1)];
 }
 
-/**
- * The chance that a comparison reads a step at `level` on `tasks` scored tasks, in the model: each
- * task independently a win with chance `each.win` and a loss with `each.loss`, a tie otherwise. No
- * untied task, or fewer tasks than the least sweep, is a chance of none.
- */
-export function chanceOfStep(tasks: number, each: Each, level: number): number {
-  const untied = each.win + each.loss;
-  if (tasks < 1 || untied <= 0) return 0;
-  const share = each.win / untied;
-  // The fewest wins that clear never fall as the untied count grows, so they are found in one pass.
-  let wins = 0;
-  const byUntied = Array.from({ length: tasks + 1 }, (_, count) => {
-    while (wins <= count && signP(wins, count - wins) > level) wins += 1;
-    return binomial(count, share)
-      .slice(wins)
-      .reduce((sum, term) => sum + term, 0);
-  });
-  const chance = binomial(tasks, Math.min(1, untied)).reduce(
-    (sum, term, count) => sum + term * (byUntied[count] ?? 0),
-    0,
-  );
-  return Math.min(1, chance);
-}
-
-/** The chance of each tally, wins and losses, that one comparison of `tasks` reads in the model. */
-function tallies(tasks: number, each: Each): Map<string, { wins: number; losses: number; chance: number }> {
-  const untied = each.win + each.loss;
-  const found = new Map<string, { wins: number; losses: number; chance: number }>();
-  if (tasks < 1 || untied <= 0) return found;
-  const share = each.win / untied;
-  binomial(tasks, Math.min(1, untied)).forEach((ofCount, count) => {
-    binomial(count, share).forEach((ofWins, wins) => {
-      const chance = ofCount * ofWins;
-      if (chance > 0) {
-        found.set(`${String(wins)}-${String(count - wins)}`, { wins, losses: count - wins, chance });
-      }
-    });
-  });
-  return found;
-}
-
-/**
- * The chance that a harness is promoted on two comparisons of `tasks` in the model: the first
- * reads a tally at or under `trigger` with more wins than losses, which buys the repeat, the
- * repeat unties a task and does not lose, and the two read together clear `level`
- * (`src/kernel/compare.ts`, `readTwice`). The two draws are
- * independent, as fresh solves are. At sixteen tasks of which three in four tie, a harness that
- * wins 96% of the tasks it unties is promoted 82% of the time at 0.25 and 0.10, where two readings
- * at 0.20 each gave 55%; two equal harnesses 3.3% where it was 0.9% (10 October; 83% and 3.4%
- * until the repeat was held to an untied task, 11 October).
- */
-export function chanceOfPromotion(tasks: number, each: Each, trigger: number, level: number): number {
-  const once = tallies(tasks, each);
-  let chance = 0;
-  for (const first of once.values()) {
-    if (first.wins + first.losses === 0 || first.wins <= first.losses) continue;
-    if (signP(first.wins, first.losses) > trigger) continue;
-    for (const second of once.values()) {
-      // The repeat has to untie a task and not lose, as `readTwice` holds it to.
-      if (second.wins + second.losses === 0 || second.wins < second.losses) continue;
-      const [wins, losses] = [first.wins + second.wins, first.losses + second.losses];
-      if (signP(wins, losses) <= level) chance += first.chance * second.chance;
-    }
-  }
-  return Math.min(1, chance);
-}
-
-/**
- * The plan's power: the chance that a comparison of `untied` tasks, none of them tied, reads a step
- * at `level` when the new harness truly wins `share` of them. At a share of one half the two
- * harnesses are equal, and this is the test's false-positive rate, which stays under the level.
- */
-export function power(untied: number, share: number, level: number): number {
-  return chanceOfStep(untied, { win: share, loss: 1 - share }, level);
-}
-
-/**
- * One task's chances of a win and of a loss at `solves` a side, when each solve gives a valid
- * answer independently with chance `rates.old` under the reference harness and `rates.fresh` under
- * the new: a win is more valid answers under the new (`tally`, `compare.ts`). Solves of one task are
- * taken as independent given the task, which a host under load or a provider in a bad hour can
- * break.
- */
-export function taskChances(rates: { readonly old: number; readonly fresh: number }, solves: number): Each {
-  const [old, fresh] = [binomial(solves, rates.old), binomial(solves, rates.fresh)];
-  const below = (valid: number) => old.slice(0, valid).reduce((sum, term) => sum + term, 0);
-  const above = (valid: number) => old.slice(valid + 1).reduce((sum, term) => sum + term, 0);
-  return {
-    win: fresh.reduce((sum, term, valid) => sum + term * below(valid), 0),
-    loss: fresh.reduce((sum, term, valid) => sum + term * above(valid), 0),
-  };
-}
-
-/** The smallest results that clear `level` on at most `tasks` scored tasks: at 0.25, 2-0, 4-1, 5-2
- *  and 7-3 as far as they fit; at 0.10, 4-0, 6-1, 7-2 and 9-3. */
+/** The smallest results that clear `level` on at most `tasks` scored tasks, each won or lost by as
+ *  many pairs: at 0.25, 2-0, 4-1, 5-2 and 7-3 as far as they fit; at 0.10, 4-0, 6-1, 7-2 and 9-3. */
 export function clearing(tasks: number, level: number): Result[] {
   const results: Result[] = [];
   let wins = 0;
   for (let losses = 0; wins + losses <= tasks; losses += 1) {
-    while (wins + losses <= tasks && signP(wins, losses) > level) wins += 1;
+    while (wins + losses <= tasks && flipP(units(wins, losses)) > level) wins += 1;
     if (wins + losses <= tasks) results.push({ wins, losses });
   }
   return results;
@@ -182,14 +67,11 @@ export function clearing(tasks: number, level: number): Result[] {
 
 /**
  * What a comparison of `tasks` scored tasks can show, in lines for a launch's notes and
- * `prepare.ts`'s output. The plan's table is in untied tasks, and a comparison buys tasks: so the
- * power is said twice. Once in the plan's worked case, where ties are counted: the reference
- * harness valid half the time and the new one three times in four, at the solves a side asked for.
- * And once as if no task tied, which is the table's reading and the best case. The tie share a
- * campaign really has is what its first comparisons measure (the review of 2026-10-09, finding 5).
+ * `prepare.ts`'s output: the smallest results that buy the repeat and that promote, and the least
+ * share of the tasks won that one reading detects four times in five, were none to tie.
  */
 export function sizeLines(tasks: number, asked: Asked): string[] {
-  const { solves, level, trigger } = asked;
+  const { level, trigger } = asked;
   const first = clearing(tasks, trigger);
   const scored = `${tasks === 0 ? "no held-out task" : plural(tasks, "held-out task")} can be scored`;
   if (first.length === 0) {
@@ -202,13 +84,69 @@ export function sizeLines(tasks: number, asked: Asked): string[] {
       .slice(0, NAMED)
       .map(({ wins, losses }) => `${String(wins)}-${String(losses)}`)
       .join(", ");
-  const percent = (chance: number) => `${String(Math.round(100 * chance))}%`;
-  const [low, mid, high] = SHARES.map((share) => percent(power(tasks, share, level)));
-  const worked = taskChances(WORKED, solves);
-  const equal = taskChances({ old: WORKED.old, fresh: WORKED.old }, solves);
+  const share = detectable(units(tasks, 0), level);
+  const rate = falseRate(units(tasks, 0), level, trigger);
   return [
-    `${scored}; at --trigger ${String(trigger)} the smallest results that buy the repeat are ${said(first)}, and at --level ${String(level)} the step and its repeat together clear at ${said(clearing(2 * tasks, level))}`,
-    `at ${plural(solves, "solve")} a side, with the reference harness valid half the time and the new one three times in four, a first reading would buy the repeat ${percent(chanceOfStep(tasks, worked, trigger))} of the time and the two would promote ${percent(chanceOfPromotion(tasks, worked, trigger, level))}; two equal harnesses valid half the time tie on ${percent(1 - equal.win - equal.loss)} of tasks and would be promoted ${percent(chanceOfPromotion(tasks, equal, trigger, level))} of the time`,
-    `were no task to tie, a harness that truly wins 65% of them would be read a step at --level ${String(level)} on one comparison ${String(low)} of the time, one that wins 75%, ${String(mid)}, and one that wins 85%, ${String(high)}`,
+    `${scored}; at --trigger ${String(trigger)} the smallest results that buy the repeat are ${said(first)}, and at --level ${String(level)} the step and its repeat together clear at ${said(clearing(2 * tasks, level))}, each task won or lost by as many pairs`,
+    share === null
+      ? `were no task to tie, one reading at --level ${String(level)} would detect no share of ${plural(tasks, "task")}: it takes ${String(sweepOf(level))}, all won`
+      : `were no task to tie, one reading at --level ${String(level)} would detect four times in five a harness that wins ${String(Math.round(100 * share))}% of the tasks, and fewer untied tasks need a larger share`,
+    `an attempt, a step and its repeat on as many tasks, promotes between equal harnesses ${percent(rate)} of the time where no task ties: the level is one reading's, and this the rule's`,
   ];
+}
+
+/**
+ * What a campaign of `tasks` scored tasks, read at `asked` and ending after `patience` moves with
+ * no gain, can show and risks, said at its opening: `sizeLines`, and the chance of a false
+ * promotion over `patience` attempts under one reference by the union bound, which assumes nothing
+ * of their independence; and why it is refused, where that bound passes `FALSE_CAP`. A campaign
+ * whose comparisons buy repeats makes more attempts than its patience, which the climb reads as
+ * they come (`climb.ts`, `falsePromotion`).
+ */
+export function opening(tasks: number, asked: Asked, patience: number) {
+  const { level, trigger } = asked;
+  const rate = falseRate(units(tasks, 0), level, trigger);
+  const union = Math.min(1, patience * rate);
+  const bound = `over the patience's ${plural(patience, "attempt")} under one reference a false promotion comes at most ${percent(union)} of the time`;
+  // The most attempts the cap holds at this rate.
+  const most = Math.floor(FALSE_CAP / rate);
+  return {
+    lines: [...sizeLines(tasks, asked), bound],
+    refusal:
+      union <= FALSE_CAP
+        ? null
+        : `${bound}, past the ${percent(FALSE_CAP)} a campaign may open on: ${most < 1 ? "no patience holds it at this --level" : `--patience ${String(most)} or less holds it`}, and so may a lower --level or another --target`,
+  };
+}
+
+/** A chance in percent, to a tenth, and one under that said as under it, never as none. */
+function percent(chance: number): string {
+  return chance > 0 && chance < 0.0005 ? "under 0.1%" : `${String(Math.round(1000 * chance) / 10)}%`;
+}
+
+/**
+ * The one-sided upper bound at `confidence` on a rate of which `errors` came in `trials`: the rate
+ * at which so few errors or fewer would come with chance 1 - `confidence` (Clopper and Pearson).
+ * No error is never a rate of none: none in n gives 1 - (1 - confidence)^(1/n), about 3/n at 95%.
+ * No trial bounds nothing, and reads 1.
+ */
+export function upperBound(errors: number, trials: number, confidence: number): number {
+  if (errors >= trials) return 1;
+  /** The chance of `errors` or fewer at `rate`. */
+  const atMost = (rate: number) => {
+    let [ways, sum] = [1, 0];
+    for (let k = 0; k <= errors; k += 1) {
+      sum += ways * rate ** k * (1 - rate) ** (trials - k);
+      ways = (ways * (trials - k)) / (k + 1);
+    }
+    return sum;
+  };
+  let [low, high] = [errors / trials, 1];
+  // The chance falls as the rate rises, so halving the range sixty times finds it to the bit.
+  for (let step = 0; step < 60; step += 1) {
+    const middle = (low + high) / 2;
+    if (atMost(middle) > 1 - confidence) low = middle;
+    else high = middle;
+  }
+  return high;
 }

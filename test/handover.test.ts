@@ -417,12 +417,17 @@ describe("the Builder's filter over that reading", () => {
     c.compared("g-3", { old: HA, fresh: HB }, tallied("below-starter", 4, 0));
     c.compared("g-4", { old: HA, fresh: HB }, tallied("starter-unread", 4, 0));
     c.compared("g-5", { old: HA, fresh: HB }, null);
+    c.compared("g-7", { old: HA, fresh: HB }, tallied("regressed", 4, 0));
+    c.compared("g-8", { old: HA, fresh: HB }, tallied("narrow", 4, 0));
     const told = comparisonsTold(campaignOf(c.events()).steps);
     expect(told).toEqual([
       "- Harness aaaaaaaa against harness 00000000, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads a step.",
       "- Harness bbbbbbbb against harness 00000000, one comparison over 4 tasks: 1 won, 0 lost, 3 tied, which reads no step.",
       "- Harness bbbbbbbb against harness aaaaaaaa, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads no step: it did not hold against the starting harness of the campaign.",
       "- Harness bbbbbbbb against harness aaaaaaaa, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads a step, not yet read against the starting harness of the campaign.",
+      // The two readings that promote nothing on a step since 12 October, with no task and no family.
+      "- Harness bbbbbbbb against harness aaaaaaaa, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads no step: it lost more than it won on tasks earlier comparisons had used up.",
+      "- Harness bbbbbbbb against harness aaaaaaaa, one comparison over 4 tasks: 4 won, 0 lost, 0 tied, which reads no step yet: every task it won or lost was of one kind.",
     ]);
     // A comparison made after the budget was set again says the turns its solves were held to:
     // its tally is another setting's, and is not one series with the lines above it.

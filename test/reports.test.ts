@@ -27,6 +27,7 @@ import {
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { tallied } from "./helpers/tally.ts";
 
 const [P, F] = [true, false];
 const at = "2026-10-09T00:00:00.000Z";
@@ -147,13 +148,11 @@ describe("the stop rule", () => {
     // itself. Counted as no gain, a 2-0 at level 0.10 ended a campaign of patience 3 before its
     // repeat was bought (found by review, 11 October). The trigger is the opening's where it
     // names one, as a term, and 0.25 otherwise: a 1-0 clears neither.
-    const bought = flat("b-3", "h4", { scored: { wins: 2, losses: 0, ties: 10 } });
+    const bought = flat("b-3", "h4", tallied(2, 0, 10));
     expect(stopRule([...two, bought])).toEqual({ checkpoints: 3, sinceStep: 0, stop: false });
-    expect(stopRule([...two, flat("b-3", "h4", { scored: { wins: 1, losses: 0, ties: 11 } })])).toMatchObject(
-      {
-        stop: true,
-      },
-    );
+    expect(stopRule([...two, flat("b-3", "h4", tallied(1, 0, 11))])).toMatchObject({
+      stop: true,
+    });
     const strict = event("campaign.opened", { ...three.data, terms: { trigger: "0.1" } });
     expect(stopOf([strict, ...two, bought])).toMatchObject({ sinceStep: 3, stop: true });
   });

@@ -15,14 +15,21 @@
  */
 import {
   decidedByObjective,
+  detectable,
+  falseRate,
   type ObjectiveRule,
   objectiveRuleIn,
   type Paired,
   pairsOf,
   scored,
   type Sides,
+  stepOf,
+  type Tally,
+  tally,
+  UNMEASURED,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
+import { proposalsOf } from "../kernel/history.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
 import { unsolved, whole } from "../kernel/reports.ts";
 import { ranUnder } from "../kernel/solves.ts";
@@ -44,9 +51,12 @@ import type { Ruling } from "../review/referee.ts";
  * words and its `against`. The starter is the control after a promotion (`decide.ts`), which is
  * where the plan reads whether it loses more each epoch (`docs/simplify.md`, B2).
  */
-type Reading = "step" | "no-step" | "not-scored" | "check-defects" | "no-change";
-/** One test's tally and its p. */
+type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "check-defects" | "no-change";
+/** One test's tally, each task's difference in pair wins, and its p. */
 type Tested = ReturnType<typeof scored>;
+/** One of the two sets a comparison fixes at its start (`retained`, `Fixed`): the tasks that
+ *  entered it, which are its denominator, those of them set aside, and its tally and test. */
+type Entered = Tested & { readonly tasks: readonly string[]; readonly aside: readonly string[] };
 /**
  * How each harness did by itself over the tallied tasks: entry k counts the tasks on which k of its
  * counted solves gave a valid answer, so with two solves a side the three entries are the tasks
@@ -75,8 +85,24 @@ export interface Report {
   readonly valid: Valid | null;
   /** The mean billed dollars of a counted solve under each harness; null where the log holds none. */
   readonly billed: { readonly old: number | null; readonly fresh: number | null } | null;
-  /** The reference harness against itself, where the comparison asked for it. */
-  readonly noise: Tested | null;
+  /** The step's own set: the scored tasks not exhausted, where the step is read; the least share
+   *  of its untied tasks one reading detects four times in five (`detectable`); and the chance that
+   *  an attempt at its margins promotes between equal harnesses, the rule's rate beside the level
+   *  (`falseRate`). Null when nothing was compared. */
+  readonly frontier: (Entered & { readonly detectable: number | null; readonly falseRate: number }) | null;
+  /** The exhausted tasks the draw keeps, where a step may not lose more pairs than it wins;
+   *  `unmeasured` where none was tallied, never no loss (`compare.ts`). */
+  readonly retained: Entered | typeof UNMEASURED | null;
+  /** Each family's tallies on the two sets, from the same rows, so they sum to the whole. They show
+   *  concentration; a family name can hide correlated tasks, and they establish no independence. */
+  readonly families: Readonly<Record<string, { readonly frontier: Tally; readonly retained: Tally }>> | null;
+  /** The comparison of the same two harnesses before this one, and the task versions both scored:
+   *  for a repeat, its overlap with its first stage. */
+  readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
+  /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
+   *  where it holds four or more of a task: how often two of its solves of a task
+   *  disagree (`flips`), and its earlier solves against its later ones, the drift (`drift`). */
+  readonly noise: (Tested & { readonly flips: number | null; readonly drift: Tally }) | null;
   /** The tally were every rejection that set a task aside to stand; null when no task is set aside. */
   readonly counted: Tested | null;
   /** The task versions tallied. */
@@ -127,8 +153,13 @@ export interface Fixed {
   readonly setting: string;
   readonly solves: number;
   readonly level: number;
+  /** The level a first reading clears to buy the repeat (`triggered`, `compare.ts`). */
+  readonly trigger: number;
   readonly noise: boolean;
   readonly tasks: readonly string[];
+  /** The scored tasks fixed at the start as retained, from the exhausted third the draw keeps
+   *  (`retainable`, `reports.ts`); the others are the frontier. */
+  readonly retained: readonly string[];
   /** The objective two valid answers are compared by, where the check program declares one. */
   readonly objective: ObjectiveRule | undefined;
 }
@@ -141,6 +172,10 @@ const REPORT_KEYS = [
   "fresh",
   "starter",
   "scored",
+  "frontier",
+  "retained",
+  "families",
+  "overlap",
   "valid",
   "billed",
   "noise",
@@ -161,6 +196,10 @@ export const EARNED = "earned";
 export const NO_LABELS: ReadonlyMap<string, Ruling> = new Map();
 export const NOTHING = {
   scored: null,
+  frontier: null,
+  retained: null,
+  families: null,
+  overlap: null,
   valid: null,
   billed: null,
   noise: null,
@@ -264,42 +303,118 @@ export function compared(log: string, fixed: Fixed, labels: ReadonlyMap<string, 
   const open = new Set(
     rejections(events, fixed, labels).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
   );
+  // Beside the reference read against itself the test takes its first half mirrored in time.
   const sides: Sides = {
     old: fixed.old,
     fresh: fixed.fresh,
     setting: fixed.setting,
     comparison: fixed.id,
     objective: fixed.objective,
+    halves: fixed.noise ? "mirrored" : undefined,
   };
-  const pairsUnder = (other: Sides) => whole(pairsOf(events, live, other).pairs, fixed.solves);
-  const first = pairsUnder(sides);
+  const pairsUnder = (other: Sides, solves: number) => whole(pairsOf(events, live, other).pairs, solves);
+  const first = pairsUnder(sides, fixed.solves);
   const kept = (pairs: readonly Paired[]) => pairs.filter(({ task }) => !open.has(task));
   const pairs = kept(first.pairs);
-  const tested = scored(pairs);
-  const reading = (): Reading => {
-    if (pairs.length === 0) return "not-scored";
-    return tested.p > fixed.level ? "no-step" : "step";
+  const retainedSet = new Set(fixed.retained);
+  /** One of the two sets the start fixed, with the tasks that entered it and those set aside. */
+  const setOf = (retained: boolean): Entered => {
+    const within = (task: string) => retainedSet.has(task) === retained;
+    return {
+      tasks: fixed.tasks.filter(within),
+      aside: live.filter((task) => within(task) && open.has(task)),
+      ...scored(pairs.filter(({ task }) => within(task))),
+    };
+  };
+  const [frontier, retained] = [setOf(false), setOf(true)];
+  const named = new Map(
+    proposalsOf(all).flatMap(({ version, family }) => (family === null ? [] : [[version, family]])),
+  );
+  const familyOf = (task: string) => named.get(task) ?? "unnamed";
+  const families = Object.fromEntries(
+    [...new Set(fixed.tasks.map(familyOf))].map((family) => {
+      const of = (inRetained: boolean) =>
+        tally(pairs.filter(({ task }) => familyOf(task) === family && retainedSet.has(task) === inRetained));
+      return [family, { frontier: of(false), retained: of(true) }];
+    }),
+  );
+  const measured = retained.wins + retained.losses + retained.ties > 0;
+  // The families the frontier scored, and those it untied, as a report is read again (`stageOf`).
+  const where = (counted: (tallied: Tally) => number) =>
+    Object.entries(families).flatMap(([family, { frontier: own }]) => (counted(own) > 0 ? [family] : []));
+  const stage = {
+    frontier: frontier.differences,
+    retained: measured ? retained.differences : null,
+    untied: where(({ wins, losses }) => wins + losses),
+    families: where(({ wins, losses, ties }) => wins + losses + ties),
   };
   const mean = (side: "old" | "fresh") => {
     const billed = pairs.flatMap((pair) => (pair.used?.[side] ?? []).flatMap((used) => used.billed ?? []));
     return billed.length === 0 ? null : billed.reduce((sum, each) => sum + each, 0) / billed.length;
   };
+  /** The reference against itself on halves of its own solves (`Sides`, `halves`): of twice the
+   *  solves a side where `--noise` asked for them, and of the test's own otherwise. */
+  const itself = (halves: "mirrored" | "in-order") =>
+    kept(
+      pairsUnder({ ...sides, fresh: fixed.old, halves }, fixed.noise ? fixed.solves : fixed.solves / 2).pairs,
+    );
   return {
-    scored: { ...tested, unsolved: pairs.filter(unsolved).length },
+    scored: { ...scored(pairs), unsolved: pairs.filter(unsolved).length },
+    frontier: {
+      ...frontier,
+      detectable: detectable(frontier.differences, fixed.level),
+      falseRate: falseRate(frontier.differences, fixed.level, fixed.trigger),
+    },
+    retained: measured ? retained : UNMEASURED,
+    families,
+    overlap: overlapOf(all, fixed),
     valid: validOf(pairs, fixed.solves),
     billed: { old: mean("old"), fresh: mean("fresh") },
-    noise: fixed.noise
-      ? scored(kept(pairsUnder({ ...sides, fresh: fixed.old, halves: fixed.solves }).pairs))
-      : null,
+    // The A/A (12 October, the plan's section 4b): where `--noise` solved the reference twice as
+    // often for it, or its own solves of a task are four or more and even, which halves mirrored in
+    // time split two against two at least. At four a side every comparison carries one.
+    noise:
+      fixed.noise || (fixed.solves >= 4 && fixed.solves % 2 === 0)
+        ? {
+            ...scored(itself("mirrored")),
+            flips: flipsOf(itself("mirrored")),
+            drift: tally(itself("in-order")),
+          }
+        : null,
     counted: pairs.length === first.pairs.length ? null : scored(first.pairs),
     versions: pairs.map(({ task }) => task),
     aside: live.filter((task) => open.has(task)),
     short: live.filter((task) => first.short.includes(task)),
     withdrawn: scorable.filter((task) => !held.has(task)),
-    reading: reading(),
+    reading: pairs.length === 0 ? ("not-scored" as const) : stepOf(stage, fixed.level),
     objective:
       fixed.objective === undefined ? null : { ...fixed.objective, decided: decidedByObjective(pairs) },
   };
+}
+
+/** How often two of a harness's solves of one task disagree on validity, over every two of its
+ *  solves of each task, the tasks weighed alike: null where none was tallied. */
+function flipsOf(pairs: readonly Paired[]): number | null {
+  const each = pairs.map(({ old, fresh }) => {
+    const solves = [...old, ...fresh];
+    const valid = solves.filter(Boolean).length;
+    return solves.length < 2
+      ? 0
+      : (valid * (solves.length - valid)) / ((solves.length * (solves.length - 1)) / 2);
+  });
+  return each.length === 0 ? null : each.reduce((sum, one) => sum + one, 0) / each.length;
+}
+
+/** The comparison of the same two harnesses that began before `fixed` did, and the tasks both
+ *  scored; null where none did. */
+function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
+  const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === fixed.id);
+  const before = events
+    .slice(0, Math.max(0, began))
+    .findLast(({ kind, data }) => kind === STARTED && data.old === fixed.old && data.fresh === fixed.fresh);
+  if (before === undefined || !isString(before.data.session)) return null;
+  const scoredThen = new Set(Array.isArray(before.data.tasks) ? before.data.tasks.filter(isString) : []);
+  return { with: before.data.session, tasks: fixed.tasks.filter((task) => scoredThen.has(task)) };
 }
 
 /** What the operator predicted of comparison `id` before its first solve, or null where they
@@ -317,13 +432,14 @@ export function startOf(events: readonly LogEvent[], id: string): JsonObject | u
 /** What comparison `id` fixed at its start, read back from the log; null where it never began. */
 export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
   const start = startOf(events, id) ?? {};
-  const { old, fresh, starter, setting, solves, level, noise, tasks } = start;
+  const { old, fresh, starter, setting, solves, level, trigger, noise, tasks, retained } = start;
   return isString(old) &&
     isString(fresh) &&
     isString(starter) &&
     isString(setting) &&
     isNumber(solves) &&
-    isNumber(level)
+    isNumber(level) &&
+    isNumber(trigger)
     ? {
         id,
         old,
@@ -332,8 +448,10 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         setting,
         solves,
         level,
+        trigger,
         noise: isBoolean(noise) && noise,
         tasks: Array.isArray(tasks) ? tasks.filter(isString) : [],
+        retained: Array.isArray(retained) ? retained.filter(isString) : [],
         objective: objectiveRuleIn(start),
       }
     : null;

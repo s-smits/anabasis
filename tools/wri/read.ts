@@ -20,7 +20,7 @@
  * here on the same day for the same ceiling.
  */
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/builder/handover.ts";
-import { pairings, signP } from "#src/kernel/compare.ts";
+import { flipP, pairings, sweepOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
@@ -329,9 +329,10 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
   const tasks = informative + count(scored?.ties);
   const level = count(last.level);
   // The least clean sweep that clears the report's level, by the report's own test.
-  const sweep = Array.from({ length: 64 }, (_, index) => index + 1).find((wins) => signP(wins, 0) <= level);
-  // No result with a loss clears on this many informative pairs: the reading rests on a sweep.
-  const fragile = signP(Math.max(0, informative - 1), 1) > level;
+  const sweep = level > 0 ? sweepOf(level) : undefined;
+  // No result with a loss clears on this many informative pairs, each won or lost by as many pairs:
+  // the reading rests on a sweep.
+  const fragile = flipP([...Array.from({ length: Math.max(0, informative - 1) }, () => 1), -1]) > level;
   const asked = last.tasks;
   const lacking = items(last.short).length;
   return [
@@ -393,6 +394,7 @@ function comparisonTriggers(log: Index): Trigger[] {
     }
     const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
     const noise = asRecord(last.noise);
+    const apart = items(noise?.differences).filter(isNumber);
     return [
       ...(moved > 0
         ? [
@@ -424,7 +426,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${Math.min(signP(count(noise.wins), count(noise.losses)), signP(count(noise.losses), count(noise.wins))) <= level ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${Math.min(flipP(apart), flipP(apart.map((one) => -one))) <= level ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];

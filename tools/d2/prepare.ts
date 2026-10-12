@@ -51,7 +51,7 @@
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { awaitingLabel, releaseOrder } from "#src/kernel/reports.ts";
-import { sizeLines } from "#src/kernel/size.ts";
+import { SIZE, sizeLines } from "#src/kernel/size.ts";
 import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -124,7 +124,7 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   let refused = 0;
   for (const task of fresh) {
     const version = taskVersion(task);
-    append(log, "task.proposed", { version, taskId: task.taskId });
+    append(log, "task.proposed", { version, taskId: task.taskId, family: task.family });
     const packaged = packageGate(contract, task);
     append(log, "task.gate", { version, gate: 1, ...packaged });
     if (packaged.outcome === "refused") {
@@ -146,7 +146,7 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   ];
   // The size it speaks of is the campaign's recorded one, where the command names none.
   const recorded = recordedSetting(read(campaign.log));
-  const target = targetNamed(values.target ?? String(recorded?.target ?? 12));
+  const target = targetNamed(values.target ?? String(recorded?.target ?? SIZE.tasks));
   const practice = Number(values.practice);
   if (!Number.isInteger(practice) || practice < 0) {
     throw new Error(`--practice ${values.practice}: the practice tasks are a whole number`);

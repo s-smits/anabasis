@@ -244,7 +244,7 @@ describe("whether a comparison may start", () => {
       refusals: [],
       notes: [
         "4 held out · 1 released for practice · 4 to score",
-        ...sizeLines(4, { solves: 2, level: 0.1, trigger: 0.25 }),
+        ...sizeLines(4, { level: 0.1, trigger: 0.25 }),
       ],
     });
     // A target caps the scored set as few held-out tasks do.
@@ -377,7 +377,7 @@ describe("a command about to start a comparison", () => {
     );
     expect(admitComparison(logOf([read1]), { ...asked, seats: "paid" })).toEqual([
       "4 held out · 0 released for practice · 4 to score",
-      ...sizeLines(4, { solves: 2, level: 0.1, trigger: 0.25 }),
+      ...sizeLines(4, { level: 0.1, trigger: 0.25 }),
       "no task is released: the Builder has nothing to practise on",
     ]);
   });

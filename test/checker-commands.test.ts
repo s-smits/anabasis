@@ -566,7 +566,8 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),
     ).toHaveLength(2);
-    expect(viewed).toContain("on 1 task, 2 solves a side at 0.1: 1 won, 0 lost, 0 tied, which reads no-step");
+    // Four solves a side since 12 October, where nothing names another (`SIZE`).
+    expect(viewed).toContain("on 1 task, 4 solves a side at 0.1: 1 won, 0 lost, 0 tied, which reads no-step");
     expect(viewed).not.toContain("  a round");
     expect(cli("view", SEED, "--cap", "100").said).toContain("Unknown option '--cap'");
     // Fix row F26: the view's last line is the one move the decision table names, and the

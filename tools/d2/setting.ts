@@ -51,6 +51,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { Limits } from "#src/kernel/condition.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";
+import { SIZE } from "#src/kernel/size.ts";
 import type { solverLast } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -121,12 +122,11 @@ export const SETTING_OPTIONS = {
 
 /** The setting of a campaign nothing has named: the stored sweep's limits, spelled out so that the
  *  source says them, and a test holds them to `LIMITS`. The solver is the stored cycle's own, the
- *  model's turns are not limited, and the scored set is `TARGET` tasks by the draw. */
+ *  model's turns are not limited, and the scored set is `SIZE.tasks` tasks by the draw. */
 export const SETTING_DEFAULTS = {
   "solver-effort": "high",
   "solve-minutes": "120",
 } as const;
-const TARGET = 12;
 
 /** The parts of a record, each with how a refusal says it as flags, or null where the record holds
  *  none of it, and the flag it is then missing. */
@@ -233,7 +233,7 @@ function recordOf(values: SettingFlags): Recorded {
     minutes: limits.wallSeconds / 60,
     modelTurns: limits.modelTurns ?? null,
     tasks: values.tasks === undefined ? null : values.tasks.split(","),
-    target: targetNamed(values.target ?? String(TARGET)),
+    target: targetNamed(values.target ?? String(SIZE.tasks)),
   };
 }
 

@@ -410,3 +410,74 @@ describe("the regression reading beside a comparison", () => {
     });
   });
 });
+
+describe("the chance of a false promotion among an epoch's attempts", () => {
+  /** A candidate's comparison against `old` that tallied one task, with the reference read
+   *  against itself beside it where `noise` holds its differences. */
+  const attempt = (session: string, old: string, fresh: string, noise?: number[]) =>
+    event("comparison.reported", {
+      session,
+      reading: "no-step",
+      old,
+      fresh,
+      solves: 2,
+      level: 0.1,
+      setting: SETTING,
+      versions: ["v1"],
+      frontier: { differences: [0] },
+      retained: "unmeasured",
+      families: {},
+      noise: noise === undefined ? null : { differences: noise },
+    });
+  const started = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });
+
+  it("sums the attempts' bounds, unsuccessful ones included, at the level by design before two controls", () => {
+    const log = [started, attempt("g-1", "S", "h2"), attempt("g-2", "S", "h2"), attempt("g-3", "S", "h3")];
+    const [epoch] = epochsOf(log);
+    // Before two A/A controls are on record no attempt's rate is measured: the rule bounds one
+    // attempt at its level, and the bound is indicative, read for a fixed comparison.
+    expect(epoch?.falsePromotion).toMatchObject({
+      attempts: 3,
+      errors: 0,
+      pairs: 0,
+      confidence: 0.95,
+      bound: 0.1,
+      indicative: true,
+    });
+    expect(epoch?.falsePromotion.union).toBeCloseTo(0.3, 12);
+    if (epoch === undefined) throw new Error("an epoch");
+    expect(epochLine(epoch)).toContain(
+      "3 promotion attempts under this reference, a false promotion among them at most 30%: 10% an attempt by design, before two A/A controls, indicative",
+    );
+  });
+
+  it("reads one attempt's rate off pairs of A/A controls by the rule itself, with its errors, its denominator and a one-sided bound", () => {
+    // Four controls tie every task: two pairs read by the promotion rule, no error, and a bound of
+    // 1 - 0.05^(1/2) an attempt, never a rate of none.
+    const ties = [0, 0, 0];
+    const log = [
+      started,
+      ...["g-1", "g-2", "g-3", "g-4"].map((id) => attempt(id, "S", "h2", ties)),
+      event("harness.promoted", { harness: "h2" }),
+      attempt("g-5", "h2", "h4"),
+    ];
+    const [first, second] = epochsOf(log);
+    expect(first?.falsePromotion).toMatchObject({
+      attempts: 4,
+      errors: 0,
+      pairs: 2,
+      indicative: false,
+      union: 1,
+    });
+    expect(first?.falsePromotion.bound).toBeCloseTo(1 - 0.05 ** 0.5, 9);
+    // Under the next reference the controls read other tasks: the same bound, labelled indicative.
+    expect(second?.falsePromotion).toMatchObject({ attempts: 1, errors: 0, pairs: 2, indicative: true });
+    if (second === undefined) throw new Error("an epoch");
+    expect(epochLine(second)).toContain(
+      "0 of 2 pairs of A/A controls promoted, at most 78% an attempt at 95%, indicative",
+    );
+    // Two controls that each read 2-0 promote as a step and its repeat: one error in one pair.
+    const lucky = [started, attempt("g-1", "S", "h2", [1, 1]), attempt("g-2", "S", "h2", [1, 1])];
+    expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, pairs: 1, bound: 1, union: 1 });
+  });
+});

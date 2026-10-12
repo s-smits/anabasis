@@ -20,6 +20,7 @@
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, type Cap, patienceOf } from "../kernel/reports.ts";
+import { SIZE } from "../kernel/size.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { Plan } from "./ground.ts";
@@ -83,8 +84,6 @@ export const SEATS = ["builder", "examiner", "reviewer"] as const;
 /** The Builder sessions before a comparison, after the campaign's first, where nothing names
  *  them: the plan's checkpoint is several sessions and then one comparison. */
 export const SESSIONS = 3;
-/** The scored tasks of a campaign whose setting names none. */
-const TARGET = 12;
 const SETTING = "campaign.setting";
 
 /** What a log's last opening holds a campaign to run by, or null where it holds none. */
@@ -145,7 +144,7 @@ export function planOf(
     patience: patienceOf(events),
     unprepared: beside.unprepared,
     wanted: {
-      target: isNumber(named) ? named : (beside.target ?? TARGET),
+      target: isNumber(named) ? named : (beside.target ?? SIZE.tasks),
       level: beside.level,
       trigger: beside.trigger,
     },

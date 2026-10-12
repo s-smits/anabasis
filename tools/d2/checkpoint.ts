@@ -74,7 +74,7 @@ import {
   scoredNamed,
   type Seated,
   solved,
-  validLines,
+  reportLines,
   wantedNamed,
 } from "./round.ts";
 import { keepSetting, recordedSetting, SETTING_OPTIONS, settingAsked } from "./setting.ts";
@@ -125,6 +125,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     ),
     solves: Number(values.solves),
     level: Number(values.level),
+    trigger: Number(values.trigger),
     objective: objectiveNamed(campaign, values.margin),
     defects: Number(values.defects),
     noise: values.noise,
@@ -162,7 +163,7 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
   console.log(JSON.stringify(report, null, 2));
   console.log(JSON.stringify(stopRule(read(campaign.log)), null, 2));
   for (const line of [
-    ...validLines(report),
+    ...reportLines(report),
     ...predictionLines(read(campaign.log), id, report),
     ...awaitingLines(campaign),
   ]) {

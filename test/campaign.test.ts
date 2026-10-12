@@ -30,7 +30,7 @@ import { openHarness } from "../src/solve/harness.ts";
 import { starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
-import { capNamed, ROUND_OPTIONS, roundCommand, validLines } from "../tools/d2/round.ts";
+import { capNamed, ROUND_OPTIONS, roundCommand, reportLines } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -449,16 +449,41 @@ describe("a campaign", () => {
     // their solves were valid. For the first round the reference harness is the starter, and
     // these lines are what its gate reads. Until 2026-10-11 the same solves were also read at
     // each shorter `--budget`, and a report held a row for each; the flag is refused since.
-    expect(validLines({ valid: { old: [2, 1, 5], fresh: [0, 1, 7] }, objective: null })).toEqual([
+    expect(
+      reportLines({ valid: { old: [2, 1, 5], fresh: [0, 1, 7] }, objective: null, frontier: null }),
+    ).toEqual([
       "each harness by itself, as how many tasks had 0, 1, 2 valid answers in 2 solves (a count of tasks a column, not a share):",
       "  at its limits: reference 2/1/5, new 0/1/7",
     ]);
-    expect(validLines({ valid: null, objective: null })).toEqual([]);
+    expect(reportLines({ valid: null, objective: null, frontier: null })).toEqual([]);
+    // Every reading says how many of the frontier's tasks were untied and the least share of them it
+    // detects four times in five, or none where they are fewer than the least sweep.
+    const frontier = {
+      tasks: ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"],
+      aside: [],
+      wins: 4,
+      losses: 0,
+      ties: 4,
+      p: 0.0625,
+      differences: [2, 2, 2, 2, 0, 0, 0, 0],
+      detectable: 0.95,
+      falseRate: 0.01953125,
+    };
+    const valid = { old: [8, 0, 0], fresh: [4, 0, 4] };
+    expect(reportLines({ valid, objective: null, frontier }).slice(0, 2)).toEqual([
+      "the step is read on 8 frontier tasks, 4 of them untied: one reading at the comparison's level detects four times in five a harness that wins 95% of them",
+      // Beside the level, the rule's own rate: four untied tasks a stage promote equal harnesses 2%.
+      "an attempt at these margins, this reading and a repeat alike, promotes between equal harnesses 2% of the time: the level is one reading's, and this the rule's",
+    ]);
+    expect(
+      reportLines({ valid, objective: null, frontier: { ...frontier, detectable: null } }).at(0),
+    ).toEndWith("detects four times in five no share of them");
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
     expect(
-      validLines({
+      reportLines({
         valid: { old: [0, 0, 2], fresh: [0, 0, 2] },
+        frontier: null,
         objective: { direction: "lower", margin: 0.01, decided: 1 },
       }).at(-1),
     ).toBe("the objective (lower is better, margin 0.01) decided 1 task that validity alone would have tied");

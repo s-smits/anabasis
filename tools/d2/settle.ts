@@ -72,7 +72,7 @@ import { plural } from "#src/meta/text.ts";
 import { RULINGS } from "#src/review/agreement.ts";
 import { labelled } from "#src/review/rejections.ts";
 import { openCampaign, packNamed } from "./campaign.ts";
-import { type Campaign, validLines } from "./round.ts";
+import { type Campaign, reportLines } from "./round.ts";
 
 const OPTIONS = {
   root: { type: "string" },
@@ -196,7 +196,7 @@ export async function settleCommand(args: readonly string[]): Promise<number> {
     const report = settleReading(campaign.log, session, labels);
     console.log(capturedJsonStringify(report, null, 2));
     console.log(capturedJsonStringify(stopRule(read(campaign.log)), null, 2));
-    for (const line of validLines(report)) console.log(line);
+    for (const line of reportLines(report)) console.log(line);
     return 0;
   }
   const { aside, others } = toLabel(events, session);

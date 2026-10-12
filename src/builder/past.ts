@@ -40,6 +40,8 @@ import type { Handover, PracticeFail } from "./handover.ts";
 const READ = new Map([
   ["step", "a step"],
   ["no-step", "no step"],
+  ["regressed", "no step: it lost more than it won on tasks earlier comparisons had used up"],
+  ["narrow", "no step yet: every task it won or lost was of one kind"],
   ["below-starter", "no step: it did not hold against the starting harness of the campaign"],
   ["starter-unread", "a step, not yet read against the starting harness of the campaign"],
 ]);

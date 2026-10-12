@@ -5,11 +5,14 @@
  * A checkpoint is three steps over one log.
  * 1. Solving. Each task of the scored set is solved `solves` times under each of the two
  *    harnesses, all of it afresh. The scored set is the caller's, fixed before any solve
- *    (`scoredSet`), so no harness's results choose it. The harnesses take the first place in
- *    turn, task by task, so that neither has the quieter hours or the warmer cache.
+ *    (`scoredSet`), so no harness's results choose it, and so are its two sets: the exhausted
+ *    third the draw keeps is retained, the rest the frontier (`begin`). A task's solves run
+ *    together, the tasks in an order a hash of each draws, and within a task the harness that goes
+ *    first is mirrored (`unsolvedJobs`): what drifts over the hours falls between tasks, which the
+ *    test does not read, and neither harness has the quieter hours or the warmer cache.
  * 2. The comparison (`src/kernel/compare.ts`): every solve of the new harness paired with every
  *    solve of the reference one, a valid answer over one that is not, each task counted once, and
- *    the sign test over the tasks.
+ *    the paired sign-flip test over the frontier's differences in pair wins.
  * 3. The reading, logged as `comparison.reported`.
  *
  * What is fixed before the first solve. A comparison writes `comparison.started` with its
@@ -34,12 +37,14 @@
  * plan's first gate reads: where it is valid on nearly every solve, the tasks leave a harness
  * nothing to add (`docs/plan.md`, G0).
  *
- * `noise` reads the reference harness against itself beside the test (the plan's A/A comparison).
- * The reference harness is then solved twice as often. Its first solves of a task, in the order
- * they started, are the test's, and those against its later ones give a second tally: how often a
- * fixed budget splits two solves of one harness at random, which is the noise every comparison has
- * to exceed. It should read no step, and it decides nothing here. The later solves run after the
- * test's own are done, so that second tally also holds whatever the later hour moved.
+ * The reference is read against itself as the test is (the plan's A/A): its solves of a task
+ * split into two halves mirrored in time, read as two harnesses are, with how often two of them
+ * disagree (`flips`) and its earlier against its later ones apart as the drift (`comparison.ts`).
+ * At four solves a side the test's own solves hold it, two against two. `noise` gives one at fewer:
+ * the reference is solved twice as often, a slot being the reference, the new harness and the
+ * reference again, and the first and last of each four are the test's (`halves`, `compare.ts`).
+ * It should read no step, and decides nothing here. Until 12 October its later solves ran after
+ * the test's own were done, so a drift read as a difference.
  *
  * Until 2026-10-11 the report also read the same solves at shorter budgets (`within`), which read
  * a solver told the longer one, and how far the use of each unit moved between repeated solves
@@ -100,7 +105,8 @@
  */
 import { draw, type ObjectiveRule, triggered } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { awaitingLabel, billedFor, type Cap, capHolds, exhausted } from "../kernel/reports.ts";
+import { awaitingLabel, billedFor, type Cap, capHolds, exhausted, retainable } from "../kernel/reports.ts";
+import type { Ending } from "../kernel/solve.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -144,8 +150,10 @@ interface Terms {
   readonly tasks: readonly string[];
   /** Counted solves of each task under each harness. */
   readonly solves: number;
-  /** The sign test's level. */
+  /** The level the step and its repeat clear together, and the one a first reading clears to buy
+   *  the repeat (`readTwice`, `compare.ts`). */
   readonly level: number;
+  readonly trigger: number;
   /** The objective two valid answers are compared by, where the check program declares one: the
    *  brief's direction and the caller's margin. */
   readonly objective?: ObjectiveRule | undefined;
@@ -202,21 +210,13 @@ export interface RoundRequest extends Terms {
   readonly builder?: ((request: BuildRequest) => Promise<Built>) | undefined;
 }
 
-/** One solve still to run: a task version under one of the harnesses. */
+/** One solve still to run: a task version under one of the harnesses, and whether it is asked for
+ *  again after a non-result (`drain`). */
 interface Job {
   readonly task: string;
   readonly under: Kept;
+  readonly again: boolean;
 }
-
-/** A harness a comparison solves under, with the counted solves of a task it needs under it. */
-interface Arm {
-  readonly under: Kept;
-  readonly needed: number;
-}
-
-/** Passes over what is still unsolved. A solve's own non-result is run again inside `solve`, so a
- *  second pass covers what outlasted that, and a task still short after it is reported short. */
-const PASSES = 2;
 /** Tasks in a row the provider wrote nothing for, at which the comparison stops and waits to be
  *  run again. Tasks and not solves: one task its provider refuses at the first turn is that task's
  *  fault, and is reported short. */
@@ -309,27 +309,35 @@ export function firstStageOf(
   return fixedIn(events, first.session)?.tasks ?? [];
 }
 
-/** The solves still to run: slot by slot over the tasks, the harnesses taking the first place in
- *  turn. `had` says how many counted solves a task has under a harness. */
+/**
+ * The solves still to run, task by task in an order drawn by a hash of each task and the comparison
+ * (`draw`), so that what drifts over the comparison's hours falls between tasks, which the test
+ * does not read, and no slot's solves gather at one end. Within a task its slots run in turn and
+ * the harness that goes first is mirrored, slot by slot and from one task to the next: the
+ * reference then the new harness, the new then the reference. Beside the reference read against
+ * itself a slot is the reference, the new harness and the reference again, so that the new
+ * harness's solves sit at the middle of the reference's (`halves`, `compare.ts`). `had` says how
+ * many counted solves a task has under a harness; a comparison gone on from its log runs the
+ * slots' solves it lacks.
+ */
 function unsolvedJobs(
+  request: Pick<CheckpointRequest, "id" | "old" | "fresh" | "solves" | "noise">,
   tasks: readonly string[],
-  arms: readonly Arm[],
   had: (task: string, digest: string) => number,
 ): Job[] {
-  const jobs: Job[] = [];
-  const slots = Math.max(0, ...arms.map(({ needed }) => needed));
-  for (let slot = 0; slot < slots; slot += 1) {
-    for (const [index, task] of tasks.entries()) {
-      const turn = (index + slot) % arms.length;
-      const order = [...arms.slice(turn), ...arms.slice(0, turn)];
-      jobs.push(
-        ...order.flatMap(({ under, needed }) =>
-          slot < needed && had(task, under.digest) <= slot ? [{ task, under }] : [],
-        ),
-      );
-    }
-  }
-  return jobs;
+  const { old, fresh, solves } = request;
+  return draw(tasks, new Set(tasks).size, request.id).flatMap((task, index) => {
+    const left = new Map([old, fresh].map(({ digest }) => [digest, had(task, digest)]));
+    const slot = (at: number) =>
+      request.noise === true ? [old, fresh, old] : (index + at) % 2 === 0 ? [old, fresh] : [fresh, old];
+    return Array.from({ length: solves }, (_, at) => slot(at))
+      .flat()
+      .flatMap((under) => {
+        const skipped = left.get(under.digest) ?? 0;
+        left.set(under.digest, skipped - 1);
+        return skipped > 0 ? [] : [{ task, under, again: false }];
+      });
+  });
 }
 
 /** A whole number of at least `least`, which a count read from a command line may not be. */
@@ -487,7 +495,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
       faults.push(`${solve}: ${errorMessage(error)}`);
     }
   };
-  const run = async ({ task, under }: Job): Promise<void> => {
+  const run = async ({ task, under }: Job): Promise<Ending> => {
     const solved = await request.solve(task, under, id, kill);
     const { solve, ending } = solved;
     const why = unanswered(log, id, solved);
@@ -504,8 +512,10 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave
     // no answer, is not valid with no ruling (`src/kernel/compare.ts`).
     if (ending.outcome === "fail" && ending.kind === "rejected") await rule(solve, task);
+    return ending;
   };
-  /** Run `jobs`, `concurrency` at a time, until they are done or the comparison is no longer going. */
+  /** Run `jobs`, `concurrency` at a time, until they are done or the comparison is no longer going.
+   *  A non-result that outlasts its re-runs inside `solve` is asked for once more, in its place. */
   const drain = async (jobs: Job[]): Promise<void> => {
     const worker = async (): Promise<void> => {
       for (let job = jobs.shift(); job !== undefined && going(); job = jobs.shift()) {
@@ -522,7 +532,8 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
         }
         running += 1;
         try {
-          await run(job);
+          const { outcome } = await run(job);
+          if (outcome === "non-result" && !job.again) jobs.unshift({ ...job, again: true });
         } catch (error) {
           thrown ??= asError(error);
           halt.abort();
@@ -547,19 +558,15 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
       );
     }
   };
-  /**
-   * Solve `tasks` under `arms` until each has its solves, and say whether the comparison goes on.
-   * It throws what stopped the solves, if a solve or a kill did.
-   */
-  const solveAll = async (tasks: readonly string[], arms: readonly Arm[]): Promise<boolean> => {
-    for (let pass = 0; pass < PASSES && going(); pass += 1) {
-      const had = new Map<string, number>();
-      for (const { under } of solvesUnder(read(log), fixed).filter(({ counts: own }) => own)) {
-        const key = `${under.task} ${under.harness}`;
-        had.set(key, (had.get(key) ?? 0) + 1);
-      }
-      await drain(unsolvedJobs(tasks, arms, (task, digest) => had.get(`${task} ${digest}`) ?? 0));
+  /** Solve `tasks` until each has its solves, and say whether the comparison goes on. It throws
+   *  what stopped the solves, if a solve or a kill did. */
+  const solveAll = async (tasks: readonly string[]): Promise<boolean> => {
+    const had = new Map<string, number>();
+    for (const { under } of solvesUnder(read(log), fixed).filter(({ counts: own }) => own)) {
+      const key = `${under.task} ${under.harness}`;
+      had.set(key, (had.get(key) ?? 0) + 1);
     }
+    await drain(unsolvedJobs(request, tasks, (task, digest) => had.get(`${task} ${digest}`) ?? 0));
     if (thrown !== null) throw thrown;
     if (kill.aborted) throw new Error("the comparison was killed; run it again and it goes on from its log");
     await ruleLeft();
@@ -582,19 +589,26 @@ function begin(request: CheckpointRequest): Fixed {
     setting: request.setting,
     solves: request.solves,
     level: request.level,
+    trigger: request.trigger,
     noise: request.noise === true,
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
     ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
   };
   const was = startOf(read(log), id);
-  if (was === undefined) append(log, STARTED, { session: id, ...terms, tasks: [...request.tasks] });
+  if (was === undefined) {
+    // The two sets are fixed with the tasks, before any result: the exhausted third the draw keeps
+    // is retained, and every other task is the frontier the step is read on (`compare.ts`).
+    const kept = new Set(retainable(read(log)));
+    const retained = request.tasks.filter((task) => kept.has(task));
+    append(log, STARTED, { session: id, ...terms, tasks: [...request.tasks], retained });
+  }
   const fixed = fixedIn(read(log), id);
   if (fixed === null) throw new Error(`comparison ${id} wrote no start the log reads back`);
   // Over the names of both: a continuation that drops a term the start recorded moved it too.
   const now: JsonObject = { ...terms };
   const named = new Set([...Object.keys(now), ...Object.keys(was ?? {})]).difference(
-    new Set(["session", "tasks"]),
+    new Set(["session", "tasks", "retained"]),
   );
   const moved = [...named]
     .toSorted()
@@ -633,7 +647,7 @@ function write(
  * checkpoint after several sessions, and with `noise` its gate G2.
  */
 export async function checkpoint(request: CheckpointRequest): Promise<Report> {
-  const { log, id, old, fresh, solves } = request;
+  const { log, id, old, fresh } = request;
   // A comparison that reported is finished, and run again it says what it said.
   const before = reported(read(log), id);
   if (before !== null) return before;
@@ -668,12 +682,8 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
     };
     return write(asked, told, beside());
   };
-  const arms = [
-    { under: old, needed: fixed.noise ? 2 * solves : solves },
-    { under: fresh, needed: solves },
-  ];
   await work.ruleLeft();
-  if (!(await work.solveAll(fixed.tasks, arms))) return stopped();
+  if (!(await work.solveAll(fixed.tasks))) return stopped();
   const found = compared(log, fixed, NO_LABELS);
   const told = { ...head, ...found, disputed: disputed(), capped: work.capped(), settled: null };
   return write(asked, told, beside());

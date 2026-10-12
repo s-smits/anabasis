@@ -57,7 +57,7 @@ import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
-import { capturedJsonStringify } from "../meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -159,6 +159,19 @@ const MORE =
 /** An instance by what a solver and the checks read of it, whatever id it carries. */
 function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
   return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
+}
+
+/** A tried instance's hidden value as the JSON it encodes, where it arrived as JSON text. On
+ *  12 October the tries of two campaigns sent it as the string "null" where the proposals of the
+ *  same instances sent null (19 of 19 calls checked), so no try matched a proposal and no feasible
+ *  mark was kept. Text that is no JSON stays the string it is. */
+function decoded(hidden: JsonValue): JsonValue {
+  if (!isString(hidden)) return hidden;
+  try {
+    return capturedJsonParse(hidden);
+  } catch {
+    return hidden;
+  }
 }
 
 /** Whether the host has the tasks it asked for. */
@@ -309,7 +322,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
         JsonValue,
         JsonValue,
       ];
-      const instance: Task = { taskId: "try", family: args.family, publicInput, hidden };
+      const instance: Task = { taskId: "try", family: args.family, publicInput, hidden: decoded(hidden) };
       const packaged = packageGate(request.contract, request.pack(instance));
       const gate =
         packaged.outcome === "passed"

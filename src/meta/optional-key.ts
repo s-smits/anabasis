@@ -10,11 +10,10 @@
  * Absence has two spellings here and they are not interchangeable, which is why there are two
  * functions and not one. An argument or an in-process option is absent as `undefined`; a recorded
  * JSON boundary writes `null`, since JSON has no undefined, and the schema there decides what that
- * null means. A third, the truthiness test that also drops `""`, `0` and `false`, came over from v1
- * as `keyIfTruthy` and had no caller here but its test, so it left on 10 October: at a boundary it
- * is the difference between an omitted count and a count of zero, and a site that wants it writes
- * the condition. Each caller keeps the condition its own conditional spread had, so adopting a
- * helper changes no behaviour.
+ * null means. A third, the truthiness test that also drops `""`, `0` and `false`, is left out: at a
+ * boundary it is the difference between an omitted count and a count of zero, and a site that wants
+ * it writes the condition. Each caller keeps the condition its own conditional spread had, so
+ * adopting a helper changes no behaviour.
  */
 
 /** What the two `keyIf*` functions return: an optional key that is never present as `undefined`. */

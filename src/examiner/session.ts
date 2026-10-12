@@ -6,15 +6,12 @@
  * (`src/kernel/task.ts`): the shape of its package. An instance that passes is a held-out task from
  * then on, and every comparison may score it. The Examiner is told that, or why the gate refused.
  *
- * No solve runs here. Until 2026-10-09 a session put each instance to a stronger solver, whose
- * pass was the witness that the task could be done, ran the checks again on that answer, had the
- * Examiner write three reject controls as edits of it, and then solved the task three times under
- * the measured solver to tell its author a word. The plan after the v1 review removes all of it
- * (`docs/plan.md`, Phase 2): v1's solver matched whatever its author's side found, the first
- * sessions here lost 14 of 25 tasks at the stronger solve, and the second session spent $48.45 of
- * which the Examiner's own turns were $2.01. What a task's author hears instead comes from the
- * comparisons, one outcome a task with the tasks counted by family beside them, at the next
- * session's opening (`record.ts`).
+ * No solve runs here: no stronger solver passes a task first, and the measured solver does not
+ * solve it for its author (`docs/plan.md`, Phase 2). v1's solver matched whatever its author's side
+ * found, and when sessions here did put each instance to a stronger solver, the first lost 14 of 25
+ * tasks at that solve and the second spent $48.45, of which the Examiner's own turns were $2.01.
+ * What a task's author hears instead comes from the comparisons, one outcome a task with the tasks
+ * counted by family or in a total beside them, at the next session's opening (`record.ts`).
  *
  * What the Examiner is never given: a harness, a solver's trace or answer, a check's program. Its
  * shell, where it has one, is a walled home of its own (`shell.ts`), closed to the repository.
@@ -22,11 +19,9 @@
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
  * an earlier session already wrote is not taken again, whatever id it would get; the home a
  * session computed in is carried whole into the next session's (`examineWalled`, `keep`), unless
- * it crashed, and
- * what a session said at its `finish` opens the next (`lastNote`). Until 11 October both went
- * with the session: on that day the two buffer sessions each spent their first minutes fetching
- * and compiling the same engine and writing an optimiser around it, and the next session would
- * have started from nothing.
+ * it crashed, and what a session said at its `finish` opens the next (`lastNote`). On 11 October
+ * two sessions of one campaign each spent their first minutes fetching and compiling the same
+ * engine and writing an optimiser around it.
  *
  * The session ends at `finish`, at its wall or its turns, or when the host has the tasks it was
  * asked for. A turn of its own the provider failed ends it crashed, with what the provider said.
@@ -92,7 +87,7 @@ export interface ExamRequest {
   /** The checks as the Examiner is shown them. */
   readonly checks: readonly CheckRow[];
   /** The tasks the campaign holds, the pack's and the ones earlier sessions wrote. Each is listed
-   *  at the opening with its outcome so far and counted by family (`record.ts`), and shown whole
+   *  at the opening with its outcome so far and counted (`record.ts`), and shown whole
    *  on request. */
   readonly examples: readonly Task[];
   /** An instance as a package: the caller's rule ids and check program for it. */
@@ -148,7 +143,7 @@ interface Desk {
   readonly seen: Map<string, "now" | "earlier">;
   /** The instances, by content, the host saw a valid answer to in this session's `try_answer`:
    *  a proposal of one is logged as feasible, and never waits for a person as possibly infeasible
-   *  (`awaitingLabel`). The answer itself is kept nowhere (11 October, `docs/simplify.md`, F4). */
+   *  (`awaitingLabel`). The answer itself is kept nowhere (`docs/simplify.md`, F4). */
   readonly answered: Set<string>;
   /** The answers that passed this session's `try_answer`, by hash, in memory alone: a task that
    *  carries one whole is refused, since a planted answer is for `try_answer` and for no task
@@ -378,14 +373,15 @@ function tried(verdict: Verdict): string {
 }
 
 /** The checks run on one instance with an answer of the Examiner's: which refuse it, or that none
- *  does. The Examiner wrote tasks it could not know to be feasible: on 10 October the notes of
- *  nine sessions said in eight that feasibility rested on hand estimates, and two of seven tasks
- *  of one session asked for more than their input allowed. Nothing of a try is kept but its
- *  trace: no task, no answer.
+ *  does. Without it the Examiner wrote tasks it could not know to be feasible: on 10 October the
+ *  notes of nine sessions said in eight that feasibility rested on hand estimates, and two of
+ *  seven tasks of one session asked for more than their input allowed. Nothing of a try is kept
+ *  but its trace and, where the checks pass, that the instance has a valid answer: no task, no
+ *  answer.
  *
- *  An answer is held to the format first, as a solver's is (`answerFormatFault`). Until 11 October
- *  a try ran the checks on any answer, and one the checks passed though the format refused it
- *  marked its instance feasible on an answer no solver could submit (`awaitingLabel`). */
+ *  An answer is held to the format first, as a solver's is (`answerFormatFault`): one the checks
+ *  passed though the format refused it would mark its instance feasible on an answer no solver
+ *  could submit (`awaitingLabel`). */
 function tryTool(desk: Desk, verify: Verifier): AgentTool {
   const { request } = desk;
   return tool({
@@ -460,7 +456,7 @@ export function lastNote(events: readonly LogEvent[]): string | null {
 }
 
 /** Why no Examiner session starts under `id` on this log, or null. A session's id prefixes its
- *  tasks' ids. A launcher asks before it starts one. */
+ *  tasks' ids. */
 export function claimed(events: readonly LogEvent[], id: string): string | null {
   return events.some(({ kind, data }) => kind === "exam.started" && data.session === id)
     ? `session ${id} is in the log already; a session's id names one session`
@@ -600,10 +596,9 @@ export async function examine(request: ExamRequest): Promise<Examined> {
 
 /**
  * One Examiner session with a shell under the solver's command wall and disk cap (`shell.ts`), and
- * the engines its campaign's checks run where the request names them (`engines`).
- * Until 10 October an Examiner could run nothing, and its notes said that a task's feasibility
- * rested on hand estimates; with a shell it computes an instance, and with `try_answer` it knows
- * the instance has a valid answer before it proposes it.
+ * the engines its campaign's checks run where the request names them (`engines`). With the shell it
+ * computes an instance, and with `try_answer` it knows the instance has a valid answer before it
+ * proposes it.
  */
 export function examineWalled(request: Omit<ExamRequest, "shell" | "pinned"> & Seat): Promise<Examined> {
   return inExaminerWall(request, async (shell, pinned) => {

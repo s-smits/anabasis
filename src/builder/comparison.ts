@@ -6,12 +6,11 @@
  * settles it on a person's labels is `round.ts`, whose head comment is the full account of what is
  * fixed before the first solve, how a solve ends and how a rejection counts.
  *
- * Split from `round.ts` on 10 October, when that file stood at 1,037 nonblank lines against the
- * size policy's ceiling of 800 (`tools/loc/source-policy.ts`, `docs/plan.md` row F34). The
- * readers went, and the moves stayed: a fold over the log has one owner here, and the commands
- * that read a comparison without running one (`tools/d2/round.ts`, `tools/d2/checkpoint.ts`,
- * `tools/d2/settle.ts`) read it through this module. Every function keeps the name and the body it
- * had in `round.ts`.
+ * Split from `round.ts` when that file passed the size policy's ceiling of 800
+ * nonblank lines (`tools/loc/source-policy.ts`). The readers are here and the moves stay there: a
+ * fold over the log has one owner here, and the commands that read a comparison without running
+ * one (`tools/d2/round.ts`, `tools/d2/checkpoint.ts`, `tools/d2/settle.ts`) read it through this
+ * module.
  */
 import {
   decidedByObjective,
@@ -44,16 +43,13 @@ import { type Worth, worthOf } from "./climb.ts";
 /**
  * How the plan's rules read a comparison. A step is the new harness's test against the reference
  * one clearing its level. A comparison that tallied no task is named apart: it tested nothing,
- * and `no-step` would say a test was made and found no gain. The eight truss rounds of
- * 2026-10-08 scored no task and read `no-step` eight times. `check-defects` is the comparison
- * stopped on its check defects, and `no-change` a session that left nothing new to compare.
+ * and `no-step` would say a test was made and found no gain. Eight rounds of 8 October scored no
+ * task and read `no-step` eight times. `check-defects` is the comparison stopped on its check
+ * defects, and `no-change` a session that left nothing new to compare.
  *
- * Until 2026-10-11 a comparison against a promoted reference also solved the starter on the
- * tallied tasks once its test cleared its level, and read `below-starter` with fewer wins than
- * losses there and `starter-unread` while the starter lacked a solve: a third arm, solved only
- * on a step, that no move read but the one that completed it. A report of before holds the two
- * words and its `against`. The starter is the control after a promotion (`decide.ts`), which is
- * where the plan reads whether it loses more each epoch (`docs/simplify.md`, B2).
+ * A report written before 11 October may hold `below-starter` or `starter-unread` and an
+ * `against`: readings of a third arm that solved the starter on a step. The starter is now the
+ * control after a promotion (`decide.ts`).
  */
 type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "check-defects" | "no-change";
 /** One test's tally, each task's difference in pair wins, and its p. */
@@ -86,8 +82,8 @@ export interface Report {
    *  between valid answers, which is the share the plan's Phase 3 turns on. Null when nothing was
    *  compared. */
   readonly scored: (Tested & { readonly unsolved: number }) | null;
-  /** Each harness by itself at the full limit, over `versions`. Null when nothing was compared, and
-   *  in a report written before 2026-10-09. */
+  /** Each harness by itself, over `versions`. Null when nothing was compared, and in a report
+   *  written before 9 October. */
   readonly valid: Valid | null;
   /** The mean billed dollars of a counted solve under each harness; null where the log holds none. */
   readonly billed: { readonly old: number | null; readonly fresh: number | null } | null;
@@ -299,8 +295,8 @@ function turnsOf(events: readonly LogEvent[], pairs: readonly Paired[]): NonNull
 export function reported(events: readonly LogEvent[], id: string): Report | null {
   const found = events.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
   if (found === undefined) return null;
-  // A report written before a field existed reads as that field's absence. Until 2026-10-09
-  // `counted` was a reading, where it is a tally now.
+  // A report written before a field existed reads as that field's absence. A report of before
+  // 9 October holds `counted` as a reading, where it is a tally now, and it reads as absent.
   const data: JsonObject = { ...NOTHING, ...found, counted: asRecord(found.counted) };
   // SAFETY: only `checkpoint`, `round` and `settleReading` write this event, from the report each returns.
   return Object.fromEntries(REPORT_KEYS.map((key) => [key, data[key]])) as unknown as Report;

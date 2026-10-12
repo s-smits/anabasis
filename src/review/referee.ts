@@ -30,9 +30,9 @@
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
  * rules and logs, one `referee.finding` per fail. A reader whose session the provider or a kill
  * ended before it ruled gave no answer, and its finding holds no ruling, so that it is asked again:
- * until 12 October it was logged `unclear`, a ruling no caller puts again, and one Referee call
- * that met the provider's session limit set aside for good a task buffer-a's g-5 needed for its
- * step. One that read to its own wall, or stopped without a ruling, leaves the fail unclear.
+ * logged `unclear`, a ruling no caller puts again, one Referee call that met the provider's session
+ * limit set aside for good a task a step needed (12 October). One that read to its own wall, or
+ * stopped without a ruling, leaves the fail unclear.
  */
 import { Type } from "typebox";
 import type { Contract } from "../kernel/contract.ts";

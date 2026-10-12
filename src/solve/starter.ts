@@ -21,14 +21,11 @@
  *
  * It is written out in v1's on-disk format like any other harness state, and is named by its digest
  * like any other: the two files below are the whole of it, so a change to either is another
- * harness, and solves under the old one are not counted for the new. Until 2026-10-09 it selected
- * the shell alone and declared one tool, an artifact-writer that took the answer as its arguments,
- * and v1's draft tools stood beside it (`answer.ts`).
+ * harness, and solves under the old one are not counted for the new.
  *
- * The account, `HARNESS.md`, is what v1's starter pack carried as `contract.md` and v2 left out. A
- * Builder then had the starter's one tool as its whole account of the tool interface: the first
- * buffer session wrote three tool files whose only purpose was to print `defineDraftTool`'s source
- * through tool names (2026-10-09). The account is the host's and not the harness's: a session is
+ * The account, `HARNESS.md`, stands where v1's starter pack carried `contract.md`. A Builder without
+ * it wrote three tool files whose only purpose was to print `defineDraftTool`'s source through tool
+ * names (9 October). The account is the host's and not the harness's: a session is
  * handed it afresh in its home (`src/builder/session.ts`), so it describes the host that will open
  * the harness, whichever harness the session forks.
  */
@@ -41,9 +38,8 @@ import { CODING_TOOLS } from "./coding-tools.ts";
 
 /**
  * The Starter's two files. Its tools file is the place a harness adds tools of its own, and says
- * so; under the Starter it adds none. A comment is not in the bundle a harness is named by, so the
- * Starter is the harness it was before the comment was there, and the harness it was when the
- * comment said to leave the list empty while the solver had the shell (until 10 October).
+ * so; under the Starter it adds none. A comment is not in the bundle a harness is named by, so a
+ * change to the comment leaves the Starter the harness it was.
  */
 const STARTER = {
   spec: { presets: [...CODING_TOOLS], tools: [] },
@@ -174,14 +170,13 @@ export const createDomainHarness: DomainHarnessFactory = (task) => {
 /**
  * What a Builder reads of the harness's files, as `HARNESS.md` in its home.
  *
- * It gives each part of a harness one purpose. The first truss session shipped its checker three
- * times over: a command-line program, a tool that wrapped it, and a guide that described both; the
- * first buffer session kept its optimiser as a snippet in the guide, which each solver pasted and
- * ran (2026-10-09). From then until 10 October the account answered with a rule: a computation is
- * a program, and a tool of the harness's own is for a solver without the shell. That was a second
- * limit on the Builder in a prompt (`AGENTS.md`, section 2), and in the ten campaigns run under it
- * no harness declared a tool. Now the account states what each route costs a solve and leaves the
- * choice to the Builder; the guide stays words, since pasted code shows in a trace under no name.
+ * It gives each part of a harness one purpose. On 9 October one Builder shipped its checker three
+ * times over: a command-line program, a tool that wrapped it, and a guide that described both;
+ * another kept its optimiser as a snippet in the guide, which each solver pasted and ran. The
+ * account states what each route costs a solve and leaves the choice to the Builder: a rule that a
+ * computation is a program was a second limit on the Builder in a prompt (`AGENTS.md`, section 2),
+ * and in the ten campaigns run under it no harness declared a tool. The guide stays words, since
+ * pasted code shows in a trace under no name.
  */
 export const HARNESS_ACCOUNT = `# The Built Harness
 

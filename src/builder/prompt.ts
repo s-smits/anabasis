@@ -12,28 +12,25 @@
  * Each part of a harness is given one purpose, here as there: the presets select pi's tools, the
  * programs and the tools of the harness's own compute, and the guide is words about them. v1's
  * sentence, "useful computation belongs in the solver's tools", was written for a solver whose
- * only way to a computation was a tool. A v2 solver has a shell, and a Builder told both to write
- * tools and to install programs built one checker as both (truss, 2026-10-09). From then until
- * 10 October this prompt told the Builder to leave `tools.ts` empty while the solver had the shell:
- * a second limit in a prompt (`AGENTS.md`, section 2), under which no harness of ten campaigns
- * declared a tool. It now states what a tool and a program each cost a solve, and `practice`
- * reports each solve's tokens, so the Builder chooses.
+ * only way to a computation was a tool. A v2 solver has a shell, so the prompt states what a tool
+ * and a program each cost a solve, `practice` reports each solve's tokens, and the Builder
+ * chooses. Telling it to leave `tools.ts` empty while the solver had the shell was a second limit
+ * in a prompt (`AGENTS.md`, section 2), under which no harness of ten campaigns declared a tool.
  *
  * The ceiling is one rule: no harness tool returns a finished answer for a task (`docs/plan.md`,
  * principle 6). v1's sentence had two routes, a verdict on a candidate and the answer to a case the
  * solver names, and forbade both as "a check's work", with the reason that the Builder's own
- * battery would then measure a search. That Builder had written the checks. Until 2026-10-09 this
- * prompt kept both, said by the public rules. The operator lifted the first on 9 October, with the
- * same rule in every session: a tool may tell the solver whether a candidate meets a public rule.
- * A solver does that unaided, as v1 recorded when its solver wrote a search and ran it until the
- * checks cleared; this Builder is never shown a check; and both harnesses are solved under the
- * same limits, which price the search. A tool that hands over the answer stays forbidden.
+ * battery would then measure a search. That Builder had written the checks. The operator lifted
+ * the first on 9 October, with the same rule in every session: a tool may tell the solver whether
+ * a candidate meets a public rule. A solver does that unaided, as v1 recorded when its solver
+ * wrote a search and ran it until the checks cleared; this Builder is never shown a check; and
+ * both harnesses are solved under the same limits, which price the search. A tool that hands over the answer stays forbidden.
  *
  * Permitting the judge while permitting the search left them composable, and on 10 October a
  * Builder composed them: one program held a domain engine, a judge and a search, and all 12 of that
  * campaign's solves called it from the shell and submitted on the pass report it printed. The
  * comparison that would have followed could have named no cause, the reference Starter carrying no
- * engine (`docs/transfer.md`, section 1, which ranked this the binding constraint). So the rule now
+ * engine (`docs/transfer.md`, section 1, which ranked this the binding constraint). So the rule
  * names the composition and not only its end, and gives the test a reader can apply to a harness.
  * The operator settled it this way, against a condition that would separate the three and record
  * which a harness holds. The clause is on the composition and not on an all-clear, because the
@@ -49,10 +46,10 @@
  *
  * New here: what the harness is measured on, and how a practice result is to be read. It is
  * measured against the reference harness, which is the Starter Built Harness until a step is
- * promoted and so need not be the harness a later session starts from. v1 gave its
- * Builder one pass bit a rehearsal and no trace; a v2 Builder gets each task's record, the solver's
- * trace and the reviewers' readings, and is told that one solve is weak evidence, because in v1's
- * record a fail repeated on the same bytes 5 times in 21.
+ * promoted and so need not be the harness a later session starts from. v1 gave its Builder one
+ * pass bit a rehearsal and no trace; a v2 Builder gets each task's record, the solver's trace and
+ * the reviewers' readings, and is told that one solve is weak evidence, because in v1's record a
+ * fail repeated on the same bytes 5 times in 21.
  */
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -145,16 +142,16 @@ export const shellWalls = (network: NetworkReach): string =>
 
 /**
  * The last line of every tool result a Builder reads: the turn it is in, the session time used, the
- * practice solves left, and, until one has run, that none has. A solver has had the same of its own
- * limits since 2026-10-09 (`timed`, `src/solve/run.ts`). The facts ride on tool results because that
- * is where a Builder reads: in the seven sessions on record that day, 365 turns in all, every turn
- * ended in a tool call, so the message sent between turns was never sent once.
+ * practice solves left, and, until one has run, that none has. A solver has the same of its own
+ * limits (`timed`, `src/solve/run.ts`). The facts ride on tool results because that is where a
+ * Builder reads: in the seven sessions on record on 9 October, 365 turns in all, every turn ended
+ * in a tool call, so a message sent only between turns was never sent once.
  *
- * The practice fact joined them on 2026-10-10, when a session of 43 turns spent 69% of its wall
+ * The practice fact is there because on 10 October a session of 43 turns spent 69% of its wall
  * measuring a tool chain through 40 shell calls, called `check_harness`, `preview_harness` and
- * `practice` not once, and left a tree whose own module spawns a program the tree does not hold.
- * Where `harness/` stood was stated only by the continuation (`TRIED`), which again no turn of it
- * triggered. The line states the condition and no course: which fact matters is the Builder's.
+ * `practice` not once, and left a tree whose own module spawns a program the tree does not hold;
+ * the continuation (`TRIED`), which alone said where `harness/` stood, no turn of it triggered.
+ * The line states the condition and no course: which fact matters is the Builder's.
  */
 export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">): string {
   const clock = (seconds: number) => {

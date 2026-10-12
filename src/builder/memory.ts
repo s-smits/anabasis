@@ -190,8 +190,8 @@ function withoutRepeatedSections(text: string): string {
 
 /** One end of a cut, back to whole lines unless that keeps under half the slice, and then to whole
  *  words; either way a character the byte slice split goes with the partial unit. A line cut alone
- *  emptied a note written as one paragraph: run custom-sol-20260929T132256243Z-2d7812 carried none
- *  of a 2,052-byte next-experiment plan over a 72-byte overflow. */
+ *  emptied a note written as one paragraph: a v1 run carried none of a 2,052-byte next-experiment
+ *  plan over a 72-byte overflow. */
 function wholeUnits(slice: string, end: keyof typeof WHOLE_UNITS): string {
   const [line = "", word = ""] = WHOLE_UNITS[end].map((unit) => unit.exec(slice)?.[1] ?? "");
   return line.length * 2 >= slice.length ? line : word;

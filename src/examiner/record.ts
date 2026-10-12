@@ -1,48 +1,44 @@
 /**
- * What an Examiner is told of the tasks its campaign holds: one outcome each, and counts by family.
+ * What an Examiner is told of the tasks its campaign holds: one outcome each, and counts, by family
+ * or in a total.
  *
- * An Examiner session starts a new conversation, and since 2026-10-09 it is put to no solver either: a
- * task is held out on the shape of its package (`src/kernel/task.ts`), so nothing a session does
- * tells its author whether a task was any good. What tells it is the comparisons. The plan has the
- * author see every task of the campaign, the pack's and the ones earlier sessions wrote, the older
- * and easier ones included, each with its outcome so far: how the reference harness did on it in
- * the last comparison that scored it, valid in every solve, in some or in none, or disputed
- * (`docs/plan.md`, Phase 2; since 11 October, `docs/simplify.md` F3: "one harness won" and "no
- * valid answer yet" told the author nothing of where the room was). Beside the outcome, one fact
- * that names no side: whether a valid answer to the task is on record at all, a solve's, the
- * author's own `try_answer` pass, or since 12 October a reference solve's under `try_task`
- * (`feasibleTasks`), which tells a task the reference answers in no solve apart from one nobody
- * has answered. It is a view of the log, and no store is kept for it.
- * Until 9 October a session was shown the pack's tasks by id and family alone, and no outcome.
+ * An Examiner session starts a new conversation and puts no task to a solver: a task is held out on
+ * the shape of its package (`src/kernel/task.ts`), so nothing a session does tells its author
+ * whether a task was any good. What tells it is the comparisons. The author sees every task of the
+ * campaign, the pack's and the ones earlier sessions wrote, the older and easier ones included, each
+ * with its outcome so far: how the reference harness did on it in the last comparison that scored
+ * it, valid in every solve, in some or in none, or disputed (`docs/plan.md`, Phase 2;
+ * `docs/simplify.md` F3, where "one harness won" and "no valid answer yet" told the author nothing
+ * of where the room was). Beside the outcome, one fact that names no side: whether a valid answer to
+ * the task is on record at all, a solve's, the author's own `try_answer` pass, or a reference
+ * solve's under `try_task` (`feasibleTasks`), which tells a task the reference answers in no solve
+ * apart from one nobody has answered. It is a view of the log, and no store is kept for it.
  *
- * Beside the lines, since 11 October, counts by family with a total (`counts`, `standingsOf`): of
- * the tasks whose last comparison had the reference harness on a side, how many were told apart and
- * which side won them, how many tied with both harnesses valid in every solve, how many tied with
- * neither valid in any and of those how many have a valid answer on record, how many tied otherwise,
- * and how many were set aside. Until then the author heard the reference's side of each task alone,
- * and could not tell a tie both harnesses answered in every solve (no room) from one neither
- * answered in any (too hard, infeasible or wrongly checked), nor see whether any task of the exam
- * had told two harnesses apart. The operator decided that day that it is told these as measured
- * facts. The counts are taken in the same pass as the lines, from the same record of each task
- * (`lastRead`, `reports.ts`), so the two agree by construction; the other side's result is told
- * by family and never for a task, so that an author is not shown which of its tasks one pair of
- * harnesses split. A family of one task would tell it for that task, so where any family counted
- * holds one the rows by family fold into the total: on 12 October esp32's 40 families each held
- * one task, and 13 of buffer's 14. They carry the sentence rule 6 asks for, with the solves a side
- * they rest on.
+ * Beside the lines, counts by family with a total (`counts`, `standingsOf`): of the tasks whose last
+ * comparison had the reference harness on a side, how many were told apart and which side won them,
+ * how many tied with both harnesses valid in every solve, how many tied with neither valid in any
+ * and of those how many have a valid answer on record, how many tied otherwise, and how many were
+ * set aside. From the reference's side of each task alone the author could not tell a tie both
+ * harnesses answered in every solve (no room) from one neither answered in any (too hard,
+ * infeasible or wrongly checked), nor see whether any task of the exam had told two harnesses apart.
+ * The operator decided on 11 October that it is told these as measured facts. The counts are taken
+ * in the same pass as the lines, from the same record of each task (`lastRead`, `reports.ts`), so
+ * the two agree by construction; the other side's result is told by family and never for a task,
+ * so that an author is not shown which of its tasks one pair of harnesses split. A family of one
+ * task would tell it for that task, so where any family counted holds one the rows by family fold
+ * into the total: on 12 October one campaign's 40 families each held one task, and 13 of another's
+ * 14. They carry the sentence rule 6 asks for, with the solves a side they rest on.
  *
- * Since 12 October the lines are followed, by family, by the solver's own turns each valid answer
- * of the reference harness took (`turns`): the overhaul plan's turn distribution of the
- * reference's valid answers, so that an author sees how much of the budget the answers it already
- * gets spend. They are read from the reference's side of the very comparison each line reads, for
- * the tasks the counts read on the reference's side (`referenceAnswers`), so nothing of the harness
- * it was compared with is among them, and no count of the other side is added to what the counts
- * above tell; a family of one task shows that task's own turns, which are the reference's, as its
- * line is.
+ * The lines are followed, by family, by the solver's own turns each valid answer of the reference
+ * harness took (`turns`): the overhaul plan's turn distribution of the reference's valid answers,
+ * so that an author sees how much of the budget the answers it already gets spend. They are read
+ * from the reference's side of the very comparison each line reads, for the tasks the counts read
+ * on the reference's side (`referenceAnswers`), so nothing of the harness it was compared with is
+ * among them, and no count of the other side is added to what the counts above tell; a family of
+ * one task shows that task's own turns, which are the reference's, as its line is.
  *
- * Each sentence says what its fold does. Until 11 October the exhausted line said "answered by
- * both harnesses", where the rule reads the reference's own solves alone (`exhausted`,
- * `src/kernel/reports.ts`); the review of the buffer runs of that day found the two apart.
+ * Each sentence says what its fold does: the exhausted line speaks of the reference's own solves
+ * alone, as the rule reads them (`exhausted`, `src/kernel/reports.ts`), and not of both harnesses.
  *
  * What v1 recorded about this channel is kept. An author told a zone, a share or a target count
  * wrote towards it, and one told each answer's distance from its limit moved limits (v1

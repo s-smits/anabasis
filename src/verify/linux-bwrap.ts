@@ -1,9 +1,7 @@
 /**
  * Linux's OS isolation, the peer of Darwin Seatbelt. Bubblewrap binds the host's root read-only and
  * overmounts what must stay closed, while the callers own the shared policy data: denied roots,
- * writable roots and network posture. Until 11 October a check ran under a deny-default namespace of
- * its own, built from the system roots alone; it now runs under the command wall
- * (`docs/simplify.md`, W6).
+ * writable roots and network posture.
  *
  * A tmpfs or bind mount stays attached to its dentry when an ancestor is renamed, so the
  * path-relocation rules the Darwin string policy needs have no Linux counterpart; the focused
@@ -234,9 +232,9 @@ export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSu
 /**
  * Isolation common to every Bubblewrap launch: a user namespace, a new session, no inherited
  * capabilities, and separate IPC, UTS and cgroup namespaces. Only network isolation is left to the
- * caller, the one posture the three actors differ on. A setup that fails makes the isolation
- * unavailable rather than weakened, because a launch missing one of these flags would still look
- * like a confined run in the evidence.
+ * caller, the one posture a seat's command and a check differ on. A setup that fails makes the
+ * isolation unavailable rather than weakened, because a launch missing one of these flags would
+ * still look like a confined run in the evidence.
  */
 function bwrapIsolationArgs(options: { network: boolean }): string[] {
   const args = [
@@ -287,12 +285,12 @@ export function bwrapEnvironmentArgs(environment: OptionalEnvValues): string[] {
  * The allow-default read posture: the whole host mount tree, read-only, with a fresh procfs and a
  * minimal /dev over it.
  *
- * Enumerating the roots to bind instead, as the verifier's own wall did until 11 October, lets the
- * enumeration decide which programs exist: under it `/usr/bin/cc` ran while a binary in
+ * Enumerating the roots to bind instead lets the enumeration decide which programs exist: under
+ * such a wall `/usr/bin/cc` ran while a binary in
  * `~/.cargo/bin` reported "not found", the toolchain being on disk and simply not in the namespace.
  *
  * The caller hides what must stay closed with `bwrapTmpfsDenies` and binds its writable tree after
- * that, the same order the session isolation uses. `/proc` and `/dev` are mounted after the root
+ * that. `/proc` and `/dev` are mounted after the root
  * bind, because a bind over `/` would otherwise cover them.
  */
 export function bwrapOpenReadArgs(options: { network: boolean }): string[] {
@@ -325,8 +323,9 @@ export function bwrapWriteBinds(paths: readonly string[]): string[] {
 export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
   // A file-shaped path takes `/dev/null` read-only instead, which denies read and write with EACCES
   // and leaves the host file untouched, where an empty tmpfs file would read as empty rather than
-  // refuse. The probe's witness requires an observable refusal, because an isolation returning ""
-  // instead of an error cannot be told apart from one that is not running.
+  // refuse. The wall's probe (`probeWall`, `src/solve/command.ts`) requires an observable refusal,
+  // because an isolation returning "" instead of an error cannot be told apart from one that is not
+  // running.
   //
   // A path that no longer exists takes no mount. The root is bound read-only, so Bubblewrap cannot
   // make the mountpoint ("Can't mkdir <path>: Read-only file system") and refuses the whole launch.

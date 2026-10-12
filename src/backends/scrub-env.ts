@@ -1,6 +1,6 @@
-// The environment block types the OS isolation passes around. v1's file also scrubbed likely
-// secrets out of a child's environment; v2 builds every child's environment from an allowlist
-// (the wall's `policy.environment`, `claudeEnv`), so nothing called the scrub and it is gone.
+// The environment block types the OS isolation passes around. The file keeps v1's name; nothing
+// scrubs an environment here, since every child's is built from an allowlist (the wall's
+// `policy.environment`, `claudeEnv`).
 
 /** An environment block. The names come from the host, so the key set cannot be written down here;
  *  the value type can, and that is what callers of these functions actually need to know. */

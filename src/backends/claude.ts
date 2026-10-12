@@ -7,25 +7,22 @@
  * (e870bc89), and its four leaf modules come over verbatim; its index.ts does not. A headless solve has
  * no steering or UI, so the glue a solve needs is this file.
  *
- * The query runs under the options sweep veryhard-hb-4c67fc's solves did (harness-builder-v4 at 7af7315,
- * `vendor/pi-claude-bridge/provider.ts:384-450`), wherever an option changes what the solver sees: the
- * MCP server's name, which every tool name carries (`turn-translation.ts:19-20`); the CLI's WebSearch
- * beside the pi tools (`src/backends/pi-built-child.ts:193-196`); bypassed permissions; summarized
- * thinking; the effort each model was served; and a working directory outside any repository, as v1's
- * worker bundle directory was (`src/backends/pi-built.ts:236-238`), since Claude Code writes its
- * directory and git state into its prompt. A nudge is a further user message into the same query, where v1 resumed the session in a
- * fresh one (`provider.ts:525-560`); the model reads the same history either way.
+ * The query runs under the options v1's sweep solves ran under, wherever an option changes what the
+ * solver sees: the MCP server's name, which every tool name carries; the CLI's WebSearch beside the
+ * pi tools; bypassed permissions; summarized thinking; the effort each model was served; and a
+ * working directory outside any repository, as v1's worker bundle directory was, since Claude Code
+ * writes its directory and git state into its prompt. A nudge is a further user message into the
+ * same query, where v1 resumed the session in a fresh one; the model reads the same history either
+ * way.
  *
- * One of the sweep's options is not kept. Its solver read Claude Code's own system prompt with the
- * harness's appended (`provider.ts:439-442`), and so did a v2 solver until 2026-10-09. That prompt is
- * a coding assistant's, about a repository and Claude Code's own tools, none of which a session
- * here has: every tool is pi's, served through the MCP server. So every session, a solver's, a
- * Builder's, an Examiner's and a reviewer's alike, is sent its own prompt and nothing before it. A
- * solver's is pi coding-agent's (`src/solve/prompt.ts`).
+ * One of the sweep's options is not kept: its solver read Claude Code's own system prompt with the
+ * harness's appended. That prompt is a coding assistant's, about a repository and Claude Code's own
+ * tools, none of which a session here has: every tool is pi's, served through the MCP server. So
+ * every session, a solver's, a Builder's, an Examiner's and a reviewer's alike, is sent its own
+ * prompt and nothing before it. A solver's is pi coding-agent's (`src/solve/prompt.ts`).
  *
- * One difference is left, and it reaches no model: v1 spawned its worker with an empty environment
- * (`pi-built-process.ts:529-533`) and spread that into Claude Code's (`provider.ts:420`); here HOME, the
- * solve's own, PATH and TMPDIR are set as well.
+ * One difference is left, and it reaches no model: v1 ran Claude Code in an empty environment; here
+ * HOME, the solve's own, PATH and TMPDIR are set as well.
  */
 import {
   type EffortLevel,
@@ -99,15 +96,15 @@ const ACCOUNTS = new Map([
 ]);
 const API = "claude-agent-sdk";
 
-/** turn-translation.ts:19-20. */
+/** The MCP server's name, as the bridge spells it; every tool name carries it. */
 const SERVER = "custom-tools";
 const TOOL_PREFIX = `mcp__${SERVER}__`;
-/** The CLI's own tools the solver is given, all server-side: pi-built-child.ts:193-196, under the
- *  `webSearch: true` every Claude profile set (`src/backends/pi-built.ts:136`). */
+/** The CLI's own tools the solver is given, all server-side: v1's, under the `webSearch: true`
+ *  every Claude profile of v1 set. */
 const CLI_TOOLS = ["WebSearch"];
 /** How long a closing query waits on its interrupt. One answered mid-turn in 16 ms. */
 const INTERRUPT_MS = 1000;
-/** provider.ts:222-224: the bridge's table, for a level the model's own map does not name. */
+/** The bridge's table, for a level the model's own map does not name. */
 const EFFORTS: Readonly<Partial<Record<ThinkingLevel, EffortLevel>>> = {
   minimal: "low",
   low: "low",
@@ -151,10 +148,9 @@ const FINAL_STOPS: ReadonlyMap<string, TurnEnd> = new Map([
 /**
  * The models the sweep asked Claude Code for by their long-context id, which is what gives them a
  * million-token window on a subscription token; the CLI serves a bare id at its own default window,
- * under which a 300K compaction window is clamped. v1 measured each (`vendor/pi-claude-bridge/models.ts:17-50`
- * at 7af7315, under the `plan: "pro"` settings of `provider.ts:60`); every other model went bare. Opus
- * 5.5 and Sonnet 5.5 came after; on 2026-10-08 the CLI served each a million tokens under its
- * `[1m]` id.
+ * under which a 300K compaction window is clamped. v1 measured each of the first five; every other
+ * model went bare. Opus 5.5 and Sonnet 5.5 came after; on 8 October the CLI served each a million
+ * tokens under its `[1m]` id.
  */
 const LONG_CONTEXT = new Set([
   "claude-opus-5",
@@ -181,8 +177,7 @@ export const REPORTED_COST = "claude-code-total-cost";
 
 /**
  * The diagnostic a turn carries for each compaction Claude Code ran before it: `details.tokensBefore`
- * and `details.seconds`, from the CLI's `compact_boundary`, as v1's `onCompaction` read it
- * (`vendor/pi-claude-bridge/provider.ts:247` at 7af7315).
+ * and `details.seconds`, from the CLI's `compact_boundary`, as v1's `onCompaction` read it.
  */
 export const CLAUDE_COMPACTED = "claude-code-compaction";
 
@@ -193,8 +188,7 @@ export const CLAUDE_COMPACTED = "claude-code-compaction";
 export type ClaudeCompaction = { readonly window: number } | "off";
 
 /**
- * The sweep's window: v1's `CONTEXT_COMPACT_WINDOW` (`src/backends/backend-types.ts:32` at 7af7315),
- * which its Claude solves ran under (`src/backends/pi-built-child.ts:191`).
+ * The sweep's window: v1's `CONTEXT_COMPACT_WINDOW`, which its Claude solves ran under.
  */
 export const SWEEP_COMPACT_WINDOW = 300_000;
 
@@ -250,7 +244,7 @@ export function servedByClaude(provider: string): boolean {
  * The Claude Code binary the Agent SDK ships in its platform package, resolved on the host. The SDK
  * resolves it itself from its own module URL (`SV` in `sdk.mjs` 0.3.285), which fails inside a bundled
  * worker and would point into the repository the solve wall denies; the host resolves it here instead,
- * passes it in and reopens it read-only, as v1 did (`src/backends/pi-built.ts:212-229` at 7af7315).
+ * passes it in and reopens it read-only, as v1 did.
  */
 export function claudeExecutable(): string {
   const sdk = dirname(Bun.resolveSync("@anthropic-ai/claude-agent-sdk", import.meta.dir));
@@ -323,8 +317,8 @@ async function runTurn(
 ): Promise<TurnEnd> {
   const key = options.sessionId;
   if (key === undefined) throw new Error("the Claude backend needs a sessionId: one per Claude Code query");
-  // An abort listener never fires for a signal that has already aborted, so until 11 October a turn
-  // asked under one launched Claude Code and ran its query to the end.
+  // An abort listener never fires for a signal that has already aborted, so a turn asked under one
+  // would launch Claude Code and run its query to the end.
   if (options.signal?.aborted === true) throw new Error(`session ${key} was aborted before its turn`);
   const { results } = extractAllToolResults(context.messages.map((message) => ({ ...message })));
   let session = sessions.get(key);
@@ -376,13 +370,12 @@ function open(
       cwd: claude.home,
       model: LONG_CONTEXT.has(model.id) ? `${model.id}[1m]` : model.id,
       ...keyIfDefined("effort", effort),
-      // Thinking arrives summarized rather than omitted whenever an effort is set (`provider.ts:405-408`).
+      // Thinking arrives summarized rather than omitted whenever an effort is set.
       ...keyIfDefined("extraArgs", effort && { "thinking-display": "summarized" }),
       // The session's prompt is the whole of it: Claude Code's own is not sent before it.
       systemPrompt: own,
       // The harness's pi tools and the CLI's WebSearch are the only tools: no other built-in, no setting
-      // file, no skill, no other MCP server (`provider.ts:430-434,445`). With WebSearch off there is
-      // no built-in at all.
+      // file, no skill, no other MCP server. With WebSearch off there is no built-in at all.
       tools: claude.webSearch === false ? [] : CLI_TOOLS,
       skills: [],
       mcpServers: { [SERVER]: createToolServer(SERVER, tools) },
@@ -409,7 +402,7 @@ function open(
 }
 
 /**
- * The effort v1 asked Claude Code for at `level` (`provider.ts:396-400`): the model's own map, then the
+ * The effort v1 asked Claude Code for at `level`: the model's own map, then the
  * table; none, so the CLI's default, where neither names one.
  */
 export function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): EffortLevel | undefined {
@@ -435,8 +428,8 @@ function claudeEnv(
       `the Claude backend needs ${account === undefined ? "an account" : `a ${account.holds}`}`,
     );
   }
-  // One configuration directory per solve home, as v1 kept one per worker (`pi-built-child.ts:178-183`),
-  // so no host Claude state is read. It is not `.claude`, so a run on the host's own HOME still reads none.
+  // One configuration directory per solve home, as v1 kept one per worker, so no host Claude state
+  // is read. It is not `.claude`, so a run on the host's own HOME still reads none.
   const config = join(home, "claude-config");
   mkdirSync(config, { recursive: true });
   return {
@@ -446,13 +439,12 @@ function claudeEnv(
     CLAUDE_CONFIG_DIR: config,
     [account.variable]: token,
     // claude.ai's cloud MCP servers load past strict MCP config and empty setting sources unless this
-    // is off, as the sweep set it (`provider.ts:410-414,421`).
+    // is off, as the sweep set it.
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",
     // `off` is real. In the bundled CLI 0.3.285 the auto-compact gate `Uf` is false when `rht` reads
     // DISABLE_AUTO_COMPACT or DISABLE_COMPACT, and `Uf` gates the threshold compaction (`hAe`), the
     // reactive one after a too-long prompt (`UEr`) and the precomputed summary (`x4n`); a context that
-    // outgrows the model then ends the query. The sweep set the window (`pi-built-child.ts:191`, read at
-    // `provider.ts:422-424`).
+    // outgrows the model then ends the query. The sweep set the window.
     ...(compaction === "off"
       ? { DISABLE_AUTO_COMPACT: "1" }
       : { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(compaction.window) }),
@@ -484,7 +476,7 @@ function deliver(session: Session, result: McpResult): void {
 /**
  * Read the next API message with a pi tool call into `turn`, or the last of the prompt, and say how it
  * stopped. A message that stopped on WebSearch alone is Claude Code's to run, so the turn reads on
- * into the next, as v1's ended only on a pi call (`turn-translation.ts:128-135`), and bills both.
+ * into the next, as v1's ended only on a pi call, and bills both.
  */
 async function readTurn(
   key: string,
@@ -603,7 +595,7 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
  *
  * The turn is interrupted before the query is aborted. An abort alone closes Claude Code's stdin and
  * gives it two seconds before a signal, and Claude Code spends them on its turn: with a call still
- * parked it asks the model again, and no meter reads that request. On 2026-10-08 a query closed on a
+ * parked it asks the model again, and no meter reads that request. On 8 October a query closed on a
  * parked `submit` called it again 975 ms and 1,812 ms after, and Claude Code's own logs of that
  * day's solves hold such a call after 14 of 35. Interrupted first, it called nothing and was gone
  * inside a second. The timer is for a child that never answers the interrupt.

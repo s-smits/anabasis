@@ -1,8 +1,7 @@
 /**
  * The disk cap on one solve: a root holding every directory the solve's commands may write, and the
- * most bytes that root may hold. Neither v1 nor the sweep this repository's plan targets capped disk,
- * so a solve that filled the host's disk took every concurrent solve and the controller down with
- * it.
+ * most bytes that root may hold. v1 capped no disk, so a solve that filled the host's disk took
+ * every concurrent solve and the controller down with it.
  *
  * Only Darwin caps. There `mountDiskCap` attaches a sparse APFS image of `bytes` at the root on
  * the host before anything runs; measured on an M3 Pro under macOS 15.7, creating a 64 MiB image
@@ -10,10 +9,8 @@
  * ENOSPC. On Linux nothing caps a solve, a Builder session or an Examiner session: each runs its
  * commands under the command wall (`stageCommandIsolation`), which binds the seat's root from
  * the host's disk read-write and mounts no tmpfs there, since the root has to survive from one
- * command to the next. v1 mounted a sized tmpfs of `bytes` in the launch of its sandboxed model
- * process, which v2 does not make; until 11 October only the wall's probe made it
- * (`docs/simplify.md`, F5, F6 and W2). So on Linux `mountDiskCap` makes the root and `diskBytes`
- * binds nothing there: nine Builder sessions and 308 solves finished so on a Linux test host on
+ * command to the next. So on Linux `mountDiskCap` makes the root and `diskBytes` binds nothing
+ * there: nine Builder sessions and 308 solves finished so on a Linux test host on
  * 9 October. A capped volume on Linux would take a loop mount or a quota, neither of which an
  * unprivileged host has, so the gap is stated here and in AGENTS.md section 10 rather than closed,
  * and a campaign on Linux is bounded by its dollar total and its walls.
@@ -22,8 +19,8 @@
  * command write the user temporary root system toolchains take through `confstr`, outside the root;
  * `/tmp` it closes. On Linux the command wall overmounts `/tmp` and the host temporary directory with
  * writable tmpfs of the kernel's default size, which is memory rather than disk. Those are the
- * remaining paths a solve's commands can fill. The worker itself, host code under an allow-default
- * wall, writes outside the root as well.
+ * remaining paths a solve's commands can fill. The host process that runs the loop writes outside
+ * the root as well.
  */
 import { mkdirSync, rmSync, statSync } from "../meta/filesystem.ts";
 import { dirname, resolve } from "../meta/path.ts";
@@ -77,8 +74,8 @@ async function hdiutil(args: readonly string[]): Promise<string | null> {
 
 /**
  * Create the cap's root and, on Darwin, mount a volume of `cap.bytes` there. Returns the release,
- * which the caller runs once the solve's worker has exited. On Linux the root is only created: a
- * solve's worker launch applies the cap, and a Builder session's commands run uncapped (above).
+ * which the caller runs once the solve or session that holds the root has ended. On Linux the root
+ * is only created, and the commands of a solve or a session run uncapped (above).
  */
 export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
   const root = resolve(cap.root);

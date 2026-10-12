@@ -1,7 +1,5 @@
 /** Darwin's mechanism for the command wall: whether `sandbox-exec` can wall a command here, and
- *  the wrapper's digest, which a seat's policy hash carries (`solve-sandbox.ts`). Until 11 October
- *  this file also built the verifier's own deny-default wall and attested its inputs before and
- *  after each check; a check now runs under the command wall (`docs/simplify.md`, W6). */
+ *  the wrapper's digest, which a seat's policy hash carries (`solve-sandbox.ts`). */
 import { realpathSync, statSync } from "../meta/filesystem.ts";
 import type { RuntimePlatform } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";

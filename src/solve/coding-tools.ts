@@ -21,9 +21,9 @@
  * - Every tool runs one call at a time: a command's end ends whatever still works on the solve's
  *   volume (`command.ts`), so two at once would end each other.
  *
- * Until 2026-10-09 a solver had `bash` alone, with v1's built-bash description, and wrote its files
- * through the shell: in the Starter solves of six campaigns the commands that wrote a file by
- * heredoc held most of what a solver typed (`docs/transfer.md`).
+ * The file tools are there because a solver with `bash` alone wrote its files through the shell:
+ * in the Starter solves of six campaigns the commands that wrote a file by heredoc held most of what
+ * a solver typed (`docs/transfer.md`).
  */
 import { type TSchema, Type } from "typebox";
 import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
@@ -67,8 +67,8 @@ const LONG_OUTPUT = ".shell-output";
 type ShellLimits = CommandWall["limits"];
 
 /**
- * The coding tools a harness's presets select, in pi's order. `shell` is what a harness kept
- * before 2026-10-09 asked for, and means what it meant: bash alone. Any other name is refused, here
+ * The coding tools a harness's presets select, in pi's order. `shell` is what an older kept harness
+ * asks for, and means what it meant: bash alone. Any other name is refused, here
  * for a solve and at the Builder's freeze before a practice solve is spent on the answer.
  */
 export function selectedCodingTools(presets: readonly string[]): CodingTool[] {
@@ -212,9 +212,9 @@ function timeoutClause(
  * returns every file's path as pi's notice names it beside the path the solver can read it at.
  *
  * pi writes a long output whole to a file, from the host's own process, and names the file in its
- * notice. Until 2026-10-09 that file was written straight into the home, under `.shell-output`. A
- * command can make that name a link, and the host's write then followed it to wherever the link
- * led: a file of a solver's choosing, outside every wall. So pi writes under the seat's `kept`,
+ * notice. Written straight into the home, under `.shell-output`, it would follow a link a command
+ * had made of that name to wherever the link led: a file of a solver's choosing, outside every
+ * wall. So pi writes under the seat's `kept`,
  * which is on the capped volume and which no command can write, and a command of its own copies
  * the file into the home, where the wall decides what a link may reach.
  */

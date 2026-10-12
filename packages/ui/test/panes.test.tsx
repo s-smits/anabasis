@@ -331,6 +331,8 @@ test("the inspector renders a diff per file with each line signed, a file under 
   expect(html).toContain('aria-label="add">+</td>');
   expect(html).toContain('aria-label="remove">−</td>');
   expect(html).toContain(">changed</span>");
+  const cut = { ...diff, files: [{ path: "agent/lines.txt", change: "changed", diff: null } as const] };
+  expect(renderToStaticMarkup(<DiffView diff={cut} />)).toContain('<span class="ana-num">not diffed</span>');
   const event = renderToStaticMarkup(
     <Inspector navigation={navigationAt("?pane=log&event=3")} reading={reading} />,
   );

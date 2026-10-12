@@ -599,6 +599,26 @@ describe("what the server cannot read", () => {
     ]);
   });
 
+  test("lists a file whose diff runs past the server's bound with no diff and an issue, and diffs the files beside it", async () => {
+    const { root, dir } = copy();
+    const { a, b } = fixture.harnesses;
+    // Two texts that share no line: about 11 seconds of the diff's work on the review's host.
+    writeFileSync(join(dir, "states", a, "agent", "lines.txt"), "a\n".repeat(8000));
+    writeFileSync(join(dir, "states", b, "agent", "lines.txt"), "b\n".repeat(8000));
+    writeFileSync(join(dir, "states", a, "agent", "notes.md"), "first\n");
+    writeFileSync(join(dir, "states", b, "agent", "notes.md"), "second\n");
+    const key = `${root.split("/").at(-1) ?? ""}/${fixture.name}`;
+    const { answer } = await ask("harness-diff", { key, a, b }, "default", root);
+    expect(answer.files.map(({ path, diff }) => [path, diff === null ? null : diff.includes("@@")])).toEqual([
+      ["agent/BUILT_AGENTS.md", true],
+      ["agent/lines.txt", null],
+      ["agent/notes.md", true],
+    ]);
+    expect(answer.issues.map(({ level, source }) => [level, source])).toEqual([
+      ["warning", "agent/lines.txt"],
+    ]);
+  });
+
   test("refuses a harness whose agent folder is a link, to the exam side's copy beside it or to its own folder", async () => {
     for (const target of ["correctness-model", ".."]) {
       const { root, dir } = copy();

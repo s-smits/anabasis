@@ -13,6 +13,12 @@
  * under that folder, as v1's read boundary held its paths (`safeRunPath`, v1
  * `packages/ui/src/server/files.ts`); a listing follows no link that leaves it. A file is read up
  * to `FILE_BYTES`. A refused or missing path is an issue the answer carries.
+ *
+ * A diff is bounded in time as well as in bytes (`FILE_DIFF_MS`, `DIFF_MS`): its work grows with
+ * how far apart two texts are and not with their size alone, and it runs on the thread that
+ * answers every request. Two files of 8,000 one-character lines that share none took about 11
+ * seconds in one call, well inside `FILE_BYTES` (the stack review of 12 October, finding 4). A file
+ * the bound cuts is listed with no diff, and an issue names it.
  */
 import { createTwoFilesPatch } from "diff";
 import {
@@ -60,6 +66,10 @@ const FILE_BYTES = 512 * 1024;
 /** How deep and how many files a listing walks, so that a harness folder cannot hold the server. */
 const DEPTH = 12;
 const MOST_FILES = 400;
+/** The most one file's diff may take, and the most one answer's diffs may take together: the
+ *  library gives up past its `timeout` (`createTwoFilesPatch`). */
+const FILE_DIFF_MS = 500;
+const DIFF_MS = 2_000;
 const SEGMENT = /^[A-Za-z0-9._-]+$/u;
 
 function contentOf(path: string): FileContent {
@@ -239,13 +249,26 @@ export function harnessDiffAnswer(reading: Reading, query: Query<"harness-diff">
   };
   const [a, b] = [listed(query.a), listed(query.b)];
   const paths = [...new Set([...a.keys(), ...b.keys()])].toSorted();
+  const deadline = Date.now() + DIFF_MS;
   const files = paths.flatMap((path) => {
     const [left, right] = [a.get(path), b.get(path)];
     const [before, after] = [diffText(left), diffText(right)];
     if (before === after) return [];
     const kept = right === undefined ? "removed" : "changed";
     const change = left === undefined ? "added" : kept;
-    return [{ path, change, diff: createTwoFilesPatch(`a/${path}`, `b/${path}`, before, after) } as const];
+    const timeout = Math.min(FILE_DIFF_MS, deadline - Date.now());
+    const diff =
+      timeout > 0
+        ? createTwoFilesPatch(`a/${path}`, `b/${path}`, before, after, undefined, undefined, { timeout })
+        : undefined;
+    if (diff === undefined) {
+      issues.push({
+        level: "warning",
+        source: path,
+        message: `not diffed: a file's diff may take ${String(FILE_DIFF_MS)} ms and an answer's diffs ${String(DIFF_MS)} ms together, and this one did not finish within what was left`,
+      });
+    }
+    return [{ path, change, diff: diff ?? null } as const];
   });
   return { tier: reading.tier, issues, files };
 }

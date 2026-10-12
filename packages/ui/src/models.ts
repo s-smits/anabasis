@@ -577,7 +577,9 @@ export interface HarnessDiff extends Answer {
   readonly files: readonly {
     readonly path: string;
     readonly change: "added" | "removed" | "changed";
-    readonly diff: string;
+    /** The unified diff, or null where it would have taken longer than the server allows; an
+     *  issue names the file. */
+    readonly diff: string | null;
   }[];
 }
 

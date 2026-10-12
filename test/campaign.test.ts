@@ -183,6 +183,9 @@ describe("a campaign", () => {
     // The log, the staged check program and the states are inside the repository, which every wall denies.
     expect(campaign.log.startsWith(join(REPO, ".ana", "d2", NAME))).toBe(true);
     expect(read(campaign.log)).toEqual([]);
+    // Where a Node program of a kept tree ends its walk for its module type, short of the
+    // checkout's manifest (`commandReadAllows`, `test/solve-sandbox.test.ts`).
+    expect(readFileSync(join(dirname(campaign.log), "package.json"), "utf8")).toBe("{}\n");
 
     // One task as an Examiner session leaves it: its instance whole in its proposal, its gate passed.
     const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 40 }, hidden: { seed: 1 } };

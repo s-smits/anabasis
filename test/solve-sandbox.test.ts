@@ -199,6 +199,31 @@ describe("the solve isolation's policy", () => {
     });
   }, 60_000);
 
+  // esp32 (12 October): Node, deciding a `.js` program's module type, walked up from a kept tree to
+  // the checkout's package.json, and the wall's refusal of it ended every program of the tree.
+  it("runs a program of a kept tool tree with no manifest of its own, and keeps the checkout's closed", async () => {
+    const repoRoot = workRepo();
+    writeFileSync(join(repoRoot, "package.json"), '{ "type": "module" }\n');
+    const campaign = join(repoRoot, ".ana", "d2", "c");
+    const tree = join(campaign, "states", "tree-abc");
+    mkdirSync(join(tree, "bin"), { recursive: true });
+    // The empty manifest a campaign's folder holds (`openCampaign`).
+    writeFileSync(join(campaign, "package.json"), "{}\n");
+    writeFileSync(join(tree, "bin", "list.js"), 'console.log(require("node:path").basename("/a/ran"));\n');
+    await inSeat(repoRoot, [], async (wall) => {
+      let output = "";
+      const command = `node ${join(tree, "bin", "list.js")} 2>&1; cat ${join(repoRoot, "package.json")} 2>&1`;
+      await runWalled({ ...wall, toolTree: tree }, command, {
+        onData: (data) => {
+          output += data.toString("utf8");
+        },
+      });
+      expect(output).toStartWith("ran\n");
+      expect(output).toContain("Operation not permitted");
+      expect(output).not.toContain("module");
+    });
+  }, 60_000);
+
   it("starts a command under a policy that names a worktree removed since it was made", async () => {
     // The other worktrees are read once when a campaign opens. On 10 October two were removed
     // while a simulated campaign ran, and from the next policy on every solve ended

@@ -34,6 +34,7 @@ import type { EnvValues } from "../backends/scrub-env.ts";
 import { covers, moveBlockingRules, sbRule } from "./seatbelt-path-guard.ts";
 import type { SolveIsolationPolicy } from "./solve-sandbox.ts";
 import {
+  ancestorDirectories,
   canonicalForms,
   canonicalRoots,
   darwinToolchainInstallRoots,
@@ -194,12 +195,21 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
  * `harness/.toolchain` to the repository, another worktree, a pack or the operator's home read
  * that root through the wall. A tree outside the seat's root is the host's or a pack's, a kept
  * state's link to the tree beside it or a stored bundle's, and is reopened with what it links to.
+ *
+ * `manifests` are the package.json paths between the tree and the root that closes it, which
+ * Darwin reopens one by one: Node takes a `.js` program's module type from the nearest one above
+ * it, and a refused read of one ends the program at startup. On esp32 (12 October) every program of
+ * a kept tree with none of its own died so in 6 of 6 practice solves, on the checkout's. That one
+ * stays closed: opened, its `"type": "module"` would make the same program an ES module, which it
+ * was not on the Builder's bench outside the checkout. A campaign's folder holds an empty one
+ * (`openCampaign`), so the walk ends there as it ends on the bench with none. Linux needs none: its
+ * overmount leaves every one of them absent.
  */
 function commandReadAllows(
   base: SolveIsolationPolicy,
   readDenies: readonly string[],
   dirs: Pick<CommandDirectories, "root" | "toolTree">,
-): string[] {
+) {
   const covered = canonicalRoots([
     ...base.allowedReadRoots,
     ...nodeRuntimeReadRoots(),
@@ -214,7 +224,12 @@ function commandReadAllows(
   const seated = tree !== null && canonicalForms(dirs.root).some((root) => containsPath(tree, root));
   const escapes = seated && !containsPath(realpathSync(tree), realpathSync(dirs.root));
   const own = tree === null || escapes ? [] : canonicalForms(tree);
-  return [...new Set([...covered, ...own])].sort();
+  const inside = (dir: string) => readDenies.some((root) => dir !== root && covers(root, dir));
+  const manifests = own.flatMap((path) => ancestorDirectories(path).filter(inside));
+  return {
+    roots: [...new Set([...covered, ...own])].sort(),
+    manifests: [...new Set(manifests)].sort().map((dir) => join(dir, "package.json")),
+  };
 }
 
 function darwinCommandProfile(
@@ -229,7 +244,7 @@ function darwinCommandProfile(
   // here and this seat's root is re-allowed after them.
   const closed = hostRoots();
   const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].sort();
-  const readAllows = commandReadAllows(base, readDenies, dirs);
+  const { roots: readAllows, manifests } = commandReadAllows(base, readDenies, dirs);
   // The shared temporary directory a toolchain writes without asking: the confstr one clang uses,
   // as Apple's python3 shim does for a command that names it by its path. `/tmp` is no longer
   // granted. `mktemp` and Python follow `TMPDIR`, which is the seat's own folder, and what a
@@ -277,6 +292,7 @@ function darwinCommandProfile(
     // prints the file while `ls` of its directory and the shell's PATH search over it answer
     // "Operation not permitted". Naming both operations in the allow puts this rule back in charge.
     ...sbRule("allow file-read* file-read-metadata", "subpath", readAllows),
+    ...sbRule("allow file-read* file-read-metadata", "literal", manifests),
     // The parent of every seat's root and the host's own scratch, closed for the same three
     // operations the temporary grant above opened. `file-read-metadata` is named outright for the
     // same specificity reason: without it, one seat's `stat` of another seat's file reports its size
@@ -338,7 +354,7 @@ export function commandIsolationPolicy(
   return {
     ...shared,
     profile: null,
-    readAllowRoots: commandReadAllows(base, readDenies, dirs),
+    readAllowRoots: commandReadAllows(base, readDenies, dirs).roots,
     readDenies,
   };
 }

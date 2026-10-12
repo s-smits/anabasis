@@ -212,7 +212,9 @@ describe("the whole-run investigation's reader", () => {
   });
 
   it("starts the instrument lanes on an authored check and a rejection ruled a check defect", () => {
-    expect(detail("INSTRUMENT AUTHORED")).toBe("1 of 1 checks decide by their author's own computation");
+    expect(detail("INSTRUMENT AUTHORED")).toBe(
+      "1 of 1 checks declare their author's computation as their evidence, which says nothing of the tools they run",
+    );
     expect(detail("CHECK DEFECT RULED")).toBe("1 of 3; by check: check-a 1");
     expect(detail("REFUSED UNREAD")).toBe("2 of 3 refused answers no reviewer ruled on");
   });

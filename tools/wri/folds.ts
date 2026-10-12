@@ -124,6 +124,7 @@ export const SMALL_WALL_SHARE = 0.05;
 const DEFECT = "check-defect";
 export const TEST = "test";
 export const BUILD_END = "build.finished";
+export const EXAM_START = "exam.started";
 export const EXAM_END = "exam.finished";
 export const REPORTED = "comparison.reported";
 
@@ -368,7 +369,7 @@ const ROLE_EVENTS = {
   builder: ["build.started", BUILD_END, "build.turn"],
   // A drafting session is the Examiner's, as the host's budget counts it: esp32's d-1 billed $1.57
   // that read as no role's on 12 October.
-  examiner: ["exam.started", EXAM_END, "exam.turn", "draft.started", "draft.finished", "draft.turn"],
+  examiner: [EXAM_START, EXAM_END, "exam.turn", "draft.started", "draft.finished", "draft.turn"],
   referee: ["referee.finding"],
   // A seat until 11 October (`docs/simplify.md`, E1): a log of before holds what it billed.
   diagnoser: ["diagnosis.recorded"],
@@ -604,14 +605,18 @@ export function taskTriggers(log: Index): Trigger[] {
   const done = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
   const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE);
   const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;
-  // What became of each Examiner session's held-out tasks, by the one outcome its author hears.
+  // Each Examiner session's held-out tasks by the log's end, and the reports its opening came after.
   const bySession = Map.groupBy(proposed, (data) => text(data.session));
   const heard = [...bySession].flatMap(([session, tasks]) => {
     const said = countBy(
       tasks.filter((data) => log.held.includes(text(data.version))),
       (data) => outcomes.get(text(data.version)) ?? "not compared",
     );
-    return Object.keys(said).length === 0 ? [] : [`${session}: ${tally(said)}`];
+    const opened = log.events.findIndex(({ kind, data }) => kind === EXAM_START && data.session === session);
+    const before = log.events.slice(0, opened).filter(({ kind }) => kind === REPORTED).length;
+    return Object.keys(said).length === 0
+      ? []
+      : [`${session}, opened after ${plural(before, "report")}: ${tally(said)}`];
   });
   return [
     ...(proposed.length > 0 && passed * 2 < proposed.length

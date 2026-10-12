@@ -55,7 +55,7 @@ import { writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
-import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
+import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
@@ -63,13 +63,13 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
-import type { CommandWall, Walled } from "../solve/command.ts";
+import type { CommandWall } from "../solve/command.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import { openingOf } from "../builder/opening.ts";
 import { type CheckRow, firstMessage, NUDGE, SYSTEM_PROMPT } from "./prompt.ts";
 import { heard } from "./record.ts";
-import { examinerShell, inExaminerWall } from "./shell.ts";
+import { examinerShell, inExaminerWall, type Seat } from "./shell.ts";
 
 interface ExamLimits {
   readonly wallSeconds: number;
@@ -109,6 +109,10 @@ export interface ExamRequest {
   /** The Examiner's shell, where the session has one: `bash`, `read` and `write` in a walled home
    *  of its own. Absent, the Examiner computes nothing (`examineWalled` gives one). */
   readonly shell?: CommandWall | undefined;
+  /** The engines that shell runs by name, as the host installed them from the campaign's verifier
+   *  tree (`inExaminerWall`): the session's start logs each by its name and digest. None where the
+   *  session has no shell or its checks name none. */
+  readonly pinned?: readonly Engine[] | undefined;
   /** Where the campaign keeps an Examiner's home between sessions: the folder the last session's
    *  home was copied to whole, and the next session's home is seeded from. Absent, nothing is
    *  carried, as a test may want. */
@@ -419,6 +423,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     limits: { ...limits },
     checks: request.checks.map(({ id }) => id),
     examples: request.examples.map(({ taskId }) => taskId),
+    engines: (request.pinned ?? []).map(({ name, sha256 }) => ({ name, sha256 })),
   });
   const tools = await toolsOf(desk);
   const wall = new AbortController();
@@ -507,16 +512,17 @@ export async function examine(request: ExamRequest): Promise<Examined> {
 }
 
 /**
- * One Examiner session with a shell under the solver's command wall and disk cap (`shell.ts`).
+ * One Examiner session with a shell under the solver's command wall and disk cap (`shell.ts`), and
+ * the engines its campaign's checks run where the request names them (`engines`).
  * Until 10 October an Examiner could run nothing, and its notes said that a task's feasibility
  * rested on hand estimates; with a shell it computes an instance, and with `try_answer` it knows
  * the instance has a valid answer before it proposes it.
  */
-export function examineWalled(request: Omit<ExamRequest, "shell"> & Walled): Promise<Examined> {
-  return inExaminerWall(request, async (shell) => {
+export function examineWalled(request: Omit<ExamRequest, "shell" | "pinned"> & Seat): Promise<Examined> {
+  return inExaminerWall(request, async (shell, pinned) => {
     if (request.keep !== undefined) seedHome(shell.dirs.home, request.keep);
     try {
-      return await examine({ ...request, shell });
+      return await examine({ ...request, shell, pinned });
     } finally {
       if (request.keep !== undefined) keepHome(shell.dirs.home, request.keep);
     }

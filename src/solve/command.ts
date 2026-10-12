@@ -80,6 +80,9 @@ export interface Walled {
   /** The stored pack's root and bundle, which hold the exam's hidden values; none where the
    *  campaign opened from a prompt, whose exam lies in the repository. */
   readonly packRoots?: readonly string[] | undefined;
+  /** What the wall opens again for reading inside what it closes: the verifier's tool tree an
+   *  Examiner's engines run from (`src/examiner/shell.ts`); none for any other seat. */
+  readonly readAllowRoots?: readonly string[] | undefined;
   readonly diskBytes: number;
 }
 
@@ -203,7 +206,12 @@ export function makeSeatDirs(dirs: SolveDirs): void {
 export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   makeSeatDirs(dirs);
   const otherTrees = wall.otherTrees ?? [];
-  const base = solveIsolationPolicy({ repoRoot: wall.repoRoot, otherTrees, packRoots: wall.packRoots ?? [] });
+  const base = solveIsolationPolicy({
+    repoRoot: wall.repoRoot,
+    otherTrees,
+    packRoots: wall.packRoots ?? [],
+    readAllowRoots: wall.readAllowRoots ?? [],
+  });
   if ("unsupported" in base) throw new Error(`this host cannot wall ${who}: ${base.unsupported}`);
   const probe =
     PROBED.get(base.policyHash) ??

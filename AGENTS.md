@@ -501,9 +501,11 @@ Under `--attended` it runs only once every fault of its checks is admitted, and 
 read twice without promoting it, waiting there for `promote.ts`.
 
 The skill `launch-run` says how it is started: niced, in a process group of its own, with its
-output in two files and the key in Bun's own `--env-file`. A move that solves waits for the
-host: a Builder session and a comparison start once the one-minute load is at or under the
-cores, and the command says once that it waits; `--loaded` starts them all the same. Each run of
+output in two files and the key in Bun's own `--env-file`. Each solve waits for the host: a
+solve of a Builder session or a comparison starts once the one-minute load is at or under the
+cores, says so as it waits, and the wait is on record (`campaign.waited`, `tools/d2/host.ts`);
+`--loaded` starts them all the same. Until 12 October the wait was at a move's start, and a
+comparison of hours ran on whatever load came after it. Each run of
 the command keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`):
 its flags, the commit, whether the tree was dirty, and the load it started under, since the log
 holds the host's code by content and no commit.

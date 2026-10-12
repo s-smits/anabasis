@@ -53,6 +53,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, type JsonValue } from "#src/meta/json-shape.ts";
@@ -334,6 +335,9 @@ function reviewersOf(
 export async function openCampaign(args: CampaignArgs) {
   const dir = join(REPO, ".ana", "d2", args.name);
   mkdirSync(dir, { recursive: true });
+  // Where a Node program of a kept tool tree ends its walk for its module type, short of the
+  // checkout's manifest, which the solver's wall keeps closed (`commandReadAllows`).
+  writeFileSync(join(dir, "package.json"), "{}\n");
   const log = join(dir, LOG_FILE);
   const { bundle, checks, format, solver } = packOpened(dir, log, args);
   const { brief, tasks } = readPack(bundle);

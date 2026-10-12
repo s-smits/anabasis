@@ -322,7 +322,7 @@ After F4 has passed and Steps 1 and 2 are done.
 | Row | What is wrong | Fix | Done when | Level |
 | --- | --- | --- | --- | --- |
 | F26 | Nothing chooses the next move. The source names the moves that may start (PR #92), and a session picks one by the skill's walk, with the operator | Move 7 of the process in code: one function takes the campaign's reading and returns one move, by the decision table. One command runs it, at first when the operator confirms | A rehearsed campaign runs from set-up to an ending on that command alone, and the move it names is the decision table's | Proved without a model |
-| F27 | A session deletes its transcript, so a campaign has no single conversation | One process keeps the Builder's session between moves, as v1's `BuilderConversation` did. It resumes only while the system prompt, the tools and the backend are unchanged, and a throw or a restart opens a fresh session on the notes | A live checkpoint of three sessions runs in one conversation, with a compaction logged and the facts intact | Planned |
+| F27 | A session deletes its transcript, so a campaign has no single conversation | The Builder is the main Harness Builder agent. One live session calls the Examiner, releases practice tasks, compares a frozen snapshot and requests an eligible promotion; the old move table supplies prompt advice. Where the table names more than the action the tool does what it names: a repeat reads the harness its first reading froze, the control runs while `harness/` is the reference, a promotion names the harness the rule names, and an unchanged pair is not drawn twice. A conversation that ends at its limits is followed by another on the notes, to a typed ending; a restart uses notes as before | Scripted nested calls keep one conversation and workspace, refresh public tasks and the reference, and preserve the wall and hard limits; a scripted Builder that edits between a step and its repeat still has the step read twice and promoted; two scripted campaigns of equal tallies that differ in which task was won tell the Builder the same. A matched live ablation remains | Proved without a model |
 | F28 | Three rules of the process have no owner: the budget set from the first comparison, the repeat on fresh solves, and the reading at the full limit before a promotion | They become rules of move 7 | A promotion is refused without the repeat and the full-limit reading, and the second comparison of a campaign runs at the budget the rule set | Proved without a model |
 | F29 | Three moves wait for a person: the freeze, the promotion and going on past the stop rule | The freeze and the promotion are made without waiting, the main mode since the operator's word of 12 October, and `--attended` is the veto for one campaign, kept in its opening so a reopen without the flag still waits, until `--no-attended` gives it back (`opening.attended`, `src/builder/opening.ts`); going on past the stop rule still takes `--past-stop` | A campaign runs unattended to a typed ending | Proved without a model |
 | F49 | A campaign has no total budget. A cap is typed for each move, and nothing sums them | The total is recorded when the campaign opens, and each move's cap is taken from what is left | A move that would pass the total is refused, and the budget's end is an ending | Proved without a model |
@@ -507,7 +507,7 @@ Three rules keep steering from undoing the measurement. A word is read at a move
 
 Autonomy has a price, and it falls on trust in the exam. Today three moves wait for a person: the freeze, the promotion and going on past the stop rule. With defaults they no longer do. The freeze then rests on readings without a model and the Judge on no hand label, and most failed tasks in v1 came from faulty checks. Labels therefore stay the one place where a person adds trust that no agent can, and a campaign that runs without them says so in every claim.
 
-One limit holds throughout. The Harness Builder may read every step, and what it passes to the inner Builder stays what the host builds today: practice tasks, practice results and tallies with no task named. An overarching agent that knew which held-out tasks were lost, and wrote freely to the agent that edits the harness, would be v1's fault by another route. v1's Builder saw and wrote everything, and it passed 75 of 75 of its own tasks and 2 of 23 of a shared set.
+One limit holds throughout. Since the operator's correction on 12 October, the Harness Builder and Builder are one agent. It reads practice tasks, practice results, campaign counts and comparison tallies with no held-out task named. Campaign tools return filtered results; an Examiner reply, a checker or a comparison trace never enters its conversation. v1's Builder saw and wrote everything, and it passed 75 of 75 of its own tasks and 2 of 23 of a shared set.
 
 Four lessons are taken from v1:
 
@@ -662,6 +662,30 @@ The goal is one comparison at full size and at the fixed budget, between the Bui
 
 ### Phase 5: checkpoint comparison
 
+*Amended on 12 October, by the operator's word.* The Harness Builder is the Builder itself, with
+campaign tools, rather than a separate controller or coordinating agent. After exam preparation,
+one live conversation edits the harness and calls the Examiner, practice release, comparison and
+promotion. The existing move table supplies optional prompt advice; admissions, spending limits,
+operator stops and the scoring rule remain code. A comparison freezes a version and logs
+`build.checkpoint` without ending that conversation. A restart still opens on notes. The older
+session-resume proposal below is superseded within one command invocation, not proved across a
+process restart.
+
+**Ablation still to run.** Compare one tree with the campaign's term on and off (`--builder-led`,
+`--no-builder-led`), from separate campaign names. Start both from the same frozen exam and initial task pack; the
+same prompt alone would allow different checks. Use the same solver, models, solve limits,
+checker, task target, promotion rule and total dollar cap. Repeat in both orders to reduce host
+and provider timing effects. Keep `--sessions` fixed in the host-run baseline; where the
+Builder leads it is advice only. Set and record Builder time, turn and practice limits large enough
+that the same total dollar cap binds both variants; the Builder-led session includes time inside tools.
+If a session limit binds first, report that difference rather than attributing it to agent choice.
+Compare promotions, held-out wins/losses/ties, valid-answer share,
+dollars and time to each promotion, wasted or repeated actions, and premature endings. After both
+final harnesses are frozen, have an independent Examiner write one common held-out task set under
+that same exam, without either harness. Import both harnesses into one evaluation campaign and
+compare them on that set through the existing comparison command. This tests the combined change
+of continuity and agent choice; it cannot say which of those caused an effect. A paid run needs its own launch instruction and budget.
+
 The goal is to detect a large improvement cheaply, by comparing once after several Builder sessions instead of after each one.
 
 **Split on 9 October, and the cheap half is built** (PRs #73, #74). The list of failed practice solves, the notes, the tally of each comparison and the budget share of a practice solve were brought forward, because the live runs asked for them. The single conversation and the process that holds it are the expensive part and rest on no v2 result. They are part of the Harness Builder now: its loop is the process that keeps the conversation between moves, hooked to compaction as v1's was, and it waits for the first clean round on the rewritten starter. A session without a comparison is in source since PR #87, so several sessions before one comparison no longer need several paid rounds. It has not run with a model.
@@ -709,7 +733,7 @@ The way a task is scored changes, one compute budget is set for both harnesses, 
 | Stop rule | Built as a reading: no step in 3 checkpoints is printed, and the operator stops the campaign | The same | The rule before it counted pass-rate points |
 | Dollar cap | Built: required for each comparison, with a reserve per solve | The same, agreed on 9 October | Over $220 was spent on 8 October with no task scored |
 | Earlier solves | Built: fresh solves at every comparison, in turn; a solve counts only for the comparison it names | The same | Reuse needs `src`, `vendor` and the production packages the lockfile resolves unchanged for a whole campaign, and one frozen draw of old solves would bias every later checkpoint |
-| Builder context | Built: a fresh conversation in every session, which opens with v1's notes, the list of failed practice solves, each comparison's tally and an account of a harness's files (`HARNESS.md`) | One conversation across the campaign, held by the Harness Builder and kept by compaction as in v1; the notes and the two lists stay as the fallback | v1 worked this way; a fresh session loses what earlier sessions learned and tried |
+| Builder context | Proved without a model: one conversation and workspace through campaign tool calls, with live public tasks and tallies; notes remain the restart fallback | A matched live ablation against the same tree with `--no-builder-led` | Continuity and free action choice may avoid repeated work; outcome evidence is still absent |
 | Practice traces | Built: any practice trace can be opened, and every session is given the whole list of failed practice solves, each marked open, repaired or failing again | The same | v1 hid failed traces, and a genuine fail led to a harness change once in six chances |
 | Author of the correctness model | Not built. Contract and checks are imported from v1. A session that wrote a rule with its check was taken out of the branch | The Examiner drafts the contract and writes and repairs the checks; the operator freezes and labels answers blind; the host accepts each change without a model, and a hand label stands over a ruling | 36 of 47 misses in v1 were the check's, so repairs cannot wait for a person, and a person who writes rules is coaching the evaluator |
 | Network in a solve | Not built. Open in every solve | Reopened on 9 October. Proposed: accept the open shell and read the traces, and add a registry-only proxy for every command once a trace shows a fetch from anywhere else | A harness could send a held-out task out or fetch help. Its programs run from the solver's shell, so closing the tools alone guards nothing |

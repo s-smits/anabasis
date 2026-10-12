@@ -2,7 +2,12 @@
 // shares (an id, a wall, a shell, an ending, a bill), what the two modes that put one whole thing
 // share, what a writing session's gate and tools hold, and what a task's author hears of it.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { type FauxResponseStep, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+  createAssistantMessageEventStream,
+  type FauxResponseStep,
+  fauxAssistantMessage,
+  fauxToolCall,
+} from "@earendil-works/pi-ai";
 import { draftOf } from "../src/examiner/draft.ts";
 import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
@@ -91,6 +96,39 @@ describe("a session of any mode", () => {
       // Without a wall it is given no shell, and no tool's description speaks of a home.
       expect(s.sent[0]).not.toContain('{"name":"bash"');
       expect(s.sent[0]).not.toContain("Nothing in your home enters the exam");
+    }
+  });
+
+  it("stops before another turn where its campaign's budget holds no reserve for one", async () => {
+    for (const mode of MODES) {
+      const s = seat(mode, [fauxAssistantMessage("One turn."), fauxAssistantMessage("Never asked for.")]);
+      const models = s.request.models();
+      // The faux provider bills a turn nothing, so each turn is given a cost as it ends.
+      // SAFETY: the inherited instance supplies every method; streamSimple alone is replaced.
+      const metered = Object.create(models) as typeof models;
+      metered.streamSimple = (...asked: Parameters<typeof models.streamSimple>) => {
+        const streamed = createAssistantMessageEventStream();
+        void (async () => {
+          for await (const event of models.streamSimple(...asked)) {
+            if (event.type === "done") {
+              const cost = { input: 0, output: 0.15, cacheRead: 0, cacheWrite: 0, total: 0.15 };
+              streamed.push({
+                ...event,
+                message: { ...event.message, usage: { ...event.message.usage, cost } },
+              });
+            } else streamed.push(event);
+          }
+        })().catch(() => undefined);
+        return streamed;
+      };
+      // A budget with nothing over its reserve: what the first turn bills takes it under.
+      append(s.log, "campaign.opened", { budget: { dollars: 0.1, reserve: 0.1 } });
+      expect(await examine({ ...s.request, models: () => metered })).toMatchObject({
+        ended: "stopped",
+        puts: 0,
+      });
+      expect(s.sent).toHaveLength(1);
+      expect(s.of(`${KIND[mode]}.finished`)).toMatchObject([{ ended: "stopped", crash: null, turns: 1 }]);
     }
   });
 

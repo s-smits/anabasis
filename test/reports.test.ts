@@ -24,6 +24,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { tallied } from "./helpers/tally.ts";
+const BUILD_STARTED = "build.started";
 
 const [P, F] = [true, false];
 const at = "2026-10-09T00:00:00.000Z";
@@ -184,6 +185,22 @@ describe("the stop rule", () => {
   ];
   const two = [...sessions, flat("b-1", "h2"), flat("b-2", "h3")];
 
+  it("counts a cut Builder's harness only where it was frozen at a checkpoint before the cut, and a checkpoint whatever the session leaves later", () => {
+    for (const ended of ["killed", "crashed"]) {
+      const cut = [session("b-1", "h2", { ended }), flat("g-1", "h2")];
+      expect(stopRule(cut)).toEqual(counted(0, 0));
+      expect(stopRule([event("build.checkpoint", { session: "b-1", harness: "h2" }), ...cut])).toEqual(
+        counted(1, 1),
+      );
+    }
+    const live = [
+      event(BUILD_STARTED, { session: "b-1" }),
+      event("build.checkpoint", { session: "b-1", harness: "h2" }),
+      flat("g-1", "h2"),
+    ];
+    expect(stopRule(live)).toEqual(counted(1, 1));
+    expect(stopRule([...live, session("b-1", "h3")])).toEqual(counted(1, 1));
+  });
   it("stops after as many harnesses in a row that showed no gain as the patience, counted from the last step", () => {
     expect(stopRule([])).toEqual(counted(0, 0));
     expect(stopRule(two)).toEqual(counted(2, 2));
@@ -914,7 +931,7 @@ describe("the billed dollars a cap counts", () => {
       // An earlier comparison's solve, and a practice solve of another session.
       ...paid("s-a", 4, "g-0"),
       ...paid("s-p", 1),
-      event("build.started", { session: "b-1" }),
+      event(BUILD_STARTED, { session: "b-1" }),
       // The session's practice solve and its reviewers, which name no comparison.
       ...paid("s-b", 6),
       event("referee.finding", { solve: "s-b", billed: 0.4 }),
@@ -938,8 +955,35 @@ describe("the billed dollars a cap counts", () => {
   });
 
   it("holds a session still running to what it has billed so far", () => {
-    const log = [event("build.started", { session: "b-1" }), ...paid("s-b", 6), ...paid("s-c", 2)];
+    const log = [event(BUILD_STARTED, { session: "b-1" }), ...paid("s-b", 6), ...paid("s-c", 2)];
     expect(billedFor(log, "b-1")).toBe(8);
+  });
+
+  it("counts a live Builder's turns before nested tools spend, and its final sum only once", () => {
+    const log = [
+      event(BUILD_STARTED, { session: "b-1" }),
+      event("build.turn", { session: "b-1", usage: { cost: { total: 2 } } }),
+      event("build.compacted", { session: "b-1", usages: [{ cost: { total: 1 } }] }),
+      ...paid("nested", 4, "g-1"),
+    ];
+    expect(billedFor(log, "b-1")).toBe(7);
+    expect(billedFor(log, "g-1")).toBe(4);
+    expect(billedAll(log)).toBe(7);
+    log.push(event("build.finished", { session: "b-1", billed: 3 }));
+    expect(billedFor(log, "b-1")).toBe(7);
+    expect(billedAll(log)).toBe(7);
+  });
+
+  it("remembers a live Builder's frozen checkpoint before its session finishes", () => {
+    const log = [
+      event("build.finished", { session: "b-0", harness: "before", changed: true, ended: "finished" }),
+      event(BUILD_STARTED, { session: "b-1" }),
+      event("build.checkpoint", { session: "b-1", harness: "current" }),
+    ];
+    expect(latestBuilt(log)).toBe("current");
+    expect(latestBuilt([...log, event("build.finished", { session: "b-1", ended: "crashed" })])).toBe(
+      "current",
+    );
   });
 
   it("bills a session or a solve the run was killed in by its turns, and a finished one by its sum alone", () => {
@@ -947,13 +991,13 @@ describe("the billed dollars a cap counts", () => {
       event(kind, { ...id, usage: { input: 1, output: 1, cost: { total } } });
     // t-5 (10 October): b-1 killed at its seventh turn, three solves of g-1 cut with it.
     const log = [
-      event("build.started", { session: "b-1" }),
+      event(BUILD_STARTED, { session: "b-1" }),
       turn("build.turn", { session: "b-1" }, 0.07),
       turn("build.turn", { session: "b-1" }, 0.05),
       event("solve.started", { solve: "s-k", comparison: "g-1" }),
       turn("solve.turn", { solve: "s-k" }, 0.01),
       // Finished: the sum stands, and the turns are not counted again.
-      event("build.started", { session: "b-2" }),
+      event(BUILD_STARTED, { session: "b-2" }),
       turn("build.turn", { session: "b-2" }, 0.5),
       event("build.finished", { session: "b-2", billed: 0.5 }),
       ...paid("s-b", 6),
@@ -984,7 +1028,7 @@ describe("the billed dollars a cap counts", () => {
       ...paid("s-f", 4, "g-1"),
       compacted("solve.compacted", { solve: "s-f" }, 8),
       // A Builder session of round b-1 killed after a turn and a compaction.
-      event("build.started", { session: "b-1" }),
+      event(BUILD_STARTED, { session: "b-1" }),
       event("build.turn", { session: "b-1", usage: usage(0.5) }),
       compacted("build.compacted", { session: "b-1" }, 0.25),
     ];
@@ -992,8 +1036,7 @@ describe("the billed dollars a cap counts", () => {
     expect(billedFor(log.slice(0, 3), "g-1")).toBe(3);
     expect(billedFor(log, "g-1")).toBe(7);
     expect(billedFor(log, "g-2")).toBe(0);
-    // A Builder session's own turns count under its id once its end sums them: a live session's
-    // practice cap reads its practice solves alone (`practiceLeft`).
-    expect(billedFor(log, "b-1")).toBe(0);
+    // A live Builder's own turns count before its next tool can spend on another seat.
+    expect(billedFor(log, "b-1")).toBe(0.75);
   });
 });

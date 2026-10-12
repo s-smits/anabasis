@@ -12,7 +12,14 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
-import { type Bench, endingText, HOME_TOOL_TREE, record, usedText } from "../src/builder/tools.ts";
+import {
+  type Bench,
+  endingText,
+  HOME_TOOL_TREE,
+  practiceLeft,
+  record,
+  usedText,
+} from "../src/builder/tools.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -236,6 +243,159 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     condition,
   };
 }
+
+describe("the Builder running its campaign", () => {
+  it("holds practice to the current campaign total, including other seats and budget changes", async () => {
+    const s = await setup([finish]);
+    await session(
+      {
+        ...s.request,
+        cap: { dollars: 1, reserve: 1 },
+        campaign: (bench) => {
+          append(s.request.log, "exam.finished", { session: "x-1", billed: 10 });
+          append(s.request.log, "campaign.opened", { budget: { dollars: 12, reserve: 1 } });
+          expect(practiceLeft(bench, read(s.request.log))).toBe(2);
+          append(s.request.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
+          expect(practiceLeft(bench, read(s.request.log))).toBe(0);
+          append(s.request.log, "campaign.opened", { budget: { dollars: 12, reserve: 1 } });
+          expect(practiceLeft(bench, read(s.request.log))).toBe(2);
+          return { tools: [], hook: () => "Campaign spending is refreshed." };
+        },
+      },
+      s,
+      s.walled,
+    );
+  });
+
+  it("keeps its conversation and edits across a nested Examiner call, and refreshes practice", async () => {
+    const late: PracticeTask = {
+      version: "late",
+      task: { taskId: "late-practice", family: "fixture", publicInput: { base: 11 } },
+    };
+    const s = await setup([
+      edit,
+      call("examine", {}),
+      call("read_opening", {}),
+      call("practice", { tasks: [late.task.taskId] }),
+      finish,
+    ]);
+    let opened = 0;
+    let guidance = "Advice: examine";
+    const built = await session(
+      {
+        ...s.request,
+        models: (home) => {
+          opened += 1;
+          return s.request.models(home);
+        },
+        campaign: (bench) => ({
+          hook: () => guidance,
+          tools: [
+            tool({
+              name: "examine",
+              label: "Examine",
+              description: "Run another seat and return its counts.",
+              parameters: Type.Object({}),
+              execute: async () => {
+                expect(readFileSync(join(bench.home, "harness/agent/BUILT_AGENTS.md"), "utf8")).toBe(GUIDE);
+                expect(s.of("build.turn")).toHaveLength(2);
+                append(s.request.log, "task.proposed", { version: late.version, hidden: CHECK });
+                append(s.request.log, "task.gate", { version: late.version, gate: 1, outcome: "passed" });
+                append(s.request.log, "task.state", { version: late.version, state: "released" });
+                bench.tasks = [...bench.tasks, late];
+                guidance = "Advice: compare";
+                return text("Examiner returned; practice was refreshed.");
+              },
+            }),
+          ],
+        }),
+      },
+      s,
+      s.walled,
+    );
+    expect(opened).toBe(1);
+    expect(built.ended).toBe("finished");
+    expect(s.ran).toHaveLength(1);
+    expect(s.sent[2]).toContain("Examiner returned; practice was refreshed.");
+    expect(s.sent[2]).toContain(GUIDE.trim());
+    expect(s.sent[2]).toContain("Advice: compare");
+    expect(s.sent[3]).toContain(late.task.taskId);
+    expect(s.sent.join("\n")).not.toContain(CHECK);
+    expect(s.sent.join("\n")).not.toContain(REASON);
+    expect(s.of("build.turn")).toHaveLength(5);
+  });
+
+  it("checks a host stop before another model turn, even after a file tool", async () => {
+    const s = await setup([edit, finish]);
+    let bench: Bench | undefined;
+    const built = await session(
+      {
+        ...s.request,
+        campaign: (own) => {
+          bench = own;
+          return {
+            tools: [],
+            hook: () => {
+              if (s.of(BUILD_CALL).length > 0) own.halt.abort();
+              return "The host ended the campaign.";
+            },
+          };
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(bench?.halt.signal.aborted).toBe(true);
+    expect(s.sent).toHaveLength(1);
+    expect(built.ended).toBe("stopped");
+    expect(s.of(BUILD_FINISHED)[0]?.crash).toBeNull();
+  });
+
+  it("reads its wall where a campaign action ends, and cuts an action outside one", async () => {
+    /** One session at a wall of 50 ms whose first call outlasts it: whether the call's signal was
+     *  aborted while it ran, and how the session ended. */
+    const outlasting = async (held: "within" | "outside") => {
+      const s = await setup([call("long_action", {}), finish]);
+      let cut: boolean | undefined;
+      const built = await session(
+        {
+          ...s.request,
+          limits: { ...s.request.limits, wallSeconds: 0.05 },
+          campaign: (bench) => ({
+            hook: () => "",
+            tools: [
+              tool({
+                name: "long_action",
+                label: "Long action",
+                description: "An action that outlasts the session's wall.",
+                parameters: Type.Object({}),
+                execute: async (_id, _args, signal) => {
+                  const action = async () => {
+                    // Until the wall cuts it, or well past where the wall fell.
+                    await Promise.race([
+                      Bun.sleep(250),
+                      new Promise((resolve) => signal?.addEventListener("abort", resolve, { once: true })),
+                    ]);
+                    cut = signal?.aborted === true;
+                    return text("The action ended.");
+                  };
+                  return held === "within" ? bench.within(action) : action();
+                },
+              }),
+            ],
+          }),
+        },
+        s,
+        s.walled,
+      );
+      return { cut, ended: built.ended, calls: s.of(BUILD_CALL).map(({ tool: name }) => name) };
+    };
+    // A comparison cut at the Builder's wall would lose its solves in flight and read as a failed
+    // host: the wall falls where the action ends, and the session ends there, before `finish`.
+    expect(await outlasting("within")).toEqual({ cut: false, ended: "wall", calls: ["long_action"] });
+    expect(await outlasting("outside")).toMatchObject({ cut: true, ended: "wall" });
+  });
+});
 
 describe("a Builder session", () => {
   it("practises on released tasks only, whatever it is handed", async () => {
@@ -1188,6 +1348,42 @@ describe("what a practice solve used", () => {
 });
 
 describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under the command wall", () => {
+  it("lists tools for practice tasks released after the conversation opens", async () => {
+    let source = "";
+    const s = await setup([
+      () => call(WRITE_FILE, { path: "harness/agent/tools.ts", content: source }),
+      call("release_fixture", {}),
+      call("check_harness", {}),
+      finish,
+    ]);
+    source = readFileSync(join(s.request.parent, "agent", "tools.ts"), "utf8").replace(
+      "  // SAFETY:",
+      '  if (task.taskId !== "t-2") throw new Error("wrong practice task for listing");\n  // SAFETY:',
+    );
+    await build({
+      ...s.request,
+      tasks: [],
+      campaign: (bench) => ({
+        tools: [
+          tool({
+            name: "release_fixture",
+            label: "Release fixture",
+            description: "Release a public practice task.",
+            parameters: Type.Object({}),
+            execute: async () => {
+              bench.tasks = TASKS.slice(1);
+              return text("Practice refreshed.");
+            },
+          }),
+        ],
+        hook: () => "",
+      }),
+    });
+    const checked = s.of(BUILD_CALL).find(({ tool: name }) => name === "check_harness");
+    expect(checked?.text).toContain("Tools of its own: scale_base, read_path.");
+    expect(checked?.text).not.toContain("wrong practice task for listing");
+  });
+
   it("writes its harness through the wall, checks it, and cannot read the repository", async () => {
     // The scratch stands for the repository: the wall closes it, and the log and a canary sit in it.
     let canary = "";

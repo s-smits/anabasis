@@ -56,7 +56,7 @@ type Reported = Compared & { readonly report: JsonObject; readonly reported: num
 
 /** Every comparison of a log that began, in the order they began; one whose start is on record
  *  twice stands where it last began. */
-function comparisonsOf(events: readonly LogEvent[]): Compared[] {
+export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
   const begun = new Map<string, Compared>();
   for (const [at, { kind, data }] of events.entries()) {

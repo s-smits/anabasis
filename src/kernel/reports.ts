@@ -39,6 +39,7 @@ import { taskSets } from "./task.ts";
  *  solve's), and the dollars its turns and compactions metered (`unfinished`). */
 interface Unfinished {
   readonly comparison: JsonValue | undefined;
+  readonly session: JsonValue | undefined;
   dollars: number;
 }
 
@@ -187,12 +188,15 @@ export function lastReports(events: readonly LogEvent[]): Reported[] {
  * The harness the last whole Builder session left, by its digest, or null while none has changed
  * one. It is where the next session starts unless the operator names another: after a comparison
  * without a step the Builder continues from its latest harness (`docs/plan.md`, Phase 5). A session
- * that was killed or that crashed froze half a session's work and is passed over.
+ * that was killed or that crashed is passed over, except for a checkpoint already frozen inside
+ * its live conversation: that version was kept before the interruption.
  */
 export function latestBuilt(events: readonly LogEvent[]): string | null {
   const left = events.findLast(
     ({ kind, data }) =>
-      kind === BUILD_FINISHED && data.changed === true && isString(data.harness) && !CUT.has(data.ended),
+      (kind === "build.checkpoint" ||
+        (kind === BUILD_FINISHED && data.changed === true && !CUT.has(data.ended))) &&
+      isString(data.harness),
   )?.data.harness;
   return isString(left) ? left : null;
 }
@@ -284,15 +288,16 @@ export function patienceOf(events: readonly LogEvent[]): number {
  */
 export function stopRule(events: readonly LogEvent[]) {
   const practised = practiceRan(events);
-  /** The harnesses a session changed, where each session began, and the whole sessions that left
+  /** The harnesses a whole session changed or a live one froze at a checkpoint, where each session began, and the whole sessions that left
    *  their harness as it was after a practice solve of theirs failed. */
   const built = new Set<unknown>();
   const began = new Map<unknown, number>();
   const idle: { index: number; step: boolean }[] = [];
   for (const [index, { kind, data }] of events.entries()) {
     if (kind === "build.started") began.set(data.session, index);
+    if (kind === "build.checkpoint" && isString(data.harness)) built.add(data.harness);
     if (kind !== BUILD_FINISHED) continue;
-    if (data.changed === true && isString(data.harness)) built.add(data.harness);
+    if (data.changed === true && !CUT.has(data.ended) && isString(data.harness)) built.add(data.harness);
     if (data.changed !== false || CUT.has(data.ended)) continue;
     const from = began.get(data.session) ?? -1;
     const shown = practised.some(
@@ -668,7 +673,7 @@ function lastRead({ tallied, asideAt }: TaskRecord): TalliedIn | "aside" | null 
  * spend. A solve of the comparison with no end on record, killed or still running, is counted by
  * what its turns and compactions have metered so far (`unfinished`); a solve still running is held
  * besides at a cap's reserve, which is what its sum may come to (`src/builder/round.ts`). A
- * Builder session's own turns are counted once its end sums them, as `practiceLeft` reads them.
+ * A live Builder's turns are counted as they are metered, then replaced by its final sum.
  */
 export function billedFor(events: readonly LogEvent[], id: string): number {
   const { session, comparison } = billedParts(events, id);
@@ -708,7 +713,11 @@ function unfinished(events: readonly LogEvent[]): Unfinished[] {
     const open = new Map<JsonValue | undefined, Unfinished>();
     for (const { kind, data } of events) {
       if (kind === `${of}.started` && !ended.has(data[id])) {
-        open.set(data[id], { comparison: data.comparison, dollars: 0 });
+        open.set(data[id], {
+          comparison: data.comparison,
+          session: of === "build" ? data.session : undefined,
+          dollars: 0,
+        });
       }
       const found = open.get(data[id]);
       if (found === undefined) continue;
@@ -736,8 +745,9 @@ export function billedParts(events: readonly LogEvent[], id: string) {
     if (inSession) billed.session += data.billed;
     else if (isString(data.solve) && own.has(data.solve)) billed.comparison += data.billed;
   }
-  for (const { comparison, dollars } of unfinished(events)) {
-    if (comparison === id) billed.comparison += dollars;
+  for (const { comparison, session, dollars } of unfinished(events)) {
+    if (session === id) billed.session += dollars;
+    else if (comparison === id) billed.comparison += dollars;
   }
   return billed;
 }

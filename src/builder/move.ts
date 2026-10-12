@@ -4,7 +4,15 @@
  */
 
 /** How a campaign ends, as its last event says it. */
-export type Ending = "budget" | "stop" | "exam" | "no-room" | "environment" | "operator" | "control";
+export type Ending =
+  | "budget"
+  | "stop"
+  | "exam"
+  | "no-room"
+  | "environment"
+  | "operator"
+  | "control"
+  | "finished";
 
 /** The one move a campaign's log leads to, with its reason, or its ending. */
 export type Decided =
@@ -20,13 +28,16 @@ export type Decided =
     | { readonly move: "build"; readonly why: string }
     /** A comparison of `fresh` with `reference`: `latest`, `promoted`, `starter`, or a digest. The
      *  reference against itself is the operator's `--noise` on a checkpoint, and no move of the
-     *  table. `id` names one that began and goes on. */
+     *  table. `id` names one that began and goes on. `repeats` names the reading under the trigger
+     *  this one is the repeat of: the same two harnesses, so the new one is the one that reading
+     *  froze, whatever a live Builder has changed since. */
     | {
         readonly move: "compare";
         readonly why: string;
         readonly fresh: string;
         readonly reference: string;
         readonly id?: string;
+        readonly repeats?: string;
       }
     | { readonly move: "promote"; readonly why: string; readonly harness: string }
     | {

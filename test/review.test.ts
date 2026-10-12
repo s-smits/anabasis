@@ -351,6 +351,20 @@ describe("the Referee", () => {
     expect((await referee(s.reader, fail(s))).ruling).toBe("unclear");
   });
 
+  it("logs no ruling where the provider ended the reading before it ruled, so the fail is asked again", async () => {
+    // buffer-a's g-5 (12 October): a reading the provider's session limit cut at its first turn was
+    // logged unclear, which no caller puts again, and the task it set aside stayed aside.
+    const limit = "the account's session limit is reached";
+    const s = setup([fauxAssistantMessage("", { stopReason: "error", errorMessage: limit })]);
+    failed(s.record);
+    expect((await referee(s.reader, fail(s))).ruling).toBeNull();
+    expect(read(s.log).findLast((event) => event.kind === FINDING)?.data).toMatchObject({
+      ruling: null,
+      error: limit,
+      walled: false,
+    });
+  });
+
   // Claude Code keeps its query open for a prompt after the loop ends; the session's signal is what
   // closes it, so a reader that returned with its signal live left the process running.
   it("ends the model's query once the session returns", async () => {

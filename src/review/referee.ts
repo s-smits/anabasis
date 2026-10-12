@@ -24,7 +24,11 @@
  * the shortest way to what a check objects to. A task no solve has answered validly has none.
  *
  * What a ruling does to the task, and how an `unclear` fail counts, is the caller's: this module
- * rules and logs, one `referee.finding` per fail.
+ * rules and logs, one `referee.finding` per fail. A reader whose session the provider or a kill
+ * ended before it ruled gave no answer, and its finding holds no ruling, so that it is asked again:
+ * until 12 October it was logged `unclear`, a ruling no caller puts again, and one Referee call
+ * that met the provider's session limit set aside for good a task buffer-a's g-5 needed for its
+ * step. One that read to its own wall, or stopped without a ruling, leaves the fail unclear.
  */
 import { Type } from "typebox";
 import type { Contract } from "../kernel/contract.ts";
@@ -61,7 +65,8 @@ interface RefereeCase {
 }
 
 export interface RefereeFinding {
-  readonly ruling: Ruling;
+  /** Null where the reader gave no answer. */
+  readonly ruling: Ruling | null;
   /** The check a `check-defect` names; null otherwise. */
   readonly check: string | null;
   /** The public rule an `earned` ruling says the answer breaks, and where in the answer; null on a
@@ -335,7 +340,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
         ]);
   const finding = host ??
     found.at(-1) ?? {
-      ruling: "unclear",
+      ruling: isString(meter?.error) && meter.walled === false ? null : "unclear",
       check: null,
       rule: null,
       field: null,

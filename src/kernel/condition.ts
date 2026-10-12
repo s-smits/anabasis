@@ -65,7 +65,9 @@ export interface Condition {
   readonly compaction: string;
   readonly solverTools: string;
   readonly verifierTools: string;
-  /** The digest of the sandbox's policy: what a solve may read, write, run and fill on disk. */
+  /** The digest of the sandbox a solve ran under, as the campaign names it: the isolation
+   *  profile's id, the platform and the disk cap (`tools/d2/campaign.ts`). What the profile lets a
+   *  command read and reach, the network among it, is the profile's and is not recorded apart. */
   readonly sandbox: string;
   readonly limits: Limits;
   /** The host's code a solve runs through, by content: `src` and `vendor` as the files stand. A

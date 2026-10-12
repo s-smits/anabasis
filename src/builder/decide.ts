@@ -59,7 +59,7 @@ import { plural } from "../meta/text.ts";
 import { supplyOf } from "./admission.ts";
 import { epochsOf } from "./climb.ts";
 import { type Compared, crashedRun, type Ground, groundOf, idleDrafts, pairOf, type Plan } from "./ground.ts";
-import { build, compare, type Decided, end, type Fresh, short, STEP } from "./move.ts";
+import { build, compare, type Decided, end, type Fresh, rowAt, rowed, short, STEP } from "./move.ts";
 import { pendingWords } from "./word.ts";
 
 /** The drafts of an exam the plan gives before the campaign ends on it. The other two bounds,
@@ -166,6 +166,11 @@ function written(drafts: number, wants: "tasks" | "room", examine: Decided, pati
 }
 
 /** The plan's decision table over a campaign's log: the next move, or the campaign's ending. */
+/** The move that follows from the log, with the row that chose it (`rowed`, `move.ts`). */
+export function decide(events: readonly LogEvent[], plan: Plan): Decided {
+  return rowed(table(events, plan));
+}
+
 /** The first move of a campaign that opened from a prompt and holds no exam: a draft, while the
  *  plan's three have not been put. A session that put none, as one its provider failed, counts
  *  as a session, so that a campaign does not draft against a dead provider without end. Where
@@ -206,7 +211,7 @@ function drafting(events: readonly LogEvent[]): Decided {
   };
 }
 
-export function decide(events: readonly LogEvent[], plan: Plan): Decided {
+function table(events: readonly LogEvent[], plan: Plan): Decided {
   const words = pendingWords(events);
   const stop = words.find(({ word }) => word === "stop");
   if (stop !== undefined) {
@@ -307,10 +312,16 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
   const control = controlled(ground);
   if (control !== null) return end("control", control);
   const next =
-    owedReading(ground) ?? afterPromotion(ground) ?? onStep(ground) ?? owed(ground) ?? onLatest(ground);
-  if (next.move === "compare") return riskRefused(ground, next) ?? afforded(ground, next);
+    rowAt(5, owedReading(ground)) ??
+    rowAt(6, afterPromotion(ground)) ??
+    rowAt(7, onStep(ground) ?? owed(ground)) ??
+    rowAt(8, onLatest(ground));
+  if (next.move === "compare") {
+    const paid = afforded(ground, next);
+    return rowAt(12, riskRefused(ground, next)) ?? (paid === next ? next : rowAt(12, paid));
+  }
   if (next.move !== "build") return next;
-  return toPractise(ground, supply) ?? unshown(ground) ?? next;
+  return rowAt(10, toPractise(ground, supply)) ?? rowAt(9, unshown(ground)) ?? next;
 }
 
 /**

@@ -92,7 +92,11 @@ function compared(
     }),
   ];
 }
-const move = (events: readonly LogEvent[], plan: Plan = PLAN): Decided => decide(events, plan);
+/** The decided move, without the row that chose it, which one test reads (`at`). */
+const move = (events: readonly LogEvent[], plan: Plan = PLAN): Decided => {
+  const { row: _row, ...decided } = decide(events, plan);
+  return decided;
+};
 
 describe("the exam and the tasks, before anything is built", () => {
   it("reads a checker nobody has read, and ends on one whose faults nobody froze", () => {

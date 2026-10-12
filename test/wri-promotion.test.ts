@@ -119,6 +119,8 @@ function promoted(byTable: boolean) {
     valid: { old: [2, 2, 0], fresh: [0, 1, 3] },
     budgets: [{ turns: 4, wins: 2, losses: 0, ties: 2, p: 0.5 }],
   })();
+  // The campaign's move is written as it begins, before the promotion it makes (12 October).
+  if (byTable) put("campaign.move", { move: "promote", why: "read a step twice", harness: "hn" });
   put("harness.promoted", {
     harness: "hn",
     from: "hbase",
@@ -127,7 +129,6 @@ function promoted(byTable: boolean) {
       { comparison: "g-2", against: "hbase", reading: "step" },
     ],
   });
-  if (byTable) put("campaign.move", { move: "promote", why: "read a step twice", harness: "hn" });
   return run;
 }
 
@@ -141,7 +142,7 @@ describe("lane 31: a promotion and the climb after it", () => {
   it("reads what a promotion rested on, by whose word and under which rule", () => {
     const read = triggered(promoted(true).log);
     expect(read("PROMOTED")).toEqual([
-      "hn from hbase at event 33, 0.0 h and $0 after the opening, by the table; opened with level 0.1, trigger 0.25; rests on g-1 4-0-0 p 0.063 at level 0.1, untied 4 of 4, against the reference's own 1 of 4 (1-0-3 p 1.000); g-2 4-0-0 p 0.063 at level 0.1, untied 4 of 4, against the reference's own 1 of 4 (1-0-3 p 1.000); by budget turns 4 2-0-2 p 0.500",
+      "hn from hbase at event 34, 0.0 h and $0 after the opening, by the table; opened with level 0.1, trigger 0.25; rests on g-1 4-0-0 p 0.063 at level 0.1, untied 4 of 4, against the reference's own 1 of 4 (1-0-3 p 1.000); g-2 4-0-0 p 0.063 at level 0.1, untied 4 of 4, against the reference's own 1 of 4 (1-0-3 p 1.000); by budget turns 4 2-0-2 p 0.500",
     ]);
   });
 

@@ -161,8 +161,8 @@ export function view(args: readonly string[]): void {
   const target = term("target");
   const campaign = campaignOf(events);
   const lines = viewLines(name, campaign, Date.now());
-  // A move the command is making has no `campaign.move` until it ends, so the table is read on a
-  // log that does not hold its end yet.
+  // A move the command is making is on record from its start (`campaign.move`), and the table is
+  // read on a log that does not hold its end yet.
   const open = openSteps(campaign.steps);
   const decided = decide(
     events,

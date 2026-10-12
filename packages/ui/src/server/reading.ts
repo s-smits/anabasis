@@ -16,14 +16,16 @@
  * what could not be read. So is the reason of a campaign that ended on its environment: it is the
  * error that ended it (`errorMessage`, `tools/d2/harness-builder.ts`), free text that may quote
  * whatever the failing step saw, where every other ending's reason is worded by the controller or
- * is the operator's own word.
+ * is the operator's own word. The next move is held to the same rule (`reasonSaid`): the table's
+ * environment ending quotes the last crashed session's error (`decide.ts`), and it names that
+ * ending before the campaign has logged it.
  *
  * An A/A control reads a step, for the counter, as the whole-run reader reads one: where either
  * side's test clears the level (`readsStepEitherWay`, `compare.ts`; `tools/wri/read.ts`, "REFERENCE
  * AGAINST ITSELF"), since a step either way between two samples of one harness is a false one. The
  * report's own `p` is one-sided.
  */
-import { decidedLine, type Ending } from "../../../../src/builder/move.ts";
+import { type Decided, decidedLine, type Ending } from "../../../../src/builder/move.ts";
 import { regressionOf } from "../../../../src/builder/climb.ts";
 import { openSteps } from "../../../../src/builder/handover.ts";
 import { reported } from "../../../../src/builder/comparison.ts";
@@ -60,6 +62,13 @@ const ENDINGS = [
 /** The endings whose reason the controller words itself, or the operator gives: every one but an
  *  environment's. */
 const WORDED: ReadonlySet<Ending> = new Set(["budget", "stop", "exam", "no-room", "operator"]);
+/** What the default tier is sent of an environment ending's reason in a next move, whose type
+ *  holds a reason for every move. */
+const ENVIRONMENT_WITHHELD = "withheld in the default tier: it quotes the error that ended a session";
+
+/** Whether `tier` is sent the reason of `ending`: every ending's in the exam tier, and in the
+ *  default tier those the controller words itself (`WORDED`). */
+const reasonSaid = (ending: Ending, tier: Tier): boolean => examTier(tier) || WORDED.has(ending);
 
 /** How a campaign ended, where its last event is its ending: one before the last event is an
  *  ending the campaign went on from. Read from `campaign.ended`, which no fold reads. */
@@ -107,7 +116,7 @@ export function campaignRow(
 ): CampaignRow {
   const { project, ending, ...facts } = factsIn(log);
   const status = ending === null ? "open" : "ended";
-  const said = ending !== null && (examTier(tier) || WORDED.has(ending.ending));
+  const said = ending !== null && reasonSaid(ending.ending, tier);
   return {
     key: found.key,
     name: found.name,
@@ -126,13 +135,20 @@ export function campaignRow(
 /** The table's next move as the view asks for it, or why it could not be asked. */
 const nextIn = once((log) => {
   try {
-    const decided = decidedOn(log.events);
-    const next: NextMove = { ...decided, line: decidedLine(decided) };
-    return { next, issue: null };
+    return { decided: decidedOn(log.events), issue: null };
   } catch (error) {
-    return { next: null, issue: `the decision table could not be asked: ${errorMessage(error)}` };
+    return { decided: null, issue: `the decision table could not be asked: ${errorMessage(error)}` };
   }
 });
+
+/** The next move as `tier` is sent it, its line built from the reason the tier may see. */
+function nextShown(decided: Decided, tier: Tier): NextMove {
+  const shown =
+    decided.move === "end" && !reasonSaid(decided.ending, tier)
+      ? { ...decided, why: ENVIRONMENT_WITHHELD }
+      : decided;
+  return { ...shown, line: decidedLine(shown) };
+}
 
 /** Who solves: the setting's solver (`recordedSetting`), else the opening's; and why the setting
  *  could not be read, where it could not. */
@@ -189,7 +205,7 @@ export function campaignReading(
   }: { readonly row: CampaignRow; readonly tier: Tier; readonly issues: readonly Issue[] },
 ): CampaignReading {
   const source = sourceOf(found);
-  const { next, issue } = nextIn(log);
+  const { decided, issue } = nextIn(log);
   const solver = solverIn(log);
   const opening = openingIn(log);
   const reader = overviewIn(log);
@@ -213,7 +229,7 @@ export function campaignReading(
       reviewer: opening?.seats.reviewer ?? null,
       solver: solver.solver,
     },
-    nextMove: next,
+    nextMove: decided === null ? null : nextShown(decided, tier),
     reader: {
       rows: reader.rows,
       triggers: shown,

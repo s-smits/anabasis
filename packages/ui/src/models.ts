@@ -283,7 +283,9 @@ export interface Counters {
   readonly controlSteps: number;
 }
 
-/** The table's next move (`decide`), and its line as the view prints it (`decidedLine`). */
+/** The table's next move (`decide`), and its line as the view prints it (`decidedLine`). The
+ *  default tier is sent an environment ending's reason as a campaign's row sends it, not at all:
+ *  the move carries a stand-in, and its line is built from that. */
 export type NextMove = Decided & { readonly line: string };
 
 export interface CampaignReading extends Answer {

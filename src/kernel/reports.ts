@@ -114,7 +114,8 @@ interface TaskRecord {
   keptAt: number;
   /** Whether a solve on record gave it a valid answer, under any harness and at any limits. */
   answered: boolean;
-  /** `answered`, or its proposal says the host saw its author's answer pass (11 October). */
+  /** `answered`, or its proposal says the host saw its author's answer pass (11 October), or its
+   *  gate says a reference solve under `try_task` gave a valid answer, which answers nothing. */
   feasible: boolean;
   /** Each comparison whose last report tallied it, in the order the comparisons reported. */
   readonly tallied: TalliedIn[];
@@ -487,7 +488,9 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
   for (const [index, { kind, data }] of events.entries()) {
     if (!isString(data.version)) continue;
     if (kind === "task.state" && data.state === "held") of(data.version).keptAt = index;
-    if (kind === "task.proposed" && data.feasible === true) of(data.version).feasible = true;
+    const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
+    const witnessed = (kind === "task.proposed" && data.feasible === true) || (isNumber(tried) && tried > 0);
+    if (witnessed) of(data.version).feasible = true;
   }
   const made = (comparison: string, task: string) => `${comparison} ${task}`;
   const cut = new Set<string>();
@@ -572,7 +575,8 @@ export function exhausted(events: readonly LogEvent[]): string[] {
 }
 
 /** The task versions a valid answer is on record for: a solve's, under any harness and at any
- *  limits, or the one the host saw the author's `try_answer` pass before the proposal. The one
+ *  limits, the one the host saw the author's `try_answer` pass before the proposal, or a reference
+ *  solve's under `try_task`, which its gate counts. The one
  *  fact an author may hear beside a task's outcome that names no side: a task the reference
  *  answers in no solve is then told apart from one nobody has answered (11 October). */
 export function feasibleTasks(events: readonly LogEvent[]): Set<string> {

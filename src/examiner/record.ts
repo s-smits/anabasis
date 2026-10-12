@@ -9,9 +9,10 @@
  * the last comparison that scored it, valid in every solve, in some or in none, or disputed
  * (`docs/plan.md`, Phase 2; since 11 October, `docs/simplify.md` F3: "one harness won" and "no
  * valid answer yet" told the author nothing of where the room was). Beside the outcome, one fact
- * that names no side: whether a valid answer to the task is on record at all, a solve's or the
- * author's own `try_answer` pass (`feasibleTasks`), which tells a task the reference answers in no
- * solve apart from one nobody has answered. It is a view of the log, and no store is kept for it.
+ * that names no side: whether a valid answer to the task is on record at all, a solve's, the
+ * author's own `try_answer` pass, or since 12 October a reference solve's under `try_task`
+ * (`feasibleTasks`), which tells a task the reference answers in no solve apart from one nobody
+ * has answered. It is a view of the log, and no store is kept for it.
  * Until 9 October a session was shown the pack's tasks by id and family alone, and no outcome.
  *
  * Beside the lines, since 11 October, counts by family with a total (`counts`, `standingsOf`): of

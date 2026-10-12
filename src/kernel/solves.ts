@@ -88,13 +88,24 @@ export function solvesIn(events: readonly LogEvent[]): Solve[] {
   return [...solves.values()];
 }
 
-/** The solves whose condition the log records, each with it. A condition that does not hash to its
- *  id is refused, as `conditionsOf` refuses it. A solve that opened another harness than its
- *  condition names ran under none: its runner stopped on it (`practised`), and what goes on from
- *  the log must not count it. */
+/** Every solve a log holds but those an Examiner session asked for to try a draft task
+ *  (`try_task`, `src/examiner/session.ts`), whose starts name the session where a comparison's name
+ *  the comparison. Those are the Examiner's: never scored, and no part of a task's record, its
+ *  answers, a share or a tally. */
+export function countedSolves(events: readonly LogEvent[]): Solve[] {
+  const sessions = new Set(
+    events.flatMap(({ kind, data }) => (kind === "exam.started" ? [data.session] : [])),
+  );
+  return solvesIn(events).filter(({ start }) => !sessions.has(start.comparison));
+}
+
+/** The solves whose condition the log records, each with it, but the Examiner's (`countedSolves`).
+ *  A condition that does not hash to its id is refused, as `conditionsOf` refuses it. A solve that
+ *  opened another harness than its condition names ran under none: its runner stopped on it
+ *  (`practised`), and what goes on from the log must not count it. */
 export function ranUnder(events: readonly LogEvent[]): Ran[] {
   const conditions = conditionsOf(events);
-  return solvesIn(events).flatMap((solve) => {
+  return countedSolves(events).flatMap((solve) => {
     const under = conditions.get(solve.condition);
     const opened = solve.end?.harness;
     return under === undefined || (isString(opened) && opened !== under.harness) ? [] : [{ ...solve, under }];

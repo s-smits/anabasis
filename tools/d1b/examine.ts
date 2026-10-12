@@ -6,8 +6,9 @@
  *     --examiner claude/claude-opus-5-5
  *
  * The Examiner writes task instances against the pack's contract and check program. Each is put to
- * the one gate, the shape of its package, and is a held-out task when it passes
- * (`src/examiner/session.ts`). The session is shown every task the campaign holds, the pack's own
+ * the one gate, the shape of its package, and since 12 October to the reference harness's solves:
+ * `TRIED` fresh solves of it under the campaign's setting, and it is a held-out task where some of
+ * them gave a valid answer and not all (`try_task`, `src/examiner/session.ts`). The session is shown every task the campaign holds, the pack's own
  * and the ones earlier sessions wrote, and the opening message says one outcome of each: how the
  * reference harness did on it in the last comparison that scored it, disputed, or no longer
  * scored, and whether a valid answer to it is on record, with those tasks counted by family beside
@@ -15,9 +16,14 @@
  * last session computed in, and what it said at its finish, are carried into this one, and its
  * shell runs the engines the pack's checks run (12 October).
  *
- * No solve runs, so the session takes no flag for a solver, its limits or a reviewer, and costs
- * the Examiner's own turns. Until 2026-10-09 it put each instance to a stronger solver and to the
- * measured one; the second live session spent $48.45 that way, $2.01 of it on the Examiner.
+ * The solves are the reference harness's alone, through the launcher a comparison uses, under the
+ * setting it records where the log holds none (`--solver`, `--solve-minutes` and the rest, as every
+ * command that solves takes them). Each solve's start names the session, so no comparison counts
+ * it and no Builder is shown it, and the gate's event carries what the task's solves billed. The
+ * Examiner hears how many of them were valid and nothing else of them. From 9 to 12 October no
+ * solve ran here, and a task was held out on its shape; until 9 October each instance was put to
+ * a stronger solver and to the measured one, and the second live session spent $48.45 that way,
+ * $2.01 of it on the Examiner.
  *
  * The session stops at `--tasks` held-out tasks, at `--proposals` instances put to the gate, at
  * its minutes and turns, or when the Examiner calls `finish`, which it may at any count: on
@@ -37,8 +43,18 @@ import { taskSets, taskStates } from "#src/kernel/task.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { openCampaign, packNamed, REPO, stayAwake } from "../d2/campaign.ts";
-import { recordedSetting } from "../d2/setting.ts";
+import { solverLast } from "#src/kernel/solves.ts";
+import type { TaskPackage } from "#src/kernel/task.ts";
+import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, REPO, stayAwake } from "../d2/campaign.ts";
+import { type Campaign, type Seated, solved, solvingAs } from "../d2/round.ts";
+import {
+  type AskedSetting,
+  firstRecord,
+  keepSetting,
+  recordedSetting,
+  SETTING_OPTIONS,
+  settingAsked,
+} from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 /** An Examiner session's flags and their defaults. */
@@ -55,22 +71,54 @@ const EXAMINE_OPTIONS = {
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
-  /** The wall of one solve, in minutes, as the campaign command names it from the campaign's
-   *  terms: the budget fact the Examiner is told, where no setting is on record yet. */
-  "solve-minutes": { type: "string" },
+  /** The campaign's setting, as every command that solves takes it: the solver and the limits the
+   *  reference harness's solves of a draft task run under (`try_task`), and the budget fact the
+   *  Examiner is told, where no setting is on record yet. `--tasks` is this command's own, so the
+   *  scored set is named by `--target` alone. */
+  ...SETTING_OPTIONS,
+  target: { type: "string" },
 } as const;
 
+/** The solve launcher a comparison of the campaign uses, called for an Examiner session: one fresh
+ *  solve of a draft task by the reference harness, under the campaign's setting and wall, its start
+ *  naming the session where a comparison's names the comparison (`solved`, `tools/d2/round.ts`).
+ *  The setting is held to the log's solves and recorded where none is, as a session's is. */
+async function probing(campaign: Campaign, seated: Seated, setting: AskedSetting) {
+  const unrecorded = firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log)));
+  if (unrecorded !== undefined) throw new Error(unrecorded);
+  keepSetting(campaign.log, setting);
+  const reference = await keptAs(campaign, "--reference", PROMOTED);
+  const seats = seated(campaign, { builder: undefined, reference: reference.dir });
+  return async (task: TaskPackage, session: string, kill: AbortSignal) =>
+    (await seats.solve(task, reference, kill, session)).ending;
+}
+
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
- *  with no model stands in for it to read what the command would have asked of one. */
-export async function examineCommand(args: readonly string[], session = examineWalled): Promise<void> {
+ *  with no model stands in for it to read what the command would have asked of one. `seated` solves
+ *  a draft task under `try_task`; a caller that stands in for the session seats no solver unless it
+ *  names one, so a rehearsal's script holds tasks out on their shape and pays for no solve. */
+export async function examineCommand(
+  args: readonly string[],
+  session = examineWalled,
+  seated: Seated | null = session === examineWalled ? solved : null,
+): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS });
   const { session: id, examiner } = values;
   if (id === undefined || examiner === undefined) throw new Error("name --session and --examiner");
-  const campaign = await openCampaign(packNamed(values, ", --session and --examiner"));
+  const pack = packNamed(values, ", --session and --examiner");
+  // The campaign's setting is its log's, as a comparison reads it: the reference harness's solves
+  // of a draft task run under it and record it where none is on record (`setting.ts`). `--tasks`
+  // is the held-out tasks this session is to stop at, and names no scored set.
+  const setting = settingAsked(
+    { ...values, tasks: undefined },
+    recordedSetting(read(campaignLog(pack.name))),
+  );
+  const campaign = await openCampaign({ ...pack, ...setting.named });
   // The brief's rows in the verifier's reading and in the pack's are the same rows in the same order.
   const declared = readBrief(campaign.checks).truthChecks;
   const sofar = read(campaign.log);
   const before = taskStates(sofar);
+  const probe = seated === null ? undefined : await probing(campaign, seated, setting);
   stayAwake();
   const examined = await session({
     id,
@@ -79,6 +127,7 @@ export async function examineCommand(args: readonly string[], session = examineW
     packRoots: campaign.packRoots,
     diskBytes: campaign.limits.diskBytes,
     verify: campaign.verify,
+    probe,
     // The engines the campaign's checks run, installed in the Examiner's shell from the tree the
     // verifier runs them from (`pinnedEngines`, `src/examiner/shell.ts`).
     engines: { checks: campaign.checks, tools: join(campaign.bundle, ".toolchain") },

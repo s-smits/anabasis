@@ -15,7 +15,7 @@ import { pairings } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, pairsReported } from "../kernel/reports.ts";
-import { passed, solvesIn } from "../kernel/solves.ts";
+import { countedSolves, passed } from "../kernel/solves.ts";
 import { isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { short } from "./move.ts";
@@ -102,7 +102,8 @@ export function tasksByEpoch(events: readonly LogEvent[]): string[][] {
 export function epochsOf(events: readonly LogEvent[]): Epoch[] {
   const starter = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
   const conditions = conditionsOf(events);
-  const solves = solvesIn(events);
+  // A solve an Examiner session asked for, to try a draft task, is none of a share (`countedSolves`).
+  const solves = countedSolves(events);
   const bounds = boundsOf(events);
   const byEpoch = tasksByEpoch(events);
   return bounds.map(({ index: from, harness: reference }, nth) => {

@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from "../../../src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../../../src/meta/json-runtime.ts";
-import { asRecord, isString } from "../../../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../../../src/meta/json-shape.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
 import { overview } from "../../../tools/wri/read.ts";
@@ -505,6 +505,44 @@ describe("the rulings and the endings each tier may see", () => {
     expect(exam.answer.campaigns.find(({ name }) => name === fixture.early)?.ending?.why).toBe(
       `${marker}: the step threw`,
     );
+  });
+
+  test("holds the crash an environment ending quotes out of the next move in the default tier, before the ending is logged and after", async () => {
+    const { root, dir } = copy();
+    const marker = "crash-basalt-0202";
+    const key = `${root.split("/").at(-1) ?? ""}/${fixture.name}`;
+    const event = (at: string, kind: string, data: JsonObject) => `${JSON.stringify({ at, kind, data })}\n`;
+    for (const at of ["01", "02", "03"]) {
+      appendFileSync(
+        join(dir, "log.jsonl"),
+        event(`2026-09-29T${at}:00:00.000Z`, "exam.finished", {
+          session: `e-crash-${at}`,
+          ended: "crashed",
+          crash: `${marker}: the provider refused`,
+          held: [],
+        }),
+      );
+    }
+    const open = await ask("campaign", { key }, "default", root);
+    expect(open.answer.nextMove).toMatchObject({ move: "end", ending: "environment" });
+    expect(open.text.includes(marker)).toBe(false);
+    expect(open.answer.nextMove?.line).toBe(
+      `the campaign ends (environment): ${open.answer.nextMove?.why ?? ""}`,
+    );
+    const openExam = (await ask("campaign", { key }, "exam", root)).answer.nextMove;
+    expect([openExam?.why, openExam?.line].map((said) => said?.includes(marker))).toEqual([true, true]);
+    appendFileSync(
+      join(dir, "log.jsonl"),
+      event("2026-09-29T04:00:00.000Z", "campaign.ended", {
+        ending: "environment",
+        why: `${marker}: the provider refused`,
+        move: "examine",
+      }),
+    );
+    const ended = await ask("campaign", { key }, "default", root);
+    expect(ended.answer.row.ending).toEqual({ ending: "environment" });
+    expect(ended.text.includes(marker)).toBe(false);
+    expect((await ask("campaign", { key }, "exam", root)).answer.row.ending?.why).toContain(marker);
   });
 });
 

@@ -22,10 +22,11 @@
  */
 import { epochLine, epochsOf, regressionLine, regressionOf } from "#src/builder/climb.ts";
 import { decide } from "#src/builder/decide.ts";
-import { decidedLine } from "#src/builder/move.ts";
+import { type Decided, decidedLine } from "#src/builder/move.ts";
 import { openingOf, planOf } from "#src/builder/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/builder/handover.ts";
 import { shortDigest } from "#src/builder/past.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { PRACTICE } from "../d2/prepare.ts";
@@ -40,6 +41,9 @@ const VIEW_OPTIONS = {
   practice: { type: "string" },
   "past-stop": { type: "string" },
 } as const;
+
+/** The flags of the view that bear on the table, as `parseArgs` hands them over. */
+type Asked = { readonly [Flag in keyof typeof VIEW_OPTIONS]?: string | undefined };
 
 const STANDINGS = [
   ["open", "open"],
@@ -137,34 +141,20 @@ export function viewLines(name: string, campaign: Campaign, now: number): string
   ];
 }
 
-/** `bun run runs view`. */
-export function view(args: readonly string[]): void {
-  const { values, positionals } = parseArgs({
-    args: [...args],
-    allowPositionals: true,
-    options: VIEW_OPTIONS,
-  });
-  const [name] = positionals;
-  const tree = runtimeProcess.cwd();
-  const run = runs().find((found) => found.tree === tree && found.name === name);
-  if (name === undefined || run === undefined) {
-    throw new Error(
-      `usage: bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
-    );
-  }
-  const events = logEvents(run.path);
+/**
+ * The one move the table names on `events`, asked as this view asks it: each term as a flag names
+ * it, then as the campaign's opening keeps it, then the tree's default. The Anabasis UI asks it
+ * here with no flag (`packages/ui/src/server/reading.ts`), so that the page and the view name one
+ * move on one log by construction.
+ */
+export function decidedOn(events: readonly LogEvent[], values: Asked = {}): Decided {
   const opening = openingOf(events);
   // Each term as this view is asked it, then as the opening keeps it, then the tree's default: the
   // scored tasks are the record's where it names them (`planOf`).
   const term = (flag: "level" | "trigger" | "target" | "practice", fallback?: string) =>
     values[flag] ?? opening?.terms[flag] ?? fallback;
   const target = term("target");
-  const campaign = campaignOf(events);
-  const lines = viewLines(name, campaign, Date.now());
-  // A move the command is making is on record from its start (`campaign.move`), and the table is
-  // read on a log that does not hold its end yet.
-  const open = openSteps(campaign.steps);
-  const decided = decide(
+  return decide(
     events,
     planOf(
       events,
@@ -182,6 +172,30 @@ export function view(args: readonly string[]): void {
       opening,
     ),
   );
+}
+
+/** `bun run runs view`. */
+export function view(args: readonly string[]): void {
+  const { values, positionals } = parseArgs({
+    args: [...args],
+    allowPositionals: true,
+    options: VIEW_OPTIONS,
+  });
+  const [name] = positionals;
+  const tree = runtimeProcess.cwd();
+  const run = runs().find((found) => found.tree === tree && found.name === name);
+  if (name === undefined || run === undefined) {
+    throw new Error(
+      `usage: bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]: ${name === undefined ? "name a campaign" : `this worktree holds no campaign ${name}`}`,
+    );
+  }
+  const events = logEvents(run.path);
+  const campaign = campaignOf(events);
+  const lines = viewLines(name, campaign, Date.now());
+  // A move the command is making is on record from its start (`campaign.move`), and the table is
+  // read on a log that does not hold its end yet.
+  const open = openSteps(campaign.steps);
+  const decided = decidedOn(events, values);
   const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch)}`);
   const regression = regressionOf(events);
   const beside = regression === null ? [] : [`  ${regressionLine(regression)}`];

@@ -19,6 +19,7 @@ import {
   claudeEffort,
   claudeProvider,
   REPORTED_COST,
+  reportedCost,
   SWEEP_COMPACT_WINDOW,
 } from "../src/backends/claude.ts";
 import { read as readLog } from "../src/kernel/log.ts";
@@ -344,6 +345,32 @@ describe("the Claude backend", () => {
       .streamSimple(recorded, context([opening, first, ...answered(first)]), next)
       .result();
     expect(after.errorMessage).toContain("no live Claude Code query");
+  });
+
+  // A session that ends on its own call, `finish` or `submit`, leaves the query's `result`, which
+  // alone carries Claude Code's cost, to come after its last turn. On buffer (12 October) 10.19 of
+  // 13.35 billed dollars had no figure of Claude Code's beside them for it.
+  it("takes Claude Code's cost from the result that follows a session's last call, at its close", async () => {
+    replay("parallel-tools.jsonl");
+    const context = normalizeContext({
+      systemPrompt: "You are a solver.",
+      messages: [opening],
+      tools: [read],
+    });
+    const options = solveOptions();
+    const last = await sweep.streamSimple(recorded, context, options).result();
+    expect(last.stopReason).toBe("toolUse");
+    expect(last.diagnostics ?? []).toEqual([]);
+    solve.abort();
+    expect(await reportedCost(options.sessionId, [last])).toBeCloseTo(0.0056776, 10);
+    // A turn that read its own result carries it, and no provider but Claude Code reports one.
+    replay(TEXT);
+    const other = new AbortController();
+    const own = { ...options, sessionId: `${options.sessionId}-text`, signal: other.signal };
+    const stopped = await sweep.streamSimple(recorded, context, own).result();
+    other.abort();
+    expect(await reportedCost(own.sessionId, [stopped])).toBeCloseTo(0.020421, 10);
+    expect(await reportedCost("solve-elsewhere", [])).toBeNull();
   });
 
   it("takes a nudge into the live query, as v1 did (provider.ts:525-560)", async () => {

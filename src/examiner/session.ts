@@ -49,7 +49,7 @@ import {
   type Usage,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { REPORTED_COST } from "../backends/claude.ts";
+import { reportedCost } from "../backends/claude.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
@@ -60,7 +60,7 @@ import { packageGate, type TaskPackage, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -585,9 +585,6 @@ export async function examine(request: ExamRequest): Promise<Examined> {
   };
   const ended = ENDINGS.find((reason) => by[reason]) ?? "stopped";
   const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
-  const reported = asRecord(
-    turns.flatMap((turn) => turn.diagnostics ?? []).findLast((d) => d.type === REPORTED_COST)?.details,
-  )?.totalCostUsd;
   append(log, "exam.finished", {
     session: request.id,
     ended,
@@ -599,7 +596,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     turns: turns.length,
     tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
-    reportedCost: isNumber(reported) ? reported : null,
+    reportedCost: await reportedCost(request.id, turns),
     seconds: (performance.now() - began) / 1000,
   });
   return { held: desk.held, refused: desk.refused, ended };

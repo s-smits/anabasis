@@ -23,10 +23,10 @@ import {
   type ThinkingLevel,
   toToolDeclaration,
 } from "@earendil-works/pi-ai";
-import { REPORTED_COST } from "../backends/claude.ts";
+import { reportedCost } from "../backends/claude.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { rmSync } from "../meta/filesystem.ts";
-import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
+import type { JsonObject } from "../meta/json-shape.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 
 /** Who reads, and on what. */
@@ -62,6 +62,10 @@ export async function readOnce(
   // A record tool ends the loop while Claude Code still waits on its result, and only this signal
   // ends that query: on 8 October a live Referee's Claude Code outlived its ruling by two hours.
   const [wall, done] = [new AbortController(), new AbortController()];
+  // The Claude backend keeps one live query a session id in the process. A comparison rules its
+  // rejections in parallel, and until 11 October two rulings begun in one millisecond shared an id,
+  // so the second reader's packet went into the first one's query.
+  const session = `reader-${crypto.randomUUID()}`;
   const timer = setTimeout(() => wall.abort(), (reader.wallSeconds ?? WALL_SECONDS) * 1000);
   try {
     const models = reader.models(home);
@@ -72,10 +76,7 @@ export async function readOnce(
       {
         model: reader.model,
         reasoning: reader.effort,
-        // The Claude backend keeps one live query a session id in the process. A comparison rules its
-        // rejections in parallel, and until 11 October two rulings begun in one millisecond shared an
-        // id, so the second reader's packet went into the first one's query.
-        sessionId: `reader-${crypto.randomUUID()}`,
+        sessionId: session,
         convertToLlm: (messages) => messages,
         finishTurn: ({ message }) => {
           if (message.role === "assistant") turns.push(message);
@@ -92,15 +93,12 @@ export async function readOnce(
     rmSync(home, { recursive: true, force: true });
   }
   const tokens = tokensOf(turns.map((turn) => turn.usage));
-  const reported = asRecord(
-    turns.flatMap((turn) => turn.diagnostics ?? []).findLast((d) => d.type === REPORTED_COST)?.details,
-  )?.totalCostUsd;
   return {
     model: priceKey(reader.model),
     turns: turns.length,
     walled: wall.signal.aborted,
     error: turns.at(-1)?.errorMessage ?? null,
     ...dollars(freezePrices([reader.model]), priceKey(reader.model), tokens),
-    reportedCost: isNumber(reported) ? reported : null,
+    reportedCost: await reportedCost(session, turns),
   };
 }

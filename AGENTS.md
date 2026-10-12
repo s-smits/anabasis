@@ -110,9 +110,20 @@ at 0.10 the rule promotes equal harnesses 5.8% of the time on 24 untied tasks (`
 `src/kernel/compare.ts`). Every reading prints that rate at its own margins, and a campaign's
 opening says the union bound over its patience's attempts and the campaign command refuses one
 past 10% (`openingLines`, `src/kernel/size.ts`): at 24 tasks, 0.10 and a patience of six that is
-34.8%, so such a campaign names a patience of one or a level of 0.02. The climb reads what the attempts risk together as they come: one attempt's
-rate bounded off pairs of controls read by the promotion rule, at 95% one-sided, or the level by
-design before two controls, summed over the attempts (`falsePromotion`, `src/builder/climb.ts`).
+34.8%, so such a campaign names a patience of one or a level of 0.02. The climb reads what the attempts risk together as they come, one attempt a candidate
+with the repeat it bought: one attempt's rate bounded off pairs of controls read by the promotion
+rule, at 95% one-sided and never none, or by design before two controls the rule's own rate at
+that attempt's margins, summed over the attempts (`falsePromotion`, `src/builder/climb.ts`).
+
+**Worth.** Three bars, terms of the opening the operator may set, read and printed and gating
+nothing (`worthOf`, `src/builder/climb.ts`; revised plan W). Effect: a step's valid share at least
+25 points over the reference's on the scored set, or, where the exam names an objective, the
+objective won on at least half the pairings of two valid answers with no more pairings lost than
+won on validity. Transfer: a promoted harness's valid share on at least 8 tasks written after its
+freeze, in the epoch it opens, within 15 points of its share where it was promoted. Cost: at most 3
+promotion attempts an epoch after set-up, with its Builder sessions and billed dollars beside. A
+step's report carries them, and the closing report reads a promotion that misses effect or
+transfer as `promoted below bar`.
 
 **4. Verdicts: are the labels correct?** Validity is decided by a check program nobody has
 audited against the field, and a check that rejects a right answer is label noise: in v1, 36 of

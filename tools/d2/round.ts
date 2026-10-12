@@ -69,6 +69,7 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { admitComparison, type Wanted } from "#src/builder/admission.ts";
+import { worthLine } from "#src/builder/climb.ts";
 import { marginRead, predicted, type Report } from "#src/builder/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/builder/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
@@ -435,7 +436,9 @@ export function reportLines({
   frontier,
   noise,
   turns = null,
-}: Pick<Report, "valid" | "objective" | "frontier" | "noise"> & Partial<Pick<Report, "turns">>): string[] {
+  worth = null,
+}: Pick<Report, "valid" | "objective" | "frontier" | "noise"> &
+  Partial<Pick<Report, "turns" | "worth">>): string[] {
   if (valid === null) return [];
   // The turns of a valid answer, over the tasks both harnesses answered: reported, in no test.
   const both = Object.values(turns ?? {}).flatMap(({ old, fresh }) =>
@@ -474,6 +477,7 @@ export function reportLines({
       : [
           `this comparison's A/A sets the objective's margin at ${String(noise.margin.margin)}, over ${plural(noise.margin.pairings, "pairing")} of the reference's valid answers: the next comparison reads by it`,
         ]),
+    ...(worth === null ? [] : [worthLine(worth)]),
   ];
 }
 

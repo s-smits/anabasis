@@ -34,6 +34,7 @@
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
+import { belowBar, promotionsWorth, worthLine } from "#src/builder/climb.ts";
 import { UNSETTLED } from "#src/builder/comparison.ts";
 import { campaignOf, type Handover } from "#src/builder/handover.ts";
 import { parentToolTree } from "#src/builder/tools.ts";
@@ -197,11 +198,15 @@ function promotionLines(events: readonly LogEvent[], comparisons: readonly Compa
         : [],
     ),
   );
+  const worths = promotionsWorth(events);
   return events.flatMap(({ kind, at, data }, index) => {
     if (kind !== "harness.promoted" || !isString(data.harness)) return [];
     // The first over the Starter is set-up, epoch 0, and the climb counts from it (`owedReading`).
     const nth = events.slice(0, index).filter((each) => each.kind === "harness.promoted").length;
-    const rung = nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`;
+    const worth = worths.get(data.harness);
+    // A promotion that misses the effect or the transfer bar stands, and is read as below it.
+    const below = worth === undefined ? [] : belowBar(worth);
+    const rung = `${nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`}${below.length === 0 ? "" : `, promoted below bar (${below.join(" and ")})`}`;
     const from = imported.get(data.harness);
     const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
     const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");
@@ -214,7 +219,7 @@ function promotionLines(events: readonly LogEvent[], comparisons: readonly Compa
         ? ". No comparison of it tallied a task"
         : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}`;
     return [
-      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}`,
+      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
     ];
   });
 }

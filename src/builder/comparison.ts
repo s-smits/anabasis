@@ -39,6 +39,7 @@ import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { median } from "../meta/tally.ts";
 import type { Ruling } from "../review/referee.ts";
+import { type Worth, worthOf } from "./climb.ts";
 
 /**
  * How the plan's rules read a comparison. A step is the new harness's test against the reference
@@ -144,6 +145,9 @@ export interface Report {
   readonly turns: Readonly<
     Record<string, { readonly old: number | null; readonly fresh: number | null }>
   > | null;
+  /** Where it reads a step, the three bars as the log stood (`worthOf`, the plan's W): its effect,
+   *  the reference's transfer and the epoch's cost. Reported, and gating nothing. */
+  readonly worth: Worth | null;
   /** `unsettled` in the comparison's own report until a person answers its packet (`settle.ts`),
    *  which no promotion waits for (the operator, 12 October); then what the labels settled, in
    *  the report `settleReading` writes after it: how many rejections were labelled, how many of
@@ -221,6 +225,7 @@ const REPORT_KEYS = [
   "settled",
   "objective",
   "turns",
+  "worth",
 ] as const satisfies readonly (keyof Report)[];
 const NOTHING_TO_LABEL: ToLabel = { aside: [], others: [] };
 export const DEFECT = "check-defect";
@@ -246,6 +251,7 @@ export const NOTHING = {
   settled: null,
   objective: null,
   turns: null,
+  worth: null,
 } as const;
 
 /** The log as comparison `id` is read once it has reported: up to its own first report. What comes
@@ -401,19 +407,14 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     untied: where(({ wins, losses }) => wins + losses),
     families: where(({ wins, losses, ties }) => wins + losses + ties),
   };
-  const flags = new Set(
-    solvesIn(events).flatMap((solve) => (solve.ending?.outcome === "flagged" ? [solve.id] : [])),
-  );
-  const mean = (side: "old" | "fresh") => {
-    const billed = pairs.flatMap((pair) => (pair.used?.[side] ?? []).flatMap((used) => used.billed ?? []));
-    return billed.length === 0 ? null : billed.reduce((sum, each) => sum + each, 0) / billed.length;
-  };
   /** The reference against itself on halves of its own solves (`Sides`, `halves`): of twice the
    *  solves a side where `--noise` asked for them, and of the test's own otherwise. */
   const itself = (halves: "mirrored" | "in-order") =>
     kept(
       pairsUnder({ ...sides, fresh: fixed.old, halves }, fixed.noise ? fixed.solves : fixed.solves / 2).pairs,
     );
+  const valid = validOf(pairs, fixed.solves);
+  const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(stage, fixed.level);
   return {
     scored: { ...scored(pairs), unsolved: pairs.filter(unsolved).length },
     frontier: {
@@ -424,8 +425,8 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     retained: measured ? retained : UNMEASURED,
     families,
     overlap: overlapOf(all, fixed),
-    valid: validOf(pairs, fixed.solves),
-    billed: { old: mean("old"), fresh: mean("fresh") },
+    valid,
+    billed: { old: billedMean(pairs, "old"), fresh: billedMean(pairs, "fresh") },
     // The A/A (12 October, the plan's section 4b): where `--noise` solved the reference twice as
     // often for it, or its own solves of a task are four or more and even, which halves mirrored in
     // time split two against two at least. At four a side every comparison carries one.
@@ -442,15 +443,40 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     versions: pairs.map(({ task }) => task),
     aside: live.filter((task) => open.has(task)),
     short: live.filter((task) => first.short.includes(task)),
-    flagged: pairs.flatMap(({ task, solves }) =>
-      [...(solves?.old ?? []), ...(solves?.fresh ?? [])].some((solve) => flags.has(solve)) ? [task] : [],
-    ),
+    flagged: flaggedIn(events, pairs),
     withdrawn: scorable.filter((task) => !held.has(task)),
-    reading: pairs.length === 0 ? ("not-scored" as const) : stepOf(stage, fixed.level),
+    reading,
     turns: turnsOf(events, pairs),
+    // The three bars, read where a step is (the plan's W): printed, and gating nothing.
+    worth:
+      reading === "step"
+        ? worthOf(events, {
+            id: fixed.id,
+            fresh: fixed.fresh,
+            valid,
+            pairs,
+            objective: fixed.objective !== undefined,
+          })
+        : null,
     objective:
       fixed.objective === undefined ? null : { ...fixed.objective, decided: decidedByObjective(pairs) },
   };
+}
+
+/** The mean billed dollars of a counted solve under one side of `pairs`, or null where none billed. */
+function billedMean(pairs: readonly Paired[], side: "old" | "fresh"): number | null {
+  const billed = pairs.flatMap((pair) => (pair.used?.[side] ?? []).flatMap((used) => used.billed ?? []));
+  return billed.length === 0 ? null : billed.reduce((sum, each) => sum + each, 0) / billed.length;
+}
+
+/** The tasks of `pairs` a solve of either side flagged as malformed (`submit`). */
+function flaggedIn(events: readonly LogEvent[], pairs: readonly Paired[]): string[] {
+  const flags = new Set(
+    solvesIn(events).flatMap((solve) => (solve.ending?.outcome === "flagged" ? [solve.id] : [])),
+  );
+  return pairs.flatMap(({ task, solves }) =>
+    [...(solves?.old ?? []), ...(solves?.fresh ?? [])].some((solve) => flags.has(solve)) ? [task] : [],
+  );
 }
 
 /** How often two of a harness's solves of one task disagree on validity, over every two of its

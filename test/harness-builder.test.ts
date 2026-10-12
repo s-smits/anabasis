@@ -560,6 +560,10 @@ describe("a campaign run by its log", () => {
     expect(report).toContain(
       `harness ${handed.harness.slice(0, 8)}, set-up (epoch 0), read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
     );
+    // Its worth beside it, read against the three bars and gating nothing (the plan's W).
+    expect(report).toMatch(
+      /tied 0\. Its worth, read against the bars and gating nothing: effect \+\d+ points of valid share \(bar 25\): met; transfer of \w+: .* \(bar 15 points, at least 8 tasks\): unread; cost 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
+    );
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");
     expect(report).toContain("The campaign has not ended");

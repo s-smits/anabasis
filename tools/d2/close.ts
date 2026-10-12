@@ -34,6 +34,7 @@
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
+import { UNSETTLED } from "#src/builder/comparison.ts";
 import { campaignOf, type Handover } from "#src/builder/handover.ts";
 import { parentToolTree } from "#src/builder/tools.ts";
 import { openingOf } from "#src/builder/opening.ts";
@@ -43,7 +44,7 @@ import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll, promoted } from "#src/kernel/reports.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -130,16 +131,26 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     }),
     { earned: 0, defect: 0, unclear: 0 },
   );
-  const settled = events.filter(
-    ({ kind, data }) => kind === "comparison.reported" && data.settled != null,
-  ).length;
-  // What a person read of the answers that passed, one record a comparison (`settle.ts --passes`).
-  const passes = { comparisons: 0, read: 0, of: 0, sound: 0, wrong: 0, unclear: 0 };
-  for (const { kind, data } of events) {
-    if (kind !== "pass.labelled") continue;
-    passes.comparisons += 1;
-    passes.of += isNumber(data.of) ? data.of : 0;
-    for (const label of Object.values(asRecord(data.labels) ?? {})) {
+  // Each comparison's last word on its packet (`settle.ts`): unsettled, or what settled it.
+  const packets = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "comparison.reported" ? [[data.session, data.settled] as const] : [],
+    ),
+  );
+  const settled = packets
+    .values()
+    .map((each) => asRecord(each))
+    .filter((each) => each !== null)
+    .toArray();
+  const unsettled = packets
+    .values()
+    .filter((each) => each === UNSETTLED)
+    .toArray().length;
+  // What a person read of the answers that passed, drawn in each settled packet.
+  const passes = { comparisons: 0, read: 0, sound: 0, wrong: 0, unclear: 0 };
+  for (const labels of settled.map((each) => Object.values(asRecord(each.passes) ?? {}))) {
+    passes.comparisons += labels.length === 0 ? 0 : 1;
+    for (const label of labels) {
       if (label !== "sound" && label !== "wrong" && label !== "unclear") continue;
       passes[label] += 1;
       passes.read += 1;
@@ -186,10 +197,10 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     [
       `- The exam: its checker ${supply.faults === null ? "was never read" : `was read, with ${plural(supply.faults, "fault")} in its last reading`}, and ${frozenChecker(events) === null ? "nobody froze it" : "the operator froze it"}.`,
       `- Rejected answers: the Referee ruled ${String(ruled.earned)} earned, ${String(ruled.defect)} a check defect and ${String(ruled.unclear)} unclear. A ruling is a model's reading and is not measured against a person's labels here.`,
-      `- A person's labels settled ${plural(settled, "comparison")}. ${plural(supply.awaiting, "held-out task")} ${supply.awaiting === 1 ? "waits" : "wait"} for a person to say whether a valid answer exists.`,
+      `- A person's labels settled ${plural(settled.length, "comparison")}, and ${plural(unsettled, "comparison")} ${unsettled === 1 ? "is" : "are"} unsettled: ${unsettled === 1 ? "its packet waits" : "their packets wait"} for a person (settle.ts), and no promotion waited for one. ${plural(supply.awaiting, "held-out task")} ${supply.awaiting === 1 ? "waits" : "wait"} for a person to say whether a valid answer exists.`,
       passes.comparisons === 0
         ? "- No answer that passed was read by anyone: a pass is the checks' word alone."
-        : `- Answers that passed: a person read ${String(passes.read)} of the ${String(passes.of)} in ${plural(passes.comparisons, "comparison")}, drawn by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and changes no tally.`,
+        : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and changes no tally.`,
     ].join("\n"),
     "## Work and spend",
     `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a budget of $${String(budget.dollars)}`}.`,

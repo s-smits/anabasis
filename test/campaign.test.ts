@@ -614,11 +614,14 @@ describe("a campaign", () => {
     // is settled. An empty entry is one still to be labelled.
     const dir = join(campaign.log, "..", "settle-z-7");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "labels.json"), JSON.stringify({ "s-1": "earnd", "s-2": "", "s-3": "earned" }));
+    writeFileSync(
+      join(dir, "labels.json"),
+      JSON.stringify({ rejections: { "s-1": "earnd", "s-2": "", "s-3": "earned" }, passes: {} }),
+    );
     const settled = run("tools/d2/settle.ts", "--session", "z-7");
     expect(settled.exitCode).not.toBe(0);
     expect(settled.stderr.toString()).toContain(
-      'holds what is no label (earned, check-defect or unclear) for 1 rejection: s-1: "earnd"',
+      'holds what is no label (earned, check-defect, unclear) for 1 answer: s-1: "earnd"',
     );
     // No number would draw no task, and a negative one all but the last.
     for (const target of ["twelve", "-1", "0", "2.5"]) {

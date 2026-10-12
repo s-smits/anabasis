@@ -361,9 +361,20 @@ describe("a campaign run by its log", () => {
       ["compare", "g-1"],
       ["compare", "g-2"],
     ]);
+    // Each report carries `unsettled` until a person answers its packet, and the promotion below
+    // does not wait for it (the operator, 12 October).
     const [first, repeat] = of(name, "comparison.reported");
-    expect(first).toMatchObject({ reading: "step", scored: { wins: 5, losses: 0, ties: 0 } });
-    expect(repeat).toMatchObject({ reading: "step", old: first?.old, fresh: first?.fresh });
+    expect(first).toMatchObject({
+      reading: "step",
+      scored: { wins: 5, losses: 0, ties: 0 },
+      settled: "unsettled",
+    });
+    expect(repeat).toMatchObject({
+      reading: "step",
+      old: first?.old,
+      fresh: first?.fresh,
+      settled: "unsettled",
+    });
     // The repeat scored the five tasks its first stage did not. Until 12 October a campaign held one
     // target before its first comparison, and buffer-141-m3's g-2 scored g-1's versions again.
     const [once = [], again = []] = of(name, "comparison.started").map(({ tasks }) =>
@@ -386,6 +397,7 @@ describe("a campaign run by its log", () => {
     const next = await harnessBuilder([...flags, "--no-attended", "--moves", "2"], seats);
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
+    expect(of(name, "comparison.reported").map(({ settled }) => settled)).toEqual(["unsettled", "unsettled"]);
     expect(of(name, MOVED).slice(5)).toMatchObject([
       { move: "promote", harness: first?.fresh },
       { move: "examine", session: "x-1" },
@@ -410,33 +422,47 @@ describe("a campaign run by its log", () => {
     expect(after.why).toContain("neither harness was valid on one solve in four");
     expect(strayed).toEqual([]);
 
-    // A person reads two of the answers that passed in g-1: the draw is by the comparison's id, so
-    // asked again it is the same two; the labels are recorded once a label stands on each, and
-    // once only. g-1 held 5 passes, the new harness's; the reference answered none.
+    // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:
+    // up to ten of its rejected answers, and it has none, since the reference answered nothing,
+    // and three of the five answers that passed, the new harness's. The labels are recorded once a
+    // label stands on each, and once only.
     const pack = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name];
-    const passes = join(REPO, ".ana", "d2", name, "settle-g-1", "passes", "passes.json");
-    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
-    const drawn = Object.keys(parseJsonAs<JsonObject>(readFileSync(passes, "utf8")));
-    expect(drawn).toHaveLength(2);
-    rmSync(passes);
-    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
-    expect(Object.keys(parseJsonAs<JsonObject>(readFileSync(passes, "utf8")))).toEqual(drawn);
-    expect(
-      readFileSync(join(REPO, ".ana", "d2", name, "settle-g-1", "passes", `${drawn[0]}.json`), "utf8"),
-    ).toContain('"rules"');
-    writeFileSync(passes, JSON.stringify({ [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "wrng" }));
-    expect(settleCommand([...pack, "--session", "g-1", "--passes", "2"])).rejects.toThrow(
+    const folder = join(REPO, ".ana", "d2", name, "settle-g-1");
+    const file = join(folder, "labels.json");
+    const packet = () =>
+      parseJsonAs<{ rejections: JsonObject; passes: JsonObject }>(readFileSync(file, "utf8"));
+    const lastOf = () => of(name, "comparison.reported").findLast(({ session }) => session === "g-1");
+    await settleCommand([...pack, "--session", "g-1"]);
+    expect(Object.keys(packet().rejections)).toEqual([]);
+    const drawn = Object.keys(packet().passes);
+    expect(drawn).toHaveLength(3);
+    rmSync(file);
+    await settleCommand([...pack, "--session", "g-1"]);
+    expect(Object.keys(packet().passes)).toEqual(drawn);
+    // Blind: a packet holds the rules and the answer, and names no harness and no ruling.
+    const opened = readFileSync(join(folder, `${drawn[0]}.json`), "utf8");
+    expect(opened).toContain('"rules"');
+    expect(opened).not.toContain(first?.fresh ?? "");
+    const [a = "", b = "", c = ""] = drawn;
+    const answer = (labels: JsonObject) =>
+      writeFileSync(file, JSON.stringify({ rejections: {}, passes: labels }));
+    answer({ [a]: "sound", [b]: "wrng", [c]: "sound" });
+    expect(settleCommand([...pack, "--session", "g-1"])).rejects.toThrow(
       "holds what is no label (sound, wrong, unclear) for 1 answer",
     );
-    writeFileSync(passes, JSON.stringify({ [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "" }));
-    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
-    expect(of(name, "pass.labelled")).toEqual([]);
-    writeFileSync(passes, JSON.stringify({ [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "wrong" }));
-    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
-    await settleCommand([...pack, "--session", "g-1", "--passes", "2"]);
-    expect(of(name, "pass.labelled")).toMatchObject([
-      { session: "g-1", of: 5, labels: { [drawn[0] ?? ""]: "sound", [drawn[1] ?? ""]: "wrong" } },
-    ]);
+    answer({ [a]: "sound", [b]: "", [c]: "sound" });
+    await settleCommand([...pack, "--session", "g-1"]);
+    expect(lastOf()).toMatchObject({ settled: "unsettled" });
+    answer({ [a]: "sound", [b]: "wrong", [c]: "sound" });
+    await settleCommand([...pack, "--session", "g-1"]);
+    await settleCommand([...pack, "--session", "g-1"]);
+    // A pass's label moves no tally: g-1 reads as it did.
+    expect(lastOf()).toMatchObject({
+      reading: "step",
+      scored: first?.scored,
+      settled: { labelled: 0, passes: { [a]: "sound", [b]: "wrong", [c]: "sound" } },
+    });
+    expect(of(name, "comparison.reported").filter(({ session }) => session === "g-1")).toHaveLength(2);
 
     // Until 2026-10-11 a person read a Diagnoser's accounts the same way (`--diagnoses`); the seat
     // went, and the flag with it (`docs/simplify.md`, E1).
@@ -452,9 +478,11 @@ describe("a campaign run by its log", () => {
     expect(handed.to).toBe(to);
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: handed.harness }]);
     expect(closeCommand([...pack, "--to", to])).rejects.toThrow("holds something already");
-    expect(readFileSync(join(to, "REPORT.md"), "utf8")).toContain(
-      "a person read 2 of the 5 in 1 comparison, drawn by each comparison's id: 1 sound, 1 wrong, 0 unclear",
+    const closing = readFileSync(join(to, "REPORT.md"), "utf8");
+    expect(closing).toContain(
+      "a person read 3 in 1 comparison, drawn uniformly by each comparison's id: 2 sound, 1 wrong, 0 unclear",
     );
+    expect(closing).toContain("settled 1 comparison, and 2 comparisons are unsettled");
     // It holds no link: a kept harness names its programs by one, into a tree beside it, and what
     // is handed over is the tree itself.
     const links = readdirSync(join(to, "harness"), { recursive: true }).filter((entry) =>

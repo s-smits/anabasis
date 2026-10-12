@@ -124,6 +124,8 @@ import {
   fixedIn,
   NO_LABELS,
   NOTHING,
+  type PassLabel,
+  passesIn,
   rejections,
   type Report,
   REPORTED,
@@ -132,6 +134,7 @@ import {
   STARTED,
   startOf,
   toLabel,
+  UNSETTLED,
 } from "./comparison.ts";
 import { comparisonsOf, pairOf } from "./ground.ts";
 import { type BuildRequest, type Built, type Practised, sessionOnce } from "./session.ts";
@@ -692,7 +695,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   await work.ruleLeft();
   if (!(await work.solveAll(fixed.tasks))) return stopped();
   const found = compared(log, fixed, NO_LABELS);
-  const told = { ...head, ...found, disputed: disputed(), capped: work.capped(), settled: null };
+  const told: Report = { ...head, ...found, disputed: disputed(), capped: work.capped(), settled: UNSETTLED };
   return write(asked, told, beside());
 }
 
@@ -725,34 +728,38 @@ export async function round(request: RoundRequest): Promise<Report> {
 }
 
 /**
- * Settle a comparison's reading on a person's labels of its rejections, and write its report once
- * more.
+ * Settle a comparison's reading on a person's answer to its packet (`settle.ts`), and report again.
  *
- * `labels` holds a ruling a solve, and a person's label stands over the Referee's ruling of the
- * same rejection. Every rejection that set a task aside must carry one. A task whose rejections are
- * then all earned is restored to the tally. One labelled a check defect disputes its task, which
- * leaves every comparison from then on. One labelled unclear leaves its task out of this
- * comparison. The tests are read again from the same solves and logged as the comparison's last
- * report, with what was settled and the labels themselves. Run again with the same labels it
- * returns that report. A comparison is settled once: other labels for one already settled are
- * refused, and so is a settling with no label at all, which would close the comparison to the
- * labels still to come.
+ * `labels` holds a ruling a rejected answer, and a person's label stands over the Referee's ruling
+ * of the same rejection. A task whose rejections then all stand as earned is restored to the tally.
+ * One labelled a check defect disputes its task, which leaves every comparison from then on. One
+ * labelled unclear, and one set aside on a rejection the packet did not draw, stays out of this
+ * comparison. `passes` holds a person's word a drawn answer that passed, which changes no tally.
+ * The tests are read again from the same solves and logged as the comparison's last report, with
+ * what was settled and the labels themselves. Run again with the same labels it returns that
+ * report. A comparison is settled once: other labels for one already settled are refused.
  *
  * A settling makes no solve.
  *
  * The comparison is read as its own report found it (`asReported`), so the labels settle the same
  * reading whether they come at once or after later comparisons have solved the same tasks.
  */
-export function settleReading(log: string, id: string, labels: ReadonlyMap<string, Ruling>): Report {
+export function settleReading(
+  log: string,
+  id: string,
+  labels: ReadonlyMap<string, Ruling>,
+  passes: ReadonlyMap<string, PassLabel> = new Map(),
+): Report {
   const before = read(log);
   const last = before.findLast((event) => event.kind === REPORTED && event.data.session === id)?.data;
   const report = reported(before, id);
   const fixed = fixedIn(before, id);
   if (last === undefined || report === null) throw new Error(`comparison ${id} has no report to settle`);
-  if (report.settled !== null) {
-    const was: Readonly<Record<string, Ruling | undefined>> = report.settled.labels ?? {};
-    const other = [...new Set([...labels.keys(), ...Object.keys(was)])].filter(
-      (solve) => labels.get(solve) !== was[solve],
+  if (report.settled !== null && report.settled !== UNSETTLED) {
+    const was = { ...report.settled.labels, ...report.settled.passes };
+    const given = new Map<string, string>([...labels, ...passes]);
+    const other = [...new Set([...given.keys(), ...Object.keys(was)])].filter(
+      (solve) => given.get(solve) !== was[solve],
     );
     if (other.length > 0) {
       throw new Error(
@@ -779,17 +786,9 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
   const known = new Set([...aside, ...others]);
   const stray = [...labels.keys()].find((solve) => !known.has(solve));
   if (stray !== undefined) throw new Error(`${stray} is no rejected answer of comparison ${id}`);
-  const open = aside.filter((solve) => !labels.has(solve));
-  if (open.length > 0) {
-    throw new Error(
-      `${String(open.length)} of ${String(aside.length)} rejections that set a task aside carry no label (earned, check-defect or unclear): ${open.join(", ")}`,
-    );
-  }
-  if (labels.size === 0) {
-    throw new Error(
-      `comparison ${id} has no rejection that set a task aside, and no label is given: there is nothing to settle`,
-    );
-  }
+  const valid = new Set(passesIn(before, id));
+  const unpassed = [...passes.keys()].find((solve) => !valid.has(solve));
+  if (unpassed !== undefined) throw new Error(`${unpassed} is no answer that passed in comparison ${id}`);
   const versionOf = new Map(ranUnder(before).map((solve) => [solve.id, solve.under.task] as const));
   const defects = [...labels].flatMap(([solve, label]) => (label === DEFECT ? [solve] : []));
   const reason = "a person labelled the rejection a check defect";
@@ -813,6 +812,7 @@ export function settleReading(log: string, id: string, labels: ReadonlyMap<strin
       disputed,
       restored: found.versions.filter((version) => report.aside.includes(version)),
       labels: Object.fromEntries(labels),
+      passes: Object.fromEntries(passes),
     },
   };
   // The comparison's own terms are carried, so the settled report reads alone as the first one did.

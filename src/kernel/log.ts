@@ -113,7 +113,6 @@ const EVENT_KINDS = [
   "stop.overridden",
   "anchor.drawn",
   "anchor.scored",
-  "pass.labelled",
   "diagnosis.labelled",
 ] as const;
 

@@ -811,9 +811,11 @@ have lost, so rejections that fall on one side move the tally toward it.
 `READING MOVES WITH THE SET-ASIDE` fires when the report's `counted`, the tally were every such
 rejection to stand, clears its level and `scored` does not, or the reverse: the reading then
 rests on labels nobody has made. `SET ASIDE AND UNSETTLED` counts the tasks still waiting. A
-person settles a comparison with `tools/d2/settle.ts`: a task whose rejections are all labelled
-earned is restored, one labelled a check defect is disputed for good, one labelled unclear
-stays out, and the report is written once more with `settled` saying what the labels did.
+person settles a comparison with `tools/d2/settle.ts`, whose packet draws up to ten of its
+rejections and three of its passes; until then its report says `settled: "unsettled"`, and no
+promotion waits for it. A task whose rejections all stand as earned is restored, one labelled a
+check defect is disputed for good, one labelled unclear or not drawn stays out, and the report is
+written once more with `settled` saying what the labels did.
 `SETTLED BY HAND` sets the two reports side by side. Read whether the labels were made from the
 packets or from the rulings, and whether a task disputed for a check's fault was taken to the
 checker's owner: a dispute removes a task and repairs nothing. The Referee's agreement with a

@@ -484,7 +484,7 @@ flags.
 | 4 | `bun tools/d2/round.ts ... --session b-1 --builder <model>` | A Builder session, then the comparison of the harness it left with the reference |
 | 4 | `bun tools/d2/session.ts ... --session b-2 --builder <model>` | A Builder session with no comparison after it, under a dollar cap of its own. The plan's checkpoint is several of these and then one comparison |
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
-| 5 | `bun tools/d2/settle.ts ... --session b-1 [--passes N]` | A person's labels for the rejections a comparison set aside, and its report once more; with `--passes`, the person's labels of N answers that passed, drawn by the comparison's id (`pass.labelled`), which change no reading |
+| 5 | `bun tools/d2/settle.ts ... --session b-1` | The comparison's packet: up to ten of its rejected answers and three of its answers that passed, drawn uniformly by its id, blind to ruling and harness. Answered, the person's labels and the report once more; a pass's label changes no reading. Until it is answered the report says `unsettled`, and no promotion waits for it |
 | 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing. A harness the rule would not promote takes `--despite "<why>"` |
 | 6 | `bun tools/d2/import.ts --name <name> --harness <dir> [--note "<why>"]` | The operator's word that a harness built elsewhere, another campaign's handover or one written by hand, is one this campaign keeps (`harness.imported`): it is kept under its digest as a session keeps one, and `--parent`, `--reference` and `promote.ts` then name it. It is no session, so `latest` is unmoved |
 | 7 | `bun tools/d2/close.ts ... --to <dir>` | Nothing. It writes what the campaign hands over, outside the repository: the reference harness as a directory that stands by itself, the public rules, and the closing report |
@@ -540,9 +540,9 @@ on from its log, and the count starts afresh.
 With `--handover <dir>` it then writes what it hands over (row 7): the harness is copied whole,
 with the programs a kept state names by a link, and has to open there as the harness it was kept
 as. The closing report is a view of the log, names no task and holds no check, and says what was
-audited and what was not: what the Referee ruled, what a person's labels settled, and what a
-person read of the answers that passed (`settle.ts --passes`, `readPasses` there), or that
-nobody did.
+audited and what was not: what the Referee ruled, what a person's labels settled, how many
+comparisons are still unsettled, and what a person read of the answers that passed in a packet
+(`settle.ts`), or that nobody did.
 
 **The operator steers a campaign that runs by leaving it a word** (`tools/d2/word.ts`), which
 is one event in its log (`campaign.word`): `--stop "<why>"` ends it there with the ending
@@ -941,8 +941,8 @@ the plan and the head before relying on this list, and delete a line here in the
 makes it false:
 
 - the Judge: the Referee has a probe and no shell, reads the check program, and is unmeasured
-  against hand labels. No seat reads an answer that passed: a person reads a drawn few
-  (`settle.ts --passes`);
+  against hand labels. No seat reads an answer that passed: a person reads three in each
+  comparison's packet (`settle.ts`);
 - a repairer for the check program, and an engine behind a drafted one: the Examiner drafts an
   exam for a campaign that opens from a prompt (section 6), no seat repairs a check, and every
   check of a drafted exam is its author's own computation, which waits for the operator's

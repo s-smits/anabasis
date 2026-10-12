@@ -256,6 +256,24 @@ describe("what a log holds for the next comparison", () => {
     expect(supplyOf([...before, ...heldOut("w"), ...heldOut("x")])).toMatchObject({ held: 3, since: 2 });
   });
 
+  it("counts as held out since only the tasks held out after that comparison, not the ones it did not draw", () => {
+    // esp32 (12 October): five tasks an earlier comparison had tied, with the reference valid in
+    // every solve, were counted whole as held out since, and the supply read 4.6 untied of 12.
+    const tied = (tasks: readonly string[]) => Object.fromEntries(tasks.map((task) => [task, "PP PP"]));
+    const first = Array.from({ length: 12 }, (_, at) => `t${String(at + 1)}`);
+    const written = ["t13", "t14", "t15", "t16", "t17"];
+    const log = [
+      ...first.flatMap(heldOut),
+      ...roundLogged("g-1", ["h0", "h1"], tied(first)),
+      ...written.flatMap(heldOut),
+      ...roundLogged("g-2", ["h0", "h2"], tied([...written, ...first.slice(0, 7)])),
+      ...heldOut("t18"),
+    ];
+    const supply = supplyOf(log);
+    expect(supply).toMatchObject({ untied: 0, since: 1 });
+    expect(shortOf(supply, { target: 12, trigger: 0.25 })).toBe("untied");
+  });
+
   it("takes the share over the tasks that may still be scored, once the reference's closed ones retire", () => {
     // The stack review (12 October): two comparisons in which the reference answered a to d in
     // every solve and e and f in one of two retire two of a to d, by the contract's hash. Of the

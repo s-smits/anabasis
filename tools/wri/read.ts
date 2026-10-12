@@ -304,7 +304,7 @@ function harnessTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "TOOL CALLS ERRED",
-              `${session}: in ${share(erring, fresh.length)} solves under the new harness`,
+              `${session}: in ${share(erring, fresh.length)} solves under the new harness, a call marked an error, as every non-zero exit is, which a test reporting what is unmet may give by design`,
             ),
           ]
         : []),

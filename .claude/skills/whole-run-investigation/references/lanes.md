@@ -419,7 +419,9 @@ Starts from `NEVER CHECKED (lane 14)`, `TOOLS CALLED (lane 14)` and `TOOL CALLS 
 The question is whether the guide, the tool descriptions and the tools' replies tell the solver
 the truth. Read the child's guide and spec beside what solves under it did: the tools each
 solve called, in what order, how many calls returned an error, and whether a tool the guide leans
-on was ever called. A tool no solve calls is dead weight in every prompt; a tool most solves call
+on was ever called. An erred call is any non-zero exit, and a test the harness ships may report
+what is unmet that way by design, as all 44 erred calls under buffer's child did on 12 October:
+read what each call printed before counting it a tool that failed. A tool no solve calls is dead weight in every prompt; a tool most solves call
 once and abandon promised something its reply did not give. Compare the guide's account of how
 the tools combine with the sequences solves actually ran. A guide is appended to the solver's
 prompt on every task, so a line that is true of the practice tasks and false of the domain costs

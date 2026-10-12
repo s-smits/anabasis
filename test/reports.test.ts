@@ -998,13 +998,15 @@ describe("the billed dollars a cap counts", () => {
       turn("solve.turn", { solve: "s-b" }, 9),
       event("exam.started", { session: "x-1" }),
       turn("exam.turn", { session: "x-1" }, 0.2),
+      // An Examiner's repair of its check program: one killed after a turn, one that summed its own.
+      event("repair.started", { session: "r-1" }),
+      turn("repair.turn", { session: "r-1" }, 0.3),
+      event("repair.started", { session: "r-2" }),
+      turn("repair.turn", { session: "r-2" }, 0.4),
+      event("repair.finished", { session: "r-2", billed: 0.4 }),
     ];
-    expect(billedAll(log)).toBeCloseTo(0.07 + 0.05 + 0.01 + 0.5 + 6 + 0.2, 10);
-    expect(
-      billedAll(
-        log.filter(({ kind }) => kind !== "build.turn" && kind !== "exam.turn" && kind !== "solve.turn"),
-      ),
-    ).toBe(6.5);
+    expect(billedAll(log)).toBeCloseTo(0.07 + 0.05 + 0.01 + 0.5 + 6 + 0.2 + 0.3 + 0.4, 10);
+    expect(billedAll(log.filter(({ kind }) => !kind.endsWith(".turn")))).toBeCloseTo(6.5 + 0.4, 10);
   });
 
   it("include the turns and compactions of a solve or a session with no end in the total, and of a solve of the comparison in its cap", () => {

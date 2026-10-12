@@ -111,6 +111,19 @@ export function labelled<Word extends string>(file: JsonValue, known: readonly W
   return { labels, open };
 }
 
+/** What stands of a refused answer, by its solve: a person's label where `labels` holds one, over
+ *  the Referee's last ruling of the same solve, and nothing where nobody read it or a reading
+ *  ruled nothing. A repair is held to it, and its author is shown it (`src/examiner/repair.ts`). */
+export function standing(events: readonly LogEvent[], labels: ReadonlyMap<string, Ruling>) {
+  return (solve: string): Ruling | undefined =>
+    labels.get(solve) ??
+    RULINGS.find(
+      (known) =>
+        known ===
+        events.findLast(({ kind, data }) => kind === "referee.finding" && data.solve === solve)?.data.ruling,
+    );
+}
+
 /**
  * A repair read against what was ruled of the old checker's verdicts: `rows` are a log's answers
  * under the repaired checker (`regraded`), `labels` a person's, which stand over the Referee's
@@ -127,13 +140,7 @@ export function repairReading(
   events: readonly LogEvent[],
   labels: ReadonlyMap<string, Ruling>,
 ): RepairReading {
-  const ruled = (solve: string) =>
-    labels.get(solve) ??
-    RULINGS.find(
-      (known) =>
-        known ===
-        events.findLast(({ kind, data }) => kind === "referee.finding" && data.solve === solve)?.data.ruling,
-    );
+  const ruled = standing(events, labels);
   const refusedBefore = rows.filter(({ was }) => was.startsWith("fail "));
   const passing = refusedBefore.filter(({ now }) => now === "pass");
   const of = (ruling: Ruling | undefined) =>

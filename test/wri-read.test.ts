@@ -21,6 +21,7 @@ const SOLVE_FINISHED = "solve.finished";
 const CONDITION_RECORDED = "condition.recorded";
 const COMPARISON_STARTED = "comparison.started";
 const GATE = "task.gate";
+const EXAM_STARTED = "exam.started";
 const HELD = ["v1", "v2", "v3", "v4"];
 const TESTED = { wins: 0, losses: 0, ties: 0, p: 1 };
 /** A report's fields where a case names none: a comparison that tallied nothing and stopped nowhere. */
@@ -568,9 +569,9 @@ describe("the reader of a round compared with another harness than its session s
   put(BUILD_STARTED, { session: "r-1", parent: "hx", tasks: [] });
   put("build.finished", { session: "r-1", ended: "finished", harness: "hy", changed: true });
   // Two Examiner sessions: one ended, and one cut, since the comparison began after it.
-  put("exam.started", { session: "x-8" });
+  put(EXAM_STARTED, { session: "x-8" });
   put("exam.finished", { session: "x-8", ended: "finished" });
-  put("exam.started", { session: "x-9" });
+  put(EXAM_STARTED, { session: "x-9" });
   // Its turns are what x-9 spent: the end record a stop never wrote held nothing (2026-10-10).
   for (const turn of [1, 2]) put("exam.turn", { session: "x-9", turn, usage: { cost: { total: 0.25 } } });
   const terms = { session: "r-1", old: "href", fresh: "hy", starter: "hbase", setting: SETTING };
@@ -625,7 +626,7 @@ describe("the reader of a round compared with another harness than its session s
   it("names a session open at the log's end in row F, with what it did so far, and says it apart in lane 27", () => {
     const live = [...log];
     const more = appendTo(live);
-    more("exam.started", { session: "x-10" });
+    more(EXAM_STARTED, { session: "x-10" });
     more("exam.turn", { session: "x-10", turn: 1, usage: { cost: { total: 0.25 } } });
     more(PROPOSED, { version: "v9", session: "x-10" });
     more(GATE, { version: "v9", gate: 1, outcome: "passed" });
@@ -686,7 +687,7 @@ describe("the reader of what each Examiner session's tasks came to", () => {
     const log: LogEvent[] = [];
     const put = appendTo(log);
     const wrote = (session: string, version: string) => {
-      put("exam.started", { session });
+      put(EXAM_STARTED, { session });
       put(PROPOSED, { version, session });
       put(GATE, { version, gate: 1, outcome: "passed" });
     };
@@ -964,7 +965,7 @@ describe("the reader of the campaign's clock", () => {
       ],
       [30 * stretch, "build.turn", { session: "b-1", turn: 2, usage: { output: 400 } }],
       [31 * stretch, "build.finished", { session: "b-1", ended: "finished", harness: "hc" }],
-      [51 * stretch, "exam.started", { session: "x-1" }],
+      [51 * stretch, EXAM_STARTED, { session: "x-1" }],
       [52 * stretch, "exam.turn", { session: "x-1", turn: 1, usage: { output: 300 } }],
       [80 * stretch, PROPOSED, { version: "v1", session: "x-1" }],
       [80 * stretch, "exam.turn", { session: "x-1", turn: 2, usage: { output: 118_906 } }],
@@ -995,9 +996,9 @@ describe("the reader of the campaign's clock", () => {
     const log = timed([
       ...solved("p1", { outcome: "pass" }, 300),
       ...["n1", "n2", "n3"].flatMap((id) => solved(id, { outcome: "non-result", kind: "provider" }, 2)),
-      [20, "exam.started", { session: "x-1" }],
+      [20, EXAM_STARTED, { session: "x-1" }],
       [40, "exam.finished", { session: "x-1", ended: "finished" }],
-      [70, "exam.started", { session: "x-2" }],
+      [70, EXAM_STARTED, { session: "x-2" }],
     ]);
     expect(
       overview(log).triggers.flatMap((trigger) => (trigger.name === "LONG SILENCES" ? [trigger.detail] : [])),
@@ -1016,7 +1017,7 @@ describe("the reader of the campaign's clock", () => {
       [90, BUILD_STARTED, { session: "b-2", parent: "hp", tasks: [] }],
       [150, "build.finished", { session: "b-2", ended: "finished", harness: "hc" }],
       [150, COMPARISON_STARTED, { session: "g-1", old: "hp", fresh: "hc", tasks: [] }],
-      [160, "exam.started", { session: "x-1" }],
+      [160, EXAM_STARTED, { session: "x-1" }],
       [190, "exam.finished", { session: "x-1", ended: "finished" }],
       [210, REPORTED, { ...REPORT, session: "g-1", old: "hp", fresh: "hc", reading: "no-step" }],
     ]);
@@ -1043,7 +1044,7 @@ describe("the reader of the campaign's clock", () => {
     const log = timed([
       [0, "draft.started", { session: "d-1" }],
       [10, "draft.finished", { session: "d-1", ended: "finished", billed: 3 }],
-      [20, "exam.started", { session: "x-1" }],
+      [20, EXAM_STARTED, { session: "x-1" }],
       [30, "exam.finished", { session: "x-1", ended: "finished", billed: 1 }],
       [40, "referee.finding", { solve: "p1", ruling: "earned", billed: 1 }],
     ]);
@@ -1052,6 +1053,26 @@ describe("the reader of the campaign's clock", () => {
     expect(triggers.filter((trigger) => trigger.name === "SPEND LED BY A ROLE")).toEqual([
       { lane: 28, name: "SPEND LED BY A ROLE", detail: "examiner: 80.0% of billed dollars" },
     ]);
+  });
+
+  it("counts the solves an Examiner session asked for as the Examiner's, and says its cost a task held out", () => {
+    // `try_task`: about seven reference solves an admitted task at three a draft (the overhaul plan,
+    // 4b), which until 12 October read as the solver's.
+    const log = timed([
+      [0, EXAM_STARTED, { session: "x-1" }],
+      [1, SOLVE_STARTED, { solve: "t1", comparison: "x-1", limits: { wallSeconds: 900 } }],
+      [2, SOLVE_FINISHED, { solve: "t1", ending: { outcome: "pass" }, billed: 2 }],
+      [3, PROPOSED, { session: "x-1", version: "e1", taskId: "x-1-001" }],
+      [3, GATE, { version: "e1", gate: 1, outcome: "passed" }],
+      [4, PROPOSED, { session: "x-1", version: "e2", taskId: "x-1-002" }],
+      [4, GATE, { version: "e2", gate: 1, outcome: "refused" }],
+      [5, "exam.finished", { session: "x-1", ended: "finished", billed: 1 }],
+      [6, SOLVE_STARTED, { solve: "s1", comparison: "g-1", limits: { wallSeconds: 900 } }],
+      [7, SOLVE_FINISHED, { solve: "s1", ending: { outcome: "pass" }, billed: 1.5 }],
+    ]);
+    expect(overview(log).rows[0]?.lines).toContain(
+      "billed dollars: examiner 3.00, solver 1.50; the Examiner's 3.00 over 1 task held out, 3.00 a task",
+    );
   });
 });
 

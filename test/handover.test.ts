@@ -219,6 +219,23 @@ describe("a campaign's reading", () => {
 
   // Until 11 October an Examiner session was read from its end alone: buffer-main's x-1, running,
   // read "0 proposed, 0 held out" and $0.00 with seven tasks held out and $8.23 metered.
+  it("bills an Examiner session the solves it asked for to try a draft task, ended or open", () => {
+    const c = campaign();
+    c.setUp();
+    c.record("exam.started", { session: "x-1" });
+    c.solved("d1", HA, "pass", "x-1");
+    expect(steps(c, "examiner")).toMatchObject([{ ended: null, billed: 1.5 }]);
+    c.record("exam.finished", {
+      session: "x-1",
+      ended: "finished",
+      proposed: 1,
+      held: ["d1"],
+      refused: [],
+      billed: 2.25,
+    });
+    expect(steps(c, "examiner")).toMatchObject([{ ended: "finished", billed: 3.75 }]);
+  });
+
   it("reads a session with no end from its own events, and as cut once a later step began", () => {
     const c = campaign();
     c.setUp();

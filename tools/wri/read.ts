@@ -28,6 +28,7 @@ import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import {
+  admittedCost,
   type Build,
   BUILD_END,
   type Compared,
@@ -671,7 +672,9 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
           spendOf(log)
             .map(([role, dollars]) => `${role} ${dollars.toFixed(2)}`)
             .join(", ") || "none"
-        }`,
+        }${admittedCost(log)
+          .map((cost) => `; ${cost}`)
+          .join("")}`,
         hoursLine(log),
       ],
     },

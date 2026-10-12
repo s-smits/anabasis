@@ -381,13 +381,48 @@ const ROLE_EVENTS = {
  *  where it was 42.2% (2026-10-10). A role the log holds no event of is left out: every log since
  *  11 October printed "diagnoser 0.00" for a seat that no longer exists. */
 export function spendOf(log: Index): [string, number][] {
-  const of = (kinds: readonly string[]) => log.events.filter(({ kind }) => kinds.includes(kind));
-  return Object.entries(ROLE_EVENTS)
-    .flatMap(([role, kinds]): [string, number][] => {
-      const own = of(kinds);
+  // A solve an Examiner session asked for to try a draft task (`try_task`) names the session where a
+  // comparison's names the comparison, and is the Examiner's, as `countedSolves` keeps it out of
+  // every tally: about seven reference solves an admitted task at three a draft (the overhaul plan,
+  // 4b), which until 12 October read as the solver's.
+  const sessions = examinerSessions(log);
+  const tried = new Set(log.solves.flatMap(({ id, comparison }) => (sessions.has(comparison) ? [id] : [])));
+  const roles: [string, readonly string[]][] = Object.entries(ROLE_EVENTS);
+  const roleOf = ({ kind, data }: LogEvent) => {
+    const [role] = roles.find(([, kinds]) => kinds.includes(kind)) ?? [];
+    return role === "solver" && tried.has(text(data.solve)) ? "examiner" : role;
+  };
+  return roles
+    .flatMap(([role]): [string, number][] => {
+      const own = log.events.filter((event) => roleOf(event) === role);
       return own.length === 0 ? [] : [[role, billedAll(own)]];
     })
     .sort(([, a], [, b]) => b - a);
+}
+
+/** The Examiner's billed dollars over the tasks its sessions held out, the solves they asked for
+ *  included (`spendOf`); none where no task was held out. */
+export function admittedCost(log: Index): string[] {
+  const sessions = examinerSessions(log);
+  const passed = new Set(
+    log.of("task.gate").flatMap((data) => (data.outcome === "passed" ? [data.version] : [])),
+  );
+  const admitted = new Set(
+    log
+      .of("task.proposed")
+      .flatMap(({ session, version }) => (sessions.has(session) && passed.has(version) ? [version] : [])),
+  ).size;
+  const [, dollars = 0] = spendOf(log).find(([role]) => role === "examiner") ?? [];
+  return admitted === 0
+    ? []
+    : [
+        `the Examiner's ${dollars.toFixed(2)} over ${plural(admitted, "task")} held out, ${(dollars / admitted).toFixed(2)} a task`,
+      ];
+}
+
+/** The sessions of the Examiner's that write tasks, by id. */
+function examinerSessions(log: Index): Set<JsonValue | undefined> {
+  return new Set(log.of(EXAM_START).map(({ session }) => session));
 }
 
 /** The answers some check refused: a format fault reached no check and is none. */

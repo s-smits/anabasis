@@ -29,7 +29,7 @@
  *
  * The step is read in two stages since 10 October (`src/builder/move.ts`): a comparison whose test
  * is at or under the trigger, 0.25 by default, with more won than lost, buys the repeat and
- * promotes nothing, and the step and its repeat read together clear the level, 0.10 by default
+ * promotes nothing, and the step and its repeat read together clear the level, 0.02 by default
  * (`readTwice`). One comparison's own reading, `step`, is its test against the level alone. The
  * level and the trigger are the caller's and recorded with the campaign's opening, so a campaign
  * reads by its own rule whatever the tree's default (`docs/plan.md`, Statistical power and cost).

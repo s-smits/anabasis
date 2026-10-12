@@ -562,12 +562,14 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     // The campaign's view prints each step's handover. Fix row F7: of the moves, it names the
     // table's alone. It takes the campaign command's four flags and no other: a launch's, which it
     // parsed until 11 October, went with the launcher (`docs/simplify.md`, D2).
-    const viewed = cli("view", SEED, "--level", "0.1", "--trigger", "0.25").said;
+    const viewed = cli("view", SEED, "--level", "0.02", "--trigger", "0.25").said;
     expect(
       viewed.split("\n").filter((line) => line.includes("Builder session, finished: from")),
     ).toHaveLength(2);
-    // Four solves a side since 12 October, where nothing names another (`SIZE`).
-    expect(viewed).toContain("on 1 task, 4 solves a side at 0.1: 1 won, 0 lost, 0 tied, which reads no-step");
+    // Four solves a side since 12 October, and the level 0.02, where nothing names another (`SIZE`).
+    expect(viewed).toContain(
+      "on 1 task, 4 solves a side at 0.02: 1 won, 0 lost, 0 tied, which reads no-step",
+    );
     expect(viewed).not.toContain("  a round");
     expect(cli("view", SEED, "--cap", "100").said).toContain("Unknown option '--cap'");
     // Fix row F26: the view's last line is the one move the decision table names, and the
@@ -577,8 +579,8 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     // The seed's comparisons began under the rule of one reading at a time, so the campaign's
     // command is refused the two-stage rule's defaults until the operator names both terms once.
     expect(rehearse("--campaign", "--dry-run").said).toContain("name --level and --trigger once for it");
-    // One attempt: a longer patience at 0.10 passes the bound an opening may risk (`openingLines`).
-    const terms = ["--level", "0.1", "--trigger", "0.25", "--patience", "1"];
+    // At 0.02 the default patience holds the bound an opening may risk (`openingLines`).
+    const terms = ["--level", "0.02", "--trigger", "0.25"];
     expect(rehearse("--campaign", ...terms, "--dry-run").said).toContain(`next · ${tabled}`);
   });
 });

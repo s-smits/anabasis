@@ -145,8 +145,10 @@ export const COMPARISON_OPTIONS = {
   solves: { type: "string", default: String(SIZE.solves) },
   // The step and its repeat read together clear `level`; a first reading at or under `trigger`
   // buys the repeat (`src/kernel/compare.ts`, `readTwice`). 0.20 on each reading alone was the default from
-  // #175 until 10 October's two-stage rule.
-  level: { type: "string", default: "0.1" },
+  // #175 until 10 October's two-stage rule, then 0.10, which risks 34.8% over a patience of six; at
+  // 0.02 it is 7.6%, under the opening's cap, with 90% power at three in four untied tasks won (the
+  // operator, 12 October).
+  level: { type: "string", default: "0.02" },
   trigger: { type: "string", default: String(TRIGGER) },
   // Two valid answers are compared by the objective where the check program declares one
   // (`src/kernel/compare.ts`, `ObjectiveRule`), and the better by more than this share of the

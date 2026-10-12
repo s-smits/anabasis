@@ -49,7 +49,7 @@ const SERVED = "claude/claude-opus-5-5";
 const RECORDED = `${NAME}-recorded`;
 /** A campaign opened and given a harness before it keeps any. */
 const FRESH = `${NAME}-fresh`;
-const ASKED = { solves: 2, level: 0.1, trigger: 0.25 };
+const ASKED = { solves: 2, level: 0.02, trigger: 0.25 };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
   family: "fixture",

@@ -619,9 +619,10 @@ bun run runs pulse | stop <name> | replay | seed | zip
 
 ### Defaults, and a first flag line
 
-Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.10
-(`--level`) and trigger 0.25 (`--trigger`), an objective margin of 0.01 (`--margin`), a stop past
-3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve (`--reserve`),
+Defaults worth knowing: 12 scored tasks (`--target`), 2 solves a side (`--solves`), level 0.02
+(`--level`, since 12 October; 0.10 before) and trigger 0.25 (`--trigger`), an objective margin of
+0.01 (`--margin`), a stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars
+a solve (`--reserve`),
 `--parent latest`, `--reference promoted`, which is the harness last promoted and the starter
 until one is; a Builder session of 240 minutes, 300 turns and 24 practice solves; a solve of
 120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
@@ -711,9 +712,10 @@ pairs than they win, and an empty retained set reads `unmeasured`, never no loss
 tallies stand beside both, from the same rows; they show concentration, and establish no
 independence. The test runs in two stages: a comparison whose frontier is at or under the trigger
 (0.25: 2 to 0, 4 to 1, 5 to 2, 7 to 3 where every task is won by as many pairs) buys the repeat
-and promotes nothing, and the step and its repeat read together clear the level (0.10: 4 to 0, 6
-to 1, 7 to 2, 9 to 3), the repeat having untied a task and won at least as many pairs as it lost,
-neither stage losing on its retained tasks, and their untied tasks not all in one family of two
+and promotes nothing, and the step and its repeat read together clear the level (0.02 by default
+since 12 October: 6 to 0, 8 to 1, 10 to 2, 12 to 3; at 0.10, 4 to 0, 6 to 1, 7 to 2, 9 to 3), the
+repeat having untied a task and won at least as many pairs as it lost, neither stage losing on
+its retained tasks, and their untied tasks not all in one family of two
 or more (`readTwice`). Every reading prints its untied count, the least share of them it detects
 four times in five (`detectable`), and the chance an attempt at its margins promotes equal
 harnesses (`falseRate`). A reading under the trigger counts for the

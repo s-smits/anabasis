@@ -695,8 +695,9 @@ on the tasks both passed. Read `seconds` against the load at start and end: on 7
 time ran 2.3 times CPU time under load. A wall counts the clock, so a loaded host holds less
 work in it.
 `HOST LOADED` names a comparison whose solves started, at the median, under a load over the
-host's cores, where the log holds the cores (from 9 October). `LOAD MOVED` gives each
-comparison's median load where the busiest ran under twice the calmest or more: on 9 October one
+host's cores, where the log holds the cores (from 9 October). `LOAD MOVED` gives the median
+load of each comparison's first half of solves and its second, by start, where the busiest half
+ran under twice the calmest or more, within one comparison or across them: on 9 October one
 harness answered the same tasks in a median of 105 s under a load of 31 and of 40 s under a load
 of 6, so a step and its repeat, or two readings at one wall, were not made under one budget. A
 `solve.finished` written before 11 October holds the CPU seconds of the solve's commands

@@ -151,13 +151,17 @@ export function wallTriggers(log: Index): Trigger[] {
   });
   // The one-minute load each comparison's solves started under. A wall counts the clock, so the
   // same wall holds less work on a loaded host: a comparison made there reaches walls an idle host
-  // would not, and two comparisons under different loads were not made under one budget, whatever
-  // their settings say.
+  // would not, and solves under different loads were not made under one budget, whatever their
+  // settings say. Each comparison's halves, by start, are read apart: esp32's one comparison started
+  // its solves at loads from 5.8 to 56.0 on 12 October, where a reading across comparisons was silent.
   const loads = results.flatMap(({ session, scoring }) => {
     const at = scoring.flatMap((solve) => (solve.load === null ? [] : [solve.load]));
     const middle = median(at);
+    const halves = [at.slice(0, at.length / 2), at.slice(at.length / 2)].flatMap(
+      (half) => median(half) ?? [],
+    );
     const cores = scoring.findLast((solve) => solve.cores !== null)?.cores ?? null;
-    return middle === null ? [] : [{ session, middle, most: Math.max(...at), cores }];
+    return middle === null ? [] : [{ session, middle, most: Math.max(...at), cores, halves }];
   });
   const loaded = loads.flatMap(({ session, middle, most, cores }) =>
     cores !== null && middle > cores
@@ -169,9 +173,9 @@ export function wallTriggers(log: Index): Trigger[] {
         ]
       : [],
   );
-  const middles = loads.map(({ middle }) => middle);
+  const middles = loads.flatMap(({ halves }) => halves);
   const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
-  const moved = loads.length > 1 && busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
+  const moved = busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
   return [
     ...limitTriggers(log),
     ...wallShares,
@@ -180,7 +184,7 @@ export function wallTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "LOAD MOVED",
-            `median load when each comparison's solves started: ${loads.map(({ session, middle }) => `${session} ${middle.toFixed(1)}`).join("; ")}`,
+            `median load when each comparison's solves started, its first half then its second: ${loads.map(({ session, halves }) => `${session} ${halves.map((half) => half.toFixed(1)).join(" then ")}`).join("; ")}`,
           ),
         ]
       : []),

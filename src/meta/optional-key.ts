@@ -7,15 +7,17 @@
  * a few hundred of them. These helpers name the condition for inclusion directly and keep the
  * computed-key construction, and the assertion it needs, in one place.
  *
- * Absence has three spellings and they are not interchangeable, which is why there are three
+ * Absence has two spellings here and they are not interchangeable, which is why there are two
  * functions and not one. An argument or an in-process option is absent as `undefined`; a recorded
  * JSON boundary writes `null`, since JSON has no undefined, and the schema there decides what that
- * null means; a truthiness test also drops `""`, `0` and `false`, which at a boundary is the
- * difference between an omitted count and a count of zero. Each caller keeps the condition its own
- * conditional spread had, so adopting a helper changes no behaviour.
+ * null means. A third, the truthiness test that also drops `""`, `0` and `false`, came over from v1
+ * as `keyIfTruthy` and had no caller here but its test, so it left on 10 October: at a boundary it
+ * is the difference between an omitted count and a count of zero, and a site that wants it writes
+ * the condition. Each caller keeps the condition its own conditional spread had, so adopting a
+ * helper changes no behaviour.
  */
 
-/** What the three `keyIf*` functions return: an optional key that is never present as `undefined`. */
+/** What the two `keyIf*` functions return: an optional key that is never present as `undefined`. */
 type Key<K extends string, V> = { [P in K]?: Exclude<V, null | undefined> };
 
 /**
@@ -38,11 +40,6 @@ export function keyIfDefined<K extends string, V>(key: K, value: V): Key<K, V> {
 /** Omit the key when the value is `null` or `undefined` — the JSON-boundary spelling. */
 export function keyIfNotNull<K extends string, V>(key: K, value: V): Key<K, V> {
   return value === null || value === undefined ? {} : keyed(key, value);
-}
-
-/** Omit the key when the value is falsy, so `""`, `0` and `false` drop it as well. */
-export function keyIfTruthy<K extends string, V>(key: K, value: V): Key<K, V> {
-  return value ? keyed(key, value) : {};
 }
 
 /**

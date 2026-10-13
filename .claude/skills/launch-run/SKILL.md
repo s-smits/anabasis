@@ -1,227 +1,184 @@
 ---
 name: launch-run
-description: "Launch authorised Anabasis runs or model pairs through one Bun TypeScript command, or stop an identified run under existing user authority. Owns preparation, exact condition checks, startup and stop mechanics; whole-run-investigation's outcome reference assesses whether stopping is justified."
+description: "Start an authorised Anabasis v2 campaign through its one command, which asks the log before each move whether the move can report anything, or stop a named run and release what it held. Use when the operator asks to start, launch, resume or stop a campaign or a run, to check whether a campaign is ready for its next move, or why a move was refused. Owns the start and the stop; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
 ---
 
-# Launch a run
+# Start and stop a campaign
 
-Select the model with `--model astra`, `--model sol` or `--model opus`.
-The launcher applies that model's complete standard preset automatically. Do not restate
-effort or backend flags in ordinary launch requests or automations. Add optional flags only
-when the user specifies a non-default requirement. `--condition` remains a legacy alias;
-never supply both. The launcher's `CONDITIONS` table owns the model and three slot settings.
+One command runs a campaign move after move over its log (`tools/d2/harness-builder.ts`): it
+reads the log, asks the decision table for the one move that follows, prints it with its reason,
+makes it by the command an operator would run, and reads the log again. A start request
+authorises that command once; it does not authorise a second run beside it.
 
-Use the TypeScript launcher from current main with the selected source's pinned Bun. It probes
-the launched source before spending by running that tree's own `probe.ts`, whose static imports
-resolve in the launched tree, so a source whose modules moved still probes: main's probe could
-not open 03b8cb266, whose pi layer had replaced `src/backends/claude-backend.ts`, and the
-launch of run 08c0f2 had to borrow the source tree's launcher. The two copies meet only at
-`probeArgs` and the JSON the probe prints, which is why neither changes shape without the other.
-The launcher itself (options, credential capture, gate, startup checks) stays main's, and
-`launch.json` records its commit as `launcher`; never select an older runtime or
-silently drop the timed stop. Bun executes the launcher directly; no build step or generated
-driver is needed. A launch request authorises the command.
+Until 11 October a launcher (`bun run runs launch`) read the log and the host and then started
+one round, one checkpoint, one session or one Examiner session. Every refusal it held is asked by
+the command of the move itself before its first event (`src/builder/admission.ts`), the campaign
+command waits for the host's load before a move that solves, and the launcher went
+(`docs/simplify.md`, D2). What follows is what replaced it.
 
-```sh
-bun .claude/skills/launch-run/scripts/launch.ts truss --model astra --source <resolved-full-sha>
-bun .claude/skills/launch-run/scripts/launch.ts truss buffer --model sol,opus --source <resolved-full-sha>
-bun .claude/skills/launch-run/scripts/launch.ts truss truss --model sol,astra --source <resolved-full-sha> --stop-after-ms 14400000
-bun .claude/skills/launch-run/scripts/launch.ts --prompt "<the user's exact one-line prompt>" --source <resolved-full-sha>
-```
+## Start
 
-To continue a named run's project when the user asks for it ("continue from the truss run
-above"), read that run's `opening.json` project id and add `--project <id>` with the same preset
-or prompt. The controller then continues from the recorded campaign evidence on the new source;
-the launcher refuses an opening that created a fresh project instead. There is no steering text:
-the Builder chooses the next experiment from evidence.
-
-Use one or two lines through `--prompt`, or a preset in `scripts/options.ts`, `truss`, `buffer` or `recode` (`--list` prints them).
-A `--prompt` run is named `standard`; name `standard` again for replicas, and `custom`, its name
-before 2026-09-30, still parses. A run id reads `<preset>-<model>-<instant>-pr<N>-<sha7>`: the pull
-request that carried the source commit, or `main-<sha7>` on main's head, and the commit's first
-seven hex. `runs pulse` drops the instant.
-Public files enter through `fullrun --context`; do not create `asks/`, verifier manifests or a second domain brief.
-Put the requested pair in one invocation. It prepares each worktree once, runs one TypeScript
-probe per run, settles the shared source's gate once, then starts the runs in quick succession.
-`--gate auto`, the default, runs `bun run gate` only when the commit has no whole-gate pass in
-`ana-gate-passed` under the common Git directory, the record the pre-push hook writes when a tip
-passes on a checkout holding only its own bytes; a pass the launcher runs on its clean run tree is
-recorded there the same way, so one commit is gated once however many batches launch it. Of the
-25 launch gates recorded between 2026-09-24 and 2026-09-28, 22 passed, two were ended by the host
-and the one refusal was of a commit never pushed, so a published stack head, which the hook has
-already gated, rarely leaves the launch gate anything to find. `--gate run` gates regardless; `--gate skip` launches without it and says so in
-every receipt.
-Keep the existing worktree checks and the detachment into the per-user service manager
-(launchd on macOS, `systemd-run --user` on Linux; `scripts/service.ts` owns the difference); do
-not add wrapper scripts, repeat installations or run a gate separately before this command.
-
-Always resolve the latest intended published PR stack at launch time, including scheduled
-launches, unless the user explicitly selects another revision. Fetch current heads and use
-[stack-hop](../stack-hop/SKILL.md) to verify every child contains its latest published parent;
-restack stale edges before launching. Use current `origin/main` only when no intended stack is
-open. The launcher records where that commit came from — the pull request carrying it, whether it was that PR's head, and the stack down to main, read from `gh pr list` — as `sourceRef` in `opening.json` and `launch.json`, and `bun run runs show` prints it and says whether the PR has moved since. Pass the resolved full SHA explicitly through `--source`; the CLI's omitted-source
-default remains `origin/main` and does not resolve the stack. Let the launcher fork that commit
-into a fresh isolated run worktree. Keep the source checkout and existing runs untouched.
-
-Model and budget defaults are Opus 5.5 medium/medium/medium, 25 tasks and 1,320 provider
-turns per run. Sol uses high/high/medium; Astra uses medium/low/low; Fable 5.1 uses medium/medium/medium;
-`sonnet`, `opus5`, `opus48` and `opus47` run Sonnet 5.5, Opus 5, Opus 4.8 and Opus 4.7 the way their newer
-counterparts run, to ask whether a model below the newest finds the limit the newest passes over.
-A variant of a model's row is named for its slot efforts, one letter each (l, m, h, x): `opushmm` is
-Opus 5.5 with the Builder at high. The launched tree's probe sees it as `opus`, so an older source
-launches it too.
-Each preset occurrence runs once per condition. Repeat a preset only for explicitly authorised
-replicas; their run ids gain separate `r1`, `r2` markers. `truss buffer recode --model sol,opus` is
-the standard launch, each preset once per model, and `truss truss --model sol,astra` means two truss
-runs per model. A preset authorises its exact prompt; never enrich it.
-
-`truss`, `buffer` and `recode` are the standard presets, one structural, one chemical and one
-biological, and share one
-shape: a best answer under strict limits, several interacting requirements and specified loss or
-substitution scenarios in one request. Stacking them is what made truss tasks
-hard: on the 2026-09-15 pack series one added interaction per task still passed 22 of 23
-verified cases (Sol high), and all of them stacked inside the same mass limit passed 7 of 20
-(Sol high) and 2 of 23 (Opus 5). A custom prompt of that shape stacks the same way. `--list`
-prints them all.
-
-The probe reads source identity and parses the request using the selected product revision,
-then initializes the real confined worker without a model turn, and runs one minimal Builder-slot
-turn at low effort on every kind so a shared session or usage limit refuses before any spend, with
-the provider's reset clause. Its temporary files stay
-outside the closed checkout. The launcher verifies the opening's source, prompt, arguments,
-budget and three model slots, rejects an immediate terminal, and checks that the process is
-still running. Startup proves neither useful model work nor an outcome.
-
-Each run's `launch.json` moves through `starting`, then `started` once the opening matched, or
-`start-unconfirmed` when it could not tell, or `refused` with the `stage` (`prepare` or `gate`)
-and the error that stopped the batch before any controller started. It records the gate's
-decision, seconds and load, the launcher commit, and the credential's account as a 12-hex digest.
-It says nothing about whether the run is still going: that is `bun run runs`, read from the
-controller's own evidence.
-
-Claude uses `CLAUDE_CODE_OAUTH_TOKEN` from the main checkout's `.env`, or explicit `--env-file`,
-and carries it into the run's frozen env. Codex conditions use the selected `CODEX_HOME/auth.json`, defaulting to the current account.
-Capture each selected credential once per batch; keep snapshots private and secrets out of
-arguments and reports. Report a missing credential; do not search other accounts or substitute keys.
-
-Before any launch, read the host's one-minute load (`sysctl -n vm.loadavg`) and count the open runs
-in `bun run runs`, firmware runs above all: each firmware Builder compiles in 4–5 lanes of its own,
-and the Epoch Reviewer's probes run the same compilers. Do not launch while the one-minute load is
-above 25 (operator, 2026-10-01), and do not launch a new arm while the latest runs are still placing
-their batteries. A launch into that load slows every sibling as well as itself, and it confounds any
-comparison of round length, because every arm is then bound by its tools. The load is not the whole
-count: each Opus run yields fewer batteries an hour as live runs are added (AGENTS.md "Open gaps",
-the fourth blocker), so count the live runs too, and hold at six. The launcher enforces both before
-it prepares a tree or asks a provider anything: it refuses while the load is above
-`MAX_LAUNCH_LOAD` (25), or when the batch, counting every run it would start, would take the runs
-`bun run runs` reads as live past `MAX_LIVE_RUNS` (6), and the refusal prints the load, the live
-count and each live run's id. When that reader fails, the launcher prints what it could not read and
-the load alone decides. `--over-capacity "<reason>"` launches anyway, and each receipt keeps the
-load, the live runs and the reason as `pace`.
-[The Super Loop's launch step](../run-improvement-campaign/SKILL.md#4-launch-through-one-owner)
-records what 2026-09-30 measured under it.
-
-Before a Claude-backed launch, read `.accounts/usage` in the main checkout, where it exists. It is
-local and untracked, prints each numbered account's 5-hour and weekly windows, marks the plain
-`CLAUDE_CODE_OAUTH_TOKEN`'s account, and prints no token. If the plain account's week or 5-hour
-window is `rejected` or near full, launch through `.accounts/launch claudeN <the same arguments>`
-on an account with room. That script passes that account's private env file as `--env-file`. A
-run lasts hours, so a window near full at launch ends the run with a provider limit partway
-through. Choosing among the operator's numbered accounts this way is authorised (2026-09-29) and is
-not a substitution. Put each run on an account no steward is using, and never print or copy
-the env files.
-
-Use `--help` for limits and paths; `--dry-run` plans without setup, secrets or launch.
-Experiment predictions belong to the campaign workflow, outside this launch helper.
-
-## See what is running
-
-`bun run runs` answers "what is on this machine and what can I do about it" from recorded
-evidence, so no part of it needs a process grep or a file timestamp.
+Run the command in the worktree whose source should run, niced, in a process group of its own,
+with its output in two files, and the key in Bun's own `--env-file`:
 
 ```sh
-bun run runs                    # every run, open ones first: state, loop position, cases, turns, pid, worktree
-bun run runs show <runId>       # opening identity, authoring, batteries by claim time, terminal, recent rows
-bun run runs stop <runId> --yes # the stop below, with the service and worktree read from the receipt
-bun run runs resume <runId>     # the same prompt, pins, budget and project as a new run in that campaign
-bun run runs pause              # why a fullrun cannot be paused, and what to use instead
-bun run runs pulse [<runId> ...] # what moved since the last look, every 290 s; --once for one look
+cd <the worktree>
+set -m
+nice -n 19 bun --env-file=<file> tools/d2/harness-builder.ts \
+  --name <name> <the pack's four flags, or --prompt-file <file> --solver <model>> \
+  --budget <dollars> --builder <model> --examiner <model> --reviewer <model> \
+  [--solve-model-turns N] [--sessions N] [--level 0.1 --trigger 0.25] [--attended] \
+  > <dir>/launch.out 2> <dir>/launch.err &
 ```
 
-`pulse` watches every open run, or the ones named, and prints a status line per run in the terms
-of its stage, then one line per event: `◆` a stage worth reading, `⚠` something that may be wrong,
-`·` a smaller fact, each with the campaign file that holds it. The first look has nothing to differ
-from, so it prints the status lines alone. A file written in a schema this tree no longer reads is
-named as unread rather than shown as empty.
+Its flags are the command's own, listed at the head of `tools/d2/harness-builder.ts`. What it
+runs by is recorded once (`campaign.opened`), so the command run again by the campaign's name
+alone goes on from the log with the same terms, and one that names another term records it
+again. A flag that names another setting than the campaign's record is refused with both: the
+setting does not change, and another setting is another campaign (`tools/d2/setting.ts`).
 
-`pulse --once` is the watch after a launch. Run it from main as the last action of each reply, so
-the next look lands about 270 s later and opens on what moved. For a watch nobody is reading, the
-detached, stop-row-only watcher is `campaign.ts` in
-[run-improvement-campaign](../run-improvement-campaign/SKILL.md#5-watch-quietly).
+`--dry-run` prints the next move and makes none: it answers "is this campaign ready for its next
+move, and which is it?". `--moves N` makes at most that many. A campaign runs unattended: it
+freezes an exam whose reading holds no fault and promotes the harness the rule names without
+waiting. `--attended` makes both wait for the operator's word, and the campaign keeps it until
+`--no-attended`; add it only when the operator asks.
 
-`stop` and `resume` print their plan and do nothing without `--yes`. A run whose process is gone
-but which recorded no terminal reads `orphaned`, never `live`. A live run's provider-turn counter
-lives in the ledger its owner holds open, so the listing reports it unknown rather than zero.
+Three things about the shell line:
+
+- **The env file is Bun's to read.** `--env-file` is Bun's own flag, and nothing in the
+  repository opens the file. Do not print it, copy it or search for another. Which account
+  spends is named by the model's provider and is the operator's: `claude/<model>` runs Claude
+  Code on the login in `CLAUDE_CODE_OAUTH_TOKEN`, and `claude-api/<model>` runs the same CLI on
+  the key in `ANTHROPIC_API_KEY`. They are two providers, so a solver on one is another setting
+  than a solver on the other.
+- **Its own process group.** `bun run runs stop` signals a process group, and only one that a
+  process writing the log leads: a campaign started in the shell's own group is not stopped by
+  it. An interactive shell gives a background job a group of its own; a bash or zsh script does
+  the same with `set -m` before the `&` (dash refuses `set -m` without a terminal: use bash).
+- **One or two campaigns at a time on one host.** A solve's wall counts the clock, and a loaded
+  host moves every solve's time. The command waits before a move that solves until the host's
+  one-minute load is at or under its cores, and says so once; `--loaded` starts the move all the
+  same, which is the operator's word that its times will not be compared.
+
+The command keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`):
+its flags, the commit and whether the tree had uncommitted changes, the load and cores it started
+under. The log holds the host's code by content and no commit, so the receipt is where the commit
+is on record, and `bun run runs zip` carries it at every level.
+
+## What is refused, and where
+
+Every refusal is the move's own command's, asked before its first event, so a command started by
+hand is refused where the campaign command would be refused. A rehearsal is exempt by name: its
+seats are scripts, which are paid nothing.
+
+A comparison (`tools/d2/checkpoint.ts`, `tools/d2/round.ts`) is refused by its admission
+(`admitComparison`, `src/builder/admission.ts`) on:
+
+- **No held-out task.** `prepare.ts` has not run on this log.
+- **A checker nobody has read.** `accept.ts` has not run on this log. In the first live rounds the
+  reading was made after the solves, by hand, and on truss 22 of 32 solves had by then been
+  rejected, 14 on one check.
+- **Too few tasks to read a step.** At `--trigger 0.25` a first reading takes two untied tasks,
+  all won. A comparison of fewer scored tasks is refused, and so is one the campaign's own tie
+  share leaves too few untied. The campaign command then runs an Examiner session for more.
+- **No dollar cap.** The campaign command passes each move what is left of its total; a command
+  started by hand names `--cap`. No solve starts that a reserve for it and for each one running
+  (`--reserve`) would take past the cap, and a comparison the cap cuts short reads `not-scored`.
+- **A campaign the stop rule has stopped.** `--past-stop "<why>"` goes on all the same, and the
+  reason is logged (`stop.overridden`).
+
+A comparison that began goes on from its log under its id, unasked, with the terms it began with.
+One that reported is finished: run again it says what it said and ends.
+
+A Builder session (`tools/d2/session.ts`) is refused by its own admission (`admitSession`) on a
+cap it has none of, a checker nobody has read and the stop rule, and under a `--session` whose
+Builder started and did not end whole (`spent`, `src/builder/session.ts`): a second session under
+one id would be a second try. An Examiner session (`tools/d1b/examine.ts`) solves nothing and needs
+the campaign's log and no set in it; it is refused under a `--session` the log already holds. The
+campaign command takes the next free id for each.
+
+What the launcher alone used to refuse, and nothing asks since: a second process writing the
+same log in this worktree, and a flag the move's command would refuse at its first line. Read
+`bun run runs pulse` before a start, and `--dry-run` for the flags.
+
+## What comes before a comparison
+
+A comparison reads sets that earlier moves put in the campaign's log (`tools/d2/campaign.ts`
+lists them). The campaign command makes each move in its order; by hand they are:
+
+| the log needs | from |
+| --- | --- |
+| a checker that has been read, with no fault left in its last reading, or frozen by the operator over its faults | `bun tools/c/accept.ts ... --name <name> [--admit <checks>] [--freeze]` |
+| the pack's tasks held out, and the practice tasks released | `bun tools/d2/prepare.ts ... --name <name>` |
+| further held-out tasks, where the pack's are too few | `bun tools/d1b/examine.ts ... --name <name> --session x-1` |
+
+The reading puts every control to the checks twice, and the do-nothing answer, the smallest the
+answer format allows, to every task: a task on which that answer is not rejected is a fault. A
+check its author's own computation decides, with no installed instrument, is a fault too, until
+`--admit` names it, which is the operator's word for that check.
+
+Name `--predict "<a sentence>"` on a checkpoint or a round started by hand to put on record what
+you expect it to read. It is written with the comparison's terms before its first solve, decides
+nothing, and is printed beside the reading when the comparison ends.
+
+## Watch, and read what comes next
+
+```sh
+bun run runs pulse [<name>]
+bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]
+```
+
+The pulse says what each run gained since the last look. The first sign of model work is a
+session's first `build.started` or `exam.started`, and a checkpoint's first `solve.started`; "the
+process is gone before `comparison.reported`" is a run to read in its `.err`.
+
+The view prints the campaign as its log reads: the set-up, what each Examiner session, Builder
+session and comparison handed over, and the climb. Its last line is the one move the table names
+for this log (`decide`, `src/builder/decide.ts`), asked with the five flags above and, for those
+it does not name, the terms the campaign's opening keeps: what the campaign command would make
+next. The view starts nothing.
 
 ## Stop a run
 
-Use [the outcome reference](../whole-run-investigation/references/outcome-review.md#whether-a-live-run-is-still-useful)
-when the question is whether a run should stop. This section executes an authorised decision;
-neither a timer nor a stopped run authorises a replacement or changes accounts/credentials.
-
-`--stop-after-ms` is a soft boundary: the current round finishes and records before stopping.
-For an authorised timed interruption use `--kill-after-ms`. The launcher starts an independent
-launchd operator timer before starting each controller. The timer checks the exact service and
-its loaded worktree plist, sends SIGTERM, gives closure 30 seconds, then uses launchd bootout
-and verifies service absence. Fresh project allocation remains with the controller. The
-controller is started with the timer's deadline as `--stop-at <epoch ms>`, which the opening
-records and the Builder is told beside its round clock; a source older than that flag refuses it,
-so such a source launches without `--kill-after-ms`.
-
 ```sh
-bun .claude/skills/launch-run/scripts/launch.ts truss --model sol --source <full-sha> --kill-after-ms 180000
+bun run runs stop <name> ... [--yes]
 ```
 
-The three-minute value is the signal time; termination can take another 35 seconds. For a
-five-hour maximum, use `--kill-after-ms 17940000` (4 h 59 min), leaving one minute for closure.
-The host must remain awake. Do not substitute the retired `--wall-deadline-ms` flags or describe
-the soft round boundary as a maximum. A timed interruption can leave in-flight work unaccepted.
+Without `--yes` it prints the process that writes each named run's log and how many it started,
+and ends nothing. With it, that process is ended first and then each one it started. A name is
+matched whole, and no process group is signalled unless one of those processes leads it: a round
+started by hand can share its group with a sibling.
 
-Read `<worktree>/.scratch/quick-run/launch.json` for the exact service, opening and source, and
-`stop.json` beside it for the timer's outcome. The `.ready` sibling proves timer startup only.
-Verify the controller terminal through the measured tree's evidence reader, the controller
-lock holder and any captured child processes. Service absence alone does not prove that every
-descendant was reaped. Preserve verified, unaccepted and non-result counts and all receipts;
-never repair controller evidence or delete its lock to manufacture closure.
+A stop also releases what the run held on the host: the capped root, a disk image on macOS, of
+each solve, Builder session and Examiner session its log started and never finished. Only the
+ended process would have let those go. A named run that is not running is released the same way,
+so a run that was killed or that crashed is cleaned up by stopping it. Without `--yes` the roots
+are counted and left.
 
-`launchctl bootout` ends the service's own process, which is the `bun run fullrun` wrapper. The
-controller under it can outlive the wrapper with PPID 1 and keep its campaign lock (2026-09-30).
-`stop.ts`, which both `runs stop` and the timer run, therefore reads the service's pid before
-removal, and once the service is gone it SIGKILLs a process group of that id that still exists. The
-outcome is then `controller-killed`, naming the group, and `runs stop` exits 1 because the
-controller wrote no terminal. A stop made by hand with `launchctl` has no such check. So after any
-stop, run `bun run runs` again. A run that still reads `live` from "campaign lock held by a live
-holder" has a controller running without its service, and the pid beside it is that controller.
-The stop is observed only when the run reads `closed`, or reads `orphaned` because the lock holder
-proved dead. Until then, report the stop as unobserved, with that pid.
+A stop is abrupt: the run writes no ending, and its log is as it was. What the stop cost depends
+on where it fell, and the command says which.
 
-For an immediate authorised stop, read the launch receipt and invoke `scripts/stop.ts` in this
-skill with
-its exact `--worktree`, `--run`, `--service`, current epoch milliseconds as `--deadline`, and
-`--grace 30000`. If a timer is already armed, do not start a competing one: signal the recorded
-service with `launchctl kill TERM <service>` (Linux: `systemctl --user kill --kill-whom=main
---signal=SIGTERM <service>`), then inspect closure and use `launchctl bootout <service>` (Linux:
-`systemctl --user stop <service>`) only for that still-owned service. Preserve the scheduled timer and its receipts.
-Never use a broad process-name kill or stop a sibling run. After closure, the completed timer
-service `<controller-service>.stop` may be booted out; keep its files for evidence.
+- **A campaign** goes on from its log under the same `--name`, and the session the stop fell
+  inside has spent its id: the next takes another, and pays for that seat again. A word left
+  with `tools/d2/word.ts --stop "<why>"` ends a campaign at its next move boundary and spends
+  none, so prefer the word where a move's end can be waited for.
+- **A checkpoint, or a round after its `build.finished`**, started by hand: run again under the
+  same id, the comparison goes on from its log with the tasks and the terms it began with. A
+  solve counted is not solved again, and its cap counts what was billed before the stop.
+- **Inside a Builder session**, or **an Examiner session** wherever the stop fell: that session
+  never finished, so its id is spent. The tasks an Examiner session had held out by then stay
+  held out.
 
-A scheduled launch-and-stop automation must read this skill, pass the timed-stop flag in its
-single launch command, retain exact per-run receipts, and verify closure after the deadline.
-If timer readiness fails, do not launch the controller. If closure fails, report the owning run
-and required action; do not silently launch replacements.
+Whether a run should be stopped at all is a reading (whole-run-investigation); this command only
+carries out an authorised one, and a stop does not authorise a replacement. After a stop, run
+`bun run runs pulse --once <name>` and report it as stopped only when the run reads `closed`.
 
-Return each run id, source, condition, project, current startup status and log. On a failure,
-read the terminal and log before deciding what remains authorised. Do not silently launch
-additional paid runs beyond the requested batch or stop a sibling. During a quiet Builder turn,
-use `bun run outcome <campaignDir> --builder` in its worktree for recorded checkpoints.
-Silence alone is not a reason to signal or relaunch.
+## Not here yet
+
+- No timed stop. v1's launcher armed one through the service manager; a v2 session ends by its
+  own limits (`--minutes`, `--turns`), and a campaign by its budget and its patience.
+- No probe turn before spend: a session or usage limit shows at the first turn, in the pulse. A
+  session whose own turn the provider fails ends `crashed` with the provider's words. A
+  comparison stops once the provider has written nothing for the solves of three tasks in a
+  row, writes no report, and goes on from its log when the campaign is run again: wait for the
+  reset the provider names, or pass another `--env-file`.

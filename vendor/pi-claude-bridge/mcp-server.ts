@@ -1,3 +1,6 @@
+// Copied from pi-claude-bridge 0.9.1 at main (github.com/elidickinson/pi-claude-bridge, e870bc89, MIT, see
+// LICENSE): src/mcp-server.ts, verbatim. Only this file and its three siblings come over:
+// src/backends/claude.ts replaces index.ts, the extension around them.
 // In-process MCP server that exposes pi tools to Claude Code.
 //
 // Pi declares tool parameters as TypeBox objects, which are already JSON
@@ -24,10 +27,9 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { type JsonObject, asRecord, isString } from "../../src/meta/json-shape.ts";
 import type { McpResult } from "./extract-tool-results.js";
 
-// Claude Code fingerprints every tools/call with the id of the tool_use block it came
+// Claude Code stamps every tools/call with the id of the tool_use block it came
 // from. That is the only reliable way to pair a call with its result: call order
 // is not guaranteed to match the order the tool_use blocks were emitted, so
 // counting calls mispairs results as soon as the two diverge.
@@ -38,38 +40,43 @@ import type { McpResult } from "./extract-tool-results.js";
 // silently pairing results to the wrong call, which is the intended tradeoff.
 const TOOL_USE_ID_META = "claudecode/toolUseId";
 
-interface McpToolDef {
+export interface McpToolDef {
 	name: string;
 	description: string;
 	inputSchema: unknown;
 	handler: (toolCallId: string) => Promise<McpResult>;
 }
 
-const EMPTY_SCHEMA: JsonObject = { type: "object", properties: {} };
+// MCP requires an object schema. Pi types tool parameters as any TypeBox schema,
+// so a scalar or array one typechecks but cannot go on the wire — that is a bug
+// in the tool, and reporting it at startup names the culprit. Degrading it to
+// "takes no arguments" instead would surface much later as Claude calling the
+// tool with no arguments and pi's own validation rejecting them.
+function assertObjectSchema(tool: McpToolDef): void {
+	const schema = tool.inputSchema as Record<string, unknown> | undefined;
+	if (!schema || schema.type !== "object") {
+		throw new Error(`${tool.name}: MCP tool parameters must be an object schema, got ${JSON.stringify(schema)}`);
+	}
+}
 
 export function createToolServer(name: string, tools: McpToolDef[]) {
 	const server = new McpServer({ name, version: "1.0.0" }, { capabilities: { tools: {} } });
 	const byName = new Map(tools.map((tool) => [tool.name, tool]));
+	for (const tool of tools) assertObjectSchema(tool);
 
 	server.server.setRequestHandler(ListToolsRequestSchema, () => ({
-		tools: tools.map((tool) => {
-			// Tool parameters come from arbitrary pi extensions; MCP requires an
-			// object schema, so anything else is advertised as taking no arguments
-			// rather than being put on the wire malformed.
-			const schema = asRecord(tool.inputSchema);
-			return {
-				name: tool.name,
-				description: tool.description,
-				inputSchema: schema?.type === "object" && schema.properties !== undefined ? schema : EMPTY_SCHEMA,
-			};
-		}),
+		tools: tools.map((tool) => ({
+			name: tool.name,
+			description: tool.description,
+			inputSchema: tool.inputSchema as Record<string, unknown>,
+		})),
 	}));
 
 	server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
 		const tool = byName.get(request.params.name);
 		if (!tool) throw new Error(`Unknown tool: ${request.params.name}`);
 		const toolCallId = request.params._meta?.[TOOL_USE_ID_META];
-		if (!isString(toolCallId)) {
+		if (typeof toolCallId !== "string") {
 			throw new Error(`${tool.name}: tools/call is missing _meta["${TOOL_USE_ID_META}"] — cannot pair the result with its tool call`);
 		}
 		// Narrowed deliberately: McpResult also carries `toolCallId`, which is our

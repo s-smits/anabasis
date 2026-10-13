@@ -1,3 +1,7 @@
+// Copied from pi-claude-bridge 0.9.1 at main (github.com/elidickinson/pi-claude-bridge, e870bc89, MIT, see
+// LICENSE): src/extract-tool-results.ts, verbatim but for the compiler: this repository's strict options
+// force the `!` on indexed reads and the `| undefined` on optional fields. Only this file and its three
+// siblings come over: src/backends/claude.ts replaces index.ts, the extension around them.
 // Tool-result extraction: walks the context tail to collect this turn's
 // tool results. Pi appends results to context and calls the provider again;
 // this scrapes them back out. Walks past user messages (steer/followUp) that
@@ -5,9 +9,7 @@
 // (turn boundary).
 // Extracted from index.ts so tests can import without activating the extension.
 
-import { asRecord, isString } from "../../src/meta/json-shape.ts";
-
-type McpContent = Array<
+export type McpContent = Array<
 	| { type: "text"; text: string }
 	| { type: "image"; data: string; mimeType: string }
 >;
@@ -16,34 +18,33 @@ export interface McpResult {
 	content: McpContent;
 	isError?: boolean | undefined;
 	toolCallId?: string | undefined;
+	[key: string]: unknown;
 }
 
-/** The context rows this walk reads. Pi carries further keys the walk never opens. */
-type ContextMessage = { role: string; content?: unknown; toolCallId?: string; isError?: boolean };
-
-/** Returned together so callers can log the walk boundary. */
-type ExtractedToolResults = { results: McpResult[]; stopIdx: number };
-
-function toolResultToMcpContent(content: unknown): McpContent {
-	if (isString(content)) return [{ type: "text", text: content || "" }];
+export function toolResultToMcpContent(
+	content: string | Array<{ type: string; text?: string; data?: string; mimeType?: string }>,
+): McpContent {
+	if (typeof content === "string") return [{ type: "text", text: content || "" }];
 	if (!Array.isArray(content)) return [{ type: "text", text: "" }];
 	const blocks: McpContent = [];
-	for (const raw of content) {
-		const block = asRecord(raw);
-		if (block?.type === "text" && isString(block.text)) blocks.push({ type: "text", text: block.text });
-		else if (block?.type === "image" && isString(block.data) && isString(block.mimeType)) blocks.push({ type: "image", data: block.data, mimeType: block.mimeType });
+	for (const block of content) {
+		if (block.type === "text" && block.text) blocks.push({ type: "text", text: block.text });
+		else if (block.type === "image" && block.data && block.mimeType) blocks.push({ type: "image", data: block.data, mimeType: block.mimeType });
 	}
-	return blocks.length > 0 ? blocks : [{ type: "text", text: "" }];
+	return blocks.length ? blocks : [{ type: "text", text: "" }];
 }
 
-export function extractAllToolResults(messages: ContextMessage[]): ExtractedToolResults {
+// Returns { results, stopIdx } so callers can log the walk boundary.
+export function extractAllToolResults(
+	messages: Array<{ role: string; content?: unknown; toolCallId?: string; isError?: boolean; [key: string]: unknown }>,
+): { results: McpResult[]; stopIdx: number } {
 	const results: McpResult[] = [];
 	let stopIdx = -1;
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
-		if (msg?.role === "toolResult") {
-			results.unshift({ content: toolResultToMcpContent(msg.content), isError: msg.isError, toolCallId: msg.toolCallId });
-		} else if (msg?.role === "assistant") { stopIdx = i; break; }
+		const msg = messages[i]!;
+		if (msg.role === "toolResult") {
+			results.unshift({ content: toolResultToMcpContent(msg.content as string | Array<{ type: string; text?: string; data?: string; mimeType?: string }>), isError: msg.isError, toolCallId: msg.toolCallId });
+		} else if (msg.role === "assistant") { stopIdx = i; break; }
 		// user messages: skip (steer/followUp injected mid-tool-execution)
 	}
 	return { results, stopIdx };

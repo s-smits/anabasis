@@ -4,7 +4,6 @@ import {
   NEW_FILE_CEILING,
   NEW_FUNCTION_CEILING,
   sourceTextFindings,
-  staleCopyLimits,
   unusedExports,
 } from "../tools/loc/source-policy.ts";
 import { scanTokens } from "../tools/loc/token-facts.ts";
@@ -72,45 +71,6 @@ describe("source policy", () => {
   // after the file came inside both limits is a silent exemption rather than a dormant number.
   // That is why the map is swept: most entries stop binding anything long before anyone thinks to
   // remove them.
-  it("refuses a copied-file ceiling once its file is gone or inside both authored limits", () => {
-    const stillOver = Array.from({ length: NEW_FILE_CEILING + 1 }, () => "const x = 1;").join("\n");
-    const kept = "src/builder/tools.ts";
-    const probe = (text: string | null) => staleCopyLimits((path) => (path === kept ? text : stillOver));
-
-    expect(probe(null)).toEqual([
-      {
-        check: "stale-copy-limit",
-        path: kept,
-        detail: "copied-file ceiling names a file that no longer exists",
-      },
-    ]);
-    const shrunk = probe("const x = 1;\n");
-    expect(shrunk.map((finding) => finding.path)).toEqual([kept]);
-    expect(shrunk[0]?.detail).toContain("exempts nothing");
-    expect(probe(stillOver)).toEqual([]);
-
-    // Four of the six entries left declare a ceiling below the 800-line file limit, so the only
-    // thing they can be exempting is a long function. That is what makes the next case the
-    // interesting one: the staleness reading is taken against the authored limits rather than
-    // against the entry's own number, so a file whose function is over the ceiling still has a
-    // load-bearing entry even though its size sits well inside 800.
-    const longFunction = [
-      "function tooLong() {",
-      ...Array.from({ length: NEW_FUNCTION_CEILING }, () => "  void 0;"),
-      "}",
-    ].join("\n");
-    expect(probe(longFunction)).toEqual([]);
-  });
-
-  it("refuses a removed literal or producer call while ignoring comments", () => {
-    const active = sourceTextFindings(
-      "src/example.ts",
-      'const kind = "response-intent";\ncallHarnessVerb();\n',
-    );
-    expect(active.map((finding) => finding.check)).toEqual(["literal-cut", "call-cut"]);
-    expect(sourceTextFindings("src/example.ts", "// response-intent; callHarnessVerb();\n")).toEqual([]);
-  });
-
   it("provides token and nonblank facts to the direct hostile tests and analysis tools", () => {
     const facts = scanTokens(
       '// "held" in a comment\ntype T = "artifact" | "clarification";\nfunction go() { accept(bytes); }\nconst s = `tpl-word`;\n',

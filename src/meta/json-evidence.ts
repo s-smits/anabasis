@@ -1,4 +1,4 @@
-import { asRecord, isRecord, type JsonObject } from "./json-shape.ts";
+import { isRecord } from "./json-shape.ts";
 
 /** Resolve the closed JSON-path grammar shared by authoring checks and truth predicates. */
 interface ResolveJsonPathResult {
@@ -28,11 +28,4 @@ export function resolveJsonPath(root: unknown, path: string): ResolveJsonPathRes
     } else return { found: false, value: undefined };
   }
   return { found: true, value };
-}
-
-/** `asRecord`, narrowed to an object with the plain-object prototype: class instances and
- *  prototype-less records are not plain records. */
-export function plainRecord(value: unknown): JsonObject | null {
-  const record = asRecord(value);
-  return record !== null && Object.getPrototypeOf(record) === Object.prototype ? record : null;
 }

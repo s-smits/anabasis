@@ -2,28 +2,20 @@ import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import {
-  type Diagnostic,
-  lintRoots,
-  optionalFinding,
-  strictByConfig,
-  tsgolintPath,
-} from "../tools/runtime/lint.ts";
+import { type Diagnostic, optionalFinding, strictByConfig, tsgolintPath } from "../tools/runtime/lint.ts";
 import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 
 describe("runtime lint configuration", () => {
-  it("rejects abandoned async work, hidden promises, loose conditions, missing variants, unchecked OAuth imports and unsafe any", () => {
+  it("rejects abandoned async work, hidden promises, loose conditions, missing variants and unsafe any", () => {
     const root = resolve(import.meta.dirname, "..");
     const dir = mkdtempSync(join(tmpdir(), "ana-runtime-lint-"));
-    const oauth = join(dir, "src/backends/oauth");
-    mkdirSync(oauth, { recursive: true });
-    const fixture = join(oauth, "fixture.ts");
+    const src = join(dir, "src/backends");
+    mkdirSync(src, { recursive: true });
+    const fixture = join(src, "fixture.ts");
     const text = `
-import { parseJsonAs as unchecked } from "${root}/src/meta/json-runtime.ts"; // REPORT no-restricted-imports
 import { capturedJsonParse } from "${root}/src/meta/json-runtime.ts";
 export const json = capturedJsonParse("{}");
-export const parsed = unchecked<string>("1");
-export const raw = JSON.parse("1"); // REPORT no-restricted-properties no-unsafe-assignment
+export const raw = JSON.parse("1"); // REPORT no-unsafe-assignment
 Promise.resolve("lost"); // REPORT no-floating-promises
 void Promise.resolve("still lost"); // REPORT no-floating-promises
 if (Promise.resolve(false)) console.log("wrong branch"); // REPORT no-misused-promises strict-boolean-expressions
@@ -153,21 +145,6 @@ describe("a clone's strict default", () => {
       expect(strictByConfig(dir)).toBe(true);
       spawnTextSync("git", ["-C", dir, "config", "ana.lintStrict", "false"]);
       expect(strictByConfig(dir)).toBe(false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("the roots of a whole-tree lint", () => {
-  it("leave packages/ui out until its own dependencies are installed, and nothing else", () => {
-    const dir = mkdtempSync(join(tmpdir(), "lint-roots-"));
-    try {
-      const without = lintRoots(dir);
-      mkdirSync(join(dir, "packages/ui/node_modules"), { recursive: true });
-      const complete = lintRoots(dir);
-      expect(complete).toContain("packages");
-      expect(without).toEqual(complete.filter((root) => root !== "packages"));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

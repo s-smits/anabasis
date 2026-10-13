@@ -14,6 +14,7 @@ export {
   existsSync,
   fstatSync,
   fsyncSync,
+  ftruncateSync,
   linkSync,
   lstatSync,
   mkdirSync,

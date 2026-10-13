@@ -1,7 +1,6 @@
-// Copied from pi coding-agent v1.0.0 (github.com/earendil-works/pi, a13d35a, MIT, see LICENSE):
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
 // packages/coding-agent/src/core/tools/tool-definition-wrapper.ts, verbatim but for
-// the compiler: this repository's `exactOptionalPropertyTypes` forces the `as AgentTool` on the
-// wrapped tool, whose optional members are copied across even when undefined.
+// the compiler: this repository's strict options force the `!` on indexed reads and the `| undefined` on optional fields.
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ExtensionToolContext, ToolDefinition } from "../extensions/types.ts";
 

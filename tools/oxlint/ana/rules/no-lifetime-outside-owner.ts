@@ -2,16 +2,23 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import { isOneOf, isTestFile } from "../shared/file-role.ts";
 
 /**
- * Process lifetime has two owners in this repository: `spawnCollected` for an isolated Builder
- * command and `stageCommandIsolation` for every Built shell launch. A file that spawns a child
- * and then kills it has written a third one.
+ * Process lifetime has one launch owner in this repository, `stageCommandIsolation` in
+ * `src/verify/solve-command-isolation.ts`, which stages every solve command behind the OS wall
+ * and, under Seatbelt, has the shell reap its own group on exit, and one reader of it,
+ * `src/meta/subprocess.ts`, whose `killProcessGroup` and `terminateAndReapProcessGroupId` signal
+ * a group and wait for it to go. A file that spawns a child and then kills it has written a
+ * second owner.
  *
- * The simplify skill records why this is a rule rather than a preference. On 2026-09-15 an
- * `AbortSignal` threaded into the Builder's command runner was refused twice — "why do we even
- * need to kill", then "one layer higher" — because the spawner already killed the group on
- * timeout and in `finally`, and the leak was the controller recording its terminal before its
- * session had stopped. The repair that landed (`c4bd09b88`) put `reapGroupOnExit` inside
- * `stageCommandIsolation`, on the Darwin launch only, at a net cost of −1 production line.
+ * The rule was written in v1, where a second launch owner stood beside `stageCommandIsolation`
+ * for the Builder's isolated commands, and the record it keeps is v1's.
+ * On 2026-09-15 an `AbortSignal` threaded into the Builder's command runner was refused twice —
+ * "why do we even need to kill", then "one layer higher" — because the spawner already killed
+ * the group on timeout and in `finally`, and the leak was the controller recording its terminal
+ * before its session had stopped. The repair that landed (v1's `c4bd09b88`) put the reaping of
+ * the group on exit inside `stageCommandIsolation`, on the Darwin launch only, at a net cost of
+ * −1 production line.
+ * v2 copied `stageCommandIsolation` and `src/meta/subprocess.ts` and left the Builder's spawner
+ * behind, so the owner list below names two files and the message one owner.
  *
  * Every hand-rolled kill pays the same three costs. It races the owner's own teardown, so two
  * signals arrive and the second one's failure means nothing. It kills the process and not its
@@ -20,17 +27,18 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  * plainly that it is not.
  *
  * The rule reads the file, not the call: a spawn and a `.kill(` in one module. That is the
- * shape, because the cost is the second owner existing, not any one line of it. The two owners
- * themselves are exempt by path, as is `src/meta/subprocess.ts`, which is the reader they both
- * use. Tests are exempt: a test that starts a process has to be able to stop it.
+ * shape, because the cost is the second owner existing, not any one line of it. The owner and
+ * its reader are exempt by path. Tests are exempt: a test that starts a process has to be able to
+ * stop it.
  *
  * A signal sent through the process object is not that shape. `process.kill(pid, signal)` ends
- * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does and what
- * the test runner does to the descendants a group kill could not reach — they left their session,
- * so the runner finds them in `ps` and signals each one. A second launch owner is a file that
- * kills the child it holds, and that is written `child.kill()`.
+ * an identity the file was handed, which is what `src/meta/subprocess.ts` itself does, what
+ * `src/verify/disk-cap.ts` does to the pids `lsof` lists on a mount, and what the test runner
+ * does to the descendants a group kill could not reach — they left their session, so the runner
+ * finds them in `ps` and signals each one. A second launch owner is a file that kills the child
+ * it holds, and that is written `child.kill()`.
  *
- * The two sites this left on 2026-09-20 were one of each. `generated-tool-worker-process.ts`
+ * The two sites this left in v1 on 2026-09-20 were one of each. A generated tool's worker file
  * spawned a worker and ran its own SIGTERM, wait, SIGKILL, wait ladder over `child.kill`, which
  * is the owner's `terminateAndReapProcessGroupId` rewritten one signal narrower: it reached the
  * worker and not its group, so a generated tool's own children outlived the close. Routing the
@@ -45,12 +53,8 @@ import { isOneOf, isTestFile } from "../shared/file-role.ts";
  *  is a signal to an identity someone else launched, and no second launch owner. */
 const BY_PID = /^(?:runtimeProcess|process)\.kill$/u;
 
-/** The three modules that are allowed to end a process: the two launch owners and their reader. */
-const LIFETIME_OWNERS = [
-  "src/builder/candidate-isolation-runtime.ts",
-  "src/verify/solve-command-isolation.ts",
-  "src/meta/subprocess.ts",
-];
+/** The two modules that are allowed to end a process: the launch owner and its reader. */
+const LIFETIME_OWNERS = ["src/verify/solve-command-isolation.ts", "src/meta/subprocess.ts"];
 
 /** Whether the call is a liveness probe, `kill(pid, 0)`, rather than a signal that ends anything. */
 function zeroSignal(node: ESTree.CallExpression): boolean {
@@ -63,8 +67,8 @@ export const noLifetimeOutsideOwnerRule = defineRule({
     type: "problem",
     docs: { description: "Process lifetime belongs to its launch owner, not to each caller." },
     messages: {
-      thirdOwner:
-        "This file spawns a child and kills it, which makes it a third owner of process lifetime beside `spawnCollected` and `stageCommandIsolation`. Settle the teardown there: a kill here races the owner's own, signals one process rather than its group, and reads as proof the child is gone.",
+      secondOwner:
+        "This file spawns a child and kills it, which makes it a second owner of process lifetime beside `stageCommandIsolation` (src/verify/solve-command-isolation.ts). Settle the teardown there, or signal the group through `killProcessGroup` or `terminateAndReapProcessGroupId` (src/meta/subprocess.ts): a kill here races the owner's own, signals one process rather than its group, and reads as proof the child is gone.",
     },
   },
   createOnce(context) {
@@ -77,7 +81,7 @@ export const noLifetimeOutsideOwnerRule = defineRule({
       before: () => {
         spawn = null;
         kills = false;
-        // An owner and a test both end processes as their job; only a third owner is a finding.
+        // The owner, its reader and a test all end processes as their job; a second owner is the finding.
         return !isTestFile(context.filename) && !isOneOf(context.filename, LIFETIME_OWNERS);
       },
 
@@ -94,7 +98,7 @@ export const noLifetimeOutsideOwnerRule = defineRule({
 
       "Program:exit": () => {
         if (spawn === null || !kills) return;
-        context.report({ node: spawn, messageId: "thirdOwner" });
+        context.report({ node: spawn, messageId: "secondOwner" });
       },
     };
   },

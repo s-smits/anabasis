@@ -1,5 +1,0 @@
-{
-  "files": ["read", "write", "edit", "materialize_files", "bash"],
-  "public-data": ["query_public_data"],
-  "shell": ["bash"]
-}

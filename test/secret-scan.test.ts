@@ -1,6 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { redactProviderDiagnostic, redactTokens } from "../src/backends/diagnostic-redaction.ts";
-import { scrubSecretEnv } from "../src/backends/scrub-env.ts";
 import { WAIVER, scanText } from "../tools/secrets/rules.ts";
 import { refusedPath, scanTree } from "../tools/secrets/scan.ts";
 
@@ -40,7 +38,7 @@ const MUST_NOT_FIRE: readonly string[] = [
   'apiKeyEnv: "OPENROUTER_API_KEY",',
   'ANTHROPIC_API_KEY: "ambient-key",',
   'native: { secret: "RAW-NATIVE-MARKER" }',
-  `redactTokens("url ${SHORT_URL}")`,
+  `fixture("url ${SHORT_URL}")`,
   'OPENROUTER_API_KEY: "sk-or-fake000000000000",',
   "const token = process.env.ANTHROPIC_API_KEY;",
   'url: "https://api.example.com/v1"',
@@ -88,95 +86,11 @@ describe("secret scan rules", () => {
   });
 });
 
-describe("repository scanning covers the tested runtime credential patterns", () => {
-  // The pre-commit vocabulary is the widest of the three: a repository keeps what it is given
-  // forever, while an env scrub and a log redactor each drop one value at one boundary. This pins
-  // this coverage relationship as a test. Either runtime redactor may recognise the fixture;
-  // they do not have identical rules. In particular, redactTokens has no general JWT rule.
-  // This comparison preserves that limitation while requiring the repository scanner to
-  // detect all three fixture patterns.
-  it("catches every value shape the runtime redactors already treat as a credential", () => {
-    for (const value of [URL_CREDS, JWT, GITHUB_PAT]) {
-      const droppedFromEnv = Object.keys(scrubSecretEnv({ BENIGN_NAME: value })).length === 0;
-      const droppedFromLog = !redactTokens(value).includes(value);
-      expect(droppedFromEnv || droppedFromLog, value).toBe(true);
-      expect(scanText("fixture.ts", `x = "${value}"`), value).not.toEqual([]);
-    }
-  });
-});
-
 describe("the tracked tree", () => {
-  // The repo-wide audit, run by `bun run test` so the gate covers it. `bun run secrets` is the same
-  // scan by hand; the pre-commit hook runs it over staged additions only.
+  // The repo-wide audit, run by `bun run test` so CI covers it. `bun run secrets` is the same scan by
+  // hand; `bun run commit:check` runs it over staged additions only.
   it("carries no credential-shaped literal", () => {
     const { hits, refusedPaths } = scanTree();
     expect({ hits, refusedPaths }).toEqual({ hits: [], refusedPaths: [] });
-  });
-});
-
-describe("redactTokens", () => {
-  // Assembled: a continuous postgres://user:…@, api_key= or ghp- literal is what remote secret
-  // scanners report.
-  const urlCreds = join("post", "gres", "://", "user", ":", "pass", "@", "example.test/db");
-  it.each([
-    ["token gho-abcdefgh1234 leaked", "token [redacted-token] leaked"],
-    ["token ghp-abcdefgh1234 leaked", "token [redacted-token] leaked"],
-    ["token github_pat-abcdefgh1234 leaked", "token [redacted-token] leaked"],
-    ["sk-abcdefgh1234 in the log", "[redacted-token] in the log"],
-    ["xoxb-abcdefgh1234", "[redacted-token]"],
-    ["xoxp-abcdefgh1234", "[redacted-token]"],
-    // `or-` needs eight or more charset characters, so ordinary hyphenated words pass through.
-    ["or-else this stays as-is", "or-else this stays as-is"],
-    ["or-1234567", "or-1234567"],
-    ["or-12345678", "[redacted-token]"],
-    ["", ""],
-    ["build finished in 1.2s", "build finished in 1.2s"],
-    // The key=value pass re-matches the query string's own "token=" after the query pass redacts it,
-    // greedily consuming the rest of the string.
-    ["https://x.test/cb?token=abc123&next=/", "https://x.test/cb?token=[redacted]"],
-    [`api_key=${join("abcdef", "123456")}`, "api_key=[redacted]"],
-    [`GITHUB_TOKEN=${join("ghp-abcdefgh", "1234")}`, "GITHUB_TOKEN=[redacted]"],
-    ["Authorization: ***", "Authorization=[redacted]"],
-    [`DATABASE_URL=${urlCreds}`, "DATABASE_URL=[redacted]"],
-    ["SESSION_COOKIE='sid=abc123'", "SESSION_COOKIE=[redacted]"],
-    ['{"Authorization":"Bearer abc123"}', '{"Authorization"=[redacted]}'],
-    [`url ${urlCreds}`, "url postgres://[redacted]@example.test/db"],
-  ])("redacts %p to %p", (input, output) => {
-    expect(redactTokens(input)).toBe(output);
-  });
-
-  it("redacts credential fields whose keys carry diagnostic suffixes", () => {
-    for (const key of [
-      "client_secret_value",
-      "authorization_header",
-      "password_hash",
-      "credential_json",
-      "private_key_pem",
-      "session_cookie_value",
-    ]) {
-      expect(redactTokens(`${key}=example`)).toBe(`${key}=[redacted]`);
-    }
-  });
-
-  it("scans one long benign field from its left edge", () => {
-    const diagnostic = `${"x".repeat(20_000)}=present`;
-    expect(redactTokens(diagnostic)).toBe(diagnostic);
-  });
-});
-
-describe("redactProviderDiagnostic", () => {
-  it("redacts account/path details while preserving useful runtime signatures", () => {
-    expect(
-      redactProviderDiagnostic(
-        "API Error: Unable to connect to API (ConnectionRefused) for alice@example.com in /Users/alice/.claude/projects/x Authorization: BearerSecret123",
-      ),
-    ).toBe(
-      "API Error: Unable to connect to API (ConnectionRefused) for [redacted-email] in /Users/[redacted-user]/[redacted-path] Authorization=[redacted]",
-    );
-  });
-
-  it("caps diagnostics before persistence", () => {
-    const result = redactProviderDiagnostic(`prefix ${"x".repeat(50)}`, 24);
-    expect(result).toBe(`prefix ${"x".repeat(17)} […33 bytes omitted]`);
   });
 });

@@ -1,5 +1,13 @@
 # The override lists in `.oxlintrc.json`
 
+> Carried over from v1 (github.com/s-smits/anabasis at 3f93d06b) with the ruling it explains. Every
+> count, path and dated section below was measured on that tree, not this one. Here `vendor/` is
+> ignored as a whole, so the `vendor/pi-claude-bridge/**` and `vendor/harbor/**` override blocks
+> this file discusses are gone, and none of v1's not-slop rows came across but those naming a file
+> that did. The `**/src/backends/oauth/**` and `packages/ui/**` blocks went on 10 October, since
+> neither tree is here, and `ana/no-hand-read-controller-evidence` was removed the same day: a v2
+> run is its log, with no `opening.json` or `terminal.json` to read by hand.
+
 Each block in `overrides` that turns one rule `"off"` for a list of files is that rule's debt on
 the day it was turned on: the files that already broke it. The rule holds every other file in the
 repository from that moment, including every new one.

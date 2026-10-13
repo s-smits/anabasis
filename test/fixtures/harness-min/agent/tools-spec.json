@@ -1,0 +1,12 @@
+{
+  "presets": ["shell"],
+  "tools": [
+    {
+      "name": "scale_base",
+      "kind": "reader",
+      "description": "Returns the task's base multiplied by a factor."
+    },
+    { "name": "read_path", "kind": "advisor", "description": "Returns a file's text." },
+    { "name": "record_answer", "kind": "artifact-writer", "description": "Records the answer." }
+  ]
+}

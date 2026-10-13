@@ -1,6 +1,5 @@
 import { sha256 } from "./digest.ts";
-import { types } from "node:util";
-import type { JsonValue } from "./json-shape.ts";
+import { isString, type JsonValue } from "./json-shape.ts";
 
 const freeze = Object.freeze.bind(Object);
 const defineProperty = Object.defineProperty.bind(Object);
@@ -25,8 +24,18 @@ export const capturedJsonStringify: <T>(
   space?: string | number,
 ) => undefined extends T ? string | undefined : string = JSON.stringify.bind(JSON);
 export const capturedStructuredClone = globalThis.structuredClone;
-/** Detect a generated proxy without invoking its traps at a JSON transport boundary. */
-export const capturedIsProxy = types.isProxy;
+
+/** A value a model sent as JSON, decoded where it arrived as JSON text: a tool's argument the
+ *  provider passed as the string `"null"` where the same call elsewhere passed null (an Examiner's
+ *  hidden values, 12 October: 19 of 19 tries checked). Text that is no JSON stays the string it is. */
+export function decodedJsonText(value: JsonValue): JsonValue {
+  if (!isString(value)) return value;
+  try {
+    return capturedJsonParse(value);
+  } catch {
+    return value;
+  }
+}
 
 /**
  * Read JSON bytes as a declared contract.
@@ -34,8 +43,7 @@ export const capturedIsProxy = types.isProxy;
  * `JSON.parse` returns `any`, so every reader in the tree ended in `as T`. The type parameter says
  * the same thing in one place. It remains a declaration about whoever wrote those bytes and not a
  * check on them: this owner narrows `any` and can observe no mismatch. A reader that must refuse
- * damaged bytes validates them itself, as `readCompleted` in completed-json.ts does when it throws
- * on a record whose `schema` field is not the one asked for.
+ * damaged bytes validates them itself, as `read` in src/kernel/log.ts does when it refuses a line.
  *
  * The captured binding is used rather than the ambient one, so a generated module that replaces
  * `JSON` after load does not change what the controller reads.

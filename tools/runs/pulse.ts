@@ -1,574 +1,418 @@
 /**
- * `bun run runs pulse` — what changed in the open runs since the last look.
+ * The runs pulse: v1's `bun run runs pulse`, on v2's log. One look reads every run log in this
+ * repository's worktrees, a round's `.ana/d2/<name>/log.jsonl` and a live solve's
+ * `.ana/live/<name>.jsonl`, and says one status line for each and what happened since the last look:
+ * `◆` a milestone, `⚠` something to look at, `·` the rest. Each log is the run's whole record, so the
+ * pulse keeps only how far it read and what it last said, in `--state`.
  *
- * `list` and `show` answer where a run stands; a run that is being watched raises a different
- * question every few minutes, which is what moved. Answering it by hand meant re-reading the
- * observability journal, the Builder's execution checkpoint with its rehearsals and the case
- * record for every run and remembering what each said last time. This keeps one reading
- * per run between looks and prints the difference as events: `◆` a stage worth reading (a round
- * opened, a battery recorded, the run ended), `⚠` something that may be wrong (an error row, a
- * quiet Builder, a non-result, a not-run rehearsal), `·` a smaller fact. The readings are kept in
- * a state file between looks, so `--once` prints the difference too; a first look, with no
- * readings kept, prints status lines only.
+ *   bun run runs pulse [<name> ...] [--once] [--every 290] [--state .ana/runs-pulse.json]
  *
- * Read-only, like the rest of `runs`: every value comes from a recorded file through its owner's
- * reader, and a file that cannot be read leaves its part of the reading empty rather than guessed.
+ * A run is open while its process is: a `tools/d2/round.ts --name <name>`, or a
+ * `tools/m0/live-solve.ts` of the log's task and cycle, started in the log's worktree. With no names,
+ * a look covers the open runs and those open at the last look, so a run's ending is said once.
+ * Quiet, no event for 20 minutes in an open run, is said when it starts and when it ends.
  */
-import type { BandZone } from "../../src/claim/battery-difficulty.ts";
-import { CASE_RECORD_FILE } from "../../src/claim/case-record.ts";
-import { frozenManifestPath } from "../../src/critic/manifest.ts";
-import { statfsSync } from "../../src/meta/filesystem.ts";
-import { isNumber, isRecord, isString } from "../../src/meta/json-shape.ts";
-import { availableParallelism, loadavg } from "../../src/meta/os.ts";
-import { join } from "../../src/meta/path.ts";
-import { climbThresholds } from "../../src/run/climb-history.ts";
-import { DEFAULT_DISK_MIN_GIB } from "../../.claude/skills/launch-run/scripts/options.ts";
-import type { Observation } from "./evidence.ts";
-import { duration, shortPath } from "./format.ts";
+import { EXAMINE } from "#src/builder/admission.ts";
+import { type EventKind, LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
+import { type Solve, solvesIn } from "#src/kernel/solves.ts";
 import {
-  busyUnder,
-  loadMemory,
-  readProcessTable,
-  saveMemory,
-  type Busy,
-  type PulseMemory,
-} from "./pulse-host.ts";
-import {
-  emptyRound,
-  PHASE_TRANSITION,
-  pulseLabel,
-  readPulse,
-  roundsOpened,
-  topLevel,
-  type PulseBattery,
-  type PulseReading,
-  type PulseRehearsal,
-} from "./pulse-read.ts";
-import { collectRows, type RunRow } from "./rows.ts";
+  existsSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statfsSync,
+  writeFileSync,
+} from "#src/meta/filesystem.ts";
+import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { availableParallelism, loadavg } from "#src/meta/os.ts";
+import { basename, join } from "#src/meta/path.ts";
+import { parseArgs } from "#src/meta/process.ts";
+import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { countBy } from "#src/meta/tally.ts";
+import { plural } from "#src/meta/text.ts";
 
-/** A Builder checkpoint older than this, in a build, is worth a look. */
+/** What the last look saw of one log. */
+interface Seen {
+  readonly lines: number;
+  readonly open: boolean;
+  readonly quiet: boolean;
+}
+
+/** A run's log, and the event that says the run is done: a round reports, a live solve finishes. */
+/** Whether a run's process is still there: open while it writes the log, closed once it is gone. */
+type Process = "open" | "closed";
+
+export interface Run {
+  readonly name: string;
+  readonly tree: string;
+  readonly path: string;
+  readonly end: "comparison.reported" | "solve.finished";
+  /** A copy of another campaign, made to rehearse on (`seed.ts`). */
+  readonly seed?: boolean;
+}
+
+/** One look at one run: its status line, what it says of the events since the last look, and what
+ *  to remember of it. */
+interface Look {
+  readonly status: string;
+  readonly said: readonly string[];
+  readonly seen: Seen;
+}
+
+/** The state file: the free disk at the last look, and what it saw of each log by its path. */
+interface Memory {
+  readonly freeGiB: number | null;
+  readonly logs: Record<string, Seen>;
+}
+
+/** The command a round runs as: what a running round is known by. */
+const ROUND = "tools/d2/round.ts";
+// An Examiner session's command (`EXAMINE`) is with a round's what writes a campaign's log for
+// hours, each naming it with `--name`: an Examiner session was read as closed while it ran, the
+// first time one did (exam-1, 2026-10-08).
+/** The command a comparison with no Builder session runs as. */
+const CHECKPOINT = "tools/d2/checkpoint.ts";
+/** The command a Builder session with no comparison after it runs as. */
+export const SESSION = "tools/d2/session.ts";
+/** The command a whole campaign runs as, which runs each of the above in its own process. */
+export const BUILDER = "tools/d2/harness-builder.ts";
+/** The command the session that drafts an exam runs as. It holds a capped root as an Examiner
+ *  session does since 11 October, and run by itself it was read as closed while it ran: a stop
+ *  would have released its root and left it running, its next command outside the cap. */
+export const DRAFT = "tools/d1b/draft.ts";
+const CAMPAIGN = [ROUND, EXAMINE, CHECKPOINT, SESSION, BUILDER, DRAFT];
+/** This CLI's own command, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
+const CLI = "tools/runs/cli.ts";
+/** The file beside a log that says its campaign is a seed, and of what. */
+export const SEED_FILE = "seed.json";
+const LIVE = "tools/m0/live-solve.ts";
 const QUIET_MS = 20 * 60_000;
-/** Failed Builder calls between two looks that make a burst rather than ordinary friction. */
-const FAILED_BURST = 3;
-/** The flat line of AGENTS.md "Goals and the climb": this many batteries in a row on one side of the
- *  aim that came no closer to it than the closest before them, counted by side rather than zone
- *  (`offAimStreak`). The climb reader's `flat` (`climb-velocity.ts`) reads the same rule. The
- *  controller never stops on it (`LoopState`), so the stall is the operator's call. */
-const STALL_BATTERIES = 3;
-const MEASURING = new Set(["adopt", "controls", "solve", "measure-on", "grade"]);
-const REVIEWING = new Set(["judge", "claim", "analyse", "admission", "next"]);
-/** Top-level transitions that are the loop's ordinary machinery and would bury the rest. */
-const ROUTINE = new Set([
-  "input:completed",
-  "build:completed",
-  "controls:started",
-  "controls:completed",
-  "solve:completed",
-  "measure-on:started",
-  "measure-on:completed",
-  "grade:started",
-  "grade:completed",
-  "grade:deferred",
-  "judge:started",
-  "judge:completed",
-  "analyse:started",
-]);
-/** Transitions worth a `◆`, with the words to use; null keeps the row's own summary. */
-const LOUD = new Map<string, string | null>([
-  ["adopt:completed", "product adopted; its battery is next"],
-  ["solve:started", "battery started"],
-  ["analyse:completed", null],
-  ["admission:completed", null],
-]);
+const REPORTED = "comparison.reported";
+/** The events that start something a run then has to finish. */
+const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", "comparison.started"]);
+const GIB = 2 ** 30;
 
-interface PulseEvent {
-  mark: "◆" | "⚠" | "·";
-  label: string;
-  text: string;
-  /** Campaign-relative files to read next. */
-  look: string[];
-}
+const runsAs = (args: readonly string[], tools: readonly string[]) =>
+  args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
+/** Whether a process writes a campaign's log: a campaign command, a round, an Examiner session, or
+ *  a rehearsal (`rehearse.ts`), which is a round on a seed run as a verb of this CLI. A stop
+ *  releases what a run that is not being written left mounted, so a writer missed here would lose
+ *  its roots.
+ *
+ *  A campaign command runs every move in its own process, so it is the only process a campaign of
+ *  record has. Unlisted, two running campaigns read as closed, `runs stop` answered "none of these
+ *  is running" and counted a live session's root as left behind, and both had to be ended by
+ *  signalling their process tree by hand (2026-10-10).
+ *
+ *  A `runs` verb other than a rehearsal is none, whatever its command line carries: on
+ *  10 October `runs launch tools/d2/round.ts --name t-10` into the tree that held t-10's log was
+ *  refused as "already being written here" by the one process that matched, the launcher itself,
+ *  and by two when run as the package script. Both are read as no writer here; the launcher went
+ *  on 11 October (`docs/simplify.md`, D2). */
+const campaigns = (args: readonly string[]) => {
+  if (runsAs(args, [CLI])) return args.includes("rehearse");
+  // The package script `bun run runs <verb> …`, which holds no log open whatever the verb.
+  if (args[1] === "run" && args[2] === "runs") return false;
+  return runsAs(args, CAMPAIGN);
+};
 
-type Stage = "opening" | "build" | "measuring" | "reviewing" | "gone" | "ended";
+const minutes = (ms: number) => `${String(Math.round(ms / 60_000))}m`;
+const dollars = (value: number) => `$${value.toFixed(2)}`;
+const short = (value: unknown) => (isString(value) ? value.replace(/\s+/g, " ").slice(0, 160) : "");
+const count = (log: readonly LogEvent[], kind: EventKind) =>
+  log.filter((event) => event.kind === kind).length;
+/** A string or number field as written, and "?" for a field the event does not hold. */
+export const word = (value: unknown) => (isString(value) || isNumber(value) ? String(value) : "?");
 
-/** A run whose process is gone with no terminal stays in `bun run runs` until the operator closes
- *  it. On 2026-09-30 the pulse went on printing orphaned custom-sol-3e4693 as "r7 build 6h 19m",
- *  its last round's stage, hours after its controller was killed. */
-function stageOf(reading: PulseReading): Stage {
-  if (reading.terminal !== null) return "ended";
-  if (isGone(reading)) return "gone";
-  const last = topLevel(reading.observations).at(-1)?.phase ?? null;
-  if (last === null) return "opening";
-  if (MEASURING.has(last)) return "measuring";
-  return REVIEWING.has(last) ? "reviewing" : "build";
-}
-
-function isGone(reading: PulseReading): boolean {
-  return reading.state === "orphaned" || reading.state === "service-stopped";
-}
-
-function sideOf(zone: BandZone | null): "above" | "below" | "on" | null {
-  if (zone === null) return null;
-  if (zone === "on-aim") return "on";
-  return zone === "too-easy" || zone === "over-aim" ? "above" : "below";
-}
-
-/** Consecutive batteries on one side of the aim, counted back from the latest placed one, how many
- *  of them came after the one closest to the aim, which a tie does not replace, and whether that is
- *  a stall. Above the aim a lower pass rate is closer, below it a higher one. */
-export function offAimStreak(batteries: readonly Pick<PulseBattery, "zone" | "placedOn">[]): {
-  side: "above" | "below";
-  rounds: number;
-  flat: number;
-  closest: { passes: number; n: number };
-  stalled: boolean;
-} | null {
-  const placed = batteries.flatMap(({ zone, placedOn }) =>
-    zone === null || placedOn === null ? [] : [{ side: sideOf(zone), ...placedOn }],
-  );
-  const side = placed.at(-1)?.side;
-  if (side !== "above" && side !== "below") return null;
-  const streak = placed.slice(placed.findLastIndex((battery) => battery.side !== side) + 1);
-  const closeness = ({ passes, n }: { passes: number; n: number }) =>
-    (side === "above" ? -1 : 1) * (passes / n);
-  const closest = streak.reduce((best, battery) => (closeness(battery) > closeness(best) ? battery : best));
-  const flat = streak.length - 1 - streak.lastIndexOf(closest);
-  return { side, rounds: streak.length, flat, closest, stalled: flat >= STALL_BATTERIES };
-}
-
-function streakText(batteries: readonly PulseBattery[]): string {
-  const streak = offAimStreak(batteries);
-  if (streak === null) return "";
-  const text = `, ${streak.side} the aim ${String(streak.rounds)} in a row`;
-  if (!streak.stalled) return text;
-  const { passes, n } = streak.closest;
-  return `${text}; the ${String(streak.flat)} since ${String(passes)}/${String(n)} came no closer, a stall`;
-}
-
-function batteryText(battery: PulseBattery): string {
-  const extra = [
-    battery.unaccepted > 0 ? `${String(battery.unaccepted)} unaccepted` : null,
-    battery.nonResults > 0 ? `${String(battery.nonResults)} non-result` : null,
-  ].filter((part) => part !== null);
-  const tail = extra.length === 0 ? "" : ` (${extra.join(", ")})`;
-  return `${String(battery.passed)}/${String(battery.verified)}${tail}`;
-}
-
-/** The row's evidence as paths inside its campaign, with the run id, which every one repeats, as `<run>`. */
-function evidenceLook(row: Observation, reading: PulseReading, slug: string): string[] {
-  const prefix = `campaigns/${slug}/`;
-  return row.evidence.map((path) => {
-    const inside = path.startsWith(prefix) ? path.slice(prefix.length) : path;
-    return inside.replaceAll(reading.runId, "<run>");
-  });
-}
-
-/** The latest battery with its placement and the streak it extends, or null before the first. */
-function latestBattery(reading: PulseReading): string | null {
-  const battery = reading.batteries.at(-1);
-  if (battery === undefined) return null;
-  const zone =
-    battery.zone === null ? "no placement" : `${battery.zone}${battery.recorded ? "" : " (provisional)"}`;
-  return `${batteryText(battery)} pass of verified, ${zone}${streakText(reading.batteries)}`;
-}
-
-function rowEvent(row: Observation, after: PulseReading, slug: string): PulseEvent | null {
-  const event = (mark: PulseEvent["mark"], text: string): PulseEvent => ({
-    mark,
-    label: after.label,
-    text,
-    look: evidenceLook(row, after, slug),
-  });
-  const summary = (row.summary ?? "").slice(0, 200);
-  const key = `${row.phase ?? row.type ?? "row"}:${row.state ?? ""}`;
-  if (row.level === "error") return event("⚠", `${key} ${summary}`);
-  if (row.type !== PHASE_TRANSITION || ROUTINE.has(key)) return null;
-  if (row.parentId !== null) {
-    return key === "analyse:completed" ? event("·", `review during the build: ${summary}`) : null;
+/** The dollars a turn or a compaction spent, by the usage its event records. */
+function spent({ kind, data }: LogEvent): number {
+  const usages = kind.endsWith(".turn") ? [data.usage] : kind.endsWith(".compacted") ? data.usages : [];
+  let sum = 0;
+  for (const usage of Array.isArray(usages) ? usages : []) {
+    const total = asRecord(asRecord(usage)?.cost)?.total;
+    if (isNumber(total)) sum += total;
   }
-  if (key === "claim:completed") return event("◆", `battery recorded: ${latestBattery(after) ?? summary}`);
-  return event(LOUD.has(key) ? "◆" : "·", LOUD.get(key) ?? (summary === "" ? key : summary));
+  return sum;
 }
 
-function roundOpened(row: Observation, number: number, after: PulseReading): PulseEvent {
-  const kind = /\((\w+)\)/.exec(row.summary ?? "")?.[1] ?? "build";
-  const last = latestBattery(after);
-  const history = last === null ? "" : `; last battery ${last}`;
-  return {
-    mark: "◆",
-    label: after.label,
-    text: `round ${String(number)} opened, a ${kind}${history}`,
-    look: [],
-  };
-}
+/** How long a session or a solve took, and what it billed, as its `.finished` event says. */
+const cost = (data: JsonObject) =>
+  `${isNumber(data.seconds) ? ` in ${minutes(data.seconds * 1000)}` : ""}${isNumber(data.billed) ? `, ${dollars(data.billed)}` : ""}`;
 
-function observationEvents(before: PulseReading, after: PulseReading, slug: string): PulseEvent[] {
-  const events: PulseEvent[] = [];
-  const fresh = after.observations.slice(before.observations.length);
-  let opened = roundsOpened(before.observations);
-  for (const row of fresh) {
-    if (
-      row.parentId === null &&
-      row.type === PHASE_TRANSITION &&
-      row.phase === "build" &&
-      row.state === "started"
-    ) {
-      opened += 1;
-      events.push(roundOpened(row, opened, after));
-      continue;
+/** The line each event a reader wants earns; a kind not here is a trace. `task` names a solve's task. */
+const SAID: Partial<
+  Record<EventKind, (data: JsonObject, task: (solve: JsonValue | undefined) => string) => string>
+> = {
+  "build.started": (data) => `· build ${word(data.session)} started on ${word(data.model)}`,
+  "exam.started": (data) => `· exam ${word(data.session)} started on ${word(data.model)}`,
+  "build.finished": (data) =>
+    `◆ build ended at ${word(data.ended)} and ${data.changed === true ? "changed the harness" : "left the harness as it was"}` +
+    `${data.broken === null ? "" : `, broken: ${short(data.broken)}`}${cost(data)}`,
+  "exam.finished": (data) => `◆ exam ${word(data.session)} ended${cost(data)}`,
+  "harness.version": (data) =>
+    `· harness ${word(data.version).slice(0, 8)}${short(data.note) === "" ? "" : `: ${short(data.note)}`}`,
+  "solve.started": (data) => `· ${word(data.task)} started on ${word(data.model)}`,
+  "solve.finished": (data, task) => {
+    const ending = asRecord(data.ending);
+    if (ending?.outcome === "pass") return `◆ ${task(data.solve)} passed${cost(data)}`;
+    if (ending?.outcome === "fail") return `· ${task(data.solve)} failed${cost(data)}`;
+    return `⚠ ${task(data.solve)} ended without a result, ${word(ending?.kind)}: ${short(ending?.reason)}${cost(data)}`;
+  },
+  "referee.finding": (data) => `· the Referee on ${word(data.task)}: ${short(data.reason)}`,
+  // A report that scored nothing, one its cap cut, or one with tasks set aside on rejections nobody
+  // has settled, is one to look at before it is believed (`src/builder/round.ts`).
+  "comparison.reported": (data) => {
+    const settled = asRecord(data.settled);
+    if (settled !== null) {
+      return `◆ settled by hand as ${word(data.reading)}: ${word(settled.labelled)} labelled, ${word(settled.defects)} a check defect`;
     }
-    const event = rowEvent(row, after, slug);
-    if (event !== null) events.push(event);
-  }
-  return events;
+    if (data.capped === true) {
+      return `⚠ reported ${word(data.reading)}: its dollar cap cut ${asRecord(data.scored) === null ? "it short" : "the starter's solves short, and its test stands"}`;
+    }
+    const aside = Array.isArray(data.aside) ? data.aside.length : 0;
+    if (aside > 0) {
+      return `⚠ reported ${word(data.reading)}, with ${String(aside)} task(s) set aside on rejections no person has settled`;
+    }
+    return `${data.reading === "not-scored" ? "⚠" : "◆"} reported ${word(data.reading)}`;
+  },
+};
+
+/** Where the last thing a log started begins: a Builder session, an Examiner session or a
+ *  comparison. A campaign's log holds many, and a run stands where its last one does. */
+function lastStart(log: readonly LogEvent[]): number {
+  return log.findLastIndex(({ kind }) => STARTS.has(kind));
 }
 
-function rehearsalEvent(label: string, round: number, index: number, rehearsal: PulseRehearsal): PulseEvent {
-  const { verdict } = rehearsal;
-  return {
-    mark: verdict === "not-run" ? "⚠" : "·",
-    label,
-    text: `r${String(round)} rehearsal ${String(index + 1)} ${rehearsal.taskId}: ${verdict}${rehearsal.submitted === false ? " (nothing submitted)" : ""}`,
-    look: [],
-  };
-}
-
-/** What moved inside the authoring round. A round that changed is compared from an empty one, except
- *  for its failed calls, which a new session starts counting again. */
-function roundEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
-  const now = after.round;
-  const same = before.round.number === now.number && before.round.epoch === now.epoch;
-  const was = same ? before.round : { ...emptyRound(now.number, now.epoch), failedCalls: now.failedCalls };
-  const label = after.label;
-  const events: PulseEvent[] = [];
-  const say = (mark: PulseEvent["mark"], text: string, look: string[] = []) =>
-    events.push({ mark, label, text: `r${String(now.number)} ${text}`, look });
-  if (now.clearPreviews > 0 && was.clearPreviews === 0) {
-    const at = now.firstClearMs === null ? "" : ` ${duration(now.firstClearMs)} into the session`;
-    say("◆", `first clear preview${at}; previews so far: ${String(now.previews)}`);
-  }
-  if (now.accepted > was.accepted) say("◆", "submit accepted");
-  if (now.refused > was.refused) {
-    const codes = now.refusalCodes.filter((code) => !was.refusalCodes.includes(code));
-    say("·", `submit refused${codes.length === 0 ? "" : `: ${codes.join(", ")}`}`);
-  }
-  const heard = was.rehearsals.length;
-  events.push(
-    ...now.rehearsals.slice(heard).map((row, index) => rehearsalEvent(label, now.number, heard + index, row)),
+/** Where the last work of a log begins: the last thing it started, or its last solve where that
+ *  is later. A comparison gone on from its log writes no second start, so the solves it makes
+ *  after another comparison's report are what says it has not reported. */
+function lastWork(log: readonly LogEvent[]): number {
+  return Math.max(
+    lastStart(log),
+    log.findLastIndex(({ kind }) => kind === "solve.started"),
   );
-  const burst = (now.failedCalls ?? 0) - (was.failedCalls ?? 0);
-  if (burst >= FAILED_BURST) {
-    say("⚠", `${String(burst)} failed Builder calls since the last look`, [
-      `${now.epoch ?? "?"}/builder-execution.json`,
-    ]);
-  }
-  return events;
 }
 
-function quiet(reading: PulseReading): number | null {
-  const at = reading.round.checkpointAt;
-  if (stageOf(reading) !== "build" || at === null) return null;
-  const quietMs = reading.now - Date.parse(at);
-  return quietMs >= QUIET_MS ? quietMs : null;
+/** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A
+ *  report counts when it follows the last work: a checkpoint solving after an earlier
+ *  comparison's report has not reported. */
+function stage(log: readonly LogEvent[], running: number, process: Process): string {
+  const from = Math.max(lastStart(log), 0);
+  const since = log.slice(from);
+  const report = log.slice(Math.max(lastWork(log), 0)).findLast(({ kind }) => kind === REPORTED);
+  if (report !== undefined) return `reported ${word(report.data.reading)}`;
+  if (process === "closed") return "closed";
+  // Inside a session when the last thing started is one, and it has not finished.
+  const session = (["build", "exam"] as const).find(
+    (role) => log[from]?.kind === `${role}.started` && count(since, `${role}.finished`) === 0,
+  );
+  if (session !== undefined) return `${session} turn ${String(count(since, `${session}.turn`))}`;
+  return running > 0 ? "solving" : "working";
 }
 
-/** Alerts that hold a state: each is said once when it starts and once when it clears. */
-function heldEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
-  const events: PulseEvent[] = [];
-  const label = after.label;
-  const wasQuiet = quiet(before) !== null;
-  const quietMs = quiet(after);
-  if (quietMs !== null && !wasQuiet) {
-    events.push({
-      mark: "⚠",
-      label,
-      text: `no Builder checkpoint for ${duration(quietMs)} in round ${String(after.round.number)}; ${inFlightText(after) ?? busyText(after.busy) ?? "no command running, so the model turn itself is long"}`,
-      look: [`${after.round.epoch ?? "?"}/builder-prose.jsonl`],
-    });
-  }
-  if (quietMs === null && wasQuiet && after.terminal === null) {
-    events.push({ mark: "·", label, text: "Builder checkpoints again", look: [] });
-  }
-  const nonResults = (reading: PulseReading) =>
-    reading.batteries.reduce((sum, battery) => sum + battery.nonResults, 0);
-  const newNonResults = nonResults(after) - nonResults(before);
-  if (newNonResults > 0) {
-    events.push({
-      mark: "⚠",
-      label,
-      text: `new non-result cases since the last look: ${String(newNonResults)}`,
-      look: [CASE_RECORD_FILE],
-    });
-  }
-  if (isGone(after) && before.state !== after.state && after.terminal === null) {
-    events.push({
-      mark: "⚠",
-      label,
-      text: `${after.state}: the process is gone and no terminal is recorded`,
-      look: [],
-    });
-  }
-  return events;
-}
-
-/** Each Epoch Review recorded since the last look. */
-function reviewEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
-  return after.batteries.flatMap((battery, index) => {
-    const review = battery.review;
-    const was = before.batteries[index];
-    if (review === undefined || review === null || (was !== undefined && was.review !== null)) return [];
-    const blocking = review.blocking === 0 ? "" : `, ${String(review.blocking)} blocking`;
-    return [
-      {
-        mark: "◆",
-        label: after.label,
-        text: `review of battery ${String(index + 1)} ${review.status}: ${String(review.findings)} finding(s)${blocking}`,
-        look: [review.file.replaceAll(after.runId, "<run>")],
-      },
-    ];
+/** The status line of a run whose log holds `log`, of which `solves` are the solves. */
+function status(
+  run: Run,
+  { log, solves }: { readonly log: readonly LogEvent[]; readonly solves: readonly Solve[] },
+  process: Process,
+  now: number,
+): string {
+  const said = ["pass", "fail", "flagged", "non-result"].flatMap((outcome) => {
+    const n = solves.filter(({ ending }) => ending?.outcome === outcome).length;
+    return n === 0 ? [] : [`${String(n)} ${outcome}`];
   });
-}
-
-/** Safeguards that fired since the last look, one line per name. */
-function safeguardEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
-  const fired = new Map<string, number>();
-  for (const name of after.safeguards.slice(before.safeguards.length)) {
-    fired.set(name, (fired.get(name) ?? 0) + 1);
-  }
-  return [...fired].map(([name, times]) => ({
-    mark: "·",
-    label: after.label,
-    text: `safeguard ${name}${times === 1 ? "" : ` ×${String(times)}`}`,
-    look: ["safeguards/<run>/SAFEGUARDS_LOG.txt"],
-  }));
-}
-
-/**
- * The events between two readings of one run, in the order a reader would want them. Silent on the
- * first reading, because there is nothing yet to differ from.
- */
-export function pulseEvents(
-  before: PulseReading | undefined,
-  after: PulseReading,
-  slug: string,
-): PulseEvent[] {
-  if (before === undefined) return [];
-  const events = [
-    ...observationEvents(before, after, slug),
-    ...roundEvents(before, after),
-    ...heldEvents(before, after),
-    ...reviewEvents(before, after),
-    ...safeguardEvents(before, after),
-  ];
-  if (after.terminal !== null && before.terminal === null) {
-    events.push({ mark: "◆", label: after.label, text: `ended: ${after.terminal}`, look: [] });
-  }
-  return events;
-}
-
-/** A rehearsal holds one Builder tool call for up to the solve wall, which reads as a quiet
- *  checkpoint unless it is named. */
-function inFlightText(reading: PulseReading): string | null {
-  const running = reading.round.inFlight;
-  if (running === null) return null;
-  const what =
-    running.taskId === null
-      ? "checking a candidate"
-      : `${running.stage === "solving" ? "rehearsing" : "grading"} ${running.taskId}`;
-  return `${what} for ${duration(reading.now - Date.parse(running.startedAt))}`;
-}
-
-function busyText(busy: Busy | null): string | null {
-  return busy === null ? null : `running ${duration(busy.forMs)}: ${busy.command.slice(0, 60)}`;
-}
-
-function buildStatus(reading: PulseReading): string {
-  const round = reading.round;
-  const opened = topLevel(reading.observations).findLast(
-    (row) => row.phase === "build" && row.state === "started",
-  );
-  const passes = round.rehearsals.filter((row) => row.verdict === "pass").length;
-  const notRun = round.rehearsals.filter((row) => row.verdict === "not-run").length;
-  const checkpoint = round.checkpointAt === null ? null : reading.now - Date.parse(round.checkpointAt);
+  const running = solves.filter(({ finished }) => finished === null).length;
+  if (running > 0) said.push(`${String(running)} running`);
+  const total = log.reduce((sum, event) => sum + spent(event), 0);
+  const last = log.at(-1);
+  const age = last === undefined ? "no events" : `${minutes(now - Date.parse(last.at))} since the last event`;
   return [
-    `r${String(round.number)} build ${opened === undefined ? "?" : duration(reading.now - Date.parse(opened.at))}`,
-    `previews ${String(round.previews)}${round.clearPreviews > 0 ? ` (${String(round.clearPreviews)} clear)` : ""}`,
-    round.rehearsals.length === 0
-      ? null
-      : `rehearsals ${String(passes)}/${String(round.rehearsals.length)} pass${notRun > 0 ? `, ${String(notRun)} not-run` : ""}`,
-    round.accepted + round.refused === 0
-      ? null
-      : `submits ${String(round.accepted)} accepted, ${String(round.refused)} refused`,
-    round.toolCalls === null
-      ? null
-      : `${String(round.toolCalls)} tool calls (${String(round.failedCalls ?? 0)} failed)`,
-    checkpoint === null ? null : `checkpoint ${duration(checkpoint)} ago`,
-    inFlightText(reading),
-    busyText(reading.busy),
-    round.headline === null || round.headline === "" ? null : `"${round.headline}"`,
-  ]
-    .filter((part) => part !== null)
-    .join(" · ");
+    // A seed's counts and dollars are its source's up to the cut, and a script's after it.
+    `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, running, process)}`,
+    `solves ${said.join(", ") || "none"}`,
+    dollars(total),
+    age,
+  ].join(" · ");
 }
 
-function measureStatus(reading: PulseReading): string {
-  const rows = topLevel(reading.observations);
-  const since = rows.findLastIndex((row) => row.phase === "solve" && row.state === "started");
-  // Between a round's build row and its solve the gate runs, and any earlier solve belongs to the
-  // battery before. A `measure` round's only build row is `completed`, so any state opens a round.
-  const last = rows.at(-1);
-  if (since <= rows.findLastIndex((row) => row.phase === "build") && last !== undefined) {
-    return `gating: ${last.phase} ${duration(reading.now - Date.parse(last.at))}`;
+/**
+ * One look at one run: its status line, what happened since `before`, and what to remember. A first
+ * look says only the status and a quiet already under way.
+ */
+export function pulse(
+  run: Run,
+  log: readonly LogEvent[],
+  process: Process,
+  before: Seen | undefined,
+  now: number,
+): Look {
+  const open = process === "open";
+  const solves = solvesIn(log);
+  const tasks = new Map(solves.map(({ id, start }) => [id, word(start.task)]));
+  const task = (solve: JsonValue | undefined) => tasks.get(word(solve)) ?? word(solve);
+  const fresh = log.slice(before?.lines ?? log.length);
+  const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data, task) ?? []);
+  const errors = fresh.flatMap(({ kind, data }) =>
+    kind.endsWith(".turn") && isString(data.error) ? [data.error] : [],
+  );
+  if (errors.length > 0) {
+    lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);
   }
-  const pool = since < 0 ? [] : rows.slice(since);
-  const count = (state: string) =>
-    pool.filter((row) => row.phase === "measure-on" && row.state === state).length;
-  const submitted = count("completed");
-  const began = pool[0]?.at;
-  const clock = began === undefined ? "" : `, ${duration(reading.now - Date.parse(began))}`;
-  return `measuring: ${String(submitted)} submitted, ${String(count("started") - submitted)} solving${clock}`;
-}
-
-/** One line saying where a run stands, in the terms of the stage it is in. No ids and no digests. */
-export function statusLine(reading: PulseReading, width: number): string {
-  const stage = stageOf(reading);
-  const elapsed = reading.startedAt === null ? "?" : duration(reading.now - Date.parse(reading.startedAt));
-  const last = topLevel(reading.observations).at(-1);
-  const body = {
-    opening: () => "opening",
-    build: () => buildStatus(reading),
-    measuring: () => measureStatus(reading),
-    reviewing: () =>
-      `reviewing: ${last?.summary ?? "?"}${last === undefined ? "" : ` ${duration(reading.now - Date.parse(last.at))}`}`,
-    gone: () => `${reading.state}: the process is gone and no terminal is recorded`,
-    ended: () => `ended: ${reading.terminal ?? "?"}`,
-  }[stage]();
-  const batteries = reading.batteries.map(batteryText).join(" ");
-  const history = batteries === "" ? "" : ` | batteries ${batteries}${streakText(reading.batteries)}`;
-  return `${reading.label.padEnd(width)} ${elapsed.padStart(7)}  ${body}${history}`;
-}
-
-// ---------------------------------------------------------------------------------------------
-// The loop.
-
-/**
- * Whether a kept reading holds every field `pulseEvents` reads from the earlier side. The fields the
- * status line alone reads come from the fresh reading, so they are not asked of a kept one.
- */
-export function isPulseReading(value: unknown): value is PulseReading {
-  return (
-    isRecord(value) &&
-    isString(value.state) &&
-    isNumber(value.now) &&
-    (value.terminal === null || isString(value.terminal)) &&
-    Array.isArray(value.observations) &&
-    value.observations.every(isRecord) &&
-    Array.isArray(value.safeguards) &&
-    Array.isArray(value.batteries) &&
-    value.batteries.every((battery) => isRecord(battery) && isNumber(battery.nonResults)) &&
-    isKeptRound(value.round)
+  const last = log.at(-1);
+  const quiet = open && last !== undefined && now - Date.parse(last.at) > QUIET_MS;
+  if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - Date.parse(last.at))}`);
+  if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
+  // A run's end is that of the last thing it started: an Examiner session writes no report, and
+  // the second on exam-1 (2026-10-08) ended whole and was said to be gone before one. A checkpoint
+  // starts no session, so its own start is where its report is looked for.
+  const end = log[lastStart(log)]?.kind === "exam.started" ? "exam.finished" : run.end;
+  const ended =
+    count(log.slice(Math.max(lastWork(log), 0)), end) > 0 &&
+    solves.every(({ finished }) => finished !== null);
+  if (before?.open === true && !open && !ended) lines.push(`⚠ the process is gone before ${end}`);
+  // A comparison starts each task under two harnesses, so a line may come twice.
+  const told = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>
+    n === 1 ? line : `${line} (×${String(n)})`,
   );
+  return {
+    status: status(run, { log, solves }, process, now),
+    said: told,
+    seen: { lines: log.length, open, quiet },
+  };
 }
 
-function isKeptRound(round: unknown): boolean {
-  return (
-    isRecord(round) &&
-    isNumber(round.number) &&
-    (round.epoch === null || isString(round.epoch)) &&
-    (round.checkpointAt === null || isString(round.checkpointAt)) &&
-    (round.failedCalls === null || isNumber(round.failedCalls)) &&
-    isNumber(round.clearPreviews) &&
-    isNumber(round.accepted) &&
-    isNumber(round.refused) &&
-    Array.isArray(round.refusalCodes) &&
-    Array.isArray(round.rehearsals)
-  );
+/** The whole lines of a log an append may be writing to: a torn last line is an append in flight. */
+export function logEvents(path: string): LogEvent[] {
+  const text = readFileSync(path, "utf8");
+  return text
+    .slice(0, text.lastIndexOf("\n") + 1)
+    .split("\n")
+    .slice(0, -1)
+    .map((line) => parseJsonAs<LogEvent>(line));
 }
 
-/**
- * Whether one look reads this run. Selectors named on the command line are the whole answer, since
- * the kept readings are shared by every look and a run read once is not a run asked for again. With
- * none, every open run is read, and so is a kept run that has closed since, so its ending is said.
- */
-export function selected(
-  row: Pick<RunRow, "runId" | "slug"> & { liveness: Pick<RunRow["liveness"], "state"> },
-  selectors: readonly string[],
-  watched: ReadonlySet<string>,
-): boolean {
-  if (selectors.length === 0) return row.liveness.state !== "closed" || watched.has(row.runId);
-  const label = pulseLabel(row.runId);
-  return selectors.some(
-    (selector) => row.runId.startsWith(selector) || label.includes(selector) || row.slug === selector,
-  );
+/** Every run log in the repository's worktrees. */
+export function runs(): Run[] {
+  const porcelain = runTextSyncOrThrow(["git", "worktree", "list", "--porcelain"]);
+  const trees = porcelain
+    .split("\n")
+    .flatMap((line) => (line.startsWith("worktree ") ? [line.slice(9)] : []));
+  const listed = (dir: string) => (existsSync(dir) ? readdirSync(dir) : []);
+  return trees.flatMap((tree) => [
+    ...listed(join(tree, ".ana", "d2"))
+      .map((name) => ({
+        name,
+        tree,
+        path: join(tree, ".ana", "d2", name, LOG_FILE),
+        end: "comparison.reported" as const,
+        seed: existsSync(join(tree, ".ana", "d2", name, SEED_FILE)),
+      }))
+      .filter(({ path }) => existsSync(path)),
+    ...listed(join(tree, ".ana", "live"))
+      .filter((file) => file.endsWith(".jsonl"))
+      .map((file) => ({
+        name: basename(file, ".jsonl"),
+        tree,
+        path: join(tree, ".ana", "live", file),
+        end: "solve.finished" as const,
+      })),
+  ]);
 }
 
-function hostLine(repoRoot: string, memory: PulseMemory<PulseReading>): string {
-  const disk = statfsSync(join(repoRoot, "campaigns"));
-  const freeGiB = Math.floor((disk.bavail * disk.bsize) / 1024 ** 3);
-  const floor =
-    freeGiB < DEFAULT_DISK_MIN_GIB ? `, under the launcher's ${String(DEFAULT_DISK_MIN_GIB)} GiB floor` : "";
-  // Free space swings by tens of GiB as Builders compile and trim, so the move says more than the level.
-  const moved = memory.freeGiB === null ? 0 : freeGiB - memory.freeGiB;
-  const delta = moved === 0 ? "" : ` (${moved > 0 ? "+" : ""}${String(moved)} since the last look)`;
-  memory.freeGiB = freeGiB;
-  return `load ${loadavg()[0]?.toFixed(1) ?? "?"} of ${String(availableParallelism())} cores · ${String(freeGiB)} GiB free${delta}${floor}`;
+/** Where a worktree stands: its commit, and whether it holds a change no commit names. */
+export function standing(tree: string) {
+  const git = (...args: string[]) => runTextSyncOrThrow(["git", "-C", tree, ...args]).trim();
+  return { commit: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain") !== "" };
 }
 
-/** One look at the selected runs: a status line each, then what moved since the previous look. */
-function pulseTick(
-  repoRoot: string,
-  selectors: readonly string[],
-  memory: PulseMemory<PulseReading>,
-  table: Parameters<typeof busyUnder>[0],
-): string[] {
+/** Each running round, Examiner session and live solve: its process, its arguments and the worktree
+ *  it runs in. */
+export function processes(): {
+  readonly pid: number;
+  readonly cwd: string;
+  readonly args: readonly string[];
+}[] {
+  const table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n");
+  const found = table.flatMap((row) => {
+    const [pid = "", ...args] = row.trim().split(/\s+/);
+    return campaigns(args) || runsAs(args, [LIVE]) ? [{ pid, args }] : [];
+  });
+  if (found.length === 0) return [];
+  // lsof exits 1 when a process left between the two reads, so its answer is read as given.
+  const cwds = new Map<string, string>();
+  let pid = "";
+  const listing = runSync(["lsof", "-a", "-d", "cwd", "-Fpn", "-p", found.map((row) => row.pid).join(",")]);
+  for (const line of decodeOutput(listing.stdout).split("\n")) {
+    if (line.startsWith("p")) pid = line.slice(1);
+    if (line.startsWith("n")) cwds.set(pid, line.slice(1));
+  }
+  return found.map(({ pid: id, args }) => ({ pid: Number(id), cwd: cwds.get(id) ?? "", args }));
+}
+
+/** The processes in `running` that write `run`'s log. */
+export function writers(run: Run, running: ReturnType<typeof processes>) {
+  const flag = (args: readonly string[], name: string) => args[args.indexOf(name) + 1];
+  const writes = (args: readonly string[]) =>
+    run.end === "comparison.reported"
+      ? campaigns(args) && flag(args, "--name") === run.name
+      : runsAs(args, [LIVE]) &&
+        run.name.startsWith(`${String(flag(args, "--task"))}-${String(flag(args, "--cycle"))}-`);
+  return running.filter(({ cwd, args }) => cwd === run.tree && writes(args));
+}
+
+function look(state: string, names: readonly string[]): void {
+  const memory: Memory = existsSync(state)
+    ? parseJsonAs<Memory>(readFileSync(state, "utf8"))
+    : { freeGiB: null, logs: {} };
+  const running = processes();
   const now = Date.now();
-  const band = climbThresholds(frozenManifestPath(repoRoot)).band;
-  const previous = memory.readings;
-  const watched = new Set(Object.keys(previous));
-  const rows = collectRows(repoRoot, { closedLimit: Number.MAX_SAFE_INTEGER, now }).filter((row) =>
-    selected(row, selectors, watched),
-  );
-  const stamp = `${new Date(now).toISOString().slice(11, 16)}Z`;
-  const readings = rows.map((row) => ({
-    row,
-    reading: readPulse(row, now, band, busyUnder(table, row.liveness.pid)),
+  const all = runs().map((run) => ({
+    run,
+    open: writers(run, running).length > 0,
+    before: memory.logs[run.path],
   }));
-  const width = Math.max(0, ...readings.map(({ reading }) => reading.label.length));
-  const lines = [
-    `${stamp} ${String(rows.length)} run${rows.length === 1 ? "" : "s"} · ${hostLine(repoRoot, memory)}`,
-  ];
-  const events: string[] = [];
-  for (const { row, reading } of readings) {
-    lines.push(`  ${statusLine(reading, width)}`);
-    // The first look says where each run's files are, so the event pointers can stay short.
-    if (!(row.runId in previous)) lines.push(`  ${" ".repeat(width)} ${shortPath(row.location.campaignDir)}`);
-    for (const event of pulseEvents(previous[row.runId], reading, row.slug)) {
-      const look = event.look.length === 0 ? "" : ` → ${event.look.join(", ")}`;
-      events.push(`${stamp} ${event.mark} ${event.label} ${event.text}${look}`);
-    }
-    // A run that ended is said once and then no longer watched.
-    if (reading.terminal === null) previous[row.runId] = reading;
-    else delete previous[row.runId];
+  const chosen = all.filter(({ run, open, before }) =>
+    names.length > 0 ? names.some((name) => run.name.includes(name)) : open || before?.open === true,
+  );
+  const disk = statfsSync(".");
+  const free = Math.round((disk.bavail * disk.bsize) / GIB);
+  const since =
+    memory.freeGiB === null
+      ? ""
+      : ` (${free - memory.freeGiB >= 0 ? "+" : ""}${String(free - memory.freeGiB)} since the last look)`;
+  const clock = new Date(now).toISOString().slice(11, 16);
+  const load = loadavg()[0] ?? 0;
+  const open = all.filter((entry) => entry.open).length;
+  console.log(
+    `${clock}Z ${String(open)} open · load ${load.toFixed(1)} of ${String(availableParallelism())} cores · ${String(free)} GiB free${since}`,
+  );
+  // A run this look left out keeps what the last look saw of it.
+  const logs: Record<string, Seen> = { ...memory.logs };
+  for (const { run, open: isRunning, before } of chosen) {
+    const seen = pulse(run, logEvents(run.path), isRunning ? "open" : "closed", before, now);
+    console.log(seen.status);
+    for (const line of seen.said) console.log(`  ${line}`);
+    logs[run.path] = seen.seen;
   }
-  return [...lines, ...events];
+  writeFileSync(`${state}.tmp`, capturedJsonStringify({ freeGiB: free, logs } satisfies Memory));
+  renameSync(`${state}.tmp`, state);
 }
 
-/**
- * Look every `everyMs` until interrupted, or once. The readings persist in `statePath` after each
- * look, so a watcher calling `--once` every few minutes is told what moved, as the loop would be.
- */
-export async function runPulse(
-  repoRoot: string,
-  selectors: readonly string[],
-  everyMs: number | null,
-  statePath: string,
-): Promise<number> {
-  const memory = loadMemory(statePath, isPulseReading);
+/** `bun run runs pulse`. */
+export async function watch(args: readonly string[]): Promise<void> {
+  const { values, positionals: names } = parseArgs({
+    args: [...args],
+    allowPositionals: true,
+    options: {
+      once: { type: "boolean", default: false },
+      every: { type: "string", default: "290" },
+      state: { type: "string", default: join(".ana", "runs-pulse.json") },
+    },
+  });
   for (;;) {
-    process.stdout.write(`${pulseTick(repoRoot, selectors, memory, await readProcessTable()).join("\n")}\n`);
-    const unsaved = saveMemory(statePath, memory);
-    if (unsaved !== null) process.stderr.write(`${unsaved}\n`);
-    if (everyMs === null) return 0;
-    await Bun.sleep(everyMs);
+    look(values.state, names);
+    if (values.once) break;
+    await Bun.sleep(Number(values.every) * 1000);
   }
 }

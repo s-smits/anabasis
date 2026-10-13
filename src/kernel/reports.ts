@@ -163,7 +163,8 @@ const STARTED = "comparison.started";
 const BUILD_FINISHED = "build.finished";
 /** Each kind of start whose turns and compactions are billed where no end is on record, with the
  *  field that names the session or the solve in all four events: a Builder's session, an
- *  Examiner's three kinds and a solve attempt. */
+ *  Examiner's three kinds and a solve attempt. No session opens `repair.*` since 13 October; a log
+ *  of before is billed whole. */
 const METERED = [
   { of: "build", id: "session" },
   { of: "exam", id: "session" },

@@ -1016,7 +1016,8 @@ describe("the billed dollars a cap counts", () => {
       turn("solve.turn", { solve: "s-b" }, 9),
       event("exam.started", { session: "x-1" }),
       turn("exam.turn", { session: "x-1" }, 0.2),
-      // An Examiner's repair of its check program: one killed after a turn, one that summed its own.
+      // A log of before the repair session was retired still bills it: one killed after a turn, one
+      // that summed its own.
       event("repair.started", { session: "r-1" }),
       turn("repair.turn", { session: "r-1" }, 0.3),
       event("repair.started", { session: "r-2" }),

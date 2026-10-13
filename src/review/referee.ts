@@ -188,9 +188,8 @@ function packet(fail: RefereeCase, verdict: LoggedVerdict, accepted: JsonValue |
   ].join("\n\n");
 }
 
-/** A window of one check-program file, or the list of them with no path: the Referee's, and the
- *  repair session's (`src/examiner/repair.ts`). */
-export function readProgramTool(checks: string) {
+/** A window of one check-program file, or the list of them with no path: the Referee's. */
+function readProgramTool(checks: string) {
   return tool({
     name: "read_check_program",
     label: "Read the check program",

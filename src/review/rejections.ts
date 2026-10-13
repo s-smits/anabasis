@@ -113,8 +113,8 @@ export function labelled<Word extends string>(file: JsonValue, known: readonly W
 
 /** What stands of a refused answer, by its solve: a person's label where `labels` holds one, over
  *  the Referee's last ruling of the same solve, and nothing where nobody read it or a reading
- *  ruled nothing. A repair is held to it, and its author is shown it (`src/examiner/repair.ts`). */
-export function standing(events: readonly LogEvent[], labels: ReadonlyMap<string, Ruling>) {
+ *  ruled nothing. */
+function standing(events: readonly LogEvent[], labels: ReadonlyMap<string, Ruling>) {
   return (solve: string): Ruling | undefined =>
     labels.get(solve) ??
     RULINGS.find(

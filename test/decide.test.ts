@@ -438,9 +438,9 @@ describe("a row of the table", () => {
       compared("g-1", "h1", "no-step", { tally: [wins, losses, 12 - wins - losses] });
     expect(move([...FIRST, ...tally(4, 3)])).toMatchObject({ move: "build" });
     expect(move([...FIRST, ...tally(6, 2)])).toMatchObject({ move: "compare" });
-    // The repeat draws the tasks its first stage did not score first: where the campaign holds
-    // fewer than its target of them, one Examiner session writes them, and the repeat then runs on
-    // what is held, its first stage's tasks last.
+    // The repeat is of tasks its first stage did not score: until the campaign holds its target of
+    // them the Examiner writes more, however many sessions that takes, and sessions that hold out
+    // none end the campaign at its patience.
     const scoredAll = [...ONE, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
     expect(decide(scoredAll, PLAN)).toEqual({
       move: "examine",
@@ -448,7 +448,16 @@ describe("a row of the table", () => {
       why: "comparison g-1 cleared the trigger, and the campaign is 12 held-out tasks short of a repeat on tasks its first stage did not score: the Examiner writes more first",
       repeats: "g-1",
     });
-    expect(move([...scoredAll, ...examined("x-1", ["n1", "n2"])])).toEqual(again);
+    const two = [...scoredAll, ...examined("x-1", ["n1", "n2"])];
+    expect(decide(two, PLAN)).toMatchObject({
+      move: "examine",
+      why: expect.stringContaining("10 held-out tasks short"),
+      repeats: "g-1",
+    });
+    const fresh = Array.from({ length: 10 }, (_, nth) => `m${String(nth)}`);
+    expect(move([...two, ...examined("x-2", fresh)])).toEqual(again);
+    const idled = [...two, ...examined("x-2"), ...examined("x-3"), ...examined("x-4")];
+    expect(decide(idled, PLAN)).toMatchObject({ move: "end", ending: "exam" });
     // The A/A a comparison of four solves a side carries beside it changes no move while it reads
     // no step.
     const aa = { noise: { wins: 0, losses: 0, ties: 4, differences: [0, 0, 0, 0] } };

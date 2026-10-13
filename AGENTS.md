@@ -925,8 +925,9 @@ a move chose it, and the decision carries the row's code:
 6. `unfinished`: a comparison that began and has not reported goes on, and a reading that cleared
    the trigger, which is one draw, is repeated on fresh solves. The repeat draws the held-out
    tasks the first stage did not score first (`scoredSet`, `src/builder/round.ts`): where the
-   campaign holds fewer than the target of them, one Examiner session writes more first, and the
-   repeat then runs on what is held.
+   campaign holds fewer than the target of them, the Examiner writes more first, and `compare`
+   refuses the repeat until they are held (14 October: buffer-149's g-2 scored 8 of g-1's 9
+   frontier tasks again). An Examiner session that holds out none counts towards the patience.
 7. `twice`: a step and its repeat, read together, name the harness to promote (`unpromoted` says
    why another is not).
 8. `no-room`: the last comparison the reference was in left it nothing to gain, whichever side it

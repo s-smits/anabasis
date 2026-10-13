@@ -418,7 +418,12 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
         ...pastStop,
       ],
       context.held,
-      campaignTools(context),
+      // The campaign's first Examiner session, where the table names one, is the host's to start.
+      campaignTools(
+        context,
+        named.move === "examine" &&
+          !turn.events.some(({ kind, data }) => kind === MOVED && data.move === "examine"),
+      ),
     );
   } catch (error) {
     // A provider's limit or a crashed conversation is waited out, and the campaign goes on;

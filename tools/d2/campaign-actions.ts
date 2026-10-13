@@ -659,25 +659,42 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
   ].join("\n");
 }
 
-/** The campaign's tools and advice for one Builder conversation (`BuildRequest.campaign`). */
-export function campaignTools(context: CampaignContext): NonNullable<BuildRequest["campaign"]> {
-  return (bench) => ({
-    tools: [
-      ...[examineTool, releaseTool, compareTool, promoteTool].map((made) =>
-        endingWith(made(context, bench), () => campaignStatus(context, bench)),
-      ),
-      tool({
-        name: "campaign_status",
-        label: "Campaign Status",
-        description: "Read campaign counts and current host advice.",
-        parameters: Type.Object({}),
-        executionMode: "sequential",
-        execute: async () => text(campaignStatus(context, bench)),
-      }),
-    ],
-    hook: () => campaignStatus(context, bench),
-    closing: async () => {
-      await context.examining?.done;
-    },
-  });
+/**
+ * The campaign's tools and advice for one Builder conversation (`BuildRequest.campaign`). Where
+ * `opens`, the host starts the campaign's first Examiner session as the conversation opens, as the
+ * Builder's `examine` would: until 14 October a led campaign that opened short of tasks waited for
+ * its Builder to ask, and later sessions remain the Builder's to ask for.
+ */
+export function campaignTools(
+  context: CampaignContext,
+  opens = false,
+): NonNullable<BuildRequest["campaign"]> {
+  return (bench) => {
+    const examining = examineTool(context, bench);
+    return {
+      start: async () =>
+        opens
+          ? (await examining.execute("opening", {}, undefined)).content
+              .flatMap((part) => (part.type === "text" ? [part.text] : []))
+              .join("\n")
+          : "",
+      tools: [
+        ...[examining, ...[releaseTool, compareTool, promoteTool].map((made) => made(context, bench))].map(
+          (made) => endingWith(made, () => campaignStatus(context, bench)),
+        ),
+        tool({
+          name: "campaign_status",
+          label: "Campaign Status",
+          description: "Read campaign counts and current host advice.",
+          parameters: Type.Object({}),
+          executionMode: "sequential",
+          execute: async () => text(campaignStatus(context, bench)),
+        }),
+      ],
+      hook: () => campaignStatus(context, bench),
+      closing: async () => {
+        await context.examining?.done;
+      },
+    };
+  };
 }

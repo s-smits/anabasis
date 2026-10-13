@@ -189,6 +189,9 @@ export interface BuildRequest {
     /** Settles once no action of the campaign's runs: an Examiner session writing beside the
      *  conversation ends on record before the conversation does, however the conversation ended. */
     readonly closing?: () => Promise<void>;
+    /** A move the host makes as the conversation opens, and what it said of it, which the opening
+     *  message carries, or nothing: the campaign's first Examiner session (14 October). */
+    readonly start?: () => Promise<string>;
   };
 }
 
@@ -389,10 +392,11 @@ export async function session(
   const compact = loopCompaction(log, "build", request.id, stream, summaries);
   const trace = traceSink(log, "build", request.id, () => turns.length);
   let crash: string | null = null;
+  const started = (await campaign?.start?.()) ?? "";
   arm();
   try {
     await runAgentLoop(
-      [user([first, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"))],
+      [user([first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"))],
       { messages: system === undefined ? [] : [system], tools },
       {
         model,

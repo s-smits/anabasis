@@ -213,6 +213,37 @@ describe("a campaign run by its live Builder", () => {
     expect(examinerCall?.text).not.toContain("check-product");
   });
 
+  it("starts the campaign's first Examiner session as the conversation opens, where the table names one", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-first-examiner`;
+    const base = scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []);
+    const seats: Seats = {
+      seated: builderScript(base, [["finish", { note: "The Examiner writes; nothing to build yet." }]]),
+      examine: writer,
+    };
+    const args = [
+      ...seeded(name),
+      "--patience",
+      "2",
+      "--target",
+      "8",
+      "--practice",
+      "2",
+      "--exam-tasks",
+      "6",
+    ];
+    expect(await harnessBuilder(args, seats)).toMatchObject({ move: "end", ending: "finished" });
+    // The host made the table's move as the conversation opened, and the Builder asked for none.
+    expect(of(name, MOVED).map(({ move, code, session }) => [move, code, session ?? null])).toEqual([
+      ["accept", "exam", null],
+      ["prepare", "tasks", null],
+      ["build", "led", "b-1"],
+      ["examine", "tasks", "x-1"],
+    ]);
+    expect(said(name, "examine")).toEqual([]);
+    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1" }]);
+  });
+
   it("lets the Builder practise while the Examiner writes, refuses a second session, and ends the Examiner's first", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-beside`;
@@ -627,22 +658,23 @@ describe("a campaign run by its live Builder", () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-limit`;
     const reset = Math.floor(Date.now() / 1000) + 60;
-    let limited = true;
+    // The first session is the host's, as the conversation opens; the limit ends the Builder's.
+    let asked = 0;
     const slept: number[] = [];
     const seats: Seats = {
       seated: builderScript(
         scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
         [
+          // A release waits for the session writing beside the conversation.
+          ["release_practice", {}],
           ["examine", {}],
           ["examine", {}],
           ["finish", { note: "The Examiner was asked again after the limit." }],
         ],
       ),
       examine: (request) => {
-        if (limited) {
-          limited = false;
-          throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
-        }
+        asked += 1;
+        if (asked === 2) throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
         return examine({
           ...request,
           ...scripted([
@@ -666,7 +698,7 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, "campaign.waited")).toMatchObject([{ for: "provider" }]);
     expect(said(name, "examine")[0]).toContain("call examine again");
     expect(said(name, "examine")[0]).not.toContain("usage limit");
-    expect(of(name, "exam.started")).toHaveLength(1);
+    expect(of(name, "exam.started")).toHaveLength(2);
   });
 
   it("applies operator stop and budget words at the next live boundary", async () => {

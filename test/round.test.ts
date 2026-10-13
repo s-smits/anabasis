@@ -1105,6 +1105,28 @@ describe("a round", () => {
     }
   });
 
+  it("stops at the first solve a limit that names its reset ended, and asks for that solve no more", async () => {
+    // buffer-147-fork, 13 October: a weekly limit ended 14 solves of one task, and it read short.
+    const weekly: Ending = {
+      outcome: "non-result",
+      kind: "provider",
+      reason: "You've hit your weekly limit · resets 3pm (Europe/Amsterdam)",
+    };
+    let left = 5;
+    const s = await setup([edit, finish], (version, side, nth, digest) => {
+      left -= 1;
+      return left < 0 ? weekly : step(version, side, nth, digest);
+    });
+    await expect(round(s.request)).rejects.toThrow(
+      `the provider's limit ended a solve, so the comparison stops: ${weekly.reason}`,
+    );
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
+    expect(s.asked).toHaveLength(6);
+    // The limit lifted: the round goes on from its log, and no task is short.
+    left = 99;
+    expect(await round(s.request)).toMatchObject({ scored: { wins: 4, losses: 0 }, short: [] });
+  });
+
   it("reports a task short when its solves end in nothing countable, and tallies the rest", async () => {
     const s = await setup([edit, finish], (version, side, nth, digest) =>
       version === "s4" && side === "fresh"

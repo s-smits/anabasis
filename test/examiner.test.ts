@@ -571,15 +571,14 @@ describe("an Examiner session", () => {
 
   it("refuses a task that carries a planted answer whole, in its public input or hidden values, and holds one that does not", async () => {
     // A planted answer passes try_answer; the first instance proposed hides it, the second shows
-    // it inside the public input, and the third holds none of it.
+    // it inside the public input, and the third holds none of it. A second answer that passes on
+    // the same instance leaves the first planted: every answer that passed is one, not the last.
     const planted = { answer: "12", unit: "N" };
+    const tried = (answer: JsonObject) =>
+      call("try_answer", { family: "fixture", public_input: { base: 2 }, hidden: { seed: 1 }, answer });
     const s = setup([
-      call("try_answer", {
-        family: "fixture",
-        public_input: { base: 2 },
-        hidden: { seed: 1 },
-        answer: planted,
-      }),
+      tried(planted),
+      tried({ answer: "12.0", unit: "N" }),
       call("propose_tasks", {
         tasks: [
           { family: "fixture", public_input: { base: 2 }, hidden: { seed: 1, witness: planted } },
@@ -592,7 +591,7 @@ describe("an Examiner session", () => {
     ]);
     const examined = await examine({ ...s.request, verify: async () => ({ kind: "pass" }) });
     const refused = "refused: it carries, whole, an answer that passed try_answer in this session";
-    const result = s.of(EXAM_CALL)[1]?.text;
+    const result = s.of(EXAM_CALL)[2]?.text;
     const told = isString(result) ? result.split("\n") : [];
     expect(told.map((line) => line.slice(0, 9 + refused.length))).toEqual([
       `x-1-001: ${refused}`,

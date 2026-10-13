@@ -49,6 +49,7 @@ import {
 const SOLVER = "solver-canary-7f3a";
 const PASS: Ending = { outcome: "pass" };
 const REJECTED: Ending = { outcome: "fail", kind: "rejected" };
+const WALLED: Ending = { outcome: "fail", kind: "wall-ended" };
 const GOOD = { answer: "42", unit: "N" };
 /** What enters the exam, and by which tool, as each mode's shell is told it. */
 const ENTERS = {
@@ -890,12 +891,13 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
           add("task.gate", { version: `v-${taskId}`, gate: 1, outcome: "passed" });
         }
       },
-      /** A solve each of `valid` under `harness`; each took the turns given, and 11 where none is. */
+      /** A solve each of `valid` under `harness`, null for one its wall cut; each took the turns
+       *  given, and 11 where none is. */
       solved: (
         comparison: string,
         taskId: string,
         harness: string,
-        valid: readonly boolean[],
+        valid: readonly (boolean | null)[],
         turns: readonly number[] = [],
       ) => {
         const ran = condition(`v-${taskId}`, harness);
@@ -904,10 +906,12 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
           solves += 1;
           const solve = `t-${String(solves)}`;
           add("solve.started", { solve, condition: conditionId(ran), comparison });
-          add("verdict", { solve, kind: pass ? "pass" : "fail", answer: { answer: SOLVER } });
+          if (pass !== null) {
+            add("verdict", { solve, kind: pass ? "pass" : "fail", answer: { answer: SOLVER } });
+          }
           add("solve.finished", {
             solve,
-            ending: pass ? PASS : REJECTED,
+            ending: pass === null ? WALLED : pass ? PASS : REJECTED,
             turns: turns[nth] ?? 11,
           });
         }
@@ -1040,6 +1044,74 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(spent.join("\n")).not.toContain("both harnesses");
   });
 
+  it("tells a task's last three comparisons with the reference, newest first, and how many of the newest closed it in a row", () => {
+    const log = logged();
+    const tasks = ["run", "once", "mixed"].map(fixture);
+    log.hold(...tasks.map(({ taskId }) => taskId));
+    // `run`: the reference h1 answered it in every solve of four comparisons running; `mixed`: in
+    // every solve of b-1, in no solve of b-2 with one cut at its wall, and in every solve of b-3,
+    // so it is exhausted on two closed comparisons that are not in a row; `once`: one comparison,
+    // which is its outcome and no history. `run` is among the third the draw keeps.
+    for (const comparison of ["b-1", "b-2", "b-3", "b-4"]) {
+      log.solved(comparison, "run", "h1", [true, true]);
+      log.solved(comparison, "run", "h2", [false, true]);
+    }
+    log.solved("b-1", "mixed", "h1", [true, true]);
+    log.solved("b-1", "mixed", "h2", [true, true]);
+    log.solved("b-2", "mixed", "h1", [false, null]);
+    log.solved("b-2", "mixed", "h2", [true, true]);
+    log.solved("b-3", "mixed", "h1", [true, true]);
+    log.solved("b-3", "mixed", "h2", [false, false]);
+    log.solved("b-1", "once", "h1", [true, false]);
+    log.solved("b-1", "once", "h2", [true, true]);
+    log.reported("b-1", ["h1", "h2"], 2, ["run", "mixed", "once"]);
+    log.reported("b-2", ["h1", "h2"], 2, ["run", "mixed"]);
+    log.reported("b-3", ["h1", "h2"], 2, ["run", "mixed"]);
+    log.reported("b-4", ["h1", "h2"], 2, ["run"]);
+    const { lines } = heard(log.events, tasks);
+    expect(lines).toEqual([
+      line(
+        "run",
+        `the reference harness answered it validly in every solve of the last comparison; ${VALID}; of its last 3 comparisons with the current reference harness, newest first, the reference answered it validly in every, every, every of its solves, the last 4 in a row closing it`,
+      ),
+      line(
+        "once",
+        `the reference harness answered it validly in some solves of the last comparison and not in others; ${VALID}`,
+      ),
+      line(
+        "mixed",
+        `the reference harness answered it validly in every solve of two comparisons: no longer scored, unless it is among the third kept in the draw; ${VALID}; of its last 3 comparisons with the current reference harness, newest first, the reference answered it validly in every, none (a solve cut at a limit), every of its solves, the last closing it`,
+      ),
+    ]);
+    // The history is of the reference's side alone: the same lines whatever h2 answered, and
+    // wherever a limit cut h2's own solves.
+    const quiet = logged();
+    quiet.hold(...tasks.map(({ taskId }) => taskId));
+    for (const comparison of ["b-1", "b-2", "b-3", "b-4"]) {
+      quiet.solved(comparison, "run", "h1", [true, true]);
+      quiet.solved(comparison, "run", "h2", [true, true]);
+    }
+    for (const [comparison, valid] of [
+      ["b-1", [true, true]],
+      ["b-2", [false, null]],
+      ["b-3", [true, true]],
+    ] as const) {
+      quiet.solved(comparison, "mixed", "h1", valid);
+      quiet.solved(comparison, "mixed", "h2", comparison === "b-1" ? [null, false] : [false, false]);
+    }
+    quiet.solved("b-1", "once", "h1", [true, false]);
+    quiet.solved("b-1", "once", "h2", [false, false]);
+    for (const [session, pair, ids] of [
+      ["b-1", ["h1", "h2"], ["run", "mixed", "once"]],
+      ["b-2", ["h1", "h2"], ["run", "mixed"]],
+      ["b-3", ["h1", "h2"], ["run", "mixed"]],
+      ["b-4", ["h1", "h2"], ["run"]],
+    ] as const) {
+      quiet.reported(session, pair, 2, ids);
+    }
+    expect(heard(quiet.events, tasks).lines).toEqual(lines);
+  });
+
   it("counts in a total where a family holds one task, reads no comparison between two other harnesses, and tells the reference's turns", () => {
     const log = logged();
     const tasks = [
@@ -1085,7 +1157,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         "beam",
         "the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none",
       ),
-      said("b-1", "slab", "the reference harness answered it validly in every solve of the last comparison"),
+      // b-1 stood in c-1 and c-3 against the reference, so its line carries both, newest first.
+      `${said("b-1", "slab", "the reference harness answered it validly in every solve of the last comparison")}; of its last 2 comparisons with the current reference harness, newest first, the reference answered it validly in every, none of its solves, the last closing it`,
       said(
         "b-2",
         "slab",

@@ -84,6 +84,14 @@ export interface Standing {
   readonly solves: number | null;
 }
 
+/** A task's last comparisons with the reference harness on a side, newest first, each as the
+ *  outcome reads the reference's side, with whether a limit cut one of its own solves there; and
+ *  how many of the newest closed the task in a row (`poolOf`, histories). */
+export interface History {
+  readonly reads: readonly { readonly valid: "every" | "some" | "none"; readonly cut: boolean }[];
+  readonly closedRun: number;
+}
+
 /** One comparison's reading of a task, as the comparison's last report tallied it. */
 interface TalliedIn {
   /** The index of the report in the log. */
@@ -97,6 +105,8 @@ interface TalliedIn {
   readonly reference: "old" | "fresh" | null;
   /** Whether a solve of the task in this comparison ended at a limit (`AT_A_LIMIT`). */
   readonly cut: boolean;
+  /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
+  readonly referenceCut: boolean;
   /** Whether the reference harness closed the task in this comparison (`closedTo`): valid in every
    *  solve, and no two valid answers the objective told apart. False where it stood on neither side. */
   readonly closed: boolean;
@@ -152,6 +162,8 @@ export interface Ladder {
 export const PATIENCE = 6;
 /** Comparisons without a valid answer after which a task with none on record goes to a person. */
 const UNSOLVED_RUN = 2;
+/** How many comparisons of a task's history its author hears (`poolOf`, histories). */
+const HISTORY = 3;
 /** The ways a solve ends at a limit of its own: its time, its model turns or its context. Such an
  *  ending says the budget was short, and nothing of whether the task has a valid answer. */
 export const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
@@ -437,21 +449,23 @@ function taskRecords(events: readonly LogEvent[]) {
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
     if (kind === "task.feasible" || (isNumber(tried) && tried > 0)) of(data.version).feasible = true;
   }
-  /** Each comparison's tasks a solve of which ended at a limit, as `cutIn` names them. */
+  /** Each comparison's tasks a solve of which ended at a limit, by harness, as `cutIn` names them. */
   const cut = new Set<string>();
   for (const solve of ranUnder(events)) {
     const { task } = solve.under;
     const { comparison } = solve.start;
     if (passed(solve) === true) Object.assign(of(task), { answered: true, feasible: true });
-    if (isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)) cut.add(cutIn(comparison, task));
+    if (isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)) {
+      cut.add(cutIn(comparison, task, solve.under.harness));
+    }
   }
   tallyReports(events, of, cut);
   return { records: [...records.values()], held: heldOut };
 }
 
-/** A task in a comparison, as one key. */
-function cutIn(comparison: string, task: string): string {
-  return `${comparison} ${task}`;
+/** A task under one harness in a comparison, as one key. */
+function cutIn(comparison: string, task: string, harness: string): string {
+  return `${comparison} ${task} ${harness}`;
 }
 
 /** The reports' part of `taskRecords`: each comparison's last report gives every task it tallied
@@ -468,6 +482,8 @@ function tallyReports(
     const side = data.fresh === reference ? "fresh" : data.old === reference ? "old" : null;
     for (const pair of pairsReported(events, report)) {
       const { task, old, fresh } = pair;
+      const cutOn = (harness: unknown): boolean =>
+        isString(harness) && cut.has(cutIn(session, task, harness));
       const { wins, losses } = tally([pair]);
       order += 1;
       of(task).tallied.push({
@@ -476,7 +492,8 @@ function tallyReports(
         old,
         fresh,
         reference: side,
-        cut: cut.has(cutIn(session, task)),
+        cut: cutOn(data.old) || cutOn(data.fresh),
+        referenceCut: side !== null && cutOn(data[side]),
         closed: side !== null && closedTo(pair, side),
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
       });
@@ -578,6 +595,17 @@ function tallyReports(
  * A task last compared between two other harnesses has an outcome and no standing. Told apart is
  * the comparison's own tally (`tally`, `compare.ts`), so under an objective two valid answers can
  * be told apart, and a tie with both sides valid in every solve is one the objective did not break.
+ *
+ * **Histories** hold, for each task the reference stood in two comparisons or more of, the same
+ * reading of the reference's side for each of its last `HISTORY` such comparisons, newest first,
+ * with whether a limit cut one of the reference's own solves there, and how many of the newest closed it in a row
+ * (`History`). An outcome is one comparison's, and the rule that exhausts a task counts two closed
+ * comparisons in any order (`spent`): told the last alone, an author could not tell a task the
+ * reference answered once from one it answers every time running, nor which of the tasks it
+ * answers is the older. Three readings are a short run, and the sentence rule 6 asks for stands
+ * beside them in the author's prompt. The words are the outcome's own, every, some or none, and
+ * no count of valid solves (AGENTS.md, section 3); a solve a limit cut is named apart, as rule 7
+ * keeps it apart from a wrong answer.
  */
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
@@ -605,7 +633,33 @@ export function poolOf(events: readonly LogEvent[]) {
         .flatMap((record) => outcomeOf(record, exhausted)),
     ),
     standings: new Map(records.flatMap(standingOf)),
+    histories: new Map(records.flatMap(historyOf)),
   };
+}
+
+/** The reference's side of one comparison of a task, as its outcome reads it. */
+function sideOf({ reference, old, fresh }: TalliedIn): "every" | "some" | "none" | null {
+  if (reference === null) return null;
+  const own = reference === "old" ? old : fresh;
+  const valid = own.filter(Boolean).length;
+  return valid === own.length ? "every" : valid === 0 ? "none" : "some";
+}
+
+/** A task's last comparisons with the reference harness on a side, newest first (`poolOf`,
+ *  histories), or nothing where it stood in fewer than two: one is the outcome already. */
+function historyOf(record: TaskRecord): [string, History][] {
+  const stood = record.tallied.filter(({ reference }) => reference !== null).toReversed();
+  if (stood.length < 2) return [];
+  let closedRun = 0;
+  for (const { closed } of stood) {
+    if (!closed) break;
+    closedRun += 1;
+  }
+  const reads = stood.slice(0, HISTORY).flatMap((tallied) => {
+    const valid = sideOf(tallied);
+    return valid === null ? [] : [{ valid, cut: tallied.referenceCut }];
+  });
+  return [[record.version, { reads, closedRun }]];
 }
 
 /** What a task's author hears of it (`poolOf`, outcomes), or nothing where no report read it. */
@@ -615,12 +669,8 @@ function outcomeOf(record: TaskRecord, exhausted: readonly string[]): [string, O
   if (last === null) return [];
   if (last === "aside") return [[version, "disputed"]];
   if (exhausted.includes(version)) return [[version, "exhausted"]];
-  if (last.reference === null) return [[version, "earlier-reference"]];
-  const own = last[last.reference];
-  const valid = own.filter(Boolean).length;
-  return [
-    [version, valid === own.length ? "reference-every" : valid === 0 ? "reference-none" : "reference-some"],
-  ];
+  const side = sideOf(last);
+  return [[version, side === null ? "earlier-reference" : `reference-${side}`]];
 }
 
 /** Where a task stands in the counts its author hears (`poolOf`, standings), or nothing where no

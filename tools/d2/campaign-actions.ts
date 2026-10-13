@@ -28,7 +28,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { Refused, supplyOf } from "#src/builder/admission.ts";
 import { decide, heldAfter, shortOf, unaffordedAsked, unpromoted } from "#src/builder/decide.ts";
-import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
+import { comparisonsOf } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
 import { type Decided, short } from "#src/builder/move.ts";
 import { type Opening } from "#src/builder/opening.ts";
@@ -70,7 +70,7 @@ import {
   type Values,
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
-import { waitOut } from "./host.ts";
+import { waitCrashed, waitOut } from "./host.ts";
 import { PRACTICE, prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { type Campaign, type Seated, solved } from "./round.ts";
@@ -283,7 +283,7 @@ function actionTool(
           if ("refused" in outcome) return text(outcome.refused);
           // A session of the action's that the provider's limit ended is waited out here, as after
           // each move of a campaign before the Builder made them.
-          await waitOut(context.log, crashedRun(read(context.log)).crash, sleep);
+          await waitCrashed(context.log, sleep);
           return text(outcome.said);
         } catch (error) {
           // Asked before the throw is read as a refusal, as the host's loop asks it: a limit that
@@ -365,7 +365,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
     // run's kill do, and it then ends on record as stopped. A limit it met is waited out, and a
     // throw after it began is the environment's ending, as an action's is (`actionTool`).
     const done = work
-      .then(() => waitOut(context.log, crashedRun(read(context.log)).crash, context.seats.host?.sleep))
+      .then(() => waitCrashed(context.log, context.seats.host?.sleep))
       .catch(async (error: unknown) => {
         if (await waitOut(context.log, errorMessage(error), context.seats.host?.sleep)) return;
         context.failed = { move: "examine", why: errorMessage(error) };

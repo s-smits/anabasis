@@ -52,7 +52,7 @@ import {
   lastReports,
   latestBuilt,
   pairsReported,
-  promoted,
+  referenceOf,
   stopRule,
 } from "../kernel/reports.ts";
 import { sizeLines } from "../kernel/size.ts";
@@ -165,7 +165,7 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
   const starter = reports.findLast(({ data }) => isString(data.starter))?.data.starter;
   // A task the harness to be compared with closed there (`closedTo`: valid in every solve, and no
   // two valid answers the objective told apart) can only tie again.
-  const kept = reference === "promoted" ? (promoted(events) ?? "starter") : reference;
+  const kept = reference === "promoted" ? (referenceOf(events) ?? "starter") : reference;
   const named = kept === "latest" ? latestBuilt(events) : kept === "starter" ? starter : kept;
   // With no harness named beside it, any comparison that read the reference: until 12 October any
   // at all, and a later control of two other harnesses read every task untied (the stack review).

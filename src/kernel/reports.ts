@@ -14,6 +14,7 @@
  * until the operator promotes another, and from then on the one last promoted (`promoted`). The
  * choice is the operator's and the record is the log's (`docs/plan.md`, Phase 6). A Builder goes
  * on from the harness its last session left (`latestBuilt`), step or none.
+ * Practice priority reads each task's last scored or disputed result, as its outcome does.
  *
  * The stop rule is the plan's: as many moves in a row that could have shown a gain and showed none
  * as the campaign's patience (`stopRule`, `patienceOf`).
@@ -111,8 +112,8 @@ interface TaskRecord {
   keptAt: number;
   /** Whether a solve on record gave it a valid answer, under any harness and at any limits. */
   answered: boolean;
-  /** `answered`, or its proposal says the host saw its author's answer pass, or its gate says a
-   *  reference solve under `try_task` gave a valid answer, which answers nothing. */
+  /** `answered`, or `task.feasible` records a passing author answer, or its gate says a reference
+   *  solve under `try_task` gave a valid answer, which answers nothing. */
   feasible: boolean;
   /** Each comparison whose last report tallied it, in the order the comparisons reported. */
   readonly tallied: TalliedIn[];
@@ -120,10 +121,6 @@ interface TaskRecord {
    *  and every task set aside, as `TalliedIn.order` counts them, where it was first set aside. */
   asideAt: number;
   asideOrder: number;
-  /** What the solves of the last reported comparison under the reference harness did with it, on
-   *  the side `TalliedIn.reference` names and on the old side where it names neither, and the
-   *  place of its first failed solve there among the log's solves. */
-  readonly lastReference: { valid: boolean; failed: boolean; failedAt: number };
 }
 
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
@@ -209,6 +206,15 @@ export function latestBuilt(events: readonly LogEvent[]): string | null {
  */
 export function promoted(events: readonly LogEvent[]): string | null {
   const harness = events.findLast(({ kind }) => kind === "harness.promoted")?.data.harness;
+  return isString(harness) ? harness : null;
+}
+
+/** The campaign's reference: last promoted, otherwise its recorded starter, or the first old
+ *  side where an earlier log names no starter. */
+export function referenceOf(events: readonly LogEvent[]): string | null {
+  const reports = lastReports(events);
+  const harness =
+    promoted(events) ?? reports.map(({ data }) => data.starter).find(isString) ?? reports[0]?.data.old;
   return isString(harness) ? harness : null;
 }
 
@@ -338,7 +344,9 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
   const { session, index, data } = report;
   const { old, fresh, setting, solves } = data;
   const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
-  if (!isString(old) || !isString(fresh) || !isString(setting) || !isNumber(solves)) return [];
+  if (data.scored === null || !isString(old) || !isString(fresh) || !isString(setting) || !isNumber(solves)) {
+    return [];
+  }
   const begun = events.find(
     ({ kind, data: start }) => kind === "comparison.started" && start.session === session,
   );
@@ -401,12 +409,7 @@ function inOrder(placed: readonly (readonly [string, number])[]): string[] {
 function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
   const held = new Set(taskSets(events).held);
   const reports = lastReports(events);
-  // The reference harness: the one last promoted, or the one the first report was made against.
-  const reference = promoted(events) ?? reports[0]?.data.old;
-  const last = reports.at(-1);
-  // The reference's side of the last report: after a promotion its old side is the harness the
-  // promoted one replaced, which failed tasks the promoted harness answered.
-  const lastReference = last?.data.fresh === reference ? reference : last?.data.old;
+  const reference = referenceOf(events);
   const records = new Map<string, TaskRecord>();
   const of = (version: string): TaskRecord => {
     const found = records.get(version);
@@ -420,7 +423,6 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
       tallied: [],
       asideAt: -1,
       asideOrder: Number.POSITIVE_INFINITY,
-      lastReference: { valid: false, failed: false, failedAt: Number.POSITIVE_INFINITY },
     };
     records.set(version, made);
     return made;
@@ -429,22 +431,17 @@ function taskRecords(events: readonly LogEvent[]): TaskRecord[] {
     if (!isString(data.version)) continue;
     if (kind === "task.state" && data.state === "held") of(data.version).keptAt = index;
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
-    const witnessed = (kind === "task.proposed" && data.feasible === true) || (isNumber(tried) && tried > 0);
+    const witnessed = kind === "task.feasible" || (isNumber(tried) && tried > 0);
     if (witnessed) of(data.version).feasible = true;
   }
   const made = (comparison: string, task: string) => `${comparison} ${task}`;
   const cut = new Set<string>();
-  for (const [at, solve] of ranUnder(events).entries()) {
-    const { task, harness } = solve.under;
+  for (const solve of ranUnder(events)) {
+    const { task } = solve.under;
     const { comparison } = solve.start;
     const valid = passed(solve);
     if (valid === true) Object.assign(of(task), { answered: true, feasible: true });
     if (isString(comparison) && AT_A_LIMIT.has(solve.ending?.kind)) cut.add(made(comparison, task));
-    if (valid !== null && last !== undefined && comparison === last.session && harness === lastReference) {
-      const record = of(task).lastReference;
-      if (valid) record.valid = true;
-      else Object.assign(record, { failed: true, failedAt: Math.min(record.failedAt, at) });
-    }
   }
   let order = 0;
   for (const report of reports) {
@@ -521,9 +518,8 @@ function thirds(events: readonly LogEvent[]) {
 }
 
 /** The task versions a valid answer is on record for: a solve's, under any harness and at any
- *  limits, the one the host saw the author's `try_answer` pass before the proposal, or a reference
- *  solve's under `try_task`, which its gate counts. The one
- *  fact an author may hear beside a task's outcome that names no side: a task the reference
+ *  limits, an author's answer the host saw pass on the task under its own id (`task.feasible`), or
+ *  a reference solve's under `try_task`, which its gate counts. The one fact an author may hear beside a task's outcome that names no side: a task the reference
  *  answers in no solve is then told apart from one nobody has answered. */
 export function feasibleTasks(events: readonly LogEvent[]): Set<string> {
   return new Set(taskRecords(events).flatMap(({ version, feasible }) => (feasible ? [version] : [])));
@@ -568,9 +564,9 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
 }
 
 /**
- * The held-out tasks the reference harness failed in the last reported comparison: a solve under
- * the comparison's reference side that ended as a fail, and no valid one of its on that task
- * there. With `unansweredTwice` it is what a release takes before the contract's draw: the tasks
+ * The held-out tasks whose last scored result says the reference answered none, excluding a
+ * later dispute or comparison between other harnesses, as `outcomesOf` does. With
+ * `unansweredTwice` it is what a release takes before the contract's draw: the tasks
  * that leave the reference room are the ones a Builder has to work on, and on 10 October three
  * campaigns each ran three sessions after a promotion on practice tasks the promoted harness
  * passed, and changed nothing. Half of them at most are released at once (`releaseOrder`), so that
@@ -578,9 +574,12 @@ export function awaitingLabel(events: readonly LogEvent[]): string[] {
  */
 export function referenceFailed(events: readonly LogEvent[]): string[] {
   return inOrder(
-    taskRecords(events).flatMap(({ version, held, lastReference }) =>
-      held && lastReference.failed && !lastReference.valid ? [[version, lastReference.failedAt]] : [],
-    ),
+    taskRecords(events).flatMap((record) => {
+      const last = lastRead(record);
+      if (!record.held || last === null || last === "aside" || last.reference === null) return [];
+      const own = last.reference === "old" ? last.old : last.fresh;
+      return own.length > 0 && !own.some(Boolean) ? [[record.version, last.order]] : [];
+    }),
   );
 }
 

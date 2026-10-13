@@ -11,7 +11,7 @@
  * every comparison of the log is read.
  */
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
+import { lastReports, latestBuilt, referenceOf } from "../kernel/reports.ts";
 import { isString, type JsonObject } from "../meta/json-shape.ts";
 import { shortOf, supplyOf, type Wanted } from "./admission.ts";
 
@@ -163,7 +163,7 @@ export function groundOf(events: readonly LogEvent[], plan: Plan): Ground {
     events,
     plan,
     all,
-    reference: promoted(events) ?? starter,
+    reference: referenceOf(events),
     starter,
     latest: latestBuilt(events),
     tasksShort: shortOf(supply, plan.wanted),

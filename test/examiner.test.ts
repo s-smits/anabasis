@@ -47,6 +47,11 @@ import { dirname, join, resolve } from "../src/meta/path.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
+const TRY_ANSWER = "try_answer";
+const TASK_PROPOSED = "task.proposed";
+const TASK_FEASIBLE = "task.feasible";
+const TASK_GATE = "task.gate";
+const EXAM_CALL = "exam.call";
 const SOLVER = "solver-canary-7f3a";
 const CONTRACT: Contract = {
   answerFormat: {
@@ -233,7 +238,7 @@ describe("an Examiner session", () => {
 
   it("runs the checks on an instance with an answer of its own, where the campaign lends it its verifier, and keeps nothing", async () => {
     const tried = (answer: number) =>
-      call("try_answer", {
+      call(TRY_ANSWER, {
         family: "fixture",
         public_input: { base: 7 },
         hidden: null,
@@ -242,7 +247,7 @@ describe("an Examiner session", () => {
     // Without a verifier the tool is not given; with one, the checks say which refuse the answer.
     const bare = setup([finish, finish, finish]);
     await examine(bare.request);
-    expect(bare.sent[0]).not.toContain('{"name":"try_answer"');
+    expect(bare.sent[0]).not.toContain(`{"name":"${TRY_ANSWER}"`);
     const s = setup([tried(42), tried(41), finish, finish]);
     const asked: unknown[] = [];
     await examine({
@@ -254,27 +259,27 @@ describe("an Examiner session", () => {
           : { kind: "fail", blocking: ["check-product"] };
       },
     });
-    expect(s.sent[0]).toContain('{"name":"try_answer"');
+    expect(s.sent[0]).toContain(`{"name":"${TRY_ANSWER}"`);
     expect(asked).toEqual([
       ["try", { base: 7 }, { answer: "42", unit: "N" }],
       ["try", { base: 7 }, { answer: "41", unit: "N" }],
     ]);
-    expect(JSON.stringify(s.of("exam.call")[0])).toContain("Every applicable check passed this answer");
-    expect(JSON.stringify(s.of("exam.call")[1])).toContain("Refused by check-product.");
+    expect(JSON.stringify(s.of(EXAM_CALL)[0])).toContain("Every applicable check passed this answer");
+    expect(JSON.stringify(s.of(EXAM_CALL)[1])).toContain("Refused by check-product.");
     // A try is no proposal: no task was held out, and no answer entered the log but in the trace.
-    expect(s.of("task.proposed")).toEqual([]);
+    expect(s.of(TASK_PROPOSED)).toEqual([]);
     expect(s.of("exam.finished")[0]).toMatchObject({ proposed: 0 });
 
     // What a pass keeps is the fact: a proposal with the content the host saw answered is logged
     // feasible, and one whose content moved, by its public input or its hidden values, is not.
     const kept = setup([
-      call("try_answer", {
+      call(TRY_ANSWER, {
         family: "fixture",
         public_input: { base: 7 },
         hidden: { seed: 1 },
         answer: { answer: "42", unit: "N" },
       }),
-      call("try_answer", {
+      call(TRY_ANSWER, {
         family: "fixture",
         public_input: { base: 8 },
         hidden: { seed: 1 },
@@ -312,23 +317,232 @@ describe("an Examiner session", () => {
           : { kind: "fail", blocking: ["check-product"] };
       },
     });
-    expect(checked).toEqual([{ seed: 1 }, { seed: 1 }, { seed: 1 }, { seed: 1 }]);
-    expect(kept.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
-      ["x-1-001", true],
-      ["x-1-002", null],
-      ["x-1-003", true],
-      ["x-1-004", true],
-    ]);
-    expect(JSON.stringify(kept.of("task.proposed"))).not.toContain('"answer":"42"');
+    // Four tries, and a recheck under its task id of each of the three that passed: every check
+    // read the hidden value as the JSON it encodes.
+    expect(checked).toEqual(Array.from({ length: 7 }, () => ({ seed: 1 })));
+    const proved = [
+      kept.versionOf("x-1-001", 7),
+      kept.versionOf("x-1-003", 9),
+      kept.versionOf("x-1-004", 10),
+    ];
+    expect(feasibleTasks(read(kept.log))).toEqual(new Set(proved));
+    expect(kept.of(TASK_FEASIBLE)).toEqual(proved.map((version) => ({ version, session: "x-1" })));
+    expect(JSON.stringify(kept.of(TASK_FEASIBLE))).not.toContain('"answer":"42"');
     // The Examiner is told it has the tool, and the shell, and what neither does to the exam.
     expect(s.sent[0]).toContain("try_answer runs the checks on an instance with an answer of yours");
     expect(s.sent[0]).toContain("bash, read and write are yours in a home of your own");
   });
 
+  it("rechecks an author answer on the final task id before keeping a pre-proposal proof", async () => {
+    const s = setup([
+      call(TRY_ANSWER, { ...instance(7), answer: { answer: "42", unit: "N" } }),
+      propose(7),
+      finish,
+      finish,
+    ]);
+    const checked: string[] = [];
+    await examine({
+      ...s.request,
+      verify: async (task) => {
+        checked.push(task.taskId);
+        return task.taskId === "try" ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] };
+      },
+    });
+    expect(checked).toEqual(["try", "x-1-001"]);
+    expect(s.of(TASK_PROPOSED)[0]?.feasible).toBeUndefined();
+    expect(feasibleTasks(read(s.log))).toEqual(new Set());
+    expect(JSON.stringify(s.of(EXAM_CALL))).toContain(
+      "Author proof was not retained under this task id: Refused by check-product",
+    );
+  });
+
+  it("reports a faulty or unavailable final-id recheck without treating it as an answer failure", async () => {
+    for (const verdict of [
+      { kind: "faulty", check: "check-product", reason: "engine unavailable" },
+      { kind: "non-result", reason: "engine unavailable" },
+    ] as const) {
+      const s = setup([
+        call(TRY_ANSWER, { ...instance(7), answer: { answer: "42", unit: "N" } }),
+        propose(7),
+        finish,
+        finish,
+      ]);
+      await examine({
+        ...s.request,
+        verify: async (task) => (task.taskId === "try" ? { kind: "pass" } : verdict),
+      });
+      expect(s.of(TASK_PROPOSED)[0]?.feasible).toBeUndefined();
+      expect(JSON.stringify(s.of(EXAM_CALL))).toContain("Author proof was not retained under this task id");
+      expect(JSON.stringify(s.of(EXAM_CALL))).toContain("engine unavailable");
+      expect(s.of("exam.finished")[0]?.ended).toBe("finished");
+    }
+  });
+
+  it("keeps a valid author answer tried after the task was proposed", async () => {
+    const s = setup([
+      propose(7),
+      call(TRY_ANSWER, {
+        ...instance(7),
+        answer: { answer: "42", unit: "N" },
+      }),
+      call(TRY_ANSWER, { ...instance(7), answer: { answer: "42", unit: "N" } }),
+      finish,
+      finish,
+    ]);
+    await examine({ ...s.request, verify: async () => ({ kind: "pass" }) });
+    const version = s.versionOf("x-1-001", 7);
+    expect(feasibleTasks(read(s.log)).has(version)).toBe(true);
+    expect(s.of(TASK_FEASIBLE)).toEqual([{ version, session: "x-1" }]);
+    expect(heard(read(s.log), writtenTasks(read(s.log))).lines).toEqual([
+      "x-1-001 (family fixture): not yet compared; a valid answer to it is on record",
+    ]);
+  });
+
+  it("records the proposal and passed gate before a recheck that throws", async () => {
+    const s = setup([
+      call(TRY_ANSWER, { ...instance(7), answer: { answer: "42", unit: "N" } }),
+      propose(7),
+      finish,
+      finish,
+    ]);
+    await examine({
+      ...s.request,
+      verify: (task) => {
+        if (task.taskId === "try") return Promise.resolve({ kind: "pass" });
+        expect(taskSets(read(s.log)).held).toEqual([s.versionOf(task.taskId, 7)]);
+        throw new Error("engine interrupted");
+      },
+    });
+    expect(s.of(TASK_PROPOSED)).toHaveLength(1);
+    expect(s.of(TASK_FEASIBLE)).toEqual([]);
+    expect(JSON.stringify(s.of(EXAM_CALL))).toContain("The checks could not run: engine interrupted");
+    expect(s.of("exam.finished")[0]?.ended).toBe("finished");
+  });
+
+  it("does not recheck or prove a proposal whose package gate refuses it", async () => {
+    const s = setup([
+      call(TRY_ANSWER, { ...instance(null), answer: { answer: "42", unit: "N" } }),
+      propose(null),
+      finish,
+      finish,
+    ]);
+    const checked: string[] = [];
+    await examine({
+      ...s.request,
+      verify: async (task) => {
+        checked.push(task.taskId);
+        return { kind: "pass" };
+      },
+    });
+    expect(checked).toEqual(["try"]);
+    expect(s.of(TASK_PROPOSED)).toHaveLength(1);
+    expect(s.of(TASK_GATE)[0]?.outcome).toBe("refused");
+    expect(s.of(TASK_FEASIBLE)).toEqual([]);
+    expect(taskSets(read(s.log)).held).toEqual([]);
+  });
+
+  it("requires a passed package gate for a late proof and retains proofs for released or disputed tasks", async () => {
+    for (const state of ["ungated", "released", "disputed"] as const) {
+      const s = setup([
+        call(TRY_ANSWER, {
+          family: EXAMPLE.family,
+          public_input: EXAMPLE.publicInput,
+          hidden: EXAMPLE.hidden,
+          answer: { answer: "12", unit: "N" },
+        }),
+        finish,
+        finish,
+      ]);
+      const version = taskVersion(s.request.pack(EXAMPLE));
+      append(s.log, TASK_PROPOSED, { version, taskId: EXAMPLE.taskId });
+      if (state !== "ungated") {
+        append(s.log, TASK_GATE, { version, gate: 1, outcome: "passed" });
+        append(s.log, "task.state", { version, state });
+      }
+      await examine({ ...s.request, verify: async () => ({ kind: "pass" }) });
+      expect(s.of(TASK_FEASIBLE)).toEqual(state === "ungated" ? [] : [{ version, session: "x-1" }]);
+    }
+  });
+
+  it("records no author proof for a task the operator refused", async () => {
+    const s = setup([
+      call(TRY_ANSWER, {
+        family: EXAMPLE.family,
+        public_input: EXAMPLE.publicInput,
+        hidden: EXAMPLE.hidden,
+        answer: { answer: "12", unit: "N" },
+      }),
+      finish,
+      finish,
+    ]);
+    const version = taskVersion(s.request.pack(EXAMPLE));
+    append(s.log, TASK_PROPOSED, { version, taskId: EXAMPLE.taskId });
+    append(s.log, TASK_GATE, { version, gate: 1, outcome: "passed" });
+    append(s.log, "task.state", { version, state: "refused" });
+    await examine({ ...s.request, verify: async () => ({ kind: "pass" }) });
+    expect(s.of(TASK_FEASIBLE)).toEqual([]);
+  });
+
+  it("keeps a late proof for an earlier pack task, and none for different content or a refused answer", async () => {
+    const s = setup([
+      call(TRY_ANSWER, {
+        family: EXAMPLE.family,
+        public_input: EXAMPLE.publicInput,
+        hidden: EXAMPLE.hidden,
+        answer: { answer: "12", unit: "N" },
+      }),
+      propose(7),
+      call(TRY_ANSWER, { ...instance(7), answer: { answer: "1", unit: "N" } }),
+      call(TRY_ANSWER, { ...instance(7), hidden: { seed: 2 }, answer: { answer: "42", unit: "N" } }),
+      finish,
+      finish,
+    ]);
+    const version = taskVersion(s.request.pack(EXAMPLE));
+    append(s.log, TASK_PROPOSED, { version, taskId: EXAMPLE.taskId });
+    append(s.log, TASK_GATE, { version, gate: 1, outcome: "passed" });
+    await examine({
+      ...s.request,
+      verify: async (_task, answer) =>
+        asRecord(answer)?.answer === "1" ? { kind: "fail", blocking: ["check-product"] } : { kind: "pass" },
+    });
+    expect(s.of(TASK_FEASIBLE)).toEqual([{ version, session: "x-1" }]);
+    expect(feasibleTasks(read(s.log))).toEqual(new Set([version]));
+    expect(heard(read(s.log), s.request.examples).lines[0]).toContain("a valid answer to it is on record");
+  });
+
+  it("does not log a proof for an unprepared example or one rejected under its own task id", async () => {
+    const tried = call(TRY_ANSWER, {
+      family: EXAMPLE.family,
+      public_input: EXAMPLE.publicInput,
+      hidden: EXAMPLE.hidden,
+      answer: { answer: "12", unit: "N" },
+    });
+    const bare = setup([tried, finish, finish]);
+    await examine({ ...bare.request, verify: async () => ({ kind: "pass" }) });
+    expect(bare.of(TASK_FEASIBLE)).toEqual([]);
+    expect(bare.of("exam.finished")[0]?.ended).toBe("finished");
+
+    const prepared = setup([tried, finish, finish]);
+    const version = taskVersion(prepared.request.pack(EXAMPLE));
+    append(prepared.log, TASK_PROPOSED, { version, taskId: EXAMPLE.taskId });
+    append(prepared.log, TASK_GATE, { version, gate: 1, outcome: "passed" });
+    const checked: string[] = [];
+    await examine({
+      ...prepared.request,
+      verify: async (task) => {
+        checked.push(task.taskId);
+        return task.taskId === "try" ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] };
+      },
+    });
+    expect(checked).toEqual([EXAMPLE.taskId]);
+    expect(prepared.of(TASK_FEASIBLE)).toEqual([]);
+    expect(feasibleTasks(read(prepared.log))).toEqual(new Set());
+  });
+
   it("holds a tried answer to the format before the checks, and keeps no instance feasible on one the format refuses", async () => {
     // Checks that pass every answer, and an answer the format refuses: a number, and no unit.
     const s = setup([
-      call("try_answer", {
+      call(TRY_ANSWER, {
         family: "fixture",
         public_input: { base: 7 },
         hidden: { seed: 1 },
@@ -347,26 +561,24 @@ describe("an Examiner session", () => {
       },
     });
     expect(asked).toEqual([]);
-    const told = JSON.stringify(s.of("exam.call")[0]);
+    const told = JSON.stringify(s.of(EXAM_CALL)[0]);
     expect(told).toContain("This answer does not follow the answer format");
     expect(told).toContain("no check was run");
     expect(told).not.toContain("Every applicable check passed this answer");
-    expect(s.of("task.proposed").map(({ taskId, feasible }) => [taskId, feasible ?? null])).toEqual([
-      ["x-1-001", null],
-    ]);
+    expect(s.of(TASK_PROPOSED).map(({ taskId }) => taskId)).toEqual(["x-1-001"]);
+    expect(s.of(TASK_FEASIBLE)).toEqual([]);
   });
 
   it("refuses a task that carries a planted answer whole, in its public input or hidden values, and holds one that does not", async () => {
     // A planted answer passes try_answer; the first instance proposed hides it, the second shows
-    // it inside the public input, and the third holds none of it.
+    // it inside the public input, and the third holds none of it. A second answer that passes on
+    // the same instance leaves the first planted: every answer that passed is one, not the last.
     const planted = { answer: "12", unit: "N" };
+    const tried = (answer: JsonObject) =>
+      call("try_answer", { family: "fixture", public_input: { base: 2 }, hidden: { seed: 1 }, answer });
     const s = setup([
-      call("try_answer", {
-        family: "fixture",
-        public_input: { base: 2 },
-        hidden: { seed: 1 },
-        answer: planted,
-      }),
+      tried(planted),
+      tried({ answer: "12.0", unit: "N" }),
       call("propose_tasks", {
         tasks: [
           { family: "fixture", public_input: { base: 2 }, hidden: { seed: 1, witness: planted } },
@@ -379,7 +591,7 @@ describe("an Examiner session", () => {
     ]);
     const examined = await examine({ ...s.request, verify: async () => ({ kind: "pass" }) });
     const refused = "refused: it carries, whole, an answer that passed try_answer in this session";
-    const result = s.of("exam.call")[1]?.text;
+    const result = s.of(EXAM_CALL)[2]?.text;
     const told = isString(result) ? result.split("\n") : [];
     expect(told.map((line) => line.slice(0, 9 + refused.length))).toEqual([
       `x-1-001: ${refused}`,
@@ -414,7 +626,7 @@ describe("an Examiner session", () => {
     ];
     expect(examined).toEqual({ held: [held], refused: [refused], ended: "finished" });
     // One gate, and the task is a held-out task from then on: no solve, no control, no word.
-    expect(s.of("task.gate")).toEqual([
+    expect(s.of(TASK_GATE)).toEqual([
       { version: held, gate: 1, outcome: "passed" },
       { version: refused, gate: 1, outcome: "refused", reason: "no inputs" },
     ]);
@@ -423,7 +635,7 @@ describe("an Examiner session", () => {
     expect(s.of("solve.started")).toEqual([]);
     expect(s.of("exam.word")).toEqual([]);
     // The instance is in the log whole, so a later solve of it needs nothing else.
-    expect(s.of("task.proposed")[0]).toMatchObject({
+    expect(s.of(TASK_PROPOSED)[0]).toMatchObject({
       version: held,
       taskId: "x-1-001",
       session: "x-1",
@@ -446,8 +658,8 @@ describe("an Examiner session", () => {
     expect(examined.ended).toBe("supplied");
     expect(examined.held).toHaveLength(2);
     // The second call of the turn was answered that the host has what it needs, and no turn followed.
-    expect(JSON.stringify(s.of("exam.call").at(-1))).toContain("The host has the tasks it needs");
-    expect(s.of("task.proposed")).toHaveLength(2);
+    expect(JSON.stringify(s.of(EXAM_CALL).at(-1))).toContain("The host has the tasks it needs");
+    expect(s.of(TASK_PROPOSED)).toHaveLength(2);
     expect(s.of("exam.turn")).toHaveLength(1);
   });
 
@@ -458,7 +670,7 @@ describe("an Examiner session", () => {
     const examined = await examine(s.request);
     expect(examined.ended).toBe("finished");
     expect(examined.held).toHaveLength(2);
-    expect(JSON.stringify(s.of("exam.call")[1])).toContain("the host does not yet have the tasks it needs");
+    expect(JSON.stringify(s.of(EXAM_CALL)[1])).toContain("the host does not yet have the tasks it needs");
     expect(s.of("exam.turn")).toHaveLength(4);
     // A session that held out what the host asks for ends at its first finish.
     const enough = setup([propose(3, 4), finish]);
@@ -470,7 +682,7 @@ describe("an Examiner session", () => {
     await examine(spent.request);
     expect(spent.sent[2]).toContain("An instance was not taken: this session can propose no further task.");
     expect(spent.sent[3]).toContain("This session can propose no further task.");
-    expect(spent.of("task.proposed")).toHaveLength(4);
+    expect(spent.of(TASK_PROPOSED)).toHaveLength(4);
     // A second session is a new process, and the same instance under a new id is the same task.
     const again = setup([propose(7), finish, finish, propose(7, 8), finish, finish]);
     await examine(again.request);
@@ -537,7 +749,7 @@ describe("try_task", () => {
     expect(taskSets(read(s.log)).held).toEqual(versions.slice(0, 2));
     const counted = (valid: number) =>
       `the reference harness answered it validly in ${String(valid)} of 3 solves`;
-    expect(s.of("exam.call")[0]?.text).toBe(
+    expect(s.of(EXAM_CALL)[0]?.text).toBe(
       [
         `x-1-001: held out; ${counted(1)}.`,
         `x-1-002: held out; ${counted(2)}.`,
@@ -548,7 +760,7 @@ describe("try_task", () => {
     );
     // Its cost a task, on the gate's event; the solves are the session's, named by it, and no
     // comparison's: a comparison counts the solves whose start names it (`pairsOf`).
-    expect(s.of("task.gate").map(({ reference }) => reference)).toEqual(
+    expect(s.of(TASK_GATE).map(({ reference }) => reference)).toEqual(
       [1, 2, 0, 3, 1].map((valid, nth) => ({ valid, solves: nth === 4 ? 2 : 3, billed: 1.5 })),
     );
     expect(asked).toHaveLength(15);
@@ -595,7 +807,7 @@ describe("try_task", () => {
       "killed",
       "killed",
     ]);
-    expect(s.of("task.gate")).toMatchObject([{ outcome: "refused", reference: { valid: 0, solves: 0 } }]);
+    expect(s.of(TASK_GATE)).toMatchObject([{ outcome: "refused", reference: { valid: 0, solves: 0 } }]);
   });
 });
 
@@ -642,7 +854,7 @@ describe("an Examiner's walled shell, with the engines its campaign's checks run
     });
     // The engine ran by name and read its own data; the solver beside it is on no path; the
     // pack's other files stay closed; and the program that starts the engine is the host's.
-    expect(s.of("exam.call").map(({ tool, text }) => [tool, text])).toEqual([
+    expect(s.of(EXAM_CALL).map(({ tool, text }) => [tool, text])).toEqual([
       ["bash", "engine data"],
       ["bash", "absent"],
       ["bash", "refused"],
@@ -689,8 +901,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     );
     // The pack's own task is in the log as `prepare.ts` leaves it: by its id, and held out.
     const packed = taskVersion(s.request.pack(EXAMPLE));
-    append(s.log, "task.proposed", { version: packed, taskId: EXAMPLE.taskId });
-    append(s.log, "task.gate", { version: packed, gate: 1, outcome: "passed" });
+    append(s.log, TASK_PROPOSED, { version: packed, taskId: EXAMPLE.taskId });
+    append(s.log, TASK_GATE, { version: packed, gate: 1, outcome: "passed" });
     let solves = 0;
     /** Two solves of a task under a harness, each valid or rejected. */
     const solved = (task: string | undefined, harness: string, valid: readonly boolean[]) => {
@@ -713,6 +925,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     solved(unsolved, "h2", [false, false]);
     solved(packed, "h1", [true, false]);
     solved(packed, "h2", [true, true]);
+    // Reports written before 9 October did not name the starter; the first old side still stands.
     append(s.log, "comparison.reported", {
       session: "b-1",
       reading: "no-step",
@@ -877,6 +1090,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         reading: "no-step",
         old,
         fresh,
+        starter: "h1",
         solves: side,
         setting: settingId(condition("any", "any")),
         versions: ids.map((id) => `v-${id}`),
@@ -890,9 +1104,10 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       { taskId: "b-4", family: "slab" },
     ];
     for (const { taskId } of tasks) {
-      add("task.proposed", { version: `v-${taskId}`, taskId });
-      add("task.gate", { version: `v-${taskId}`, gate: 1, outcome: "passed" });
+      add(TASK_PROPOSED, { version: `v-${taskId}`, taskId });
+      add(TASK_GATE, { version: `v-${taskId}`, gate: 1, outcome: "passed" });
     }
+    const first = events.length;
     // c-1, against the reference h1 at two solves a side.
     solved("c-1", "a-1", "h1", [false, false]);
     solved("c-1", "a-1", "h2", [true, false]);
@@ -946,6 +1161,15 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above, by family and fewest first. These are measurements and no target.",
       "- family slab: 4, 5, 6, 7",
     ]);
+    // A control between two other harnesses that reported first is not the reference: the turns
+    // stay the starter's, as the lines and the counts do. Read from the first report's old side,
+    // they were none of the reference's and the control's own (9) where it stood last.
+    const from = events.length;
+    solved("c-0", "b-2", "h3", [true, true], [9, 9]);
+    solved("c-0", "b-2", "h4", [false, false]);
+    reported("c-0", "h3", "h4", 2, ["b-2"]);
+    const control = events.splice(from);
+    expect(heard(events.toSpliced(first, 0, ...control), tasks)).toEqual({ lines, counts, turns });
     // Neither the lines nor the counts name a harness.
     expect([...lines, counts, turns].join("\n")).not.toMatch(/\bh[1-5]\b/);
   });

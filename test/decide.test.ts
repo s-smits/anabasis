@@ -687,17 +687,13 @@ describe("a row of the table", () => {
       ...compared(`${id}a`, fresh, "step", { old }),
       ...compared(`${id}b`, fresh, "step", { old }),
     ];
-    const setUp = [
-      ...FIRST,
-      ...stepped("g-1", "h1", "start"),
-      promotion("h1", { from: "start", programs: true }),
-    ];
+    const setUp = [...FIRST, ...stepped("g-1", "h1", "start"), promotion("h1", { from: "start" })];
     expect(move(setUp)).toMatchObject({ move: "build" });
     const second = [
       ...setUp,
       built("b-2", "h2"),
       ...stepped("g-2", "h2", "h1"),
-      promotion("h2", { from: "h1", programs: false }),
+      promotion("h2", { from: "h1" }),
     ];
     expect(move(second)).toEqual({
       move: "compare",
@@ -754,7 +750,7 @@ describe("a row of the table", () => {
       event("task.state", { version: "l2", state: "ladder" }),
       built("b-2", "h2"),
       ...stepped("g-3", "h2", "h1"),
-      promotion("h2", { from: "h1", programs: false }),
+      promotion("h2", { from: "h1" }),
     ];
     expect(move(next)).toEqual({
       move: "compare",

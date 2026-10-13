@@ -138,10 +138,10 @@ test("an attended campaign says so in its set-up, and that a promotion the table
 test("the set-up names the bars a promotion is read against, and the next move the row of the table that chose it", () => {
   const reading = readingOf(fixture.name);
   // No opening of the fixture sets a bar, so each stands at its default.
-  expect(reading.bars).toEqual({ effect: 0.25, transfer: 0.15, cost: 3 });
+  expect(reading.bars).toEqual({ cost: 3 });
   const html = paneOf(reading);
   expect(html).toContain("<dt>bars</dt>");
-  expect(html).toContain("effect 25 points · transfer within 15 points · cost 3 attempts, gating nothing");
+  expect(html).toContain("cost 3 attempts, gating nothing");
   const promote = {
     move: "promote",
     why: "a step read twice",

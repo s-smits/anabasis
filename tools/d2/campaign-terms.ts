@@ -89,8 +89,6 @@ const OPTIONS = {
   "exam-proposals": { type: "string" },
   "exam-minutes": { type: "string" },
   "exam-turns": { type: "string" },
-  effect: { type: "string" },
-  transfer: { type: "string" },
   cost: { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },

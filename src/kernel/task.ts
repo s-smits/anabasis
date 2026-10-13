@@ -85,6 +85,8 @@ interface TaskSets {
   readonly released: readonly string[];
   /** The ladder: tasks held apart from every promotion and every Builder. */
   readonly ladder: readonly string[];
+  /** The held-out tasks and the ladder: what no Builder sees, and what a comparison may solve. */
+  readonly apart: readonly string[];
 }
 
 /** The gate's outcome, and the state, of a task held for the ladder. */
@@ -220,6 +222,9 @@ export function taskSets(events: readonly LogEvent[]): TaskSets {
     held: inState("held"),
     released: inState("released"),
     ladder: inState(LADDER),
+    apart: [...tasks].flatMap(([version, task]) =>
+      task.gated && (task.state === "held" || task.state === LADDER) ? [version] : [],
+    ),
   };
 }
 

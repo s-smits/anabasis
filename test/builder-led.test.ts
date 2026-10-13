@@ -420,14 +420,15 @@ describe("a campaign run by its live Builder", () => {
         ["promote", {}],
         ["finish", { note: "Two harnesses are promoted and measured." }],
       ]),
-      examine: (request) =>
-        examine({
+      // One task the session held is moved to the ladder, as the gate holds one there.
+      examine: async (request) => {
+        const examined = await examine({
           ...request,
           ...scripted([
             [
               "propose_tasks",
               {
-                tasks: Array.from({ length: 6 }, (_, n) => ({
+                tasks: Array.from({ length: 7 }, (_, n) => ({
                   family: "fixture",
                   public_input: { base: 2, rehearsal_copy: { of: "t-1", n } },
                   hidden: null,
@@ -435,7 +436,10 @@ describe("a campaign run by its live Builder", () => {
               },
             ],
           ]),
-        }),
+        });
+        append(request.log, "task.state", { version: examined.held.at(-1) ?? "", state: "ladder" });
+        return examined;
+      },
     };
     const ending = await harnessBuilder(
       [
@@ -473,9 +477,24 @@ describe("a campaign run by its live Builder", () => {
       "examine",
       "compare",
       "compare",
+      "compare",
       "promote",
+      "compare",
     ]);
-    const [first, repeat, second, secondRepeat] = of(name, "comparison.reported");
+    // The ladder's readings are the host's: once the ladder holds a task, the starter against the
+    // reference before the Builder's next action, and again after the next promotion. The
+    // Builder is told of neither.
+    const [first, repeat, owed, second, secondRepeat, ladder] = of(name, "comparison.reported");
+    expect(of(name, MOVED).filter(({ code }) => code === "ladder")).toHaveLength(2);
+    expect(owed).toMatchObject({ ladder: true, old: first?.fresh, tasks: 1 });
+    expect(ladder).toMatchObject({ ladder: true, old: second?.fresh, tasks: 1 });
+    // The first reading fixes the ladder, and the next reads that set again, by its id.
+    const readings = of(name, "comparison.started").filter((started) => started.ladder === true);
+    expect(readings).toMatchObject([{ session: owed?.session }, { frozen: owed?.session }]);
+    expect(readings[0]?.frozen).toBeUndefined();
+    expect(of(name, CALLED).findLast(({ tool }) => tool === "promote")?.text).toStartWith(
+      `Harness ${isString(second?.fresh) ? second.fresh.slice(0, 8) : ""} is now the campaign's reference.`,
+    );
     expect(first).toMatchObject({ reading: "step", scored: { wins: 5, losses: 0, ties: 0 } });
     expect(repeat).toMatchObject({ reading: "step", old: first?.old, fresh: first?.fresh });
     expect(second).toMatchObject({

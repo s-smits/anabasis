@@ -546,6 +546,8 @@ export async function harnessBuilder(
     const led =
       opening.led &&
       !SETUP.has(decided.move) &&
+      // The ladder's reading is the host's and no Builder's (`ladderOwed`, `decide.ts`).
+      !(decided.move === "compare" && decided.ladder === true) &&
       (decided.move !== "end" || (decided.ending === "no-room" && !talked));
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,

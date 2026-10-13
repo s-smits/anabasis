@@ -393,6 +393,7 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
       decided.fresh,
       "--reference",
       decided.reference,
+      ...(decided.ladder === true ? ["--ladder", ...flag("frozen", decided.frozen)] : []),
       ...terms,
       ...flag("defects", values.defects),
       ...reviewer,

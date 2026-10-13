@@ -370,9 +370,9 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const states = taskStates(all);
   // A task a person released or refused while the comparison ran is no held-out task any more. It
   // is left out and named, since a comparison that could not report would lose every solve it paid.
-  const held = new Set(taskSets(events).held);
+  const apart = new Set(taskSets(events).apart);
   const scorable = fixed.tasks.filter((task) => states.get(task) !== "disputed");
-  const live = scorable.filter((task) => held.has(task));
+  const live = scorable.filter((task) => apart.has(task));
   const open = new Set(
     rejections(events, fixed, labels).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
   );
@@ -424,7 +424,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     aside,
     short: live.filter((task) => first.short.includes(task)),
     flagged: flaggedIn(events, pairs),
-    withdrawn: scorable.filter((task) => !held.has(task)),
+    withdrawn: scorable.filter((task) => !apart.has(task)),
     reading,
     turns: turnsOf(events, pairs),
     // The three bars, read where a step is (the plan's W): printed, and gating nothing.

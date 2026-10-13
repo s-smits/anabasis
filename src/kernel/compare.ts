@@ -564,7 +564,7 @@ export function draw(versions: readonly string[], count: number, seed: string): 
  * and it ended in a pass or a fail; a non-result was solved again. A task with fewer than `solves`
  * on a side is in no pair and named in `short`, as a resume may leave one. A disputed version is
  * left out on both sides and named in `disputed`, so a dispute can remove a task from the test and
- * cannot make a win. Any other version that is no held-out task is refused.
+ * cannot make a win. Any other version that is no held-out or ladder task is refused.
  */
 export function pairsOf(
   events: readonly LogEvent[],
@@ -577,8 +577,9 @@ export function pairsOf(
   if (old === fresh && halves === undefined) {
     throw new Error(`a comparison sets two harnesses against each other, and both sides are ${old}`);
   }
-  const { states, held } = taskSets(events);
-  const heldOut = new Set(held);
+  // The ladder's tasks are held out too, and scored on the ladder alone (`refuseUnscorable`).
+  const { states, apart: unseen } = taskSets(events);
+  const heldOut = new Set(unseen);
   /** Each recorded condition's setting, by the condition's id: a setting is hashed once a condition
    *  and not once a solve. */
   const settings = new Map(

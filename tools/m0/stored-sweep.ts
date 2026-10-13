@@ -230,9 +230,10 @@ export function storedAnswer(row: Row): JsonValue | undefined {
   }
 }
 
-/** The backends set as the sweep ran its Claude solves, for a model process keeping its state in `home`. */
-export function sweepOptions(home = homedir()): BackendOptions {
-  return { claude: { executable: claudeExecutable(), compaction: { window: SWEEP_COMPACT_WINDOW }, home } };
+/** The backends set as the sweep ran its Claude solves, for a model process keeping its state in
+ *  `home`; a campaign's `--solver-window` names another window (`tools/d2/setting.ts`). */
+export function sweepOptions(home = homedir(), window = SWEEP_COMPACT_WINDOW): BackendOptions {
+  return { claude: { executable: claudeExecutable(), compaction: { window }, home } };
 }
 
 /** The model a row ran, from the backends this system runs on. */

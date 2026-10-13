@@ -490,6 +490,7 @@ function settingHeld(log: string, given: Values): void {
     {
       solver: given.solver,
       "solver-effort": given["solver-effort"],
+      "solver-window": given["solver-window"],
       "solve-minutes": given["solve-minutes"],
       "solve-model-turns": given["solve-model-turns"],
       tasks: recorded.tasks?.join(","),

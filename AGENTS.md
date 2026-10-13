@@ -620,14 +620,16 @@ operator's page and enters no move and no seat. Campaigns run by the hand comman
 
 **The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, by the first
 command that begins a comparison or a Builder session, and does not change: who solves and under which limits, which
-four flags name (`--solver`, `--solver-effort`, `--solve-minutes`, `--solve-model-turns`), and
-which tasks are scored (`--tasks` or `--target`). The first command records what it names, with
+five flags name (`--solver`, `--solver-effort`, `--solver-window`, `--solve-minutes`,
+`--solve-model-turns`), and which tasks are scored (`--tasks` or `--target`). The first command records what it names, with
 the defaults for the rest. From then on a command that names nothing runs under the record, and
 one whose flag names another is refused with both: another setting is another campaign. A
 campaign whose solves were made before a setting was recorded has one all the same, the one its
 last test-side solves ran under, and the first record is held to it (`firstRecord`). A solver
 that is another model, at another effort or under other limits is another solver, and no solve
-on record then counts.
+on record then counts. `--solver-window` is the context the solver's Claude Code compacts at,
+300,000 tokens where no command names one; a model Claude Code serves a 200K context, such as
+`claude-haiku-5-5`, is refused at that window and needs one it can hold.
 
 **Practice follows the supply, and the outcomes.** One release takes at most half of what is
 held, so a campaign that opens on a few tasks releases fewer than `--practice` names. Before a

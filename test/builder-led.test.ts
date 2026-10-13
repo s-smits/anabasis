@@ -755,6 +755,13 @@ describe("a campaign tool where the table names more than the action", () => {
         { wins: 4, losses: 0, ties: 1 },
         { wins: 4, losses: 0, ties: 1 },
       ]);
+      // The campaign's facts end each campaign tool's result once, and no other tool's.
+      const facts = of(name, CALLED).map(({ tool, text }) => ({
+        campaign: tool === "compare" || tool === "campaign_status",
+        count: isString(text) ? text.split("Campaign facts:").length - 1 : 0,
+      }));
+      expect(facts.length).toBeGreaterThan(4);
+      for (const { campaign, count } of facts) expect(count).toBe(campaign ? 1 : 0);
       return of(name, CALLED)
         .map(({ tool, text }) => `${isString(tool) ? tool : ""}: ${isString(text) ? text : ""}`)
         .join("\n")

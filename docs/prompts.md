@@ -11,7 +11,7 @@ a session adds one with the pull request that used it.
 
 | Prompt | For |
 | --- | --- |
-| [Audit the five success factors](#audit-the-five-success-factors) | Whether the factors of `AGENTS.md` are the right set, measurable from the log, stated once, and true to the source. Written on 11 October for PR #227 |
+| [Audit the five success factors](#audit-the-five-success-factors) | Whether the factors of `AGENTS.md` are the right set, measurable from the log, stated once, and true to the source. Written on 11 October for PR #227, and kept as it was used: since 13 October `AGENTS.md` reports four factors, with supply a condition of admission and worth's effect and transfer retired |
 
 ## Audit the five success factors
 

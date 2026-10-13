@@ -24,7 +24,7 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import type { Seats } from "../tools/d2/campaign-terms.ts";
+import { flagsOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { importCommand } from "../tools/d2/import.ts";
@@ -110,8 +110,8 @@ function builderScripts(
   scripts: readonly (readonly (readonly [string, JsonObject])[])[],
 ): Seated {
   return (campaign, given) => {
-    const opened = read(campaign.log).filter(({ kind }) => kind === "build.started").length;
-    return { ...base(campaign, given), builder: scripted(scripts[opened] ?? []) };
+    const conversations = read(campaign.log).filter(({ kind }) => kind === "build.started").length;
+    return { ...base(campaign, given), builder: scripted(scripts[conversations] ?? []) };
   };
 }
 
@@ -701,6 +701,28 @@ describe("a campaign tool where the table names more than the action", () => {
     const moved = await read_(`${STEM}-won-other`, { "g-1": "t-2", "g-2": "t-4" });
     expect(moved).toBe(same);
     expect(same).toContain("4 won, 0 lost, 1 tied");
+  });
+});
+
+describe("who makes a campaign's moves, as its opening keeps it", () => {
+  it("opens a campaign led by its Builder, records nothing of the term for one the host runs, and keeps either when run again", () => {
+    const logOf = (name: string) => join(root, "terms", name, LOG_FILE);
+    const flags = (...more: string[]) =>
+      flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, ...more]);
+    const led = logOf("led");
+    expect(opened(led, flags(), "scripted").led).toBe(true);
+    expect(opened(led, flags(), "scripted").led).toBe(true);
+    expect(read(led).map(({ data }) => data.led)).toEqual([true]);
+    // The record of a campaign the host runs is a record from before the term, key for key: run
+    // again by a command that names nothing, either is the host's, and nothing is recorded again.
+    const hosted = logOf("hosted");
+    expect(opened(hosted, flags("--no-builder-led"), "scripted").led).toBe(false);
+    expect(read(hosted)[0]?.data).not.toHaveProperty("led");
+    expect(opened(hosted, flags(), "scripted").led).toBe(false);
+    expect(read(hosted)).toHaveLength(1);
+    // The operator's flag hands the campaign over, on record.
+    expect(opened(hosted, flags("--builder-led"), "scripted").led).toBe(true);
+    expect(read(hosted).at(-1)?.data).toMatchObject({ led: true });
   });
 });
 

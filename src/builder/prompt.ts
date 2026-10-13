@@ -116,7 +116,9 @@ export interface Said {
  * session does differently with campaign tools, and not what it says, is asked of the same
  * request where it is done: its turns are metered as they end and its opening is served as the log
  * stands (`session.ts`), and its practice is held to the campaign's total (`practiceLeft`,
- * `tools.ts`).
+ * `tools.ts`). A led Builder is told that no count of promotions ends its campaign, and that
+ * `finish` ends a run the campaign could go on from: the operator's milestone of twelve is no rule
+ * (`AGENTS.md`, "Climb"), and a Builder's own `finish` is the one ending a model chooses.
  */
 export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   host: {
@@ -135,12 +137,12 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   },
   builder: {
     closing:
-      "read_opening returns the public opening facts for when this conversation no longer holds them. When harness/ holds what you want measured, use compare if that tool is available; otherwise call finish for the host to measure it. With campaign tools, you are the main Harness Builder: choose when to edit, practise, ask the Examiner, compare and promote. finish ends the conversation and does not call those tools.",
+      "read_opening returns the public opening facts for when this conversation no longer holds them. When harness/ holds what you want measured, use compare if that tool is available; otherwise call finish for the host to measure it. With campaign tools, you are the main Harness Builder: choose when to edit, practise, ask the Examiner, compare and promote. A promotion makes your harness the reference, and the campaign goes on against it: no number of promotions finishes it, and it ends at its budget or after as many comparisons in a row without a gain as its patience. finish ends the conversation and does not call those tools.",
     frozen: "frozen",
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
     finish:
-      "End this campaign's Builder conversation and freeze harness/. This does not run a comparison or promote it: compare and promote are separate tools. Say what changed and what remains unmeasured. A notice about an untried or broken harness can be acknowledged by calling finish again.",
+      "End this campaign's Builder conversation and freeze harness/, while the campaign itself could go on: nothing resumes it until the operator does. This does not run a comparison or promote it: compare and promote are separate tools. Say what changed and what remains unmeasured. A notice about an untried or broken harness can be acknowledged by calling finish again.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",

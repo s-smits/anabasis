@@ -26,6 +26,7 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
+import { supplyOf } from "#src/builder/admission.ts";
 import { decide } from "#src/builder/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
@@ -37,6 +38,7 @@ import { type Bench, snapshot } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { latestBuilt } from "#src/kernel/reports.ts";
+import { sizeLines } from "#src/kernel/size.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -337,9 +339,25 @@ async function comparedOf(
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
   const latest = latestBuilt(events);
   if (decided.move === "compare" && decided.id !== undefined) return { move: decided, note: "" };
-  if (decided.move === "compare" && decided.repeats !== undefined && latest !== null) {
+  // A repeat the table would write tasks for first runs on the tasks held where the Builder asks.
+  if (
+    (decided.move === "compare" || decided.move === "examine") &&
+    decided.repeats !== undefined &&
+    latest !== null
+  ) {
+    const { repeats } = decided;
     return {
-      move: { ...decided, fresh: latest },
+      move:
+        decided.move === "compare"
+          ? { ...decided, fresh: latest }
+          : {
+              move: "compare",
+              code: ASKED,
+              fresh: latest,
+              reference: "promoted",
+              repeats,
+              why: "the Builder asked for the repeat",
+            },
       note: `This comparison repeated harness ${short(latest)} as comparison ${decided.repeats} froze it: changes made to harness/ since are not in it.`,
     };
   }
@@ -395,11 +413,16 @@ const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
       args: args.slice(packOf(context.values).length),
     });
     await checkpointCommand(args, context.held, signal);
-    const step = campaignOf(read(context.log)).steps.findLast(
+    const events = read(context.log);
+    const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,
     );
     const tally = comparisonsTold(step === undefined ? [] : [step])[0] ?? "The comparison has no tally yet.";
-    return { said: named.note === "" ? tally : `${tally}\n${named.note}` };
+    const scored = events.findLast(
+      ({ kind, data }) => kind === "comparison.reported" && data.session === session,
+    )?.data.versions;
+    const size = Array.isArray(scored) ? [sizeLine(turn, scored.length)] : [];
+    return { said: [tally, ...size, ...(named.note === "" ? [] : [named.note])].join("\n") };
   });
 
 const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
@@ -435,10 +458,24 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
     return { said: `Harness ${short(candidate)} is now the campaign's reference.` };
   });
 
-/** What the action the table names would do, as the status says it under the suggestion. */
-function namedLine(decided: Decided, latest: string | null): string {
+/** What a comparison of `scored` tasks can read, as the operator reads it before one (`sizeLines`):
+ *  until 13 October the Builder was not told, and a led Builder bought one of six scored tasks,
+ *  whose step and repeat together clear at 6-0 at the least. */
+function sizeLine({ events, plan }: Turn, scored = Math.min(plan.wanted.target, supplyOf(events).held)) {
+  return `Comparison size: ${sizeLines(scored, { ...plan.wanted, patience: plan.patience })[0] ?? ""}.`;
+}
+
+/** What the action the table names would do, as the status says it under the suggestion: for a
+ *  comparison or more tasks, what a comparison of the tasks held can read. */
+function namedLine(decided: Decided, latest: string | null, size: string): string {
   if (decided.move === "build") return "Edit and practise the harness.";
   if (decided.move === "promote") return `promote makes harness ${short(decided.harness)} the reference.`;
+  if (decided.move === "examine") {
+    // The tasks a repeat waits on are advice: compare runs it on the tasks held (`comparedOf`).
+    return decided.repeats === undefined || latest === null
+      ? size
+      : `${size}\ncompare repeats harness ${short(latest)} as comparison ${decided.repeats} froze it now, on the tasks held.`;
+  }
   if (decided.move !== "compare") return `Choose the ${toolOf(decided)} action.`;
   if (decided.id !== undefined) {
     return `compare goes on with comparison ${decided.id}, which began and has not reported.`;
@@ -448,7 +485,7 @@ function namedLine(decided: Decided, latest: string | null): string {
   }
   return decided.fresh === "starter"
     ? "While harness/ is the reference harness, compare reads the starter against it on the tasks held out since."
-    : "Choose the compare action.";
+    : size;
 }
 
 /**
@@ -484,7 +521,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
     `Suggested action: ${toolOf(decided)}.`,
     noRoom
       ? "Ask the Examiner for more tasks if the current supply is not useful."
-      : namedLine(decided, latestBuilt(turn.events)),
+      : namedLine(decided, latestBuilt(turn.events), sizeLine(turn)),
   ].join("\n");
 }
 

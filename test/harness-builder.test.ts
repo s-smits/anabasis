@@ -89,15 +89,16 @@ describe("a campaign run by its log", () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-short`;
     // Sixteen tasks in the pack, two released: fourteen held of the twenty a comparison at a target
-    // of ten and its repeat score, and two practice tasks of the three the campaign names. The
-    // session is asked for six and one, and the Examiner is told nothing of the number. The wall is the campaign's term, and until
-    // 11 October the Examiner was told the default of two hours whatever the term said.
+    // of twenty scores, and two practice tasks of the three the campaign names, which the release
+    // draws from the held ones. The session is asked for seven, and the Examiner is told nothing of
+    // the number. The wall is the campaign's term, and until 11 October the Examiner was told the
+    // default of two hours whatever the term said.
     const flags = [
       ...seeded(name),
       "--patience",
       "1",
       "--target",
-      "10",
+      "20",
       "--practice",
       "3",
       "--solve-minutes",
@@ -131,7 +132,7 @@ describe("a campaign run by its log", () => {
   it("waits out a provider limit that names its reset, on record, and makes the move again", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-limit`;
-    const flags = [...seeded(name), "--patience", "1", "--target", "10", "--practice", "3"];
+    const flags = [...seeded(name), "--patience", "1", "--target", "20", "--practice", "3"];
     // The first Examiner session is refused on a limit the provider says lifts in a minute.
     const reset = Math.floor(Date.now() / 1000) + 60;
     let refused = false;

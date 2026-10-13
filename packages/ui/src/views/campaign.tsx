@@ -166,7 +166,6 @@ function NoComparison({ reading }: { reading: CampaignReading }) {
  *  in each seat and the terms the opening keeps, one click away. */
 function SetUp({ reading }: { reading: CampaignReading }) {
   const { prompt, supply, seats, terms, attended, led, bars } = reading;
-  const points = (share: number) => String(Math.round(100 * share));
   const checker =
     supply.faults === null
       ? "checker never read"
@@ -210,7 +209,7 @@ function SetUp({ reading }: { reading: CampaignReading }) {
         ) : null}
         <div>
           <dt>bars</dt>
-          <dd>{`effect ${points(bars.effect)} points · transfer within ${points(bars.transfer)} points · cost ${String(bars.cost)} attempts, gating nothing`}</dd>
+          <dd>{`cost ${String(bars.cost)} attempts, gating nothing`}</dd>
         </div>
       </dl>
     </Disclosure>

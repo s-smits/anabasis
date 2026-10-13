@@ -331,7 +331,7 @@ export interface CampaignReading extends Answer {
    *  set-up one Builder conversation makes the moves, and the table's next move is its advice.
    *  False where the host makes every move the table names. */
   readonly led: boolean;
-  /** The three bars a promotion is read against, as the opening sets them or by default
+  /** The bar a promotion's cost is read against, as the opening sets it or by default
    *  (`barsOf`, `src/builder/climb.ts`): read and printed, gating nothing. */
   readonly bars: Worth["bars"];
   readonly supply: Supply;

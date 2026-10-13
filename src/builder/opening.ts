@@ -87,8 +87,6 @@ export const TERMS = [
   "exam-proposals",
   "exam-minutes",
   "exam-turns",
-  "effect",
-  "transfer",
   "cost",
 ] as const;
 export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;

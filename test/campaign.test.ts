@@ -715,9 +715,7 @@ describe("a campaign", () => {
     expect(promote("--harness", digest, "--yes", "--despite", despite)).toContain(
       "is the reference harness from here on",
     );
-    expect(promotions()).toEqual([
-      { harness: digest, from: least.digest, rests: [], programs: false, despite },
-    ]);
+    expect(promotions()).toEqual([{ harness: digest, from: least.digest, rests: [], despite }]);
     expect((await keptAs(campaign, "--reference", "promoted")).digest).toBe(digest);
     expect(promote("--harness", digest, "--yes")).toContain("is the campaign's reference harness already");
     expect(promotions()).toHaveLength(1);

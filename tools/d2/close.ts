@@ -34,7 +34,7 @@
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
-import { belowBar, promotionsWorth, worthLine } from "#src/builder/climb.ts";
+import { ladderLine, ladderOf, promotionsWorth, worthLine } from "#src/builder/climb.ts";
 import { UNSETTLED } from "#src/builder/comparison.ts";
 import { campaignOf, type Handover } from "#src/builder/handover.ts";
 import { parentToolTree } from "#src/builder/tools.ts";
@@ -155,6 +155,10 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       : `Its setting: ${setting.solver === null ? "the stored cycle's solver" : `${setting.solver.model} at ${setting.solver.effort}`}, ${String(setting.minutes)} minutes a solve, ${setting.modelTurns === null ? "the solver's turns not limited" : `${plural(setting.modelTurns, "turn")} of the solver's own`}.`,
     "## Promotions",
     promotions.join("\n") || "None.",
+    "## The ladder",
+    ladderOf(events)
+      .map((rung) => `- ${ladderLine(rung)}`)
+      .join("\n") || "No reading: the ladder holds no task, or no promotion has been read on it.",
     "## Every comparison",
     [
       row([
@@ -204,9 +208,7 @@ function promotionLines(events: readonly LogEvent[], comparisons: readonly Compa
     // The first over the Starter is set-up, epoch 0, and the climb counts from it (`owedReading`).
     const nth = events.slice(0, index).filter((each) => each.kind === "harness.promoted").length;
     const worth = worths.get(data.harness);
-    // A promotion that misses the effect or the transfer bar stands, and is read as below it.
-    const below = worth === undefined ? [] : belowBar(worth);
-    const rung = `${nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`}${below.length === 0 ? "" : `, promoted below bar (${below.join(" and ")})`}`;
+    const rung = nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`;
     const from = imported.get(data.harness);
     const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
     const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");

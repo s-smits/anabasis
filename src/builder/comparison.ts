@@ -139,8 +139,9 @@ export interface Report {
   readonly turns: Readonly<
     Record<string, { readonly old: number | null; readonly fresh: number | null }>
   > | null;
-  /** Where it reads a step, the three bars as the log stood (`worthOf`, the plan's W): its effect,
-   *  the reference's transfer and the epoch's cost. Reported, and gating nothing. */
+  /** Where it reads a step, the cost bar as the log stood (`worthOf`, the plan's W): the epoch's
+   *  attempts. Reported, and gating nothing. A report before 13 October holds an effect and a
+   *  transfer beside it, which nothing reads. */
   readonly worth: Worth | null;
   /** `unsettled` in the comparison's own report until a person answers its packet (`settle.ts`),
    *  which no promotion waits for (the operator, 12 October); then what the labels settled, in
@@ -427,17 +428,8 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     withdrawn: scorable.filter((task) => !apart.has(task)),
     reading,
     turns: turnsOf(events, pairs),
-    // The three bars, read where a step is (the plan's W): printed, and gating nothing.
-    worth:
-      reading === "step"
-        ? worthOf(events, {
-            id: fixed.id,
-            fresh: fixed.fresh,
-            valid,
-            pairs,
-            objective: fixed.objective !== undefined,
-          })
-        : null,
+    // The cost bar, read where a step is (the plan's W): printed, and gating nothing.
+    worth: reading === "step" ? worthOf(events, { id: fixed.id, fresh: fixed.fresh }) : null,
     objective:
       fixed.objective === undefined ? null : { ...fixed.objective, decided: decidedByObjective(pairs) },
   };

@@ -11,12 +11,12 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { type Paired, pairings, readTwice, TRIGGER, UNMEASURED } from "../kernel/compare.ts";
+import { pairings, readTwice, TRIGGER, UNMEASURED } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { billedAll, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
+import { billedAll, laddersOf, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { countedSolves, passed } from "../kernel/solves.ts";
-import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
 import { short } from "./move.ts";
@@ -98,46 +98,24 @@ interface Regression {
 
 const PROMOTED = "harness.promoted";
 
-/** The three bars a promotion is read against (the plan's W), each a term of the opening the
- *  operator may set (`TERMS`): `effect`, the valid share a new harness gains over the reference on
- *  the scored set; `transfer`, how far a promoted harness's valid share may fall from its share
- *  where it was promoted, on tasks written after its freeze; `cost`, the promotion attempts of an
- *  epoch after set-up, comparisons against its reference, which are what the false-promotion bound
- *  counts, so the bar does not move with the solver's price. A session the provider cut finished
- *  nothing and is no attempt. Dollars are reported beside them. They gate nothing (12 October). */
-const BARS = { effect: 0.25, transfer: 0.15, cost: 3 } as const;
-/** The tasks written after a harness's freeze its transfer is read on, at the least. */
-const TRANSFER_TASKS = 8;
+/** The bar a promotion's cost is read against (the plan's W), a term of the opening the operator
+ *  may set (`TERMS`): the promotion attempts of an epoch after set-up, comparisons against its
+ *  reference, which are what the false-promotion bound counts, so the bar does not move with the
+ *  solver's price. A session the provider cut finished nothing and is no attempt. Dollars are
+ *  reported beside it, and it gates nothing (12 October). The effect and transfer bars it stood
+ *  beside until 13 October are the ladder's now: the same tasks, read after every promotion
+ *  (`ladderOf`), where a scored set and the tasks held after a freeze changed with every reading. */
+const BARS = { cost: 3 } as const;
 
-/** What `worthOf` reads of a comparison as `compared` builds its report: its id and candidate,
- *  each harness's census, its pairs, and whether the exam names an objective. */
+/** What `worthOf` reads of a comparison as `compared` builds its report: its id and candidate. */
 interface Read {
   readonly id: string;
   readonly fresh: string;
-  readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] };
-  readonly pairs: readonly Paired[];
-  readonly objective: boolean;
 }
 
-/** A step's worth against the bars (`worthOf`, `promotionsWorth`). */
+/** A step's worth against the bar (`worthOf`, `promotionsWorth`). */
 export interface Worth {
   readonly bars: Readonly<Record<keyof typeof BARS, number>>;
-  /** The new harness's valid share less the reference's, and the share of the pairings of two valid
-   *  answers it won by the objective, null where the exam names none or no two valid answers met.
-   *  The bar is met by validity, or by the objective on at least half those pairings with no more
-   *  pairings lost than won on validity (the Oracle's answer, 12 October). Null where a side has
-   *  no census. */
-  readonly effect: { readonly gain: number; readonly objective: number | null; readonly met: boolean } | null;
-  /** A promoted harness's valid share on the tasks its epoch held out, written after its freeze,
-   *  against its share in the comparison that promoted it; `met` null under eight tasks or where a
-   *  share is unread. Null under the starter, which no comparison promoted. */
-  readonly transfer: {
-    readonly harness: string;
-    readonly tasks: number;
-    readonly share: number | null;
-    readonly was: number | null;
-    readonly met: boolean | null;
-  } | null;
   /** The epoch's promotion attempts, Builder sessions and billed dollars, and whether the attempts
    *  are within the bar, which set-up's epoch always is. */
   readonly cost: {
@@ -146,6 +124,34 @@ export interface Worth {
     readonly dollars: number;
     readonly met: boolean;
   } | null;
+}
+
+/** One reading of the ladder (`ladderOwed`, `decide.ts`): the reference read and how many
+ *  promotions stood when it was, each side's valid share on the ladder's tasks, the reference's
+ *  gain over the starter in points, and what the campaign billed since the reading before it. */
+export interface Rung {
+  readonly id: string;
+  /** The ladder it read, by the id of the reading that fixed it (`laddersOf`). */
+  readonly ladder: string;
+  readonly reference: string;
+  readonly promotions: number;
+  /** The ladder's tasks, as its first reading fixed them: every share's denominator. */
+  readonly tasks: number;
+  /** Of those, the ones this reading did not score, disputed before it or set aside in it: each
+   *  counts unsolved on both sides, so the set stays the ladder's. */
+  readonly aside: number;
+  readonly reference_share: number | null;
+  readonly starter_share: number | null;
+  readonly gain: number | null;
+  readonly dollars: number;
+}
+
+/** A harness's census of tasks by their valid solves (`Valid`): the tasks it scored, its valid
+ *  solves among them and the solves a task, or null where it holds none. */
+interface Census {
+  readonly tasks: number;
+  readonly valid: number;
+  readonly solves: number;
 }
 
 /** The share of valid answers among `solves`, or null where there is none. */
@@ -196,8 +202,9 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
     const tasks = byEpoch[nth] ?? [];
     const held = new Set(tasks);
     const builds = events.filter(({ kind }, at) => within(at) && kind === "build.finished");
+    // The ladder's readings are the curve's (`ladderOf`), and no comparison of the epoch's.
     const comparisons = events.flatMap(({ kind, data }, at) =>
-      within(at) && kind === "comparison.reported" && isString(data.session)
+      within(at) && kind === "comparison.reported" && isString(data.session) && data.ladder !== true
         ? [{ id: data.session, reading: isString(data.reading) ? data.reading : "" }]
         : [],
     );
@@ -309,12 +316,11 @@ export function epochLine(epoch: Epoch): string {
   return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them at most ${percent(risk.union)}: ${source}; ${end}`;
 }
 
-/** A harness's valid share from a census of tasks by their valid solves (`Valid`), or null. */
-function censusShare(census: unknown): number | null {
+function censusOf(census: unknown): Census | null {
   if (!Array.isArray(census) || !census.every(isNumber) || census.length < 2) return null;
   const tasks = census.reduce((sum, count) => sum + count, 0);
   const valid = census.reduce((sum, count, solves) => sum + count * solves, 0);
-  return tasks === 0 ? null : valid / (tasks * (census.length - 1));
+  return { tasks, valid, solves: census.length - 1 };
 }
 
 /** The bars as the opening sets them, and the plan's where it names none (`BARS`). */
@@ -324,57 +330,7 @@ export function barsOf(events: readonly LogEvent[]): Worth["bars"] {
     const set = Number(terms?.[name]);
     return Number.isFinite(set) ? set : BARS[name];
   };
-  return { effect: bar("effect"), transfer: bar("transfer"), cost: bar("cost") };
-}
-
-/** A comparison against the effect bar (`Worth`), from its census and its pairs as `compared`
- *  reads them. A share of a few solves is an exact fraction, so the gain is rounded before it is
- *  held to the bar. */
-function effectOf({ valid, pairs, objective }: Read, bar: number): Worth["effect"] {
-  const [old, fresh] = [censusShare(valid.old), censusShare(valid.fresh)];
-  if (old === null || fresh === null) return null;
-  const by = pairs.map(pairings);
-  const sum = (count: (one: (typeof by)[number]) => number) =>
-    by.reduce((total, one) => total + count(one), 0);
-  const both = sum((one) => one.valid);
-  const won = objective && both > 0 ? sum((one) => one.objective.fresh) / both : null;
-  const held = sum((one) => one.validity.old) <= sum((one) => one.validity.fresh);
-  const gain = Math.round((fresh - old) * 1e6) / 1e6;
-  return { gain, objective: won, met: gain >= bar || (won !== null && won >= 0.5 && held) };
-}
-
-/** The effect a step's report logged (`worthOf`), or null where it holds none. */
-function loggedEffect(data: JsonObject | undefined): Worth["effect"] {
-  const told = asRecord(asRecord(data?.worth)?.effect);
-  if (!isNumber(told?.gain) || !isBoolean(told.met)) return null;
-  return { gain: told.gain, objective: isNumber(told.objective) ? told.objective : null, met: told.met };
-}
-
-/** The last report within `epoch` that read `harness` as the new one: the comparison it was
- *  promoted on, where it ended the epoch. */
-function restedOn(events: readonly LogEvent[], epoch: Epoch, harness: string): Reported | undefined {
-  return lastReports(events).findLast(
-    ({ index, data }) =>
-      data.fresh === harness && index >= epoch.from && (epoch.to === null || index < epoch.to),
-  );
-}
-
-/** The transfer of the reference of `epochs[nth]`, read in its own epoch (`Worth`). */
-function transferOf(events: readonly LogEvent[], epochs: readonly Epoch[], nth: number, bar: number) {
-  const [before, epoch] = [epochs[nth - 1], epochs[nth]];
-  if (before === undefined || epoch === undefined) return null;
-  const rested = restedOn(events, before, epoch.reference);
-  const was = censusShare(asRecord(rested?.data.valid)?.fresh);
-  const found = epoch.reference_share;
-  const share = found === null || found.solves === 0 ? null : found.valid / found.solves;
-  const read = epoch.tasks.length >= TRANSFER_TASKS && share !== null && was !== null;
-  return {
-    harness: epoch.reference,
-    tasks: epoch.tasks.length,
-    share,
-    was,
-    met: read ? was - share <= bar + 1e-9 : null,
-  };
+  return { cost: bar("cost") };
 }
 
 /** An epoch's cost against the cost bar (`Worth`), with `pending` attempts the log holds no
@@ -391,10 +347,9 @@ function costOf(
   return { attempts, sessions: epoch.sessions, dollars, met: epoch.nth === 1 || attempts <= bar };
 }
 
-/** Comparison `read.id`'s worth where it reads a step (the plan's W): its effect, the transfer of
- *  the reference it was read against, and the cost of the log's last epoch with it as an attempt
- *  where its candidate is not one already, a repeat being its first stage's. It is read as the log
- *  stood before its report, so a report read again says what it said. */
+/** Comparison `read.id`'s worth where it reads a step (the plan's W): the cost of the log's last
+ *  epoch with it as an attempt where its candidate is not one already, a repeat being its first
+ *  stage's. It is read as the log stood before its report, so a report read again says what it said. */
 export function worthOf(events: readonly LogEvent[], read: Read): Worth {
   const before = events.filter(
     ({ kind, data }) => kind !== "comparison.reported" || data.session !== read.id,
@@ -409,57 +364,81 @@ export function worthOf(events: readonly LogEvent[], read: Read): Worth {
       data.fresh === read.fresh &&
       asRecord(data.frontier) !== null,
   );
-  return {
-    bars,
-    effect: effectOf(read, bars.effect),
-    transfer: transferOf(before, epochs, epochs.length - 1, bars.transfer),
-    cost: costOf(before, epoch, bars.cost, again ? 0 : 1),
-  };
+  return { bars, cost: costOf(before, epoch, bars.cost, again ? 0 : 1) };
 }
 
-/** Each promoted harness's worth (the plan's W): the effect of the comparison it was promoted on,
- *  its transfer read in the epoch it opened, and the cost of the epoch it ended. */
+/** Each promoted harness's worth (the plan's W): the cost of the epoch it ended. */
 export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string, Worth> {
   const bars = barsOf(events);
-  const epochs = epochsOf(events);
   return new Map(
-    epochs.flatMap((epoch, nth) => {
-      if (epoch.promoted === null) return [];
-      const rested = restedOn(events, epoch, epoch.promoted);
-      const worth: Worth = {
-        bars,
-        effect: loggedEffect(rested?.data),
-        transfer: transferOf(events, epochs, nth + 1, bars.transfer),
-        cost: costOf(events, epoch, bars.cost),
-      };
-      return [[epoch.promoted, worth] as const];
-    }),
+    epochsOf(events).flatMap((epoch) =>
+      epoch.promoted === null
+        ? []
+        : [[epoch.promoted, { bars, cost: costOf(events, epoch, bars.cost) }] as const],
+    ),
   );
 }
 
-/** The bars a promotion's worth falls below, of effect and transfer: a cost over its bar is the
- *  campaign's, and leaves the promotion as it stands. */
-export function belowBar({ effect, transfer }: Worth): string[] {
-  return [effect?.met === false ? "effect" : [], transfer?.met === false ? "transfer" : []].flat();
+/** A worth as one line: what the bar read, and that it gates nothing. */
+export function worthLine({ bars, cost }: Worth): string {
+  return cost === null
+    ? "cost unread"
+    : `cost, gating nothing: ${plural(cost.attempts, "promotion attempt")} this epoch (bar ${String(bars.cost)} after set-up): ${cost.met ? "met" : "over it"}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
 }
 
-/** A worth as one line: what each bar read, and that it gates nothing. */
-export function worthLine({ bars, effect, transfer, cost }: Worth): string {
-  const points = (share: number) => String(Math.round(100 * share));
-  const verdict = (met: boolean | null) => (met === null ? "unread" : met ? "met" : "below bar");
-  const effectSaid =
-    effect === null
-      ? "effect unread"
-      : `effect ${effect.gain > 0 ? "+" : ""}${points(effect.gain)} points of valid share (bar ${points(bars.effect)}): ${verdict(effect.met)}`;
-  const transferSaid =
-    transfer === null
-      ? "no transfer under the starter"
-      : `transfer of ${short(transfer.harness)}: ${transfer.share === null ? "no share" : `valid ${points(transfer.share)}%`} on ${plural(transfer.tasks, "task")} written after its freeze, against ${transfer.was === null ? "no share" : `${points(transfer.was)}%`} where it was promoted (bar ${points(bars.transfer)} points, at least ${String(TRANSFER_TASKS)} tasks): ${verdict(transfer.met)}`;
-  const costSaid =
-    cost === null
-      ? "cost unread"
-      : `cost ${plural(cost.attempts, "promotion attempt")} this epoch (bar ${String(bars.cost)} after set-up): ${verdict(cost.met)}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
-  return `worth, read against the bars and gating nothing: ${effectSaid}; ${transferSaid}; ${costSaid}`;
+/**
+ * The climb's curves: every reading of each ladder, in order. A ladder's tasks are held apart from
+ * every Builder and every promotion and fixed by its first reading (`laddersOf`), and each later
+ * reading of it is on that set, so its curve says how much the promotions together gained, which a
+ * chain of comparisons, each on its own tasks against its own reference, does not. Tasks held for
+ * the ladder later make the next ladder, with a curve of its own. A ladder task disputed after its
+ * ladder was fixed is no longer solved, and counts unsolved on both sides over the same
+ * denominator (`aside`). The starter is read beside each reference: its share moving is drift in
+ * the solver, the provider or the host, not the harness.
+ */
+export function ladderOf(events: readonly LogEvent[]): Rung[] {
+  const fixed = new Map(laddersOf(events).map(({ id, tasks }) => [id, tasks.length]));
+  const frozen = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "comparison.started" && data.ladder === true && isString(data.session) && isString(data.frozen)
+        ? [[data.session, data.frozen] as const]
+        : [],
+    ),
+  );
+  let from = 0;
+  return lastReports(events, true).map(({ session, index, data }) => {
+    const ladder = frozen.get(session) ?? session;
+    const valid = asRecord(data.valid);
+    const [reference, starter] = [censusOf(valid?.old), censusOf(valid?.fresh)];
+    const tasks = fixed.get(ladder) ?? reference?.tasks ?? 0;
+    const share = (census: Census | null) =>
+      census === null || tasks === 0 ? null : census.valid / (tasks * census.solves);
+    const [referenceShare, starterShare] = [share(reference), share(starter)];
+    const rung = {
+      id: session,
+      ladder,
+      reference: isString(data.old) ? data.old : "",
+      promotions: events.slice(0, index).filter(({ kind }) => kind === PROMOTED).length,
+      tasks,
+      aside: Math.max(0, tasks - (reference?.tasks ?? 0)),
+      reference_share: referenceShare,
+      starter_share: starterShare,
+      gain:
+        referenceShare === null || starterShare === null
+          ? null
+          : Math.round(100 * (referenceShare - starterShare)),
+      dollars: billedAll(events.slice(from, index)),
+    };
+    from = index;
+    return rung;
+  });
+}
+
+/** A reading of the ladder as one line of the curve. */
+export function ladderLine(rung: Rung): string {
+  const share = (of: number | null) => (of === null ? "unread" : `${String(Math.round(100 * of))}%`);
+  const aside = rung.aside === 0 ? "" : ` (${String(rung.aside)} set aside, unsolved on both sides)`;
+  return `${rung.id} on ladder ${rung.ladder}: after ${plural(rung.promotions, "promotion")}, reference ${short(rung.reference)} valid on ${share(rung.reference_share)} of ${plural(rung.tasks, "ladder task")}${aside}, the starter on ${share(rung.starter_share)}${rung.gain === null ? "" : `, ${rung.gain > 0 ? "+" : ""}${String(rung.gain)} points`}; $${rung.dollars.toFixed(2)} billed since the reading before`;
 }
 
 /**

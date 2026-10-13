@@ -868,7 +868,7 @@ describe("a session that writes tasks", () => {
     expect(s.sent[0]).not.toContain("solver-x");
   });
 
-  it("carries the home of a session that ended into the next, whole, and not of one whose turn the provider failed", async () => {
+  it("carries the home of a session that ended into the next, whole, and of one whose model request the provider failed, named", async () => {
     const s = seat("write", [
       bash("echo half > half.txt"),
       failed("overloaded"),
@@ -882,14 +882,20 @@ describe("a session that writes tasks", () => {
     writeFileSync(join(keep, "stale.txt"), "old\n");
     const wall = { ...WALL, keep };
     expect((await examine(s.request, wall)).ended).toBe("crashed");
-    expect(readdirSync(keep).sort()).toEqual(["kept.txt", "stale.txt"]);
+    // No command ran as the provider failed the turn: the home is as its last command left it.
+    expect(s.of("exam.finished")).toMatchObject([{ ended: "crashed", running: 0 }]);
+    expect(readdirSync(keep).sort()).toEqual(["half.txt", "kept.txt", "stale.txt"]);
     expect((await examine({ ...s.request, id: "x-2" }, wall)).ended).toBe("finished");
-    // The next session found what was kept, and its home replaced the kept copy: what it deleted
-    // stays deleted.
-    expect(s.of(CALLED)[1]?.text).toBe("kept.txt\nstale.txt");
-    expect(readdirSync(keep).sort()).toEqual(["kept.txt", "whole.txt"]);
+    // The next session found what was kept, and was told whose it is; its home replaced the kept
+    // copy, and what it deleted stays deleted.
+    expect(s.of(CALLED)[1]?.text).toBe("half.txt\nkept.txt\nstale.txt");
+    expect(readdirSync(keep).sort()).toEqual(["half.txt", "kept.txt", "whole.txt"]);
     expect(s.sent[0]).toContain(
       "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first",
+    );
+    // The first session's two requests, then the second session's first.
+    expect(s.sent[2]).toContain(
+      `holds what Examiner session ${s.request.id} of this campaign left in it when the provider failed one of its turns, before it finished`,
     );
   });
 });

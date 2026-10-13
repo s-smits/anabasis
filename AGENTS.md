@@ -89,9 +89,16 @@ because every other number is undefined without it.
 reference harness. A promotion, a harness that beats the reference on held-out tasks by more
 than chance allows, twice, on fresh solves, is one step of descent; a climb is several. Measured
 as promotions a campaign, with the pairs the starter loses in each epoch beside it, which rise as
-the reference improves. Bar: two promotions in one real campaign, the starter losing more pairs
-after the second than after the first, then the same in a second domain. One step shows that the
-loop can move; two show that it can move from where it moved to.
+the reference improves. Milestone: twelve confirmed promotions in one real campaign, the starter
+losing more pairs epoch on epoch, then the same in a second domain. It is the operator's
+observation milestone and no rule of the system's: no prompt, table row or tool names a count of
+promotions, and the campaign keeps its own endings. The stop rule's patience marks a possible
+plateau, evidence that progress stalled and no proof that no step is left. A campaign ended
+before twelve by its budget, its environment or its Builder's `finish` reads "reached N
+promotions; further improvement unresolved", apart from one ended by its patience. Its
+false-promotion risk is reported across the whole campaign, over every comparison that could
+have promoted: the opening's bound over one patience's attempts restarts with each promotion,
+and so bounds no more than one window.
 
 **3. Honesty: what is the false-positive rate of the test?** A test at level 0.10 is designed to
 crown a winner between two equal harnesses about one time in ten, and the design value is a claim

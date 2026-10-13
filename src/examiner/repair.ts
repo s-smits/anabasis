@@ -1,7 +1,7 @@
 /**
- * The repair move's session: the Examiner, the author of a campaign's exam, repairs its check
- * program, its controls or both, between two comparisons (the overhaul plan's P10, its withdrawn
- * Step 5 brought back as one move).
+ * The Examiner's repair mode: the author of a campaign's exam repairs its check program, its
+ * controls or both, between two comparisons (the overhaul plan's P10, its withdrawn Step 5 brought
+ * back as one move).
  *
  * `AGENTS.md` rule 2 sends a check ruled defective back to its author, and until 12 October no seat
  * was that author once an exam stood: truss's 35 accept controls had gone stale by 8 October and
@@ -13,34 +13,33 @@
  * malformed, by the side that flagged and never with what a solver said. It is shown no harness, no
  * trace and nothing a Builder wrote, and nothing of it reaches a Builder.
  *
- * It puts a repair, the check program's files it changes and the controls where it changes them,
- * to a reading the host makes without a model (`RepairRequest.reading`, `tools/c/repaired.ts`), is
- * told the faults, and mends it, in the loop the drafting session runs (`author`, `draft.ts`). A
- * repair that stands ends the session and is handed back to the host, which takes it into a
- * campaign of its own; one that never stands ends the session `unresolved`, with what it billed in
- * its `repair.finished`, and the frozen checker is left as it was. The public rules, each check's
- * declaration in `brief.json` and the tasks are no repair's to change.
+ * The session is `examine`'s (`session.ts`), and this file is what its repair mode is made of
+ * (`repairing`). It puts a repair, the check program's files it changes and the controls where it
+ * changes them, to two readings made without a model: its shape (`repairFaults`), which the
+ * session reads itself, and then the caller's (`reading`), which grades every logged answer again.
+ * It is told the faults and mends it. A repair that stands ends the session and is handed back to
+ * the caller, which takes it into a campaign of its own; one that never stands leaves the frozen
+ * checker as it was, with what the session billed in its `repair.finished`. The public rules, each
+ * check's declaration in `brief.json` and the tasks are no repair's to change.
  *
- * Under `repairWalled` its shell is the Examiner's walled home (`shell.ts`), with the engines its
- * campaign's checks run, and the home holds the check program, the controls, every task whole and
- * what the session is shown, as files it can read and run.
+ * Where it has a shell (`shell.ts`), with the engines its campaign's checks run, its home holds the
+ * check program, the controls, every task whole and what the session is shown, as files it can
+ * read and run.
  */
-import { Type } from "typebox";
+import { type Static, Type } from "typebox";
 import { fixedIn, settledLabels } from "../builder/comparison.ts";
 import type { Control } from "../kernel/acceptance.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { type LogEvent, read } from "../kernel/log.ts";
 import { ranUnder, refusedBy, verdictsOf } from "../kernel/solves.ts";
 import { type Engine, readBrief, requiredToolsOf, type Task } from "../kernel/verify.ts";
+import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { cpSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
-import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { basename, join } from "../meta/path.ts";
 import { readProgramTool } from "../review/referee.ts";
 import { standing } from "../review/rejections.ts";
-import { type Authoring, author, type Drafted } from "./draft.ts";
-import { inExaminerWall, type Seat } from "./shell.ts";
 
 /** A repair as the session puts it: the check program's files it changes or adds, each whole by
  *  its path in the program, and every control as the repair leaves them. */
@@ -49,24 +48,20 @@ export interface Repair {
   readonly controls: readonly Control[];
 }
 
-interface RepairRequest extends Authoring {
+/** What a repair session is handed of its campaign. */
+interface Terms {
+  readonly log: string;
   /** The campaign a repair that stands is taken into, as its start event names it. */
   readonly successor: string;
   readonly contract: Contract;
   /** The check program's directory, as the verifier runs it. */
-  readonly checks: string;
+  readonly program: string;
   readonly controls: readonly Control[];
   /** Every task of the campaign, whole: the pack's and the ones its sessions wrote. */
   readonly tasks: readonly Task[];
-  /** What the host reads of a repair without a model: one sentence a fault, none where it stands. */
+  /** What the host reads of a repair whose shape holds, without a model: one sentence a fault,
+   *  none where it stands. */
   readonly reading: (repair: Repair) => Promise<readonly string[]>;
-  /** The engines the session's shell runs by name, as its start event names them. */
-  readonly pinned?: readonly Engine[] | undefined;
-}
-
-/** How a repair session ended, and the repair that stood. */
-interface RepairEnded extends Drafted {
-  readonly repair: Repair | null;
 }
 
 /** The most of one task or answer the opening message shows; the home holds each whole. */
@@ -185,9 +180,11 @@ function shown(value: JsonValue | Task | string | null): string {
 
 /** The session's opening message: the public rules, the checks as their program declares them,
  *  and the evidence. */
-function openingOf(request: RepairRequest, evidence: ReturnType<typeof evidenceOf>): string {
-  const { contract } = request;
-  const checks = readBrief(request.checks).truthChecks.map(
+function openingOf(
+  { contract, program }: Pick<Terms, "contract" | "program">,
+  evidence: ReturnType<typeof evidenceOf>,
+): string {
+  const checks = readBrief(program).truthChecks.map(
     ({ id, citedDecisionIds, execution }) =>
       `- ${id}, citing ${citedDecisionIds.join(", ") || "no rule"}, runs ${requiredToolsOf(execution).join(", ") || "no engine"}`,
   );
@@ -244,12 +241,12 @@ function controlsShown(controls: readonly Control[]) {
  * check program or one no repair writes, a control on a task the campaign does not hold, naming a
  * check it does not declare or not following the answer format, and a repair that changes nothing.
  */
-export function repairFaults(
+function repairFaults(
   repair: Repair,
-  campaign: Pick<RepairRequest, "checks" | "contract" | "controls" | "tasks">,
+  campaign: Pick<Terms, "program" | "contract" | "controls" | "tasks">,
 ): string[] {
   const tasks = new Set(campaign.tasks.map(({ taskId }) => taskId));
-  const checks = new Set(readBrief(campaign.checks).truthChecks.map(({ id }) => id));
+  const checks = new Set(readBrief(campaign.program).truthChecks.map(({ id }) => id));
   const unchanged =
     repair.files.length === 0 &&
     capturedJsonStringify(repair.controls) === capturedJsonStringify(campaign.controls);
@@ -280,18 +277,24 @@ export function repairFaults(
   ];
 }
 
-/** One repair session: the Examiner repairs, the host reads each repair, and the one that stands is
- *  handed back. */
-export async function repairCheck(request: RepairRequest): Promise<RepairEnded> {
-  const evidence = evidenceOf(read(request.log), request.tasks);
-  let kept: Repair | null = null;
-  const ended = await author(request, {
+/** The repair mode as `examine` seats it (`putting`, `session.ts`): what the session is shown, the
+ *  tool it puts a repair by, the shape a repair is held to before the caller's reading, the files
+ *  its home starts with, and the repair that stood, which the session hands back. `pinned` is the
+ *  engines its shell runs by name, as its start event names them. */
+export function repairing(terms: Terms, pinned: readonly Engine[]) {
+  // Folded once, for the opening message and for the home's own copy of it.
+  const evidence = evidenceOf(read(terms.log), terms.tasks);
+  const kept: Repair[] = [];
+  /** The controls of one kind as the repair leaves them: the ones it put, or the campaign's. */
+  const controlsOf = (put: readonly Control[] | undefined, accepts: boolean) =>
+    put ?? terms.controls.filter(({ refusedBy: by }) => (by === null) === accepts);
+  return {
     kind: "repair",
     system: SYSTEM_PROMPT,
-    opening: openingOf(request, evidence),
+    opening: openingOf(terms, evidence),
     started: {
-      successor: request.successor,
-      engines: (request.pinned ?? []).map(({ name, sha256 }) => ({ name, sha256 })),
+      successor: terms.successor,
+      engines: pinned.map(({ name, sha256 }) => ({ name, sha256 })),
     },
     put: {
       name: "repair_check",
@@ -300,58 +303,51 @@ export async function repairCheck(request: RepairRequest): Promise<RepairEnded> 
         "Put a repair to the host's reading, which uses no model: the check program's files you change, each whole, and the controls where you change them. It returns the faults it found, or that the repair stands. A repair that stands is taken into a campaign of its own.",
       parameters: REPAIR_PARAMETERS,
     },
-    thing: (args): Repair => ({
+    thing: (args: Static<typeof REPAIR_PARAMETERS>): Repair => ({
       files: args.files,
       controls: [
-        ...(args.accept_controls?.map(({ task, answer }) => ({
-          taskId: task,
+        ...controlsOf(
           // SAFETY: a tool's arguments are JSON the provider parsed, here and below.
-          answer: answer as JsonValue,
-          refusedBy: null,
-        })) ?? request.controls.filter(({ refusedBy: by }) => by === null)),
-        ...(args.reject_controls?.map(({ task, answer, check }) => ({
-          taskId: task,
+          args.accept_controls?.map(({ task, answer }) => ({
+            taskId: task,
+            answer: answer as JsonValue,
+            refusedBy: null,
+          })),
+          true,
+        ),
+        ...controlsOf(
           // SAFETY: as above.
-          answer: answer as JsonValue,
-          refusedBy: check,
-        })) ?? request.controls.filter(({ refusedBy: by }) => by !== null)),
+          args.reject_controls?.map(({ task, answer, check }) => ({
+            taskId: task,
+            answer: answer as JsonValue,
+            refusedBy: check,
+          })),
+          false,
+        ),
       ],
     }),
-    reading: request.reading,
-    stood: (repair) => {
-      kept = repair;
+    unformed: (repair: Repair) => repairFaults(repair, terms),
+    reading: terms.reading,
+    stood: (repair: Repair) => {
+      kept.push(repair);
     },
     stands: "The repair stands: the host takes it into a campaign of its own.",
     finish: "End the session without a repair. Say in one or two sentences why none could stand.",
-    reads: [readProgramTool(request.checks)],
-    home: {
-      holds:
-        "holds, at its start, the check program in check-program/, its controls in controls.json in repair_check's own shape, every task of the campaign whole in tasks.json, and what you are shown of the log in evidence.json",
-      checked: "repair_check alone runs the checks, on the controls and on every logged answer",
+    reads: [readProgramTool(terms.program)],
+    home: "holds, at its start, the check program in check-program/, its controls in controls.json in repair_check's own shape, every task of the campaign whole in tasks.json, and what you are shown of the log in evidence.json",
+    checked: "repair_check alone runs the checks, on the controls and on every logged answer",
+    enter: (home: string) => {
+      cpSync(terms.program, join(home, "check-program"), { recursive: true });
+      // The home's files are named as the bundle names its own, so the session reads them as such.
+      const files = [
+        [basename(CONTROLS_FILE), controlsShown(terms.controls)],
+        [basename(TASKS_FILE), terms.tasks],
+        ["evidence.json", evidence],
+      ] as const;
+      for (const [name, value] of files) {
+        writeFileSync(join(home, name), `${capturedJsonStringify(value, null, 2)}\n`);
+      }
     },
-  });
-  return { ...ended, repair: kept };
-}
-
-/** One repair session with a shell under the solver's command wall and disk cap, the engines its
- *  campaign's checks run installed in it (`inExaminerWall`), and its home holding the exam's side
- *  of the campaign as files. */
-export async function repairWalled(request: Omit<RepairRequest, "shell" | "pinned"> & Seat) {
-  // A run killed before the session began mounts nothing and starts nothing.
-  if (request.kill?.aborted === true) throw new Error(`session ${request.id} was stopped before it began`);
-  const began = performance.now();
-  return await inExaminerWall(request, async (shell, pinned) => {
-    const { home } = shell.dirs;
-    cpSync(request.checks, join(home, "check-program"), { recursive: true });
-    // The home's files are named as the bundle names its own, so the session reads them as such.
-    const files = [
-      [basename(CONTROLS_FILE), controlsShown(request.controls)],
-      [basename(TASKS_FILE), request.tasks],
-      ["evidence.json", evidenceOf(read(request.log), request.tasks)],
-    ] as const;
-    for (const [name, value] of files) {
-      writeFileSync(join(home, name), `${capturedJsonStringify(value, null, 2)}\n`);
-    }
-    return await repairCheck({ ...request, shell, pinned, began });
-  });
+    handed: () => kept.at(-1) ?? null,
+  } as const;
 }

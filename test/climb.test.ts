@@ -1,36 +1,22 @@
 // The climb, simulated: a campaign run by its log over the fixture pack with a script in each
 // model seat, where a task's difficulty is its base and a harness's strength is a number its guide
 // carries. A solve passes where the base is at most the strength, and gives no answer otherwise;
-// each Builder session raises the strength by two; each Examiner session asked for room reads the
+// each Builder session, or each edit of a Builder that leads its campaign, raises the strength by two; each Examiner session asked for room reads the
 // reference harness's strength from its kept state and writes tasks on either side of it, as an
-// Examiner that hears which tasks were answered would. What this proves is the controller's part
-// of the climb and nothing of a model: that a campaign promotes a harness, has harder tasks
+// Examiner that hears which tasks were answered would. What this proves is the host's part
+// of the climb and nothing of a model: that a scripted Builder promotes a harness, requests harder tasks
 // written, promotes a harder one on them, and ends on its budget of moves and not before. Run by
 // name, since its solves run under the real wall and take minutes:
 //
 //   ANA_CLIMB=1 bun run test -- test/climb.test.ts
 //
+// That is a campaign led by its Builder, as one that opens now is. `ANA_CLIMB=host` runs the same
+// climb with the host making every move the table names (`--no-builder-led`).
+//
 // The operator's question of 10 October: does the system climb, epoch after epoch, where an
 // epoch ends with a promotion and the next one's tasks are harder?
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { examine } from "../src/examiner/session.ts";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-shape.ts";
-import { tmpdir } from "../src/meta/os.ts";
-import { join, resolve } from "../src/meta/path.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
-import { ANSWER_FILE } from "../src/solve/answer.ts";
-import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
-import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
 import {
   belowBar,
   type Epoch,
@@ -42,11 +28,29 @@ import {
   worthLine,
   worthOf,
 } from "../src/builder/climb.ts";
+import { examine } from "../src/examiner/session.ts";
 import type { Paired } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
+import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join, resolve } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
+import { ANSWER_FILE } from "../src/solve/answer.ts";
+import type { Seats } from "../tools/d2/campaign-terms.ts";
+import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { fixtureTasks, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -55,7 +59,8 @@ const NAME = `test-climb-${String(runtimeProcess.pid)}`;
 const TASKS = fixtureTasks(7);
 /** The starter's strength: it answers a base of three and under. */
 const STARTER_STRENGTH = 3;
-/** What one Builder session adds. */
+/** What one Builder session adds, or one edit of a Builder that leads its campaign. */
+const HOSTED = runtimeProcess.env.ANA_CLIMB === "host";
 const RAISE = 2;
 /** Tasks an Examiner asked for writes, by how far above the reference's strength each is: one
  *  past it, which the reference answers on some of its solves and not all, so that a task is
@@ -209,22 +214,44 @@ describe("the climb", () => {
       let written = 0;
       const seats: Seats = {
         seated: (campaign) => ({
-          // A Builder session raises the strength of the harness it starts from by two, and
+          // Led by its Builder, one scripted Builder keeps its conversation while it edits, compares
+          // and promotes.
+          // Run by the host, a Builder session raises the strength of the harness it starts from by two, and
           // finishes. The seat is made for every command, a comparison's too, so the strength is
           // read from the log: the sessions that began before this one.
-          builder: (() => {
-            const before = read(campaign.log).filter(({ kind }) => kind === "build.started").length;
-            const strength = STARTER_STRENGTH + (before + 1) * RAISE;
-            return scriptedModel([
-              [
-                "bash",
-                {
-                  command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
-                },
-              ],
-              ["finish", { note: `Strength ${String(strength)}.` }],
-            ]);
-          })(),
+          builder: HOSTED
+            ? (() => {
+                const before = read(campaign.log).filter(({ kind }) => kind === "build.started").length;
+                const strength = STARTER_STRENGTH + (before + 1) * RAISE;
+                return scriptedModel([
+                  [
+                    "bash",
+                    {
+                      command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
+                    },
+                  ],
+                  ["finish", { note: `Strength ${String(strength)}.` }],
+                ]);
+              })()
+            : scriptedModel([
+                ...Array.from({ length: 3 }, (_, epoch) => {
+                  const strength = STARTER_STRENGTH + (epoch + 1) * RAISE;
+                  return [
+                    ["examine", {}],
+                    ["release_practice", {}],
+                    [
+                      "bash",
+                      {
+                        command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
+                      },
+                    ],
+                    ["compare", {}],
+                    ["compare", {}],
+                    ["promote", {}],
+                  ] satisfies readonly (readonly [string, JsonObject])[];
+                }).flat(),
+                ["finish", { note: "Three scripted improvements in one conversation." }],
+              ]),
           setting: campaign.setting({ ...campaign.test, ...scriptedModel([]) }),
           // A solve passes where the task's base is at most the harness's strength, and one past it
           // on every other solve: since 12 October a task the reference fails in every solve, or
@@ -272,8 +299,12 @@ describe("the climb", () => {
         },
       };
       // Three epochs take 21 moves with every task scored (climb-10, 10 October: four promotions
-      // in 36 moves and still climbing). A campaign that ends on its moves has not stopped.
-      const ending = await harnessBuilder([...flags, "--moves", "24"], seats);
+      // in 36 moves and still climbing). A campaign that ends on its moves has not stopped. Led by
+      // its Builder, the three improvements are made by campaign tools inside one conversation.
+      const ending = await harnessBuilder(
+        [...flags, "--moves", "24", ...(HOSTED ? ["--no-builder-led"] : [])],
+        seats,
+      );
       const moves = of("campaign.move").map(({ move }) => (isString(move) ? move : "?"));
       const promotions = of("harness.promoted");
       const log = read(join(folder, "log.jsonl"));
@@ -311,6 +342,7 @@ describe("the climb", () => {
       // Two promotions at least, each on tasks harder than the last epoch's: the second epoch's
       // tasks reach higher bases, the starter answers fewer of them, and the promoted harness of
       // each epoch is stronger than the one before.
+      if (!HOSTED) expect(of("build.started")).toHaveLength(1);
       expect(promotions.length).toBeGreaterThanOrEqual(2);
       expect(epochs.length).toBeGreaterThanOrEqual(3);
       // An epoch may hold out no task: since 12 October the first holds a repeat's draw as well, and

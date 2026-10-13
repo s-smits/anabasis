@@ -22,17 +22,17 @@ import {
   type Paired,
   pairsOf,
   scored,
-  type Sides,
   stepOf,
   type Tally,
   tally,
   UNMEASURED,
+  unsolved,
   informative,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, unsolved, whole } from "../kernel/reports.ts";
+import { lastReports } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -64,7 +64,7 @@ type Entered = Tested & { readonly tasks: readonly string[]; readonly aside: rea
  * harness: valid nearly everywhere, the tasks cannot tell two harnesses apart; valid on about half
  * its solves, the fewest tasks tie by chance (`docs/plan.md`, Phase 0 and Statistical power).
  */
-export interface Valid {
+interface Valid {
   readonly old: readonly number[];
   readonly fresh: readonly number[];
   /** The tasks informative for each harness (`informative`), which room is read by (`roomOf`). */
@@ -182,7 +182,7 @@ export interface Fixed {
   readonly noise: boolean;
   readonly tasks: readonly string[];
   /** The scored tasks fixed at the start as retained, from the exhausted third the draw keeps
-   *  (`retainable`, `reports.ts`); the others are the frontier. */
+   *  (`scoredSet`, `round.ts`); the others are the frontier. */
   readonly retained: readonly string[];
   /** The objective two valid answers are compared by, where the check program declares one. */
   readonly objective: ObjectiveRule | undefined;
@@ -196,33 +196,6 @@ export const UNSETTLED = "unsettled";
  *  passed it; unclear. A label changes no tally and no reading: a wrong pass is a check's fault. */
 export const PASS_LABELS = ["sound", "wrong", "unclear"] as const;
 export type PassLabel = (typeof PASS_LABELS)[number];
-/** A report's fields, as its event carries them beside the comparison's own terms. */
-const REPORT_KEYS = [
-  "old",
-  "fresh",
-  "starter",
-  "scored",
-  "frontier",
-  "retained",
-  "families",
-  "overlap",
-  "valid",
-  "billed",
-  "noise",
-  "counted",
-  "versions",
-  "disputed",
-  "aside",
-  "short",
-  "flagged",
-  "withdrawn",
-  "capped",
-  "reading",
-  "settled",
-  "objective",
-  "turns",
-  "worth",
-] as const satisfies readonly (keyof Report)[];
 const NOTHING_TO_LABEL: ToLabel = { aside: [], others: [] };
 export const DEFECT = "check-defect";
 export const EARNED = "earned";
@@ -249,6 +222,16 @@ export const NOTHING = {
   turns: null,
   worth: null,
 } as const;
+
+/** A report's fields, as its event carries them beside the comparison's own terms. */
+const REPORT_KEYS = [
+  "old",
+  "fresh",
+  "starter",
+  "reading",
+  // SAFETY: `NOTHING` is a literal, so its keys are the ones it names.
+  ...(Object.keys(NOTHING) as (keyof typeof NOTHING)[]),
+] satisfies readonly (keyof Report)[];
 
 /** The log as comparison `id` is read once it has reported: up to its own first report. What comes
  *  after is other comparisons' and a person's: a later one adds solves of the same tasks, and a
@@ -341,6 +324,44 @@ export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: Re
 }
 
 /**
+ * The two sets a comparison's start fixed, as its tallied `pairs` fill them: the frontier, where
+ * the step is read, and the retained tasks, each with the tasks that entered it and those of
+ * `aside` in it, and each family's tallies on both, from the same rows. A retained set no task
+ * was tallied in is unmeasured, never no loss.
+ */
+function setsOf(
+  events: readonly LogEvent[],
+  fixed: Fixed,
+  pairs: readonly Paired[],
+  aside: readonly string[],
+) {
+  const kept = new Set(fixed.retained);
+  const named = new Map(
+    proposalsOf(events).flatMap(({ version, family }) => (family === null ? [] : [[version, family]])),
+  );
+  const familyOf = (task: string) => named.get(task) ?? "unnamed";
+  const part = (retained: boolean) => pairs.filter(({ task }) => kept.has(task) === retained);
+  const tallied = { frontier: part(false), retained: part(true) };
+  const setOf = (set: keyof typeof tallied): Entered => {
+    const within = (task: string) => kept.has(task) === (set === "retained");
+    return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]) };
+  };
+  const ofFamily = (family: string, set: keyof typeof tallied) =>
+    tally(tallied[set].filter(({ task }) => familyOf(task) === family));
+  const retained = setOf("retained");
+  return {
+    frontier: setOf("frontier"),
+    retained: retained.wins + retained.losses + retained.ties > 0 ? retained : UNMEASURED,
+    families: Object.fromEntries(
+      [...new Set(fixed.tasks.map(familyOf))].map((family) => [
+        family,
+        { frontier: ofFamily(family, "frontier"), retained: ofFamily(family, "retained") },
+      ]),
+    ),
+  };
+}
+
+/**
  * The comparison of `fixed.tasks`, read from the log as comparison `id` found it: the new harness
  * against the reference one over the tasks that have their solves under both and no rejection that
  * sets them aside, and the reference harness against itself where that was asked for, with how
@@ -359,58 +380,42 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     rejections(events, fixed, labels).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
   );
   // Beside the reference read against itself the test takes its first half mirrored in time.
-  const sides: Sides = {
+  const sides = {
     old: fixed.old,
     fresh: fixed.fresh,
     setting: fixed.setting,
     comparison: fixed.id,
     objective: fixed.objective,
-    halves: fixed.noise ? "mirrored" : undefined,
   };
-  const pairsUnder = (other: Sides, solves: number) => whole(pairsOf(events, live, other).pairs, solves);
-  const first = pairsUnder(sides, fixed.solves);
+  const first = pairsOf(
+    events,
+    live,
+    { ...sides, halves: fixed.noise ? "mirrored" : undefined },
+    fixed.solves,
+  );
   const kept = (pairs: readonly Paired[]) => pairs.filter(({ task }) => !open.has(task));
   const pairs = kept(first.pairs);
-  const retainedSet = new Set(fixed.retained);
-  /** One of the two sets the start fixed, with the tasks that entered it and those set aside. */
-  const setOf = (retained: boolean): Entered => {
-    const within = (task: string) => retainedSet.has(task) === retained;
-    return {
-      tasks: fixed.tasks.filter(within),
-      aside: live.filter((task) => within(task) && open.has(task)),
-      ...scored(pairs.filter(({ task }) => within(task))),
-    };
-  };
-  const [frontier, retained] = [setOf(false), setOf(true)];
-  const named = new Map(
-    proposalsOf(all).flatMap(({ version, family }) => (family === null ? [] : [[version, family]])),
-  );
-  const familyOf = (task: string) => named.get(task) ?? "unnamed";
-  const families = Object.fromEntries(
-    [...new Set(fixed.tasks.map(familyOf))].map((family) => {
-      const of = (inRetained: boolean) =>
-        tally(pairs.filter(({ task }) => familyOf(task) === family && retainedSet.has(task) === inRetained));
-      return [family, { frontier: of(false), retained: of(true) }];
-    }),
-  );
-  const measured = retained.wins + retained.losses + retained.ties > 0;
-  // The families the frontier scored, and those it untied, as a report is read again (`stageOf`).
-  const where = (counted: (tallied: Tally) => number) =>
-    Object.entries(families).flatMap(([family, { frontier: own }]) => (counted(own) > 0 ? [family] : []));
-  const stage = {
-    frontier: frontier.differences,
-    retained: measured ? retained.differences : null,
-    untied: where(({ wins, losses }) => wins + losses),
-    families: where(({ wins, losses, ties }) => wins + losses + ties),
-  };
+  const aside = live.filter((task) => open.has(task));
+  const sets = setsOf(all, fixed, pairs, aside);
+  const { frontier } = sets;
   /** The reference against itself on halves of its own solves (`Sides`, `halves`): of twice the
    *  solves a side where `--noise` asked for them, and of the test's own otherwise. */
   const itself = (halves: "mirrored" | "in-order") =>
     kept(
-      pairsUnder({ ...sides, fresh: fixed.old, halves }, fixed.noise ? fixed.solves : fixed.solves / 2).pairs,
+      pairsOf(
+        events,
+        live,
+        { ...sides, fresh: fixed.old, halves },
+        fixed.noise ? fixed.solves : fixed.solves / 2,
+      ).pairs,
     );
+  // The A/A (12 October, the plan's section 4b): where `--noise` solved the reference twice as
+  // often for it, or its own solves of a task are four or more and even, which halves mirrored in
+  // time split two against two at least. At four a side every comparison carries one.
+  const mirrored = fixed.noise || (fixed.solves >= 4 && fixed.solves % 2 === 0) ? itself("mirrored") : null;
   const valid = validOf(pairs, fixed.solves);
-  const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(stage, fixed.level);
+  // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
+  const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
   return {
     scored: { ...scored(pairs), unsolved: pairs.filter(unsolved).length },
     frontier: {
@@ -418,26 +423,23 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
       detectable: detectable(frontier.differences, fixed.level),
       falseRate: falseRate(frontier.differences, fixed.level, fixed.trigger),
     },
-    retained: measured ? retained : UNMEASURED,
-    families,
+    retained: sets.retained,
+    families: sets.families,
     overlap: overlapOf(all, fixed),
     valid,
     billed: { old: billedMean(pairs, "old"), fresh: billedMean(pairs, "fresh") },
-    // The A/A (12 October, the plan's section 4b): where `--noise` solved the reference twice as
-    // often for it, or its own solves of a task are four or more and even, which halves mirrored in
-    // time split two against two at least. At four a side every comparison carries one.
     noise:
-      fixed.noise || (fixed.solves >= 4 && fixed.solves % 2 === 0)
-        ? {
-            ...scored(itself("mirrored")),
-            flips: flipsOf(itself("mirrored")),
+      mirrored === null
+        ? null
+        : {
+            ...scored(mirrored),
+            flips: flipsOf(mirrored),
             drift: tally(itself("in-order")),
-            margin: marginOf(itself("mirrored")),
-          }
-        : null,
+            margin: marginOf(mirrored),
+          },
     counted: pairs.length === first.pairs.length ? null : scored(first.pairs),
     versions: pairs.map(({ task }) => task),
-    aside: live.filter((task) => open.has(task)),
+    aside,
     short: live.filter((task) => first.short.includes(task)),
     flagged: flaggedIn(events, pairs),
     withdrawn: scorable.filter((task) => !held.has(task)),

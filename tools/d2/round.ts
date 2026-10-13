@@ -78,7 +78,7 @@ import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
-import { type Cap, capHolds, stopRule } from "#src/kernel/reports.ts";
+import { type Cap, capHolds, patienceOf, poolOf, stopRule } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
@@ -299,27 +299,28 @@ export function sessionNamed(
 }
 
 /**
- * The scored set a command's flags name, by task version: the tasks `--tasks` lists by id, each a
- * task of the pack or of a session, or `--target` of the held-out tasks by the contract's draw
- * (`scoredSet`), which takes `last` last: a repeat's first stage's tasks and their kin, which a checkpoint
- * names (`firstStageOf`) and a round, never a repeat, does not. Whether each is a held-out task
- * is the comparison's to refuse.
+ * The scored set a command's flags name, by task version, and the retained tasks in it: the
+ * tasks `--tasks` lists by id, each a task of the pack or of a session, or `--target` of the
+ * held-out tasks by the contract's draw (`scoredSet`), which takes a `repeat`'s first stage's
+ * tasks and their kin last: a checkpoint names the comparison it may repeat and a round, never a
+ * repeat, does not. Whether each is a held-out task is the comparison's to refuse.
  */
 export function scoredNamed(
   campaign: Campaign,
   tasks: string | undefined,
   target: number,
-  last: readonly (readonly string[])[] = [],
-): string[] {
-  if (tasks === undefined) {
-    return scoredSet(read(campaign.log), target, contractHash(campaign.contract), last);
-  }
+  repeat?: Parameters<typeof scoredSet>[3],
+): ReturnType<typeof scoredSet> {
+  const events = read(campaign.log);
+  if (tasks === undefined) return scoredSet(events, target, contractHash(campaign.contract), repeat);
   const packages = [...campaign.packages()];
-  return tasks.split(",").map((taskId) => {
+  const named = tasks.split(",").map((taskId) => {
     const found = packages.find(([, task]) => task.taskId === taskId);
     if (found === undefined) throw new Error(`--tasks ${taskId}: the campaign holds no task of that id`);
     return found[0];
   });
+  const { retained } = poolOf(events);
+  return { tasks: named, retained: named.filter((task) => retained.includes(task)) };
 }
 
 /**
@@ -347,6 +348,7 @@ export function wantedNamed(
     solves: Number(values.solves),
     level: Number(values.level),
     trigger: Number(values.trigger),
+    patience: patienceOf(read(campaign.log)),
     builds: given.builds,
     cap: given.cap ?? null,
     pastStop: predictionNamed(values["past-stop"]),
@@ -518,7 +520,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
     session: built,
     reference,
     starter: await starter(campaign),
-    tasks: scoredNamed(campaign, setting.tasks, setting.target),
+    ...scoredNamed(campaign, setting.tasks, setting.target),
     solves: Number(values.solves),
     level: Number(values.level),
     trigger: Number(values.trigger),

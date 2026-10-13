@@ -1,13 +1,12 @@
-// An exam drafted from a prompt: the shape the host holds a draft to before anything runs, the
-// session that puts drafts to the host's reading (`src/examiner/draft.ts`), its shell in a walled
-// home of its own (`src/examiner/shell.ts`), and that reading on a staged draft with the real
-// verifier (`tools/d2/exam.ts`).
+// An exam drafted from a prompt: the shape the host holds a draft to before anything runs
+// (`draftFaults`, `src/examiner/draft.ts`), which a drafting session reads before the host's own
+// reading, and that reading on a staged draft with the real verifier (`tools/d2/exam.ts`). The
+// session a draft is put in is `examine`'s, held in `test/examiner.test.ts`.
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
-import { type Draft, draftExam, draftFaults, draftOf, draftWalled } from "../src/examiner/draft.ts";
-import { examinerDirs } from "../src/examiner/shell.ts";
-import { append, type LogEvent, read } from "../src/kernel/log.ts";
+import { type Draft, draftFaults, draftOf } from "../src/examiner/draft.ts";
+import { examine } from "../src/examiner/session.ts";
+import { append, read } from "../src/kernel/log.ts";
 import {
   existsSync,
   mkdirSync,
@@ -17,77 +16,22 @@ import {
   rmSync,
 } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
-import { isString, type JsonObject } from "../src/meta/json-shape.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join, resolve } from "../src/meta/path.ts";
+import { join } from "../src/meta/path.ts";
 import { draftReading, stagedExamOf, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
+import { drafted, finish, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
 
-const TOOL_USE = { stopReason: "toolUse" } as const;
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
-const BASES = [2, 3, 4];
-const LIMITS = { wallSeconds: 60, turns: 10, tries: 3 };
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-")));
-const product = (base: number) => ({ answer: String(base * 6) });
-/** A sound draft: one rule, its check, three examples, an accept control each and one reject. */
-const SOUND: Draft = {
-  domain: "Fixture products",
-  scope: "A task gives a base and asks for six times it.",
-  conventions: "The answer is a decimal string without a sign.",
-  rules: [
-    { id: "R1", statement: "The answer is the base times six.", source: "A fixture: no field states it." },
-  ],
-  answerFormat: FORMAT,
-  checks: [{ id: "check-product", rule: "R1", assertion: "The answer is six times the base." }],
-  evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6),\n};\n`,
-  tasks: BASES.map((base) => ({ family: "fixture", publicInput: { base }, hidden: null })),
-  accept: BASES.map((base, task) => ({ task, answer: product(base) })),
-  reject: [{ task: 0, answer: { answer: "13" }, check: "check-product" }],
-};
-/** The draft as the tool takes it. */
-const args = (draft: Draft): JsonObject => ({
-  domain: draft.domain,
-  scope: draft.scope,
-  conventions: draft.conventions,
-  rules: draft.rules.map((rule) => ({ ...rule })),
-  answer_format: draft.answerFormat,
-  checks: draft.checks.map((check) => ({ ...check })),
-  evaluator: draft.evaluator,
-  tasks: draft.tasks.map(({ family, publicInput, hidden }) => ({
-    family,
-    public_input: publicInput,
-    hidden,
-  })),
-  accept_controls: draft.accept.map((control) => ({ ...control })),
-  reject_controls: draft.reject.map((control) => ({ ...control })),
-});
 
 setDefaultTimeout(120_000);
 
-afterAll(() => rmSync(root, { recursive: true, force: true }));
-
-/** A model that makes `calls` in order, a turn each; what it was sent goes to `sent`, where named. */
-function scripted(calls: readonly (readonly [string, JsonObject])[], sent: string[] = []) {
-  const faux = fauxProvider({
-    models: [
-      { id: "script", contextWindow: 200_000, cost: { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } },
-    ],
-  });
-  faux.setResponses(
-    calls.map(([name, given]) => (context) => {
-      sent.push(JSON.stringify(context));
-      return fauxAssistantMessage(fauxToolCall(name, given), TOOL_USE);
-    }),
-  );
-  const models = createModels();
-  models.setProvider(faux.provider);
-  return { model: faux.getModel(), models: () => models };
-}
-
-const of = (log: string, kind: string): JsonObject[] =>
-  read(log).flatMap((event: LogEvent) => (event.kind === kind ? [event.data] : []));
-/** The lines of what a tool call returned. */
-const lines = (text: unknown): string[] => (isString(text) ? text.split("\n") : []);
+afterAll(() => {
+  sweep();
+  rmSync(root, { recursive: true, force: true });
+});
 
 describe("the shape of a draft", () => {
   it("holds a sound draft to nothing", () => {
@@ -169,170 +113,24 @@ describe("the shape of a draft", () => {
     );
     expect(faults[2]).toBe("a reject control names check-other, and the draft holds no such check");
   });
-});
 
-describe("the session that drafts", () => {
-  it("records the first draft that stands, whole, and ends there", async () => {
-    const log = join(root, "stands.jsonl");
-    const told: string[] = [];
-    const drafted = await draftExam({
-      id: "d-1",
-      prompt: "A fixture.",
-      // The first draft is told one fault, and the second none.
-      reading: async () => {
-        told.push("read");
-        return told.length === 1 ? ["the accept control of ex-001 did not pass: fail check-product"] : [];
+  it("is read by the session before the host's reading, which a draft out of shape never reaches", async () => {
+    const lone: Draft = { ...SOUND, accept: SOUND.accept.slice(1), reject: [] };
+    const s = seat("draft", [drafted(lone), drafted(SOUND), finish]);
+    const reached: Draft[] = [];
+    const examined = await examine({
+      ...s.request,
+      reading: async (draft: Draft) => {
+        reached.push(draft);
+        return [];
       },
-      effort: "high",
-      limits: LIMITS,
-      log,
-      ...scripted([
-        ["draft_exam", args(SOUND)],
-        ["draft_exam", args(SOUND)],
-        ["finish", { note: "Never reached." }],
-      ]),
     });
-    expect(drafted).toEqual({ stands: true, tries: 2, ended: "stands" });
-    expect(of(log, "draft.call").map(({ text }) => text)).toEqual([
-      "The draft does not stand. 1 fault:\n- the accept control of ex-001 did not pass: fail check-product\nMend them and put the whole draft again. This session can put 2 more drafts.",
-      "The draft stands: it is the campaign's exam. The session ends here.",
-    ]);
-    // The log holds the exam as it was drafted, and a campaign reads it from there.
-    expect(draftOf(read(log))).toEqual(SOUND);
-    expect(of(log, "draft.started")).toMatchObject([{ session: "d-1", prompt: "A fixture." }]);
-    expect(of(log, "draft.finished")).toMatchObject([
-      { session: "d-1", stands: true, tries: 2, crash: null },
-    ]);
-  });
-
-  it("puts no more drafts than it has, and leaves no exam where none stood", async () => {
-    const log = join(root, "falls.jsonl");
-    const drafted = await draftExam({
-      id: "d-1",
-      prompt: "A fixture.",
-      reading: async () => ["a fault"],
-      effort: "high",
-      limits: { ...LIMITS, tries: 2 },
-      log,
-      ...scripted([
-        ["draft_exam", args(SOUND)],
-        ["draft_exam", args(SOUND)],
-        ["draft_exam", args(SOUND)],
-        ["finish", { note: "No draft stood." }],
-      ]),
-    });
-    expect(drafted).toEqual({ stands: false, tries: 2, ended: "finished" });
-    expect(of(log, "draft.call").map(({ text, isError }) => [lines(text).at(-1), isError])).toEqual([
-      ["Mend them and put the whole draft again. This session can put 1 more draft.", false],
-      ["This session can put no further draft. Call finish.", false],
-      ["This session can put no further draft. Call finish.", true],
-      ["Finished.", false],
-    ]);
-    expect(draftOf(read(log))).toBeNull();
-    // A session's id names one session.
-    expect(
-      draftExam({
-        id: "d-1",
-        prompt: "",
-        reading: async () => [],
-        effort: "high",
-        limits: LIMITS,
-        log,
-        ...scripted([]),
-      }),
-    ).rejects.toThrow("session d-1 is in the log already");
-  });
-});
-
-describe("the session that drafts, in a walled home of its own", () => {
-  /** The repository this suite runs in, which the wall closes to the Examiner's commands. */
-  const repo = resolve(import.meta.dir, "..");
-  const outside = join(repo, "drafted-outside.txt");
-
-  it("runs a command in its home, reads what it wrote, and puts a draft that stands", async () => {
-    const log = join(root, "walled.jsonl");
-    const sent: string[] = [];
-    const drafted = await draftWalled({
-      id: "d-1",
-      prompt: "A fixture.",
-      reading: async () => [],
-      effort: "high",
-      limits: LIMITS,
-      log,
-      repoRoot: repo,
-      diskBytes: 64 * 1024 ** 2,
-      ...scripted(
-        [
-          ["bash", { command: "echo noted > note.txt" }],
-          ["read", { path: "note.txt" }],
-          // The hostile cases: the repository's own file, and a write beside it.
-          [
-            "bash",
-            { command: `cat ${join(repo, "package.json")} >/dev/null 2>&1 && echo read || echo refused` },
-          ],
-          ["bash", { command: `(echo x > ${outside}) 2>/dev/null && echo written || echo refused` }],
-          ["draft_exam", args(SOUND)],
-        ],
-        sent,
-      ),
-    });
-    expect(drafted).toEqual({ stands: true, tries: 1, ended: "stands" });
-    // The session's calls are in the log as the session's own, in order.
-    const calls = of(log, "draft.call");
-    expect(calls.map(({ tool }) => tool)).toEqual(["bash", "read", "bash", "bash", "draft_exam"]);
-    expect(calls.map(({ isError }) => isError)).toEqual([false, false, false, false, false]);
-    expect(calls.slice(1, 4).map(({ text }) => text)).toEqual(["noted", "refused", "refused"]);
-    expect(existsSync(outside)).toBe(false);
-    expect(draftOf(read(log))).toEqual(SOUND);
-    // The host's folder of the capped root goes with the session.
-    expect(existsSync(examinerDirs(log, "d-1").host)).toBe(false);
-    // The Examiner is told what the shell is, that its home starts empty, what the probe found of
-    // the network, and how the exam is entered; and nothing about what to do with it.
-    const told = sent[0] ?? "";
-    expect(told).toContain("empty at its start");
-    expect(told).toContain("but no repository or private data");
-    expect(told).toMatch(/It has (no )?network access: a package index (was|could not be) reached/);
-    expect(told).toContain(
-      "Nothing in your home enters the exam: a draft enters it through draft_exam alone.",
+    expect(examined).toMatchObject({ ended: "stands", puts: 2 });
+    expect(reached).toEqual([SOUND]);
+    expect(s.of("draft.call")[0]?.text).toBe(
+      "The draft does not stand. 2 faults:\n- example 0 has no accept control: an answer to it that keeps every rule\n- check check-product has no reject control: an answer that breaks its rule and names it\nMend them and put the whole draft again. This session can put 3 more drafts.",
     );
-    expect(told).not.toMatch(/research/i);
-  });
-
-  it("mounts and starts nothing for a run that was stopped before its session began", async () => {
-    const log = join(root, "stopped-first.jsonl");
-    const sent: string[] = [];
-    const drafting = draftWalled({
-      id: "d-1",
-      prompt: "A fixture.",
-      reading: async () => [],
-      effort: "high",
-      limits: LIMITS,
-      log,
-      repoRoot: repo,
-      diskBytes: 64 * 1024 ** 2,
-      kill: AbortSignal.abort(),
-      ...scripted([["draft_exam", args(SOUND)]], sent),
-    });
-    await expect(drafting).rejects.toThrow("session d-1 was stopped before it began");
-    expect(existsSync(log)).toBe(false);
-    expect(existsSync(examinerDirs(log, "d-1").root)).toBe(false);
-    expect(sent).toEqual([]);
-  });
-
-  it("is told of no shell where it has none", async () => {
-    const log = join(root, "unwalled.jsonl");
-    const sent: string[] = [];
-    await draftExam({
-      id: "d-1",
-      prompt: "A fixture.",
-      reading: async () => [],
-      effort: "high",
-      limits: LIMITS,
-      log,
-      ...scripted([["draft_exam", args(SOUND)]], sent),
-    });
-    expect(sent[0]).not.toContain("Nothing in your home enters the exam");
-    expect(sent[0]).not.toContain('"bash"');
+    expect(draftOf(read(s.log))).toEqual(SOUND);
   });
 });
 
@@ -358,7 +156,7 @@ describe("a draft read without a model", () => {
   });
 
   it("tells a reader that writes nothing where a campaign staged the exam its log drafted", () => {
-    const drafted = (dir: string) => {
+    const logged = (dir: string) => {
       mkdirSync(dir, { recursive: true });
       const log = join(dir, "log.jsonl");
       append(log, "exam.drafted", {
@@ -369,10 +167,10 @@ describe("a draft read without a model", () => {
     };
     // Staged by the campaign: the staged pack and checks. Never staged: refused, and not written.
     const campaign = join(root, "campaign");
-    const log = drafted(campaign);
+    const log = logged(campaign);
     const staged = stageExam(campaign, SOUND);
     expect(stagedExamOf(log)).toEqual(staged);
-    const unstaged = drafted(join(root, "unstaged"));
+    const unstaged = logged(join(root, "unstaged"));
     expect(() => stagedExamOf(unstaged)).toThrow("is not staged at");
     expect(existsSync(join(root, "unstaged", "exams"))).toBe(false);
     // A log that drafted nothing has a stored pack, and the reader says so with null.

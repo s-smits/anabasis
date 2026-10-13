@@ -5,7 +5,7 @@
  * tone, no border, the faint text of a note.
  *
  * A ruling is the one exception that holds in both tiers: while its rejection waits for a person's
- * label it stays hidden, since a label made beside the ruling measures nothing (`awaitingLabel`,
+ * label it stays hidden, since a label made beside the ruling measures nothing (`poolOf`,
  * `src/kernel/reports.ts`), and so does every ruling of a comparison that has not reported yet
  * (`withheld.ts`). Opening the exam side would not show it, so that line says so instead.
  */

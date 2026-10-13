@@ -122,15 +122,7 @@ function Readouts({ reading }: { reading: CampaignReading }) {
             nextMove === null ? (
               "Not known"
             ) : (
-              <span
-                title={
-                  nextMove.row === undefined
-                    ? nextMove.line
-                    : `row ${String(nextMove.row)} · ${nextMove.line}`
-                }
-              >
-                {MOVE_WORD[nextMove.move]}
-              </span>
+              <span title={`${nextMove.code} · ${nextMove.line}`}>{MOVE_WORD[nextMove.move]}</span>
             )
           }
           detail={

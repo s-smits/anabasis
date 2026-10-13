@@ -21,7 +21,7 @@
  *
  * The step is read on the frontier (12 October, the revised plan's M1.4): the scored tasks not
  * exhausted, fixed at the comparison's start (`round.ts`, `begin`). The retained tasks, fixed at
- * the same time from the third of the exhausted ones the draw keeps (`retainable`, `reports.ts`),
+ * the same time from the third of the exhausted ones the draw keeps (`poolOf`, `reports.ts`),
  * are where a harness may not lose more pairs than it wins. A step with a net loss there reads
  * `regressed`, and one whose untied tasks all fall in one family of the two or more its set holds
  * reads `narrow`; neither promotes (`stepOf`). A retained set with no task tallied is `unmeasured`,
@@ -69,8 +69,9 @@
  * started itself, so the two sides are solved afresh at every comparison: a condition names the
  * host's code, which changes between comparisons, and one frozen draw of the reference harness's
  * solves would bias every later comparison read against it (the review of 2026-10-09, findings 6
- * and 7). A side's solves are in the order they started, and where a side holds more than a tally
- * takes the first started are taken, since the order solves ended in would take the quick ones.
+ * and 7). A side's solves are in the order they started, and where a side holds more than the
+ * comparison asked for the first started are taken, since the order solves ended in would take the
+ * quick ones; a task with fewer on a side is in no pair, and named (`short`).
  *
  * Nothing here decides a step; it reports the tally and its test.
  */
@@ -85,7 +86,7 @@ import { taskSets } from "./task.ts";
 
 /** What one counted solve cost, as its `solve.finished` holds it: billed dollars, null where the
  *  log has none. */
-export interface Used {
+interface Used {
   readonly billed: number | null;
 }
 
@@ -127,7 +128,7 @@ export interface Tally {
 
 /** What a comparison is made between: the two harnesses by digest, and the setting every counted
  *  solve ran under (`settingId`). */
-export interface Sides {
+interface Sides {
   readonly old: string;
   readonly fresh: string;
   readonly setting: string;
@@ -149,7 +150,7 @@ export interface Sides {
  * and never no loss; the families that hold an untied frontier task; and every family the frontier
  * scored a task of (`comparison.ts`, `compared`).
  */
-export interface Stage {
+interface Stage {
   readonly frontier: readonly number[];
   readonly retained: readonly number[] | null;
   readonly untied: readonly string[];
@@ -308,17 +309,20 @@ function buys(stage: Stage, trigger: number): boolean {
   return total(stage.frontier) > 0 && flipP(stage.frontier) <= trigger && !regressed(stage);
 }
 
-/** One comparison's own reading of its frontier at `level`: `regressed` where a step lost more
- *  retained pairs than it won, `narrow` where its untied tasks fall in one family of the two or
- *  more its set holds, and neither promotes. */
-export function stepOf(stage: Stage, level: number): "step" | "no-step" | "regressed" | "narrow" {
+/** One comparison's own reading of its report's frontier at `level`: `no-step` short of it,
+ *  `regressed` where a step lost more retained pairs than it won, `narrow` where its untied tasks
+ *  fall in one family of the two or more its set holds, and neither promotes. A report with no
+ *  frontier and retained set holds no reading, and is refused. */
+export function stepOf(report: JsonObject, level: number): "step" | "no-step" | "regressed" | "narrow" {
+  const stage = stageOf(report);
+  if (stage === null) throw new Error("a reading needs a frontier and a retained set");
   if (flipP(stage.frontier) > level) return "no-step";
   if (regressed(stage)) return "regressed";
   return narrowed([stage]) ? "narrow" : "step";
 }
 
 /** The one family every untied frontier task of a report falls in, where they all fall in one:
- *  a repeat then draws others first (`firstStageOf`, `round.ts`). Null otherwise. */
+ *  a repeat then draws others first (`scoredSet`, `round.ts`). Null otherwise. */
 export function untiedFamily(report: JsonObject): string | null {
   const untied = stageOf(report)?.untied ?? [];
   return untied.length === 1 ? (untied[0] ?? null) : null;
@@ -448,44 +452,48 @@ function better(rule: ObjectiveRule, one: number | null, other: number | null): 
 
 /** One task's pairings: every solve of the new harness against every solve of the reference one,
  *  and how many each side won. A valid answer beats one that is not; two valid answers are even,
- *  unless the pair carries an objective and one is the better by it. */
+ *  unless the pair carries an objective and one is the better by it. Beside each side's wins, what
+ *  decided them: `validity`, where one answer was valid; the `objective`, between two valid answers
+ *  it told apart by more than the margin; and `valid`, the pairings of two valid answers, which
+ *  the effect bar reads the objective over (`climb.ts`). */
 export function pairings(pair: Paired) {
-  const { validity, objective } = pairingsBy(pair);
-  return { fresh: validity.fresh + objective.fresh, old: validity.old + objective.old };
-}
-
-/** One task's pairings by what decided each (`pairings`): validity, where one answer was valid;
- *  the objective, between two valid answers it told apart by more than the margin; and `valid`,
- *  the pairings of two valid answers, which the effect bar reads the objective over (`climb.ts`). */
-export function pairingsBy(pair: Paired) {
-  const by = { validity: { fresh: 0, old: 0 }, objective: { fresh: 0, old: 0 }, valid: 0 };
-  for (let f = 0; f < pair.fresh.length; f += 1) {
-    for (let o = 0; o < pair.old.length; o += 1) {
-      const [freshValid, oldValid] = [pair.fresh[f] === true, pair.old[o] === true];
-      if (freshValid !== oldValid) by.validity[freshValid ? "fresh" : "old"] += 1;
+  const [validity, objective] = [
+    { fresh: 0, old: 0 },
+    { fresh: 0, old: 0 },
+  ];
+  let valid = 0;
+  for (const [f, freshValid] of pair.fresh.entries()) {
+    for (const [o, oldValid] of pair.old.entries()) {
+      if (freshValid !== oldValid) validity[freshValid ? "fresh" : "old"] += 1;
       if (!freshValid || !oldValid) continue;
-      by.valid += 1;
+      valid += 1;
       const told =
         pair.objective &&
         better(pair.objective, pair.objective.fresh[f] ?? null, pair.objective.old[o] ?? null);
-      if (told === 1 || told === -1) by.objective[told === 1 ? "fresh" : "old"] += 1;
+      if (told === 1 || told === -1) objective[told === 1 ? "fresh" : "old"] += 1;
     }
   }
-  return by;
+  return {
+    fresh: validity.fresh + objective.fresh,
+    old: validity.old + objective.old,
+    validity,
+    objective,
+    valid,
+  };
 }
 
 /** How many of `pairs` the objective decided: tasks won or lost that would tie on validity alone. */
 export function decidedByObjective(pairs: readonly Paired[]): number {
-  const outcome = (pair: Paired) => Math.sign(pairings(pair).fresh - pairings(pair).old);
-  return pairs.filter(
-    ({ objective, ...rest }) => objective !== undefined && outcome({ objective, ...rest }) !== outcome(rest),
-  ).length;
+  return pairs.filter((pair) => {
+    const { fresh, old, validity } = pairings(pair);
+    return Math.sign(fresh - old) !== Math.sign(validity.fresh - validity.old);
+  }).length;
 }
 
 /** Whether the harness on `side` closed the task: valid in every counted solve, and no pairing of
  *  two valid answers the objective told apart. A closed task can only tie again at that budget or
  *  be lost; where the objective separates two valid answers, a harness that answers it validly can
- *  still win or lose it. The one rule under the exhausted fold (`exhausted`, `reports.ts`) and the
+ *  still win or lose it. The one rule under the exhausted fold (`poolOf`, `reports.ts`) and the
  *  supply's untied share (`supplyOf`, `admission.ts`): until 12 October the supply read validity
  *  alone and counted a task the objective still separates as closed. */
 export function closedTo(pair: Paired, side: "old" | "fresh"): boolean {
@@ -495,16 +503,13 @@ export function closedTo(pair: Paired, side: "old" | "fresh"): boolean {
 /** Whether the objective told two valid answers of one task apart: a pairing of two valid answers
  *  that one side won by more than the margin (`closedTo`). False where the pair carries no objective. */
 function separatedByObjective(pair: Paired): boolean {
-  const { objective } = pair;
-  if (objective === undefined) return false;
-  return pair.fresh.some(
-    (freshValid, f) =>
-      freshValid &&
-      pair.old.some(
-        (oldValid, o) =>
-          oldValid && better(objective, objective.fresh[f] ?? null, objective.old[o] ?? null) !== 0,
-      ),
-  );
+  const { objective } = pairings(pair);
+  return objective.fresh + objective.old > 0;
+}
+
+/** Whether no solve of a pair gave a valid answer. */
+export function unsolved({ old, fresh }: Paired): boolean {
+  return ![...old, ...fresh].some(Boolean);
 }
 
 /** Each task's difference in pair wins, the new harness's less the reference's. A task solved more
@@ -523,21 +528,18 @@ function differencesOf(pairs: readonly Paired[]): number[] {
   });
 }
 
-/** Each task once: won by the harness that wins more of its pairings, and tied otherwise. */
-export function tally(pairs: readonly Paired[]): Tally {
-  const each = differencesOf(pairs);
-  return {
-    wins: each.filter((one) => one > 0).length,
-    losses: each.filter((one) => one < 0).length,
-    ties: each.filter((one) => one === 0).length,
-  };
+/** The scored set's reading: each task once, won by the harness that wins more of its pairings and
+ *  tied otherwise, each task's difference in pair wins, and the test's p for the new harness. */
+export function scored(pairs: readonly Paired[]) {
+  const differences = differencesOf(pairs);
+  const count = (sign: number) => differences.filter((one) => Math.sign(one) === sign).length;
+  return { wins: count(1), losses: count(-1), ties: count(0), p: flipP(differences), differences };
 }
 
-/** The scored set's reading: the tally, each task's difference in pair wins, and the test's p for
- *  the new harness. */
-export function scored(pairs: readonly Paired[]) {
-  const each = differencesOf(pairs);
-  return { ...tally(pairs), p: flipP(each), differences: each };
+/** The tally of `scored` alone. */
+export function tally(pairs: readonly Paired[]): Tally {
+  const { wins, losses, ties } = scored(pairs);
+  return { wins, losses, ties };
 }
 
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of
@@ -557,14 +559,20 @@ export function draw(versions: readonly string[], count: number, seed: string): 
 }
 
 /**
- * The pairs a comparison of two harnesses reads, for `versions`, from the log alone. A solve counts
- * for a side when its start names the comparison, its condition names the task, that side's
- * harness, the test side and the comparison's setting, and it ended in a pass or a fail; a
- * non-result was solved again. Each side's solves are in the order they started. A
- * disputed version is left out on both sides and named in `disputed`, so a dispute can remove a
- * task from the test and cannot make a win. Any other version that is no held-out task is refused.
+ * The pairs a comparison of two harnesses reads, for `versions`, from the log alone, each side cut
+ * to the first `solves` it started. A solve counts for a side when its start names the comparison,
+ * its condition names the task, that side's harness, the test side and the comparison's setting,
+ * and it ended in a pass or a fail; a non-result was solved again. A task with fewer than `solves`
+ * on a side is in no pair and named in `short`, as a resume may leave one. A disputed version is
+ * left out on both sides and named in `disputed`, so a dispute can remove a task from the test and
+ * cannot make a win. Any other version that is no held-out task is refused.
  */
-export function pairsOf(events: readonly LogEvent[], versions: readonly string[], sides: Sides) {
+export function pairsOf(
+  events: readonly LogEvent[],
+  versions: readonly string[],
+  sides: Sides,
+  solves: number,
+) {
   const { old, fresh, setting, comparison, halves, objective } = sides;
   const verdicts = objective === undefined ? null : verdictsOf(events);
   if (old === fresh && halves === undefined) {
@@ -587,6 +595,7 @@ export function pairsOf(events: readonly LogEvent[], versions: readonly string[]
     )
     .sort((a, b) => a.started - b.started);
   const disputed = versions.filter((task) => states.get(task) === "disputed");
+  const short: string[] = [];
   const pairs = versions.flatMap((task): Paired[] => {
     if (disputed.includes(task)) return [];
     const state = states.get(task);
@@ -608,28 +617,27 @@ export function pairsOf(events: readonly LogEvent[], versions: readonly string[]
     const own = reference.filter((_, at) => first(at, reference.length));
     const other = reference.filter((_, at) => !first(at, reference.length));
     const [before, after] = [own, old === fresh ? other : under(fresh)];
-    const used = (solves: typeof counted) =>
-      solves.map(({ end }): Used => ({ billed: isNumber(end.billed) ? end.billed : null }));
-    const measured = (solves: typeof counted) =>
-      solves.map(({ id }) => {
-        const checker = verdicts?.get(id)?.checker;
-        return checker?.kind === "pass" && checker.objective !== undefined ? checker.objective : null;
-      });
+    if (before.length < solves || after.length < solves) {
+      short.push(task);
+      return [];
+    }
+    const side = <T>(of: (solve: (typeof counted)[number]) => T) => ({
+      old: before.slice(0, solves).map(of),
+      fresh: after.slice(0, solves).map(of),
+    });
+    const measured = side(({ id }) => {
+      const checker = verdicts?.get(id)?.checker;
+      return checker?.kind === "pass" && checker.objective !== undefined ? checker.objective : null;
+    });
     return [
       {
         task,
-        old: before.map((solve) => passed(solve) === true),
-        fresh: after.map((solve) => passed(solve) === true),
-        solves: { old: before.map(({ id }) => id), fresh: after.map(({ id }) => id) },
-        used: { old: used(before), fresh: used(after) },
-        ...keyIfDefined(
-          "objective",
-          objective === undefined
-            ? undefined
-            : { ...objective, old: measured(before), fresh: measured(after) },
-        ),
+        ...side((solve) => passed(solve) === true),
+        solves: side(({ id }) => id),
+        used: side(({ end }): Used => ({ billed: isNumber(end.billed) ? end.billed : null })),
+        ...keyIfDefined("objective", objective === undefined ? undefined : { ...objective, ...measured }),
       },
     ];
   });
-  return { pairs, disputed };
+  return { pairs, short, disputed };
 }

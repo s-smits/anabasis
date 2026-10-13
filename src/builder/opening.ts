@@ -27,7 +27,6 @@ import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, type Cap, patienceOf } from "../kernel/reports.ts";
 import { SIZE } from "../kernel/size.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
 import type { Plan } from "./ground.ts";
 
 /** Who sits in a seat: a model and its effort. */
@@ -46,7 +45,7 @@ export interface Opening {
   /** The full limit of a solve in the model's turns, and the Builder sessions before a comparison. */
   readonly limit: number | null;
   readonly sessions: number;
-  /** The moves without a gain, the idle Examiner sessions and the comparisons without room the
+  /** The moves without a gain, and the readings that left nothing to gain (`roomless`), the
    *  campaign bears in a row before it ends (`--patience`; `PATIENCE`). */
   readonly patience: number;
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
@@ -54,6 +53,10 @@ export interface Opening {
    *  here and not read off the running command's flag alone, so that a reopen that does not name
    *  the flag still waits; `--no-attended` gives it back. */
   readonly attended: boolean;
+  /** Whether the Builder makes the campaign's moves after set-up, in one live conversation with
+   *  the campaign's tools (`--builder-led`, `tools/d2/harness-builder.ts`), or the host makes
+   *  every move the table names. Kept as `attended` is; a record without it is the host's. */
+  readonly led: boolean;
   /** The operator's prompt, for a campaign that opened from one: its exam is drafted from it
    *  (`src/examiner/draft.ts`). Null for a campaign that opened over a stored pack. */
   readonly prompt: string | null;
@@ -119,6 +122,7 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     patience: patienceOf(events),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: data.attended === true,
+    led: data.led === true,
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
     terms: Object.fromEntries(
@@ -167,8 +171,8 @@ export function planOf(
         ? null
         : { dollars: opening.budget.dollars - billedAll(events), reserve: opening.budget.reserve },
     prompted: opening?.prompt != null,
-    ...keyIfDefined("pastStop", beside.pastStop),
-    ...keyIfDefined("admits", beside.admits),
-    ...keyIfDefined("practice", beside.practice),
+    pastStop: beside.pastStop ?? null,
+    admits: beside.admits ?? [],
+    practice: beside.practice ?? null,
   };
 }

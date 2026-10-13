@@ -4,7 +4,6 @@
 // comparison are the real ones; the seats are scripts, which are paid nothing.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
-import { draftExam } from "../src/examiner/draft.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import {
@@ -27,11 +26,12 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
+import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
+import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settleCommand } from "../tools/d2/settle.ts";
-import { harnessBuilder, type Seats } from "../tools/d2/harness-builder.ts";
-import { HOST } from "../tools/d2/host.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
@@ -79,6 +79,11 @@ const of = (name: string, kind: string): JsonObject[] =>
     event.kind === kind ? [event.data] : [],
   );
 
+/** The campaign command with the host making every move the table names: a campaign that opens
+ *  now is led by its Builder unless its command says otherwise (`test/builder-led.test.ts`). */
+const harnessBuilder = (args: readonly string[], seats?: Seats) =>
+  command([...args, "--no-builder-led"], seats);
+
 describe("a campaign run by its log", () => {
   it("asks the Examiner for what the campaign is short of, before the first session, and tells it the campaign's wall", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
@@ -102,7 +107,7 @@ describe("a campaign run by its log", () => {
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
       examine: (request) => {
-        asked.push({ tasks: request.limits.tasks, minutes: request.budget?.minutes });
+        asked.push({ tasks: request.wanted, minutes: request.budget?.minutes });
         return examine({
           ...request,
           ...scripted([
@@ -161,13 +166,13 @@ describe("a campaign run by its log", () => {
     ]);
     expect(of(name, "campaign.ended")).toEqual([expect.objectContaining({ ending: "exam" })]);
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
-    // Each move is on record from its start with the row that chose it, the one that threw too.
-    expect(of(name, MOVED).map(({ move, session, row }) => [move, session ?? null, row])).toEqual([
-      ["accept", null, 1],
-      ["prepare", null, 2],
-      ["examine", "x-1", 8],
+    // Each move is on record from its start with the row that chose it by its code, the one that threw too.
+    expect(of(name, MOVED).map(({ move, session, code }) => [move, session ?? null, code])).toEqual([
+      ["accept", null, "exam"],
+      ["prepare", null, "tasks"],
+      ["examine", "x-1", "tasks"],
       // The id the move that threw had is not used again.
-      ["examine", "x-2", 8],
+      ["examine", "x-2", "tasks"],
     ]);
   });
 
@@ -223,7 +228,7 @@ describe("a campaign run by its log", () => {
     expect(ending).toEqual({
       move: "end",
       ending: "no-room",
-      row: 9,
+      code: "unshown",
       why: "2 Examiner sessions in a row held out no task (Builder session b-1 left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for): the tasks could not be made to leave room",
     });
     // Each move records when it began, and a move that solves the load the host had then; the moves
@@ -756,8 +761,9 @@ describe("a campaign run by its log", () => {
     ];
     const strayed: string[] = [];
     // Every harness answers every task, in two of the model's turns: no room at eight. The
-    // Examiner holds out nothing, twice, which is the campaign's patience. Until 11 October the
-    // campaign then walked a ladder of shorter budgets (`--ladder`), three more moves here.
+    // Examiner holds out nothing, twice, which is the campaign's patience (`spent`, `decide.ts`).
+    // Until 11 October the campaign then walked a ladder of shorter budgets (`--ladder`), three
+    // more moves here.
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, strayed),
       examine: (request) =>
@@ -843,7 +849,7 @@ describe("a campaign run by its log", () => {
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, examples, strayed),
       draft: (request) =>
-        draftExam({
+        examine({
           ...request,
           ...scripted([
             ["draft_exam", wrong],

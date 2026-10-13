@@ -32,7 +32,7 @@
  * passes every check within it is valid, and the harness with more valid answers wins the task. A
  * task that can tell two harnesses apart is therefore one a better method answers validly within
  * the budget and a worse one does not, which is what the text asks for. The budget's size is told
- * as a fact (`Facts`, `firstMessage`), with the sentence that it is no target: while it was
+ * as a fact (`firstMessage`), with the sentence that it is no target: while it was
  * withheld, on the reasoning that an author told it would write towards it, the tasks of ten
  * campaigns tied under both harnesses, and a task that separates two harnesses at three turns
  * cannot be written without knowing three. The minutes are the recorded setting's, which the
@@ -40,7 +40,7 @@
  *
  * The prompt says that a task needs a valid answer, and one way to be sure of one: `try_answer`
  * runs the checks on an instance with an answer of the Examiner's, and a walled shell computes
- * (`session.ts`). A task is held out on the shape of its package, and nothing solves it first
+ * (`write.ts`). A task is held out on the shape of its package, and nothing solves it first
  * (`AGENTS.md`, rule 9), so nothing but its author stands between the exam and a task no answer
  * satisfies. In the first campaign opened from a prompt an Examiner whose tasks had all tied
  * pressed the next ones to the margin, and two of seven asked for more addresses than their block
@@ -53,7 +53,7 @@
  * whose instances scale has the Examiner plant an answer and grow the task around it (the overhaul
  * plan, S.4 and L2). The planted answer is the witness of the feasibility gate: the log keeps no
  * answer `try_answer` passes, the session holds it in memory alone, and the gate refuses a task
- * that carries one whole (`session.ts`), so it never reaches a solver and rule 9 holds. Growing by
+ * that carries one whole (`write.ts`), so it never reaches a solver and rule 9 holds. Growing by
  * size alone is named as no growth: in the overhaul's research a reference solver's time
  * correlated -0.15 with how hard a generated task was for a model, and a harness with the field's
  * solver tools gained 28 points on such tasks, so a harness that holds the engine absorbs scale.
@@ -62,14 +62,14 @@
  * `try_task` in `propose_tasks`' place: a package that passes the shape is solved `TRIED` times
  * afresh under the budget, and held out only where some of those solves gave a valid answer and not
  * all (the operator's ruling of 12 October, which reverses the plan's refusal of a screen;
- * `session.ts`). The prompt says so, and that the Examiner is told the count and nothing else of
+ * `write.ts`). The prompt says so, and that the Examiner is told the count and nothing else of
  * them. The reference harness is the one the campaign measures against, and no stronger solver:
  * rule 9 of `AGENTS.md` still holds, and a check still decides every answer.
  */
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
-import type { Heard } from "./record.ts";
+import type { heard } from "./record.ts";
 
 /** A check as its author's brief declares it and an Examiner is shown it: never its program. */
 export interface CheckRow {
@@ -77,24 +77,6 @@ export interface CheckRow {
   readonly assertion: string;
   readonly families: "all" | readonly string[];
 }
-
-/** What a session is told of its campaign beside the contract: the operator's brief, where the
- *  campaign opened from one, and the budget every solve is held to, where the caller knows it. */
-interface Facts {
-  readonly brief?: string | null | undefined;
-  readonly budget?: { readonly modelTurns: number | null; readonly minutes: number } | null | undefined;
-  /** What the last Examiner session of the campaign said at its `finish`, in its own words, where
-   *  one did: the one thing a session leaves the next beside its tasks and its home. */
-  readonly lastNote?: string | null | undefined;
-}
-
-/** The limits a session is told it runs under. How many tasks are wanted is not among them. */
-export interface Told {
-  readonly wallSeconds: number;
-  readonly turns: number;
-}
-
-export const NUDGE = "You have not called finish. Propose further tasks, or call finish.";
 
 /** The system prompt of a session that holds tasks out by `propose_tasks`, or, given how many
  *  solves try one, by `try_task`. */
@@ -116,17 +98,25 @@ export function systemPrompt(tried: number | undefined): string {
 }
 
 /** The opening message: the operator's brief where the campaign opened from one, the domain's
- *  public contract, its checks by id and assertion, the session's limits, and every task the
- *  campaign holds with its one outcome, a line a task, with the counts by family or in a total
- *  beside them, as `record.ts` renders both. */
+ *  public contract, its checks by id and assertion, and every task the campaign holds with its one
+ *  outcome, a line a task, with the counts by family or in a total beside them, as `record.ts`
+ *  renders both. `told` is the limits the session is told it runs under; how many tasks are wanted
+ *  is not among them. `campaign` is what it is told of its campaign beside the contract, each null
+ *  where there is none: the operator's brief, the budget every solve is held to, and what the last
+ *  Examiner session said at its `finish`, the one thing a session leaves the next beside its tasks
+ *  and its home. */
 export function firstMessage(
   contract: Contract,
   checks: readonly CheckRow[],
-  tasks: Heard,
-  told: Told,
-  campaign: Facts = {},
+  tasks: ReturnType<typeof heard>,
+  told: { readonly wallSeconds: number; readonly turns: number },
+  campaign: {
+    readonly brief: string | null;
+    readonly budget: { readonly modelTurns: number | null; readonly minutes: number } | null;
+    readonly lastNote: string | null;
+  },
 ): string {
-  const { brief = null, budget = null, lastNote = null } = campaign;
+  const { brief, budget, lastNote } = campaign;
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
     // The brief first, where the campaign opened from one: every session rereads the domain as the

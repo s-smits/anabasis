@@ -487,6 +487,24 @@ describe("the rulings and the endings each tier may see", () => {
     expect(triggerKeepsRulings(logOf(fixture.name), { name: "NO PRACTICE", detail: "b-1: 1" })).toBe(true);
   });
 
+  test("shows a campaign finished by its Builder as ended", async () => {
+    const { root, dir } = copy();
+    const why = "the Builder ended its campaign conversation";
+    appendFileSync(
+      join(dir, "log.jsonl"),
+      `${JSON.stringify({
+        at: "2026-10-12T12:00:00.000Z",
+        kind: "campaign.ended",
+        data: { ending: "finished", why },
+      })}\n`,
+    );
+    const shown = await ask("campaigns", {}, "default", root);
+    expect(shown.answer.campaigns.find(({ name }) => name === fixture.name)).toMatchObject({
+      status: "ended",
+      ending: { ending: "finished", why },
+    });
+  });
+
   test("sends an ending's reason where the controller words it, and the kind alone of an environment's in the default tier", async () => {
     const { root } = copy();
     const marker = "error-quartz-0101";

@@ -11,10 +11,10 @@
  * `docs/simplify.md` F3, where "one harness won" and "no valid answer yet" told the author nothing
  * of where the room was). Beside the outcome, one fact that names no side: whether a valid answer to
  * the task is on record at all, a solve's, the author's own `try_answer` pass, or a reference
- * solve's under `try_task` (`feasibleTasks`), which tells a task the reference answers in no solve
+ * solve's under `try_task` (`poolOf`), which tells a task the reference answers in no solve
  * apart from one nobody has answered. It is a view of the log, and no store is kept for it.
  *
- * Beside the lines, counts by family with a total (`counts`, `standingsOf`): of the tasks whose last
+ * Beside the lines, counts by family with a total (`counts`, `poolOf`): of the tasks whose last
  * comparison had the reference harness on a side, how many were told apart and which side won them,
  * how many tied with both harnesses valid in every solve, how many tied with neither valid in any
  * and of those how many have a valid answer on record, how many tied otherwise, and how many were
@@ -39,7 +39,7 @@
  * one task shows that task's own turns, which are the reference's, as its line is.
  *
  * Each sentence says what its fold does: the exhausted line speaks of the reference's own solves
- * alone, as the rule reads them (`exhausted`, `src/kernel/reports.ts`), and not of both harnesses.
+ * alone, as the rule reads them (`poolOf`, `src/kernel/reports.ts`), and not of both harnesses.
  *
  * What v1 recorded about this channel is kept. An author told a zone, a share or a target count
  * wrote towards it, and one told each answer's distance from its limit moved limits (v1
@@ -53,14 +53,12 @@
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
-  feasibleTasks,
   lastReports,
   type Outcome,
-  outcomesOf,
+  poolOf,
   pairsReported,
   referenceOf,
   type Standing,
-  standingsOf,
 } from "../kernel/reports.ts";
 import { solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
@@ -71,7 +69,7 @@ import { plural } from "../meta/text.ts";
 
 /** What an Examiner is told of the tasks at its opening: one line a task, and the counts by
  *  family that the same pass took, or null where no task stands in them. */
-export interface Heard {
+interface Heard {
   readonly lines: string[];
   readonly counts: string | null;
   /** The turns the reference harness's valid answers took, by family, or null where none is on
@@ -80,7 +78,7 @@ export interface Heard {
 }
 
 /** How each outcome is said. */
-export const SAID: Readonly<Record<Outcome, string>> = {
+const SAID: Readonly<Record<Outcome, string>> = {
   "reference-every": "the reference harness answered it validly in every solve of the last comparison",
   "reference-some":
     "the reference harness answered it validly in some solves of the last comparison and not in others",
@@ -116,9 +114,7 @@ const TURNS =
  *  the log does not hold, and one no comparison has scored, is not yet compared and in no count. */
 export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "taskId" | "family">[]): Heard {
   const states = taskStates(events);
-  const outcomes = outcomesOf(events);
-  const standings = standingsOf(events);
-  const feasible = feasibleTasks(events);
+  const { outcomes, standings, feasible } = poolOf(events);
   const answers = referenceAnswers(events);
   const took = new Map(
     solvesIn(events).flatMap(({ id, end }) => (isNumber(end?.turns) ? [[id, end.turns] as const] : [])),

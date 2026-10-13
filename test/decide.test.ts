@@ -869,6 +869,17 @@ describe("a hold on the move a row named", () => {
     // says what one bills.
     expect(move(log)).toMatchObject({ move: "compare" });
     expect(move(FIRST, left(0.5))).toMatchObject({ move: "compare" });
+    // Before one has, the reference harness's solves of draft tasks price the first: until
+    // 14 October nothing held it, and buffer-149's gate billed about $0.43 a solve.
+    const tried = { reference: { billed: 0.9, solves: 3 } };
+    const gated = FIRST.map((each) =>
+      each.kind === "task.gate" ? { ...each, data: { ...each.data, ...tried } } : each,
+    );
+    expect(decide(gated, left(0.5))).toMatchObject({ move: "end", ending: "budget", code: "afford" });
+    expect(decide(gated, left(0.5))).toMatchObject({
+      why: expect.stringContaining("the reference harness's solves of draft tasks billed $0.30 a solve"),
+    });
+    expect(move(gated, left(1000))).toMatchObject({ move: "compare" });
   });
 
   it("practice: practice is brought towards the campaign's count before a Builder session", () => {

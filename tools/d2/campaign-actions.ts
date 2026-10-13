@@ -27,7 +27,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { Refused, supplyOf } from "#src/builder/admission.ts";
-import { decide, heldAfter, shortOf, unpromoted } from "#src/builder/decide.ts";
+import { decide, heldAfter, shortOf, unaffordedAsked, unpromoted } from "#src/builder/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
 import { type Decided, short } from "#src/builder/move.ts";
@@ -452,6 +452,9 @@ async function comparedOf(
       refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare.`,
     };
   }
+  // The table's budget hold, which its own comparisons meet in `decide` (14 October).
+  const unafforded = decided.move === "compare" ? null : unaffordedAsked(events, plan);
+  if (unafforded !== null) return { refused: `The host refused the compare action: ${unafforded}.` };
   return {
     move: {
       move: "compare",

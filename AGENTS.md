@@ -887,6 +887,8 @@ once against one reference and read by the last comparison of the two, where tha
 tallied a task and left room; or a whole session that left its harness as it was where a
 practice solve of it failed, since a session whose every practice solve passed had nothing to
 work on. A repeat, a control, a comparison that scored nothing or left no room do not count.
+A pair whose last two readings the promotion rule passes showed a gain, and only the moves since
+the last promotion count (14 October), so patience never ends a campaign that has earned one.
 The next comparison or session is then refused, unless the operator gives a reason to go on
 (`--past-stop`). A task with no valid answer in two comparisons goes to a person as possibly
 infeasible, unless a valid answer for it stands anywhere on record, a solve's or the one the

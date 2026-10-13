@@ -424,7 +424,22 @@ describe("a campaign run by its live Builder", () => {
         };
       },
     };
-    const args = [...seeded(name), "--target", "5", "--practice", "2", "--solves", "1"];
+    // Under a total: a comparison begins with all that is left of it as its cap, so whatever else
+    // bills before it goes on, a Builder's turn among it, leaves less than that cap. Until
+    // 13 October the tool then ended the campaign on its budget, with nearly all of it left.
+    const args = [
+      ...seeded(name),
+      "--target",
+      "5",
+      "--practice",
+      "2",
+      "--solves",
+      "1",
+      "--budget",
+      "20",
+      "--reserve",
+      "0.01",
+    ];
     expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "environment" });
     const [start] = of(name, "comparison.started");
     if (start === undefined) throw new Error("the comparison did not record its original terms");

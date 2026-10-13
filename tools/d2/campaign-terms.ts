@@ -105,7 +105,7 @@ const OPTIONS = {
 export const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
 const OPENED = "campaign.opened";
 export const MOVED = "campaign.move";
-export const STARTED = "comparison.started";
+const STARTED = "comparison.started";
 /** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
  *  command wants a name, and the script is what is asked. */
 export const SCRIPTED = "claude/claude-opus-5-5";

@@ -395,14 +395,6 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
     append(log, ENDED, { ending: "environment", why, move });
     return { move: "end", ending: "environment", code: "failed", why };
   }
-  if (context.budgetEnding) {
-    return {
-      move: "end",
-      ending: "budget",
-      code: "bound",
-      why: "the comparison that began cannot go on within what is left of the campaign's total",
-    };
-  }
   if (how === "finished") {
     return {
       move: "end",
@@ -525,7 +517,6 @@ export async function harnessBuilder(
         paid,
         maxMoves: most,
         used: made,
-        budgetEnding: false,
         failed: null,
       };
       const left = await lead(context, decided);

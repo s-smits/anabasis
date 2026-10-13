@@ -36,11 +36,11 @@ import type { BuildRequest } from "#src/builder/session.ts";
 import { type Bench, snapshot } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { append, read } from "#src/kernel/log.ts";
-import { billedFor, latestBuilt } from "#src/kernel/reports.ts";
+import { latestBuilt } from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -60,7 +60,6 @@ import {
   packOf,
   SCRIPTED,
   type Seats,
-  STARTED,
   sharedOf,
   startOf,
   type Turn,
@@ -96,8 +95,6 @@ export interface CampaignContext {
   /** The moves this run of the command may make (`--moves`), and those it has made. */
   readonly maxMoves: number;
   used: number;
-  /** Whether a comparison that began cannot go on within what is left of the total. */
-  budgetEnding: boolean;
   /** The action that threw after it began, with what it threw: the environment's ending. */
   failed: { readonly move: string; readonly why: string } | null;
 }
@@ -151,15 +148,6 @@ function actionTurn(context: CampaignContext) {
   return { turn, decided: decide(turn.events, turn.plan) };
 }
 
-/** Whether a comparison that began can go on within what is left of the campaign's total: it
- *  goes on under the cap it began with, less what it has billed. */
-function resumeFits(turn: Turn, decided: Decided): boolean {
-  if (decided.move !== "compare" || decided.id === undefined || turn.plan.left == null) return true;
-  const start = turn.events.find(({ kind, data }) => kind === STARTED && data.session === decided.id)?.data;
-  const cap = asRecord(start?.cap)?.dollars;
-  return !isNumber(cap) || cap - billedFor(turn.events, decided.id) <= turn.plan.left.dollars;
-}
-
 /** The tool that makes the table's move: a release for practice is `release_practice`, and a
  *  lack of room is advice to ask the Examiner while the conversation lives. */
 function toolOf(decided: Decided): string {
@@ -169,10 +157,11 @@ function toolOf(decided: Decided): string {
 
 /**
  * One campaign tool. Before anything runs: the run's moves, the host's stop, an ending the table
- * names (a lack of room excepted, which is advice here), the operator's word for other tasks, and
- * a comparison that cannot go on within the total. `run` is handed `begin`, which writes the move's
- * event (`campaign.move`): the table's code and reason where the Builder made the move it named,
- * and `asked` with what the table named otherwise.
+ * names (a lack of room excepted, which is advice here), and the operator's word for other tasks.
+ * A comparison that began goes on under its own cap whatever is left of the total, as the table
+ * has it (`unafforded`, `src/builder/decide.ts`): the budget's ending is the table's, read above.
+ * `run` is handed `begin`, which writes the move's event (`campaign.move`): the table's code and
+ * reason where the Builder made the move it named, and `asked` with what the table named otherwise.
  */
 function actionTool(
   context: CampaignContext,
@@ -215,12 +204,6 @@ function actionTool(
       // A word is the operator's and reaches no seat: the Builder is told what the campaign waits for.
       if (move !== "examine" && pendingWords(turn.events).some(({ word }) => word === "tasks")) {
         return text("Other tasks are to be written before another action: examine does that.");
-      }
-      if (move === "compare" && !resumeFits(turn, decided)) {
-        context.budgetEnding = true;
-        return halt(
-          "The unfinished comparison cannot fit the remaining campaign budget; the campaign will end on budget.",
-        );
       }
       const named = toolOf(decided) === move;
       // Where the log stood as the move began: an action that threw with nothing written after its

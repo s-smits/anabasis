@@ -141,10 +141,12 @@ interface Desk {
   /** The instances this campaign has been given so far, by content, so that none is taken twice:
    *  this session's, and the ones earlier sessions wrote. */
   readonly seen: Map<string, "now" | "earlier">;
-  /** Author answers kept only in session memory, rechecked on the final task before recording
-   *  proof. A task that carries one whole is refused, since a planted answer is for `try_answer`
-   *  and for no task (`carries`; `AGENTS.md`, rule 9). */
+  /** The last author answer that passed on each instance, kept only in session memory and
+   *  rechecked on the final task before recording proof. */
   readonly answered: Map<string, JsonValue>;
+  /** Every answer that passed, by hash: a task that carries one whole is refused, since a planted
+   *  answer is for `try_answer` and for no task (`carries`; `AGENTS.md`, rule 9). */
+  readonly planted: Set<string>;
   readonly held: string[];
   readonly refused: string[];
   note: string | null;
@@ -213,8 +215,7 @@ function supplied(desk: Desk): boolean {
  *  fires mid-try leaves no solve running and the task refused unmeasured. */
 async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   const { contract, log, id, probe } = desk.request;
-  const planted = new Set([...desk.answered.values()].map((answer) => hashJsonValue(answer)));
-  if (carries([task.publicInput, task.hidden], planted)) return { reason: PLANTED, said: "" };
+  if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === undefined) return { reason: null, said: "" };
@@ -425,6 +426,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
       const verdict = await verify(instance, answer);
       if (verdict.kind === "pass") {
         desk.answered.set(contentOf(instance), answer);
+        desk.planted.add(hashJsonValue(answer));
         const version = taskVersion(request.pack(instance));
         const sets = taskSets(events);
         if (
@@ -505,6 +507,7 @@ export async function examine(request: ExamRequest): Promise<Examined> {
     proposed: 0,
     seen: new Map(writtenTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
     answered: new Map(),
+    planted: new Set(),
     held: [],
     refused: [],
     note: null,

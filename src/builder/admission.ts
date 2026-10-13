@@ -389,7 +389,7 @@ function entered(
   const { id, kind, own } = start;
   if (begun(events, id, kind)) return [];
   const { supply, refusals: refused, notes } = decide((...named) => supplyOf(events, ...named));
-  if (refused.length > 0) throw new Error(refused.join("\n"));
+  if (refused.length > 0) throw new Refused(refused.join("\n"));
   own?.();
   const overridden = events.some((event) => event.kind === "stop.overridden" && event.data.session === id);
   if (supply.stop.stop && pastStop !== undefined && !overridden) {
@@ -398,6 +398,10 @@ function entered(
   }
   return [...notes];
 }
+
+/** The admission's refusal: the campaign's own state in counts and commands, which names no task,
+ *  so a led Builder may read it (14 October). Every other error a command throws stays the host's. */
+export class Refused extends Error {}
 
 /**
  * Admit the comparison a command is about to start on the campaign whose log is `log`, and return

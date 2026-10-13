@@ -26,8 +26,8 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { supplyOf } from "#src/builder/admission.ts";
-import { decide, heldAfter, shortOf } from "#src/builder/decide.ts";
+import { Refused, supplyOf } from "#src/builder/admission.ts";
+import { decide, heldAfter, shortOf, unpromoted } from "#src/builder/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
 import { type Decided, short } from "#src/builder/move.ts";
@@ -294,8 +294,15 @@ function actionTool(
               `The provider's limit ended the ${label} action, and the host has waited it out: call ${move} again.`,
             );
           }
+          // The admission's own words, which name no task: until 14 October a fixed sentence stood
+          // in for them, and the Builder could not tell a want of tasks from a stop. Any other
+          // refusal may name a held-out task, and keeps the fixed sentence.
           if (begun === null || read(context.log).length <= begun) {
-            return text(`The host refused the ${label} action; choose another action.`);
+            return text(
+              error instanceof Refused
+                ? `The host refused the ${label} action: ${error.message}`
+                : `The host refused the ${label} action; choose another action.`,
+            );
           }
           context.failed = { move: move === RELEASE ? "prepare" : move, why: errorMessage(error) };
           bench.halt.abort();
@@ -468,13 +475,13 @@ const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
       append(context.log, "build.checkpoint", { session: bench.request.id, harness: named.froze });
     }
     // The comparison's own flags beside the pack's, so the log says what command the move ran
-    // (11 October: the trigger had been left off, and no record could show it).
-    begin({
-      ...startOf("compare", context.seats),
-      session,
-      args: args.slice(packOf(context.values).length),
-    });
-    await checkpointCommand(args, context.held, signal);
+    // (11 October: the trigger had been left off, and no record could show it). The move is on
+    // record once the comparison is admitted: until 14 October it was written first, and a
+    // comparison the admission refused left a move that never began.
+    const began = startOf("compare", context.seats);
+    await checkpointCommand(args, context.held, signal, () =>
+      begin({ ...began, session, args: args.slice(packOf(context.values).length) }),
+    );
     const events = read(context.log);
     const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,
@@ -532,6 +539,9 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
       }
       return { refused: "Promotion awaits the operator under --attended." };
     }
+    // The rule's own reason, before anything is on record: until 14 October a fixed sentence.
+    const why = unpromoted(turn.events, turn.plan, candidate);
+    if (why !== null) return { refused: `Nothing was promoted: ${why}.` };
     const before = read(context.log).length;
     const began = startOf("promote", context.seats);
     await promoteCommand(["--name", name, "--harness", candidate, "--yes"]);

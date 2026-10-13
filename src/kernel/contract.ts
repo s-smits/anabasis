@@ -20,7 +20,7 @@ export interface Rule {
 /** The objective a check program may declare beside its checks: a quantity its evaluator computes
  *  from a valid answer, and which way is better. Two valid answers on one task are compared by it
  *  (`src/kernel/compare.ts`, `ObjectiveRule`), so it is public: a solver and a Builder read it
- *  with the rules. Added 10 October (`docs/plan.md`, the climb). */
+ *  with the rules (`docs/plan.md`, the climb). */
 export interface Objective {
   readonly quantity: string;
   readonly direction: "lower" | "higher";

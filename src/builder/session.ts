@@ -1,12 +1,12 @@
 /**
  * One Builder session: the agent that changes a Built Harness, and the host around it.
  *
- * The plan's D2 is "one Builder session scored on tasks it never saw", and until this file nothing
- * in v2 could run one. A session is given a copy of the harness it starts from, a walled shell over
- * that copy, practice solves on released tasks, and the two reviewers' readings of what fails there.
- * It ends by freezing what the copy holds as a harness version. It is one session: no loop over
- * sessions, no promotion and no carried memory, which stay behind gate G4. Whether the new harness
- * is better is the comparison's to say (`src/kernel/compare.ts`), on tasks this session never saw.
+ * The plan's D2 is "one Builder session scored on tasks it never saw". A session is given a copy of
+ * the harness it starts from, a walled shell over that copy, practice solves on released tasks,
+ * and the Referee's ruling of what fails there. It ends by freezing what the copy holds as a
+ * harness version. It is one session: the loop over sessions and a promotion are the campaign's
+ * (`decide.ts`). Whether the new harness is better is the comparison's to say
+ * (`src/kernel/compare.ts`), on tasks this session never saw.
  *
  * What v1's Builder (harness-builder-v4 at 7af7315) did and this one does not: write tasks and
  * checks, set its solver's limits, and submit through gates on a candidate. The Examiner writes
@@ -446,7 +446,7 @@ export async function session(
 
 /**
  * Why no command will go on with session `id` from this log, or null when it never started, or
- * ended whole. A launcher asks before it starts the session, and a stop to say what it cut. One
+ * ended whole. A command asks before it starts the session, and a stop to say what it cut. One
  * that started and never finished is refused, since its harness is gone and a second session under
  * one id would be a second try. So is one that was killed or that crashed: what it froze is half a
  * session's work.
@@ -491,8 +491,7 @@ async function left(events: readonly LogEvent[], request: BuildRequest, parent: 
  * again: it is read from the log, whether it ran now or in an earlier run of the command, and one
  * that did not end whole is refused (`spent`). It is the session of a round, which then compares
  * what it left, and the whole of a session run with no comparison after it: the plan's checkpoint
- * is several sessions and then one comparison (`docs/plan.md`, Phase 5), and until 2026-10-09 no
- * command ran a session by itself, so those ran as several paid rounds.
+ * is several sessions and then one comparison (`docs/plan.md`, Phase 5).
  */
 export async function sessionOnce(
   request: BuildRequest,

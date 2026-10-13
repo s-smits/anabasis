@@ -6,10 +6,10 @@
  * record says which task version, harness and side that was (`condition.ts`), and its ending and
  * its verdict name the solve. Every reader of a campaign joins them: a task's standing against a
  * harness, the pairs a comparison counts (`compare.ts`), a Builder's practice record,
- * the reviewers' packets, the launcher and the investigation's reader. Until 2026-10-08 each made
- * the join for itself, in fourteen places, and they had come to differ in small ways: one read a
- * task's solves in the order they started and another in the order they ended, which are not the
- * same order when four run at once.
+ * the reviewers' packets, the pulse and the investigation's reader. Fourteen places that each made
+ * the join for themselves had come to differ in small ways: one read a task's solves in the order
+ * they started and another in the order they ended, which are not the same order when four run at
+ * once.
  *
  * Here the join is made once. `solvesIn` is the solves as their own two events tell them and
  * resolves nothing, so a watcher can read a log whose conditions it has no use for; `ranUnder` adds
@@ -117,8 +117,7 @@ export function ranUnder(events: readonly LogEvent[]): Ran[] {
  * Builder may be shown of a solve, by its record, its fails and its traces. A solve a comparison
  * made is the exam's, whatever becomes of its task: a held-out task that is scored and released
  * afterwards would otherwise bring its comparison's solves with it, and a Builder would read which
- * held-out task its harness had failed. Until 2026-10-09 the opening's record and `read_trace`
- * read every test-side solve of a practice task, and only the list of fails held to this.
+ * held-out task its harness had failed.
  */
 export function practiceRan(events: readonly LogEvent[]): Ran[] {
   return ranUnder(events).filter(
@@ -196,7 +195,7 @@ export function refusedBy(verdict: Judged | undefined): readonly string[] {
 
 /** The checker's own verdict a `verdict` event holds, with its measure where one was taken, or
  *  null where no check gave one. The acceptance's regrading reads the same event through this
- *  (rule 12): until 11 October it had a copy that dropped the measure. */
+ *  (rule 12), so that no copy of it drops the measure. */
 export function checkerVerdict(data: JsonObject): Verdict | null {
   if (data.kind === "pass") {
     return {

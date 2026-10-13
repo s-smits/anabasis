@@ -8,8 +8,6 @@ import { errorCode, errorMessage, type RuntimeSignal } from "./runtime-values.ts
  * than through the global at call time, because whatever replaces that global also decides whether
  * a surviving process group is reported — and a replacement that throws answers that there is
  * none, which is the answer that lets a verifier accept output while a child keeps running.
- * test/trusted-runtime.test.ts installs a `poisonedKill` throwing ESRCH for every target and then
- * checks that a live detached group is still seen.
  */
 const processKill = runtimeProcess.kill.bind(runtimeProcess);
 
@@ -20,7 +18,6 @@ const processKill = runtimeProcess.kill.bind(runtimeProcess);
  *
  * The 1 MiB default a reader may be thinking of is Node's contract, not Bun's: there is no default
  * to raise here, so the number is not what is being defended — the existence of a cap is.
- * test/trusted-runtime.test.ts holds that reading by capturing two million bytes whole.
  */
 export const CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
 
@@ -97,10 +94,9 @@ export function killProcessGroup(child: Bun.Subprocess, signal: RuntimeSignal): 
  * without disturbing it.
  *
  * EPERM counts as alive, because it is the host saying the target exists and this process may not
- * signal it. Reading it as gone is the expensive direction: `verifier-lifetime.ts` removes a
- * verifier's working cell and writes a `groupAbsent: true` cleanup receipt on the strength of this
- * answer, so a live member declared absent means a directory deleted underneath a process that is
- * still writing to it.
+ * signal it. Reading it as gone is the expensive direction: the verifier removes a check's cell
+ * once its group is reaped (`src/kernel/verify.ts`), so a live member declared absent means a
+ * directory deleted underneath a process that is still writing to it.
  */
 export function processGroupExists(processGroupId: number): boolean {
   if (!Number.isSafeInteger(processGroupId) || processGroupId <= 1) return false;
@@ -125,8 +121,8 @@ export function processGroupExists(processGroupId: number): boolean {
  * a pid the next check still finds.
  *
  * It answers with a boolean rather than throwing, because a group that will not die is a fact its
- * caller records — the verifier carries it as `groupReaped: false` in the settlement it writes —
- * and not an error that should displace whatever the command produced.
+ * caller records — `tools/runs/stop.ts` counts the groups it left — and not an error that should
+ * displace whatever the command produced.
  */
 export async function terminateAndReapProcessGroupId(processGroupId: number): Promise<boolean> {
   if (!processGroupExists(processGroupId)) return true;

@@ -7,7 +7,7 @@
  * lower reference, which says whether the tasks got harder from one epoch to the next. A row holds
  * counts of valid answers and solves and nothing of a task.
  *
- * Written on 10 October, when the operator asked for the climb to be read as such: ten campaigns
+ * Written when the operator asked for the climb to be read as such: ten campaigns
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */

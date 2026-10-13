@@ -22,7 +22,7 @@ runs.
 
 1. Write the value and the layers it should cross, and which reader shows it last.
 2. At each layer run the owning test alone: `bun test test/<file>`. Then put back the timings file
-   the run rewrites: `git checkout -q test/.test-timings.json`.
+   the run rewrites: none since 12 October, when Git stopped tracking `test/.test-timings.json`.
 3. Look hardest where two layers meet. A join is proven only by a test that runs the real writer
    against the real reader. Two tests that each stand in for the other side prove two halves.
 4. A join with no such test is the finding. Write the test, or rehearse the round that crosses it

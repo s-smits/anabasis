@@ -4,9 +4,9 @@
  *
  * Every applicable check runs in a fresh cell, as its own process with only its declared projection
  * of the answer and the task, under the wall a seat's commands run under with the network closed. A
- * check's tools run in that same wall. Until 11 October a wall of the verifier's own ran it, closed
- * by default and attested before and after each check, which v1 needed as its Builder wrote the
- * checks; here an answer is data and a check is the exam side's code (`docs/simplify.md`, W6).
+ * check's tools run in that same wall. No wall of the verifier's own is needed, as v1's was while
+ * its Builder wrote the checks: here an answer is data and a check is the exam side's code
+ * (`docs/simplify.md`, W6).
  *
  * The verdict is a pass, a fail naming the checks that refused the answer, faulty when a check
  * itself failed on the request (it threw, returned no boolean, or is missing), or a non-result when
@@ -76,7 +76,7 @@ type CheckExecution = {
 
 type BriefTruthCheck = { id: string; citedDecisionIds: string[]; execution: CheckExecution };
 
-/** The brief declares its checks and, since 10 October, may declare an objective (`Objective`):
+/** The brief declares its checks and may declare an objective (`Objective`):
  *  the evaluator then exports `objective(request)`, a finite number of a valid answer, which the
  *  verifier measures after the checks pass (`OBJECTIVE`). An answer the checks refuse has none. */
 export type Brief = { correctnessContract: string; truthChecks: BriefTruthCheck[]; objective?: Objective };

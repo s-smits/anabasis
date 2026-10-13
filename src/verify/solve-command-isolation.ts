@@ -1,4 +1,4 @@
-/** Controller-owned wall for Built Bash commands, and for a check (`src/kernel/verify.ts`), whose
+/** Controller-owned wall for a seat's commands, and for a check (`src/kernel/verify.ts`), whose
  * cell is its root and whose network is closed.
  *
  * A command receives an explicit environment rather than an inherited one, and outbound network is
@@ -10,7 +10,7 @@
  * it whole. The host home and the repository stay closed, except for the
  * runtime and toolchain roots the enclosing solve policy reopens read-only so an installed
  * interpreter can still find itself, and for the tool tree, which a tree inside the seat's root
- * has to really lie inside that root to be (`commandReadAllows`, 11 October).
+ * has to really lie inside that root to be (`commandReadAllows`).
  */
 import { existsSync, readdirSync, realpathSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
@@ -47,10 +47,10 @@ import { runtimeProcess } from "../meta/process.ts";
 
 /**
  * The whole environment a command receives, built from fixed settings, scratch paths and the host
- * toolchain locations below. It is built rather than filtered: the controller resolves a live
- * bearer token for every model call, and `pi-providers.ts` puts `CLAUDE_CODE_OAUTH_TOKEN` into the
- * child environment it composes, so a command that inherited the parent environment could simply
- * print one. No credential-removal filter is trusted to stand between the two.
+ * toolchain locations below. It is built rather than filtered: the host's environment holds the
+ * provider's credential, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`
+ * (`src/backends/claude.ts`), so a command that inherited the parent environment could simply print
+ * it. No credential-removal filter is trusted to stand between the two.
  *
  * `HOME` points at the session home rather than at the work tree, because the write deny is
  * absolute outside the writable roots: a toolchain writing its cache to the real home would be
@@ -189,11 +189,11 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
  * more specific rule decides.
  *
  * A tool tree inside the seat's root, the Builder's `harness/.toolchain`, is one the seat's own
- * commands write, and it is reopened only where its real path lies inside that root too. Until
- * 11 October its real path was reopened wherever it led, so a Builder that linked
- * `harness/.toolchain` to the repository, another worktree, a pack or the operator's home read
- * that root through the wall. A tree outside the seat's root is the host's or a pack's, a kept
- * state's link to the tree beside it or a stored bundle's, and is reopened with what it links to.
+ * commands write, and it is reopened only where its real path lies inside that root too: reopened
+ * wherever it led, a Builder that linked `harness/.toolchain` to the repository, another worktree,
+ * a pack or the operator's home would read that root through the wall. A tree outside the seat's
+ * root is the host's or a pack's, a kept state's link to the tree beside it or a stored bundle's,
+ * and is reopened with what it links to.
  *
  * `manifests` are the package.json paths between the tree and the root that closes it, which
  * Darwin reopens one by one: Node takes a `.js` program's module type from the nearest one above
@@ -238,9 +238,8 @@ function darwinCommandProfile(
   dirs: Pick<CommandDirectories, "root" | "toolTree">,
 ) {
   const writeDenies = [...new Set(["/", ...base.deniedWriteRoots])].sort();
-  // The seats' parent and the host's own scratch beside it. Under a deny-default read rule one
-  // seat's root stayed private without a rule of its own. Reads are open now, so both are denied
-  // here and this seat's root is re-allowed after them.
+  // The seats' parent and the host's own scratch beside it. Reads are open by default, so both are
+  // denied here and this seat's root is re-allowed after them.
   const closed = hostRoots();
   const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].sort();
   const { roots: readAllows, manifests } = commandReadAllows(base, readDenies, dirs);
@@ -258,8 +257,7 @@ function darwinCommandProfile(
   const sharedTmp = canonicalRoots(["/tmp", "/var/tmp", ...userTemp.roots]);
   const profile = [
     "(version 1)",
-    // The same read posture as the session that owns this command and as the Builder's authoring
-    // wall: open by default, with the repository and its worktrees, a stored pack and the home
+    // Reads open by default, with the repository and its worktrees, a stored pack and the home
     // closed. All of it arrives through `solveIsolationPolicy`, so there is no second list here to
     // fall out of step.
     "(allow default)",
@@ -326,7 +324,7 @@ export function commandIsolationPolicy(
     return { ...shared, profile, readAllowRoots: readAllows, readDenies: [] };
   }
   /*
-   * What the Linux command wall overmounts, now that its reads open by default: the session's
+   * What the Linux command wall overmounts under its open read default: the session's
    * denied roots, which are the repository, its other worktrees, a stored pack and the operator
    * home; and the shared temporary directories. The temporary directory holds every
    * other seat's root and every concurrent verification's staged workdir, so it is hidden whole
@@ -400,8 +398,8 @@ export function stageCommandIsolation(
 /**
  * The argv that runs `argv` under these rules, with Darwin's profile staged at `profileFile`. A
  * seat's command takes it through the shell above, which reaps what the command leaves. A check
- * takes it bare (`src/kernel/verify.ts`), as it took the verifier's own wall until W6: the verifier
- * ends the check's process group itself, and a shell and its trap would start with every check.
+ * takes it bare (`src/kernel/verify.ts`): the verifier ends the check's process group itself, and a
+ * shell and its trap would start with every check.
  */
 export function isolatedArgv(
   policy: CommandIsolationPolicy,

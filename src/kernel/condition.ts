@@ -3,8 +3,7 @@
  * solves are comparable only when their conditions differ in the one thing being compared.
  *
  * The host sets every field; the Builder sets none. The model, its effort and every limit are the
- * host's, which a Built Harness used to declare for itself: on 7 October each harness state carried
- * its own `config.yaml` naming its wall, turn cap, shell timeouts and concurrency.
+ * host's, and nothing a harness declares about them is read.
  */
 import { asRecord, isNumber, type JsonValue, type OpenRecord } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -66,16 +65,18 @@ export interface Condition {
   readonly compaction: string;
   readonly solverTools: string;
   readonly verifierTools: string;
-  /** The digest of the sandbox's policy: what a solve may read, write, run and fill on disk. */
+  /** The digest of the sandbox a solve ran under, as the campaign names it: the isolation
+   *  profile's id, the platform and the disk cap (`tools/d2/campaign.ts`). What the profile lets a
+   *  command read and reach, the network among it, is the profile's and is not recorded apart. */
   readonly sandbox: string;
   readonly limits: Limits;
   /** The host's code a solve runs through, by content: `src` and `vendor` as the files stand. A
    *  commit that touches neither opens no new condition, and an uncommitted change to either does,
    *  where a commit id did the opposite on both counts. */
   readonly host: string;
-  /** The test condition. Until 2026-10-09 a task was also solved once under a stronger condition,
-   *  to show it could be done, and a log written before then holds such solves. No comparison
-   *  counts one (`compare.ts`). */
+  /** The test condition. `strong` is the stronger condition a log written before 9 October may
+   *  hold a solve under, made to show a task could be done; no comparison counts one
+   *  (`compare.ts`). */
   readonly side: "test" | "strong";
 }
 

@@ -9,34 +9,32 @@
  *
  * Nothing is read from the log here. The two lists are the campaign's one reading
  * (`campaignOf`, `handover.ts`) through the Builder's filter, so that what a Builder is told and
- * what the operator's view prints are the same rows. Until 2026-10-09 this file folded the log
- * for itself, which is how v1's four readers of one test set began.
+ * what the operator's view prints are the same rows. A fold of its own here would be a second
+ * reader, which is how v1's four readers of one test set began.
  *
  * The filter is what the wall allows (`AGENTS.md`, section 1):
  *
  * - A fail is told whole, with its standing, where its task is one of the session's practice
- *   tasks. The list only grows: nothing is summarised or dropped, and
- *   `read_trace` opens each (`tools.ts`). v1 folded its fails into at most six issues, and a
- *   genuine fail led to a harness change about once in six chances.
+ *   tasks. The list only grows: nothing is summarised or dropped, and `read_trace` opens each
+ *   (`tools.ts`). v1 folded its fails into at most six issues, and a genuine fail led to a
+ *   harness change about once in six chances.
  * - A comparison is told as its tally and its reading, and only once it has tallied a task. It
  *   names no task, no share of valid answers, no ruling and no cost: a held-out task is never
  *   shown, and which of them were won is a way to it. That is a few bits a comparison, which the
  *   plan accepts while comparisons are few. The line says how many tasks the tally is over, which
  *   is the tally's own sum. It names the two harnesses, and the turns each solve was held to
- *   where they were limited: since 2026-10-09 a campaign's reference changes at a promotion and
- *   its budget by a rule, and a list that said "the reference harness" of each line set tallies
- *   against two references and under two limits side by side as if they were one series. On
- *   that day one campaign's five comparisons were two against the starter and three against its
- *   first harness, the last of them under five turns. Both are the build side's own facts: a
- *   harness the Builder made or started from, and a limit its practice solves are told too. Until 2026-10-09 it gave the three counts with no unit, and the first
- *   live Builder to be told one (Sonnet 5.5 at high, told "0 won, 0 lost, 5 tied") wrote in its
- *   note that its harness had tied "on all 5 comparisons so far", of which the log held one.
+ *   where they were limited: a campaign's reference changes at a promotion, and a list that said
+ *   "the reference harness" of each line set tallies against two references side by side as if
+ *   they were one series. Both are the build side's own facts: a harness the Builder made or
+ *   started from, and a limit its practice solves are told too. The unit is named because a
+ *   Builder told "0 won, 0 lost, 5 tied" with none wrote in its note that its harness had tied
+ *   "on all 5 comparisons so far", of which the log held one.
  */
 import { plural } from "../meta/text.ts";
 import type { Handover, PracticeFail } from "./handover.ts";
 
 /** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. The
- *  last two are readings a comparison made until 2026-10-11, which a log of before holds. */
+ *  last two are readings a comparison made before 11 October, which an older log holds. */
 const READ = new Map([
   ["step", "a step"],
   ["no-step", "no step"],
@@ -60,8 +58,7 @@ function stands({ standing, under }: PracticeFail): string {
 /**
  * The campaign's failed practice solves on one of `tasks`, a line each, oldest first: the solve's
  * id, its task, the harness it ran under, how it ended and where it stands now. `tasks` maps a
- * task version to the id a Builder knows it by. Until 11 October the line ended with a
- * Diagnoser's reading of the fail; 20 of 20 named the solver (`docs/simplify.md`, E1).
+ * task version to the id a Builder knows it by.
  */
 export function failsTold(fails: readonly PracticeFail[], tasks: ReadonlyMap<string, string>): string[] {
   return fails.flatMap((fail) => {

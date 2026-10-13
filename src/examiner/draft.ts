@@ -1,9 +1,9 @@
 /**
  * Move 2 of a campaign that opens from a prompt: the Examiner drafts the exam.
  *
- * Until 2026-10-09 a campaign could open only over a pack a v1 Builder had written, which four
- * flags named, and three such packs existed (`docs/plan.md`, row F53). Here the operator's prompt
- * names a domain, and one session drafts what a campaign needs before its first task is solved:
+ * A campaign opens either over a stored pack a v1 Builder wrote, which four flags name, or from a
+ * prompt (`docs/plan.md`, row F53). Here the operator's prompt names a domain, and one session
+ * drafts what a campaign needs before its first task is solved:
  * the public rules, each with the source that states it, the answer format, one check for each
  * rule, a few example tasks, and controls, which are answers to those examples with a known label.
  *
@@ -27,10 +27,10 @@
  * told a target writes towards it.
  *
  * Under `draftWalled` it has `bash`, `read` and `write` in a walled home of its own, as a session
- * that writes tasks has (`shell.ts`). Until 11 October it had `draft_exam` and `finish` alone: it
- * was asked for each rule's source named precisely enough to look up, and could look nothing up,
- * nor run its check program on its controls before the host did (`docs/plan.md`, row F57). It is
- * told what the shell is and what the wall's probe found of the network, and not what to use it for.
+ * that writes tasks has (`shell.ts`), so that it can look up the source it is asked to name for
+ * each rule, and run its check program on its controls before the host does (`docs/plan.md`, row
+ * F57). It is told what the shell is and what the wall's probe found of the network, and not what
+ * to use it for.
  * Nothing hidden exists at drafting, and the wall closes the repository, where the log lies. Its
  * commands are in the log as its calls (`draft.call`).
  *
@@ -94,8 +94,8 @@ export interface Draft {
   /** The check program's source: a module that exports `checks`, a function for each check id,
    *  and `objective` where the draft declares one. */
   readonly evaluator: string;
-  /** The objective two valid answers are compared by, where the field has one (10 October):
-   *  absent, two valid answers to one task are even. */
+  /** The objective two valid answers are compared by, where the field has one: absent, two valid
+   *  answers to one task are even. */
   readonly objective?: Objective;
   /** The example tasks, which are the exam's first. */
   readonly tasks: readonly {
@@ -214,7 +214,7 @@ const CONTROL = {
 const DRAFT_PARAMETERS = Type.Object({
   domain: Type.String({ minLength: 1, description: "The domain, in a few words." }),
   // What a size fixed here costs is said where the scope is written. The second exam drafted
-  // from a prompt (2026-10-09) held every task to six rows and six columns, which its field
+  // from a prompt (9 October) held every task to six rows and six columns, which its field
   // does not: the starter then answered 24 of 24 solves at the full limit whatever was
   // written, and the harness that read a step listed every candidate of a task that small.
   scope: Type.String({
@@ -507,9 +507,8 @@ export async function author<Parameters extends TSchema, Thing>(
     limits: { ...limits },
     ...of.started,
   });
-  // The wall runs from the seat's start, before the shell's network probe is awaited: until
-  // 11 October it began after the probe, and after the mount and the wall's own probe, so a
-  // session spent those seconds outside its limit (found by review of #225).
+  // The wall runs from the seat's start (`began`), before the shell's network probe is awaited,
+  // so the mount, the wall's own probe and the network probe are inside the session's limit.
   const wall = new AbortController();
   const timer = setTimeout(
     () => wall.abort(),

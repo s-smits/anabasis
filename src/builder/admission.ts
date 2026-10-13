@@ -4,26 +4,24 @@
  *
  * One function decides it, and every way of starting a comparison asks that function: a round or
  * a checkpoint asks before its first event (`admitComparison`), whether the campaign command made
- * it (`tools/d2/harness-builder.ts`) or a hand started it. Until 2026-10-09 the launcher
- * (`bun run runs launch`) alone held these refusals, and a round started directly on a checker
- * nobody had read went on to pay for its solves; the launcher went on 2026-10-11, once the
- * campaign command was the one way a move is started (`docs/simplify.md`, D2).
+ * it (`tools/d2/harness-builder.ts`) or a hand started it, so that no comparison started by hand
+ * pays for its solves on a checker nobody has read.
  *
  * What is refused:
  *
- * - a log with no held-out task, or with fewer to score than a step takes at the level asked for;
- * - a comparison that would leave fewer untied tasks than a step takes. The untied tasks are
- *   the ones the harness this comparison is made against did not answer in every solve of the
- *   campaign's last comparison: after buffer's first step that harness was valid in every solve
- *   on 8 of 11 tasks. A task held out since counts whole;
+ * - a log with no held-out task, or with fewer to score than a first reading takes at the
+ *   trigger asked for (`sweepOf`);
+ * - a comparison that would leave fewer untied tasks than that. The untied tasks are the ones
+ *   the harness this comparison is made against did not answer in every solve of the campaign's
+ *   last comparison: after one campaign's first step that harness was valid in every solve on
+ *   8 of 11 tasks. A task held out since counts whole;
  * - a comparison with no dollar cap;
  * - a checker `tools/c/accept.ts` has never read;
- * - a campaign the plan's stop rule has stopped: three moves in a row that could have shown a
- *   gain and showed none (`stopRule`, `docs/plan.md`, row F48). The operator may go on past it by saying why
- *   (`--past-stop`), and the reason is logged. Until 2026-10-09 four commands printed the rule's
- *   reading and none acted on it;
- * - a first record of the campaign's setting that is another than the log's solves ran under,
- *   unless the operator says it is new (`unrecorded`).
+ * - a campaign the plan's stop rule has stopped: as many moves in a row as the campaign's
+ *   patience that could have shown a gain and showed none (`stopRule`, `docs/plan.md`, row F48).
+ *   The operator may go on past it by saying why (`--past-stop`), and the reason is logged;
+ * - a first record of the campaign's setting other than the one the log's solves ran under
+ *   (`unrecorded`, `firstRecord` in `tools/d2/setting.ts`).
  *
  * A rehearsal is exempt from all of it, by name and here: its seats are scripts, which are paid
  * nothing, and it has to be able to walk any path a seed can be cut to. The refusals a comparison
@@ -36,11 +34,9 @@
  * checks, and a campaign the stop rule has not stopped.
  *
  * What goes on unasked is what the log holds a start of, of its own kind (`begun`): a comparison
- * that began, and a session that began. Until 2026-10-09 either start exempted both, so a round
- * started by hand under the id of a session that had run by itself compared with no check at all,
- * on an unread checker and past the stop rule (the third review, row F42). A comparison stopped
- * after its start goes on under its id, where the launcher had once asked it the whole check a
- * second time (row F45).
+ * that began, and a session that began. A start of the other kind exempts nothing, so a round
+ * started under the id of a session that ran by itself is asked the whole check (row F42). A
+ * comparison stopped after its start goes on under its id, and is not asked again (row F45).
  *
  * What only a host or an id can refuse is the command's: a comparison that reported says what it
  * said and ends, a session whose id was cut is refused (`spent`), and the campaign command waits
@@ -91,7 +87,7 @@ export interface Wanted {
   readonly target: number;
   readonly solves: number;
   /** The level the step and its repeat together clear, and the one a first reading clears to buy
-   *  the repeat (`src/builder/move.ts`, `readTwice`, `triggered`). */
+   *  the repeat (`readTwice`, `triggered`, `src/kernel/compare.ts`). */
   readonly level: number;
   readonly trigger: number;
   /** Whether a Builder session runs before the comparison. */
@@ -121,7 +117,7 @@ interface Starting {
   readonly seats: "paid" | "scripted";
   /** The refusals the comparison makes of its own terms (`refuseTerms`, `round.ts`), which throw.
    *  They are asked after the admission's and before anything is written, so that a command
-   *  refused on either leaves the log as it was (the third review, row F44). */
+   *  refused on either leaves the log as it was. */
   readonly own: () => void;
 }
 
@@ -141,8 +137,8 @@ interface StartingSession {
  *  tasks, and what a stop knows a running one by (`tools/runs/pulse.ts`, `tools/runs/stop.ts`). */
 export const EXAMINE = "tools/d1b/examine.ts";
 const STARTED = "comparison.started";
-// The reading was a step done late and by hand in the first live rounds (2026-10-09), and on
-// truss 22 of 32 solves were then rejected, 14 on one check, with nothing to say whose fault.
+// On 9 October a round on a checker nobody had read rejected 22 of 32 solves, 14 on one check,
+// with nothing to say whose fault.
 const UNREAD =
   "the campaign's checker has never been read: run tools/c/accept.ts, which puts every control and the do-nothing answer to the checks and says what each check has been seen to do";
 const said = (rows: readonly (readonly [boolean, string])[]) =>
@@ -150,14 +146,12 @@ const said = (rows: readonly (readonly [boolean, string])[]) =>
 
 /** A log's supply for a comparison made against the harness `reference` names: `starter`,
  *  `promoted` for the campaign's reference harness, `latest`, or a digest. The untied share is
- *  the last tallied comparison's; until 2026-10-11 it was the last one's under the setting id of
- *  the log's last test-side solves, which names the host's code too, and a tree moved to a new
- *  commit read no share (`docs/simplify.md`, A4). `fresh`, a digest, is the harness the
- *  comparison reads where the command knows it: the share is then the last comparison's of these
- *  two, since a tie share is of a pair. On t-4 (10 October) a control of the promoted harness's
- *  programs against the starter tied 7 of 8 tasks, 6 of them answered by neither, and the next
- *  command, the whole harness against those programs, was refused on that share, which said
- *  nothing of a harness that answers every task. */
+ *  the last tallied comparison's. `fresh`, a digest, is the harness the comparison reads where
+ *  the command knows it: the share is then the last comparison's of these two, since a tie share
+ *  is of a pair. On 10 October a control of a promoted harness's programs against the starter
+ *  tied 7 of 8 tasks, 6 of them answered by neither, and the next command, the whole harness
+ *  against those programs, was refused on that share, which said nothing of a harness that
+ *  answers every task. */
 export function supplyOf(events: readonly LogEvent[], reference = "promoted", fresh?: string): Supply {
   const sets = taskSets(events);
   // Left out of the scored set as `scoredSet` leaves them out: the tasks waiting for a person's
@@ -209,9 +203,9 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted", fr
     exhausted: spent.length,
     released: sets.released.length,
     // The tasks the reference harness did not answer in every solve: those a changed harness can
-    // still win. Until 10 October no more were counted than the last comparison untied, and a
-    // simulated climb then wrote tasks the reference failed, read 0 untied where nobody answered
-    // them yet, and asked for tasks again in place of a Builder session.
+    // still win, and not only those the last comparison untied: a simulated climb that counted
+    // those alone wrote tasks the reference failed, read 0 untied where nobody answered them yet,
+    // and asked for tasks again in place of a Builder session.
     untied: tallied.length > 0 ? (tallied.length - closed) / tallied.length : null,
     since: pool.filter((version) => since.has(version)).length,
     faults: Array.isArray(reading) ? reading.length : null,
@@ -245,9 +239,9 @@ function stopped({ stop }: Supply, pastStop: string | undefined) {
  *  share leaves it. */
 function sized(supply: Supply, wanted: Pick<Wanted, "target" | "trigger">) {
   const scored = Math.min(wanted.target, supply.held);
-  // What a comparison's test can say at this size is arithmetic, and rehearsals found it before a
-  // round paid to (2026-10-08): exam-1 held one task to score. A first reading that clears the
-  // trigger buys the repeat, so the fewest it takes is the trigger's sweep (10 October).
+  // What a comparison's test can say at this size is arithmetic, and is known before a round pays
+  // for it. A first reading that clears the trigger buys the repeat, so the fewest it takes is the
+  // trigger's sweep.
   const least = sweepOf(wanted.trigger);
   const share = supply.untied ?? 1;
   // A task held out since that comparison has no share on record, and is counted whole.
@@ -259,7 +253,7 @@ function sized(supply: Supply, wanted: Pick<Wanted, "target" | "trigger">) {
  * What a comparison on this supply is short of, where its tasks are what it is short of: held-out
  * tasks to read a step on, or tasks its last comparison left to untie; null where it is short of
  * neither. Both are refusals of `admission`, and this is how move 7 tells them from the others,
- * since their answer is a move and no flag: write tasks, or set the budget again (`decide.ts`).
+ * since their answer is a move and no flag: write tasks (`decide.ts`).
  */
 export function shortOf(
   supply: Supply,
@@ -416,8 +410,8 @@ function entered(
  * Admit the comparison a command is about to start on the campaign whose log is `log`, and return
  * what its reader should know; throws every refusal at once where it may not start. One the log
  * already holds the start of goes on: it was admitted when it began. The start of a session under
- * its id admits no comparison. A rehearsal is admitted unasked. Where the comparison goes on past the stop rule, the operator's
- * reason is logged under its id, once.
+ * its id admits no comparison. A rehearsal is admitted unasked. Where the comparison goes on past
+ * the stop rule, the operator's reason is logged under its id, once.
  */
 export function admitComparison(
   log: string,

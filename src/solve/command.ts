@@ -14,20 +14,10 @@
  * - `host`, beside it and outside the cap, which no command can read: the staged profile and the
  *   model backend's own state, such as Claude Code's configuration and transcripts.
  *
- * A command starts in the home, the one working directory pi's coding tools share: until
- * 2026-10-09 the solver's started in a folder of their own, and nine in ten of them began with
- * `cd ~` (the Starter solves of six campaigns, `docs/transfer.md`). A command that brings files, a
- * harness's tool call or a file tool's write, starts in a folder of its own beside a copy of them
- * (`runWalled`).
- *
- * Until 2026-10-11 each command had a fresh folder and `TMPDIR` of its own, under a policy and a
- * profile file of its own that named them (`docs/simplify.md`, W3).
- *
- * Until 2026-10-11 a shell around the wall read each command's CPU time with `times`, and a solve
- * reported the sum. It counted only the children a command waited for, read zero under
- * Bubblewrap, and a command cut at its limit took the record with it, so the figure was a floor
- * on the host that runs campaigns and nothing on the other; no budget was given in it since
- * 9 October, and it went with the readings at shorter budgets (`docs/simplify.md`, A3).
+ * A command starts in the home, the one working directory pi's coding tools share: when each
+ * started in a folder of its own, nine in ten of the solver's began with `cd ~` (the Starter
+ * solves of six campaigns, `docs/transfer.md`). A command that brings files, a harness's tool call
+ * or a file tool's write, starts in a folder of its own beside a copy of them (`runWalled`).
  */
 import { createLocalBashOperations } from "../../vendor/pi-coding-agent/core/tools/bash.ts";
 import type { Limits } from "../kernel/condition.ts";
@@ -98,12 +88,12 @@ const PROBE_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
 
 /**
  * Whether a package index is reached from inside the wall: `reached` where a command run as a
- * solver's fetched one when this process first asked, `unreached` where it did not. The solver's
- * prompt said "commands have network access" whatever the host did: on the Linux host of
- * 10 October the wall's commands get an empty environment and no resolver, 0 of 143 solves of t-10
- * installed anything, and 26 of the 34 that ran out of turns had spent one on a pip install
- * (its whole-run investigation, lanes 14 and 27). A sentence a host makes false is the host's to
- * make true, so the prompt now says what the probe found.
+ * solver's fetched one when this process first asked, `unreached` where it did not. A prompt that
+ * said "commands have network access" whatever the host did was false on the Linux host of
+ * 10 October, where the wall's commands had an empty environment and no resolver: 0 of 143 solves
+ * of one campaign installed anything, and 26 of the 34 that ran out of turns had spent one on a pip
+ * install. A sentence a host makes false is the host's to make true, so the prompt says what the
+ * probe found.
  */
 export type NetworkReach = "reached" | "unreached";
 /** The reach of each policy this process has probed, by its hash: once a process, and the promise
@@ -133,8 +123,7 @@ interface WalledOptions {
 const SHELL = createLocalBashOperations({ shellPath: "/bin/sh" });
 
 /** The wall one command runs under: `asked` is what was named, floored and at least 1 s, and a
- *  named value only raises the default, up to the maximum, as v1's Built shell held it
- *  (harness-builder-v4 7af7315, src/solve/built-bash.ts:316-321). */
+ *  named value only raises the default, up to the maximum, as v1's Built shell held it. */
 export function shellSeconds(timeout: number | undefined, limits: ShellLimits) {
   const asked = Math.max(1, Math.floor(timeout ?? limits.shellDefaultSeconds));
   return { asked, seconds: Math.min(Math.max(asked, limits.shellDefaultSeconds), limits.shellMaxSeconds) };
@@ -156,9 +145,9 @@ export function usedSeconds(clock: SolveClock | undefined, now = performance.now
  * How long a command that starts now may run: the condition's limits (`shellSeconds`), and no
  * longer than the solve has left before its reserve. `nearEnd` says the solve's end set it.
  *
- * Until 2026-10-09 a command was held to its own limits alone, and one the solve's wall fell in
- * took the solve with it: at a five-minute wall 12 of 46 Starter solves ended at it, 11 of them
- * inside a command, with nothing sent. A command now returns while there is time to act on it. One started inside
+ * A command held to its own limits alone took the solve with it when the solve's wall fell inside
+ * it: at a five-minute wall 12 of 46 Starter solves ended at it, 11 of them inside a command, with
+ * nothing sent. So a command returns while there is time to act on it. One started inside
  * the reserve, or with under five seconds before it, is left to its own limits: the solver is told
  * the time used with every result, and what it starts then is its own to judge.
  */
@@ -195,13 +184,13 @@ export function makeSeatDirs(dirs: SolveDirs): void {
 
 /**
  * The base of a wall over `dirs`, with its folders made: the solver's, the Builder's and the
- * Examiner's are built the same way, and until 10 October each spelled it. `who` names the actor
- * in the refusal of a host that cannot wall one.
+ * Examiner's are built the same way, here. `who` names the actor in the refusal of a host that
+ * cannot wall one.
  *
  * The wall is a test and no convention (`AGENTS.md`, rule 3): before its first use in a process
  * each policy is probed (`probeWall`), and a probe that does not hold refuses the wall with its own
- * lines. Until 10 October the probe ran in the test suite alone, and a sibling worktree's log was
- * readable in every live run.
+ * lines. While the probe ran in the test suite alone, a sibling worktree's log was readable in
+ * every live run (10 October).
  */
 export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Promise<SolveIsolationPolicy> {
   makeSeatDirs(dirs);
@@ -233,9 +222,7 @@ export async function walledBase(dirs: SolveDirs, wall: Walled, who: string): Pr
  * all four held, and otherwise the command's output, a line a step. The last step is the probe's
  * control: a launch that refuses everything fails it, as one that refuses nothing fails the first.
  *
- * Until 11 October the probe ran v1's launch of its sandboxed model process, which no seat of v2
- * runs, under a policy of its own that only the probe used (`docs/simplify.md`, F5). Nothing is
- * written in the sibling, which another user may own: a rehearsal as the campaign user refused
+ * Nothing is written in the sibling, which another user may own: a rehearsal as the campaign user refused
  * every solve on EACCES in the root-owned main tree when the probe wrote a canary there (10 October).
  */
 export async function probeWall(
@@ -307,7 +294,7 @@ export function networkReach(wall: CommandWall): Promise<NetworkReach> {
 /**
  * Runs `command` on `wall`, in the seat's home, or beside a copy of what it brings (`stage`).
  *
- * A command that brings nothing makes nothing to start. One solve filled its 2 GiB on 2026-10-09
+ * A command that brings nothing makes nothing to start. One solve filled its 2 GiB on 9 October
  * and was then refused `rm -rf ~/w` fourteen times running, each before it started, when every
  * command made a folder of its own first. One that brings files has nowhere to stage them on a
  * full volume, and fails as the full volume it is.

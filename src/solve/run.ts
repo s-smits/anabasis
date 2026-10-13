@@ -7,17 +7,17 @@
  *
  * The loop runs in this process and so does the model's own process: under the Claude backend,
  * Claude Code runs on the host with a home of its own outside the command wall. v1 confined the
- * model process too (`src/backends/pi-built-child.ts` at 7af7315); here only the commands are walled:
- * the solver's bash, its file tools and every harness tool call alike (`command.ts`).
+ * model process too; here only the commands are walled: the solver's bash, its file tools and every
+ * harness tool call alike (`command.ts`).
  *
- * The loop is v1's (`src/backends/pi-built-child.ts:476-498` at 7af7315): tools run one at a time, a
+ * The loop is v1's: tools run one at a time, a
  * model that stops without submitting is nudged, and the turn cap counts the prompts, the opening one
  * and each nudge. Departures, beside those named in the tools and the prompt:
  * - No submit at the wall: a solve the wall ends is a wall-ended fail.
  * - A limit on the model's own turns, where the condition names one (`Limits.modelTurns`): the
  *   solver is told it and how many it has used, and the loop ends after the last one.
  * - A failed model turn ends the attempt as the provider's non-result, which `solve` runs again whole;
- *   v1 nudged once more into the same session unless the failure repeated (`pi-built-child.ts:344-363`).
+ *   v1 nudged once more into the same session unless the failure repeated.
  */
 import {
   type AgentEvent,
@@ -141,9 +141,8 @@ export interface Played {
 
 const RERUNS = 3;
 /** The text of a result or a turn the trace keeps: more than pi's own tools return of an output
- *  (50 KB), so the trace holds what the solver read. At 4 KB it held the head of a long result, and
- *  whoever read a fail afterwards read less than the solver had. v1 cut
- *  its traces the same way and its own investigation named that as a loss. */
+ *  (50 KB), so the trace holds what the solver read. At 4 KB, as v1 cut its traces, it held the
+ *  head of a long result, and whoever read a fail afterwards read less than the solver had. */
 const TRACE_TEXT_BYTES = 64 * 1024;
 /** The wait before rerun `rerun`, cut short by the solve's kill. */
 const backoff = (rerun: number, kill?: AbortSignal) =>
@@ -179,7 +178,7 @@ async function attemptSolve(request: SolveRequest, id: string): Promise<Ending> 
     effort: request.effort,
     limits: request.limits,
     // The load with the cores it is a load on: a wall counts the clock, and 30 runnable processes
-    // are another host on 12 cores than on 64. Until 2026-10-09 a log held the load alone.
+    // are another host on 12 cores than on 64.
     load: loadavg(),
     cores: availableParallelism(),
     ...keyIfDefined("comparison", request.comparison),
@@ -342,9 +341,9 @@ function spent(turns: readonly AssistantMessage[], { modelTurns }: Pick<Limits, 
 
 /**
  * A solver's tool with the solve time used as the last line of whatever it returns, a result or an
- * error, and the turn it is in where its turns are limited. Until 2026-10-09 a solver had no clock and was told so. In the two live rounds of that
- * day, five of the six practice solves that failed had submitted an answer the solver's own check
- * had refused, stopping early or out of time, by the operator's account of them
+ * error, and the turn it is in where its turns are limited. When a solver had no clock, in two live
+ * rounds of 9 October, five of the six practice solves that failed had submitted an answer the
+ * solver's own check had refused, stopping early or out of time, by the operator's account of them
  * (`docs/transfer.md`). What a solver does with its time is its own to decide; this says what the
  * time is.
  */
@@ -369,9 +368,8 @@ export function timed(tool: SolverTool, { clock, turns, modelTurns }: Used): Sol
 /**
  * What a solver is given, in the order pi gives a coding agent its tools: pi's own coding tools, as
  * many as the harness's presets select; then the harness's domain tools, which are to pi what an
- * extension's custom tools are; then `submit`. Every description is the tool's own. Until
- * 2026-10-09 each was led by its authority, "Role: reader." and the like, as v1's prompt named a
- * tool's kind; a solver is told what a tool does and by which name.
+ * extension's custom tools are; then `submit`. Every description is the tool's own, and none is led
+ * by the tool's kind, as v1's prompt led it: a solver is told what a tool does and by which name.
  */
 export async function solverTools(
   request: { readonly task: PublicTask; readonly contract: Contract },

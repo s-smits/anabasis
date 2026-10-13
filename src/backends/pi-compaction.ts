@@ -1,6 +1,6 @@
 /**
- * Compaction for pi's own loop, which serves Codex and OpenRouter: v1's `src/backends/pi-compaction.ts`
- * (7af7315), on pi coding-agent's compaction, vendored in `vendor/pi-coding-agent/core/compaction`
+ * Compaction for pi's own loop, which serves Codex and OpenRouter: v1's, on pi coding-agent's
+ * compaction, vendored in `vendor/pi-coding-agent/core/compaction`
  * since pi-agent-core no longer carries it. Before each model call, a context past the window
  * less pi's reserve has its older span summarised by the served model, and the summary leads the
  * retained tail; a failed summary leaves the context as it was. The summary runs at the loop's

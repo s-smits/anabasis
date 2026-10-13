@@ -4,8 +4,7 @@ import { tmpdir as hostTmpdir } from "node:os";
 export { availableParallelism, constants, homedir, hostname, loadavg } from "node:os";
 
 /**
- * Tests get one private scratch root without changing the host TMPDIR that Darwin's isolation
- * profiles use to describe the compiler's real temporary directory.
+ * Tests get one private scratch root through `ANA_TEST_TMPDIR`, without changing the host TMPDIR.
  */
 export function tmpdir(): string {
   return Bun.env.ANA_TEST_TMPDIR ?? hostTmpdir();

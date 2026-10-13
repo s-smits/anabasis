@@ -1,10 +1,7 @@
 /**
  * How many values fall under each name.
  *
- * `harness_inspect` builds three of these for one readiness answer — task families, grounding kinds
- * and hidden checks per check id — and the outcome scorecard three more over authoring evidence,
- * counting repeated finding hashes, calls by session stage and re-authored accepted sessions. A
- * hand-written copy of the loop is the one that drifts: a `Map` here and a record there, and two
+ * A hand-written copy of the loop is the one that drifts: a `Map` here and a record there, and two
  * counts in the same report stop being comparable for a reason no reader of that report can see.
  */
 export function countBy<T>(values: readonly T[], key: (value: T) => string) {
@@ -17,7 +14,7 @@ export function countBy<T>(values: readonly T[], key: (value: T) => string) {
 }
 
 /** The middle value, or null when there is none. An even count averages its two middle values, so a
- *  battery of six is not read at its fourth case. Each reader rounds the result its own way. */
+ *  list of six is not read at its fourth value. Each reader rounds the result its own way. */
 export function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = values.toSorted((a, b) => a - b);

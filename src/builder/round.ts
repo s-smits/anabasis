@@ -38,7 +38,7 @@
  *
  * The reference is read against itself as the test is (the plan's A/A): its solves of a task
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
- * disagree (`flips`) and its earlier against its later ones apart as the drift (`comparison.ts`).
+ * disagree (`flips`, `comparison.ts`).
  * At four solves a side the test's own solves hold it, two against two, and at fewer there is none.
  * It should read no step, and decides nothing here. Until 12 October its later solves ran after
  * the test's own were done, so a drift read as a difference, and until 13 October `--noise` read

@@ -103,13 +103,11 @@ export interface Report {
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
    *  where it holds four or more of a task: how often two of its solves of a task
-   *  disagree (`flips`), its earlier solves against its later ones, the drift (`drift`), and the
-   *  objective's margin its own spread sets, which a later comparison reads by (`marginOf`,
+   *  disagree (`flips`), and the objective's margin its own spread sets, which a later comparison reads by (`marginOf`,
    *  `marginRead`), null where the objective measured no two valid answers of one task. */
   readonly noise:
     | (Tested & {
         readonly flips: number | null;
-        readonly drift: Tally;
         readonly margin: ReturnType<typeof marginOf>;
       })
     | null;
@@ -392,12 +390,12 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const sets = setsOf(all, fixed, pairs, aside);
   const { frontier } = sets;
   /** The reference against itself on halves of the test's own solves (`Sides`, `halves`). */
-  const itself = (halves: "mirrored" | "in-order") =>
-    kept(pairsOf(events, live, { ...sides, fresh: fixed.old, halves }, fixed.solves / 2).pairs);
+  const itself = () =>
+    kept(pairsOf(events, live, { ...sides, fresh: fixed.old, halves: "mirrored" }, fixed.solves / 2).pairs);
   // The A/A (12 October, the plan's section 4b): where the reference's solves of a task are four
   // or more and even, which halves mirrored in time split two against two at least. At four a
   // side every comparison carries one.
-  const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself("mirrored") : null;
+  const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself() : null;
   const valid = validOf(pairs, fixed.solves);
   // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
   const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
@@ -419,7 +417,6 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         : {
             ...scored(mirrored),
             flips: flipsOf(mirrored),
-            drift: tally(itself("in-order")),
             margin: marginOf(mirrored),
           },
     counted: pairs.length === first.pairs.length ? null : scored(first.pairs),

@@ -569,7 +569,6 @@ describe("a campaign", () => {
           p: 1,
           differences: [0, 0],
           flips: 0,
-          drift: { wins: 0, losses: 0, ties: 2 },
           margin: { margin: 0.05, pairings: 8 },
         },
       }).slice(-2);

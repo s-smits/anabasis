@@ -889,8 +889,6 @@ describe("the pairs a comparison reads from the log", () => {
     // The A/A is read as the A/B is: on halves mirrored in time, so that a drift across the
     // task's solves falls on both alike.
     expect(halves({ fresh: "old", halves: "mirrored" })).toMatchObject({ old: [P, P], fresh: [F, F] });
-    // Earlier against later is the drift, read apart: the first two started against the last two.
-    expect(halves({ fresh: "old", halves: "in-order" })).toMatchObject({ old: [P, F], fresh: [F, P] });
     // Beside it the new harness is paired with the reference's first mirrored half, which is the
     // half its own solves were mirrored around.
     expect(halves({ halves: "mirrored" })).toMatchObject({ old: [P, P], fresh: [P, F] });

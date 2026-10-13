@@ -76,7 +76,7 @@
  * Nothing here decides a step; it reports the tally and its test.
  */
 import { sha256 } from "../meta/digest.ts";
-import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { conditionsOf, settingId } from "./condition.ts";
@@ -151,6 +151,8 @@ interface Sides {
  */
 interface Stage {
   readonly frontier: readonly number[];
+  /** The task each frontier difference is of, where the report names them (since 14 October). */
+  readonly named: readonly string[] | null;
   readonly retained: readonly number[] | null;
   readonly untied: readonly string[];
   readonly families: readonly string[];
@@ -268,6 +270,8 @@ function stageOf(report: JsonObject): Stage | null {
     return Array.isArray(found) && found.every(isNumber) ? found : null;
   };
   const frontier = differences(report.frontier);
+  const of = asRecord(report.frontier)?.of;
+  const named = Array.isArray(of) && of.every(isString) && of.length === frontier?.length ? of : null;
   const retained = report.retained === UNMEASURED ? null : differences(report.retained);
   if (frontier === null || (retained === null && report.retained !== UNMEASURED)) return null;
   // A family's frontier tally: its untied tasks, and all it scored there.
@@ -282,6 +286,7 @@ function stageOf(report: JsonObject): Stage | null {
   });
   return {
     frontier,
+    named,
     retained,
     untied: counts.flatMap(({ name, untied }) => (untied > 0 ? [name] : [])),
     families: counts.flatMap(({ name, tallied }) => (tallied > 0 ? [name] : [])),
@@ -339,23 +344,45 @@ export function triggered(report: JsonObject, trigger: number): boolean {
 /**
  * Whether the last two of a pair's comparisons promote: the first bought the repeat (`buys`), the
  * repeat untied a frontier task, won at least as many frontier pairs as it lost and lost no more
- * retained pairs than it won, the two frontiers read together, every task of both in one test,
- * clear `level`, and their untied tasks do not all fall in one family of two or more. Summed
+ * retained pairs than it won, the two frontiers read together, a task both scored once with its
+ * differences summed (`joined`), clear `level`, and their untied tasks do not all fall in one family of two or more. Summed
  * alone, a 4-0 and a repeat that tied every task would promote on one draw, against AGENTS §7,
  * where a step is one draw and is repeated on fresh solves. Read together at 0.10 a 2-0 and a 2-0
  * are a 4-0 (p 0.0625). A promotion needs the two together to clear the level, so it is no
  * likelier than one exact test of both stages' tasks: at sixteen tasks of which three in four tie,
  * two equal harnesses are promoted 3.3% of the time, a harness that wins 96% of the untied 82% and
- * one that wins 75% 31%, by enumeration (`test/compare.test.ts`). Every untied task of either
- * comparison is a fresh solve, so the null holds; a campaign makes many attempts, and what they
- * risk together is the climb's reading (`falsePromotionOf`, `climb.ts`).
+ * one that wins 75% 31%, by enumeration (`test/compare.test.ts`). The null is the fixed-task one:
+ * on the tasks drawn, each untied task as likely won as lost on fresh solves; a task the repeat
+ * scores again adds solves, not a task. A campaign makes many attempts, and what they risk
+ * together is the climb's reading (`falsePromotionOf`, `climb.ts`).
  */
 export function readTwice(reports: readonly JsonObject[], level: number, trigger: number): boolean {
   const [first, second] = (reports.length < 2 ? [] : reports.slice(-2)).map(stageOf);
   if (first == null || second == null || !buys(first, trigger) || regressed(second)) return false;
   const repeat = second.frontier;
   if (repeat.every((difference) => difference === 0) || total(repeat) < 0) return false;
-  return flipP([...first.frontier, ...repeat]) <= level && !narrowed([first, second]);
+  return flipP(joined([first, second])) <= level && !narrowed([first, second]);
+}
+
+/**
+ * The stages' frontier differences with a task both scored counted once, its differences summed.
+ * Fresh solves do not make a task drawn twice two tasks: buffer-149's repeat g-2 scored g-1's 11
+ * tasks, and counted twice its tasks would read as 22 signs where 11 were drawn. Under the
+ * fixed-task null (AGENTS.md, section 7) the sum changes nothing; under a task-population null it
+ * stops one task counting twice. A report from before 14 October names no task, and its
+ * differences stand alone.
+ */
+function joined(stages: readonly Stage[]): number[] {
+  const sums = new Map<string, number>();
+  const unnamed: number[] = [];
+  for (const { frontier, named } of stages) {
+    for (const [at, difference] of frontier.entries()) {
+      const task = named?.[at];
+      if (task === undefined) unnamed.push(difference);
+      else sums.set(task, (sums.get(task) ?? 0) + difference);
+    }
+  }
+  return [...sums.values(), ...unnamed];
 }
 
 /**

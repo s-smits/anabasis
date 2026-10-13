@@ -56,7 +56,12 @@ type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "che
 type Tested = ReturnType<typeof scored>;
 /** One of the two sets a comparison fixes at its start (`retained`, `Fixed`): the tasks that
  *  entered it, which are its denominator, those of them set aside, and its tally and test. */
-type Entered = Tested & { readonly tasks: readonly string[]; readonly aside: readonly string[] };
+/** `of` names the task of each difference; a report from before 14 October holds none. */
+type Entered = Tested & {
+  readonly tasks: readonly string[];
+  readonly aside: readonly string[];
+  readonly of?: readonly string[];
+};
 /**
  * How each harness did by itself over the tallied tasks: entry k counts the tasks on which k of its
  * counted solves gave a valid answer, so with two solves a side the three entries are the tasks
@@ -342,7 +347,10 @@ function setsOf(
   const tallied = { frontier: part(false), retained: part(true) };
   const setOf = (set: keyof typeof tallied): Entered => {
     const within = (task: string) => kept.has(task) === (set === "retained");
-    return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]) };
+    // `of` names the task of each difference, so that a repeat on the same tasks counts each once
+    // (`readTwice`, 14 October).
+    const of = tallied[set].map(({ task }) => task);
+    return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]), of };
   };
   const ofFamily = (family: string, set: keyof typeof tallied) =>
     tally(tallied[set].filter(({ task }) => familyOf(task) === family));

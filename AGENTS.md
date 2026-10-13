@@ -149,9 +149,12 @@ model and is measured by agreement with a person who labels the same rejections 
 ruling, read as two rates, beside each kind's agreement and PABAK beside kappa, never kappa alone.
 Once a packet is settled, `settle.ts` prints them over every settled packet, and reads each settled
 comparison again with its labels in place of the verdicts they overturn (`swapped`): a decision
-that flips means its packet was too small. Both are reports. Bar: on at least ten labels a kind, three in four of the rejections a
-person calls a check defect caught, at most one in ten of those a person calls earned voided, and
-three passes a comparison read by a person, since no seat reads an answer that passed.
+that flips means its packet was too small. Both are reports, and so is the line it prints where a
+person labels more than one in four `unclear` rulings earned. Bar: read on no fewer than thirty
+labels, three in four of the rejections a person calls a check defect caught, and at most one in
+ten of those a person calls earned voided. A packet holds every rejection that set a task aside,
+and a blind sample of three rejections ruled earned and three passes, since no seat reads an
+answer that passed.
 
 **5. Worth: how large is the effect, does it transfer, and what did it cost?** A significant
 step is not necessarily a useful one. Three numbers from one report say what a promotion is
@@ -528,7 +531,7 @@ flags.
 | 4 | `bun tools/d2/round.ts ... --session b-1 --builder <model>` | A Builder session, then the comparison of the harness it left with the reference |
 | 4 | `bun tools/d2/session.ts ... --session b-2 --builder <model>` | A Builder session with no comparison after it, under a dollar cap of its own. The plan's checkpoint is several of these and then one comparison |
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
-| 5 | `bun tools/d2/settle.ts ... --session b-1` | The comparison's packet: up to ten of its rejected answers and three of its answers that passed, drawn uniformly by its id, blind to ruling and harness. Answered, the person's labels and the report once more; a pass's label changes no reading. Until it is answered the report says `unsettled`, and no promotion waits for it |
+| 5 | `bun tools/d2/settle.ts ... --session b-1` | The comparison's packet: every rejected answer ruled a check defect or unclear, or not ruled, and three rejections ruled earned and three answers that passed, drawn uniformly by its id, blind to ruling and harness. Answered, the person's labels and the report once more; a pass's label changes no reading. Until it is answered the report says `unsettled`, and no promotion waits for it |
 | 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing. A harness the rule would not promote takes `--despite "<why>"` |
 | 6 | `bun tools/d2/import.ts --name <name> --harness <dir> [--note "<why>"]` | The operator's word that a harness built elsewhere, another campaign's handover or one written by hand, is one this campaign keeps (`harness.imported`): it is kept under its digest as a session keeps one, and `--parent`, `--reference` and `promote.ts` then name it. It is no session, so `latest` is unmoved |
 | 7 | `bun tools/d2/close.ts ... --to <dir>` | Nothing. It writes what the campaign hands over, outside the repository: the reference harness as a directory that stands by itself, the public rules, and the closing report |

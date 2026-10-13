@@ -31,7 +31,7 @@ import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
-import { settleCommand } from "../tools/d2/settle.ts";
+import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
@@ -525,8 +525,8 @@ describe("a campaign run by its log", () => {
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:
-    // up to ten of its rejected answers, and it has none, since the reference answered nothing,
-    // and three of the seven answers that passed, the new harness's. The labels are recorded once a
+    // its rejected answers, and it has none, since the reference answered nothing, and three of
+    // the seven answers that passed, the new harness's. The labels are recorded once a
     // label stands on each, and once only.
     const pack = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name];
     const folder = join(REPO, ".ana", "d2", name, "settle-g-1");
@@ -1053,5 +1053,30 @@ describe("a campaign run by its log", () => {
       "agent/BUILT_AGENTS.md links outside the harness",
     );
     expect(readdirSync(refused)).toEqual([]);
+  });
+});
+
+describe("a comparison's packet for a person", () => {
+  it("holds every rejection that set a task aside, and three earned rejections and three passes drawn by the comparison's id", () => {
+    const named = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, index) => `${prefix}-${String(index)}`);
+    // Ruled a check defect or unclear, or not ruled: each sets its task aside, so each is read.
+    const aside = named("aside", 12);
+    const [earned, passed] = [named("earned", 9), named("pass", 9)];
+    const packet = packetOf({ aside, others: earned }, passed, "g-1");
+    expect(packet.rejections.slice(0, 12)).toEqual(aside);
+    const sampled = packet.rejections.slice(12);
+    expect(sampled).toHaveLength(3);
+    expect(sampled.every((solve) => earned.includes(solve))).toBe(true);
+    expect(packet.passes).toHaveLength(3);
+    expect(packet.passes.every((solve) => passed.includes(solve))).toBe(true);
+    // The same comparison draws the same, whatever order its pools come in; another draws apart.
+    expect(packetOf({ aside, others: earned.toReversed() }, passed.toReversed(), "g-1")).toEqual(packet);
+    expect(packetOf({ aside, others: earned }, passed, "g-2")).not.toEqual(packet);
+    // Fewer than three of a side: all of it.
+    expect(packetOf({ aside: [], others: ["e"] }, ["p", "q"], "g-1")).toEqual({
+      rejections: ["e"],
+      passes: expect.arrayContaining(["p", "q"]),
+    });
   });
 });

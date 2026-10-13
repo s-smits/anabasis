@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { asRecord, isNumber, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { agreement, clears } from "../src/review/agreement.ts";
+import { agreement, clears, unclearReport } from "../src/review/agreement.ts";
 import {
   editedPassage,
   PROBE_BUDGET,
@@ -470,17 +470,54 @@ describe("the Referee's agreement with hand labels", () => {
     });
   });
 
-  it("clears a bar written beforehand, and nothing when a label is unruled or a rate has no fails", () => {
-    const measured = agreement(events, labels);
-    expect(clears(measured, { fails: 5, caught: 0.5, voided: 0.4 })).toBe(true);
-    expect(clears(measured, { fails: 5, caught: 0.8, voided: 0.4 })).toBe(false);
-    expect(clears(measured, { fails: 5, caught: 0.5, voided: 0.1 })).toBe(false);
-    expect(clears(measured, { fails: 6, caught: 0.5, voided: 0.4 })).toBe(false);
-    expect(
-      clears(agreement(events, new Map([...labels, ["z", "earned"]])), { fails: 1, caught: 0, voided: 1 }),
-    ).toBe(false);
-    const noDefects = agreement(events, new Map([["c", "earned"]] as const));
+  it("clears a bar written beforehand on thirty labels or more, and nothing when a label is unruled or a rate has no fails", () => {
+    // The five fails six times over: thirty labels, each rate as it was.
+    const times = [0, 1, 2, 3, 4, 5];
+    const many = times.flatMap((n) =>
+      events.map((event) => ({
+        ...event,
+        data: { ...event.data, solve: `${event.data.solve}${String(n)}` },
+      })),
+    );
+    const thirty = new Map(
+      times.flatMap((n) => [...labels].map(([solve, label]) => [`${solve}${String(n)}`, label] as const)),
+    );
+    const measured = agreement(many, thirty);
+    expect(clears(measured, { caught: 0.5, voided: 0.4 })).toBe(true);
+    expect(clears(measured, { caught: 0.8, voided: 0.4 })).toBe(false);
+    expect(clears(measured, { caught: 0.5, voided: 0.1 })).toBe(false);
+    // On twenty-nine labels no bar is read, however low it is set; so on the five alone.
+    const fewer = new Map([...thirty].filter(([solve]) => solve !== "c0"));
+    expect(clears(agreement(many, fewer), { caught: 0, voided: 1 })).toBe(false);
+    expect(clears(agreement(events, labels), { caught: 0, voided: 1 })).toBe(false);
+    expect(clears(agreement(many, new Map([...thirty, ["z", "earned"]])), { caught: 0, voided: 1 })).toBe(
+      false,
+    );
+    const noDefects = agreement(many, new Map([...thirty].filter(([, label]) => label === "earned")));
     expect(noDefects.caught).toBeNull();
-    expect(clears(noDefects, { fails: 1, caught: 0, voided: 1 })).toBe(false);
+    expect(clears(noDefects, { caught: 0, voided: 1 })).toBe(false);
+  });
+
+  it("says so when a person labels more than one in four unclear rulings earned, and gates nothing", () => {
+    const unclear = ["u1", "u2", "u3", "u4"].map((solve) => ruled(solve, "unclear"));
+    const labelled = (earned: number) =>
+      agreement(
+        unclear,
+        new Map(
+          ["u1", "u2", "u3", "u4"].map(
+            (solve, index) => [solve, index < earned ? "earned" : "unclear"] as const,
+          ),
+        ),
+      );
+    // One in four is not more than one in four.
+    expect(labelled(1).unclearEarned).toBe(0.25);
+    expect(unclearReport(labelled(1))).toBeNull();
+    expect(labelled(2).unclearEarned).toBe(0.5);
+    expect(unclearReport(labelled(2))).toBe(
+      "a person labelled earned 2 of the Referee's 4 unclear rulings, more than one in four: an unclear ruling sets aside a task a person reads as a real limit",
+    );
+    // No unclear ruling, nothing to say.
+    expect(agreement(events, new Map([["c", "earned"]] as const)).unclearEarned).toBeNull();
+    expect(unclearReport(agreement(events, new Map([["c", "earned"]] as const)))).toBeNull();
   });
 });

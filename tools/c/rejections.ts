@@ -19,10 +19,10 @@
  * opens it. Run again it goes on with the fails not yet ruled.
  *
  * With the labels in, the reading sets the Referee's rulings beside them (`agreement.ts`) and says
- * whether they clear the bar: `--fails`, `--caught` and `--voided`, by default the plan's proposal
- * for its decision 33 of 20 labelled fails, three in four of the labelled check defects ruled so,
- * and at most one in ten of the labelled earned fails voided. The bar is the operator's to set
- * before the first label is written.
+ * whether they clear the bar: `--caught` and `--voided`, by default the plan's proposal for its
+ * decision 33 of three in four of the labelled check defects ruled so, and at most one in ten of
+ * the labelled earned fails voided, read on no fewer than thirty labelled fails (`clears`). The bar
+ * is the operator's to set before the first label is written.
  *
  * The campaign is one of `tools/d2/campaign.ts`, under a name of its own, so its log is not a
  * round's. Not run here: it needs the pack, the sweep and the Mac's verifier wall, and `--referee`
@@ -54,7 +54,6 @@ const { values } = parseArgs({
     draw: { type: "string" },
     referee: { type: "string" },
     "referee-effort": { type: "string", default: "high" },
-    fails: { type: "string", default: "20" },
     caught: { type: "string", default: "0.75" },
     voided: { type: "string", default: "0.1" },
   },
@@ -209,7 +208,7 @@ async function main(): Promise<void> {
   console.log(capturedJsonStringify(reading, null, 2));
   if (labels.size > 0 && open.length === 0) {
     const measured = agreement(read(log), labels);
-    const bar = { fails: Number(values.fails), caught: Number(values.caught), voided: Number(values.voided) };
+    const bar = { caught: Number(values.caught), voided: Number(values.voided) };
     console.log(capturedJsonStringify({ ...measured, bar, clears: clears(measured, bar) }, null, 2));
   }
 }

@@ -234,6 +234,18 @@ describe("what a comparison came to", () => {
     }
   });
 
+  test("gives a reported comparison its frontier and retained tallies apart, summing to its tally where both were measured", async () => {
+    const { answer: reading } = await ask("campaign", { key: KEY }, "default");
+    const withSets = reading.comparisons.filter((bar) => bar.sets !== null);
+    expect(withSets.length).toBeGreaterThan(0);
+    for (const { sets, tally } of withSets) {
+      if (sets === null || tally === null) continue;
+      const kept = sets.retained === "unmeasured" ? { wins: 0, losses: 0, ties: 0 } : sets.retained;
+      expect(sets.frontier.tally.wins + kept.wins).toBe(tally.wins);
+      expect(sets.frontier.tally.losses + kept.losses).toBe(tally.losses);
+    }
+  });
+
   test("names every task a comparison fixed: its outcome, set aside, or why its report left it out", async () => {
     const { answer: reading } = await ask("campaign", { key: KEY }, "default");
     for (const bar of reading.comparisons) {

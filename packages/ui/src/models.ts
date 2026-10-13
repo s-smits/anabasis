@@ -29,6 +29,8 @@ import type { Handover } from "../../../src/builder/handover.ts";
 import type { Decided, Ending as CampaignEnding } from "../../../src/builder/move.ts";
 import type { Seat, Terms } from "../../../src/builder/opening.ts";
 import type { Tally } from "../../../src/kernel/compare.ts";
+
+export type { Tally };
 import type { EventKind } from "../../../src/kernel/log.ts";
 import type { comparedAs } from "../../../src/kernel/reports.ts";
 import type { Ending as SolveEnding } from "../../../src/kernel/solve.ts";
@@ -207,6 +209,14 @@ export interface ComparisonBar {
   readonly rulings: Rulings;
   /** The host's one-minute load when it began (`campaign.move`), null where not recorded. */
   readonly load: number | null;
+  /** The two sets the comparison's start fixed, as its report tallied them: the frontier, where the
+   *  step is read, with its p; and the retained tasks, where a step may not lose more than it
+   *  wins, `unmeasured` where none was tallied, which is never no loss. Null where no report holds
+   *  them: a comparison with no report yet, or one from before the sets were read apart. */
+  readonly sets: {
+    readonly frontier: { readonly tally: Tally; readonly p: number };
+    readonly retained: Tally | "unmeasured";
+  } | null;
   /** The decision table's row the comparison was made by, as its move records it
    *  (`campaign.move`): the row's code and reason, or `asked` and what the table named where a
    *  Builder that leads its campaign made another move. Null where no move records one: a

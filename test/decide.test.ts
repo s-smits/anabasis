@@ -269,6 +269,18 @@ describe("a row of the table", () => {
     const moved = crashed(EXAM_FINISHED, "x-8", ["v9"]);
     expect(move([READ, x1, moved, x2, x3])).toMatchObject({ move: "examine" });
     expect(move([READ, x1, x2, ...whole, x3])).toMatchObject({ move: "examine" });
+    // A Builder that edited and then crashed left no harness the campaign goes on from, so it
+    // counts: until 13 October it broke the run, and such sessions repeated from one parent without
+    // bound. One whose harness was checkpointed did move the campaign.
+    const edited = (id: string) => event("build.finished", { session: id, ended: "crashed", changed: true });
+    expect(decide([READ, ...whole, edited("b-1"), edited("b-2"), edited("b-3")], PLAN)).toMatchObject({
+      move: "end",
+      ending: "environment",
+    });
+    const kept = event("build.checkpoint", { session: "b-2", harness: "h-kept" });
+    expect(
+      decide([READ, ...whole, edited("b-1"), kept, edited("b-2"), edited("b-3")], PLAN),
+    ).not.toMatchObject({ ending: "environment" });
     // Run again after that ending, the count starts afresh.
     const ended = event("campaign.ended", { ending: "environment", why: "3 sessions in a row crashed" });
     expect(move([...dead, ended])).toMatchObject({ move: "examine" });

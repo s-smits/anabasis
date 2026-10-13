@@ -554,7 +554,12 @@ export async function harnessBuilder(
     try {
       await make(decided, turn, begin);
     } catch (error) {
-      if (await waitOut(log, errorMessage(error), seats.host?.sleep)) continue;
+      // A move the provider's limit ended is waited out and made again, and it counts against
+      // `--moves` as the move it was: it is on record as one.
+      if (await waitOut(log, errorMessage(error), seats.host?.sleep)) {
+        made += 1;
+        continue;
+      }
       // A move that began and threw is the environment's ending, and the campaign goes on from
       // its log when it is run again. One refused before it began leaves the log alone.
       if (read(log).length > events.length) {

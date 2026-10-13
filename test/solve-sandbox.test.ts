@@ -1,55 +1,116 @@
-// Host-owned solve isolation, proved by running it rather than by reading it. Every case here
-// executes the sandbox on the host the suite is running on, because a profile that is checked only
-// as configuration is a profile nobody has seen refuse anything, and the whole point of the wall
-// is what the kernel does with it.
+// The solve isolation's policy, and the wall built on it proved by running it: every case that runs
+// a command runs it as a seat's commands run (`runWalled`, on a mounted cap), on the host the suite
+// runs on, because a profile checked only as configuration is a profile nobody has seen refuse
+// anything. Until 11 October these cases ran v1's launch of its sandboxed model process, which no
+// seat of v2 runs (`docs/simplify.md`, F5 and W2).
 //
-// Each refusal is paired with a control read that has to succeed, and that half is the one worth
-// explaining: a sandbox that refuses every operation would pass a suite testing refusals alone
-// while making the product unusable. Run 4 is the reason it is not hypothetical — it walled off
-// its own repair-attribution and Judge paths.
-import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { homedir, tmpdir } from "../src/meta/os.ts";
-import { dirname, join } from "../src/meta/path.ts";
+// Each refusal is paired with a read that has to succeed: a wall that refuses everything would pass
+// a suite testing refusals alone while making the product unusable. Run 4 is the reason it is not
+// hypothetical — it walled off its own repair-attribution and Judge paths.
 import { afterEach, describe, expect, it } from "bun:test";
-import { preflightPiBuilt } from "../src/backends/pi-built.ts";
-import { type SessionProfileEvidence, composedIsolation } from "../src/backends/session-isolation.ts";
-import { type IsolationProbeEvidence, disclosedIsolation } from "../src/backends/isolation-evidence.ts";
-import { builtSolveIsolation } from "../src/run/built-agent-runtime.ts";
-import { EnvironmentRefusal } from "../src/backends/environment-refusal.ts";
-import { DARWIN_SANDBOX_EXEC } from "../src/verify/darwin-seatbelt.ts";
 import {
-  guardedAncestors,
-  moveBlockingRules,
-  probeMoveGuardCheck,
-} from "../src/verify/seatbelt-path-guard.ts";
-
-/** Profile syntax depends on the host: SBPL on Darwin, bubblewrap arguments on Linux.
- *  Check that syntax on its host and check the shared policy fields on both. */
-const onDarwin = runtimeProcess.platform === "darwin";
-const onLinux = runtimeProcess.platform === "linux";
-import {
-  HOST_BWRAP_SOLVE_ISOLATION_FIXTURE,
-  HOST_SOLVE_ISOLATION_FIXTURE,
-  HOST_SOLVE_ISOLATION_PROFILE_ID,
-  observedRefusal,
-  probeHostSolveReadDeny,
-  solveIsolationPolicy,
-  isolationArgv,
-} from "../src/verify/solve-sandbox.ts";
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
+import { homedir, tmpdir } from "../src/meta/os.ts";
+import { containsPath } from "../src/meta/path-containment.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import {
+  type CommandWall,
+  makeSeatDirs,
+  probeWall,
+  runWalled,
+  solveDirs,
+  walledBase,
+} from "../src/solve/command.ts";
+import { mountDiskCap } from "../src/verify/disk-cap.ts";
+import { LINUX_BWRAP_ID } from "../src/verify/linux-bwrap.ts";
+import { guardedAncestors, moveBlockingRules } from "../src/verify/seatbelt-path-guard.ts";
+import { commandIsolationPolicy } from "../src/verify/solve-command-isolation.ts";
+import { userTempRules } from "../src/verify/wall-policy.ts";
+import { toolchainTemp } from "./helpers/toolchain-temp.ts";
+import {
+  HOST_SOLVE_ISOLATION_PROFILE_ID,
+  type SolveIsolationPolicy,
+  solveIsolationPolicy,
+} from "../src/verify/solve-sandbox.ts";
 
-const dirs: string[] = [];
+const onDarwin = runtimeProcess.platform === "darwin";
+const CAP_BYTES = 16 * 1024 * 1024;
+
+const made: string[] = [];
 function workRepo(): string {
-  const root = mkdtempSync(join(tmpdir(), "ana-solve-sandbox-"));
-  dirs.push(root);
+  // Named as `mktemp` names a folder, so that a policy that does not deny it lets a walled command
+  // read it, as a folder anywhere else outside the denied trees would be read (`toolchainTemp`).
+  const root = toolchainTemp("ana-solve-sandbox");
+  made.push(root);
   return root;
 }
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+let seats = 0;
+
+/** A seat's wall over `repoRoot`, unprobed, on a mounted cap; `fn` runs with it, and the cap goes
+ *  after. */
+async function inSeat(
+  repoRoot: string,
+  otherTrees: readonly string[],
+  fn: (wall: CommandWall, run: (command: string) => Promise<string>) => Promise<void>,
+) {
+  const dirs = solveDirs(`sandbox-${String(runtimeProcess.pid)}-${String(Date.now())}-${String(seats++)}`);
+  const release = await mountDiskCap({ root: dirs.root, bytes: CAP_BYTES });
+  try {
+    makeSeatDirs(dirs);
+    const base = solveIsolationPolicy({ repoRoot, otherTrees });
+    if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+    const wall: CommandWall = {
+      base,
+      dirs,
+      toolTree: null,
+      limits: { shellDefaultSeconds: 30, shellMaxSeconds: 30 },
+    };
+    const run = async (command: string) => {
+      let output = "";
+      await runWalled(wall, command, {
+        onData: (data) => {
+          output += data.toString("utf8");
+        },
+      });
+      return output;
+    };
+    await fn(wall, run);
+  } finally {
+    await release();
+    rmSync(dirs.host, { recursive: true, force: true });
+  }
+}
 
 describe("the solve isolation's policy", () => {
+  it("denies the repository's other worktrees with it, and names them in its identity", () => {
+    // A campaign runs from a worktree kept for it, and its log, every hidden value in it, lies
+    // under `.ana` there. Until 10 October a shell in a sibling worktree could read it.
+    const repoRoot = workRepo();
+    const sibling = workRepo();
+    const alone = solveIsolationPolicy({ repoRoot });
+    const closed = solveIsolationPolicy({ repoRoot, otherTrees: [sibling] });
+    if ("unsupported" in alone || "unsupported" in closed) {
+      throw new Error("this host cannot run the isolation");
+    }
+    expect(alone.deniedReadRoots).not.toContain(sibling);
+    expect(closed.deniedReadRoots).toContain(sibling);
+    expect(closed.deniedReadRoots).toContain(realpathSync.native(sibling));
+    expect(closed.deniedWriteRoots).toContain(sibling);
+    expect(closed.policyHash).not.toBe(alone.policyHash);
+  });
+
   it("denies the repository and whole operator home, reopening only explicit runtimes", () => {
     const repoRoot = workRepo();
     const policy = solveIsolationPolicy({ repoRoot });
@@ -63,58 +124,50 @@ describe("the solve isolation's policy", () => {
     expect(policy.allowedReadRoots.some((root) => root.includes("/.ssh") || root.includes("/.claude"))).toBe(
       false,
     );
-    if (onDarwin) {
-      for (const root of policy.allowedReadRoots) expect(policy.profile).toContain(JSON.stringify(root));
-      expect(policy.profile).not.toContain(".credentials.json");
-    }
-    if (onLinux) {
-      // Linux's evidence field is descriptive only; assert the argv the child actually receives.
-      expect(isolationArgv(policy, "/bin/true", [], {})).toEqual(
-        expect.arrayContaining(["--tmpfs", realpathSync.native(repoRoot)]),
-      );
-    }
     expect(policy.profileId).toBe(HOST_SOLVE_ISOLATION_PROFILE_ID);
   });
 
-  it("lifts exactly the denies covering one path for the discrimination check", () => {
-    const repoRoot = workRepo();
-    const real = solveIsolationPolicy({ repoRoot });
-    const open = solveIsolationPolicy({ repoRoot, liftDeniesCovering: join(repoRoot, "canary.txt") });
-    if ("unsupported" in real || "unsupported" in open) throw new Error("this host cannot run the isolation");
-    expect(open.deniedReadRoots.length).toBeLessThan(real.deniedReadRoots.length);
-    expect(open.policyHash).not.toBe(real.policyHash);
-    // Lifting the repository restriction must preserve the separate home restriction.
-    expect(open.deniedReadRoots).toContain(homedir());
-  });
-
-  // A read restriction names a path, so a profile without `seatbelt-path-guard.ts` refuses the
-  // direct read and the rename of the denied directory, and then lets a rename of its parent
-  // through: the canary comes back at exit 0. These assertions are the structural half of the
-  // guard; the executed half is the fixture's fourth check.
-  it("denies the rename of every protected root's ancestors, so a deny cannot be relocated", () => {
-    const repoRoot = workRepo();
-    const policy = solveIsolationPolicy({ repoRoot });
-    if ("unsupported" in policy) throw new Error(`this host cannot run the isolation: ${policy.unsupported}`);
-    // The parent of each denied root is guarded against relocation.
-    const ancestors = guardedAncestors(policy.deniedReadRoots);
-    expect(ancestors).toContain(dirname(realpathSync.native(repoRoot)));
-    expect(ancestors).toContain(dirname(homedir()));
-    expect(ancestors).not.toContain("/");
-    if (onDarwin) {
-      // Both halves of the rename: the source is unlinked and the destination is created.
-      expect(policy.profile).toContain("(deny file-write-unlink");
-      expect(policy.profile).toContain("(deny file-write-create");
-      for (const ancestor of ancestors) {
-        expect(policy.profile).toContain(`(literal ${JSON.stringify(ancestor)})`);
-      }
-      // Upstream tags every rule with a per-session random suffix for its log stream. Copying that
-      // would make the profile bytes differ per run and break `profileDigest === policyHash`.
-      expect(policy.profile).not.toContain("with message");
-    }
-    const again = solveIsolationPolicy({ repoRoot });
-    if ("unsupported" in again) throw new Error("this host cannot run the isolation");
-    expect(again.profile).toBe(policy.profile);
-    expect(again.policyHash).toBe(policy.policyHash);
+  it("reopens a tool tree with what it links to, but for one in the seat's root that links out of it", () => {
+    // Until 11 October the tree's real path was reopened wherever a link led, so a Builder that
+    // linked `harness/.toolchain` to the repository read it through the wall. A tree the host or a
+    // pack provides keeps its link. The policy is built by hand, as it is a pure function of its
+    // roots and runs where no wall does.
+    const repoRoot = realpathSync(workRepo());
+    const base: SolveIsolationPolicy = {
+      profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
+      policyHash: "fixture",
+      deniedReadRoots: [repoRoot],
+      deniedWriteRoots: [repoRoot],
+      allowedReadRoots: [],
+      mechanismPath: "/usr/bin/bwrap",
+      mechanismId: LINUX_BWRAP_ID,
+      network: true,
+    };
+    // A kept state names its tree by the link the host writes, to a tree beside it.
+    const states = join(repoRoot, ".ana", "d2", "c", "states");
+    const keptTree = join(states, "kept", ".toolchain");
+    mkdirSync(join(states, "tree-abc", "bin"), { recursive: true });
+    mkdirSync(join(states, "kept"));
+    symlinkSync(join("..", "tree-abc"), keptTree);
+    const seat = realpathSync(workRepo());
+    const home = join(seat, "home");
+    const homeTree = join(home, "harness", ".toolchain");
+    mkdirSync(join(home, "harness"), { recursive: true });
+    const dirs = { root: seat, kept: join(seat, "kept"), home, temp: join(seat, "tmp") };
+    const allows = (toolTree: string) => commandIsolationPolicy(base, { ...dirs, toolTree }).readAllowRoots;
+    expect(allows(keptTree)).toContain(join(states, "tree-abc"));
+    // A stored bundle whose tree is a link to one elsewhere is reopened with its target, as before.
+    const bundleTree = join(realpathSync(workRepo()), "bundle", ".toolchain");
+    mkdirSync(join(bundleTree, ".."));
+    mkdirSync(join(repoRoot, "shared-tree"));
+    symlinkSync(join(repoRoot, "shared-tree"), bundleTree);
+    expect(allows(bundleTree)).toContain(join(repoRoot, "shared-tree"));
+    mkdirSync(homeTree);
+    expect(allows(homeTree)).toContain(homeTree);
+    rmSync(homeTree, { recursive: true });
+    symlinkSync(repoRoot, homeTree);
+    const opened = allows(homeTree);
+    expect(opened.filter((path) => containsPath(path, repoRoot) || containsPath(path, home))).toEqual([]);
   });
 
   it("refuses to create an isolation policy on an unsupported platform", () => {
@@ -123,246 +176,224 @@ describe("the solve isolation's policy", () => {
     expect("unsupported" in policy).toBe(true);
   });
 
-  it("refuses an ordinary home canary and reads only an explicit runtime inside a denied root", () => {
+  it("refuses a command an ordinary home canary and reads only an explicit runtime inside a denied root", async () => {
     const repoRoot = workRepo();
     const runtimeRoot = join(repoRoot, "node_modules", "transport-runtime");
     mkdirSync(runtimeRoot, { recursive: true });
     const runtimeCanary = join(runtimeRoot, "canary.txt");
     writeFileSync(runtimeCanary, "RUNTIME-CANARY\n");
     const homeRoot = mkdtempSync(join(homedir(), ".ana-solve-home-"));
-    dirs.push(homeRoot);
+    made.push(homeRoot);
     const homeCanary = join(homeRoot, "canary.txt");
     writeFileSync(homeCanary, "HOME-CANARY\n");
-    const policy = solveIsolationPolicy({ repoRoot, readAllowRoots: [runtimeRoot] });
-    if ("unsupported" in policy) throw new Error(`this host cannot run the isolation: ${policy.unsupported}`);
-    const result = spawnSync(
-      policy.mechanismPath,
-      isolationArgv(policy, "/bin/sh", ["-c", `cat ${homeCanary} 2>&1; cat ${runtimeCanary} 2>&1`]),
-      { cwd: tmpdir(), timeout: 10_000 },
-    );
-    const output = `${result.stdout}${result.stderr}`;
-    expect(output).not.toContain("HOME-CANARY");
-    expect(output).toContain("RUNTIME-CANARY");
-  });
+    const base = solveIsolationPolicy({ repoRoot, readAllowRoots: [runtimeRoot] });
+    if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+    expect(base.allowedReadRoots).toContain(runtimeRoot);
+    // `inSeat` builds its own base without the runtime, so this case builds the wall it runs under.
+    await inSeat(repoRoot, [], async (wall) => {
+      let output = "";
+      await runWalled({ ...wall, base }, `cat ${homeCanary} 2>&1; cat ${runtimeCanary} 2>&1`, {
+        onData: (data) => {
+          output += data.toString("utf8");
+        },
+      });
+      expect(output).not.toContain("HOME-CANARY");
+      expect(output).toContain("RUNTIME-CANARY");
+    });
+  }, 60_000);
+
+  // esp32 (12 October): Node, deciding a `.js` program's module type, walked up from a kept tree to
+  // the checkout's package.json, and the wall's refusal of it ended every program of the tree.
+  it("runs a program of a kept tool tree with no manifest of its own, and keeps the checkout's closed", async () => {
+    const repoRoot = workRepo();
+    writeFileSync(join(repoRoot, "package.json"), '{ "type": "module" }\n');
+    const campaign = join(repoRoot, ".ana", "d2", "c");
+    const tree = join(campaign, "states", "tree-abc");
+    mkdirSync(join(tree, "bin"), { recursive: true });
+    // The empty manifest a campaign's folder holds (`openCampaign`).
+    writeFileSync(join(campaign, "package.json"), "{}\n");
+    writeFileSync(join(tree, "bin", "list.js"), 'console.log(require("node:path").basename("/a/ran"));\n');
+    await inSeat(repoRoot, [], async (wall) => {
+      let output = "";
+      const command = `node ${join(tree, "bin", "list.js")} 2>&1; cat ${join(repoRoot, "package.json")} 2>&1`;
+      await runWalled({ ...wall, toolTree: tree }, command, {
+        onData: (data) => {
+          output += data.toString("utf8");
+        },
+      });
+      expect(output).toStartWith("ran\n");
+      // Seatbelt refuses the read; Bubblewrap leaves the path out of the mount, so it is not there.
+      expect(output).toContain(onDarwin ? "Operation not permitted" : "No such file or directory");
+      expect(output).not.toContain("module");
+    });
+  }, 60_000);
+
+  it("starts a command under a policy that names a worktree removed since it was made", async () => {
+    // The other worktrees are read once when a campaign opens. On 10 October two were removed
+    // while a simulated campaign ran, and from the next policy on every solve ended
+    // `sandbox-crash`: Bubblewrap cannot make a mountpoint under the read-only root. A removed
+    // tree cannot be read, so it stays in the identity and takes no mount.
+    const repoRoot = workRepo();
+    const sibling = workRepo();
+    await inSeat(repoRoot, [sibling], async (wall, run) => {
+      rmSync(sibling, { recursive: true, force: true });
+      expect(wall.base.deniedReadRoots).toContain(sibling);
+      expect(await run("echo started")).toBe("started\n");
+    });
+  }, 60_000);
+
+  // On Linux an overmount leaves the directory empty, so its listing names no tenant either way.
+  it.skipIf(!onDarwin)(
+    "closes the per-user temporary directory but for what mktemp and the shims make in it, and keeps TMPDIR on the seat's root",
+    async () => {
+      const [shared] = userTempRules().roots;
+      if (shared === undefined) throw new Error("this host names no user temporary directory");
+      // Another process's folder there, and a file it left directly in it.
+      const other = mkdtempSync(join(shared, "ana-other-"));
+      const left = join(shared, `ana-left-${String(runtimeProcess.pid)}.txt`);
+      const named = join(shared, `ana-named-${String(runtimeProcess.pid)}`);
+      made.push(other, left, named);
+      writeFileSync(join(other, "secret.txt"), "OTHER\n");
+      writeFileSync(left, "LEFT\n");
+      await inSeat(workRepo(), [], async (wall, run) => {
+        const said = await run(
+          [
+            `ls ${shared} >/dev/null 2>&1 && echo listed || echo unlisted`,
+            `ls ${other} >/dev/null 2>&1 && echo other-listed || echo other-unlisted`,
+            `cat ${other}/secret.txt 2>/dev/null || echo other-unread`,
+            `{ echo x > ${other}/planted; } 2>/dev/null || echo other-unwritten`,
+            `mkdir ${named} 2>/dev/null || echo unnamed`,
+            `cat ${left}`,
+            'made=$(mktemp -d) && echo kept > "$made/f" && cat "$made/f" && rm -r "$made"',
+            'echo "$TMPDIR"',
+          ].join("; "),
+        );
+        expect(said.split("\n").slice(0, 8)).toEqual([
+          "unlisted",
+          "other-unlisted",
+          "other-unread",
+          "other-unwritten",
+          "unnamed",
+          "LEFT",
+          "kept",
+          wall.dirs.temp,
+        ]);
+        expect(existsSync(join(other, "planted"))).toBe(false);
+      });
+    },
+    60_000,
+  );
 });
 
-describe("the executed fixture", () => {
-  it("proves the OS refused a protected read the lifted policy shows would otherwise succeed", () => {
+describe("the wall's probe", () => {
+  it("holds on this host: the repository, the other worktree and the host's folder refused, a staged file written and read", async () => {
     const repoRoot = workRepo();
-    writeFileSync(join(repoRoot, "hidden-tasks.json"), "{}\n");
-    const evidence = probeHostSolveReadDeny({ repoRoot });
-    expect(evidence.fixture).toBe(
-      onLinux ? HOST_BWRAP_SOLVE_ISOLATION_FIXTURE : HOST_SOLVE_ISOLATION_FIXTURE,
-    );
-    expect(evidence.available).toBe(true);
-    expect(evidence.deniedReadRefused).toBe(true);
-    expect(evidence.controlReadSucceeded).toBe(true);
-    expect(evidence.discriminationReadSucceeded).toBe(true);
-    expect(evidence.moveGuardRefused).toBe(true);
-    if (onLinux) expect(evidence.evidence.join("\n")).toContain("stayed hidden");
-    expect(evidence.isolated).toBe(true);
-    const policy = solveIsolationPolicy({ repoRoot });
-    if ("unsupported" in policy) throw new Error("this host cannot run the isolation");
-    // The evidence binds the rules it executed, so a later reader can re-derive them.
-    expect(evidence.profileDigest).toBe(policy.policyHash);
+    const sibling = workRepo();
+    writeFileSync(join(sibling, "package.json"), '{\n  "name": "a-sibling"\n}\n');
+    const bare = workRepo();
+    await inSeat(repoRoot, [sibling, bare], async (wall) => {
+      expect(await probeWall(wall, repoRoot, sibling)).toBeNull();
+      // A sibling with no `package.json` proves nothing by refusing it, and is not tried.
+      expect(await probeWall(wall, repoRoot, bare)).toBeNull();
+      // The seat's probe: once a policy a process, before the wall's first use.
+      const base = await walledBase(
+        wall.dirs,
+        { repoRoot, otherTrees: [sibling, bare], diskBytes: CAP_BYTES },
+        "a test",
+      );
+      expect(base.policyHash).toBe(wall.base.policyHash);
+      // The probe writes nothing in a sibling, which another user may own (10 October), leaves
+      // nothing in the repository, and nothing in the seat's own folders or the host's in it.
+      expect(readdirSync(sibling)).toEqual(["package.json"]);
+      expect(readdirSync(bare)).toEqual([]);
+      expect(readdirSync(repoRoot)).toEqual([]);
+      expect(readdirSync(wall.dirs.kept)).toEqual([]);
+      expect(readdirSync(wall.dirs.temp)).toEqual([]);
+    });
+  }, 60_000);
+
+  // On Linux the command wall hides the whole temporary directory, where every tree a test makes
+  // lies, so no tree here is readable to a command whatever the policy says.
+  it.skipIf(!onDarwin)(
+    "says which read got through, under a policy that does not deny the trees it reads",
+    async () => {
+      const elsewhere = workRepo();
+      const repoRoot = workRepo();
+      const sibling = workRepo();
+      writeFileSync(join(sibling, "package.json"), '{\n  "name": "a-sibling"\n}\n');
+      await inSeat(elsewhere, [], async (wall) => {
+        const said = await probeWall(wall, repoRoot, sibling);
+        expect(said).toContain("repository canary: read");
+        expect(said).toContain("other worktree's package.json: read");
+        expect(said).toContain("host folder: refused");
+        // Its own folder still read back: the launch ran, and refused what it should not have read.
+        expect(said).toContain("ANA-WALL-PROBE");
+        expect(readdirSync(repoRoot)).toEqual([]);
+      });
+    },
+    60_000,
+  );
+
+  it("does not hold where its command cannot start", async () => {
+    const repoRoot = workRepo();
+    await inSeat(repoRoot, [], async (wall) => {
+      rmSync(wall.dirs.kept, { recursive: true, force: true });
+      expect(await probeWall(wall, repoRoot)).toStartWith("the probe did not run: ");
+      expect(readdirSync(repoRoot)).toEqual([]);
+    });
+  }, 60_000);
+});
+
+describe("the rename guard", () => {
+  // A read restriction names a path, so a profile without `seatbelt-path-guard.ts` refuses the
+  // direct read and the rename of the denied directory, and then lets a rename of its parent
+  // through: the canary comes back at exit 0.
+  it("denies in the command profile the rename of every protected root's ancestors", () => {
+    const repoRoot = workRepo();
+    const base = solveIsolationPolicy({ repoRoot });
+    if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
+    const ancestors = guardedAncestors(base.deniedReadRoots);
+    expect(ancestors).toContain(dirname(repoRoot));
+    expect(ancestors).toContain(dirname(homedir()));
+    expect(ancestors).not.toContain("/");
+    if (onDarwin) {
+      const scratch = join(tmpdir(), "ana-solve-sandbox-scratch");
+      const { profile } = commandIsolationPolicy(base, {
+        root: scratch,
+        kept: join(scratch, "kept"),
+        home: join(scratch, "home"),
+        temp: join(scratch, "tmp"),
+      });
+      // Both halves of the rename: the source is unlinked and the destination is created.
+      expect(profile).toContain("(deny file-write-unlink");
+      expect(profile).toContain("(deny file-write-create");
+      for (const ancestor of ancestors) expect(profile).toContain(`(literal ${JSON.stringify(ancestor)})`);
+      // Upstream tags every rule with a per-session random suffix for its log stream.
+      expect(profile).not.toContain("with message");
+    }
+    const again = solveIsolationPolicy({ repoRoot });
+    if ("unsupported" in again) throw new Error("this host cannot run the isolation");
+    expect(again.policyHash).toBe(base.policyHash);
   });
 
-  // The fourth check on its own: the rules copied from sandbox-runtime refuse the rename that the
-  // same profile without them permits. Without the lifted half a refusal could come from a
-  // filesystem error unrelated to the sandbox rules.
-  it.skipIf(!onDarwin)(
-    "refuses an ancestor rename under the copied rules and permits it without them",
-    () => {
-      const check = probeMoveGuardCheck(DARWIN_SANDBOX_EXEC);
-      expect(check.refused).toBe(true);
-      expect(check.liftedSucceeded).toBe(true);
-      expect(check.detail).toContain("refused under the guard rules");
-    },
-  );
+  it("keeps a command from reading the repository by renaming its parent", async () => {
+    const outer = workRepo();
+    const repoRoot = join(outer, "parent", "repo");
+    mkdirSync(repoRoot, { recursive: true });
+    writeFileSync(join(repoRoot, "canary.txt"), "RENAMED-CANARY\n");
+    await inSeat(repoRoot, [], async (_wall, run) => {
+      const moved = join(outer, "moved");
+      const output = await run(
+        `mv ${join(outer, "parent")} ${moved} 2>&1; cat ${join(moved, "repo", "canary.txt")} 2>&1; true`,
+      );
+      expect(output).not.toContain("RENAMED-CANARY");
+      expect(existsSync(join(repoRoot, "canary.txt"))).toBe(true);
+      expect(existsSync(moved)).toBe(false);
+    });
+  }, 60_000);
 
   it("emits nothing when there is nothing to protect, rather than a rule matching everything", () => {
     expect(moveBlockingRules([])).toStrictEqual([]);
     expect(guardedAncestors([])).toStrictEqual([]);
-  });
-
-  it("reports an unavailable mechanism as unproven instead of throwing", () => {
-    const evidence = probeHostSolveReadDeny({ repoRoot: workRepo(), runtime: { platform: "win32" } });
-    expect(evidence.available).toBe(false);
-    expect(evidence.isolated).toBe(false);
-    expect(evidence.profileDigest).toBeNull();
-  });
-
-  it("never reads a bare non-zero exit as a refusal", () => {
-    expect(observedRefusal("bash: no such file", 127, "MARKER")).toBe(false);
-    expect(observedRefusal("cat: Operation not permitted", 1, "MARKER")).toBe(true);
-    // The canary in the output refutes a refusal outright, whatever the exit code said.
-    expect(observedRefusal("MARKER\ncat: Operation not permitted", 1, "MARKER")).toBe(false);
-  });
-});
-
-describe("composition: a probe certifies only its own family's session", () => {
-  const repoRoot = "/tmp/ana-fixture-repo";
-  const hostProbe: IsolationProbeEvidence = {
-    fixture: HOST_SOLVE_ISOLATION_FIXTURE,
-    available: true,
-    isolated: true,
-    deniedReadRefused: true,
-    controlReadSucceeded: true,
-    discriminationReadSucceeded: true,
-    profileDigest: "d".repeat(64),
-    evidence: ["executed"],
-  };
-  const bwrapProbe: IsolationProbeEvidence = { ...hostProbe, fixture: HOST_BWRAP_SOLVE_ISOLATION_FIXTURE };
-  const hostSession: SessionProfileEvidence = {
-    role: "built",
-    model: "m1",
-    reasoningEffort: "medium",
-    providerVersion: null,
-    activePermissionProfile: HOST_SOLVE_ISOLATION_PROFILE_ID,
-    policyHash: "d".repeat(64),
-    confinedPid: runtimeProcess.pid + 1,
-    controllerPid: runtimeProcess.pid,
-  };
-
-  it("accepts host isolation only when the session used the probed policy bytes", () => {
-    expect(composedIsolation(hostProbe, hostSession)).toBe("physical");
-    expect(composedIsolation(bwrapProbe, hostSession)).toBe("physical");
-    expect(composedIsolation(hostProbe, { ...hostSession, policyHash: "e".repeat(64) })).toBe("contractual");
-    const { policyHash: _dropped, ...noBytes } = hostSession;
-    expect(composedIsolation(hostProbe, noBytes)).toBe("contractual");
-    expect(composedIsolation({ ...hostProbe, profileDigest: null }, hostSession)).toBe("contractual");
-  });
-
-  it("refuses a session that activated another profile, and a retired family's probe", () => {
-    expect(
-      composedIsolation(hostProbe, { ...hostSession, activePermissionProfile: "harness-runtime-isolated" }),
-    ).toBe("contractual");
-    // Recorded evidence from the removed Codex family no longer certifies anything.
-    // The retired fixture id is outside the union, as a parsed old record would carry it.
-    const retired: IsolationProbeEvidence = JSON.parse(
-      JSON.stringify({ ...hostProbe, fixture: "codex-read-deny/v2" }),
-    );
-    expect(composedIsolation(retired, hostSession)).toBe("contractual");
-  });
-
-  // This is the only pre-Builder refusal for a host with no isolation mechanism. A plain Error
-  // would record `abortClause: null`; the typed class is what prepareControllerTerminal reads as
-  // environment-blocked.
-  it("refuses a host without an isolation mechanism as a typed environment refusal", () => {
-    expect(() => builtSolveIsolation(workRepo(), [], { platform: "win32" })).toThrow(EnvironmentRefusal);
-  });
-
-  it("returns the supporting host's policy bytes", () => {
-    expect(builtSolveIsolation(workRepo()).policyHash).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it.each(["claude-opus-5", "claude-fable-5-1"])(
-    "runs the exact Pi Built worker under the host isolation for %s",
-    async (model) => {
-      const policy = builtSolveIsolation(repoRoot);
-      const session = await preflightPiBuilt({
-        profile: {
-          provider: "anthropic",
-          transport: "claude",
-          model,
-          thinkingLevel: "medium",
-        },
-        auth: async () => ({ type: "bearer", token: "fake-pi-built-test-token" }),
-        policy,
-      });
-      expect(session.role).toBe("built");
-      expect(session.policyHash).toBe(policy.policyHash);
-      // The preflight starts a real child under this policy and records its separate process id.
-      expect(session.confinedPid).toBeGreaterThan(0);
-      expect(session.controllerPid).toBe(runtimeProcess.pid);
-      expect(session.confinedPid).not.toBe(runtimeProcess.pid);
-      expect(session.modelSelection).toEqual({
-        resolvedModel: model,
-        effort: "medium",
-        source: "pi-provider-catalogue",
-      });
-      // Composition compares the session policy hash with the supplied probe hash. The executed
-      // probe tests above separately check that the policy enforces the intended restrictions.
-      expect(composedIsolation({ ...hostProbe, profileDigest: policy.policyHash }, session)).toBe("physical");
-      await expect(
-        preflightPiBuilt({
-          profile: { provider: "anthropic", transport: "claude", model, thinkingLevel: "off" },
-          auth: async () => ({ type: "bearer", token: "fake-pi-built-test-token" }),
-          policy,
-        }),
-      ).rejects.toThrow("unsupported reasoning effort: off");
-    },
-  );
-
-  it("gives a preflight that missed its ready wall one fresh start before it refuses", async () => {
-    const policy = builtSolveIsolation(repoRoot);
-    const profile = {
-      provider: "anthropic",
-      transport: "claude",
-      model: "claude-opus-5",
-      thinkingLevel: "medium",
-    } as const;
-    const auth = async () => ({ type: "bearer", token: "fake-pi-built-test-token" }) as const;
-    let starts = 0;
-    const recovering = {
-      profile,
-      auth,
-      policy,
-      get readyWallMs() {
-        starts += 1;
-        return starts === 1 ? 1 : 30_000;
-      },
-    };
-    expect((await preflightPiBuilt(recovering)).confinedPid).toBeGreaterThan(0);
-    expect(starts).toBe(2);
-    await expect(preflightPiBuilt({ profile, auth, policy, readyWallMs: 1 })).rejects.toThrow(
-      EnvironmentRefusal,
-    );
-  });
-
-  it("refuses host isolation without evidence of a separate confined process", () => {
-    // A library-style agent loop (pi-agent-core, @opencode-ai/sdk-next) runs the model's tools in
-    // the controller's own process, so there is no second pid to witness. Whatever the probe
-    // proved about the mechanism, the session still needs evidence of its own confinement.
-    const { confinedPid: _dropped, ...noBoundary } = hostSession;
-    expect(composedIsolation(hostProbe, noBoundary)).toBe("contractual");
-    expect(
-      composedIsolation(hostProbe, {
-        ...hostSession,
-        confinedPid: runtimeProcess.pid,
-        controllerPid: runtimeProcess.pid,
-      }),
-    ).toBe("contractual");
-  });
-});
-
-// The isolation disclosure requires every probe condition to hold. A `physical` label alone
-// is insufficient; without a probe, the reader reports `contractual`. These checks exercise
-// that classification using complete and deliberately incomplete evidence fixtures.
-describe("disclosedIsolation: physical only from the executed conjunction", () => {
-  const provenIsolation: IsolationProbeEvidence = {
-    fixture: HOST_SOLVE_ISOLATION_FIXTURE,
-    available: true,
-    isolated: true,
-    deniedReadRefused: true,
-    controlReadSucceeded: true,
-    discriminationReadSucceeded: true,
-    evidence: ["denied read refused", "control read succeeded", "deny-lifted read succeeded"],
-  };
-
-  it("accepts the full conjunction and nothing less", () => {
-    expect(disclosedIsolation(provenIsolation)).toBe("physical");
-    expect(disclosedIsolation(undefined)).toBe("contractual");
-    // Each check of the conjunction is individually required.
-    expect(disclosedIsolation({ ...provenIsolation, available: false })).toBe("contractual");
-    expect(disclosedIsolation({ ...provenIsolation, isolated: false })).toBe("contractual");
-    expect(disclosedIsolation({ ...provenIsolation, deniedReadRefused: false })).toBe("contractual");
-    // If the permitted control read also fails, the probe has not distinguished the intended
-    // restriction from a mechanism that prevents all reads.
-    expect(disclosedIsolation({ ...provenIsolation, controlReadSucceeded: false })).toBe("contractual");
-    // A refusal the deny-lifted profile cannot reverse is not attributable to the deny rules.
-    expect(disclosedIsolation({ ...provenIsolation, discriminationReadSucceeded: false })).toBe(
-      "contractual",
-    );
   });
 });

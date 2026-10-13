@@ -1,7 +1,7 @@
-// Copied from pi coding-agent v1.0.0 (github.com/earendil-works/pi, a13d35a, MIT, see LICENSE):
-// packages/coding-agent/src/utils/shell.ts. One departure: getShellEnv no longer puts pi's own
-// bin directory first on PATH, because Anabasis installs none; every Anabasis shell passes its own
-// environment through the bash tool's spawnHook anyway.
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// packages/coding-agent/src/utils/shell.ts. Departure: getShellEnv no longer puts pi's own bin
+// directory first on PATH, since this repository installs none; a solve's shell passes its own
+// environment through the bash tool's spawnHook.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawn, spawnSync } from "child_process";

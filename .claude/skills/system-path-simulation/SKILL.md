@@ -1,444 +1,195 @@
 ---
 name: system-path-simulation
-description: "Test an uncertain Anabasis path at the smallest real layer that can decide it: deterministic joins, live authoring and admission, semantic host probes, or controlled model comparisons. Use full-run rehearsals only when the question needs them; not for ordinary run review or a path already proved by its owning test."
+description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it, before a paid round is asked to: one fact from a log or a dry run, a walk of one value across the layers a change touches, a replay of every recorded log through this tree's readers, a whole round rehearsed on a seeded copy of a campaign with a script in each model seat (`bun run runs seed`, `bun run runs rehearse`), or one live seat from a seed. Use when the operator asks whether a change will work in the real system, to simulate or rehearse a round, to stand again in a position a past run stood in, what a campaign of a given size can read, or what a kill or a stop leaves behind. Not for reading a finished run (whole-run-investigation) or starting a paid one (launch-run)."
 ---
 
-# System Path Simulation
-
-Use this when you need to know whether a change will work in the real system, a path has not been
-walked by a real actor, or a possible blocker remains unresolved. This is not tied to launch or to
-failure. Take the smallest real slice around the question: start where the change takes effect when
-that directly answers it, or one or two production transitions before it when the joins are part
-of what must work. A fresh unused project on a familiar unchanged path does not need it.
-
-## Revamp log
-
-This skill is being rebuilt from observed simulations, one dated entry per run. Read the entries
-before choosing a case. When a few simulated runs stand behind them, overhaul the skill around
-what they show and delete the settled entries.
-
-- 2026-09-15, gate overhaul (PR #683). A seeded round starts from a copied campaign that has
-  already passed the fresh-project path, so it cannot measure what the overhaul changed: time to
-  the first preview, the rows each refusal shows, adoption. There the real run is the condition;
-  `cases/real-run-watch.md` is the new case. A steward subagent per condition shares the account's
-  session limit: one 429 (`session limit, resets 14:20`) ended the audit subagent and the run's
-  Builder in the same minute; a fresh token on the same account died the same way at 13:49. The
-  launcher now runs one minimal Builder-slot turn before the gate and refuses with the provider's
-  reset clause (main 69ed55b5b). Stewards went; the launching session ran its own conditions.
-  Seeded rounds default the Built slot to scripted, so the Builder → Built Harness handover stays
-  unexercised until a real battery; when the question is the measure stage, run `--built live`.
-- 2026-09-29, stewards return on an account of their own. The 2026-09-15 death was one account
-  carrying the steward's condition, the run's Builder and the parent at once. The operator's
-  numbered accounts in `.accounts/` separate them: a steward's condition spends an account no live
-  run and no parent is spending, so its 429 ends only itself. The rule is below.
-- 2026-09-30, three truss and esp32 stewards spent their first minutes on hand steps: a seed refused
-  3,466 tool-tree references, and a second five-minute `--relocate` run left them naming the main
-  checkout's tree; Built pins unlike the record turned a rebuild into a measure; `CLAUDE*` variables
-  were unset by hand; a transcript copy was lost to the CLI's close stub. Helpers own each step now.
-- 2026-10-01, the `limit-line` arm of PR #122 from esp32 campaign -20 at its partial battery i14. Two
-  seeds and two captures, no model turn. Neither first prompt carried the line: the selector measures a
-  republished product before it builds, so with `--built no-solve` the newest row is a refused claim
-  (`DISCRIMINATION_ACCEPT_REJECTED`, 19 invalid control receipts) and a line that speaks for the latest
-  battery alone cannot fire; and the readout set every carried battery aside, since products recorded
-  before `experiment-authoring/v2` (2026-09-29) are not resumable, by design. A condition on how a Builder
-  answers a battery needs a position recorded after that cut whose seed measure is reproduced (a scripted
-  solver over the recorded artifacts) or solved live; every esp32 campaign after the cut is an Opus full
-  pass, so the arm's trigger has not yet existed for Opus 5.5 there. `pick-run.mts` should say the cut.
-  The same evening, three live segments from that position (`run-segment.mts`, Opus 5.5 medium, 12
-  turns, 30-minute turn wall, the readout rendered from the recorded counts and labelled authored):
-  the arm's limit line, the control without it, and B′ with i14 authored as a full pass. The arm and
-  the control did the same thing: kept the failed task byte for byte, named its stand-in check wrong
-  and widened it (`probe.ts`), and added 14 tasks to reach the 25 the task-count line asks; the
-  control read the fail from the families line (`esp32-oled 0/1`) and the traces. B′ removed all 11
-  tasks and authored 25 new ones over a new host stand-in. So at this position the line changes
-  nothing: the Builder's branch follows the readout's reading of the record, and the arm adds no
-  second reading. The seed's cost: `run-segment.mts` copies no `.toolchain`, so each Builder rebuilt
-  a 10 GB arduino tree and lost its first 30-minute turn to the wall, two of three a second; a
-  segment whose actor compiles needs a cloned tree or a wall above the install.
-
-## Standing triggers
-
-These change classes warrant a simulation; each earned its place in a recorded session
-(2026-09-01: four stewards, two changed a conclusion).
-
-| The change looks like | Steward and question |
-| --- | --- |
-| An interface where the tests use doubles — backend signal contracts, `vendor/pi-claude-bridge`, transports | One layer-walk over the real sources: does each field/signal the change reads actually arrive there? Both recorded production defects (the one-hour settle fallback and Claude's MCP-prefixed tool names; earlier, the acceptance-close false warranty) were green-tested wrong joins of this class. |
-| A removed default, backstop or widened guard | One steward asking "what fires now that this doesn't?" Removing the six-hour session cap uncovered a hidden one-hour `DEFAULT_TURN_SETTLE_MS` that fired two hours before the new wall could start. |
-| A fix that claims to repair a specific past run, before the next paid run | One past-run-replay over that run's actual recorded bytes (claims, packets, terminals), plus the nearest hostile mutation in a scratch copy. Minutes of replay against run36/run39/run40 bytes beat another dead run discovering the miss live. |
-| A recorded position whose next controller round is the question | One `seeded-condition`: seed with `seed-campaign.mts`, capture the first prompt, run one round through `run-condition.mts` with the slot under test live, probe with `host-panel.mts`. The 10 September Astra condition answered handover, admission and scope binding in one 354-second native turn; its helper is now the runner. |
-| A changed Judge or Epoch Reviewer prompt, schema or orientation | One `review-replay`: the live Judge over recorded cases with `judge-replay.mts`, then the live reviewer over the resulting contested rows with `review-settle.mts`. On 2026-09-15 the first replay refuted the chosen position in six minutes (both recorded disputes were the Judge's arithmetic) and the second settled a genuine veto against the harness. |
-| An unlanded stack before a paid run | One triage, no model: list every decision change in the stack with no live exercise, give each one condition, and order them so the cheap condition can cancel the dear one — one fact, then layer walk, then deterministic replay, then the eight-task one-iteration rehearsal, then a live segment. On 2026-09-01 two of four listed conditions settled without a model: a writer/reader join (below) and a revert proved byte-identical to the tree that had created claims. |
-
-The opening rule still wins: a change fully bound by a focused test on the real code path, and a
-question only a recorded live run can answer, get no steward — mark the second `unobservable`
-rather than manufacturing a finding.
-
-A cleared deterministic condition is not finished until its owning test file carries it: the gate must
-bind the join the condition proved, or the next change reopens the question. The recurring shape is
-two tests that each hand-roll the same record — the watchdog readiness file on 2026-09-01 — so
-neither runs the real writer against the real reader. `cases/layer-walk.md` names the method.
-
-**A steward runs its condition on an account of its own.** A steward subagent may own one
-condition again (operator decision 2026-09-29), but only when that condition's model calls go
-through a numbered account that no live run and not the launching session is spending. Without
-such an account, the launching session runs its own conditions, as it did from 2026-09-15.
-
-- **Choose from `.accounts/usage`.** Run it from the main checkout. It prints each numbered
-  account's 5-hour and weekly windows and prints no token. It marks the account behind the plain
-  `CLAUDE_CODE_OAUTH_TOKEN`, which is the one `launch-run` hands to live Claude runs by default.
-  Pick an account that is:
-  - not the plain one, and not the one a live run was launched on with `.accounts/launch claudeN`
-    (`scripts/credential-use.mts` names the credential file each open run's launch receipt holds);
-  - not the one the launching session runs on;
-  - showing neither `rejected` nor a window near full.
-
-  The reading on 2026-09-29: claude1 at 3 % (5-hour) and 6 % (week), claude2 as the plain token
-  at 88 % of its week, claude4 `rejected`.
-- **Pass the account as an env file.** Run every model-calling script as
-  `bun --env-file=.accounts/claudeN.env .claude/skills/system-path-simulation/scripts/<script>.mts …`.
-  Every slot resolves its credential through `loadRepoEnv(repoRoot, Bun.env)`, and there the
-  process environment wins over the checkout's `.env`. So this one flag moves the Builder, Built,
-  Judge and review slots together. A shell that already exports `CLAUDE_CODE_OAUTH_TOKEN` beats
-  the file, so check that it is unset. `run-condition.mts` records it and names open runs sharing it.
-- **The runners drop the launching session's variables.** `run-condition`, `run-segment`,
-  `review-settle` and `judge-replay` strip and print each `CLAUDE*` name the product does not read
-  (`CLAUDE_EFFORT`, `CLAUDECODE`, …; `session-env.mts`), which it would hand on to the Builder's
-  CLI. A paid launch starts under `env -i` and never has them.
-- **Treat the files as secrets.** `.accounts/` is local and untracked (`.git/info/exclude`). Each
-  `claudeN.env` holds that account's token under `CLAUDE_CODE_OAUTH_TOKEN`, the one name the
-  launcher reads, and is written by `.accounts/launch claudeN`.
-  - Never print, copy or `cat` these files, and never put a token on a command line.
-  - If a file is missing, report it. Do not rebuild it from `.env` by hand or look for another.
-- **The steward's own session still spends the parent's account.** Only the condition moves, so
-  keep the steward's reasoning short and let the condition's calls carry the spend.
-- **The steward's shape.** One steward per condition, at most four in parallel, and none spawns
-  further agents. Each writes its trail to the report path it was given, so a dead steward loses
-  nothing the parent cannot read. The steward briefs the parent with the account it used and that
-  account's `.accounts/usage` line before and after.
-
-The actor under test keeps the run's own condition — for the standard Opus run that is
-`claude-opus-5-5` at medium on the Builder, Built and review slots, launch-run's `opus` preset, which
-`run-condition.mts --preset opus` pins — and neither the session nor a steward ever stands in for it
-(operator decision 2026-09-01). The unpinned Claude default in `src/backends/resolve.ts` is still
-`claude-opus-5`, so a runner that takes `--backend claude` without a preset serves a different actor.
-
-## Rules that hold for every case
-
-If a gate or test already binds the thing you are about to check, you are finished before you start.
-
-Spend alone is not the criterion (operator decision 2026-08-16, restated 2026-08-17: "we do not
-care about the money, only indirectly by checking if the model is doing sensible things; time is
-more important"). Use a live behavioural condition when it can change the decision and the host already
-has action authority. Keep the epistemic discipline: one stubbed thing, one variable, and stop at
-the decisive fact because work past that point confounds the answer.
-
-**Prefer a new discriminator to an idle continuation.** A condition asks a new question; a further turn
-often repeats an answered one. Of four conditions run on 2026-08-17, the control changed the conclusion.
-This is evidence for good experimental judgement, not a required condition count.
-
-**Keep independent live-model conditions independent.** Give each one exact head, one evidence
-packet, one question, one scratch directory and one report path, as its own background command,
-and keep every other model-visible byte identical. Check each load-bearing claim against the named
-bytes before routing it.
-
-**Seed as late as the question allows.** The segment starts at the last stage whose output the
-question does not depend on; everything earlier is paid for and confounds nothing.
-Copy the required recorded source bytes into an owned fixture before invoking a mutating
-production helper. Inspect linked runtime and tool trees too: a copied workspace can still write
-through `.toolchain` into the original run, outside its fingerprint. Use owned tool fixtures for
-startup and resume probes; keep real recorded trees read-only. A republish opens a fresh epoch, so
-the source epoch's `MEMORY.md` and `SCRATCHPAD.md` do not follow it (production carries notes only
-when an epoch supersedes one); the seed names their sizes, and the stated delta must too.
-
-**Optional: give the condition an active tool tree.** Do this when the actor will compile, run or
-rehearse through the product's tools. Without a tree it spends its wall reinstalling, and the
-condition ends up measuring installation instead of the question. Skip it when the question is
-prose or planning, or when a reinstall is cheap. On 2026-09-30 a truss Builder with no recorded
-tree reinstalled OpenSeesPy from the uv cache in 6 seconds; an esp32 tree is 12 GB of arduino cores.
-
-- **Seeding already clones the tree.** `seed-campaign.mts` republish clones the selected product's
-  tool tree into the owned seed with APFS clonefile and rewrites the references inside it to the
-  seed's own tree by rule, under every spelling of the source; `--relocate` now answers only
-  references outside the tool tree.
-- **Check the tree exists before relying on it.** `scripts/tool-tree.mts --campaign <dir>` says
-  whether the selected product's recorded `toolTree` still resolves and lists the family's other
-  trees; every epoch tree of the truss campaign `…-3fd52f9e-29` was swept on 2026-09-30. The seed
-  and `run-condition.mts` both warn of a gone tree, `--tool-tree <tree>` seeds a family tree
-  instead, or let the actor reinstall and record that it did.
-- **Clone anything the actor may write; do not link it.** A symlink into a recorded run lets the
-  condition write through to that run, and the audit refuses it as an escape. Link only to a host
-  file that no recorded run owns and the condition cannot change, such as `~/.bun/bin/bun`.
-- **Give each parallel condition its own seed.** A campaign holds one `.controller.lock`, so two
-  conditions or live arms from one position each need a seed; `--as-slug a,b,c` seeds them in one
-  call. The esp32 ablation arms of 2026-09-30 were three seeds of one campaign.
-- **Write it in the trail.** `seed.json` records the tree's source (`toolTreeSource`); add its size
-  and whether the actor reinstalled anyway, which is a finding about the seed, not the product.
-
-**Choose the production owner before the helper.** A session measures authoring, a Builder campaign
-also measures continuation and admission, and a full run adds measurement and routing. Read the
-actual exports and helper flags at the measured revision; a familiar script name does not prove
-that it still mounts production tools or supplies the current read grant and system prompt.
-For admission or semantic comparisons, read [authoring-comparison](cases/authoring-comparison.md).
-
-**Fifteen turns is the maximum budget** (operator decision 2026-08-19, replacing the ten-turn limit
-from 2026-08-17). This is the whole segment's model-turn ceiling, not a tool-call limit: one turn
-may contain many tool calls. A condition may request fewer turns but never more. A segment that cannot
-answer inside about fifteen turns is badly staged, not under-funded: seed later and ask something
-narrower. `turn-budget-reached` is a result to read, not a failure to retry.
-Keep any smaller authorised bound. Turns, tool calls, submissions and elapsed time are separate:
-one native turn can contain six submissions and hours of real compiler work. Record progress and
-settlement at their own boundaries; do not add turns, nudges or a new source revision to an active
-condition. An explicit wall limit is a separate part of the condition.
-
-**A settled actor ends the step.** A continuation that calls no tool closes the step as
-`step-settled`. On 2026-08-17, 15 of 22 turns across four conditions were continuations that called
-nothing and answered "already complete", each still re-reading a transcript that had grown all
-segment — the idle turn sent 49% more input than the working turn before it. A stage with more to
-do needs a continuation carrying a reason (`--continue-file`), not an empty nudge. Spend reads as
-a signal here rather than a limit: a condition whose turns cost a lot while its trail shows no tool
-calls says the actor stopped working.
-
-**Read the results before starting anything else.** The recorded failure of this script is an
-unread answer rather than a wrong one: four conditions finished while their pre-registered predictions
-sat unresolved. The script closes with an `UNRESOLVED` line naming each `P<n>`. Resolve them
-against the trail and the workspace, and append each resolution with `scripts/predictions.mts
---resolve`; `--unresolved` lists what is still open.
-
-**Scout every prediction to its bytes before the actor starts.** For each `P<n>`, name three
-things: the surface the chosen runner mounts that can produce the observable, the recorded file
-where it lands, and a reader already shown to see it on one known positive. If any is missing, the
-condition cannot prove the prediction however long it runs. On 2026-09-15 a census condition went
-through `run-segment.mts`, which mounts no gate, and a status probe counted a process name the
-suite never started. It ran 78 minutes and 70 authoring calls, then resolved all three predictions
-untriggered. `run-segment.mts` now refuses predictions naming a gate, census, F2, adoption or
-battery before any backend opens (`--accept-unreachable "<reason>"` keeps a deliberate absence
-question); route those questions to `run-condition.mts`. A monitor's first tick should find a positive,
-not only zeros.
-
-## Pick your case, then read it
-
-Classify the question against the table, read the case file (or files) under `cases/`, and follow
-it. One question usually needs one case; a batch of conditions may need several, read in the order the
-table lists them, because the cheaper case often cancels the dearer one. Every case uses the
-position rules below.
-
-| The question looks like | Case file |
-| --- | --- |
-| One fact: which branch, value, identity, which version the wrapper runs | `cases/check-one-fact.md` |
-| Will an actor follow this instruction — and can the stack under it carry it? | `cases/layer-walk.md` (always before a live condition) |
-| Does this path hold end to end with one stubbed step? | `cases/scenario-stub.md` |
-| What does the real model do from this position, in a few turns? | `cases/live-segment.md` |
-| Can the Builder reach admission, repair a semantic gap, or improve under another model condition? | `cases/authoring-comparison.md` |
-| Seed a recorded campaign and run one real controller round with one slot live, the rest scripted or off | `cases/seeded-condition.md` |
-| Does the whole runtime hold: controller, wall, verifier, record? | `cases/seeded-project.md` |
-| Compare two trees or conditions on whole runs; rehearse a prompt on a full run | `cases/fullrun-conditions.md` |
-| Does a fresh project on this head reach its first preview, adoption and the Built Harness? | `cases/real-run-watch.md` |
-| Two or three past runs are named: which to analyse, and how to re-run it here | `cases/past-run-replay.md` |
-| What the live Judge or Epoch Reviewer now decides from a recorded case | `cases/review-replay.md` |
-| "The brittle angles", "what would break", across several runs | `cases/brittle-angles.md` |
-| A final test of a large PR stack: which single PR carries each error | `cases/stacked-prefix-groups.md` |
-
-A past run beats an authored position. Before writing a situation by hand, run
-`scripts/pick-run.mts` over `notes/runs/` and take the nearest recorded one; the position section
-below says how to derive the rest from its recorded bytes.
-
-## Derive the position, and keep your hands off the outcome
-
-Every shape needs a position: where the actor stands, which bytes it holds, what already happened.
-The same hand writes the position, the conditions and the verdict, so this is where a simulation stops
-measuring the product and starts measuring its own prose.
-
-### How much of the position is real
-
-A position is four separable facts, each derived or authored on its own:
-
-- the **tree** — `campaigns/<name>/epoch-*/workspace/`, straight into `--seed-dir`;
-- the **model-visible text** — the contract and `framingDigest` in `epoch-*/builder-session.json`,
-  so a seeded kickoff is proved byte-equal rather than asserted;
-- the **controller state** that put the actor here — `controller/<fullrun-*>/opening.json` and
-  `terminal.json`, plus the recorded case rows for that checkpoint;
-- the **history the actor is told it lived** — the misleading part. A Claude slot's own transcript
-  lives in `$TMPDIR/ana-claude-cli-*/projects/<cwd-slug>/*.jsonl` only while its session is open;
-  `scripts/condition-evidence.mts` keeps each state of it during a live condition, and a past
-  run's `epoch-*/builder-prose*.jsonl` keeps only the words. `scripts/position-packet.mts`
-  copies a transcript's last three to five exchanges verbatim — tool calls and results — under a
-  summary labelled as authored, so only the summary is yours. Ten exchanges drown the situation
-  (operator decision 2026-08-23). A Codex slot leaves a rollout under `~/.codex/sessions` in another
-  shape; there the history stays authored and labelled.
-
-Deriving three and labelling the fourth beats a whole position hand-built for coherence. Label them
-where the predictions are written: a finding is as strong as the weakest part the behaviour
-depended on.
-
-Usually no run stood exactly here, and then the quantity is the **delta to the nearest real
-position**: one battery earlier, eight tasks instead of 25, a rebuild advice packet the real run had
-settled. A delta you cannot state in one line means the position was decorated rather than derived.
-The condition is part of it — four conditions on 2026-08-17 ran at `--effort medium` and `low`
-against a run that pins higher, which is a different actor rather than a cheaper one.
-
-Two traps run the other way. Real bytes are not automatically the right bytes: seeding from a run
-that predates the change under test measures the old product. And a position no completed run has
-reached raises reachability before behaviour — one recorded pair spent 910 and 431 seconds landing
-twice on the same `verifier-required` terminal, answering reachability by accident.
-
-When the block and the bytes disagree, the behaviour is a response to the story. The climb condition of
-2026-08-17 declared a frozen adopted climb round over a seed its own predictions file records as
-the w28 workspace "standing in as" one, shared with three other conditions.
-
-### Whether the position hands over the answer
-
-Production puts an actor in a situation. A seeded position tends to hand it an assignment instead,
-and the recorded uses show four ways that happened:
-
-- **An imperative production never sends.** "Decide and take your next action now" closed all four
-  Builder positions of 2026-08-17; "then stop: report what you set up" closed the toolchain condition of
-  2026-08-16.
-- **A named target, which turns a propensity question into a capability one.** One condition asked
-  whether the Builder can reach the network from its walled workspace, and its position told it to
-  install PlatformIO. "Can, when told" and "does, unprompted" are different findings, and a run
-  usually depends on the second.
-- **The falsifier stated in the subject's own prompt.** "One more byte-identical submit ends this
-  session" stood in the position of the condition predicting the session would stop resubmitting.
-- **A prediction whose `caught` is compliance.** P1 and P7 that day both resolve `caught` when the
-  session does what the steering text quoted in the same prompt asked; neither condition could fail. P2
-  is the shape that pays — it asked whether the edit landed on the surface the finding named,
-  which the prompt did not say.
-
-The line that holds: **production constrains scope, it does not assign the next action.** A
-position may name the files writable this round, because production does. It may not say what to do
-with them, in which order, or when to stop.
-
-### Steer by transition, not destination
-
-The useful behavioural shape is `A → B → {C, D}`:
-
-- **A** is the actor's settled past, derived from recorded bytes: what it built, what was measured and
-  what decision boundary it reached.
-- **B** is the new controller-owned situation: the selector moved, a scope opened, or a public fact
-  became available. Append B at the boundary where production would deliver it, normally through
-  the real handover rather than by putting future history in the first kickoff.
-- **C and D** are plausible outcomes. They belong in the campaign-owned frozen prediction/event
-  ledger and its advisory simulation projection, never in model-visible text. The expected or "right" answer must not appear as a named target,
-  suggested mechanism, falsifier or stopping instruction.
-
-Write the transition as ordinary continuity: "You were in A. The controller has now selected B.
-The workspace is exactly as that completed stage left it, and this round has scope S." This gives
-the actor enough orientation to proceed without assigning the action it should take. Use the real
-controller's reason and contract where they exist; an authored transition is labelled as such.
-
-For an authored A or B, pre-register and run three conditions when the question is important enough to
-change production prose:
-
-1. **Natural transition:** A followed by B, with neither C nor D named.
-2. **Context-minus control:** the same bytes and contract without the authored transition sentence.
-3. **Counterfactual transition:** the smallest legitimate B′ that should change the correct branch.
-
-The first pair measures whether the transition steered behaviour. The counterfactual measures
-whether the actor read its meaning rather than merely following its vocabulary. If B and B′ lead
-to the same branch, do not claim contextual reasoning. Keep all other model-visible text,
-model pins and tool contracts identical, and record each prompt digest separately.
-
-Re-reading your own position for this does not work, since you wrote the sentence. Two checks
-instead: every imperative in the position must be quotable from a production surface, and one condition
-runs with the sentence removed — a behaviour that survives removal belongs to the product.
-
-### Say what you did not run
-
-Pre-register the prediction rows before the first condition. Condition selection, dropped conditions and reruns
-belong to the campaign-owned frozen prediction/event ledger; this simulation note is only an
-advisory projection of those rows. `predictions.mts --hash` writes a local integrity checksum for
-the projection and refuses to replace it after the note changes. It does not create campaign
-authority, consume an allowance, choose an experiment or promote a result. A rerun or newly justified
-condition gets a new campaign prediction/event, not a silent edit to this projection. State the
-expected outcome and what would refute it. Include an expected-failure condition when the evidence
-supports one; a demonstration with no discriminator is not an experiment.
-
-## Scripts
-
-All under `.claude/skills/system-path-simulation/scripts/`; each takes absolute paths and refuses
-a relative path or an unknown option.
-
-| Script | Duty |
-| --- | --- |
-| `pick-run.mts` | list recorded runs from `notes/runs/` with ancestry, denominator and component facts for comparison |
-| `position-packet.mts` | the last 1–5 exchanges of the actor's own SDK transcript, verbatim under a labelled authored summary, with the source digest |
-| `difficulty-watch.mts` | the authoring sequence and submit rows from recorded builder-execution records, codes only |
-| `predictions.mts` | `--hash`, `--verify`, `--resolve`, `--unresolved` on the prediction note |
-| `run-segment.mts`, `seed-kickoff.mts` | a seeded live segment over the production backend |
-| `workspace-changes.mts` | a workspace's changed paths and `diffSha`, counted from its seeding commit, since checkpoint commits move HEAD (`--since HEAD` for the view since the last one) |
-| `seed-campaign.mts` | clone a recorded campaign into a fresh tree, or republish its selected product here under one or more new slugs (`--as-slug a,b`); symlink and absolute-path audit, the owned tool tree relocated by rule, `seed.json`; names what it could not carry (a swept tree, the epoch's notes), and `--tool-tree` stages another tree |
-| `tool-tree.mts` | whether the selected product's recorded tool tree still resolves, its size, and the family's existing trees; `--digest` says which match the recorded digest |
-| `run-condition.mts` | one real controller round over a seeded slug with each slot `live`, a scripted module, `no-solve` or `capture`; `--preset` as launch-run pins it; `--capture` compares a first prompt with an earlier capture; preflight of session variables, Built pin, tool tree and credential; wall, sampled process census, preregistration digest, `report.json` |
-| `condition-evidence.mts` | a condition's live CLI transcripts and durable Builder records, kept under content names that never overwrite (`--follow` while live), a per-session tool tally and `--grep` over the prose |
-| `credential-use.mts` | the credential file each open launched run holds, from its launch receipt; names only |
-| `judge-replay.mts` | the live Main Judge over recorded battery cases under the current prompt; verdicts and every contested row |
-| `review-settle.mts` | the live Epoch Reviewer over a scratch copy of a recorded battery and its Judge disagreements; the evidence and its public projection |
-| `host-panel.mts` | valid, equivalent and hostile artifacts for one task through the real verifier host; fingerprint before and after |
-| `show-prompt-surfaces.mts` | the exact model-visible surfaces and their digests |
-
-The build stage has one interface, `HarnessBuildOptions.builderRuntime` (`src/run/harness-build.ts`).
-Production binds the live transport; a scripted session bound there still runs the real submit,
-census, solvability and adoption path. `test/full-run-scripted-loop.test.ts` runs the whole
-controller loop through it with no provider, and `test/helpers/scripted-builder-runtime.ts` is the
-one scripted session both that warranty and `run-condition.mts` use. Do not hand-build a session,
-a seed clone, a product pointer, a wall, a process census or a host panel again: each has an owner
-above, and the recorded setup faults of 8 to 10 September all lived in hand-written copies of them.
-
-## Separate your script's faults from the product's
-
-A simulation produces different kinds of refusal that can look identical on stdout. Classify the
-owner before attributing behaviour; repair setup faults and verify the repaired path within the
-existing authority before making a product claim. Recorded artifacts, all from simulations
-that were otherwise sound: a scratch tree with no `node_modules` above it failing as `Cannot find
-module '@ana/agent-bundle'`; a helper typed `level: number | null = TARGET_LEVEL`, so the "level
-omitted" scenario passed `undefined` and triggered the default it claimed to omit; a script that
-never passed `expectedTasks`, making its own silence read as a battery shortfall; a scratch copy
-that symlinked `node_modules`, which `fullrun` refused before any provider work; a probe that
-called the wrong export and failed before reaching the product fact at all; a seed exported with
-`git archive` and therefore without `.git`, which `initWorkspace` overlaid with the starter skeleton so
-both conditions rebuilt from placeholders while the note declared an adopted-product position
-(2026-09-13; `run-segment.mts` now commits such a seed as the root and verifies the bytes).
-
-For every refusal you intend to report, name the production caller and confirm it passes the same
-arguments your script passed, from a tree set up the way production sets one up. If the real
-caller passes more, your scenario is not yet the production scenario. Preserve the failed attempt
-and classify its owner: simulation setup, shared product code, generated candidate, or
-provider/host environment. A repaired setup gets a new labelled attempt; do not fold it into a
-model's failure count. Reproduce a shared defect against unchanged candidate bytes when possible,
-then add the positive and nearest hostile case to its existing owning test.
-
-## Test the helpers without model spend
-
-Run a changed script's owning suites through the prepared-worktree runner; none calls a model:
-
-```sh
-bun run test -- test/sps-*.test.ts test/system-path-simulation-*.test.ts test/full-run-scripted-loop.test.ts
-```
-
-One `test/sps-<helper>.test.ts` owns each helper, and `test/sps-refusals.test.ts` holds one row
-per declared option refusal: select only the ones owning the change. Bun never descends into this
-hidden directory, so `test/test-discovery-completeness.test.ts` refuses a suite written beside its
-helper. Zero discovered tests is not a pass. A prose-only skill edit needs frontmatter/link
-validation and diff review, not this runtime matrix or a paid model replay. A passing matrix is
-mechanism evidence for the helpers, not for the model behaviour a later condition measures.
-
-## Result
-
-Return one evidence path and one result:
-
-- `blocking`: the command would use the wrong branch or condition;
-- `cleared`: the check proves the intended path;
-- `accepted-risk`: only a paid run can decide it.
-
-Return this result to the invoking agent. `cleared` preserves any existing authority but does not
-exercise it, schedule a command or choose the next experiment. The improvement loop or standalone host owns
-that decision and launch boundary.
-
-A deterministic check never predicts provider behaviour, output quality or later runtime branches;
-for those, accept the risk or run the rehearsal in `cases/fullrun-conditions.md`, whose result is
-the prediction note with its resolution section, not one of the three words. For live conditions
-also report operational closure, semantic verdicts and prediction resolution separately. Preserve
-verified, unaccepted and non-result denominators; list unexecuted probes. A host-blocked condition
-can leave a prediction unresolved. Admission, a compiler exit and a passing generated control set
-each prove their own condition, not complete domain correctness.
+# System path simulation
+
+Use this when something has to work in the real system and no real actor has walked it yet: a
+change crosses a join between two commands, a round is about to be sized, or a blocker is suspected
+and unproven. Take the smallest real slice that can decide the question, and stop there.
+
+v2 makes this cheap for one reason. A campaign is its folder, `.ana/d2/<name>`, and its log is its
+whole position: a round reads nothing that is not in the log, the check program staged beside it or
+the harness states it kept. So a position is a log cut at a line, and any position a real run stood
+in can be stood in again by a copy.
+
+It is v1's skill rebuilt for that fact. What v1 needed and v2 does not is at the end.
+
+## Pick the smallest case
+
+| case | it answers | it costs | read |
+| --- | --- | --- | --- |
+| One fact | what a log, a campaign or the host says now | seconds | [one-fact](cases/one-fact.md) |
+| Layer walk | whether one value survives every layer a change touches | minutes, no model | [layer-walk](cases/layer-walk.md) |
+| Log replay | whether this tree still reads what real runs wrote | seconds for every log | [log-replay](cases/log-replay.md) |
+| Rehearsal | whether a round's commands join, and what a position of this size can read | about 25 s a round, no model | [rehearsal](cases/rehearsal.md) |
+| Live seat | what a real model does from a recorded position | a session's or a solve's dollars | [live-seat](cases/live-seat.md) |
+| The real run | everything a script cannot say | hours, tens of dollars | launch-run, then `bun run runs pulse` |
+
+A cheaper case that answers the question cancels every dearer one. Say which case you stopped at,
+and why the next was not needed.
+
+## Rules for every case
+
+1. **Write the prediction first.** Before a simulation runs, write what it will read and why, in a
+   file. Resolve each line after. A miss is the finding: the product does something you did not
+   know, or your picture of it is stale. Six predictions were written for five rehearsals on
+   2026-10-08. Four held. One missed because a round that scores nothing reads `not-scored`, a word
+   the stack had gained under the note being worked from. One missed because the seed was cut
+   before the session that made the campaign's only held task.
+2. **Seed late, and from a real run.** A log a run wrote beats a position you would author. Cut
+   right before the thing in question, and say in one line how the seed differs from the nearest
+   real position: "exam-1 cut before its second Examiner session, then prepared with two practice
+   tasks where the campaign released one".
+3. **Build a position with the campaign's own commands.** Every event has one writer. Never append
+   a line by hand, edit one, or put a harness state into `states/`. For a position no run stood in,
+   cut earlier and run the real command with other flags.
+4. **Write only to a seed.** `rehearse` refuses a campaign with no `seed.json`. No other command
+   knows the difference, so the name is the guard: seeds are `sim-<what>`, and nothing but a seed is.
+5. **One variable.** Two rehearsals compare when one flag moved between them.
+6. **Change the position, never the prompt.** A live seat is seated by the production command with
+   the production prompt, and nothing tells the model what the simulation hopes for. If a prompt is
+   what you are testing, that edit is the one variable.
+7. **Your script's faults are not the product's.** When a rehearsal strays, ask first whether the
+   script could have held. Eight solves "scripted to pass" were rejected on the first
+   rehearsal: the pack's accept controls were stale, which `tools/c/accept.ts` already said. That
+   was the script's choice of answer. The meter refusing a model with no list price was the
+   product's, and right.
+8. **Say what you did not run.** A rehearsal that went as scripted proves the joins and nothing of a
+   model. Name the seats that were scripted and the layers skipped (below) wherever the result is
+   repeated.
+9. **A cleared condition lands in its owning test.** The rehearsal is how a broken join is found.
+   The test in `test/` that fails without the fix is what keeps it found.
+10. **Clean up.** A seed is listed by the pulse and read by `runs replay`.
+    Move it to the Trash when its question is answered: `/usr/bin/trash .ana/d2/sim-<what>`.
+
+## What a rehearsal walks, and what it cannot say
+
+`bun run runs rehearse` is `tools/d2/round.ts` with a script in its two model seats
+(`roundCommand(args, seated)`). Under the seats everything is a paid round's:
+
+- the campaign opened over the real pack, its sets read from the log;
+- the Builder session, which forks the Starter Built Harness as the plan's first round does: its
+  tools on the command wall, its capped root, its freeze and digest;
+- each solve: its wall and disk cap, the answer file and `submit`, the verifier on
+  the staged check program, its verdict;
+- the comparison: its terms written before its first solve, the reference harness, which is the
+  starter unless `--reference` names another, and the new one solved in turn, the sign test, each
+  harness by itself at every budget (`valid`), the report and the stop rule;
+- going on from the log after a kill or a `bun run runs stop`, which finds a rehearsal as it finds
+  a round and releases what its solves held.
+
+Skipped, and so unproven by any rehearsal:
+
+- every model, and the backends that reach one (the Claude Agent SDK, Codex, pi's own providers);
+- practice solves, since the Builder's script calls none;
+- the Referee and the Diagnoser. A flag that names a model is refused, `--reviewer` among them. So
+  a scripted `fail`, an answer a check rejects, is ruled by nobody and sets its task aside, as a
+  paid comparison's would with no reviewer; `tools/d2/settle.ts` on the seed walks the rest;
+- time and money. A scripted solve takes 3 to 4 seconds and reaches no wall.
+
+A rehearsal is told from a paid round by three marks: `seed.json` beside its log, `(a seed)` in the
+pulse, and `faux/script` as its Builder and solver wherever a reader names a model.
+
+## What scripts read as
+
+`--held old:new` says how a solve of a held-out task ends under the two harnesses of the
+comparison: the reference harness, which is the starter unless `--reference` names another, and
+the new one. Each is `pass`, a valid answer; `fail`, an answer a check rejects; or `none`, a solve
+that submits with no answer, as one that reached its limits has none. `--starter` says how a solve
+ends under the starter where it is neither of the two, which is after a promotion only. The table
+is what `src/builder/round.ts` reads, as its tests hold it on stand-ins (`test/round.test.ts`), at
+four scored tasks. It has not been rehearsed on the truss pack since the comparison was rewritten
+on 2026-10-09: the first rehearsal on a seed should write these as its predictions.
+
+| script | reading | why |
+| --- | --- | --- |
+| `--held none:pass` (the default) | `step`, `valid` 4/0/0 and 0/0/4 | four wins are p 0.0625; the starter is a side of the test, so nothing more is solved |
+| `--held pass:pass` | `no-step`, `valid` 0/0/4 twice | four ties between valid answers: the tasks leave a harness nothing to add |
+| `--held none:none` | `no-step`, `unsolved` 4 | no harness answers; twice in a row and each task waits for a person's label |
+| `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0 | no reviewer is seated, so each rejection sets its task aside until it is labelled |
+| the same, then `settle.ts` with every label `earned` | `step` | the labels restore the tasks, and a settling makes no solve |
+| `--reference <a built digest> --held none:pass` | `step`, sixteen solves | after a promotion the starter is solved on no task: until 11 October a step was held to it, a third arm (`docs/simplify.md`, B2) |
+| fewer than two tasks held out | refused by the comparison's admission; `no-step` at best if run | at a trigger of 0.25 a first reading takes two untied tasks, all won |
+| a Builder whose edit does not land | `no-change` | the harness froze to its parent's digest |
+| `--campaign --held none:pass --starter pass --supply 40` over a seed of a campaign that drafted its exam | a step read twice and a promotion at each epoch, three in 21 moves on t-10's seed (11 October) | the scripted Examiner proposes copies of the source's answered tasks once the source's own are spent; every epoch goes through the same rows: the reference's room, other tasks, the control, a session, a step and its repeat |
+
+`check-defects` is out of a rehearsal's reach but for a check that cannot run: it takes a Referee's
+ruling of a check defect to count one.
+
+## What the first rehearsals settled
+
+About seventeen rounds run to their report, one kill and five stops on 2026-10-08, with no model
+call. They ran under the design before the plan after the v1 review, which screened candidates
+and read an anchor; what they found about that design went with it. What they found about a
+round's size still holds in the new arithmetic:
+
+- **A step takes four untied tasks, all won, at level 0.1.** A campaign that holds fewer cannot
+  read one, and the comparison's admission now refuses it.
+- **A step does not move the reference harness.** The next comparison is against the harness the
+  campaign started with until the operator names another with `--reference`; the Builder goes on
+  from the latest harness a session left.
+- **A prediction made from a count taken while a session ran was wrong.** Seed from a log at rest.
+
+What the product did:
+
+- **A hard kill is survived.** `kill -9` 13 seconds into a round left 8 solves started and 4
+  finished. Run again with the same `--session`, it went on from its log and reported as scripted.
+- **A kill or a stop left disk images attached.** The four solves in flight at the kill stayed
+  mounted, as did the Builder roots of two sessions stopped hours earlier with `bun run runs stop`,
+  a third of a gigabyte each. A Builder's root was named for its session id alone, so another
+  campaign on the host that asked for that id was refused with a bare `EEXIST`. Both are mended:
+  `bun run runs stop <name> --yes` releases what a run's unfinished solves and sessions left,
+  whenever it was stopped or killed, and a Builder's root is named for its campaign too.
+- **The mend failed its first rehearsal.** A stop two seconds into four solves gave up at its first
+  root: three had a folder and an image and no volume, and a detach of that exits 1. A release now
+  passes over a root with nothing mounted. Four more stops, from a third of a second in to after the
+  solves ended, left nothing, and a stopped round went on under its session and read `step`.
+- **Claude Code went on after its solve closed.** The host folders the day's solves left behind
+  each held a log Claude Code wrote after its solve's teardown, and 14 of 35 held a call made after
+  the one that ended the solve. A live seat on the small model showed why for cents: closed on a
+  parked `submit`, Claude Code lived two to three seconds more and called `submit` twice again,
+  each a model request no meter read. An abort closes its stdin and gives it two seconds, which it
+  spends on its turn. The close now interrupts the turn first, and the same probe then called
+  nothing and was gone inside a second. One whole solve on that model, its logs copied out five
+  times a second, then ended on its `submit` with no call after it, Claude Code gone within 0.56 s
+  and no folder left. A leftover nobody asked about was the lead.
+- **The pulse read a seed as a paid run**, with its source's dollars and its source's solves in
+  flight. It now says `(a seed)`.
+- **A reader caught a planted contradiction.** Two rehearsed rounds made one harness pass a task
+  as the new side and fail it as the old, and `bun tools/wri/wri.ts read` said so unasked. Planting
+  a condition and checking that its reader names it is a use of a rehearsal in its own right.
+
+## Not here yet
+
+- **A scripted Examiner.** `exam.call` holds each call whole, so a session can be replayed from a
+  log. Nothing does it, and an Examiner session is rehearsed only live.
+- **A live Builder over scripted solves**, which would prove the Builder's seat for a dollar or two.
+- **Practice solves and reviewers in a rehearsal.**
+- **A rehearsal in the test suite.** The tests hold the script and the seed. The joins were walked
+  on the truss pack by hand, and no fixture pack walks them on every gate.
+- **Linux.** Every rehearsal so far ran on the Darwin wall and its disk images.
+
+## The result
+
+End with these, in this order.
+
+1. The question, and the case you stopped at.
+2. The position: the seed, its source, where it was cut, and the one line of difference.
+3. Each prediction beside its reading.
+4. What was not run.
+5. Each condition as `blocking`, `cleared` or `accepted-risk`. A blocking one names its owner and
+   the smallest fix. An accepted one names who accepted it.
+6. The seeds moved to the Trash, or which are kept and why.
+
+## From v1
+
+Kept: the smallest real layer, the ladder of cases, seed late and from a past run, the one line of
+difference, predictions written first, script faults apart from product faults, a cleared condition
+in its owning test, the three-word result.
+
+Gone with what they served: stewards and their accounts, position packets, the Judge and Epoch
+Reviewer replays, the tool-tree relocation and the fifteen-turn rule. v1 hand-built a position
+because its state was spread over a controller and many files. v2's is one log, so a position is
+cut and never built.

@@ -6,9 +6,10 @@ import { importSpecifier } from "../shared/import-fix.ts";
 /**
  * The meta module that owns each host builtin, read off `src/meta` on 2026-09-20.
  *
- * `node:util` is deliberately absent. Two modules there import it — `env-parser.ts` takes
- * `parseEnv` and `json-runtime.ts` takes `types` — so the owner depends on the name, which is the
- * one question a table cannot answer. `node:crypto` and `node:child_process` are absent because no
+ * `node:util` is deliberately absent. Two modules there imported it when this was read —
+ * `env-parser.ts` took `parseEnv` and `json-runtime.ts` takes `types` — so the owner depends on
+ * the name, which is the one question a table cannot answer. v2 has no caller of the first, and it
+ * was removed on 2026-10-09. `node:crypto` and `node:child_process` are absent because no
  * module under `src/meta` imports them: the wrapper a fix would name does not exist yet.
  */
 const OWNER = new Map([

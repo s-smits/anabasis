@@ -15,19 +15,6 @@
     "resolveJsonModule": true,
     "types": ["bun"]
   },
-  "include": [
-    "src/**/*.ts",
-    "tools/**/*.ts",
-    "vendor/**/*.ts",
-    "starters/**/*.ts",
-    "test/**/*.ts",
-    ".claude/skills/**/*.ts",
-    ".claude/skills/**/*.mts"
-  ],
-  "exclude": [
-    "**/node_modules",
-    "**/dist",
-    ".claude/skills/run-cycles",
-    ".claude/skills/harness-query/judge/free-proxy-judge.mts"
-  ]
+  "include": ["src/**/*.ts", "tools/**/*.ts", "vendor/**/*.ts", "test/**/*.ts"],
+  "exclude": ["**/node_modules", "**/dist"]
 }

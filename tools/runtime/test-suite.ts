@@ -95,7 +95,7 @@ const COMMON_FLAGS = [
  *  files Bun said it was still running when interrupted, or whose worker crashed, and `incomplete`
  *  those it said it had not started, or aborted, or had no live worker for. `bailed` says Bun
  *  stopped at `--bail`, leaving files it never ran and so never named. */
-export interface WalledRun {
+interface WalledRun {
   exitCode: number | null;
   reported: Set<string>;
   failed: Set<string>;
@@ -227,7 +227,7 @@ export function wallSeconds(idleSeconds: number, busy = hostLoad(), cores = avai
   return Math.round(idleSeconds * Math.max(1, busy / cores));
 }
 
-export function workerCount(override: string | undefined, busy = hostLoad()): number {
+function workerCount(override: string | undefined, busy = hostLoad()): number {
   const cores = availableParallelism();
   return positiveInteger(
     "ANA_TEST_WORKERS",
@@ -270,16 +270,9 @@ function requestedFiles(requested: readonly string[]): string[] {
   return files.map((file) => fileIdentity(resolve(cwd, file)));
 }
 
-/** The request with its test files removed: the filters, preloads, reporters and working
- *  directory a rerun must keep, so it tests what the first process was asked to test. */
-export function requestWithoutFiles(requested: readonly string[]): string[] {
-  const { fileIndexes } = scanRequest(requested);
-  return requested.filter((_argument, index) => !fileIndexes.includes(index));
-}
-
 /** The one test command. An empty request runs the whole `test/` tree; a focused request runs the
  *  named files. Both order files slowest-first from the recorded timings and refresh them. */
-export function testCommand(requested: readonly string[], workers: string | undefined): string[] {
+function testCommand(requested: readonly string[], workers: string | undefined): string[] {
   requestedFiles(requested);
   // Inside a file, four concurrent tests at once: most of them spawn child processes. `--parallel`
   // isolates every file by default, and a worker isolating file after file is where Bun's
@@ -438,7 +431,7 @@ function startWall(
  *  header, a result line under it, the notice that a clock ended the test above it, an error
  *  outside any test, or the bail. Bun prints file headers relative to `cwd`, the request's working
  *  directory. `run` fills as `scanLine` reads, so the relay and a test feed it the same way. */
-export function outputReader(cwd: string): OutputReader {
+function outputReader(cwd: string): OutputReader {
   const run: ProcessOutput = {
     reported: new Set<string>(),
     failed: new Set<string>(),
@@ -676,11 +669,19 @@ async function main(): Promise<number> {
       console.error(said[step.because]);
     }
     if (step.rerun === null) return step.exitCode;
-    // One fresh process without workers over those files, keeping the request's filters. It shares
-    // one global across them, as each parallel worker did, since isolating file after file is what
-    // makes Bun's spawnSync wedge.
+    // One fresh process without workers over those files, keeping the request's filters, preloads,
+    // reporters and working directory and dropping its test files. It shares one global across
+    // them, as each parallel worker did, since isolating file after file is what makes Bun's
+    // spawnSync wedge.
+    const { fileIndexes } = scanRequest(requested);
     const again = await runWalled(
-      [runtimeProcess.execPath, "test", ...COMMON_FLAGS, ...requestWithoutFiles(requested), ...step.rerun],
+      [
+        runtimeProcess.execPath,
+        "test",
+        ...COMMON_FLAGS,
+        ...requested.filter((_argument, index) => !fileIndexes.includes(index)),
+        ...step.rerun,
+      ],
       temporaryRoot,
       idleSeconds,
       cwd,

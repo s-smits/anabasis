@@ -1,10 +1,8 @@
-# Historical false positives, verified by source inspection (not real credentials, no rotation
-# needed). These are redaction/secret-scanner test fixtures written before test/secret-scan.test.ts
-# and tools/secrets/rules.ts existed. The commits themselves cannot be edited without a history
-# rewrite (disallowed); this file suppresses the known-safe fingerprints for local and CI gitleaks
-# runs. GitGuardian's own dashboard has a separate "mark as false positive" action for the same
-# incidents; this file does not affect that.
-0166d3ae796ba594cd8a69962f912173e1884b0b:test/secret-scan.test.ts:generic-api-key:21
-775370871d8e15add92109255340abb2db2beb27:test/diagnostic-redaction.test.ts:generic-api-key:33
-775370871d8e15add92109255340abb2db2beb27:test/diagnostic-redaction.test.ts:generic-api-key:34
-276a9bf17f49c015269521c383809b8bdb68dad7:test/builder-tools.test.ts:jwt:200
+# Known false positives: made-up keys that test the secret scanner, split so the tree holds no
+# credential-shaped literal, which gitleaks 8.30.1 still reads as keys in the history. Found by
+# scanning both histories here, v1's from its initial commit and v2's as merged on 11 October 2026.
+# No rotation is needed. GitGuardian's dashboard has its own "mark as false positive" action for
+# the same findings; this file does not reach it.
+d21f1a2705bd86273d6e5f57a8b8e5cd09bb9220:test/secret-scan.test.ts:generic-api-key:30
+396ef7c2b6cc6a447cf288c4565ca43092ad8e09:test/secret-scan.test.ts:generic-api-key:28
+912d6aeb35158d7bd38dd38ff4ef765f2a522d8d:test/skill-scripts.test.ts:generic-api-key:125

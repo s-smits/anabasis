@@ -506,7 +506,7 @@ function filesystemBudget(files: ReadonlyMap<string, string>): TreeFinding[] {
  * one is a statement about a whole tree, and a fixture tree of six files can hold every shape
  * at a known line, where the repository holds 707 of them at lines that move.
  */
-export function treeFindingsOver(
+function treeFindingsOver(
   declaring: ReadonlyMap<string, string>,
   corpusFiles: ReadonlyMap<string, string>,
   prose: ReadonlyMap<string, string> = new Map(),
@@ -539,7 +539,7 @@ export function treeFindingsOver(
  * A finding about a file as a whole has no lines, and its text is empty: the answer is about the
  * file, and its detail — how many tests read it — moves without the file changing.
  */
-export function sitePlaces(finding: TreeFinding, files: ReadonlyMap<string, string>): Place[] {
+function sitePlaces(finding: TreeFinding, files: ReadonlyMap<string, string>): Place[] {
   if (finding.line === 0) return [{ path: finding.path, text: "" }];
   const places = finding.places ?? [{ path: finding.path, line: finding.line, end: finding.line }];
   return places.map((place) => ({

@@ -1,59 +1,58 @@
 #!/usr/bin/env bun
 /**
- * The Luna launcher: one `codex exec` per session, queued under `--max-active` and paced by
+ * The Codex launcher: one `codex exec` a session, queued under `--max-active` and paced by
  * `--start-interval-ms`, with one session-level retry.
  *
  * Codex owns resilience inside a session: it retries a request, reconnects a stream and falls back
  * from WebSocket to HTTPS. What it cannot do is start a session that stopped, so that is the part
  * this launcher owns. A session that ends without a report is tried again (`--retries`, once by
- * default): resumed with `codex exec resume` when Codex named its thread, started again from its
- * prompt when it did not. `--retry <outputDir>` does the same later for the sessions an earlier
+ * default): resumed with `codex exec resume` where Codex named its thread, started again from its
+ * prompt where it did not. `--retry <outputDir>` does the same later for the sessions an earlier
  * launch left incomplete, from that launch's own record. What each session leaves behind, and how
  * it is read back, is `luna-receipts.ts`'s.
+ *
+ * v1's launcher also held a parent Codex task open through a stop hook, and took a bare task list
+ * beside a manifest. v2 registers no Codex hook and a manifest holds a task list whole, so both
+ * went when the skill came over on 11 October.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { processExists } from "#skills/main/session.ts";
-import { readJsonFile, readJsonFileOrNull, writeAtomic } from "#src/meta/completed-json.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import {
   closeSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   realpathSync,
-  rmSync,
-  statSync,
 } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { tmpdir } from "#src/meta/os.ts";
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
+import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { processGroupExists } from "#src/meta/subprocess.ts";
 import {
   type AttemptEnd,
   drain,
-  LAUNCH_FILE,
   LAUNCH_TYPE,
   type LaunchRecord,
   readLaunch,
   readResult,
+  recordLaunch,
   recordResult,
   type SessionRecord,
   type SessionResult,
-  sessionPaths,
-  settle,
   SUMMARY_FILE,
   SUMMARY_TYPE,
+  sessionPaths,
+  settle,
   threadIdOf,
-  writeRecord,
   writeSummary,
+  writeWhole,
 } from "./luna-receipts.ts";
 
 /** One checked session, ready to launch. */
-interface Session {
+export interface Session {
   name: string;
   prompt: string;
   workdir: string;
@@ -79,59 +78,39 @@ interface Execution {
   policy: Policy;
   codex: string;
   environment: SessionEnvironment;
-  launchOnly: boolean;
 }
 
-type HookDecision = { decision?: "block"; reason?: string };
-
-const USAGE = `Usage: luna-sessions --manifest <absolute json> [launch options]
-       luna-sessions --tasks-file <absolute json> --workdir <absolute dir> [--instructions-file <absolute file>] [launch options]
-       luna-sessions --retry <absolute output dir> [--codex-bin …] [--max-active …] [--start-interval-ms …] [--retries …] [--launch-only]
-       luna-sessions --drain <absolute output dir>
-       luna-sessions --stop-hook
+const USAGE = `Usage: luna-sessions.ts --manifest <absolute json> --output-dir <absolute new dir> [launch options]
+       luna-sessions.ts --retry <absolute output dir> [--codex-bin …] [--max-active …] [--start-interval-ms …] [--retries …]
+       luna-sessions.ts --drain <absolute output dir>
 
 Launch options:
-  --output-dir <absolute new dir>   Default: a new ana-luna-sessions-* directory under the temp root
   --codex-bin <absolute executable>
   --model <gpt-6-luna|gpt-6.1-sol>  Default: gpt-6-luna
   --reasoning-effort <effort>       Luna: high, xhigh or max (default max). Sol: low, medium, high or xhigh (default medium)
   --max-active <n>                  Sessions running at once. Default: all of them
   --start-interval-ms <0-60000>     Least time between two starts. Default: 1000 when there are several sessions
-  --retries <0-5>                   Further attempts for a session that ends without a report. Default: 1
-  --launch-only                     Do not hold the parent Codex task for report collection`;
+  --retries <0-5>                   Further attempts for a session that ends without a report. Default: 1`;
 
 const OPTIONS = {
   manifest: "abs",
-  "tasks-file": "abs",
   retry: "abs",
   drain: "abs",
-  workdir: "abs",
-  "instructions-file": "abs",
-  "output-dir": "text",
+  "output-dir": "abs",
   "codex-bin": "abs",
   model: "text",
   "reasoning-effort": "text",
   "max-active": "int",
   "start-interval-ms": "int",
   retries: "int",
-  "launch-only": "flag",
-  "stop-hook": "flag",
 } as const;
-const LAUNCH_OPTIONS = [
-  "output-dir",
-  "codex-bin",
-  "model",
-  "reasoning-effort",
-  "max-active",
-  "start-interval-ms",
-  "retries",
-  "launch-only",
-];
 /** Each mode, and the options it takes besides its own. A retry keeps its launch's condition. */
 const MODE_OPTIONS: ReadonlyMap<string, readonly string[]> = new Map([
-  ["manifest", LAUNCH_OPTIONS],
-  ["tasks-file", [...LAUNCH_OPTIONS, "workdir", "instructions-file"]],
-  ["retry", ["codex-bin", "max-active", "start-interval-ms", "retries", "launch-only"]],
+  [
+    "manifest",
+    ["output-dir", "codex-bin", "model", "reasoning-effort", "max-active", "start-interval-ms", "retries"],
+  ],
+  ["retry", ["codex-bin", "max-active", "start-interval-ms", "retries"]],
   ["drain", []],
 ]);
 /** Each model the launcher runs, the efforts it accepts, and the one it runs without a choice. */
@@ -141,7 +120,8 @@ const MODELS: ReadonlyMap<string, { efforts: readonly string[]; effort: string }
 ]);
 const DEFAULT_MODEL = "gpt-6-luna";
 const SERVICE_TIER = "priority";
-const SANDBOXES: ReadonlySet<string> = new Set(["read-only", "workspace-write"]);
+const READ_ONLY = "read-only";
+const SANDBOXES: ReadonlySet<string> = new Set([READ_ONLY, "workspace-write"]);
 const MANIFEST_FIELDS: ReadonlySet<string> = new Set([
   "workdir",
   "instructionsFile",
@@ -151,12 +131,10 @@ const MANIFEST_FIELDS: ReadonlySet<string> = new Set([
 ]);
 const SESSION_FIELDS: ReadonlySet<string> = new Set(["name", "task", "workdir", "sandbox", "ownedPaths"]);
 const NAME = /^[a-z][a-z0-9_]{0,47}$/;
-const THREAD_ID = /^[\w-]{8,128}$/;
 const CODEX_CANDIDATES = ["/Applications/ChatGPT.app/Contents/Resources/codex", "/opt/homebrew/bin/codex"];
 const DEFAULT_START_INTERVAL_MS = 1_000;
 const MAX_START_INTERVAL_MS = 60_000;
 const MAX_RETRIES = 5;
-const LAUNCH_SCHEMA_VERSION = 1;
 /** What a resumed session is told. Its thread already holds the task, so this is the whole turn. */
 const RESUME_PROMPT =
   "This session stopped before it ended. Continue the task from where it stopped, and end with the complete report the task asks for, repeating any part of it you already gave.";
@@ -167,11 +145,9 @@ function oneOf(values: readonly string[]): string {
   return `${values.slice(0, -1).join(", ")}, or ${values.at(-1) ?? ""}`;
 }
 
-function directory(value: JsonValue | undefined, field: string): string {
-  if (!isString(value) || !isAbsolute(value)) throw new Error(`${field} must be an absolute path`);
-  const actual = realpathSync(value);
-  if (!statSync(actual).isDirectory()) throw new Error(`${field} must be a directory`);
-  return actual;
+/** Remove a file the launcher wrote, where it is there. */
+async function removeFile(path: string): Promise<void> {
+  if (existsSync(path)) await Bun.file(path).delete();
 }
 
 /** The instructions every session shares: the file's, then the manifest's own. */
@@ -184,8 +160,7 @@ function sharedInstructions({ instructions = "", instructionsFile = null }: Json
   return [fromFile.trim(), instructions.trim()].filter((part) => part !== "").join("\n\n");
 }
 
-/** The prompt one session receives on stdin: the shared instructions, its task, then its authority,
- *  byte for byte as WRI's `leafPrompt` composes it. */
+/** The prompt one session receives on stdin: the shared instructions, its task, then its authority. */
 function promptOf(
   instructions: string,
   task: string,
@@ -193,15 +168,47 @@ function promptOf(
   ownedPaths: readonly string[],
 ): string {
   const authority =
-    sandbox === "read-only"
+    sandbox === READ_ONLY
       ? "Authority: read-only. Do not edit files or change external state."
       : `Authority: workspace-write. You own only: ${ownedPaths.join(", ")}.\nOther agents may be editing the repository. Preserve their work and do not revert it.`;
   return [instructions, task.trim(), authority].filter((part) => part !== "").join("\n\n");
 }
 
-/** Every session of a manifest, checked before anything is written or started. `label` names the
- *  rows as the caller wrote them: `sessions` in a manifest, `tasks` in a tasks file. */
-function sessionsOf(manifest: JsonObject, label: string): Session[] {
+/** One session row, checked against the names and tasks already taken. */
+function sessionOf(manifest: JsonObject, raw: JsonValue, at: string, instructions: string): Session {
+  const row = asRecord(raw);
+  if (row === null) throw new Error(`${at} must be an object`);
+  const unsupported = Object.keys(row).filter((key) => !SESSION_FIELDS.has(key));
+  if (unsupported.length > 0) throw new Error(`${at} has unsupported fields: ${unsupported.join(", ")}`);
+  const { name, task, sandbox = manifest.sandbox ?? READ_ONLY, ownedPaths = [] } = row;
+  if (!isString(name) || !NAME.test(name)) throw new Error(`${at}.name must match ${NAME.source}`);
+  if (!isString(task) || task.trim() === "") throw new Error(`${at}.task must be non-empty text`);
+  if (!isString(sandbox) || !SANDBOXES.has(sandbox)) {
+    throw new Error(`${at}.sandbox must be read-only or workspace-write`);
+  }
+  const singleLine = (path: JsonValue): boolean =>
+    isString(path) && path.trim() !== "" && !/[\0\r\n]/.test(path);
+  if (!Array.isArray(ownedPaths) || !ownedPaths.every(singleLine)) {
+    throw new Error(`${at}.ownedPaths must list non-empty single-line paths`);
+  }
+  const paths = ownedPaths.filter(isString);
+  // A workdir must exist; one that is a file fails the session's first start, typed `spawn`.
+  const workdir = row.workdir ?? manifest.workdir;
+  if (!isString(workdir) || !isAbsolute(workdir)) throw new Error(`${at}.workdir must be an absolute path`);
+  if (sandbox !== READ_ONLY && paths.length === 0) {
+    throw new Error(`write session ${name} must declare ownedPaths`);
+  }
+  return {
+    name,
+    prompt: promptOf(instructions, task, sandbox, paths),
+    workdir: realpathSync(workdir),
+    sandbox,
+    ownedPaths: paths,
+  };
+}
+
+/** Every session of a manifest, checked before anything is written or started. */
+export function sessionsOf(manifest: JsonObject): Session[] {
   const extra = Object.keys(manifest).filter((key) => !MANIFEST_FIELDS.has(key));
   if (extra.length > 0) throw new Error(`manifest has unsupported fields: ${extra.join(", ")}`);
   const { sessions: rows } = manifest;
@@ -211,38 +218,15 @@ function sessionsOf(manifest: JsonObject, label: string): Session[] {
   const instructions = sharedInstructions(manifest);
   const names = new Set<string>();
   const tasks = new Set<string>();
-  return rows.map((raw, index): Session => {
-    const at = `${label}[${index}]`;
-    const row = asRecord(raw);
-    if (row === null) throw new Error(`${at} must be an object`);
-    const unsupported = Object.keys(row).filter((key) => !SESSION_FIELDS.has(key));
-    if (unsupported.length > 0) throw new Error(`${at} has unsupported fields: ${unsupported.join(", ")}`);
-    const { name, task, sandbox = manifest.sandbox ?? "read-only", ownedPaths = [] } = row;
-    if (!isString(name) || !NAME.test(name)) throw new Error(`${at}.name must match ${NAME.source}`);
-    if (names.has(name)) throw new Error(`duplicate session name: ${name}`);
-    if (!isString(task) || task.trim() === "") throw new Error(`${at}.task must be non-empty text`);
-    if (tasks.has(task.trim())) throw new Error(`${at}.task repeats an earlier session's task`);
-    names.add(name);
+  return rows.map((raw, index) => {
+    const session = sessionOf(manifest, raw, `sessions[${String(index)}]`, instructions);
+    const { task } = asRecord(raw) ?? {};
+    if (!isString(task)) throw new Error(`session ${session.name} has no task`);
+    if (names.has(session.name)) throw new Error(`duplicate session name: ${session.name}`);
+    if (tasks.has(task.trim())) throw new Error(`session ${session.name} repeats an earlier session's task`);
+    names.add(session.name);
     tasks.add(task.trim());
-    if (!isString(sandbox) || !SANDBOXES.has(sandbox)) {
-      throw new Error(`${at}.sandbox must be read-only or workspace-write`);
-    }
-    const singleLine = (path: JsonValue): boolean =>
-      isString(path) && path.trim() !== "" && !/[\0\r\n]/.test(path);
-    if (!Array.isArray(ownedPaths) || !ownedPaths.every(singleLine)) {
-      throw new Error(`${at}.ownedPaths must list non-empty single-line paths`);
-    }
-    const paths = ownedPaths.filter(isString);
-    if (sandbox === "workspace-write" && paths.length === 0) {
-      throw new Error(`write session ${name} must declare ownedPaths`);
-    }
-    return {
-      name,
-      prompt: promptOf(instructions, task, sandbox, paths),
-      workdir: directory(row.workdir ?? manifest.workdir, `${at}.workdir`),
-      sandbox,
-      ownedPaths: paths,
-    };
+    return session;
   });
 }
 
@@ -263,10 +247,10 @@ function policyOf(args: CommandArgs, count: number): Policy {
   const retries = args.int("retries") ?? 1;
   if (maxActive < 1) throw new Error("--max-active must be a positive integer");
   if (startIntervalMs < 0 || startIntervalMs > MAX_START_INTERVAL_MS) {
-    throw new Error(`--start-interval-ms must be an integer from 0 to ${MAX_START_INTERVAL_MS}`);
+    throw new Error(`--start-interval-ms must be an integer from 0 to ${String(MAX_START_INTERVAL_MS)}`);
   }
   if (retries < 0 || retries > MAX_RETRIES) {
-    throw new Error(`--retries must be an integer from 0 to ${MAX_RETRIES}`);
+    throw new Error(`--retries must be an integer from 0 to ${String(MAX_RETRIES)}`);
   }
   return { maxActive: Math.min(maxActive, count), startIntervalMs, retries };
 }
@@ -278,11 +262,9 @@ function codexBinary(explicit: string | null): string {
   return found;
 }
 
-function createOutputDir(explicit: string | null): string {
-  // The product prefix puts an abandoned output directory under the temp-root census and the
-  // launch-time cleaner, which move only `ana-` directories untouched for two days.
-  if (explicit === null) return realpathSync(mkdtempSync(join(tmpdir(), "ana-luna-sessions-")));
-  if (!isAbsolute(explicit)) throw new Error("--output-dir must be absolute");
+/** The output directory, new and the caller's. v1 defaulted to one under the temporary root, which
+ *  the host may clean before a long session's report is drained. */
+function createOutputDir(explicit: string): string {
   if (existsSync(explicit)) throw new Error("--output-dir must not already exist");
   const output = join(realpathSync(dirname(explicit)), basename(explicit));
   mkdirSync(output, { mode: 0o700 });
@@ -290,23 +272,24 @@ function createOutputDir(explicit: string | null): string {
 }
 
 /** Hold the output directory for this process, refusing while another launcher still holds it. */
-function holdOutput(outputDir: string): () => void {
+function holdOutput(outputDir: string): () => Promise<void> {
   const path = join(outputDir, "launcher.pid");
-  const holder = readJsonFileOrNull(path);
-  if (processExists(holder)) {
-    throw new Error(`the launcher for ${outputDir} is still running as pid ${capturedJsonStringify(holder)}`);
+  const holder = existsSync(path) ? Number(readFileSync(path, "utf8").trim()) : 0;
+  if (processGroupExists(holder)) {
+    throw new Error(`the launcher for ${outputDir} is still running as pid ${String(holder)}`);
   }
-  writeAtomic(path, `${runtimeProcess.pid}\n`);
-  return () => rmSync(path, { force: true });
+  writeWhole(path, `${String(runtimeProcess.pid)}\n`);
+  return () => removeFile(path);
 }
 
-/** The environment every session runs in: this Bun first on PATH, in the shell Codex opens too. */
+/** The environment every session runs in: this Bun first on PATH, in the shell Codex opens too, and
+ *  no `.env` loaded by a Bun a session starts, since v2 keeps no `bunfig.toml` that turns it off. */
 function sessionEnvironment(outputDir: string): SessionEnvironment {
   const bunExecutable = realpathSync(capturedExecPath);
   const bunDirectory = dirname(bunExecutable);
   const shellDirectory = join(outputDir, "shell-env");
   mkdirSync(shellDirectory, { recursive: true, mode: 0o700 });
-  writeAtomic(join(shellDirectory, ".zshenv"), 'export PATH="$CODEX_LUNA_BUN_DIR:$PATH"\n');
+  writeWhole(join(shellDirectory, ".zshenv"), 'export PATH="$CODEX_LUNA_BUN_DIR:$PATH"\n');
   return {
     env: {
       ...Bun.env,
@@ -319,63 +302,12 @@ function sessionEnvironment(outputDir: string): SessionEnvironment {
   };
 }
 
-function registryPath(threadId: JsonValue | undefined): string | null {
-  return isString(threadId) && THREAD_ID.test(threadId)
-    ? join(tmpdir(), "codex-luna-swarm", `${threadId}.json`)
-    : null;
-}
-
-/** Record this launcher against the Codex task that started it, so its stop hook holds that task
- *  until the reports are drained. */
-function holdParent(outputDir: string): void {
-  const threadId = Bun.env.CODEX_THREAD_ID;
-  const path = registryPath(threadId);
-  if (path === null) return;
-  const previous = asRecord(readJsonFileOrNull(path));
-  if (previous !== null && processExists(previous.pid)) {
-    throw new Error(
-      `another Luna launcher is already active for this Codex task: ${capturedJsonStringify(previous.outputDir)}`,
-    );
-  }
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeAtomic(path, `${capturedJsonStringify({ threadId, pid: runtimeProcess.pid, outputDir })}\n`);
-}
-
-async function stopHook(): Promise<HookDecision> {
-  if (Bun.env.CODEX_LUNA_SESSION === "1") return {};
-  let input: JsonValue;
-  try {
-    input = capturedJsonParse(await Bun.stdin.text());
-  } catch {
-    return {};
-  }
-  const path = registryPath(asRecord(input)?.session_id);
-  const record = path === null ? null : asRecord(readJsonFileOrNull(path));
-  const outputDir = record?.outputDir;
-  if (path === null || !isString(outputDir)) return {};
-  const finished = existsSync(join(outputDir, SUMMARY_FILE));
-  if (!finished && processExists(record?.pid)) {
-    return {
-      decision: "block",
-      reason: `The Luna launcher is active at ${outputDir}. Poll it, follow luna_session.finished events, and drain reports before ending.`,
-    };
-  }
-  rmSync(path, { force: true });
-  return {
-    decision: "block",
-    reason: finished
-      ? `The Luna launcher finished at ${outputDir}. Drain and settle it.`
-      : `The Luna launcher stopped unexpectedly at ${outputDir}. Inspect its terminal and missing sessions.`,
-  };
-}
-
 /** Whether a session can write only what it owns: it is read-only, or an owned path is its workdir.
  *  Codex starts only inside a Git work tree, where Git can undo what a session wrote, and such a
- *  session has nothing of anyone else's to undo. WRI's hardware lanes run in their own scratch,
- *  which may sit outside every work tree: from a session scratchpad both died in 38 ms on
- *  2026-09-30, "Not inside a trusted directory". */
+ *  session has nothing of anyone else's to undo. A lane run in a scratch folder outside every work
+ *  tree died in 38 ms on 2026-09-30, "Not inside a trusted directory". */
 function ownsAllItCanWrite({ sandbox, workdir, ownedPaths }: Session): boolean {
-  if (sandbox === "read-only") return true;
+  if (sandbox === READ_ONLY) return true;
   return ownedPaths.some((path) => {
     const owned = resolve(workdir, path);
     return existsSync(owned) && realpathSync(owned) === workdir;
@@ -400,30 +332,29 @@ function codexArgs(
     ...(ownsAllItCanWrite(session) ? ["--skip-git-repo-check"] : []),
   ];
   const output = ["--json", "--output-last-message", reportPath];
-  return threadId === null
-    ? ["exec", ...shared, "--sandbox", session.sandbox, ...output, "-"]
-    : [
-        "exec",
-        "resume",
-        ...shared,
-        "--config",
-        `sandbox_mode="${session.sandbox}"`,
-        ...output,
-        threadId,
-        "-",
-      ];
+  if (threadId === null) return ["exec", ...shared, "--sandbox", session.sandbox, ...output, "-"];
+  return [
+    "exec",
+    "resume",
+    ...shared,
+    "--config",
+    `sandbox_mode="${session.sandbox}"`,
+    ...output,
+    threadId,
+    "-",
+  ];
 }
 
 async function attempt(session: Session, run: Execution, threadId: string | null): Promise<AttemptEnd> {
   const paths = sessionPaths(run.launch.outputDir, session.name);
   // The report must come from this attempt: an earlier one's stays readable in the event log.
-  rmSync(paths.reportPath, { force: true });
+  await removeFile(paths.reportPath);
   const eventFd = openSync(paths.eventPath, "a", 0o600);
   const stderrFd = openSync(paths.stderrPath, "a", 0o600);
   // Every attempt appends to the same logs; its outcome is read from where its own output begins.
-  const from = { events: statSync(paths.eventPath).size, stderr: statSync(paths.stderrPath).size };
+  const from = { events: Bun.file(paths.eventPath).size, stderr: Bun.file(paths.stderrPath).size };
   try {
-    const child = Bun.spawn({
+    const child = capturedSpawn({
       cmd: [run.codex, ...codexArgs(session, run.launch, paths.reportPath, threadId)],
       cwd: session.workdir,
       env: run.environment.env,
@@ -472,110 +403,92 @@ async function runQueue(run: Execution, onSettled: (result: SessionResult) => vo
 }
 
 async function execute(run: Execution): Promise<number> {
-  const { outputDir } = run.launch;
-  if (!run.launchOnly) holdParent(outputDir);
+  const { outputDir, model, reasoningEffort, serviceTier } = run.launch;
+  const { maxActive, startIntervalMs, retries } = run.policy;
+  const sessionCount = run.sessions.length;
   console.log(
     capturedJsonStringify({
       type: "luna_sessions.started",
       outputDir,
-      sessionCount: run.sessions.length,
-      model: run.launch.model,
-      reasoningEffort: run.launch.reasoningEffort,
-      serviceTier: run.launch.serviceTier,
+      sessionCount,
+      model,
+      reasoningEffort,
+      serviceTier,
       runtime: run.environment.runtime,
-      maxActive: run.policy.maxActive,
-      startIntervalMs: run.policy.startIntervalMs,
-      retries: run.policy.retries,
-      launchOnly: run.launchOnly,
+      maxActive,
+      startIntervalMs,
+      retries,
     }),
   );
   let settled = 0;
-  await runQueue(run, (result) => {
+  await runQueue(run, ({ name, status, failureKind, attempts }) => {
     settled += 1;
+    const remainingCount = sessionCount - settled;
     console.log(
       capturedJsonStringify({
         type: "luna_session.finished",
-        name: result.name,
-        status: result.status,
-        failureKind: result.failureKind,
-        attempts: result.attempts,
-        completedCount: settled,
-        remainingCount: run.sessions.length - settled,
+        name,
+        status,
+        failureKind,
+        attempts,
+        remainingCount,
       }),
     );
   });
   const summary = writeSummary(run.launch);
   const completedCount = summary.sessions.filter((row) => row.status === "completed").length;
+  const failedCount = summary.sessions.length - completedCount;
+  const rateLimitedCount = summary.sessions.filter((row) => row.failureKind === "rate-limit").length;
+  const summaryPath = join(outputDir, SUMMARY_FILE);
   console.log(
     capturedJsonStringify({
       type: SUMMARY_TYPE,
       outputDir,
-      summaryPath: join(outputDir, SUMMARY_FILE),
+      summaryPath,
       completedCount,
-      failedCount: summary.sessions.length - completedCount,
-      rateLimitedCount: summary.sessions.filter((row) => row.failureKind === "rate-limit").length,
+      failedCount,
+      rateLimitedCount,
     }),
   );
-  return completedCount === summary.sessions.length ? 0 : 1;
+  return failedCount === 0 ? 0 : 1;
 }
 
-async function launchSessions(mode: string, source: string, args: CommandArgs): Promise<number> {
+async function launchSessions(source: string, args: CommandArgs): Promise<number> {
   const condition = conditionOf(args.value("model"), args.value("reasoning-effort"));
-  const manifest =
-    mode === "manifest"
-      ? asRecord(readJsonFile(source))
-      : {
-          workdir: args.required("workdir"),
-          instructionsFile: args.value("instructions-file"),
-          sessions: readJsonFile(source),
-        };
+  const manifest = asRecord(parseJsonAs<JsonValue>(readFileSync(source, "utf8")));
   if (manifest === null) throw new Error("--manifest must hold a JSON object");
-  const sessions = sessionsOf(manifest, mode === "manifest" ? "sessions" : "tasks");
+  const sessions = sessionsOf(manifest);
   const policy = policyOf(args, sessions.length);
   const codex = codexBinary(args.value("codex-bin"));
-  const outputDir = createOutputDir(args.value("output-dir"));
+  const outputDir = createOutputDir(args.required("output-dir"));
   const release = holdOutput(outputDir);
   try {
     const environment = sessionEnvironment(outputDir);
-    const record: LaunchRecord = {
-      schemaVersion: LAUNCH_SCHEMA_VERSION,
+    const launch: LaunchRecord = {
       type: LAUNCH_TYPE,
       ...condition,
       runtime: environment.runtime,
       ...policy,
-      launchOnly: args.flag("launch-only"),
       outputDir,
       startedAt: new Date().toISOString(),
       sessions: sessions.map(
         ({ prompt, ...row }): SessionRecord => ({ ...row, promptSha256: sha256(prompt) }),
       ),
     };
-    for (const { name, prompt } of sessions) {
-      writeAtomic(sessionPaths(outputDir, name).promptPath, prompt);
-    }
-    writeRecord(join(outputDir, LAUNCH_FILE), record);
-    return await execute({
-      launch: record,
-      sessions,
-      policy,
-      codex,
-      environment,
-      launchOnly: record.launchOnly,
-    });
+    for (const { name, prompt } of sessions) writeWhole(sessionPaths(outputDir, name).promptPath, prompt);
+    recordLaunch(launch);
+    return await execute({ launch, sessions, policy, codex, environment });
   } finally {
-    release();
+    await release();
   }
 }
 
 /** A recorded session's prompt, from the bytes its launch sent. */
 function recordedSession(outputDir: string, row: SessionRecord): Session {
   const { promptPath } = sessionPaths(outputDir, row.name);
-  if (!existsSync(promptPath)) {
-    throw new Error(`${promptPath} is absent: this launch predates --retry, so start a new launch instead`);
-  }
-  const prompt = readFileSync(promptPath, "utf8");
+  const prompt = existsSync(promptPath) ? readFileSync(promptPath, "utf8") : "";
   if (sha256(prompt) !== row.promptSha256) {
-    throw new Error(`${promptPath} differs from the prompt launch.json records`);
+    throw new Error(`${promptPath} is absent or differs from the prompt launch.json records`);
   }
   return { name: row.name, prompt, workdir: row.workdir, sandbox: row.sandbox, ownedPaths: row.ownedPaths };
 }
@@ -583,45 +496,30 @@ function recordedSession(outputDir: string, row: SessionRecord): Session {
 /** Run again only the sessions an earlier launch left without a completed result, under the model,
  *  effort and prompts it recorded, then write its summary over every session. */
 async function retry(outputDir: string, args: CommandArgs): Promise<number> {
-  const record = readLaunch(outputDir);
+  const launch = readLaunch(outputDir);
   const release = holdOutput(outputDir);
   try {
-    const sessions = record.sessions
+    const sessions = launch.sessions
       .filter(({ name }) => readResult(outputDir, name)?.status !== "completed")
       .map((row) => recordedSession(outputDir, row));
     const policy = policyOf(args, sessions.length);
     const codex = codexBinary(args.value("codex-bin"));
-    rmSync(join(outputDir, SUMMARY_FILE), { force: true });
-    return await execute({
-      launch: record,
-      sessions,
-      policy,
-      codex,
-      environment: sessionEnvironment(outputDir),
-      launchOnly: args.flag("launch-only"),
-    });
+    await removeFile(join(outputDir, SUMMARY_FILE));
+    return await execute({ launch, sessions, policy, codex, environment: sessionEnvironment(outputDir) });
   } finally {
-    release();
+    await release();
   }
 }
 
 async function main(args: CommandArgs): Promise<number> {
-  if (args.flag("stop-hook")) {
-    console.log(capturedJsonStringify(await stopHook()));
-    return 0;
-  }
   const modes = [...MODE_OPTIONS.keys()].filter((mode) => args.value(mode) !== null);
   const [mode] = modes;
   if (modes.length !== 1 || mode === undefined) {
-    throw new Error("choose exactly one of --manifest, --tasks-file, --retry or --drain");
+    throw new Error("choose exactly one of --manifest, --retry or --drain");
   }
   const allowed = MODE_OPTIONS.get(mode) ?? [];
-  const stray = Object.entries(OPTIONS).flatMap(([name, kind]) =>
-    name !== mode &&
-    !allowed.includes(name) &&
-    (kind === "flag" ? args.flag(name) : args.value(name) !== null)
-      ? [`--${name}`]
-      : [],
+  const stray = Object.keys(OPTIONS).flatMap((name) =>
+    name !== mode && !allowed.includes(name) && args.value(name) !== null ? [`--${name}`] : [],
   );
   if (stray.length > 0) throw new Error(`--${mode} does not take ${stray.join(" or ")}`);
   const target = args.required(mode);
@@ -629,7 +527,7 @@ async function main(args: CommandArgs): Promise<number> {
     await drain(target);
     return 0;
   }
-  return mode === "retry" ? retry(target, args) : launchSessions(mode, target, args);
+  return mode === "retry" ? retry(target, args) : launchSessions(target, args);
 }
 
 if (import.meta.main) await runCommand({ name: "luna-sessions", usage: USAGE, options: OPTIONS }, main);

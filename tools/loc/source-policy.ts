@@ -227,7 +227,7 @@ export function sourceTextFindings(
  * without this check they keep their files exempt from the function check for as long as nobody
  * reads them back.
  */
-export function staleCopyLimits(read: (path: string) => string | null): SourcePolicyFinding[] {
+function staleCopyLimits(read: (path: string) => string | null): SourcePolicyFinding[] {
   const findings: SourcePolicyFinding[] = [];
   for (const path of Object.keys(copiedFileLimits)) {
     const text = read(path);

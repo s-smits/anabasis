@@ -37,20 +37,42 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## harbor
+## Bun
 
-- Source: https://github.com/harbor-framework/harbor, at commit 7b022f7
-- Ports: `vendor/harbor/init.ts` (`_init_task` in `src/harbor/cli/init.py`) and
-  `vendor/harbor/config.ts` (`src/harbor/models/task/config.py` and `src/harbor/constants.py`),
-  changed as each file's header states
-- Copy: `vendor/harbor/template-task/.gitignore`
-- Licence: Apache License 2.0, whose full text is under sandbox-runtime below. Harbor ships no
-  NOTICE file.
+- Source: https://github.com/oven-sh/bun, at commit 73df7bb
+- Copy: the parse loop of the parallel bucket in `scripts/runner.node.ts`, as `interruptReader` in
+  `tools/runtime/test-suite.ts`, changed as its doc comment states
+- Bun's `LICENSE.md` says "Bun itself is MIT-licensed" and names no copyright holder.
+
+```text
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## pi-claude-bridge
 
-- Source: https://github.com/elidickinson/pi-claude-bridge, v0.6.3 at commit 2bc9a7e
-- Copies: `vendor/pi-claude-bridge/`
+- Source: https://github.com/elidickinson/pi-claude-bridge, 0.9.1 at commit e870bc89
+- Copies: `vendor/pi-claude-bridge/`, which carries its own copy of this licence. Each file's header
+  names its departures.
+- `test/fixtures/claude-sdk-streams/` copies the recorded streams in its `tests/fixtures/sdk-streams/`
+  verbatim, at the same commit.
 
 ```text
 MIT License
@@ -78,54 +100,20 @@ SOFTWARE.
 
 ## pi-mono
 
-- Source: https://github.com/badlogic/pi-mono
-- Copies: `test/pi-truncate.test.ts`, run against the truncate.ts in `vendor/pi-coding-agent/`. `src/backends/pi-usage.ts`
-  mirrors its usage totals.
-  `vendor/pi-built/` keeps the names, interface and LF-only framing of its
-  `packages/coding-agent/src/modes/rpc/jsonl.ts`, rewritten here with a byte limit per line.
-  `vendor/pi-agent-session/` carries its own copy of this licence: coding-agent's session loop, and
-  the harness compaction, message helpers and entry types of pi agent v0.99.2 (005af57), which
-  v1.0.0 removed.
-- `vendor/pi-coding-agent/` copies the read, write, edit and bash tools and their helpers from
-  `packages/coding-agent/src/core/tools/` and `src/utils/` at v1.0.0 (a13d35a, now
-  https://github.com/earendil-works/pi), and carries its own copy of this licence. Each file's
-  header names its departures. `test/pi-file-mutation-queue.test.ts` copies that release's
-  `packages/coding-agent/test/file-mutation-queue.test.ts`.
+- Source: https://github.com/badlogic/pi-mono, now https://github.com/earendil-works/pi
+- `vendor/pi-coding-agent/` copies the read, write, edit and bash tools and their helpers, the
+  compaction, the system prompt and the extension types the tools read, from pi coding-agent
+  v1.1.0 (abe508e1), and carries its own copy of this licence. Each file's header names its
+  departures.
+- `test/pi-truncate.test.ts` copies pi-mono's `packages/agent/test/harness/truncate.test.ts` at
+  086c32e74, run against the truncate.ts in `vendor/pi-coding-agent/`.
+- `test/pi-file-mutation-queue.test.ts` copies `packages/coding-agent/test/file-mutation-queue.test.ts`
+  of pi coding-agent v1.0.0 (a13d35a).
 
 ```text
 MIT License
 
 Copyright (c) 2025 Mario Zechner
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-## prime-agent
-
-- Source: https://github.com/PrimeIntellect-ai/prime-agent
-- Ports: `src/backends/oauth/anthropic.ts` and `src/backends/oauth/openai-codex.ts`
-
-```text
-MIT License
-
-Copyright (c) 2025 Mario Zechner
-Copyright (c) 2026 Prime Intellect
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -355,44 +343,3 @@ SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 ```
-
-## toml
-
-- Source: https://github.com/uiri/toml, v0.10.2
-- Port: `vendor/harbor/toml-encoder.ts` (`toml/encoder.py`), changed as that file's header states
-
-```text
-The MIT License
-
-Copyright 2013-2019 William Pearson
-Copyright 2015-2016 Julien Enselme
-Copyright 2016 Google Inc.
-Copyright 2017 Samuel Vasko
-Copyright 2017 Nate Prewitt
-Copyright 2017 Jack Evans
-Copyright 2019 Filippo Broggini
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-## Fonts in the README chart
-
-`docs/assets/hard-tasks.svg` embeds subsets of VT323 (Copyright 2011 The VT323 Project Authors)
-and JetBrains Mono (Copyright 2020 The JetBrains Mono Project Authors), both under the SIL Open
-Font License 1.1: https://openfontlicense.org

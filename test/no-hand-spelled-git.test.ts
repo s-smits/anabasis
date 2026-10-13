@@ -1,12 +1,14 @@
 /**
  * The rule that sends a git subprocess to its tree's owner: `.claude/skills/main/git.ts` for a skill
- * script, and the two helpers `src` keeps for itself, since production code cannot import a skill.
+ * script. `src` has no owner yet, since production code cannot import a skill module and spawns
+ * no git on 10 October, so a site there is told where the owner belongs instead of which one to
+ * ask.
  *
  * The admitted side pins what is not a subprocess — a guard building the command it refuses as a
  * string, and `"git"` as ordinary data — and the scope pins who owns the answer.
  */
 import { describe, expect, it } from "bun:test";
-import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
+import { expectedLines, reportedLines, reportedMessages } from "./helpers/oxlint-rule-fixture.ts";
 
 const SCRIPT = `
 import { spawnSync } from "node:child_process";
@@ -27,24 +29,43 @@ export const other = () => runTextSyncOrThrow(["gh", "pr", "view"]); // ADMITTED
 export { LIST };
 `.trimStart();
 
+const SKILL_OWNER = ".claude/skills/main/git.ts";
+const SKILL_SCRIPT = ".claude/skills/launch-run/scripts/example.mjs";
+const SRC_FILE = "src/kernel/example.ts";
+
 describe("ana/no-hand-spelled-git", () => {
   const reports = (at: string): Promise<number[]> => reportedLines("ana", "no-hand-spelled-git", SCRIPT, at);
+  const messages = (at: string): Promise<string[]> =>
+    reportedMessages("ana", "no-hand-spelled-git", SCRIPT, at);
 
   it("reports every spelling of a git subprocess and admits the owner's call and git as data", async () => {
     const expected = expectedLines(SCRIPT);
     expect(expected).toHaveLength(6);
-    expect(await reports(".claude/skills/launch-run/scripts/example.mjs")).toStrictEqual(expected);
+    expect(await reports(SKILL_SCRIPT)).toStrictEqual(expected);
   });
 
-  it("holds src to its own two owners, since it cannot import a skill module", async () => {
-    expect(await reports("src/run/example.ts")).toStrictEqual(expectedLines(SCRIPT));
-    expect(await reports("src/run/source-identity.ts")).toStrictEqual([]);
-    expect(await reports("src/author/domain-repo.ts")).toStrictEqual([]);
+  it("sends a skill script to the skills' owner by its three names", async () => {
+    const reported = await messages(SKILL_SCRIPT);
+    expect(reported).toHaveLength(6);
+    for (const message of reported) {
+      expect(message).toContain(`Ask gitOutput, gitText or gitMaybe from ${SKILL_OWNER}`);
+      expect(message).not.toContain("src/meta");
+    }
   });
 
-  it("leaves the skill owners, tests and the tools tree alone", async () => {
-    expect(await reports(".claude/skills/main/git.ts")).toStrictEqual([]);
-    expect(await reports(".claude/skills/main/run.ts")).toStrictEqual([]);
+  it("reports the same sites in src, and says that the owner belongs in src/meta beside host-tool.ts", async () => {
+    expect(await reports(SRC_FILE)).toStrictEqual(expectedLines(SCRIPT));
+    const reported = await messages(SRC_FILE);
+    expect(reported).toHaveLength(6);
+    for (const message of reported) {
+      expect(message).toContain("src has no git owner yet");
+      expect(message).toContain("src/meta beside host-tool.ts");
+      expect(message).not.toContain("Ask gitOutput");
+    }
+  });
+
+  it("leaves the skills' owner, tests and the tools tree alone", async () => {
+    expect(await reports(SKILL_OWNER)).toStrictEqual([]);
     expect(await reports(".claude/skills/launch-run/scripts/example.test.ts")).toStrictEqual([]);
     expect(await reports("test/example.test.ts")).toStrictEqual([]);
     expect(await reports("tools/runs/example.ts")).toStrictEqual([]);

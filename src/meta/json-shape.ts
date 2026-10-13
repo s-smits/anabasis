@@ -8,7 +8,7 @@
  *
  * They are shape tests and not a parser. `isString(value)` says the value is a string; it says
  * nothing about whether that string is a task id, a slug or a digest, so a reader that must refuse
- * damaged bytes still validates them itself, as `readCompleted` in completed-json.ts does.
+ * damaged bytes still validates them itself.
  *
  * This file is the owner the lint plugins name for the primitive tests and the open types:
  * `no-runtime-typeof` and `no-unsafe-dictionary-type` report a `typeof` test, an open dictionary
@@ -96,11 +96,6 @@ export type Callable = (...args: never[]) => void;
 /** Whether the value is a JSON string. */
 export function isString(value: unknown): value is string {
   return typeof value === "string";
-}
-
-/** The value when it is a string, otherwise null. */
-export function textOrNull(value: unknown): string | null {
-  return isString(value) ? value : null;
 }
 
 /** Whether the value has JavaScript's number type. NaN and infinities pass; a caller needing

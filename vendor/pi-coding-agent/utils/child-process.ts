@@ -1,6 +1,5 @@
-// Copied from pi coding-agent v1.0.0 (github.com/earendil-works/pi, a13d35a, MIT, see LICENSE):
-// packages/coding-agent/src/utils/child-process.ts. One departure: the cross-spawn branch for
-// Windows is gone, since Anabasis runs on macOS and Linux and does not depend on cross-spawn.
+// Copied from pi coding-agent v1.1.0 (github.com/earendil-works/pi, abe508e1, MIT, see LICENSE):
+// packages/coding-agent/src/utils/child-process.ts, verbatim.
 import {
 	type ChildProcess,
 	type ChildProcessByStdio,
@@ -14,6 +13,7 @@ import {
 	type StdioPipe,
 } from "node:child_process";
 import type { Readable } from "node:stream";
+import crossSpawn from "cross-spawn";
 
 const EXIT_STDIO_GRACE_MS = 100;
 
@@ -24,7 +24,7 @@ export function spawnProcess(
 ): ChildProcessByStdio<null, Readable, Readable>;
 export function spawnProcess(command: string, args: string[], options: SpawnOptions): ChildProcess;
 export function spawnProcess(command: string, args: string[], options: SpawnOptions): ChildProcess {
-	return nodeSpawn(command, args, options);
+	return process.platform === "win32" ? crossSpawn(command, args, options) : nodeSpawn(command, args, options);
 }
 
 export function spawnProcessSync(
@@ -32,7 +32,9 @@ export function spawnProcessSync(
 	args: string[],
 	options: SpawnSyncOptionsWithStringEncoding,
 ): SpawnSyncReturns<string> {
-	return nodeSpawnSync(command, args, options);
+	return process.platform === "win32"
+		? crossSpawn.sync(command, args, options)
+		: nodeSpawnSync(command, args, options);
 }
 
 /**

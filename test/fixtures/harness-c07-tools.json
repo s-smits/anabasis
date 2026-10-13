@@ -1,0 +1,80 @@
+{
+  "source": "The three domain-tool rows the model received in the anabasis-cycles-4c67fc sweep, cycle c07 (bundle hb-bundles/veryhard-hb-4c67fc-c07), copied verbatim with the host Role prefix still on each description. record_truss_design has no parameters here: the host replaced them with the public answer schema.",
+  "rows": [
+    {
+      "name": "describe_design_brief",
+      "label": "Describe design brief",
+      "description": "Role: reader. Returns this task's support joints, loaded joints and their loads, design envelope, forbidden volumes and required clearance, joint and member count caps, member length limits, mass limit, section catalogue, every load case and load combination including the swept directional wind case and its azimuth grid, and the member-loss scenario rule.",
+      "parameters": {
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "name": "screen_truss_geometry",
+      "label": "Screen truss geometry",
+      "description": "Role: advisor. Takes a candidate set of joints and members and returns, for each member, its chord length, catalogue mass, smallest clearance to every forbidden volume, Euler critical load and EN 1993-1-1 curve-a buckling resistance, plus total mass with its margin against the mass limit, joint and member counts, joint valencies and a list of the geometry conditions the candidate does not meet. It performs no structural analysis and reports no load effects.",
+      "parameters": {
+        "properties": {
+          "members": {
+            "description": "every member of the candidate",
+            "items": {
+              "properties": {
+                "from": {
+                  "description": "start joint id",
+                  "type": "string"
+                },
+                "id": {
+                  "description": "member id",
+                  "type": "string"
+                },
+                "section": {
+                  "description": "catalogue section code",
+                  "type": "string"
+                },
+                "to": {
+                  "description": "end joint id",
+                  "type": "string"
+                }
+              },
+              "required": ["id", "from", "to", "section"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nodes": {
+            "description": "every joint of the candidate, supports and loaded joints included",
+            "items": {
+              "properties": {
+                "id": {
+                  "description": "joint id",
+                  "type": "string"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              },
+              "required": ["id", "x", "y", "z"],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["nodes", "members"],
+        "type": "object"
+      }
+    },
+    {
+      "name": "record_truss_design",
+      "label": "Record truss design",
+      "description": "Role: artifact-writer. Writes the chosen joints, members with their catalogue sections, and the reported mass, utilisation, deflection, governing wind azimuth and critical lost member values into the draft artifact. It runs no analysis and checks nothing against the published limits.",
+      "executionMode": "sequential"
+    }
+  ]
+}

@@ -69,8 +69,8 @@ Answer these from the log before using the word step in a sentence of your own:
 
 - **Repeated?** A checkpoint of the same two harnesses on fresh solves (`--id`). The reader's
   `STEP NOT REPEATED` names a step that has none.
-- **What does the reference do against itself?** `--noise` beside the checkpoint. A reference
-  that wins tasks from itself sets the floor under every other tally of that hour.
+- **What does the reference do against itself?** The report's `noise`, which every comparison of
+  four solves a side carries. A reference that wins tasks from itself sets the floor under every other tally of that hour.
 - **How thin?** At `--trigger 0.25`, two untied tasks all won is the least that buys a repeat, at
   p = 0.25, and the step and its repeat together clear `--level 0.1` at 4-0 (p = 0.0625). Say the
   tally, never the word alone.

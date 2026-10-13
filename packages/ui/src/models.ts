@@ -209,7 +209,7 @@ export interface ComparisonBar {
   /** Each side's valid answers over its counted solves on the tallied tasks (the handover's `valid`
    *  read as a share). Null before it reports. */
   readonly valid: { readonly old: Share; readonly fresh: Share } | null;
-  /** The reference against itself beside the test (`--noise`), where the comparison asked for it. */
+  /** The reference against itself beside the test, where the comparison solved four a side. */
   readonly noise: {
     readonly tally: Tally;
     readonly p: number;

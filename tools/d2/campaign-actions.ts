@@ -36,7 +36,8 @@ import { comparisonsTold } from "#src/builder/past.ts";
 import type { BuildRequest } from "#src/builder/session.ts";
 import { type Bench, snapshot } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/builder/word.ts";
-import { append, read } from "#src/kernel/log.ts";
+import { examine } from "#src/examiner/session.ts";
+import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -99,6 +100,8 @@ export interface CampaignContext {
   used: number;
   /** The action that threw after it began, with what it threw: the environment's ending. */
   failed: { readonly move: string; readonly why: string } | null;
+  /** The Examiner session writing beside the conversation, which settles and never throws. */
+  examining?: { readonly session: string; readonly done: Promise<void> } | null;
 }
 
 /** The code a move carries where the Builder made another than the table named. */
@@ -181,10 +184,11 @@ function actionTool(
     name: move,
     label,
     description: {
-      examine: "Ask a separate Examiner to write tasks under the fixed exam. Returns counts only.",
+      examine:
+        "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say what it has held out.",
       release_practice: "Release the host's draw of public practice tasks into this workspace.",
       compare:
-        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one read a step, this is its repeat, of the harness as it was frozen then.",
+        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one read a step, this is its repeat, of the harness as it was frozen then, on the tasks held, those the step did not score first.",
       promote:
         "Make the harness that read a step and its repeat the campaign's reference. Nothing else is promoted, and this measures nothing.",
     }[move],
@@ -199,6 +203,13 @@ function actionTool(
         return halt("The campaign move limit has been reached; the host will stop this conversation.");
       }
       if (signal?.aborted === true) return text("The campaign has been stopped by the host.");
+      // An Examiner session writes beside the conversation, and any other action waits for it, on
+      // the host's time: two actions never spend from the total at once.
+      const writing = context.examining;
+      if (writing != null) {
+        if (move === "examine") return text(`Examiner session ${writing.session} is still writing.`);
+        await bench.within(() => writing.done);
+      }
       const { turn, decided } = actionTurn(context);
       if (decided.move === "end" && decided.ending !== "no-room") {
         return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
@@ -271,7 +282,10 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
         decided.move === "examine" && decided.answers ? [...decided.answers] : undefined,
       ),
     });
-    await examineCommand(
+    // The action returns once the session is on record: a throw before that is the action's.
+    const { promise: onRecord, resolve } = Promise.withResolvers<void>();
+    const sitting = seats.examine ?? examine;
+    const work = examineCommand(
       [
         ...packOf(values),
         "--session",
@@ -287,17 +301,26 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
         ...flag("minutes", values["exam-minutes"]),
         ...flag("turns", values["exam-turns"]),
       ],
-      seats.examine,
-      undefined,
+      (request, wall) => sitting({ ...request, opened: resolve }, wall),
+      seats.examine === undefined ? solved : null,
       signal,
-    );
-    await refreshCampaign(context, bench);
-    const events = read(context.log);
-    const held = taskSets(events).held.length;
-    const ending = events.findLast(({ kind, data }) => kind === "exam.finished" && data.session === session)
-      ?.data.ended;
+    ).then(() => refreshCampaign(context, bench));
+    await Promise.race([work, onRecord]);
+    // The session writes beside the conversation: a limit it met is waited out, and a throw after
+    // it began is the environment's ending, as an action's is (`actionTool`).
+    const done = work
+      .then(() => waitOut(context.log, crashedRun(read(context.log)).crash, context.seats.host?.sleep))
+      .catch(async (error: unknown) => {
+        if (await waitOut(context.log, errorMessage(error), context.seats.host?.sleep)) return;
+        context.failed = { move: "examine", why: errorMessage(error) };
+        bench.halt.abort();
+      })
+      .then(() => {
+        context.examining = null;
+      });
+    context.examining = { session, done };
     return {
-      said: `The Examiner session ${EXAMINED.get(isString(ending) ? ending : "") ?? "ended at its limits"}. It held out ${plural(held - taskSets(turn.events).held.length, "task")}, and the campaign holds ${plural(held, "held-out task")}.`,
+      said: `Examiner session ${session} is writing beside this conversation: edit and practise meanwhile. Any other campaign action waits for it to end, and campaign_status says what it held out.`,
     };
   });
 
@@ -465,6 +488,25 @@ function sizeLine({ events, plan }: Turn, scored = Math.min(plan.wanted.target, 
   return `Comparison size: ${sizeLines(scored, { ...plan.wanted, patience: plan.patience })[0] ?? ""}.`;
 }
 
+/** The last Examiner session of this conversation: writing, or how it ended and what it held out. */
+function examinedLines(events: readonly LogEvent[], writing: string | undefined): string[] {
+  const since = events.findLastIndex(({ kind }) => kind === "build.started");
+  const begun = events.findLast(
+    ({ kind, data }, at) => at > since && kind === MOVED && data.move === "examine" && isString(data.session),
+  )?.data.session;
+  if (!isString(begun)) return [];
+  const ended = events.findLast(({ kind, data }) => kind === "exam.finished" && data.session === begun)?.data;
+  if (begun === writing || ended === undefined) {
+    return [
+      `Examiner session ${begun} is writing beside this conversation; any other campaign action waits for it.`,
+    ];
+  }
+  const said = EXAMINED.get(isString(ended.ended) ? ended.ended : "") ?? "ended at its limits";
+  return [
+    `Examiner session ${begun} ${said}, and held out ${plural(Array.isArray(ended.held) ? ended.held.length : 0, "task")}.`,
+  ];
+}
+
 /** What the action the table names would do, as the status says it under the suggestion: for a
  *  comparison or more tasks, what a comparison of the tasks held can read. */
 function namedLine(decided: Decided, latest: string | null, size: string): string {
@@ -507,6 +549,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
   // the scorable, exhausted and waiting counts follow which tasks were answered (rule 3).
   const sets = taskSets(turn.events);
   const tallies = comparisonsTold(campaignOf(turn.events).steps);
+  const writing = context.examining?.session;
   return [
     `Campaign facts: ${plural(sets.held.length, "held-out task")}, ${plural(sets.released.length, "practice task")}.`,
     ...(turn.plan.left == null
@@ -518,10 +561,15 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
     tallies.length === 0
       ? "No comparison has a tally yet."
       : `${plural(tallies.length, "comparison")} with a tally; the last:\n${tallies.at(-1) ?? ""}`,
-    `Suggested action: ${toolOf(decided)}.`,
-    noRoom
-      ? "Ask the Examiner for more tasks if the current supply is not useful."
-      : namedLine(decided, latestBuilt(turn.events), sizeLine(turn)),
+    ...examinedLines(turn.events, writing),
+    ...(writing === undefined
+      ? [
+          `Suggested action: ${toolOf(decided)}.`,
+          noRoom
+            ? "Ask the Examiner for more tasks if the current supply is not useful."
+            : namedLine(decided, latestBuilt(turn.events), sizeLine(turn)),
+        ]
+      : []),
   ].join("\n");
 }
 

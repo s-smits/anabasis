@@ -3,7 +3,7 @@
  *
  *   bun tools/d2/checkpoint.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss --id g2 \
- *     --tasks <eight task ids> --noise --cap 437
+ *     --tasks <eight task ids> --cap 437
  *
  * With no `--reference` and no `--new` it compares the latest harness a Builder session left with
  * the Starter Built Harness, which is the plan's checkpoint: several sessions, then one comparison
@@ -22,11 +22,10 @@
  * programs are worth by themselves, and `--reference programs-of:latest --new latest` what the
  * guide and the tools add to them. A step is the whole harness's until those two are read.
  *
- * `--noise` also reads the reference harness against itself, the plan's A/A comparison: it is
- * solved twice as often, and its first solves of a task are set against its later ones. With the
- * starter as the reference and a fixed budget, this command is gate G2: 8 tasks, four solves under
- * the starter and two under the latest harness. The A/A comparison should read no step, and its
- * tie share is the noise every later comparison has to exceed.
+ * At four solves a side, the default, the report also reads the reference harness against itself,
+ * the plan's A/A comparison, on halves of its own solves mirrored in time (`comparison.ts`). With
+ * the starter as the reference and a fixed budget, this command is gate G2. The A/A comparison
+ * should read no step, and its tie share is the noise every later comparison has to exceed.
  *
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
  * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
@@ -89,7 +88,6 @@ const CHECKPOINT_OPTIONS = {
   name: ROUND_OPTIONS.name,
   id: { type: "string" },
   new: { type: "string", default: "latest" },
-  noise: { type: "boolean", default: false },
   ...SETTING_OPTIONS,
   ...COMPARISON_OPTIONS,
 } as const;
@@ -134,7 +132,6 @@ export async function checkpointCommand(
     trigger: Number(values.trigger),
     objective: objectiveNamed(campaign, values.margin, id),
     defects: Number(values.defects),
-    noise: values.noise,
     cap,
     prediction: predictionNamed(values.predict),
     concurrency: setting.named.limits.concurrency,
@@ -158,7 +155,7 @@ export async function checkpointCommand(
     own: () => {
       if (old.digest === fresh.digest) {
         throw new Error(
-          `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness (tools/d2/round.ts)" : ""}. A harness is read against itself beside a comparison, with --noise`,
+          `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness (tools/d2/round.ts)" : ""}. A harness is read against itself beside a comparison of four solves a side`,
         );
       }
       refuseTerms(request, { log: campaign.log, id, practised: new Set() });

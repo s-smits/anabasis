@@ -396,6 +396,18 @@ describe("a report read as it was found", () => {
     ];
     expect(pairsIn(before)).toEqual([[]]);
   });
+
+  it("takes the reference's first mirrored half in a log written with --noise, until 13 October", () => {
+    // The reference was solved four times a task there, and the test took the first and the last.
+    const noised = [
+      ...heldOut("v1"),
+      event("comparison.started", { session: "g-1", noise: true }),
+      ...solved("g-1", "v1", "h1", [P, F, F, P]),
+      ...solved("g-1", "v1", "h2", [F, F]),
+      reported("g-1", "no-step", "h2", { ...terms, versions: ["v1"] }),
+    ];
+    expect(pairsIn(noised)).toMatchObject([[{ task: "v1", old: [P, P], fresh: [F, F] }]]);
+  });
 });
 
 describe("the outcome an Examiner hears of a task", () => {

@@ -69,7 +69,6 @@ function compared(
     readonly old?: string;
     readonly tally?: readonly [number, number, number];
     readonly valid?: { readonly old: Valid; readonly fresh: Valid };
-    readonly noise?: boolean;
     readonly extra?: JsonObject;
     /** Each task's solves, as `roundSolves` spells them, where a reader takes them from the solves:
      *  the report's tasks, census and setting are then theirs. */
@@ -82,7 +81,7 @@ function compared(
   const [wins, losses, ties] = more.tally ?? (reading === "step" ? [5, 0, 7] : [4, 4, 4]);
   const solved = more.solved === undefined ? null : roundSolves(id, [sides.old, fresh], more.solved);
   return [
-    event("comparison.started", { session: id, ...sides, noise: more.noise ?? false }),
+    event("comparison.started", { session: id, ...sides }),
     ...(solved?.events ?? []),
     event("comparison.reported", {
       session: id,
@@ -410,7 +409,7 @@ describe("a row of the table", () => {
   });
 
   it("unfinished: a comparison that began goes on, and a reading that cleared the trigger is repeated", () => {
-    const begun = event("comparison.started", { session: "g-1", old: "start", fresh: "h1", noise: true });
+    const begun = event("comparison.started", { session: "g-1", old: "start", fresh: "h1" });
     expect(decide([...FIRST, begun, built("b-2", "h2")], PLAN)).toEqual({
       move: "compare",
       code: "unfinished",
@@ -450,9 +449,12 @@ describe("a row of the table", () => {
       repeats: "g-1",
     });
     expect(move([...scoredAll, ...examined("x-1", ["n1", "n2"])])).toEqual(again);
-    // An A/A the operator asked for beside it changes no move while it reads no step.
-    const noised = compared("g-1", "h1", "step", { tally: [8, 0, 4], noise: true });
-    expect(move([...FIRST, ...noised])).toEqual(again);
+    // The A/A a comparison of four solves a side carries beside it changes no move while it reads
+    // no step.
+    const aa = { noise: { wins: 0, losses: 0, ties: 4, differences: [0, 0, 0, 0] } };
+    expect(move([...FIRST, ...compared("g-1", "h1", "step", { tally: [8, 0, 4], extra: aa })])).toEqual(
+      again,
+    );
     // Against a promoted reference a step is one as against the starter. A log of before
     // 2026-10-11 may hold `starter-unread`, which reads as no step.
     const epoch = [...FIRST, promotion("h1"), setting(null), built("b-2", "h2")];
@@ -602,7 +604,8 @@ describe("a row of the table", () => {
   it("unread: what no comparison has read is compared before anything is built", () => {
     // A harness whose sessions have run: one a comparison until set-up stands (epoch 0), since a
     // session's worth is enough to read against the empty Starter, and the plan's after. The
-    // reference against itself is the operator's `--noise`, and no move of the table.
+    // reference against itself is read beside a comparison of four solves a side, and no move of
+    // the table.
     const three = { ...PLAN, sessions: 3 };
     expect(decide(FIRST, PLAN)).toEqual({
       move: "compare",
@@ -669,7 +672,7 @@ describe("a row of the table", () => {
     // The starter winning on the new tasks is room by another name, and no step to repeat.
     const control = (reading: string, old: Valid, tally: [number, number, number]) => [
       ...written,
-      ...compared("g-3", "start", reading, { old: "h1", tally, valid: { old, fresh: HALF }, noise: true }),
+      ...compared("g-3", "start", reading, { old: "h1", tally, valid: { old, fresh: HALF } }),
     ];
     expect(move(control("no-step", HALF, [2, 2, 8]))).toEqual({
       move: "build",
@@ -713,7 +716,7 @@ describe("a row of the table", () => {
       reference: "promoted",
       why: "harness h2 is this epoch's reference: the starter is read against it once, as the lower control",
     });
-    const read = [...second, ...compared("g-3", "start", "no-step", { old: "h2", noise: true })];
+    const read = [...second, ...compared("g-3", "start", "no-step", { old: "h2" })];
     expect(move(read)).not.toMatchObject({ fresh: "starter" });
   });
 
@@ -743,7 +746,7 @@ describe("a hold on the move a row named", () => {
       move: "end",
       ending: "control",
       code: "risk",
-      why: "a false promotion is at most 30% over 1 attempt under this reference, past a quarter, and comparison g-1 read no A/A: run one (tools/d2/checkpoint.ts --noise), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again",
+      why: "a false promotion is at most 30% over 1 attempt under this reference, past a quarter, and comparison g-1 read no A/A: run a comparison of four solves a side (tools/d2/checkpoint.ts --solves 4), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again",
     });
     const cause = event("campaign.word", { word: "cause", why: "the host was loaded" });
     expect(move([...risky, cause])).toMatchObject({ move: "compare", fresh: "latest" });
@@ -751,6 +754,12 @@ describe("a hold on the move a row named", () => {
       each.kind === "comparison.reported" ? { ...each, data: { ...each.data, level: 0.02 } } : each,
     );
     expect(move(safe)).toMatchObject({ move: "compare", fresh: "latest" });
+    // The A/A a comparison of four solves a side writes in its report is the one asked for.
+    const aa = { noise: { wins: 0, losses: 0, ties: 4, differences: [0, 0, 0, 0] } };
+    const read = risky.map((each) =>
+      each.kind === "comparison.reported" ? { ...each, data: { ...each.data, ...aa } } : each,
+    );
+    expect(move(read)).toMatchObject({ move: "compare", fresh: "latest" });
   });
 
   it("afford: a comparison that what is left would not hold is not begun, by what the last one billed", () => {
@@ -774,16 +783,9 @@ describe("a hold on the move a row named", () => {
       move: "end",
       ending: "budget",
       code: "afford",
-      why: "$0.95 of the campaign's budget are left, and comparison g-1 billed $1.00 for 2 sides: the next solves 2 and would bill about $1.00, so it would be cut before it reports",
+      why: "$0.95 of the campaign's budget are left, and comparison g-1 billed $1.00: the next would bill about as much, so it would be cut before it reports",
     });
     expect(move(log, left(1))).toMatchObject({ move: "compare" });
-    // One the operator asked for with the reference against itself solved three sides, and the
-    // next two: a third less.
-    const noised = log.map((each) =>
-      each.kind === "comparison.started" ? { ...each, data: { ...each.data, noise: true } } : each,
-    );
-    expect(move(noised, left(0.66))).toMatchObject({ move: "end", ending: "budget" });
-    expect(move(noised, left(0.67))).toMatchObject({ move: "compare" });
     // A campaign with no total is held to none, and before any comparison has reported nothing
     // says what one bills.
     expect(move(log)).toMatchObject({ move: "compare" });
@@ -828,7 +830,7 @@ describe("a hold on the move a row named", () => {
     const room = [
       ...promotedOn(ALL),
       ...examined("x-1", ["v13"]),
-      ...compared("g-3", "start", "no-step", { old: "h1", tally: [2, 2, 8], noise: true }),
+      ...compared("g-3", "start", "no-step", { old: "h1", tally: [2, 2, 8] }),
     ];
     expect(move(room, plan)).toEqual({
       move: "prepare",

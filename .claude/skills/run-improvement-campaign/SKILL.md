@@ -59,7 +59,7 @@ cap the reading: while one of them fails, a change anywhere below it is spent on
 | 4 | the session | the Builder practised, and left a harness that differs in something a solver uses | `build.*`, `harness.version`, practice `verdict`s |
 | 5 | size | the tally has enough untied tasks to clear its level | `scored`, `unsolved`, the preflight's notes |
 | 6 | the host | solves started under a load below the cores, and the loads of the comparisons read together are alike | the reader's `HOST LOADED` and `LOAD MOVED` |
-| 7 | the repeat | a checkpoint of the same two harnesses on fresh solves reads the step again, and the reference against itself reads none | `--id <id> --noise`, `STEP NOT REPEATED` |
+| 7 | the repeat | a checkpoint of the same two harnesses on fresh solves reads the step again, and the reference against itself reads none | `--id <id>` at four solves a side, `STEP NOT REPEATED` |
 | 8 | the next link | once promoted, the new reference still leaves room (link 3 again) | the operator's `tools/d2/promote.ts --harness <digest> --yes`, and `harness.promoted` in the log |
 
 Link 3 is the one v1 never had and the one that most often decides. A reference valid on nearly
@@ -200,8 +200,8 @@ bun tools/wri/wri.ts read --log <log>          # the rows, the triggers, the hos
 ```
 
 The report holds the reading at the budget the solves were told, the tally over tasks, each
-harness by itself, and the reference against itself where `--noise` asked for
-it. [launch-run](../launch-run/SKILL.md) says what each line is.
+harness by itself, and the reference against itself at four solves a side.
+[launch-run](../launch-run/SKILL.md) says what each line is.
 
 Evidence precedence:
 
@@ -222,8 +222,8 @@ reading may be believed at all, or what a fail was, that is a
 [whole-run-investigation](../whole-run-investigation/SKILL.md), sized to the question.
 
 **A step is not read until it is repeated.** The round that found it is one draw. Launch the
-checkpoint of the same two harnesses on fresh solves with `--noise`, on a host no busier than the
-round's. Attribution-and-proof holds the questions that say whether the two together are more
+checkpoint of the same two harnesses on fresh solves at four solves a side, on a host no busier
+than the round's. Attribution-and-proof holds the questions that say whether the two together are more
 than noise.
 
 ## 7. Decide

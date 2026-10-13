@@ -90,7 +90,7 @@ function campaign() {
   /** A comparison's start and its report. */
   const compare = (session: string, old: string, fresh: string, reported: JsonObject) => {
     const terms = { session, old, fresh, starter: "hbase", setting: "set-1", solves: 2, level: 0.1 };
-    put("comparison.started", { ...terms, noise: true, budgets: [], cap: null, tasks: HELD });
+    put("comparison.started", { ...terms, budgets: [], cap: null, tasks: HELD });
     return () => put("comparison.reported", { ...REPORT, ...terms, tasks: 4, ...reported });
   };
   return { log, put, solve, compare };

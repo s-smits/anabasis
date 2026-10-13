@@ -335,8 +335,9 @@ export function stopRule(events: readonly LogEvent[]) {
  * The pairs a comparison's last report tallied, read as the comparison found them: from the log up
  * to its first report, so a task released, refused or disputed since is still the scored task it
  * was, under the report's own two harnesses and setting, counting the comparison's own solves, and
- * each side cut to the solves it asked for (under `--noise`, the reference's first mirrored half,
- * `halves`). None for a report that compared nothing, or before a solve named its comparison.
+ * each side cut to the solves it asked for: in a log written with `--noise` (until 13 October),
+ * the reference's first mirrored half (`halves`). None for a report that compared nothing, or
+ * before a solve named its comparison.
  */
 export function pairsReported(events: readonly LogEvent[], report: Reported): Paired[] {
   const { session, index, data } = report;

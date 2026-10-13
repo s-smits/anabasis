@@ -30,7 +30,7 @@ factors, in the order they bind, each a question, a measurement and a bar:
 
   1 Supply    informative tasks in a comparison's scored set
   2 Climb     promotions a campaign; pairs the starter loses each epoch
-  3 Honesty   false steps in A/A controls (--noise)
+  3 Honesty   false steps in A/A controls
   4 Verdicts  the Referee's rulings against a person's blind labels
   5 Worth     effect size, transfer, cost; no bar set
 
@@ -81,7 +81,7 @@ B2. Climb. Where are promotions counted (harness.promoted)? Where are "pairs
     the starter loses per epoch" computed, and what is an epoch in the
     source? Can the second be read for every promotion on record from its
     log, or only for some?
-B3. Honesty. Read src/builder/round.ts (the noise side), src/kernel/compare.ts
+B3. Honesty. Read src/builder/round.ts (the slots), src/kernel/compare.ts
     (halves) and src/builder/comparison.ts (noise in the report). Confirm or
     refute each sentence of AGENTS.md's factor 3: the reference solved twice
     as often; earlier solves one side and later the other; tallied and
@@ -127,7 +127,7 @@ PART D. Is the text true to the source?
 
 D1. Every path, symbol and flag named in the section: confirm it exists at
     <commit> (src/builder/round.ts, src/review/referee.ts,
-    src/review/agreement.ts, tools/d2/settle.ts, --noise, referee.finding,
+    src/review/agreement.ts, tools/d2/settle.ts, referee.finding,
     roomOf). List any that does not.
 D2. Every number: "36 of 47 rehearsal misses", "0.10", "one time in ten",
     "six on record", "3 in 4", "1 in 10", "10 labels a kind", "2 to 4 untied

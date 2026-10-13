@@ -35,7 +35,8 @@
  *                       and its own terms
  *   a promotion         tools/d2/promote.ts `--yes`
  *
- * **What it runs by** is recorded once, as `campaign.opened`: the total budget in dollars and the
+ * **What it runs by** is recorded once, as `campaign.opened`: its project (`--project`, required at
+ * the opening: `projectOf`, `campaign.ts`), the total budget in dollars and the
  * reserve one solve is held at (`--budget`, `--reserve`), the full limit of a solve in the model's
  * turns (`--solve-model-turns`), the Builder sessions before a comparison (`--sessions`), the
  * campaign's patience (`--patience`: the moves without a gain, the idle Examiner sessions and the
@@ -108,7 +109,7 @@ import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
 import { launchesOf, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/pulse.ts";
-import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
+import { campaignLog, openCampaign, packNamed, projectOf, REPO } from "./campaign.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
 import { gated, HOST, type Host, waitOut } from "./host.ts";
@@ -148,6 +149,7 @@ const OPTIONS = {
   cycle: SESSION_OPTIONS.cycle,
   bundle: SESSION_OPTIONS.bundle,
   name: SESSION_OPTIONS.name,
+  project: { type: "string" },
   prompt: { type: "string" },
   "prompt-file": { type: "string" },
   budget: { type: "string" },
@@ -273,7 +275,7 @@ function opened(
   const newest = heard.at(-1);
   const told = newest?.dollars == null ? values.budget : String(newest.dollars);
   const dollars = told ?? (was?.budget == null ? undefined : String(was.budget.dollars));
-  const named: Opening = {
+  const named: Omit<Opening, "project"> = {
     budget: dollars === undefined ? null : capRead(dollars, reserve),
     limit,
     sessions: values.sessions === undefined ? (was?.sessions ?? DEFAULTS.sessions) : Number(values.sessions),
@@ -307,7 +309,9 @@ function opened(
       `--patience ${String(values.patience)}: the moves without a gain the campaign bears in a row are a whole number of at least one`,
     );
   }
+  const project = projectOf(log, values.project, was);
   const record: JsonObject = {
+    project,
     budget: named.budget === null ? null : { ...named.budget },
     limit: named.limit,
     sessions: named.sessions,
@@ -335,7 +339,7 @@ function opened(
       ...keyIfDefined("answers", heard.length === 0 ? undefined : heard.map(({ at }) => at)),
     });
   }
-  return named;
+  return { ...named, project };
 }
 
 /**

@@ -20,7 +20,7 @@ Bun 1.4.2 only.
 
 ```sh
 bun install --frozen-lockfile
-bun tools/d2/harness-builder.ts --name <name> --prompt "<the domain, in your words>" \
+bun tools/d2/harness-builder.ts --name <name> --project <project> --prompt "<the domain, in your words>" \
   --solver <model> --budget <dollars> --builder <model> --examiner <model> --reviewer <model>
 bun run runs view <name>
 ```

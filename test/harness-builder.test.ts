@@ -40,6 +40,8 @@ const REPO = resolve(import.meta.dir, "..");
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
 const STEM = `test-hb-${String(runtimeProcess.pid)}`;
 const OPENED = "campaign.opened";
+/** The project every campaign here is opened under. */
+const PROJECT = "fixture-products";
 const MOVED = "campaign.move";
 // Fourteen held once two are released: a comparison's seven and its repeat's, which a campaign holds
 // before its first comparison (12 October). At the default level, 0.02 since 12 October, a step
@@ -68,7 +70,7 @@ function seeded(name: string, under = root): string[] {
   // The fixture's one check is its author's own arithmetic, which stands on the operator's word.
   const admitted = ["--admit", "check-product"];
   const pack = ["--root", under, "--sweep", "s", "--cycle", "c01", "--bundle", join(under, "bundle")];
-  return [...pack, "--name", name, ...admitted];
+  return [...pack, "--name", name, "--project", PROJECT, ...admitted];
 }
 
 /** What a campaign's log holds of one kind, in order. */
@@ -249,6 +251,7 @@ describe("a campaign run by its log", () => {
     // the patience it was given.
     expect(of(name, OPENED)).toEqual([
       {
+        project: PROJECT,
         budget: null,
         limit: null,
         sessions: 2,
@@ -329,7 +332,8 @@ describe("a campaign run by its log", () => {
     const printed = lines
       .find((line) => line.startsWith("to admit"))
       ?.split(": bun tools/d2/harness-builder.ts ")[1];
-    expect(printed).toBe(`${flags.join(" ")} --admit check-product`);
+    // The campaign keeps its project, so the line names the pack and the campaign alone.
+    expect(printed).toBe(`${flags.slice(0, -2).join(" ")} --admit check-product`);
     const next = await harnessBuilder([...(printed ?? "").split(" "), "--dry-run"], seats);
     expect(next).toMatchObject({ move: "accept" });
   });
@@ -802,7 +806,8 @@ describe("a campaign run by its log", () => {
     const prompt = "Multiplying a base by six, as a fixture.";
     const solver = ["--solver", "claude/claude-opus-5-5"];
     const terms = ["--practice", "2", "--solves", "1", "--solve-minutes", "8", "--practice-solves", "5"];
-    const flags = ["--name", name, ...solver, ...terms, "--target", "6", "--patience", "2"];
+    const size = ["--target", "6", "--patience", "2"];
+    const flags = ["--name", name, "--project", PROJECT, ...solver, ...terms, ...size];
     const exam = {
       domain: "Fixture products",
       scope: "A task gives a base and asks for six times it.",
@@ -860,6 +865,8 @@ describe("a campaign run by its log", () => {
     const opened = [
       "--name",
       fresh,
+      "--project",
+      PROJECT,
       "--solver",
       "claude/claude-opus-5-5",
       "--prompt",
@@ -870,7 +877,7 @@ describe("a campaign run by its log", () => {
       "0",
     ];
     expect(await harnessBuilder(opened, seats)).toMatchObject({ move: "draft" });
-    expect(of(fresh, OPENED)).toMatchObject([{ prompt }]);
+    expect(of(fresh, OPENED)).toMatchObject([{ prompt, project: PROJECT }]);
 
     // The Examiner drafts, the host reads each draft without a model, and the second stands. Its
     // one check is its author's own computation, so the campaign waits for the operator's word.
@@ -938,13 +945,38 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED)).toHaveLength(2);
   });
 
+  it("opens a campaign under the project its first command names, keeps it, and refuses another", async () => {
+    const name = `${STEM}-project`;
+    names.push(name);
+    const opening = ["--name", name, "--solver", "claude/claude-opus-5-5", "--prompt", "Six times a base."];
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, [], []),
+    };
+    // No opening is written without a project, nor under one that is no id.
+    await expect(harnessBuilder([...opening, "--moves", "0"], seats)).rejects.toThrow("name --project");
+    await expect(harnessBuilder([...opening, "--project", "a/b", "--moves", "0"], seats)).rejects.toThrow(
+      "--project a/b: a project is named as v1's were",
+    );
+    expect(existsSync(join(REPO, ".ana", "d2", name, LOG_FILE))).toBe(false);
+    await harnessBuilder([...opening, "--project", PROJECT, "--moves", "0"], seats);
+    expect(of(name, OPENED)).toMatchObject([{ project: PROJECT }]);
+    // A later run names none and keeps it; one that names another is refused, and writes nothing.
+    await harnessBuilder(["--name", name, "--patience", "3", "--moves", "0"], seats);
+    expect(of(name, OPENED).map(({ project }) => project)).toEqual([PROJECT, PROJECT]);
+    await expect(
+      harnessBuilder(["--name", name, "--project", "elsewhere", "--moves", "0"], seats),
+    ).rejects.toThrow(`this campaign belongs to project ${PROJECT}, and keeps it`);
+    expect(of(name, OPENED)).toHaveLength(2);
+  });
+
   it("hands over a harness's links as links, and leaves nothing where the copy is not the harness", async () => {
     // Until 11 October the handover was copied with every link followed: a link among a kept
     // harness's programs to a host file came out as that file's bytes, in a folder written to leave
     // the host, and a copy that then did not open as the harness stayed where it was written.
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-links`;
-    const pack = seeded(name).slice(0, -2);
+    // The pack and the campaign's name, which is what the handover takes: no project, no admission.
+    const pack = seeded(name).slice(0, -4);
     const host = join(root, "host-file.txt");
     writeFileSync(host, "HOST-FILE-CANARY\n");
     const built = join(root, "linked", "harness");

@@ -119,7 +119,7 @@ passing on one platform says nothing of the other.
 
 | job | steps |
 | --- | --- |
-| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run test` |
+| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:gate`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run test` |
 | Linux (Ubuntu 24.04 VM) | install `bubblewrap`, `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, `bun install --frozen-lockfile`, `bun run test` |
 
 `bun run gate` runs the Darwin job's steps in one command, cheapest first; `-- --static` runs the

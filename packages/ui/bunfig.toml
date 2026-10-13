@@ -1,0 +1,4 @@
+# The dev server bundles index.html itself, with no plugin: v1's baked evidence went with the
+# brief of 11 October. No environment variable is inlined into the page.
+[serve.static]
+env = "disable"

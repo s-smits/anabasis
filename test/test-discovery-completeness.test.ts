@@ -35,6 +35,7 @@ const repoRoot = join(import.meta.dir, "..");
 /** The roots a gate step runs, and the step that runs each. */
 const DISCOVERED_ROOTS = [
   "test/", // `bun run test`, which is the gate's last step
+  "packages/ui/test/", // `bun run ui:gate`, which prepares that package's own node_modules first
 ];
 
 /** A suite by name, in any suffix Bun runs, plus the `.bun-tests` spelling the wrappers used to

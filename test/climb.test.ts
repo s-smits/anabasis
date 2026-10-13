@@ -184,6 +184,8 @@ describe("the climb", () => {
         bundle,
         "--name",
         NAME,
+        "--project",
+        "climb",
         "--admit",
         "check-product",
         "--practice",

@@ -579,12 +579,21 @@ solves and sessions held on the host.
 ### What the log records of a campaign's conditions
 
 **The opening** (`campaign.opened`) keeps what the campaign runs by, so that its command goes on
-by its name alone: the total and the reserve, the full limit of a solve, the Builder sessions
-before a comparison (`--sessions`, 3), the patience (`--patience`, 6), who sits in each seat,
-and the terms of its moves as a command last named them (`TERMS`, `src/builder/opening.ts`): a
-session's limits, a comparison's size, the practice tasks and an Examiner session's. A term no
-command named is its move's default. A later run that names nothing runs by the record, and one
-that names another term records it again: these are the operator's conditions.
+by its name alone: the project it belongs to, the total and the reserve, the full limit of a
+solve, the Builder sessions before a comparison (`--sessions`, 3), the patience (`--patience`, 6),
+who sits in each seat, and the terms of its moves as a command last named them (`TERMS`,
+`src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks and an
+Examiner session's. A term no command named is its move's default. A later run that names nothing
+runs by the record, and one that names another term records it again: these are the operator's
+conditions.
+
+**Every campaign belongs to a project** (`--project`, since 12 October), as every v1 run joined
+one, and is named as v1's were: letters, digits, `.`, `_` and `-`. The opening is not written
+without one, so a campaign is opened under a project, and one whose opening was written before
+then takes the flag the next time its command runs. A later run need not name it; one that names
+another is refused (`projectOf`, `tools/d2/campaign.ts`). The project groups campaigns on the
+operator's page and enters no move and no seat. Campaigns run by the hand commands of rows 0 to
+7 alone write no opening and so have no project.
 
 **The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, by the first
 command that begins a comparison or a Builder session, and does not change: who solves and under which limits, which
@@ -664,7 +673,7 @@ solves a side 2 to 5 dollars in all. One flag line that ran a small campaign fro
 typed ending on 10 October, for a first campaign to start from:
 
 ```text
-bun tools/d2/harness-builder.ts --name t-9 --prompt-file <file> --budget 6 --reserve 0.05 \
+bun tools/d2/harness-builder.ts --name t-9 --project queues --prompt-file <file> --budget 6 --reserve 0.05 \
   --builder claude-api/claude-sonnet-5-5 --examiner claude-api/claude-sonnet-5-5 \
   --reviewer claude-api/claude-sonnet-5-5 --solver claude-api/claude-sonnet-5-5 --solver-effort high \
   --solve-minutes 8 --solve-model-turns 10 --solves 2 --target 8 --practice 3 \
@@ -1114,6 +1123,8 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run commit:check` | What the pre-commit hook runs, and by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
 | `bun run runs <verb>` | `pulse`, `stop`, `rehearse`, `seed`, `replay`, `zip`, `view` |
+| `bun run ui:dev` | The page that shows a campaign as its log reads, on the loopback with a token (`packages/ui/README.md`). `-- --exam-side` adds the exam side's content: start that where no Builder or solver runs |
+| `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
 | `bun run land -- <pull request>` | Proves every commit a landing would publish where it sits; `--sanitize` posts each verdict, `--merge` also merges ("The stack and pull requests") |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
@@ -1135,8 +1146,8 @@ Run one suite at a time; two overlapping suites each take about twice as long. W
 the owning test files only: `bun run test -- test/compare.test.ts`. The wrapper refuses a named
 path that does not exist, because Bun would treat it as a filter and silently run its neighbours.
 
-CI (`.github/workflows/ci.yml`) has two jobs. `darwin` on macOS 15 runs typecheck, lint, the
-format check and the suite. `linux` on an Ubuntu VM installs Bubblewrap and runs the suite. In a
+CI (`.github/workflows/ci.yml`) has two jobs. `darwin` on macOS 15 runs the UI's own gate,
+typecheck, lint, the format check and the suite. `linux` on an Ubuntu VM installs Bubblewrap and runs the suite. In a
 container without user namespaces the tests that need the wall fail. Name those in the pull
 request as failures that are there without the change, and do not call the suite green.
 
@@ -1270,6 +1281,7 @@ the operator.
 | Term | Meaning |
 | --- | --- |
 | Campaign | Everything run for one query: one domain, one contract, one check program, one log |
+| Project | What the operator files campaigns under, named at a campaign's opening (`--project`) and kept by it |
 | Contract | The one public document: the rules, each with an id, and the answer format |
 | Check | A hidden program that tests one rule on one answer and returns pass or reject |
 | Instrument | The field's own tool that computes the facts a check compares |
@@ -1319,6 +1331,9 @@ tools/wri/      the whole-run investigation's reader of one log: its folds and t
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans
 tools/runtime/  the lint and test wrappers, the commit check
 tools/loc/      the size and unused-export policy
+packages/ui/    the page over a campaign's log: a server on the loopback that renders the folds
+                above and reads nothing for itself (src/server), and four panes, Campaign, Moves,
+                Tasks and Log (src/views). It writes nothing. Its design rules are its DESIGN.md
 vendor/         pi-coding-agent and pi-claude-bridge, copied
 docs/           the plan, the transfer ledger, the account of v1, the helper prompts
 .claude/skills/ the procedures (section 10), stack-pr, and main/ with the skill scripts' argument

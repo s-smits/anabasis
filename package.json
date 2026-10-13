@@ -25,7 +25,11 @@
     "commit:check": "sh tools/runtime/commit-check.sh",
     "gate": "bun tools/runtime/gate.ts",
     "hooks:install": "git config core.hooksPath .githooks",
-    "land": "bun tools/runtime/land.ts"
+    "land": "bun tools/runtime/land.ts",
+    "ui:dev": "cd packages/ui && bun run dev",
+    "ui:build": "cd packages/ui && bun run build",
+    "ui:deps": "bun install --frozen-lockfile --cwd packages/ui",
+    "ui:gate": "bun run ui:deps && bun run ui:build && bun run test -- packages/ui/test"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.285",

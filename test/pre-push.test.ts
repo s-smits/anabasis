@@ -133,6 +133,29 @@ describe("pre-push", () => {
     ]);
   });
 
+  it("runs the UI's own gate after the install in a tree that holds the UI", () => {
+    const tree = (rows: string): string => execTextSync("git", ["mktree"], { cwd: work, stdin: rows }).trim();
+    const ui = tree(`100644 blob ${blob("{}\n")}\tpackage.json\n`);
+    const packages = tree(`040000 tree ${ui}\tui\n`);
+    const held = git(
+      "commit-tree",
+      tree(`${git("ls-tree", second)}\n040000 tree ${packages}\tpackages\n`),
+      "-p",
+      second,
+      "-m",
+      "the UI",
+    );
+    const result = push([update(held, second)]);
+    expect(result.status).toBe(0);
+    const steps = readFileSync(log, "utf8")
+      .split("\n")
+      .filter((line) => line.startsWith(held));
+    expect(steps.map((line) => line.split("\t")[1]).slice(0, 2)).toEqual([
+      "install --frozen-lockfile",
+      "run ui:gate",
+    ]);
+  });
+
   it("runs nothing again that passed on these exact bytes", () => {
     push([update(second, docs)]);
     rmSync(log, { force: true });

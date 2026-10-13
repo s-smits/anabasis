@@ -28,6 +28,7 @@
  * is strict by default: the key lives in that clone's `.git/config`, which its worktrees share and
  * no push publishes, so a maintainer's checkout keeps the gate a fresh clone does not have.
  */
+import { existsSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { runSync } from "../../src/meta/subprocess.ts";
@@ -42,7 +43,7 @@ import {
 } from "../oxlint/not-slop-ledger.ts";
 import { TREE_REGISTER_KINDS, treeSites } from "../oxlint/tree-findings.ts";
 
-const ROOTS = ["src", "tools", "vendor", "test", ".claude"];
+const ROOTS = ["src", "tools", "vendor", "test", "packages", ".claude"];
 
 /** The repository root, which oxlint runs from and every path it reports is relative to. */
 const ROOT = new URL("../..", import.meta.url).pathname;
@@ -240,11 +241,25 @@ function ledgerProblems(
   ];
 }
 
+/**
+ * The roots a whole-tree run lints. `packages/ui` keeps its own lock and `node_modules`; without
+ * its React types the type-aware rules read every component as an error type and report findings
+ * that are not there, so it waits for `bun run ui:deps` and says so (v1's rule, restored with the
+ * UI on 11 October). Its own `tsconfig.json`, with `jsx` and `DOM`, is the one the type-aware rules
+ * read for its files: without it they fall back to the compiler's defaults, not to the root's.
+ */
+function lintRoots(): readonly string[] {
+  if (existsSync(`${ROOT}/packages/ui/node_modules`)) return ROOTS;
+  console.error("lint: packages/ui has no node_modules, so a whole-tree run leaves it out. bun run ui:deps");
+  return ROOTS.filter((root) => root !== "packages");
+}
+
 async function main(): Promise<number> {
   // `ANA_LINT_PATHS` replaces the roots with an explicit list, one path per line. The pre-commit
   // hook sets it to the staged files so a commit is linted while it is still cheap to fix; every
   // other caller leaves it unset and lints the whole tree.
   const explicit = Bun.env.ANA_LINT_PATHS?.split("\n").filter((line) => line !== "") ?? [];
+  const roots = explicit.length > 0 ? ROOTS : lintRoots();
   const args = Bun.argv.slice(2);
   // A run the optional plugins gate: asked for, or the clone's own default.
   const strict = args.includes("--strict") || Bun.env.ANA_LINT_STRICT === "1" || strictByConfig(ROOT);
@@ -260,7 +275,7 @@ async function main(): Promise<number> {
     "--report-unused-disable-directives",
     // A commit may stage only files .oxlintrc.json ignores, such as the copied pi sources; without
     // the flag oxlint refuses the empty set with no report, which reads as a failed lint.
-    ...(explicit.length > 0 ? ["--no-error-on-unmatched-pattern", ...explicit] : ROOTS),
+    ...(explicit.length > 0 ? ["--no-error-on-unmatched-pattern", ...explicit] : roots),
   ];
   // A caller naming its own format reads oxlint's output directly, ledger unapplied.
   if (extra.some((argument) => argument === "-f" || argument.startsWith("--format"))) {
@@ -278,7 +293,7 @@ async function main(): Promise<number> {
   const optional = unanswered.length - shown.length;
   const linted = (path: string): boolean =>
     extra.length === 0 &&
-    (explicit.length > 0 ? explicit.includes(path) : ROOTS.some((root) => path.startsWith(`${root}/`)));
+    (explicit.length > 0 ? explicit.includes(path) : roots.some((root) => path.startsWith(`${root}/`)));
   const seen = new Set(found.flatMap(({ site }) => (site === null ? [] : [site.id])));
   const wholeTree = extra.length === 0 && explicit.length === 0;
   // The ledger answers the optional plugins alone, so only a run they gate reads it.

@@ -158,6 +158,12 @@ describe("a campaign run by its log", () => {
         slept.push(ms);
       },
     };
+    // The move the limit ended is one of the run's moves: of three, it was the third, and the run
+    // stops at the move it would make again.
+    expect(await harnessBuilder([...flags, "--moves", "3"], { ...seats, host })).toMatchObject({
+      move: "examine",
+    });
+    expect(of(name, MOVED).map(({ session }) => session ?? null)).toEqual([null, null, "x-1"]);
     const ending = await harnessBuilder(flags, { ...seats, host });
     // Slept to a minute past the named reset, and the session asked again went on to the ending.
     expect(slept).toHaveLength(1);

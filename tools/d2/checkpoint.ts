@@ -108,6 +108,7 @@ export async function checkpointCommand(
   args: readonly string[],
   seated: Seated = solved,
   kill?: AbortSignal,
+  admitted?: () => void,
 ): Promise<Report> {
   const { values } = parseArgs({ args: [...args], options: CHECKPOINT_OPTIONS });
   const { id } = values;
@@ -184,6 +185,8 @@ export async function checkpointCommand(
         own,
       });
   for (const note of notes) console.log(`· ${note}`);
+  // What the caller records of the comparison once it is admitted: a led Builder's move (14 October).
+  admitted?.();
   keepSetting(campaign.log, setting);
   stayAwake();
   const report = await checkpoint(request);

@@ -1478,6 +1478,8 @@ describe("a checkpoint with no session", () => {
     // The reference answers s1 in every solve and nothing else; the starter breaks s1 and answers
     // the four tasks held out below.
     const s = await setup([], (version, side) => ((version === "s1") === (side === "old") ? PASS : LATE));
+    // The fixture compares a kept harness with a different starter: make the kept one the reference.
+    append(s.log, "harness.promoted", { harness: s.old, from: s.starter.digest, rests: [] });
     for (const version of ["s6", "s7", "s8", "s9"]) {
       append(s.log, "task.proposed", { version, family: version < "s8" ? "f3" : "f4" });
       append(s.log, "task.gate", gatePassed(version));
@@ -1932,6 +1934,8 @@ describe("the scored set", () => {
 
   it("leaves out a task with no valid answer on record after two comparisons, until a person keeps it", async () => {
     const s = await setup([edit, finish, again, finish], (version) => (version === "s1" ? UNANSWERED : PASS));
+    // The fixture compares a kept harness with a different starter: make the kept one the reference.
+    append(s.log, "harness.promoted", { harness: s.old, from: s.starter.digest, rests: [] });
     await round(s.request);
     expect(awaitingLabel(read(s.log))).toEqual([]);
     expect(scoredSet(read(s.log), 12, "c")).toContain("s1");

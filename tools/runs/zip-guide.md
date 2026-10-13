@@ -16,7 +16,9 @@ not in the log.
 
 1. `MANIFEST.json`, `runs`: each run's worktree, commit and ending. Two runs at different commits
    differ by that source before they differ by anything a model did.
-2. `task.proposed`, `task.gate`, `task.state`: which task versions became feasible. Gate 1 is the
+2. `task.proposed`, `task.gate`, `task.state`, `task.feasible`: which task versions entered the exam
+   and have a valid answer on record. A later author proof (`task.feasible`) keeps only the version
+   and session, never the answer. The remaining gates below describe older runs. Gate 1 is the
    package's shape, gate 2 a pass by the stronger condition (a fail there is `too-hard`), gate 3 the
    check rerun on that pass, gate 4 the three reject controls. Gate 5 is screening, logged as the
    state it gives: `admitted` tasks are the scored set. `anchor.drawn` names the anchor's tasks and

@@ -32,7 +32,7 @@
  * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
  * campaign has recorded none. A repeat, the comparison that follows one of the same two harnesses
  * whose reading cleared `--trigger`, draws the held-out tasks that one did not score first, and
- * its own only where the campaign holds too few others (`firstStageOf`, `scoredSet`; the
+ * its own only where the campaign holds too few others (`scoredSet`; the
  * operator's decision of `docs/next.md`, question 9). The solves a side, the level, the
  * Referee and the cap are a round's, with a round's defaults (`round.ts`), and
  * `--cap` is required as it is there. With no `--reviewer`, every
@@ -49,9 +49,10 @@
  */
 import { admitComparison } from "#src/builder/admission.ts";
 import type { Report } from "#src/builder/comparison.ts";
-import { type CheckpointRequest, checkpoint, firstStageOf, refuseTerms } from "#src/builder/round.ts";
+import { type CheckpointRequest, checkpoint, refuseTerms } from "#src/builder/round.ts";
 import { read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/kernel/reports.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import {
   awaitingLines,
@@ -95,12 +96,17 @@ const CHECKPOINT_OPTIONS = {
 
 /** `bun tools/d2/checkpoint.ts`, and under a simulation's `seated` the same comparison with its
  *  solver scripted. */
-export async function checkpointCommand(args: readonly string[], seated: Seated = solved): Promise<Report> {
+export async function checkpointCommand(
+  args: readonly string[],
+  seated: Seated = solved,
+  kill?: AbortSignal,
+): Promise<Report> {
   const { values } = parseArgs({ args: [...args], options: CHECKPOINT_OPTIONS });
   const { id } = values;
   const pack = packNamed(values, " and --id");
   const { name } = pack;
   if (id === undefined) throw new Error("name --id, the id the comparison takes in the log");
+  if (kill?.aborted === true) throw new Error(`comparison ${id} was stopped before it began`);
   // Read before the campaign is opened: a paid comparison with no cap starts nothing.
   const cap = capNamed(values, seated === solved ? "paid" : "scripted");
   // The campaign's setting is its log's, as a round reads it (`setting.ts`).
@@ -117,12 +123,12 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     old,
     fresh,
     starter: await starter(campaign),
-    tasks: scoredNamed(
-      campaign,
-      setting.tasks,
-      setting.target,
-      firstStageOf(read(campaign.log), { id, old, fresh }, Number(values.trigger)),
-    ),
+    ...scoredNamed(campaign, setting.tasks, setting.target, {
+      id,
+      old: old.digest,
+      fresh: fresh.digest,
+      trigger: Number(values.trigger),
+    }),
     solves: Number(values.solves),
     level: Number(values.level),
     trigger: Number(values.trigger),
@@ -132,12 +138,14 @@ export async function checkpointCommand(args: readonly string[], seated: Seated 
     cap,
     prediction: predictionNamed(values.predict),
     concurrency: setting.named.limits.concurrency,
-    solve: (version, harness, comparison, kill) => seats.solve(packageOf(version), harness, kill, comparison),
+    solve: (version, harness, comparison, signal) =>
+      seats.solve(packageOf(version), harness, signal, comparison),
     setting: seats.setting,
     referee:
       reviewers === null
         ? undefined
-        : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
+        : (solve, version, signal) => reviewers.referee(solve, packageOf(version), signal),
+    ...keyIfDefined("kill", kill),
   };
   // Every refusal comes before anything is recorded, as in a round: the admission's, then the
   // comparison's own terms, and only then the campaign's setting.

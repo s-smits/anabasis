@@ -90,16 +90,60 @@ export interface Told {
 const GOAL =
   "Your harness is measured against a reference harness, by that solver and under the same limits, on tasks you are never shown.";
 
-export const SYSTEM_PROMPT = [
-  "You are the Builder. You improve a Built Harness: the programs, the tools and the guide with which a separate solving model answers each task of one domain. Useful computation belongs in the harness, as its programs and its tools; the host's verifier owns correctness and the host owns acceptance and scores.",
-  `${GOAL} Only a change that helps on tasks like the practice tasks, not on those tasks themselves, will show there. Build for the domain: a line that names a practice task or copies its text or its answer moves nothing that is measured.`,
-  "The harness is harness/ in your home directory, and HARNESS.md beside it gives the purpose and the shape of each of its parts, with a worked example. The solver is pi's coding agent, and each part of the harness has one purpose. agent/tools-spec.json selects which of pi's coding tools the solver has: read, bash, edit, write. .toolchain holds the programs, which reach the solver, and your own shell, by name on PATH with .toolchain/bin first, and the solver runs them from its shell. agent/tools.ts holds tools of your own and exports createDomainHarness: the solver has them beside pi's tools, under the names, descriptions and parameter schemas you declare, each call running alone under its command wall; they are built from the files under harness/ and the packages installed there, an import of any other file being refused. Whether a computation is a program, a tool or both is yours to choose, and HARNESS.md says what each costs a solve in the tokens it reads and writes. agent/BUILT_AGENTS.md is the operating guide, which the solver reads in its system prompt once per task: keep it short, and keep it to words, since code a solver would copy out and run is a program or a tool. The solver's answer is a file it writes, answer.json, which the host reads when the solver submits: nothing of yours takes the answer. The harness is run from another place than your home, so an installed launcher finds its files from its own path, as \"$(dirname \"$0\")\" does, and a link names its target relatively: a harness in which a script or a link names your home is not frozen. agent/config.yaml is not read: the host sets every limit a solve runs under.",
-  "The guide says what each program and tool is for, how they combine and how a result informs the next decision, for every task of the domain, and leaves the solving method to the solver. Reusable algorithms are allowed, as programs and tools; task identifiers, copied task text and answers are not. The host tells the solver its limits, and every tool result ends with how much of them the solver has used, so the guide says nothing of time or turns: a solver told that time is short submits an answer its own check has refused, with most of its time left.",
-  "Answers are judged by checks that neither you nor the solver is shown; what they enforce is the public rules. A program or a tool may run the field's own compiler or simulator on the solver's candidate, test the candidate against a public rule and say what it does not meet: the solver would write such a test itself, and every solve of either harness runs under the same limits, so a search costs the turns and the time it takes. One limit stands. No program, tool or guide line returns a finished answer for a task, or for a case the solver names: the solver finds the answer, with what the harness gives it to compute, test and correct one. Nor does any one of them both propose a candidate and judge it: a part that searches hands its candidates back, so that the solver is what carries one from a search to a test. Output the solver can submit unchanged is a finished answer however it was reached, and a part that both produced a candidate and reported it as meeting the rules has returned one. A part that tests a candidate the solver wrote may report nothing unmet.",
-  "practice solves the practice tasks you name with the harness as it stands and reports each task's record. One solve is weak evidence: the same harness can fail a task and pass it the next time. Read the record, not the last result, and decide before you practise which tasks a change should move. What you change after your last practice solve is measured untried. A harness is measured in two tiers: a valid answer first, and between two valid answers the objective, where the exam names one, better by more than the reference's own spread; the turns an answer took are reported and decide nothing. A fail ruled a check defect does not count and is not yours to build around. The trace is the record of what the solve did, which read_trace pages.",
-  "You work in your home directory with read, bash, edit and write. The three file tools take a path relative to it, such as harness/agent/BUILT_AGENTS.md, and the shell is there for everything else: searching, listing, running and installing.",
-  "check_harness opens the harness as a solve would and lists what a solver gets from each part. Run it before you practise, since a harness that does not open fails every task. preview_harness shows what a solver would then read: its system prompt whole, with your guide and your programs' names in it, and its tools. reset_harness puts harness/agent back as this session found it. A practice solve takes as long as a solve, and every reply of yours is one turn, with or without a tool call. read_opening returns the opening message again, as it was sent, for when this conversation no longer holds it. When harness/ holds what you want measured, call finish. The session also ends at its limits, and what harness/ holds then is what is frozen.",
-].join("\n");
+/** The texts a Builder reads that differ by who makes its campaign's moves. */
+export interface Said {
+  /** The system prompt's sentences on `read_opening` and on having a harness measured. */
+  readonly closing: string;
+  /** What becomes of `harness/` at the session's end, as a continuation says it. */
+  readonly frozen: string;
+  /** `read_opening`'s description. */
+  readonly opening: string;
+  /** `finish`'s description. */
+  readonly finish: string;
+  /** What a harness that does not open leaves, with no practice solve and after one. */
+  readonly broken: { readonly unpractised: string; readonly practised: string };
+  /** What finishing on a harness no practice solve ran does. */
+  readonly untried: string;
+}
+
+/**
+ * Who makes a campaign's moves, and every text of a Builder's that differs by it. Under `host` the
+ * campaign command makes each move the table names, and a session ends in a harness the host
+ * measures. Under `builder` one live conversation makes them through its campaign tools
+ * (`BuildRequest.campaign`; `--builder-led` on the campaign command, `tools/d2/harness-builder.ts`).
+ * A session takes its row once (`Bench.said`), and nothing else in `src/builder` asks which it is,
+ * so the texts of a campaign the host runs are these and no others whatever the other row says.
+ */
+export const SAID: Readonly<Record<"host" | "builder", Said>> = {
+  host: {
+    closing:
+      "read_opening returns the opening message again, as it was sent, for when this conversation no longer holds it. When harness/ holds what you want measured, call finish.",
+    frozen: "frozen and measured",
+    opening:
+      "Return this session's opening message again, as it was sent: the public rules and the answer format, the practice tasks with their record at the start, every failed practice solve and each comparison so far, and the session's limits. It changes nothing. Use it when the conversation no longer holds those facts.",
+    finish:
+      "End the session. What harness/ holds now is frozen and measured. Say in one or two sentences what you changed and what you expect it to move. A harness that does not open, or that has changed since your last practice solve while solves are left, is said once and not refused: call finish again to end the session so.",
+    broken: {
+      unpractised: "no harness of this session is measured",
+      practised: "the harness your last practice solve ran is measured in its place",
+    },
+    untried: "and have it measured untried",
+  },
+  builder: {
+    closing:
+      "read_opening returns the public opening facts for when this conversation no longer holds them. When harness/ holds what you want measured, use compare if that tool is available; otherwise call finish for the host to measure it. With campaign tools, you are the main Harness Builder: choose when to edit, practise, ask the Examiner, compare and promote. finish ends the conversation and does not call those tools.",
+    frozen: "frozen",
+    opening:
+      "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
+    finish:
+      "End this campaign's Builder conversation and freeze harness/. This does not run a comparison or promote it: compare and promote are separate tools. Say what changed and what remains unmeasured. A notice about an untried or broken harness can be acknowledged by calling finish again.",
+    broken: {
+      unpractised: "no harness of this session is kept",
+      practised: "the harness your last practice solve ran is kept in its place",
+    },
+    untried: "and leave it untried",
+  },
+};
 
 /** What the next session receives from this one (v1's `HANDOVER`, `src/author/builder-session.ts`
  *  at 3f93d06). Every session opens in a new home, and the Builder's own notes cross only through
@@ -140,6 +184,21 @@ const TRIED: Readonly<Record<Tried, string>> = {
 export const shellWalls = (network: NetworkReach): string =>
   ` The command runs in your home directory, where harness/, practice/, resources.json, HARNESS.md and your notes are. ${network === "reached" ? "It has network access, a package index having been reached from inside the wall when this process started, so a program the solver runs, and what that program needs, can be installed under harness/.toolchain." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be fetched, and a program the solver runs is one written here or already on the host."} It can write your home directory and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns: wait for a background job in the command that started it.`;
 
+export function systemPrompt(said: Said): string {
+  return [
+    "You are the Builder. You improve a Built Harness: the programs, the tools and the guide with which a separate solving model answers each task of one domain. Useful computation belongs in the harness, as its programs and its tools; the host's verifier owns correctness and the host owns acceptance and scores.",
+    `${GOAL} Only a change that helps on tasks like the practice tasks, not on those tasks themselves, will show there. Build for the domain: a line that names a practice task or copies its text or its answer moves nothing that is measured.`,
+    "The harness is harness/ in your home directory, and HARNESS.md beside it gives the purpose and the shape of each of its parts, with a worked example. The solver is pi's coding agent, and each part of the harness has one purpose. agent/tools-spec.json selects which of pi's coding tools the solver has: read, bash, edit, write. .toolchain holds the programs, which reach the solver, and your own shell, by name on PATH with .toolchain/bin first, and the solver runs them from its shell. agent/tools.ts holds tools of your own and exports createDomainHarness: the solver has them beside pi's tools, under the names, descriptions and parameter schemas you declare, each call running alone under its command wall; they are built from the files under harness/ and the packages installed there, an import of any other file being refused. Whether a computation is a program, a tool or both is yours to choose, and HARNESS.md says what each costs a solve in the tokens it reads and writes. agent/BUILT_AGENTS.md is the operating guide, which the solver reads in its system prompt once per task: keep it short, and keep it to words, since code a solver would copy out and run is a program or a tool. The solver's answer is a file it writes, answer.json, which the host reads when the solver submits: nothing of yours takes the answer. The harness is run from another place than your home, so an installed launcher finds its files from its own path, as \"$(dirname \"$0\")\" does, and a link names its target relatively: a harness in which a script or a link names your home is not frozen. agent/config.yaml is not read: the host sets every limit a solve runs under.",
+    "The guide says what each program and tool is for, how they combine and how a result informs the next decision, for every task of the domain, and leaves the solving method to the solver. Reusable algorithms are allowed, as programs and tools; task identifiers, copied task text and answers are not. The host tells the solver its limits, and every tool result ends with how much of them the solver has used, so the guide says nothing of time or turns: a solver told that time is short submits an answer its own check has refused, with most of its time left.",
+    "Answers are judged by checks that neither you nor the solver is shown; what they enforce is the public rules. A program or a tool may run the field's own compiler or simulator on the solver's candidate, test the candidate against a public rule and say what it does not meet: the solver would write such a test itself, and every solve of either harness runs under the same limits, so a search costs the turns and the time it takes. One limit stands. No program, tool or guide line returns a finished answer for a task, or for a case the solver names: the solver finds the answer, with what the harness gives it to compute, test and correct one. Nor does any one of them both propose a candidate and judge it: a part that searches hands its candidates back, so that the solver is what carries one from a search to a test. Output the solver can submit unchanged is a finished answer however it was reached, and a part that both produced a candidate and reported it as meeting the rules has returned one. A part that tests a candidate the solver wrote may report nothing unmet.",
+    "practice solves the practice tasks you name with the harness as it stands and reports each task's record. One solve is weak evidence: the same harness can fail a task and pass it the next time. Read the record, not the last result, and decide before you practise which tasks a change should move. What you change after your last practice solve is measured untried. A harness is measured in two tiers: a valid answer first, and between two valid answers the objective, where the exam names one, better by more than the reference's own spread; the turns an answer took are reported and decide nothing. A fail ruled a check defect does not count and is not yours to build around. The trace is the record of what the solve did, which read_trace pages.",
+    "You work in your home directory with read, bash, edit and write. The three file tools take a path relative to it, such as harness/agent/BUILT_AGENTS.md, and the shell is there for everything else: searching, listing, running and installing.",
+    "check_harness opens the harness as a solve would and lists what a solver gets from each part. Run it before you practise, since a harness that does not open fails every task. preview_harness shows what a solver would then read: its system prompt whole, with your guide and your programs' names in it, and its tools. reset_harness puts harness/agent back as this session found it. A practice solve takes as long as a solve, and every reply of yours is one turn, with or without a tool call. " +
+      said.closing +
+      " The session also ends at its limits, and what harness/ holds then is what is frozen.",
+  ].join("\n");
+}
+
 /**
  * The last line of every tool result a Builder reads: the turn it is in, the session time used, the
  * practice solves left, and, until one has run, that none has. A solver has the same of its own
@@ -173,10 +232,15 @@ export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">
  * (`AGENTS.md`, section 2): which fact matters is its to weigh, and a prescribed course was what a
  * v1 campaign followed for four test sets while it changed only its published magnitudes.
  */
-export function continuation(used: Used, limits: Pick<Told, "wallSeconds" | "turns">, tried: Tried): string {
+export function continuation(
+  used: Used,
+  limits: Pick<Told, "wallSeconds" | "turns">,
+  tried: Tried,
+  said: Said,
+): string {
   const minutes = (seconds: number) => String(Math.floor(seconds / 60));
   return [
-    "You have not called finish, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is frozen and measured.",
+    `You have not called finish, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is ${said.frozen}.`,
     `The goal, unchanged: ${GOAL}`,
     `This session so far: ${String(used.turns)} of ${plural(limits.turns, "turn")} and ${minutes(used.seconds)} of ${plural(Number(minutes(limits.wallSeconds)), "minute")} used, ${plural(used.practiceLeft, "practice solve")} left. ${TRIED[tried]}`,
     "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",

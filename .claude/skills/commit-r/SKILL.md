@@ -1,6 +1,6 @@
 ---
 name: commit-r
-description: "The commit-R protocol: a test-driven rewrite of one compartment of Anabasis v2. Commit what is in flight, remove the compartment's tests in an \"R:\" commit, write them again from a stated hypothesis so the production code fails on purpose, remove the production files in a second \"R:\" commit, then write the production code again and patch or delete what served only the old shape. Use when the operator says \"commit R\", \"commit-R protocol\", \"remove and rewrite the tests\" or \"rewrite from scratch\", or asks for a test-first pass that looks for a faster, simpler path to the same outcome."
+description: "The commit-R protocol: a test-driven rewrite of one compartment of Anabasis v2. Commit what is in flight, remove the compartment's tests in an \"R:\" commit, write them again from a stated hypothesis so the production code fails on purpose, remove the production files in a second \"R:\" commit, then write the production code again, rewrite the neighbouring functions the old shape bent, and delete what served only it. Use when the operator says \"commit R\", \"commit-R protocol\", \"remove and rewrite the tests\" or \"rewrite from scratch\", or asks for a test-first pass that looks for a faster, simpler path to the same outcome."
 ---
 
 # Commit R
@@ -67,9 +67,13 @@ step 8 squashes them before anything is pushed, since every published commit pas
    something needs the search against `origin/main` in the same turn (`AGENTS.md`, section 9).
 5. **`R: <production paths>`.** `git rm` the production files the rewrite replaces, and commit with
    the subject `R: src/x.ts src/y.ts`.
-6. **Write production again, and fix or remove what it leaves outdated.** Make the new tests pass
-   with the smallest owner that holds them, and in the same commit patch the neighbouring modules
-   and their tests and delete what served only the old shape. Then run `bun run typecheck`,
+6. **Write production again, and rewrite or remove what it leaves outdated.** Make the new tests
+   pass with the smallest owner that holds them. In the same commit, bring the neighbouring modules
+   and their tests to the new shape: a function of a neighbour that the compartment's old shape
+   bent, or that the new shape lets be simpler, is written again whole, and its file need not be
+   removed in an `R:` commit for that. A patch that only renames a call is the least a neighbour
+   takes, and no limit on what it may take. Delete what served only the old shape, and say in the
+   body which functions outside the compartment were rewritten and why. Then run `bun run typecheck`,
    `bun run lint -- --strict`, `bun tools/loc/source-policy.ts` (adding no finding) and every test
    file that imports the compartment, and read each exit code. v2 has no complexity gate, so a function's branch
    count is read with reduce-complexity's `measure.py`. The body says what the rewrite found: a

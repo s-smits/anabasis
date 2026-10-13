@@ -19,14 +19,8 @@
  */
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import {
-  awaitingLabel,
-  billedAll,
-  lastReports,
-  outcomesOf,
-  pairsReported,
-  unsolved as noneAnswered,
-} from "#src/kernel/reports.ts";
+import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
+import { billedAll, lastReports, poolOf, pairsReported } from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -635,8 +629,7 @@ export function taskTriggers(log: Index): Trigger[] {
     ),
   );
   const unanswered = [...scored.values()].filter(Boolean).length;
-  const outcomes = outcomesOf(log.events);
-  const awaiting = awaitingLabel(log.events).filter((version) => log.held.includes(version));
+  const { outcomes, awaiting } = poolOf(log.events);
   const done = log.solves.filter((solve) => solve.side === TEST && solve.outcome === "pass");
   const quick = done.filter((solve) => solve.seconds < solve.wallSeconds * SMALL_WALL_SHARE);
   const sequences = new Set(quick.map((solve) => solve.calls.join(">"))).size;

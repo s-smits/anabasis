@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { priceKey } from "../src/kernel/meter.ts";
-import { latestBuilt, promoted } from "../src/kernel/reports.ts";
+import { latestBuilt, PATIENCE, promoted } from "../src/kernel/reports.ts";
 import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets, taskVersion } from "../src/kernel/task.ts";
 import {
@@ -49,7 +49,7 @@ const SERVED = "claude/claude-opus-5-5";
 const RECORDED = `${NAME}-recorded`;
 /** A campaign opened and given a harness before it keeps any. */
 const FRESH = `${NAME}-fresh`;
-const ASKED = { solves: 2, level: 0.02, trigger: 0.25 };
+const ASKED = { level: 0.02, trigger: 0.25, patience: PATIENCE };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
   family: "fixture",

@@ -15,7 +15,7 @@
  * Examiner session's turns and calls, a held-out solve's trace and a raw event. Every field the
  * exam tier alone carries is optional and says so; an endpoint the exam tier alone answers is in
  * `EXAM_ONLY` and answers 403 otherwise. A ruling stays hidden in both tiers while its rejection
- * waits for a person's label (`awaitingLabel`, `src/kernel/reports.ts`) and while its comparison has
+ * waits for a person's label (`poolOf`, `src/kernel/reports.ts`) and while its comparison has
  * not reported; and while any ruling of a comparison is hidden, so are its rulings by kind, since
  * only a ruling that is not `earned` sets a task aside and the counts would give the hidden one
  * away (`Rulings`).
@@ -273,7 +273,7 @@ export interface Counters {
   /** Moves without a gain since the last step, and the patience they are held to (`stopRule`). */
   readonly withoutGain: number;
   readonly patience: number;
-  /** Two things wait for a person's label: held-out tasks no comparison answered (`awaitingLabel`,
+  /** Two things wait for a person's label: held-out tasks no comparison answered (`poolOf`,
    *  as the supply counts them), and the rejections set aside in comparisons nobody has settled
    *  (`toLabel`). */
   readonly labels: { readonly tasks: number; readonly rejections: number };
@@ -487,8 +487,8 @@ export interface TaskRow {
   readonly version: string;
   readonly id: string | null;
   readonly state: TaskState;
-  /** Two readings beside the state: waiting for a person's label (`awaitingLabel`), and answered
-   *  by the reference in every solve of two comparisons (`exhausted`). */
+  /** Two readings beside the state: waiting for a person's label (`poolOf`), and answered
+   *  by the reference in every solve of two comparisons (`poolOf`). */
   readonly awaitingLabel: boolean;
   readonly exhausted: boolean;
   readonly proposedAt: string | null;

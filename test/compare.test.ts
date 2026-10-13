@@ -20,6 +20,7 @@ import {
   sweepOf,
   tally,
   triggered,
+  unsolved,
 } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, fieldsApart, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -174,7 +175,7 @@ describe("the paired sign-flip test", () => {
     expect(flipP(units(600, 550))).toBeCloseTo(0.0742, 3);
   });
 
-  it("reads a step between two harnesses alike no more often than its level, over every sign of every set of up to six untied tasks", () => {
+  it("reads a step between two harnesses alike no more often than its level, by enumeration: over every sign of every set of up to six untied tasks, and where each solve is valid by its task's own chance", () => {
     // Where the two sides are interchangeable each untied task is as likely won as lost by its
     // margin, whatever the margin: the test is exact given the margins, so its false-positive rate
     // holds at every level by enumeration. Four, eight, twelve and sixteen are the margins a task
@@ -197,10 +198,8 @@ describe("the paired sign-flip test", () => {
       expect(Math.max(...rates)).toBeLessThanOrEqual(level);
       expect(Math.max(...rates)).toBeGreaterThan(level / 2);
     }
-  });
-
-  it("holds its level by enumeration where each solve is valid by its task's own chance, the same under both harnesses", () => {
-    // Six tasks from nearly never valid to always, two solves a side: every outcome of all six.
+    // The same where validity is by a chance of the task's own, the same under both harnesses:
+    // six tasks from nearly never valid to always, two solves a side, every outcome of all six.
     const tasks = [0.1, 0.3, 0.5, 0.7, 0.9, 1].map((rate) => byDifference(rate, 2));
     const read = new Map([
       [LEVEL, 0],
@@ -247,7 +246,7 @@ describe("what a reading can detect", () => {
     [24, 16, 53, 88, 99],
   ] as const;
 
-  it("is the plan's table, row by row, where each untied task is won or lost by as many pairs", () => {
+  it("is the plan's table, row by row, where each untied task is won or lost by as many pairs: none under the least sweep, and between equal harnesses never over the level", () => {
     for (const [untied, needed, ...percents] of TABLE) {
       const fewest = Array.from({ length: untied + 1 }, (_, wins) => wins).find(
         (wins) => flipP(units(wins, untied - wins)) <= LEVEL,
@@ -257,9 +256,6 @@ describe("what a reading can detect", () => {
         [0.65, 0.75, 0.85].map((share) => Math.round(100 * power(units(untied, 0), share, LEVEL))),
       ).toEqual([...percents]);
     }
-  });
-
-  it("is none under the least sweep, and over the untied tasks alone, as many orders as clear", () => {
     expect(power(units(3, 0), 1, LEVEL)).toBe(0);
     expect(power([], 1, LEVEL)).toBe(0);
     expect(power(units(4, 0), 1, LEVEL)).toBe(1);
@@ -269,9 +265,6 @@ describe("what a reading can detect", () => {
     expect(power(units(4, 0, 1, 5), 0.5, LEVEL)).toBe(0.0625);
     // Which sign a task's difference has is the draw's: the power reads its size alone.
     expect(power(units(2, 2), 0.5, LEVEL)).toBe(0.0625);
-  });
-
-  it("keeps the chance of a step between equal harnesses under the level at every untied count from 4 to 24", () => {
     for (const [untied] of TABLE) {
       const falsely = power(units(untied, 0), 0.5, LEVEL);
       expect(falsely).toBeGreaterThan(0.02);
@@ -317,7 +310,7 @@ describe("the step and its repeat", () => {
     );
   });
 
-  it("promote nothing where the first stage bought no repeat, the repeat tied every task or lost, or a report holds no frontier", () => {
+  it("promote nothing where the first stage bought no repeat, the repeat tied every task or lost, or a report holds no frontier, each stage's tasks read by their margins", () => {
     // 1-0 does not buy the repeat at 0.25 (p 0.5), however strong the repeat.
     expect(triggered(report(units(1, 0)), TRIGGER)).toBe(false);
     expect(readTwice([report(units(1, 0)), report(units(4, 0))], LEVEL, TRIGGER)).toBe(false);
@@ -332,9 +325,6 @@ describe("the step and its repeat", () => {
     const before = { scored: { wins: 2, losses: 0, ties: 0, p: 0.25, differences: [1, 1] } };
     expect(triggered(before, TRIGGER)).toBe(false);
     expect(readTwice([before, before], LEVEL, TRIGGER)).toBe(false);
-  });
-
-  it("read each stage's tasks by their margins, as one reading does", () => {
     // A 3-1 whose loss was by four pairs of sixteen buys the repeat, where the sign test's 3-1
     // (p 0.3125) did not; with a repeat that won two by sixteen the two clear 0.10 together.
     expect(triggered(report(units(3, 1)), TRIGGER)).toBe(false);
@@ -345,7 +335,7 @@ describe("the step and its repeat", () => {
     expect(readTwice([report(margins), report([4, -16])], LEVEL, TRIGGER)).toBe(false);
   });
 
-  it("read the step on the frontier and hold the retained tasks to no net loss: a harness that fixes three and breaks three buys no repeat and promotes nothing", () => {
+  it("read the step on the frontier and hold the retained tasks to no net loss, an empty retained set being unmeasured and never no loss", () => {
     const fixes = [16, 16, 16];
     const broke = [-16, -16, -16];
     // On the frontier alone, three fixed buy the repeat, and twice they are a 6-0 that clears 0.10.
@@ -359,37 +349,31 @@ describe("the step and its repeat", () => {
     // hold.
     expect(readTwice([report(fixes), report(fixes, [-4])], LEVEL, TRIGGER)).toBe(false);
     expect(readTwice([report(fixes, [4, -4, 0]), report(fixes, [0])], LEVEL, TRIGGER)).toBe(true);
-    // One reading: a step on the frontier with a net loss on the retained tasks reads `regressed`.
-    const stage = (retained: readonly number[] | null) => ({
-      frontier: [16, ...fixes],
-      retained,
-      untied: [],
-      families: [],
-    });
-    expect(stepOf(stage(broke), LEVEL)).toBe("regressed");
-    expect(stepOf(stage([0, 4]), LEVEL)).toBe("step");
-    expect(stepOf({ ...stage(broke), frontier: fixes }, LEVEL)).toBe("no-step");
-  });
-
-  it("read an empty retained set as unmeasured, never as no loss, and gate nothing on it", () => {
+    // One reading: a step on the frontier with a net loss on the retained tasks reads `regressed`,
+    // and with a net gain there a step.
+    expect(stepOf(report([16, ...fixes], broke), LEVEL)).toBe("regressed");
+    expect(stepOf(report([16, ...fixes], [0, 4]), LEVEL)).toBe("step");
+    // A frontier short of the level reads `no-step` whatever the retained tasks lost: `regressed`
+    // is said of a step alone, so a recorded comparison settled again reads as it did.
+    expect(stepOf(report(fixes, broke), LEVEL)).toBe("no-step");
+    expect(stepOf(report(units(0, 0, 1, 4), [-4]), LEVEL)).toBe("no-step");
     // Against the provisioned starter nothing is exhausted yet: the first promotion's two stages
     // hold no retained task, and promote on the frontier alone.
-    expect(stepOf({ frontier: units(4, 0, 16), retained: null, untied: [], families: [] }, LEVEL)).toBe(
-      "step",
-    );
+    expect(stepOf(report(units(4, 0, 16)), LEVEL)).toBe("step");
     expect(readTwice([report(units(2, 0, 16)), report(units(2, 0, 16))], LEVEL, TRIGGER)).toBe(true);
     // A stage whose report names no retained reading at all reads nothing.
     const bare = { frontier: { differences: units(2, 0, 16) }, families: {} };
     expect(triggered(bare, TRIGGER)).toBe(false);
+    // One comparison's own reading is of a report it has just tallied: one with no retained
+    // reading is a fault of the caller's, and is refused rather than read as no step.
+    expect(() => stepOf(bare, LEVEL)).toThrow("a reading needs a frontier and a retained set");
   });
 
   it("promote nothing where every untied frontier task of both stages falls in one family of the two or more the sets hold", () => {
     // A family name can hide tasks that move for one reason: this reads concentration, and it
     // establishes no independence.
     const one = report(units(4, 0, 16), null, spread({ a: [4, 0] }, ["b"]));
-    expect(
-      stepOf({ frontier: units(4, 0, 16), retained: null, untied: ["a"], families: ["a", "b"] }, LEVEL),
-    ).toBe("narrow");
+    expect(stepOf(one, LEVEL)).toBe("narrow");
     // A narrow first reading still buys the repeat, which draws other families where it can.
     expect(triggered(one, TRIGGER)).toBe(true);
     expect(readTwice([one, one], LEVEL, TRIGGER)).toBe(false);
@@ -402,7 +386,7 @@ describe("the step and its repeat", () => {
     expect(readTwice([alone, alone], LEVEL, TRIGGER)).toBe(true);
   });
 
-  it("promote two equal harnesses no more often than the level, at every size from 4 to 24 tasks and every tie share, each task won or lost by one pair", () => {
+  it("promote two equal harnesses no more often than the level, at every size from 4 to 24 tasks and every tie share, by one pair a task or by their margins at four solves a side", () => {
     // A promotion needs the two readings' tasks together to clear the level, so it is no likelier
     // than that one exact reading: the enumeration holds it so, and shows that the first stage's
     // gate leaves the rate near the level rather than far under it. It is the rate of one attempt;
@@ -433,6 +417,17 @@ describe("the step and its repeat", () => {
     }
     expect(largest).toBeLessThanOrEqual(LEVEL);
     expect(largest).toBeGreaterThan(0.05);
+    // Each task's solves are valid by a chance of its own, drawn from four, and the same under
+    // both harnesses: a task is won or lost by four pairs for each valid answer one side has more.
+    const rates = [0.25, 0.5, 0.75, 1].map((rate) => byDifference(rate, 4));
+    const mixed = new Map<number, number>();
+    for (const rate of rates) {
+      for (const [difference, odds] of rate) mixed.set(difference, (mixed.get(difference) ?? 0) + odds / 4);
+    }
+    const drawn = outcomes(4, [...mixed]);
+    const chance = promoted(drawn, drawn);
+    expect(chance).toBeLessThanOrEqual(LEVEL);
+    expect(chance).toBeGreaterThan(0);
   });
 
   it("promote at the rates of the enumeration of 10 October, at sixteen tasks of which three in four tie", () => {
@@ -449,20 +444,6 @@ describe("the step and its repeat", () => {
     );
     expect(once ** 2).toBeCloseTo(0.545, 2);
   });
-
-  it("promote two equal harnesses no more often than the level where tasks are read by their margins at four solves a side", () => {
-    // Each task's solves are valid by a chance of its own, drawn from four, and the same under
-    // both harnesses: a task is won or lost by four pairs for each valid answer one side has more.
-    const rates = [0.25, 0.5, 0.75, 1].map((rate) => byDifference(rate, 4));
-    const mixed = new Map<number, number>();
-    for (const rate of rates) {
-      for (const [difference, odds] of rate) mixed.set(difference, (mixed.get(difference) ?? 0) + odds / 4);
-    }
-    const drawn = outcomes(4, [...mixed]);
-    const chance = promoted(drawn, drawn);
-    expect(chance).toBeLessThanOrEqual(LEVEL);
-    expect(chance).toBeGreaterThan(0);
-  });
 });
 
 describe("the rule's false rate an attempt", () => {
@@ -472,7 +453,7 @@ describe("the rule's false rate an attempt", () => {
       margins.map((margin, at) => (mask & (1 << at) ? margin : -margin)),
     );
 
-  it("is the two-stage rule's own chance of promoting equal harnesses, over every signing of both stages", () => {
+  it("is the two-stage rule's own chance of promoting equal harnesses, over every signing of both stages, under the level and away from it: 5.8% on 24 untied tasks", () => {
     // The rule read through `readTwice` on every pair of signings, against the convolution: the
     // number a report carries and an opening says is the rule's, not a model of it.
     for (const margins of [
@@ -491,9 +472,6 @@ describe("the rule's false rate an attempt", () => {
     // A tie leaves the test, and no untied task promotes nothing.
     expect(falseRate([4, 0, 8, 0, 12], LEVEL, TRIGGER)).toBe(falseRate([4, 8, 12], LEVEL, TRIGGER));
     expect(falseRate([0, 0], LEVEL, TRIGGER)).toBe(0);
-  });
-
-  it("stays under the level and away from it: 5.8% on 24 untied tasks, and about 4.5% on 24 tasks of which half tie", () => {
     // The plan's section 4b: the nominal level misleads, since an attempt is two readings and the
     // first has to buy the second. At 0.10 the rule promotes equal harnesses 5.8% of the time on
     // 24 untied tasks a stage, each won or lost by a pair; on 24 tasks of which half tie, drawn
@@ -509,21 +487,38 @@ describe("the rule's false rate an attempt", () => {
 });
 
 describe("a task's pairings", () => {
-  it("gives a valid answer the pair over one that is not, and leaves two alike even", () => {
+  /** The pairs each side won of one task. */
+  const won = (pair: Parameters<typeof pairings>[0]) => {
+    const { fresh, old } = pairings(pair);
+    return { fresh, old };
+  };
+
+  it("gives a valid answer the pair over one that is not and leaves two alike even, so a task reads as the harness with more valid answers", () => {
     // Two solves a side: the new harness is valid twice, the reference once.
-    expect(pairings({ task: "t", old: [P, F], fresh: [P, P] })).toEqual({ fresh: 2, old: 0 });
+    expect(won({ task: "t", old: [P, F], fresh: [P, P] })).toEqual({ fresh: 2, old: 0 });
     // Two valid answers are even, however good either is: no objective is read.
-    expect(pairings({ task: "t", old: [P, P], fresh: [P, P] })).toEqual({ fresh: 0, old: 0 });
-    expect(pairings({ task: "t", old: [F, F], fresh: [F, F] })).toEqual({ fresh: 0, old: 0 });
+    expect(won({ task: "t", old: [P, P], fresh: [P, P] })).toEqual({ fresh: 0, old: 0 });
+    expect(won({ task: "t", old: [F, F], fresh: [F, F] })).toEqual({ fresh: 0, old: 0 });
     // One valid answer a side wins a pair each, and the task is a tie.
-    expect(pairings({ task: "t", old: [P, F], fresh: [F, P] })).toEqual({ fresh: 1, old: 1 });
+    expect(won({ task: "t", old: [P, F], fresh: [F, P] })).toEqual({ fresh: 1, old: 1 });
+    expect(unsolved({ task: "t", old: [F, F], fresh: [F, F] })).toBe(true);
+    expect(unsolved({ task: "t", old: [F, F], fresh: [F, P] })).toBe(false);
+    for (let solves = 1; solves <= 4; solves += 1) {
+      for (let valid = 0; valid <= solves; valid += 1) {
+        for (let other = 0; other <= solves; other += 1) {
+          const side = (passes: number) => Array.from({ length: solves }, (_, nth) => nth < passes);
+          const each = won({ task: "t", old: side(other), fresh: side(valid) });
+          expect(Math.sign(each.fresh - each.old)).toBe(Math.sign(valid - other));
+        }
+      }
+    }
   });
 
   it("sets two valid answers apart by the objective, by more than the margin, and no invalid one", () => {
     const lower = { direction: "lower", margin: 0.01 } as const;
     // Two valid answers a side, the new harness's lighter: it wins every pairing of the four.
     expect(
-      pairings({
+      won({
         task: "t",
         old: [P, P],
         fresh: [P, P],
@@ -532,7 +527,7 @@ describe("a task's pairings", () => {
     ).toEqual({ fresh: 4, old: 0 });
     // The same measures the other way up, where higher is better.
     expect(
-      pairings({
+      won({
         task: "t",
         old: [P, P],
         fresh: [P, P],
@@ -542,7 +537,7 @@ describe("a task's pairings", () => {
     // Within the margin of the larger measure two answers are even: 10 against 10.05 at 0.01 is,
     // and 10 against 10.2 is not. A measure missing on one side decides nothing.
     expect(
-      pairings({
+      won({
         task: "t",
         old: [P, P],
         fresh: [P, P],
@@ -553,13 +548,29 @@ describe("a task's pairings", () => {
     // a measure on a refused answer is never read. Between the two valid answers the objective
     // decides, so the new harness, valid once at 100, loses that pairing too.
     expect(
-      pairings({
+      won({
         task: "t",
         old: [P, F],
         fresh: [F, P],
         objective: { ...lower, old: [1, 1], fresh: [1, 100] },
       }),
     ).toEqual({ fresh: 1, old: 2 });
+    // Each pairing is decided once: by validity where one answer was valid, by the objective between
+    // two valid answers it told apart, and the pairings of two valid answers are counted beside.
+    expect(
+      pairings({
+        task: "t",
+        old: [P, F],
+        fresh: [F, P],
+        objective: { ...lower, old: [1, 1], fresh: [1, 100] },
+      }),
+    ).toEqual({
+      fresh: 1,
+      old: 2,
+      validity: { fresh: 1, old: 1 },
+      objective: { fresh: 0, old: 1 },
+      valid: 1,
+    });
     // How many tasks the objective decided: the ones that validity alone would have tied.
     const even = { task: "e", old: [P, P], fresh: [P, P] };
     expect(
@@ -631,18 +642,6 @@ describe("a task's pairings", () => {
       expect(objectiveRuleIn({ objective: objective ?? null })).toBeUndefined();
     }
   });
-
-  it("reads as the harness with more valid answers, at every split of up to four solves a side", () => {
-    for (let solves = 1; solves <= 4; solves += 1) {
-      for (let valid = 0; valid <= solves; valid += 1) {
-        for (let other = 0; other <= solves; other += 1) {
-          const side = (passes: number) => Array.from({ length: solves }, (_, nth) => nth < passes);
-          const won = pairings({ task: "t", old: side(other), fresh: side(valid) });
-          expect(Math.sign(won.fresh - won.old)).toBe(Math.sign(valid - other));
-        }
-      }
-    }
-  });
 });
 
 describe("a draw", () => {
@@ -710,7 +709,7 @@ describe("the pairs a comparison reads from the log", () => {
     expect(fieldsApart(base, { ...base, limits: { ...base.limits, turns: 80 } })).toEqual(["limits"]);
   });
 
-  it("counts every pass and fail of a held-out task under either harness, with what each cost", () => {
+  it("counts every pass and fail of a held-out task under either harness, cut to the solves a side it asked, with what each cost", () => {
     const log = [
       ...held,
       // An end of 9 October, with the figures a solve reported then; what a pair keeps of it is the cost.
@@ -732,9 +731,6 @@ describe("the pairs a comparison reads from the log", () => {
       ...solve({ ...base, harness: "starter", solverTools: "starter" }, "fail"),
     ];
     const none = { billed: null };
-    const counted = pairsOf(log, ["v1", "v0"], sides);
-    // Each counted solve is named: the non-result and the stronger side's solve, s-2 and s-4, are
-    // not among them, and neither is the starter's.
     const other = {
       task: "v0",
       old: [P],
@@ -742,7 +738,10 @@ describe("the pairs a comparison reads from the log", () => {
       solves: { old: ["s-7"], fresh: ["s-8"] },
       used: { old: [none], fresh: [none] },
     };
-    expect(counted).toEqual({
+    // Each counted solve is named: the non-result and the stronger side's solve, s-2 and s-4, are
+    // not among them, and neither is the starter's. A task with fewer solves than asked on a side
+    // is named short and is in no pair, as a resume may leave one.
+    expect(pairsOf(log, ["v1", "v0"], sides, 2)).toEqual({
       pairs: [
         {
           task: "v1",
@@ -753,18 +752,31 @@ describe("the pairs a comparison reads from the log", () => {
           // for the investigation and are no part of a pair since 2026-10-11.
           used: { old: [{ billed: 6.5 }, none], fresh: [none, none] },
         },
-        other,
       ],
+      short: ["v0"],
       disputed: [],
     });
+    // A side with more is cut to its first solves, in every list alike.
+    const first = {
+      task: "v1",
+      old: [P],
+      fresh: [P],
+      solves: { old: ["s-1"], fresh: ["s-3"] },
+      used: { old: [{ billed: 6.5 }], fresh: [none] },
+    };
+    expect(pairsOf(log, ["v1", "v0"], sides, 1)).toEqual({ pairs: [first, other], short: [], disputed: [] });
     // The same log read against the starter pairs the same new solves with that harness's.
-    expect(pairsOf(log, ["v1"], { ...sides, old: "starter" }).pairs[0]).toMatchObject({
+    expect(pairsOf(log, ["v1"], { ...sides, old: "starter" }, 1).pairs[0]).toMatchObject({
       old: [F],
-      fresh: [P, P],
+      fresh: [P],
     });
     // A disputed task is out on both sides, and it is named.
     const disputed = [...log, event("task.state", { version: "v1", state: "disputed" })];
-    expect(pairsOf(disputed, ["v1", "v0"], sides)).toEqual({ pairs: [other], disputed: ["v1"] });
+    expect(pairsOf(disputed, ["v1", "v0"], sides, 1)).toEqual({
+      pairs: [other],
+      short: [],
+      disputed: ["v1"],
+    });
   });
 
   it("reads each counted solve's measure off its verdict where the sides fix an objective", () => {
@@ -786,48 +798,50 @@ describe("the pairs a comparison reads from the log", () => {
       ...solve(base, "fail"),
       ...measured(solve(fresh, "pass")),
     ];
-    const read = pairsOf(log, ["v1"], { ...sides, objective: lowerRule }).pairs[0];
+    const read = pairsOf(log, ["v1"], { ...sides, objective: lowerRule }, 2).pairs[0];
     expect(read).toMatchObject({
       old: [P, F],
       fresh: [P, P],
       objective: { ...lowerRule, old: [12, null], fresh: [9, null] },
     });
+    // The measures are cut with the solves they are of.
+    expect(pairsOf(log, ["v1"], { ...sides, objective: lowerRule }, 1).pairs[0]?.objective).toEqual({
+      ...lowerRule,
+      old: [12],
+      fresh: [9],
+    });
     // Sides that fix no objective read none, whatever the verdicts hold.
-    expect(pairsOf(log, ["v1"], sides).pairs[0]).not.toHaveProperty("objective");
+    expect(pairsOf(log, ["v1"], sides, 2).pairs[0]).not.toHaveProperty("objective");
   });
 
-  it("counts no solve that opened another harness than its condition names", () => {
-    // The runner stops a comparison on such a solve, and the comparison goes on from this log: a
-    // kept harness once opened without its tool tree (2026-10-09), and its answer stayed in the
-    // log under the condition that names the whole harness.
-    const log = [
-      ...held,
+  it("counts no solve that is not the comparison's own: one that opened another harness than its condition names, another solver's, another comparison's or none's", () => {
+    const read = (log: readonly LogEvent[], as: Partial<typeof sides> = {}) => {
+      const paired = pairsOf([...held, ...log], ["v1"], { ...sides, ...as }, 1);
+      const [pair] = paired.pairs;
+      return pair === undefined ? { short: paired.short } : { old: pair.old, fresh: pair.fresh };
+    };
+    // The runner stops a comparison on a solve that opened another harness, and the comparison
+    // goes on from this log: a kept harness once opened without its tool tree (2026-10-09), and
+    // its answer stayed in the log under the condition that names the whole harness.
+    const opened = [
       ...solve(base, "pass", { harness: "old" }),
       ...solve(fresh, "fail", { harness: "other" }),
       ...solve(fresh, "pass", { harness: "new" }),
     ];
-    expect(pairsOf(log, ["v1"], sides).pairs[0]).toMatchObject({ old: [P], fresh: [P] });
-  });
-
-  it("reads no solve another solver made: a setting is the solver, its limits and the host", () => {
+    expect(read(opened)).toEqual({ old: [P], fresh: [P] });
+    // A setting is the solver, its limits and the host: a solve made on another host is another
+    // setting's, and a task or a harness moves no setting.
     const moved = { ...fresh, host: "h2" };
-    const log = [...held, ...solve(base, "pass"), ...solve(moved, "pass"), ...solve(fresh, "fail")];
-    expect(pairsOf(log, ["v1"], sides).pairs[0]).toMatchObject({ old: [P], fresh: [F] });
-    expect(pairsOf(log, ["v1"], { ...sides, setting: settingId(moved) }).pairs[0]).toMatchObject({
-      old: [],
-      fresh: [P],
-    });
-    const slower = { ...base, limits: { ...base.limits, wallSeconds: 14_400 } };
-    expect(settingId(slower)).not.toBe(settingId(base));
+    const hosts = [...solve(base, "pass"), ...solve(moved, "pass"), ...solve(fresh, "fail")];
+    expect(read(hosts)).toEqual({ old: [P], fresh: [F] });
+    expect(read(hosts, { setting: settingId(moved) })).toEqual({ short: ["v1"] });
+    expect(settingId({ ...base, limits: { ...base.limits, wallSeconds: 14_400 } })).not.toBe(settingId(base));
     const elsewhere: Condition = { ...base, task: "v0", harness: "new", solverTools: "new" };
     expect(settingId(elsewhere)).toBe(settingId(base));
-  });
-
-  it("counts the solves that name the comparison and no other: both sides are solved afresh", () => {
     // An earlier comparison, a practice solve that names none, and a later comparison's solves
-    // made while this one was stopped: none of them is a solve of `c-1`.
-    const log = [
-      ...held,
+    // made while this one was stopped: none of them is a solve of `c-1`. Both sides are solved
+    // afresh at every comparison.
+    const others = [
       ...solve(base, "fail", { comparison: "c-0" }),
       ...solve(fresh, "pass", { comparison: "c-0" }),
       ...solve(base, "pass"),
@@ -835,15 +849,9 @@ describe("the pairs a comparison reads from the log", () => {
       ...solve(base, "fail", { comparison: "c-2" }),
       ...solve(fresh, "fail"),
     ];
-    expect(pairsOf(log, ["v1"], sides).pairs[0]).toMatchObject({ old: [P], fresh: [F] });
-    expect(pairsOf(log, ["v1"], { ...sides, comparison: "c-0" }).pairs[0]).toMatchObject({
-      old: [F],
-      fresh: [P],
-    });
-    expect(pairsOf(log, ["v1"], { ...sides, comparison: "c-2" }).pairs[0]).toMatchObject({
-      old: [F],
-      fresh: [],
-    });
+    expect(read(others)).toEqual({ old: [P], fresh: [F] });
+    expect(read(others, { comparison: "c-0" })).toEqual({ old: [F], fresh: [P] });
+    expect(read(others, { comparison: "c-2" })).toEqual({ short: ["v1"] });
   });
 
   it("orders a side's solves by when they started, so the first taken are not the quick ones", () => {
@@ -859,8 +867,10 @@ describe("the pairs a comparison reads from the log", () => {
       quickEnd,
       slowEnd,
       ...solve(fresh, "pass"),
+      ...solve(fresh, "pass"),
     ];
-    expect(pairsOf(log, ["v1"], sides).pairs[0]).toMatchObject({ old: [F, P] });
+    expect(pairsOf(log, ["v1"], sides, 2).pairs[0]).toMatchObject({ old: [F, P] });
+    expect(pairsOf(log, ["v1"], sides, 1).pairs[0]).toMatchObject({ old: [F] });
   });
 
   it("sets a harness against itself by mirrored halves, the first and last of each four against the two between, and earlier against later apart", () => {
@@ -874,36 +884,29 @@ describe("the pairs a comparison reads from the log", () => {
       ...solve(fresh, "pass"),
       ...solve(fresh, "fail"),
     ];
+    const halves = (as: Partial<Parameters<typeof pairsOf>[2]>) =>
+      pairsOf(log, ["v1"], { ...sides, ...as }, 2).pairs[0];
     // The A/A is read as the A/B is: on halves mirrored in time, so that a drift across the
     // task's solves falls on both alike.
-    expect(pairsOf(log, ["v1"], { ...sides, fresh: "old", halves: "mirrored" }).pairs[0]).toMatchObject({
-      old: [P, P],
-      fresh: [F, F],
-    });
+    expect(halves({ fresh: "old", halves: "mirrored" })).toMatchObject({ old: [P, P], fresh: [F, F] });
     // Earlier against later is the drift, read apart: the first two started against the last two.
-    expect(pairsOf(log, ["v1"], { ...sides, fresh: "old", halves: "in-order" }).pairs[0]).toMatchObject({
-      old: [P, F],
-      fresh: [F, P],
-    });
+    expect(halves({ fresh: "old", halves: "in-order" })).toMatchObject({ old: [P, F], fresh: [F, P] });
     // Beside it the new harness is paired with the reference's first mirrored half, which is the
     // half its own solves were mirrored around.
-    expect(pairsOf(log, ["v1"], { ...sides, halves: "mirrored" }).pairs[0]).toMatchObject({
-      old: [P, P],
-      fresh: [P, F],
-    });
+    expect(halves({ halves: "mirrored" })).toMatchObject({ old: [P, P], fresh: [P, F] });
   });
 
   it("refuses a practice task, a refused one, one never proposed, and a harness set against itself", () => {
     const released = [...held, event("task.state", { version: "v1", state: "released" })];
-    expect(() => pairsOf(released, ["v1"], sides)).toThrow(
+    expect(() => pairsOf(released, ["v1"], sides, 1)).toThrow(
       "task v1 is released; only a held-out task is scored",
     );
     const ungated = [event("task.proposed", { version: "v2" })];
-    expect(() => pairsOf(ungated, ["v2"], sides)).toThrow(
+    expect(() => pairsOf(ungated, ["v2"], sides, 1)).toThrow(
       "task v2 has not passed its gate; only a held-out task is scored",
     );
-    expect(() => pairsOf(held, ["v9"], sides)).toThrow("task v9 is not proposed");
-    expect(() => pairsOf(held, ["v1"], { ...sides, fresh: "old" })).toThrow(
+    expect(() => pairsOf(held, ["v9"], sides, 1)).toThrow("task v9 is not proposed");
+    expect(() => pairsOf(held, ["v1"], { ...sides, fresh: "old" }, 1)).toThrow(
       "a comparison sets two harnesses against each other, and both sides are old",
     );
   });

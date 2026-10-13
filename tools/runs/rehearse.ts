@@ -9,10 +9,10 @@
  * are a session's, and rehearse one Builder session with no comparison after it
  * (`tools/d2/session.ts`): the plan's checkpoint is walked as two of those and then a checkpoint.
  * With `--campaign` the flags are the Harness Builder's (`tools/d2/harness-builder.ts`), and the
- * whole loop is rehearsed: every move the decision table names, until the campaign ends or
+ * live Builder is rehearsed: its script follows the public prompt advice, until it ends or
  * `--moves` are made. Over a stored pack no script sits in the Examiner's seat, so a rehearsal
- * that comes to need tasks written stops there and says so; over a drafted exam the Examiner is
- * scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
+ * that needs tasks written finishes when its Examiner tool is unavailable; over a drafted exam
+ * the Examiner is scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
  * cut, in their order, until none is left; with `--supply N` it then proposes up to N further
  * instances copied from the source's answered tasks, each with a copy mark in its public input so
  * that it is another instance, which the script answers as it answers the task it copies. That is
@@ -28,7 +28,8 @@
  * stored pack's graded passes and controls where `--root --sweep --bundle` name one, and otherwise
  * the drafted exam's controls and every answer the seed's source campaign passed (`draftedGraded`).
  *
- * The Builder's script adds one line to the harness's guide through its walled shell and finishes.
+ * The Builder's script edits the guide through its walled shell. In a campaign it follows public
+ * action advice; in an isolated session it finishes after the edit.
  * A solve's script ends one of three ways. For `pass` it writes an answer on record that the checks
  * accepted into the answer file, through the harness's own `write` or its `bash`, and submits it.
  * For `fail` it does the same with one a check rejected. For `none` it submits with no answer
@@ -49,16 +50,22 @@
  * ends otherwise than scripted is named at the end, with exit code 1. Whether the script or the
  * path under it is at fault is then the finding to make.
  */
-import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+  createModels,
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall,
+  type FauxResponseFactory,
+} from "@earendil-works/pi-ai";
 import type { Control } from "#src/kernel/acceptance.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { verdictsOf } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
-import { examine } from "#src/examiner/session.ts";
+import { examine, type Session } from "#src/examiner/session.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isFunction, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -168,17 +175,46 @@ export function answersOf(graded: readonly Control[], events: readonly LogEvent[
 
 /** A model that makes `calls` in order, a turn each, and then says nothing more however often it is
  *  asked: a script that ran out would be the provider's failure, and the solve would be run again. */
-function scripted(calls: readonly (readonly [string, JsonObject])[], asked: number) {
+function scripted(calls: readonly (readonly [string, JsonObject] | FauxResponseFactory)[], asked: number) {
   const faux = fauxProvider({
     models: [{ id: "script", contextWindow: 200_000, cost: PRICE }],
   });
   faux.setResponses([
-    ...calls.map(([name, args]) => fauxAssistantMessage(fauxToolCall(name, args), TOOL_USE)),
+    ...calls.map((call) =>
+      isFunction(call) ? call : fauxAssistantMessage(fauxToolCall(call[0], call[1]), TOOL_USE),
+    ),
     ...Array.from({ length: asked }, () => fauxAssistantMessage("The script holds no further call.")),
   ]);
   const models = createModels();
   models.setProvider(faux.provider);
   return { model: faux.getModel(), models: () => models };
+}
+
+/** One scripted Builder follows public campaign advice, or edits and finishes an isolated session. */
+function scriptedBuilder() {
+  let changed = false;
+  const choose: FauxResponseFactory = (context) => {
+    const last = JSON.stringify(context.messages.at(-1));
+    const suggested = /Suggested action: ([a-z_]+)\./u.exec(last ?? "")?.[1];
+    let name = suggested ?? (changed ? "finish" : "build");
+    if (last?.includes("no Examiner") === true || name === "end") name = "finish";
+    if (name === "build") {
+      name = changed ? "compare" : "bash";
+      changed = true;
+    }
+    if (name === "compare") changed = false;
+    const args =
+      name === "bash"
+        ? { command: `printf '\\nA rehearsal added this line.\\n' >> "$HOME/${GUIDE}"` }
+        : name === "finish"
+          ? { note: "The scripted Builder has no further action." }
+          : {};
+    return fauxAssistantMessage(fauxToolCall(name, args), TOOL_USE);
+  };
+  return scripted(
+    Array.from({ length: 300 }, () => choose),
+    0,
+  );
 }
 
 /** The seats of a rehearsal. `strayed` takes each solve that ended otherwise than scripted. */
@@ -205,13 +241,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
     const sideOf = async (dir: string) =>
       dir === reference ? "old" : dir === (await least).dir ? "starter" : "new";
     return {
-      builder: scripted(
-        [
-          ["bash", { command: `printf '\\nA rehearsal added this line.\\n' >> "$HOME/${GUIDE}"` }],
-          ["finish", { note: "A rehearsal: one line added to the guide." }],
-        ],
-        0,
-      ),
+      builder: scriptedBuilder(),
       // Every scripted solver is the same model at the same price, so one names the setting of all.
       setting: campaign.setting({ ...campaign.test, ...scripted([], 0) }),
       solve: async (task, harness, kill, comparison) => {
@@ -220,7 +250,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         // A solve scripted to give no answer submits with none written, and needs none on record.
         // One scripted to answer a task with no answer on record gives none and is named at the
         // end as strayed: until 10 October it ended the campaign, and a rehearsal of the control
-        // after a promotion (`onReference`) fell at the first task no solve had ever answered.
+        // after a promotion (`heldSince`, `decide.ts`) fell at the first task no solve had ever answered.
         // A copied instance (`--supply`) is answered as the task it copies.
         const copied = asRecord(asRecord(task.publicInput)?.[COPY])?.of;
         const known = answers.get(task.taskId) ?? (isString(copied) ? answers.get(copied) : undefined);
@@ -311,12 +341,12 @@ function draftedSource(name: string): DraftedSource {
  * none left proposes copies of the source's answered tasks while `--supply` lasts, and then
  * finishes with none, which the campaign reads as a session that held out no task.
  */
-function scriptedExaminer(later: Task[], answered: readonly Task[], supply: number): typeof examine {
+function scriptedExaminer(later: Task[], answered: readonly Task[], supply: number): Session<"write"> {
   let copies = 0;
   return (request) => {
-    const own = later.splice(0, request.limits.tasks);
+    const own = later.splice(0, request.wanted);
     const copied: Task[] = [];
-    while (own.length + copied.length < request.limits.tasks && copies < supply && answered.length > 0) {
+    while (own.length + copied.length < request.wanted && copies < supply && answered.length > 0) {
       const source = answered[copies % answered.length];
       if (source === undefined) break;
       copies += 1;

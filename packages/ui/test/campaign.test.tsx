@@ -128,6 +128,7 @@ test("an attended campaign says so in its set-up, and that a promotion the table
     why: "a step read twice",
     harness: "h",
     line: "next · promote",
+    code: "twice",
   } as const;
   const waits = "under --attended the promotion waits for the operator&#x27;s word";
   expect(paneOf({ ...attended, nextMove: promote })).toContain(waits);
@@ -146,11 +147,9 @@ test("the set-up names the bars a promotion is read against, and the next move t
     why: "a step read twice",
     harness: "h",
     line: "next · promote",
+    code: "twice",
   } as const;
-  expect(paneOf({ ...reading, nextMove: { ...promote, row: 7 } })).toContain(
-    'title="row 7 · next · promote"',
-  );
-  expect(paneOf({ ...reading, nextMove: promote })).toContain('title="next · promote"');
+  expect(paneOf({ ...reading, nextMove: promote })).toContain('title="twice · next · promote"');
 });
 
 test("a campaign that ended with no promotion names its ending and draws no divider", () => {

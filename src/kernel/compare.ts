@@ -227,6 +227,16 @@ export function flipP(differences: readonly number[]): number {
   return Math.min(1, above(signed(sizes, 0.5), Math.ceil((total(differences) + total(sizes)) / 2)));
 }
 
+/** Whether a reading of one harness against itself reads a step either way at `level`: the
+ *  smaller of its two one-sided tests at or under it, as a comparison would read a step whichever
+ *  sample it took for the new harness. Its two sides are interchangeable by construction, so such
+ *  a step says the comparison moved, not a harness. The whole-run reader and the UI count it so;
+ *  the decision table holds its control to the level two-sided, and asks it at half the level
+ *  (`controlled`, `decide.ts`). */
+export function readsStepEitherWay(differences: readonly number[], level: number): boolean {
+  return Math.min(flipP(differences), flipP(differences.map((one) => -one))) <= level;
+}
+
 /** The chance that a reading at `level` of untied tasks with the margins of `differences` reads a
  *  step where the new harness wins each with chance `share`. At one half it is the test's
  *  false-positive rate on those margins, which is never over the level. */

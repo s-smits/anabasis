@@ -20,7 +20,7 @@
  * here on the same day for the same ceiling.
  */
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/builder/handover.ts";
-import { flipP, pairings, sweepOf } from "#src/kernel/compare.ts";
+import { flipP, pairings, readsStepEitherWay, sweepOf } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
@@ -427,7 +427,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${Math.min(flipP(apart), flipP(apart.map((one) => -one))) <= level ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(apart, level) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];

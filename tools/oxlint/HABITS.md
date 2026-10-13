@@ -23,8 +23,10 @@ first line, and the round trip through the linter mostly disappears.
 
 ## 12.2 How lint runs
 
-`bun run lint` runs Oxlint over `src`, `tools`, `test` and `.claude` with `--deny-warnings` and
-`--report-unused-disable-directives`, type-aware. Two repository plugins ride along: `ana`
+`bun run lint` runs Oxlint over `src`, `tools`, `test`, `packages` and `.claude` with
+`--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
+once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
+with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
 (39 rules) and `anti-slop` (17 rules). Every enabled rule in `.oxlintrc.json` is an error.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,

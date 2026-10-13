@@ -1,0 +1,854 @@
+/* The Moves, Tasks and Log panes' styles (`views/moves.tsx`, `views/tasks.tsx`, `views/log.tsx`),
+   their details and the inspector's diff. Every colour is a token of `styles.css` and every size one
+   of its five text steps: a pane draws nothing the shell does not already name. */
+
+/* ── small shared pieces ────────────────────────────────────────────────────── */
+
+.ana-faint {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-sm);
+}
+
+.ana-mono {
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-sm);
+}
+
+.ana-prose {
+  color: var(--ana-dim);
+  font-size: var(--ana-text-base);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 76ch;
+  white-space: pre-wrap;
+}
+
+/* The exam side's place: a line of faint text, no border and no tone, since it is no error. */
+.ana-exam-side {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-sm);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.ana-exam-side code {
+  color: var(--ana-dim);
+  font-size: var(--ana-text-xs);
+}
+
+.ana-cell-note {
+  color: var(--ana-faint);
+  display: block;
+  font-size: var(--ana-text-xs);
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.ana-swatch {
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+  height: 10px;
+  width: 10px;
+}
+
+.ana-outcome {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+/* ── a detail in place of its list ─────────────────────────────────────────── */
+
+.ana-detail {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ana-detail-head {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.ana-detail-title {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ana-section .ana-detail-title h2 {
+  align-items: baseline;
+  color: var(--ana-text);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-lg);
+  font-weight: 600;
+  gap: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ana-detail-title h2 small {
+  color: var(--ana-faint);
+  font-family: var(--font-body);
+  font-size: var(--ana-text-sm);
+  font-weight: 500;
+}
+
+.ana-detail-title p {
+  align-items: baseline;
+  color: var(--ana-dim);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--ana-text-sm);
+  gap: 4px 10px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.ana-detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.ana-detail-pair {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ana-detail-card {
+  align-content: start;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.ana-detail-card h3 {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* Facts as label over value. A row of them reads as one strip of figures under a detail's head. */
+.ana-facts {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.ana-facts > div {
+  align-items: baseline;
+  border-bottom: 1px solid var(--ana-border-soft);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(110px, 38%) minmax(0, 1fr);
+  padding: 8px 0;
+}
+
+.ana-facts > div:last-child {
+  border-bottom: 0;
+}
+
+.ana-facts dt {
+  font-size: var(--ana-text-xs);
+}
+
+.ana-facts dd {
+  font-family: var(--font-technical);
+  font-size: var(--ana-text-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.ana-facts dd .ana-code + .ana-code {
+  margin-left: 6px;
+}
+
+.ana-facts--row {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius);
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+}
+
+.ana-facts--row > div {
+  align-content: start;
+  border-bottom: 0;
+  border-right: 1px solid var(--ana-border-soft);
+  gap: 6px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 14px 16px;
+}
+
+.ana-facts--row > div:last-child {
+  border-right: 0;
+}
+
+.ana-ruling-line {
+  align-items: center;
+  color: var(--ana-dim);
+  display: flex;
+  font-size: var(--ana-text-sm);
+  gap: 10px;
+  margin: 0;
+}
+
+/* ── the moves list ─────────────────────────────────────────────────────────── */
+
+.ana-move-handover {
+  color: var(--ana-dim);
+  font-size: var(--ana-text-sm);
+  min-width: 260px;
+}
+
+.ana-table td.ana-num,
+.ana-table th.ana-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* A promotion between two moves: the reference changes there. */
+.ana-table tr.ana-move-divider > td {
+  background: rgb(255 255 255 / 2%);
+  border-bottom-color: var(--ana-border);
+  border-top: 1px solid var(--ana-border);
+  color: var(--ana-dim);
+  font-size: var(--ana-text-xs);
+  letter-spacing: 0.04em;
+  padding-bottom: 8px;
+  padding-top: 8px;
+}
+
+.ana-move-divider td {
+  align-items: center;
+}
+
+.ana-move-divider td > * + * {
+  margin-left: 10px;
+}
+
+.ana-move-divider time {
+  color: var(--ana-faint);
+}
+
+/* ── a trace ────────────────────────────────────────────────────────────────── */
+
+.ana-trace {
+  display: grid;
+  gap: 12px;
+}
+
+.ana-turns {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ana-turn {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius);
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.ana-turn-head {
+  align-items: center;
+  color: var(--ana-faint);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--ana-text-xs);
+  gap: 12px;
+}
+
+.ana-turn-head strong {
+  color: var(--ana-text);
+  font-family: var(--font-technical);
+  font-size: var(--ana-text-sm);
+  font-weight: 600;
+}
+
+.ana-turn-text {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.ana-turn-text p {
+  color: var(--ana-dim);
+  font-size: var(--ana-text-base);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 82ch;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ana-turn-text.is-empty {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-sm);
+  margin: 0;
+}
+
+.ana-turn .ana-tool-list {
+  border: 1px solid var(--ana-border-soft);
+  border-radius: var(--ana-radius-inner);
+  overflow: hidden;
+}
+
+/* ── a comparison ───────────────────────────────────────────────────────────── */
+
+.ana-split {
+  display: grid;
+  gap: 14px;
+}
+
+.ana-split-bar {
+  border-radius: var(--ana-radius-inner);
+  display: flex;
+  gap: 2px;
+  height: 28px;
+  overflow: hidden;
+}
+
+.ana-split-bar > span {
+  align-items: center;
+  color: var(--ana-bg);
+  display: flex;
+  font-family: var(--font-technical);
+  font-size: var(--ana-text-xs);
+  font-weight: 700;
+  justify-content: center;
+  min-width: 18px;
+  overflow: hidden;
+}
+
+.ana-split-bar > span.is-quiet {
+  opacity: 0.25;
+}
+
+.ana-split-legend {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ana-split-legend button {
+  align-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--ana-radius-inner);
+  color: var(--ana-dim);
+  cursor: pointer;
+  display: grid;
+  font-size: var(--ana-text-sm);
+  gap: 10px;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  min-height: 32px;
+  padding: 4px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.ana-split-legend button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 4%);
+  color: var(--ana-text);
+}
+
+.ana-split-legend button[aria-pressed="true"] {
+  background: var(--ana-card-2);
+  border-color: var(--ana-border);
+  color: var(--ana-text);
+}
+
+.ana-split-legend button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.ana-split-legend strong {
+  color: var(--ana-text);
+  font-size: var(--ana-text-md);
+}
+
+.ana-solve-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.ana-solve-chip {
+  background: var(--ana-card-2);
+  border: 1px solid var(--ana-border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: var(--ana-text-xs);
+  font-weight: 600;
+  line-height: 1;
+  min-height: 24px;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+
+.ana-solve-chip:hover {
+  border-color: color-mix(in srgb, var(--ana-accent) 60%, var(--ana-border));
+}
+
+.ana-solve-chip--good {
+  background: var(--ana-good-bg);
+  color: var(--ana-good);
+}
+.ana-solve-chip--bad {
+  background: var(--ana-bad-bg);
+  color: var(--ana-bad);
+}
+.ana-solve-chip--warn {
+  background: var(--ana-warn-bg);
+  color: var(--ana-warn);
+}
+.ana-solve-chip--info {
+  background: var(--ana-info-bg);
+  color: var(--ana-info);
+}
+
+.ana-triggers {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ana-triggers li {
+  align-items: baseline;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 60px minmax(140px, auto) minmax(0, 1fr);
+}
+
+.ana-triggers li .ana-num {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+}
+
+.ana-triggers strong {
+  color: var(--ana-text);
+  font-size: var(--ana-text-sm);
+  font-weight: 600;
+}
+
+/* ── the inspector: a harness's files and a diff ───────────────────────────── */
+
+.ana-file-links {
+  border-bottom: 1px solid var(--ana-border-soft);
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 12px;
+}
+
+.ana-file-links li {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.ana-file-links small {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+}
+
+.ana-evidence-link.is-current {
+  color: var(--ana-text);
+  text-decoration: underline;
+}
+
+.ana-diff {
+  display: grid;
+  gap: 16px;
+}
+
+.ana-diff-file {
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius-inner);
+  overflow: hidden;
+}
+
+.ana-diff-file > header {
+  align-items: center;
+  background: var(--ana-card-2);
+  border-bottom: 1px solid var(--ana-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.ana-diff-file > header code {
+  color: var(--ana-text);
+  flex: 1 1 auto;
+  font-size: var(--ana-text-sm);
+}
+
+.ana-diff-file > header .ana-num {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+}
+
+.ana-diff-lines {
+  background: #070708;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-xs);
+  line-height: 1.6;
+  width: 100%;
+}
+
+.ana-diff-lines td {
+  padding: 0 8px;
+  vertical-align: top;
+}
+
+.ana-diff-no {
+  color: var(--ana-faint);
+  opacity: 0.7;
+  text-align: right;
+  user-select: none;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.ana-diff-sign {
+  font-weight: 700;
+  text-align: center;
+  user-select: none;
+  width: 1%;
+}
+
+.ana-diff-text {
+  color: #d4d4d8;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ana-diff-lines tr.is-add {
+  background: var(--ana-good-bg);
+}
+.ana-diff-lines tr.is-add .ana-diff-sign {
+  color: var(--ana-good);
+}
+.ana-diff-lines tr.is-remove {
+  background: var(--ana-bad-bg);
+}
+.ana-diff-lines tr.is-remove .ana-diff-sign {
+  color: var(--ana-bad);
+}
+.ana-diff-lines tr.is-hunk td {
+  background: var(--ana-info-bg);
+  color: var(--ana-dim);
+  padding-bottom: 2px;
+  padding-top: 2px;
+}
+.ana-diff-lines tr.is-note .ana-diff-text {
+  color: var(--ana-faint);
+  font-style: italic;
+}
+
+@media (max-width: 900px) {
+  .ana-detail-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 540px) {
+  .ana-detail-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .ana-detail-badges {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .ana-facts--row > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--ana-border-soft);
+  }
+}
+
+/* A detail takes the focus when it opens, so that a keyboard and a screen reader start there; the
+   container itself is no control and draws no ring. */
+.ana-drill:focus {
+  outline: none;
+}
+
+.ana-card > .ana-file-links {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+/* ── the task grid ──────────────────────────────────────────────────────────── */
+
+.ana-grid-legend {
+  align-items: center;
+  color: var(--ana-dim);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--ana-text-xs);
+  gap: 6px 16px;
+  list-style: none;
+  margin: 16px 0 12px;
+  padding: 0;
+}
+
+.ana-grid-legend li {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.ana-grid-legend li.ana-faint {
+  font-size: var(--ana-text-xs);
+  margin-left: auto;
+}
+
+/* The grid scrolls inside its card, both ways, so that its head and first column can stay. */
+.ana-grid-wrap {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius);
+  max-height: min(72vh, 1200px);
+  max-width: 100%;
+  overflow: auto;
+}
+
+.ana-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--ana-text-sm);
+  min-width: 100%;
+}
+
+.ana-grid th,
+.ana-grid td {
+  border-bottom: 1px solid var(--ana-border-soft);
+  border-right: 1px solid var(--ana-border-soft);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ana-grid thead th {
+  background: var(--ana-card-2);
+  border-bottom-color: var(--ana-border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.ana-grid-col {
+  min-width: 92px;
+}
+
+.ana-grid-col span {
+  color: var(--ana-text);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-sm);
+  font-weight: 600;
+}
+
+.ana-grid-col small,
+.ana-grid-task small {
+  color: var(--ana-faint);
+  display: block;
+  font-size: var(--ana-text-xs);
+  font-weight: 400;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* A control measures the test, not a harness: its column is drawn quieter. */
+.ana-grid-col.is-control span {
+  color: var(--ana-faint);
+}
+
+.ana-grid-corner,
+.ana-grid-task {
+  background: var(--ana-card);
+  border-right-color: var(--ana-border) !important;
+  left: 0;
+  min-width: 168px;
+  position: sticky;
+  z-index: 1;
+}
+
+.ana-grid thead .ana-grid-corner {
+  background: var(--ana-card-2);
+  color: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: bottom;
+  z-index: 3;
+}
+
+.ana-grid-task .ana-row-select {
+  min-height: 0;
+  padding: 0;
+}
+
+.ana-grid tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.ana-grid-cell {
+  white-space: nowrap;
+}
+
+.ana-grid-cell > span {
+  align-items: center;
+  color: var(--ana-text);
+  display: flex;
+  font-size: var(--ana-text-sm);
+  gap: 6px;
+}
+
+.ana-grid-cell small {
+  color: var(--ana-dim);
+  display: block;
+  font-size: var(--ana-text-xs);
+  margin-top: 2px;
+}
+
+.ana-grid-cell.is-none > span {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ana-grid tbody tr:hover > .ana-grid-task {
+    background: var(--ana-card-2);
+  }
+}
+
+/* ── a task ─────────────────────────────────────────────────────────────────── */
+
+.ana-task-results {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ana-task-results li {
+  align-items: baseline;
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius-inner);
+  display: grid;
+  font-size: var(--ana-text-sm);
+  gap: 4px 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 10px 12px;
+}
+
+.ana-task-results .ana-row-select {
+  min-height: 0;
+  padding: 0;
+}
+
+.ana-task-results small {
+  color: var(--ana-faint);
+  font-size: var(--ana-text-xs);
+  grid-column: 2;
+}
+
+/* The panes' tables hold many rows of figures: the shared table's padding, made for a few rows of
+   prose, is halved, and a row's link is no taller than the badge beside it. */
+.ana-dense .ana-table th,
+.ana-dense .ana-table td {
+  padding: 9px 14px;
+  vertical-align: middle;
+}
+
+.ana-dense .ana-table .ana-row-select {
+  min-height: 0;
+  padding: 0;
+}
+
+/* ── the log ────────────────────────────────────────────────────────────────── */
+
+.ana-reader-rows {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+.ana-reader-rows > div {
+  display: grid;
+  gap: 4px;
+}
+
+.ana-reader-rows dd {
+  color: var(--ana-dim);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--ana-text-sm);
+  gap: 4px 16px;
+}
+
+.ana-log .ana-table td {
+  white-space: nowrap;
+}
+
+.ana-log .ana-table td.ana-mono {
+  font-size: var(--ana-text-xs);
+}
+
+/* The inspector takes the focus when it opens; like a detail, it is no control and draws no ring. */
+.ana-inspector:focus {
+  outline: none;
+}
+
+/* The inspector stacks what it holds from the top: its frame's last row no longer stretches to fill
+   the height, which left a gap above a short file once a file list stood before it. */
+.ana-inspector {
+  align-content: start;
+  grid-template-rows: none;
+}
+
+.ana-table td.ana-mono {
+  white-space: nowrap;
+}
+
+@media (max-width: 540px) {
+  .ana-grid-corner,
+  .ana-grid-task {
+    min-width: 116px;
+  }
+
+  .ana-grid-col {
+    min-width: 84px;
+  }
+}

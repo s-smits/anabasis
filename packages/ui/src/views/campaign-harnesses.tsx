@@ -1,0 +1,259 @@
+import { type KeyboardEvent, useEffect, useRef } from "react";
+import { Badge, Button, HashValue } from "../components/primitives.tsx";
+import { detailsOf, type Of, useHarness } from "../live.ts";
+import type { HarnessCard } from "../models.ts";
+import type { Navigation, PaneProps } from "../route.ts";
+import { digestText, tallyText } from "./campaign-data.ts";
+import { AnswerIssues } from "./drill.tsx";
+import { time } from "./format.ts";
+
+/*
+ * The lineage strip (the brief of 11 October, section 6): every harness version in the order kept,
+ * starter first, at one size in one row that scrolls sideways when it outgrows the page. The card
+ * the route names is marked, and its detail stands in one panel under the row at the row's width:
+ * who made it, its parent, its practice and the comparisons it was the new harness of. Every card
+ * keeps its closed height, with no scaling, no perspective and no motion, since the strip is read
+ * and not browsed; a card that opened inside the row made the row as tall as its detail and left
+ * empty space under the others. Each card's figure names its own comparison, so two cards' tallies
+ * never stand as if measured together.
+ *
+ * The route names a card by its digest, or the starter by `starter`, which holds before any
+ * comparison has named the starter's digest. Left and right move the selection and replace the
+ * history entry, so that walking the strip with the keys leaves one entry for the back button; a
+ * click pushes one.
+ */
+
+const KEYS = { ArrowLeft: -1, ArrowRight: 1 } as const;
+const STARTER = "starter";
+const PANEL_ID = "ana-harness-panel";
+
+/** How the route names a card. */
+const routeName = (card: HarnessCard): string => (card.starter ? STARTER : (card.digest ?? STARTER));
+
+/** The card shown as selected: the route's, else the latest, else the last. */
+function selectedIndex(cards: readonly HarnessCard[], harness: string | null): number {
+  const named = cards.findIndex(
+    (card) => (harness === STARTER && card.starter) || (card.digest !== null && card.digest === harness),
+  );
+  if (named >= 0) return named;
+  const latest = cards.findIndex((card) => card.latest);
+  return latest >= 0 ? latest : cards.length - 1;
+}
+
+/** The kept `agent/` files of the selected harness, each opening the inspector, and what the server
+ *  could not read of them. */
+function Files({ of, digest, navigation }: { of: Of; digest: string; navigation: Navigation }) {
+  const files = useHarness(of, digest);
+  if (files.error !== null) return <span className="ana-harness-note">{files.error}</span>;
+  if (files.data === null || !files.current) {
+    return <span className="ana-harness-note">Reading its files</span>;
+  }
+  return (
+    <>
+      <AnswerIssues answer={files.data} />
+      {files.data.files.map((file) => (
+        <button
+          type="button"
+          key={file.path}
+          className="ana-evidence-link"
+          onClick={() => navigation.push({ harness: digest, file: file.path, diff: null, event: null })}
+        >
+          {file.path}
+        </button>
+      ))}
+    </>
+  );
+}
+
+/** The selected card's detail, in the panel under the row. */
+function Detail({
+  card,
+  starter,
+  of,
+  navigation,
+}: {
+  card: HarnessCard;
+  starter: string | null;
+  of: Of;
+  navigation: Navigation;
+}) {
+  const madeBy = card.starter
+    ? "pi's coding agent as released"
+    : card.imported
+      ? "imported"
+      : `Builder session ${card.session ?? "not recorded"}`;
+  const { digest, parent } = card;
+  return (
+    <div className="ana-harness-detail" id={PANEL_ID} aria-label="The selected harness">
+      <dl className="ana-harness-facts">
+        <div>
+          <dt>Digest</dt>
+          <dd>
+            {digest === null ? "named at the first comparison" : <HashValue value={digest} length={12} />}
+          </dd>
+        </div>
+        <div>
+          <dt>Made by</dt>
+          <dd>{madeBy}</dd>
+        </div>
+        {card.starter ? null : (
+          <div>
+            <dt>Parent</dt>
+            <dd>{parent === null ? "none recorded" : digestText(parent, starter)}</dd>
+          </div>
+        )}
+        {card.at === null ? null : (
+          <div>
+            <dt>Kept</dt>
+            <dd>{time(card.at)}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Practice</dt>
+          <dd className="ana-num">
+            {card.practice.solves === 0
+              ? "no practice solve"
+              : `${String(card.practice.passed)} of ${String(card.practice.solves)} valid`}
+          </dd>
+        </div>
+        {card.broken === null ? null : (
+          <div>
+            <dt>Opens</dt>
+            <dd>no: {card.broken}</dd>
+          </div>
+        )}
+      </dl>
+      {card.comparedIn.length === 0 ? null : (
+        <ul className="ana-harness-comparisons" aria-label="Comparisons it was the new harness of">
+          {card.comparedIn.map((each) => (
+            <li key={each.id}>
+              <button
+                type="button"
+                className="ana-evidence-link"
+                onClick={() => navigation.push({ pane: "moves", move: each.move })}
+              >
+                {each.id}
+              </button>
+              <span className="ana-num">{tallyText(each.tally)}</span>
+              <span>{each.reading ?? "no reading"}</span>
+              <span className="ana-harness-against">against {digestText(each.against, starter)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {digest === null ? null : (
+        <div className="ana-harness-actions">
+          {parent === null ? null : (
+            <Button
+              onClick={() => navigation.push({ harness: digest, diff: parent, file: null, event: null })}
+            >
+              Compare with previous
+            </Button>
+          )}
+          <div className="ana-harness-files">
+            <Files of={of} digest={digest} navigation={navigation} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One card's closed face: its name and roles, and the tally of the last comparison it was in. */
+function Face({ card, starter }: { card: HarnessCard; starter: string | null }) {
+  const last = card.comparedIn.at(-1);
+  const name = card.starter ? "Starter" : digestText(card.digest, starter);
+  const uncompared = card.starter ? "the first reference" : `kept ${time(card.at)}`;
+  const roles = [
+    card.reference ? (
+      <Badge key="reference" tone="info">
+        reference
+      </Badge>
+    ) : null,
+    card.latest ? <Badge key="latest">latest</Badge> : null,
+    card.imported ? <Badge key="imported">imported</Badge> : null,
+    card.broken === null ? null : (
+      <Badge key="broken" tone="bad">
+        does not open
+      </Badge>
+    ),
+  ];
+  return (
+    <>
+      <span className={card.starter ? "ana-harness-name" : "ana-harness-name is-digest"}>{name}</span>
+      <span className="ana-harness-roles">{roles}</span>
+      <span className="ana-harness-figure ana-num">
+        {last === undefined ? "not compared" : `${tallyText(last.tally)} ${last.reading ?? ""}`}
+      </span>
+      <span className="ana-harness-caption">
+        {last === undefined ? uncompared : `in ${last.id}, against ${digestText(last.against, starter)}`}
+      </span>
+    </>
+  );
+}
+
+export function HarnessStrip({ reading, navigation }: PaneProps) {
+  const cards = reading.harnesses;
+  const selected = selectedIndex(cards, navigation.route.harness);
+  const chosen = cards[selected];
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const moved = useRef(false);
+  useEffect(() => {
+    const button = buttons.current[selected];
+    if (button === null || button === undefined) return;
+    // The strip scrolls sideways to show the selected card; the page itself never moves for it.
+    const item = button.parentElement;
+    const strip = item?.parentElement;
+    if (item !== null && item !== undefined && strip !== null && strip !== undefined) {
+      const end = item.offsetLeft + item.offsetWidth - strip.clientWidth;
+      if (item.offsetLeft < strip.scrollLeft) strip.scrollLeft = item.offsetLeft;
+      else if (end > strip.scrollLeft) strip.scrollLeft = end;
+    }
+    if (moved.current) button.focus();
+    moved.current = false;
+  }, [selected]);
+  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    const step = event.key === "ArrowLeft" || event.key === "ArrowRight" ? KEYS[event.key] : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const next = cards[selected + step];
+    if (next === undefined) return;
+    moved.current = true;
+    navigation.replace({ harness: routeName(next), file: null, diff: null, event: null });
+  };
+  return (
+    <div className="ana-harness-lineage">
+      <ul
+        className="ana-harness-strip"
+        aria-label="Harness versions; left and right move the selection"
+        onKeyDown={onKeyDown}
+      >
+        {cards.map((card, at) => {
+          const isSelected = at === selected;
+          return (
+            <li key={routeName(card)} className={isSelected ? "ana-harness is-selected" : "ana-harness"}>
+              <button
+                type="button"
+                ref={(element) => {
+                  buttons.current[at] = element;
+                }}
+                className="ana-harness-select"
+                aria-current={isSelected ? "true" : undefined}
+                aria-controls={PANEL_ID}
+                tabIndex={isSelected ? 0 : -1}
+                onClick={() =>
+                  navigation.push({ harness: routeName(card), file: null, diff: null, event: null })
+                }
+              >
+                <Face card={card} starter={reading.starter} />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {chosen === undefined ? null : (
+        <Detail card={chosen} starter={reading.starter} of={detailsOf(reading)} navigation={navigation} />
+      )}
+    </div>
+  );
+}

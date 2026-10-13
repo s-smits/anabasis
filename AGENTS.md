@@ -671,8 +671,8 @@ until one is; a Builder session of 240 minutes, 300 turns and 24 practice solves
 120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
 names a number. An Examiner session ends when the Examiner calls `finish` a second time, or a
 first time once the host has the tasks it asked for: what the campaign is short of a comparison's
-target, before its first comparison of a repeat's as well, and of its practice (`examTasks`,
-`tools/d2/campaign-terms.ts`), or `--exam-tasks` where
+target and of its practice, counting where a repeat is due only the tasks its first stage did not
+score (`shortOf`, `src/builder/decide.ts`), or `--exam-tasks` where
 the operator names a count. A first `finish` short of them is declined once, with the need and
 no count, since every live session of 9 and 10 October proposed one batch of one to three tasks
 in three turns and finished. The session's home is carried whole into the next session's, and
@@ -863,12 +863,14 @@ a move chose it, and the decision carries the row's code:
    its cap.
 4. `tasks`: the tasks are not set up. A pack's are taken in, practice is released, tasks are
    written where the campaign has none or the operator asked for others, and before the first
-   comparison up to as many as a comparison and its repeat score, so that the release before the
-   first session has them to draw practice from.
+   comparison up to a comparison's target and the practice the release still draws from them.
+   Until 13 October it held a repeat's tasks as well, and two campaigns examined towards 48 tasks
+   for 16 hours and never compared.
 5. `unfinished`: a comparison that began and has not reported goes on, and a reading that cleared
    the trigger, which is one draw, is repeated on fresh solves. The repeat draws the held-out
-   tasks the first stage did not score first, where the campaign holds them (`scoredSet`,
-   `src/builder/round.ts`).
+   tasks the first stage did not score first (`scoredSet`, `src/builder/round.ts`): where the
+   campaign holds fewer than the target of them, one Examiner session writes more first, and the
+   repeat then runs on what is held.
 6. `twice`: a step and its repeat, read together, name the harness to promote (`unpromoted` says
    why another is not).
 7. `no-room`: the last comparison the reference was in left it nothing to gain, whichever side it

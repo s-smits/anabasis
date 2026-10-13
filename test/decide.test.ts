@@ -38,13 +38,14 @@ const heldOut = (version: string) => [
   event("task.gate", { version, gate: 1, outcome: "passed" }),
 ];
 const READ = event("checker.read", { contract: "c", checks: "k", faults: [] });
-/** A second target's worth, which a campaign holds before its first comparison, for a repeat. */
+/** A second target's worth, which a repeat draws first. */
 const REPEAT = HELD.map((version) => `r${version}`);
 const RELEASED = [...heldOut("p1"), event("task.state", { version: "p1", state: "released" })];
 /** A campaign set up: its checker read with no fault, a comparison's tasks and a repeat's held
  *  out, and one released. */
 const SET_UP = [READ, ...HELD.flatMap(heldOut), ...REPEAT.flatMap(heldOut), ...RELEASED];
-/** The same with six tasks held out, of the twenty-four a comparison and its repeat score. */
+/** The same with one target's worth held out, and with six of the twelve a comparison scores. */
+const ONE = SET_UP.filter(({ data }) => !(isString(data.version) && REPEAT.includes(data.version)));
 const SIX = [READ, ...HELD.slice(0, 6).flatMap(heldOut), ...RELEASED];
 /** A Builder session that left `harness`, changed unless `more` says otherwise. */
 const built = (id: string, harness: string, more: JsonObject = {}) =>
@@ -378,14 +379,16 @@ describe("a row of the table", () => {
     expect(pendingWords([...FIRST, word({ word: "budget", dollars: 50 })])).toMatchObject([
       { at: FIRST.length, word: "budget", dollars: 50 },
     ]);
-    // Before the first comparison the campaign holds a comparison's tasks and a repeat's: with one
-    // target the repeat scores the same versions again, as buffer-141-m3's g-2 did on 12 October,
-    // and the buffer campaigns of 11 October built on three practice tasks and then waited on an
-    // Examiner session between the session and the comparison.
-    const one = SET_UP.filter(({ data }) => !(isString(data.version) && REPEAT.includes(data.version)));
-    const short = (held: number, before: string) =>
-      `the campaign holds ${String(held)} of the 24 tasks a comparison and its repeat score, and ${before}: the Examiner writes more first`;
-    expect(move(one)).toEqual({ move: "examine", why: short(12, "no comparison has run yet") });
+    // Before the first comparison the campaign holds the tasks a comparison scores and the practice
+    // its release still draws: until 13 October it held a repeat's as well, and the two host-run
+    // campaigns of 12 October examined towards 48 tasks for 16 hours and never compared.
+    const short = (missing: number, before: string) =>
+      `the campaign is ${String(missing)} held-out tasks short of a comparison's target and the practice its release draws, and ${before}: the Examiner writes more first`;
+    expect(move([...ONE, built("b-1", "h1")])).toMatchObject({ move: "compare" });
+    expect(move(ONE, { ...PLAN, practice: 3 })).toEqual({
+      move: "examine",
+      why: short(2, "no comparison has run yet"),
+    });
     expect(decide(SIX, PLAN)).toEqual({
       move: "examine",
       code: "tasks",
@@ -397,9 +400,7 @@ describe("a row of the table", () => {
       move: "examine",
       why: short(6, "harness h1 has not been compared under the campaign's setting"),
     });
-    expect(
-      move([...SIX, built("b-1", "h1"), ...[...HELD.slice(6), ...REPEAT].flatMap(heldOut)]),
-    ).toMatchObject({
+    expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
       move: "compare",
     });
     // Once a comparison has run, the rows that read it decide, whatever is held.
@@ -438,6 +439,17 @@ describe("a row of the table", () => {
       compared("g-1", "h1", "no-step", { tally: [wins, losses, 12 - wins - losses] });
     expect(move([...FIRST, ...tally(4, 3)])).toMatchObject({ move: "build" });
     expect(move([...FIRST, ...tally(6, 2)])).toMatchObject({ move: "compare" });
+    // The repeat draws the tasks its first stage did not score first: where the campaign holds
+    // fewer than its target of them, one Examiner session writes them, and the repeat then runs on
+    // what is held, its first stage's tasks last.
+    const scoredAll = [...ONE, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
+    expect(decide(scoredAll, PLAN)).toEqual({
+      move: "examine",
+      code: "unfinished",
+      why: "comparison g-1 cleared the trigger, and the campaign is 12 held-out tasks short of a repeat on tasks its first stage did not score: the Examiner writes more first",
+      repeats: "g-1",
+    });
+    expect(move([...scoredAll, ...examined("x-1", ["n1", "n2"])])).toEqual(again);
     // An A/A the operator asked for beside it changes no move while it reads no step.
     const noised = compared("g-1", "h1", "step", { tally: [8, 0, 4], noise: true });
     expect(move([...FIRST, ...noised])).toEqual(again);

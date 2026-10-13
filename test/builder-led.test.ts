@@ -568,8 +568,8 @@ describe("a campaign run by its live Builder", () => {
     });
 
     const budgetName = `${STEM}-operator-budget`;
-    const budgetArgs = [...seeded(budgetName), "--target", "5", "--practice", "2"];
-    // Set up, the table wants the tasks of a comparison and its repeat written first.
+    const budgetArgs = [...seeded(budgetName), "--target", "6", "--practice", "2"];
+    // Set up, the table wants the tasks a comparison scores and its practice draws written first.
     expect(await harnessBuilder([...budgetArgs, "--budget", "20", "--moves", "2"], seats)).toMatchObject({
       move: "examine",
     });
@@ -630,8 +630,12 @@ describe("a campaign tool where the table names more than the action", () => {
     const [, told] = said(name, "compare");
     expect(told).toContain("repeated harness");
     expect(told).toContain("changes made to harness/ since are not in it");
-    // The status under the first tally says the same before the Builder asks.
-    expect(said(name, "compare")[0]).toContain("Suggested action: compare.\ncompare repeats harness");
+    // The status under the first tally says the same before the Builder asks, and what a
+    // comparison of the tasks held can read: the table would have more written first.
+    expect(said(name, "compare")[0]).toContain(
+      "Suggested action: examine.\nComparison size: 5 held-out tasks",
+    );
+    expect(said(name, "compare")[0]).toContain("compare repeats harness");
     // What a move records: the comparison's id and flags, when it began and the host's load then,
     // which the page and the investigation read, and the harness a promotion named.
     const moves = of(name, MOVED);

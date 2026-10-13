@@ -231,6 +231,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     effort: "medium",
     limits: LIMITS,
     solve: { ...LIMITS, wallSeconds: 480 },
+    solver: { model: "faux/solver", effort: "high" },
     models: () => models,
     log,
     repoRoot: scratch,

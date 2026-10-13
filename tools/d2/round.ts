@@ -285,6 +285,7 @@ export function sessionNamed(
       ...commandSeconds(seconds),
     },
     solve: limits,
+    solver: { model: priceKey(campaign.test.model), effort: campaign.test.effort },
     log: campaign.log,
     repoRoot: campaign.repo,
     otherTrees: campaign.trees,

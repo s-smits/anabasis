@@ -138,7 +138,7 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   },
   builder: {
     closing:
-      "read_opening returns the public opening facts for when this conversation no longer holds them. With the campaign tools you make the campaign's moves yourself; every tool result ends with the campaign's facts, what a comparison of the tasks held can read, and the move the host's table would make, which you may follow or not. The campaign ends at its budget, after as many comparisons in a row without a gain as its patience, or on its provider; a promotion ends nothing, and the campaign goes on against the promoted harness. finish ends this conversation and freezes harness/: it measures nothing, and the campaign waits for the operator.",
+      "read_opening returns the public opening facts for when this conversation no longer holds them. With the campaign tools you make the campaign's moves yourself; each campaign tool's result ends with the campaign's facts, what a comparison of the tasks held can read, and the move the host's table would make, which you may follow or not. The campaign ends at its budget, after as many comparisons in a row without a gain as its patience, or on its provider; a promotion ends nothing, and the campaign goes on against the promoted harness. finish ends this conversation and freezes harness/: it measures nothing, and the campaign waits for the operator.",
     frozen: "frozen",
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",

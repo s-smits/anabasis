@@ -248,13 +248,16 @@ function actionTool(
           await waitOut(context.log, crashedRun(read(context.log)).crash, sleep);
           return text(outcome.said);
         } catch (error) {
-          if (begun === null || read(context.log).length <= begun) {
-            return text(`The host refused the ${label} action; choose another action.`);
-          }
+          // Asked before the throw is read as a refusal, as the host's loop asks it: a limit that
+          // ended a session before its first event is no refusal, and asked for again at once the
+          // action would meet the same limit.
           if (await waitOut(context.log, errorMessage(error), sleep)) {
             return text(
               `The provider's limit ended the ${label} action, and the host has waited it out: call ${move} again.`,
             );
+          }
+          if (begun === null || read(context.log).length <= begun) {
+            return text(`The host refused the ${label} action; choose another action.`);
           }
           context.failed = { move: move === RELEASE ? "prepare" : move, why: errorMessage(error) };
           bench.halt.abort();

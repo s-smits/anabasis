@@ -27,6 +27,7 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { flagsOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
+import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import type { Seated } from "../tools/d2/round.ts";
 import { settleCommand } from "../tools/d2/settle.ts";
@@ -486,6 +487,52 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, MOVED).find(({ move }) => move === "examine")).toMatchObject({ session: "x-1" });
     expect(of(name, "exam.started")).toEqual([]);
     expect(call?.text).toContain("choose another action");
+  });
+
+  it("waits out a provider limit that ended an action before its first event, and has the Builder ask again", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-limit`;
+    const reset = Math.floor(Date.now() / 1000) + 60;
+    let limited = true;
+    const slept: number[] = [];
+    const seats: Seats = {
+      seated: builderScript(
+        scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+        [
+          ["examine", {}],
+          ["examine", {}],
+          ["finish", { note: "The Examiner was asked again after the limit." }],
+        ],
+      ),
+      examine: (request) => {
+        if (limited) {
+          limited = false;
+          throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
+        }
+        return examine({
+          ...request,
+          ...scripted([
+            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: "Nothing to add." }],
+          ]),
+        });
+      },
+      host: {
+        ...HOST,
+        sleep: async (ms: number) => {
+          slept.push(ms);
+        },
+      },
+    };
+    const ending = await harnessBuilder([...seeded(name), "--target", "8", "--practice", "3"], seats);
+    expect(ending).toMatchObject({ move: "end", ending: "finished" });
+    // Until 13 October a throw with nothing written after its move was read as a refusal before the
+    // limit was asked for, and the Builder was told to choose another action.
+    expect(slept).toHaveLength(1);
+    expect(of(name, "campaign.waited")).toMatchObject([{ for: "provider" }]);
+    expect(said(name, "examine")[0]).toContain("call examine again");
+    expect(said(name, "examine")[0]).not.toContain("usage limit");
+    expect(of(name, "exam.started")).toHaveLength(1);
   });
 
   it("applies operator stop and budget words at the next live boundary", async () => {

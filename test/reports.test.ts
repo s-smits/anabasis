@@ -245,6 +245,24 @@ describe("the stop rule", () => {
     expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toEqual(counted(2, 2));
   });
 
+  // Found by review, 14 October: the pair read as its repeat alone, so a 3-0 that bought the
+  // repeat and a 3-1 that promotes with it read as no gain, and at patience 1 the table's `bound`
+  // row ended the campaign before its `twice` row could promote.
+  it("reads a pair whose last two promote together as a step, and counts each epoch apart", () => {
+    const one = event("campaign.opened", { ...three.data, patience: 1 });
+    const stage = (id: string, wins: number, losses: number) =>
+      flat(id, "h2", { ...tallied(wins, losses, 0), level: 0.1 });
+    const pair = [...sessions, stage("g-1", 3, 0), stage("g-2", 3, 1)];
+    expect(stopOf([one, ...pair])).toEqual({ checkpoints: 1, sinceStep: 0, stop: false });
+    // A repeat that loses as much as it wins promotes nothing, and counts as no gain.
+    const lost = [...sessions, stage("g-1", 3, 0), stage("g-2", 1, 1)];
+    expect(stopOf([one, ...lost])).toEqual({ checkpoints: 1, sinceStep: 1, stop: true });
+    // A promotion starts an epoch: what showed no gain before it does not count after it.
+    const toH2 = event("harness.promoted", { harness: "h2", from: "base", rests: [] });
+    expect(stopRule([...two, toH2])).toEqual(counted(2, 0));
+    expect(stopRule([...two, toH2, flat("b-3", "h4")])).toEqual(counted(3, 1));
+  });
+
   it("reads room by the tasks informative for the reference, too-hard where nobody answered", () => {
     const report = (old: number[], fresh: number[], told: number) => ({
       valid: { old, fresh, informative: { old: told, fresh: 0 } },

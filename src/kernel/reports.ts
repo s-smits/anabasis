@@ -27,6 +27,7 @@ import {
   objectiveRuleIn,
   type Paired,
   pairsOf,
+  readTwice,
   tally,
   TRIGGER,
   triggered,
@@ -324,7 +325,9 @@ export function patienceOf(events: readonly LogEvent[]): number {
  * with one reference, where the comparison tallied a task and left room (`roomOf`), or read
  * under the trigger. Such a pair counts once, where it first reported, and reads as its last
  * comparison: a step its repeat does not read again was one draw, and three repeats of one
- * harness are one harness that showed no gain. On 9 October one harness compared with the starter
+ * harness are one harness that showed no gain. Its last two read together as the promotion rule
+ * reads them (`readTwice`) are a step whatever the repeat reads alone. The count is of the epoch:
+ * the moves since the last promotion. On 9 October one harness compared with the starter
  * three times, each time on more tasks, stopped a campaign. The second is a whole session that
  * left its harness as it was, where a practice solve of the session failed: it was shown a failure
  * and declined it. A session whose every practice solve passed, or that ran none, had nothing to
@@ -361,25 +364,34 @@ export function stopRule(events: readonly LogEvent[]) {
   const named = asRecord(events.findLast(({ kind }) => kind === "campaign.opened")?.data.terms)?.trigger;
   const parsed = isString(named) ? Number(named) : Number.NaN;
   const trigger = Number.isFinite(parsed) ? parsed : TRIGGER;
-  /** Each pair of a harness and a reference, where it first reported and as it last read. */
-  const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
+  /** Each pair of a harness and a reference, where it first reported, as it last read, and its
+   *  reports so far. */
+  const pairs = new Map<string, { index: number; step: boolean; counts: boolean; reports: JsonObject[] }>();
   for (const { index, data } of lastReports(events)) {
     const { old, fresh, versions } = data;
     const tallied = asRecord(data.scored) !== null && Array.isArray(versions) && versions.length > 0;
     if (!tallied || !isString(fresh) || !built.has(fresh)) continue;
     const pair = `${fresh} ${isString(old) ? old : ""}`;
-    // A reading under the trigger showed a gain too: it bought the repeat.
-    const step = data.reading === STEP || triggered(data, trigger);
+    const reports = [...(pairs.get(pair)?.reports ?? []), data];
+    // A reading under the trigger showed a gain too: it bought the repeat. A repeat that reads
+    // `no-step` by itself and promotes with its first stage is a step: until 14 October the
+    // repeat's own reading ended a campaign of patience 1 before the table could name `twice`.
+    const level = isNumber(data.level) ? data.level : 0;
+    const step = data.reading === STEP || triggered(data, trigger) || readTwice(reports, level, trigger);
     pairs.set(pair, {
       index: pairs.get(pair)?.index ?? index,
       step,
       counts: step || roomOf(data) === "room",
+      reports,
     });
   }
   const moves = [...pairs.values().filter(({ counts }) => counts), ...idle].toSorted(
     (one, other) => one.index - other.index,
   );
-  const sinceStep = moves.length - 1 - moves.findLastIndex(({ step }) => step);
+  // A promotion starts an epoch, whose patience is its own.
+  const epochAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const epoch = moves.filter(({ index }) => index > epochAt);
+  const sinceStep = epoch.length - 1 - epoch.findLastIndex(({ step }) => step);
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 

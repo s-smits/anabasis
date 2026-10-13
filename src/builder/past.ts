@@ -31,7 +31,7 @@
  *   "on all 5 comparisons so far", of which the log held one.
  */
 import { plural } from "../meta/text.ts";
-import type { Handover, PracticeFail } from "./handover.ts";
+import type { Campaign, Handover, PracticeFail } from "./handover.ts";
 
 /** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. The
  *  last two are readings a comparison made before 11 October, which an older log holds. */
@@ -42,6 +42,16 @@ const READ = new Map([
   ["narrow", "no step yet: every task it won or lost was of one kind"],
   ["below-starter", "no step: it did not hold against the starting harness of the campaign"],
   ["starter-unread", "a step, not yet read against the starting harness of the campaign"],
+]);
+
+/** How a Builder session ended, in a Builder's words (`endedBy`, `session.ts`). */
+const ENDED = new Map([
+  ["finished", "ended at its finish"],
+  ["wall", "ended at its time limit"],
+  ["turns", "ended at its turn limit"],
+  ["crashed", "crashed: its conversation was lost to a provider or host error"],
+  ["killed", "was killed"],
+  ["stopped", "was stopped as the campaign's run ended"],
 ]);
 
 /** A harness as a Builder is shown one: the head of its digest. */
@@ -88,4 +98,23 @@ export function comparisonsTold(steps: readonly Handover[]): string[] {
       `- Harness ${shortDigest(step.fresh)} against harness ${shortDigest(step.old)}, one comparison over ${plural(wins + losses + ties, "task")}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
     ];
   });
+}
+
+/**
+ * Where the harness session `id` starts from came from, and how the Builder session before it
+ * ended. Until 14 October a session was told the digest alone: buffer-149's b-2 started from the
+ * starter after b-1 crashed, and found out by listing harness/ that its guide was gone.
+ */
+export function startTold({ steps, reference }: Campaign, digest: string, id: string): string {
+  const builders = steps.flatMap((step) => (step.step === "builder" && step.id !== id ? [step] : []));
+  const left = builders.findLast(({ harness, changed }) => changed && harness === digest);
+  const named = digest === reference ? ", now the reference harness" : "";
+  const origin =
+    left === undefined
+      ? named ||
+        ", which no Builder session of this campaign left: the Starter Built Harness unless the operator named another"
+      : `, which session ${left.id} left${named}`;
+  const last = builders.at(-1);
+  const ended = last?.ended == null ? "has no ending on record" : (ENDED.get(last.ended) ?? last.ended);
+  return `You start from harness ${shortDigest(digest)}${origin}.${last === undefined ? "" : ` The last Builder session, ${last.id}, ${ended}.`}`;
 }

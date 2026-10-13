@@ -3,7 +3,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { supplyOf } from "../src/builder/admission.ts";
 import { campaignOf, type Handover, openSteps } from "../src/builder/handover.ts";
-import { comparisonsTold, failsTold } from "../src/builder/past.ts";
+import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
@@ -418,6 +418,29 @@ describe("the Builder's filter over that reading", () => {
     const told = failsTold(campaignOf(c.events()).fails, TASKS);
     expect(told[0]).toContain("; failing again under harness 00000000.");
     expect(told[1]).toBe(`- ${again}, t-1, harness 00000000: fail (rejected); open.`);
+  });
+
+  // Found in buffer-149, 13 October: b-2 was told only a digest, and found by listing harness/
+  // that b-1's crash had left it the starter.
+  it("tells where the starting harness came from, and how the last Builder session ended", () => {
+    const c = campaign();
+    c.setUp();
+    const none = startTold(campaignOf(c.events()), STARTER, "b-1");
+    expect(none).toBe(
+      "You start from harness 00000000, which no Builder session of this campaign left: the Starter Built Harness unless the operator named another.",
+    );
+    c.built("b-1", STARTER, HA, []);
+    c.record("build.started", { session: "b-2", parent: HA, tasks: ["p1"] });
+    c.record("build.finished", { session: "b-2", ended: "crashed", harness: HB, changed: true });
+    expect(startTold(campaignOf(c.events()), HA, "b-3")).toBe(
+      "You start from harness aaaaaaaa, which session b-1 left. The last Builder session, b-2, crashed: its conversation was lost to a provider or host error.",
+    );
+    c.record("harness.promoted", { harness: HA, from: STARTER, rests: [] });
+    // The session's own start is not the last session before it.
+    c.record("build.started", { session: "b-3", parent: HA, tasks: ["p1"] });
+    expect(startTold(campaignOf(c.events()), HA, "b-3")).toContain(
+      "which session b-1 left, now the reference harness. The last Builder session, b-2, crashed",
+    );
   });
 
   it("tells each comparison as its tally and its reading, with no task and no other count", () => {

@@ -459,7 +459,7 @@ describe("a Builder session", () => {
     );
     // What the log holds of the campaign so far: the fail on record, and no notes yet.
     expect(s.sent[0]).toContain(
-      `You start from harness ${s.digest.slice(0, 8)}. Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\\n- s-1, t-1, harness ${s.digest.slice(0, 8)}: fail (rejected); open.`,
+      `You start from harness ${s.digest.slice(0, 8)}, which no Builder session of this campaign left: the Starter Built Harness unless the operator named another. Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\\n- s-1, t-1, harness ${s.digest.slice(0, 8)}: fail (rejected); open.`,
     );
     // No session before this one left notes, so the message opens on the rules and holds no notes
     // block: v1's starters are in the home, and an untouched starter renders nothing.

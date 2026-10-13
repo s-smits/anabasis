@@ -83,7 +83,8 @@
  * that stands by itself, the public rules and the closing report (`close.ts`, row F51). A move that
  * threw after it had begun is the environment's ending, and run again the command goes on from the
  * log; one whose session is on record as crashed is the provider's failure, which the campaign
- * goes on from (`goesOn`). A move refused before it began is no ending: the refusal is printed,
+ * goes on from (`goesOn`). A session a stopped run left open is ended on record as killed before
+ * the next run's first move (`endCut`). A move refused before it began is no ending: the refusal is printed,
  * nothing kept.
  *
  * A move is recorded as it begins (`campaign.move`), with the code of the table's row that chose it and its
@@ -107,7 +108,7 @@ import { pendingWords } from "#src/builder/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { latestBuilt, promoted } from "#src/kernel/reports.ts";
+import { cutSessions, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { openingLines } from "#src/kernel/size.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -333,6 +334,18 @@ function keepReceipt(log: string, args: readonly string[]): void {
   });
 }
 
+/**
+ * End on record, as killed, each Builder and Examiner session a stopped run of the command left
+ * open, with what the log holds of it. Until 13 October a reopened campaign started new sessions
+ * beside them, and readers metered each only to its last turn and counted it open (x-1 and x-2 of
+ * two campaigns stopped and reopened). Killed is no crash, so the crash rule counts none of them.
+ */
+function endCut(log: string): void {
+  for (const { of, session, ...spent } of cutSessions(read(log))) {
+    append(log, `${of}.finished`, { session, ended: "killed", crash: null, ...spent });
+  }
+}
+
 /** Record how the campaign ended, as its last event, unless that is what its last event says. */
 function ended(log: string, events: readonly LogEvent[], decided: Extract<Decided, { move: "end" }>): void {
   const last = events.at(-1);
@@ -510,6 +523,7 @@ export async function harnessBuilder(
   settingHeld(log, given);
   let opening = opened(log, given, paid);
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
+  if (!given["dry-run"] && existsSync(log)) endCut(log);
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };

@@ -420,6 +420,33 @@ describe("a session that writes tasks", () => {
     expect(cut.sent.join("\n")).not.toContain("An instance an earlier session wrote");
   });
 
+  it("takes again an instance whose gate measured fewer than three solves, and not one its gate read whole", async () => {
+    const cut = seat("write", [propose(7, 8), finish, finish]);
+    const gate = (taskId: string, base: number, solves: number) => {
+      const version = cut.versionOf(taskId, base);
+      append(cut.log, "task.proposed", {
+        version,
+        taskId,
+        session: "x-1",
+        task: { taskId, family: "fixture", publicInput: { base }, hidden: { seed: 1 } },
+      });
+      append(cut.log, "task.gate", {
+        version,
+        gate: 1,
+        outcome: "refused",
+        reason: "not measured",
+        reference: { valid: 0, solves, billed: 0.5 },
+        proved: false,
+      });
+    };
+    // One a wall cut after one of its three solves, and one all three solves read and refused.
+    gate("x-1-001", 7, 1);
+    gate("x-1-002", 8, 3);
+    const next = await examine({ ...cut.request, id: "x-2" });
+    expect(next.held).toEqual([cut.versionOf("x-2-001", 7)]);
+    expect(cut.of(CALLED)[0]?.text).toContain("An instance an earlier session wrote was not taken again.");
+  });
+
   it("ends when the host has its tasks, and declines a first finish once while it has not", async () => {
     const both = fauxAssistantMessage(
       [

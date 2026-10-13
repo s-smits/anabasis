@@ -39,7 +39,14 @@ import { LADDER, packageGate, type TaskPackage, taskSets, taskVersion } from "..
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
-import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import {
+  asRecord,
+  isNumber,
+  isRecord,
+  isString,
+  type JsonObject,
+  type JsonValue,
+} from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -419,7 +426,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
 }
 
 /**
- * The instances earlier sessions wrote that were put to their gate. A session cut while a task was
+ * The instances earlier sessions wrote that were put to their gate and read by it. A session cut while a task was
  * being measured leaves its proposal with no gate on record, and until 13 October the next session
  * was told that instance was written already: it was neither held out nor refused, and could not
  * be proposed again (one such proposal in each of two campaigns on 12 October, each cut inside its
@@ -427,7 +434,16 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
  * and is gated then under the id it is given.
  */
 function gatedTasks(events: readonly LogEvent[]): Task[] {
-  const gates = new Set(events.flatMap(({ kind, data }) => (kind === "task.gate" ? [data.version] : [])));
+  // A gate that measured fewer than the reference harness's `TRIED` solves, cut by a limit or never
+  // begun for want of the reserve, refused a draft it did not read: such a draft may be proposed
+  // again, and is solved afresh (14 October). A gate that read all three stands.
+  const measuredGate = (data: JsonObject) => {
+    const solves = asRecord(data.reference)?.solves;
+    return data.reason !== UNAFFORDED && !(isNumber(solves) && solves < TRIED);
+  };
+  const gates = new Set(
+    events.flatMap(({ kind, data }) => (kind === "task.gate" && measuredGate(data) ? [data.version] : [])),
+  );
   return proposalsOf(events).flatMap(({ version, task }) =>
     task !== null && gates.has(version) ? [task] : [],
   );

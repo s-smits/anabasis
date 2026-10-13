@@ -231,7 +231,7 @@ function actionTool(
       compare:
         "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one read a step, this is its repeat, of the harness as it was frozen then, on tasks the step did not score; it waits until the campaign holds enough of them.",
       promote:
-        "Make the harness that read a step and its repeat the campaign's reference. Nothing else is promoted, and this measures nothing.",
+        "Make the harness that read a step and its repeat the campaign's reference, where the host has not already done so as the repeat reported. Nothing else is promoted, and this measures nothing.",
     }[move],
     parameters: Type.Object({}),
     executionMode: "sequential",
@@ -484,8 +484,37 @@ const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
       ({ kind, data }) => kind === "comparison.reported" && data.session === session,
     )?.data.versions;
     const size = Array.isArray(scored) ? [sizeLine(turn, scored.length)] : [];
-    return { said: [tally, ...size, ...(named.note === "" ? [] : [named.note])].join("\n") };
+    const promoted = await promoteOwed(context, bench);
+    return {
+      said: [tally, ...size, ...(named.note === "" ? [] : [named.note]), ...promoted].join("\n"),
+    };
   });
+
+/**
+ * The promotion the rule names, made by the host as the comparison that clears it reports, as the
+ * command makes it between conversations (`SETUP`, `harness-builder.ts`). Until 14 October a led
+ * campaign promoted only where its Builder called `promote`: buffer-149's g-2 cleared the rule, and
+ * the promotion waited on the Builder's next call. It is the host's own move, on record with the
+ * table's code; `--attended` leaves it to the operator, and `--moves` bounds it as any move.
+ */
+async function promoteOwed(context: CampaignContext, bench: Bench): Promise<string[]> {
+  const { decided } = actionTurn(context);
+  if (decided.move !== "promote" || context.opening.attended || context.used >= context.maxMoves) return [];
+  context.used += 1;
+  append(context.log, MOVED, {
+    move: "promote",
+    code: decided.code,
+    why: decided.why,
+    ...startOf("promote", context.seats),
+    harness: decided.harness,
+  });
+  await promoteCommand(["--name", context.values.name ?? "", "--harness", decided.harness, "--yes"]);
+  await refreshCampaign(context, bench);
+  await readLadder(context, bench);
+  return [
+    `Harness ${short(decided.harness)} read a step and its repeat against the reference, and the host has made it the campaign's reference.`,
+  ];
+}
 
 const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
   actionTool(context, bench, "promote", async (turn, decided, begin) => {

@@ -153,9 +153,10 @@ import { sessionCommand } from "./session.ts";
 import { recordedSetting, settingAsked } from "./setting.ts";
 
 const ENDED = "campaign.ended";
-/** The moves the host makes itself whoever leads the campaign: the exam's draft and reading, and
- *  the tasks set apart. */
-const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare"]);
+/** The moves the host makes itself whoever leads the campaign: the exam's draft and reading, the
+ *  tasks set apart, and the promotion the rule names (14 October; inside a conversation the compare
+ *  tool makes it, `promoteOwed`), which `--attended` leaves to the operator. */
+const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare", "promote"]);
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
  *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);

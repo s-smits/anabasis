@@ -29,7 +29,7 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { openingOf } from "../builder/opening.ts";
+import { affords, openingOf } from "../builder/opening.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
@@ -124,6 +124,9 @@ const HIDDEN = Type.Unknown({ description: "What only the checks receive; null w
 const PLANTED =
   "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
+/** Why a draft is not measured where the campaign's budget holds no reserve for its three solves. */
+const UNAFFORDED =
+  "the campaign's budget holds no reserve for the reference harness's three solves of it beside the solves running, so it is not measured";
 /** What the Examiner is told of a task held for the ladder: the outcome, and nothing of a solve. */
 const LADDERED =
   "held for the ladder. This task will never be scored for promotion or released for practice.";
@@ -188,6 +191,9 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === null) return { reason: null, said: "" };
+  // The three solves are held at the campaign's reserve before any starts, beside the solves in
+  // flight (`affords`): until 14 October nothing held them, and two reserves left started three.
+  if (!affords(log, TRIED)) return { reason: UNAFFORDED, said: "" };
   const before = billedFor(read(log), id);
   const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, stop)));
   const solves = endings.filter(({ outcome }) => outcome !== "non-result").length;

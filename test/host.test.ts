@@ -5,7 +5,8 @@
 import { describe, expect, it } from "bun:test";
 import { resetOf } from "../src/backends/claude.ts";
 import { crashedRun } from "../src/builder/ground.ts";
-import { type LogEvent, read } from "../src/kernel/log.ts";
+import { affords, flying } from "../src/builder/opening.ts";
+import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import { mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -67,5 +68,22 @@ describe("the provider's named reset", () => {
     // A solve's wait at a loaded host is no provider's.
     const loaded: LogEvent = { kind: "campaign.waited", at: NOW.toISOString(), data: { load: 99 } };
     expect(crashedRun([crashed(1), loaded, crashed(2)]).count).toBe(2);
+  });
+});
+
+describe("the campaign's reserve", () => {
+  it("holds the solves in flight in this process, whoever started them", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), "ana-host-reserve-")), "campaign.jsonl");
+    // No opening, no budget: every solve is afforded.
+    expect(affords(log, 99)).toBe(true);
+    append(log, "campaign.opened", { budget: { dollars: 1, reserve: 0.4 } });
+    expect(affords(log, 2)).toBe(true);
+    expect(affords(log, 3)).toBe(false);
+    // A practice solve in flight takes one reserve from an Examiner's three (14 October).
+    await flying(log, async () => {
+      expect(affords(log, 2)).toBe(false);
+      expect(affords(log, 1)).toBe(true);
+    });
+    expect(affords(log, 2)).toBe(true);
   });
 });

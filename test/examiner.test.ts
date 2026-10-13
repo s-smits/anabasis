@@ -1108,6 +1108,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       add(TASK_PROPOSED, { version: `v-${taskId}`, taskId });
       add(TASK_GATE, { version: `v-${taskId}`, gate: 1, outcome: "passed" });
     }
+    const first = events.length;
     // c-1, against the reference h1 at two solves a side.
     solved("c-1", "a-1", "h1", [false, false]);
     solved("c-1", "a-1", "h2", [true, false]);
@@ -1161,6 +1162,15 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above, by family and fewest first. These are measurements and no target.",
       "- family slab: 4, 5, 6, 7",
     ]);
+    // A control between two other harnesses that reported first is not the reference: the turns
+    // stay the starter's, as the lines and the counts do. Read from the first report's old side,
+    // they were none of the reference's and the control's own (9) where it stood last.
+    const from = events.length;
+    solved("c-0", "b-2", "h3", [true, true], [9, 9]);
+    solved("c-0", "b-2", "h4", [false, false]);
+    reported("c-0", "h3", "h4", 2, ["b-2"]);
+    const control = events.splice(from);
+    expect(heard(events.toSpliced(first, 0, ...control), tasks)).toEqual({ lines, counts, turns });
     // Neither the lines nor the counts name a harness.
     expect([...lines, counts, turns].join("\n")).not.toMatch(/\bh[1-5]\b/);
   });

@@ -58,7 +58,7 @@ import {
   type Outcome,
   outcomesOf,
   pairsReported,
-  promoted,
+  referenceOf,
   type Standing,
   standingsOf,
 } from "../kernel/reports.ts";
@@ -153,10 +153,9 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
  *  tallied it, read as its outcome and its standing are (`taskRecords`, `reports.ts`): from the
  *  side the reference stood on there, and none where it stood on neither. */
 function referenceAnswers(events: readonly LogEvent[]): Map<string, string[]> {
-  const reports = lastReports(events);
-  const reference = promoted(events) ?? reports[0]?.data.old;
+  const reference = referenceOf(events);
   const answers = new Map<string, string[]>();
-  for (const report of reports) {
+  for (const report of lastReports(events)) {
     const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
     for (const pair of pairsReported(events, report)) {
       const named =

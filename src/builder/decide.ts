@@ -514,32 +514,7 @@ function noRoom(ground: Ground): Move | null {
       : side === "old"
         ? `comparison ${last.id} read no step, and no task was informative for the reference harness: the tasks have to change`
         : `harness ${short(reference ?? "")} is the reference, and comparison ${last.id} found no task informative for it: the tasks have to change, to ones it fails on some solves`;
-  return spent(ground, "room", why) ?? dear(ground, last) ?? { move: "examine", why };
-}
-
-/** The campaign's ending on its budget where the last Examiner session and `last`, the comparison
- *  that read its tasks and found no room, billed more than half of what is left: another round
- *  could not be read. Null otherwise. */
-function dear({ events, plan, reports }: Ground, last: Reading): Move | null {
-  if (plan.left === null) return null;
-  const before = Math.max(
-    -1,
-    ...reports.flatMap(({ reported }) => (reported < last.reported ? [reported] : [])),
-  );
-  const session = events.findLast(
-    ({ kind }, at) => kind === "exam.finished" && at > before && at < last.reported,
-  )?.data;
-  if (session === undefined) return null;
-  const examined =
-    (isNumber(session.billed) ? session.billed : 0) +
-    billedParts(events, isString(session.session) ? session.session : "").comparison;
-  const round = examined + billedParts(events, last.id).comparison;
-  return round > plan.left.dollars / 2
-    ? end(
-        "budget",
-        `the last Examiner session and comparison ${last.id}, which read its tasks and found no room, billed $${round.toFixed(2)}, more than half of the $${plan.left.dollars.toFixed(2)} left: another round could not be read`,
-      )
-    : null;
+  return spent(ground, "room", why) ?? { move: "examine", why };
 }
 
 /**
@@ -692,25 +667,41 @@ function risked({ events, reports }: Ground, named: Move): Move | null {
 }
 
 /**
- * The campaign's ending on its budget where what is left of its total would not hold the
- * comparison a row named. A comparison the cap cuts before its last solve tallies nothing, and
- * what it billed bought no reading: on 9 October a campaign with $1.45 left began a comparison
- * after one that had billed $1.00, and was cut after $1.06. What a comparison will bill is read
- * from the last one that reported. Where no comparison has reported, nothing says what one
- * bills, and it starts; one that began goes on under whatever is left.
+ * The campaign's ending on its budget where what is left of its total would not hold the move a
+ * row named. A comparison the cap cuts before its last solve tallies nothing, and what it billed
+ * bought no reading: on 9 October a campaign with $1.45 left began a comparison after one that had
+ * billed $1.00, and was cut after $1.06. What a comparison will bill is read from the last one that
+ * reported. An Examiner session is a round with the comparison that reads its tasks, and a step
+ * read on them is bought again by its repeat: where the last session and that comparison billed
+ * more than half of what is left, another round could not be read. Where no comparison has
+ * reported, nothing says what one bills, and the move is made; one that began goes on under
+ * whatever is left.
  */
 function unafforded({ events, plan, reports }: Ground, named: Move): Move | null {
   const last = reports.findLast(({ report }) => report.capped !== true);
-  if (named.move !== "compare" || named.id !== undefined || plan.left === null || last === undefined) {
-    return null;
-  }
+  if (plan.left === null || last === undefined) return null;
+  const left = plan.left.dollars;
   const was = billedParts(events, last.id).comparison;
-  return plan.left.dollars >= was
-    ? null
-    : end(
+  if (named.move === "compare" && named.id === undefined) {
+    return left >= was
+      ? null
+      : end(
+          "budget",
+          `$${left.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)}: the next would bill about as much, so it would be cut before it reports`,
+        );
+  }
+  const session = events.findLast(({ kind }, at) => kind === "exam.finished" && at < last.reported)?.data;
+  if (named.move !== "examine" || session === undefined) return null;
+  const round =
+    was +
+    (isNumber(session.billed) ? session.billed : 0) +
+    billedParts(events, isString(session.session) ? session.session : "").comparison;
+  return round > left / 2
+    ? end(
         "budget",
-        `$${plan.left.dollars.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)}: the next would bill about as much, so it would be cut before it reports`,
-      );
+        `the last Examiner session and comparison ${last.id}, which read its tasks, billed $${round.toFixed(2)}, more than half of the $${left.toFixed(2)} left: another round could not be read`,
+      )
+    : null;
 }
 
 /**

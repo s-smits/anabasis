@@ -554,10 +554,10 @@ describe("a row of the table", () => {
     const named = compared("b-3", "h2", "no-step", { old: "h1", ...FULL });
     expect(move([...stepped, ...named, promotion("h1")])).toEqual({ move: "examine", why: NO_ROOM("b-3") });
     // Where the last Examiner session and the comparison that read its tasks billed more than half
-    // of what is left, the campaign ends on its budget before another round.
+    // of what is left, the campaign ends on its budget before another round (`unafforded`).
     const dear = [...FIRST, ...full("g-1"), ...examined("x-1", ["v13"], { billed: 6 }), ...full("g-2")];
     const left = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.5 } });
-    expect(decide(dear, left(10))).toMatchObject({ move: "end", ending: "budget", code: "no-room" });
+    expect(decide(dear, left(10))).toMatchObject({ move: "end", ending: "budget", code: "afford" });
     expect(move(dear, left(13))).toMatchObject({ move: "examine" });
   });
 

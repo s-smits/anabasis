@@ -152,6 +152,37 @@ test("the set-up names the bars a promotion is read against, and the next move t
   expect(paneOf({ ...reading, nextMove: promote })).toContain('title="twice · next · promote"');
 });
 
+test("a campaign says who leads it, and reads the table's next move as advice where its Builder does", () => {
+  const hosted = readingOf(fixture.name);
+  expect(hosted.led).toBe(false);
+  const compare = {
+    move: "compare",
+    code: "new",
+    why: "a harness to compare",
+    fresh: "latest",
+    reference: "h",
+    line: "next · compare",
+  } as const;
+  const [byHost, byBuilder] = [
+    paneOf({ ...hosted, nextMove: compare }),
+    paneOf({ ...hosted, led: true, nextMove: compare }),
+  ];
+  expect(byHost).toContain("the host: it makes each move the table names");
+  expect(byHost).toContain("Next move");
+  expect(byHost).not.toContain("Table advises");
+  expect(byBuilder).toContain("its Builder: one conversation makes the moves");
+  expect(byBuilder).toContain("Table advises");
+  expect(byBuilder).toContain("the Builder leads this campaign and may make another move");
+  // The exam's set-up is the host's whoever leads.
+  const prepare = {
+    move: "prepare",
+    code: "apart",
+    why: "no task is set apart",
+    line: "next · prepare",
+  } as const;
+  expect(paneOf({ ...hosted, led: true, nextMove: prepare })).not.toContain("Table advises");
+});
+
 test("a campaign that ended with no promotion names its ending and draws no divider", () => {
   const reading = readingOf(fixture.units);
   expect(reading.promotions).toHaveLength(0);

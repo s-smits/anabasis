@@ -148,7 +148,7 @@ describe("a campaign's reading", () => {
     });
     // Both through JSON, as the page receives them.
     const steps = reading.moves.map(
-      ({ index: _index, startedAt: _started, endedAt: _ended, ...step }) => step,
+      ({ index: _index, startedAt: _started, endedAt: _ended, named: _named, ...step }) => step,
     );
     expect(capturedJsonParse(capturedJsonStringify(steps))).toEqual(
       capturedJsonParse(capturedJsonStringify(expected)),
@@ -225,6 +225,41 @@ describe("a campaign's reading", () => {
 });
 
 describe("what a comparison came to", () => {
+  test("gives each move the table's row its record carries, a Builder session's and a comparison's each its own under one id", async () => {
+    const { answer: reading } = await ask("campaign", { key: KEY }, "default");
+    const rows = (step: string) =>
+      new Set(reading.moves.flatMap((move) => (move.step === step && move.named ? [move.named.code] : [])));
+    expect([...rows("builder")]).toEqual(["build"]);
+    expect([...rows("comparison")]).toEqual(["new"]);
+    // The fixture's Examiner move records no code, as a campaign from before the rows were coded.
+    expect([...rows("examiner")]).toEqual([]);
+    const named = reading.comparisons.map((bar) => bar.named);
+    expect(named.filter((each) => each !== null).length).toBeGreaterThan(0);
+    for (const each of named) {
+      if (each !== null) expect(each).toEqual({ code: "new", why: "a harness to compare" });
+    }
+  });
+
+  test("gives a reported comparison its frontier and retained tallies apart, summing to its tally where both were measured", async () => {
+    const { answer: reading } = await ask("campaign", { key: KEY }, "default");
+    const withSets = reading.comparisons.filter((bar) => bar.sets !== null);
+    expect(withSets.length).toBeGreaterThan(0);
+    for (const { sets, tally } of withSets) {
+      if (sets === null || tally === null) continue;
+      const kept = sets.retained === "unmeasured" ? { wins: 0, losses: 0, ties: 0 } : sets.retained;
+      expect(sets.frontier.tally.wins + kept.wins).toBe(tally.wins);
+      expect(sets.frontier.tally.losses + kept.losses).toBe(tally.losses);
+    }
+  });
+
+  test("puts no task in two places: one exhausted is not retained, and both are held out", async () => {
+    const { answer } = await ask("tasks", { key: KEY }, "default");
+    for (const row of answer.rows) {
+      expect(row.exhausted && row.retained).toBe(false);
+      if (row.exhausted || row.retained) expect(row.state).toBe("held");
+    }
+  });
+
   test("names every task a comparison fixed: its outcome, set aside, or why its report left it out", async () => {
     const { answer: reading } = await ask("campaign", { key: KEY }, "default");
     for (const bar of reading.comparisons) {
@@ -279,21 +314,6 @@ describe("what a comparison came to", () => {
     // The comparison holds each kind of tie, so that two swapped would fail above.
     const kinds = new Set(told.map(([, expected]) => expected));
     expect(["tiedEvery", "tiedSome", "tiedNone"].every((kind) => kinds.has(kind))).toBe(true);
-  });
-
-  test("cuts each side of a set-aside task to its solves a side, so that an A/A reading's further arm is no part of the reference's", async () => {
-    const { answer: grid } = await ask("tasks", { key: KEY }, "default");
-    const column = grid.columns.findIndex(({ id }) => id === "c-1");
-    const aside = grid.rows.flatMap(({ id, cells }) => {
-      const cell = cells[column];
-      return cell?.outcome === "aside" ? [[id, cell.old.solves, cell.fresh.solves]] : [];
-    });
-    expect(aside).toEqual([["word-14", 2, 2]]);
-    const detail = (await ask("move", { key: KEY, move: await placeOf("comparison", "c-1") }, "default"))
-      .answer;
-    if (detail.kind !== "comparison") throw new Error("c-1 is a comparison");
-    const task = detail.tasks.find(({ outcome }) => outcome === "aside");
-    expect([task?.old.length, task?.fresh.length]).toEqual([2, 2]);
   });
 
   test("lists a comparison with no report by the tasks its start fixed and its solves so far, with no outcome", async () => {

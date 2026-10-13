@@ -5,12 +5,13 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
-  fauxAssistantMessage,
   type FauxResponseStep,
+  fauxAssistantMessage,
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { SAID, systemPrompt } from "../src/builder/prompt.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
 import {
   type Bench,
@@ -351,7 +352,7 @@ describe("the Builder running its campaign", () => {
     expect(s.of(BUILD_FINISHED)[0]?.crash).toBeNull();
   });
 
-  it("reads its wall where a campaign action ends, and cuts an action outside one", async () => {
+  it("counts its wall on the Builder's own time, and cuts an action outside one", async () => {
     /** One session at a wall of 50 ms whose first call outlasts it: whether the call's signal was
      *  aborted while it ran, and how the session ended. */
     const outlasting = async (held: "within" | "outside") => {
@@ -391,8 +392,12 @@ describe("the Builder running its campaign", () => {
       return { cut, ended: built.ended, calls: s.of(BUILD_CALL).map(({ tool: name }) => name) };
     };
     // A comparison cut at the Builder's wall would lose its solves in flight and read as a failed
-    // host: the wall falls where the action ends, and the session ends there, before `finish`.
-    expect(await outlasting("within")).toEqual({ cut: false, ended: "wall", calls: ["long_action"] });
+    // host, and the action's time is the host's: the session goes on past it to its `finish`.
+    expect(await outlasting("within")).toEqual({
+      cut: false,
+      ended: "finished",
+      calls: ["long_action", "finish"],
+    });
     expect(await outlasting("outside")).toMatchObject({ cut: true, ended: "wall" });
   });
 });
@@ -1485,4 +1490,24 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
       expect(linked).toContain(join("..", name));
     }
   }, 120_000);
+});
+
+describe("the texts a Builder reads, by who makes its campaign's moves", () => {
+  it("tells a Builder that leads its campaign nowhere that finishing has its harness measured", () => {
+    const { host, builder } = SAID;
+    const texts = (said: typeof host) => [
+      said.frozen,
+      said.finish,
+      said.broken.unpractised,
+      said.broken.practised,
+      said.untried,
+    ];
+    // Under the host a session's end is a measurement, and every one of these says so.
+    for (const each of texts(host)) expect(each).toMatch(/\bmeasured\b/);
+    // Led by the Builder, only `compare` measures: finishing freezes, and no text says more.
+    for (const each of texts(builder)) expect(each).not.toMatch(/\bmeasured\b/);
+    expect(systemPrompt(builder)).toContain(builder.closing);
+    expect(systemPrompt(host)).toContain(host.closing);
+    expect(systemPrompt(host)).not.toContain("compare");
+  });
 });

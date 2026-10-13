@@ -409,8 +409,8 @@ describe("a session that writes tasks", () => {
     expect(examined).toEqual({ ended: "finished", puts: 2, held: [held], refused: [refused], repair: null });
     // One gate, and the task is a held-out task from then on: no solve, no control, no word.
     expect(s.of("task.gate")).toEqual([
-      { version: held, gate: 1, outcome: "passed" },
-      { version: refused, gate: 1, outcome: "refused", reason: "no inputs" },
+      { version: held, gate: 1, outcome: "passed", proved: false },
+      { version: refused, gate: 1, outcome: "refused", reason: "no inputs", proved: false },
     ]);
     expect(taskSets(read(s.log))).toMatchObject({ held: [held], released: [] });
     expect(taskStates(read(s.log)).get(refused)).toBe("refused");
@@ -441,6 +441,21 @@ describe("a session that writes tasks", () => {
     const second = await examine({ ...again.request, id: "x-2" });
     expect(again.sent[3]).toContain("An instance an earlier session wrote was not taken again.");
     expect(second.held).toEqual([again.versionOf("x-2-001", 8)]);
+  });
+
+  it("takes again an instance a cut session proposed and never gated", async () => {
+    const cut = seat("write", [propose(7), finish, finish]);
+    // A session cut while its task was measured: the proposal is on record, and no gate is.
+    append(cut.log, "task.proposed", {
+      version: cut.versionOf("x-1-001", 7),
+      taskId: "x-1-001",
+      session: "x-1",
+      task: { taskId: "x-1-001", family: "fixture", publicInput: { base: 7 }, hidden: { seed: 1 } },
+    });
+    // Until 13 October the next session was told an earlier one wrote it, and it was never gated.
+    const next = await examine({ ...cut.request, id: "x-2" });
+    expect(next.held).toEqual([cut.versionOf("x-2-001", 7)]);
+    expect(cut.sent.join("\n")).not.toContain("An instance an earlier session wrote");
   });
 
   it("ends when the host has its tasks, and declines a first finish once while it has not", async () => {
@@ -634,7 +649,7 @@ describe("a session that writes tasks", () => {
       expect(s.of("task.feasible")).toEqual(proved);
       expect(poolOf(read(s.log)).feasible).toEqual(new Set(proved.map(({ version }) => version)));
       const texts = s.of("exam.call").map(({ text }) => text);
-      if (order.said !== undefined) expect(texts).toContain(order.said);
+      if (order.said !== undefined) expect(texts.filter(isString).join("\n")).toContain(order.said);
       if (order.checked.length === 0) {
         expect(texts[0]).toStartWith(
           "This answer does not follow the answer format, so a solver's answer like it is refused before any check reads it, and no check was run: ",
@@ -660,11 +675,27 @@ describe("a session that writes tasks", () => {
       finish,
       finish,
     ]);
+    // The share the Examiner is told is the campaign's: an earlier session's drafts, one with its
+    // author's proof and held out and one without and refused, and a gate that names no proof, as
+    // a pack's task's does, which is no draft's.
+    for (const [version, gate] of [
+      ["v-earlier-1", { outcome: "passed", proved: true }],
+      ["v-earlier-2", { outcome: "refused", reason: "no inputs", proved: false }],
+      ["v-pack", { outcome: "passed" }],
+    ] as const) {
+      append(s.log, "task.proposed", { version, taskId: version });
+      append(s.log, "task.gate", { version, gate: 1, ...gate });
+    }
     const examined = await examine({ ...s.request, verify });
     const refused =
       "refused: it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
     expect(s.of("exam.call")[2]?.text).toBe(
-      [`x-1-001: ${refused}`, `x-1-002: ${refused}`, "x-1-003: held out."].join("\n"),
+      [
+        `x-1-001: ${refused}`,
+        `x-1-002: ${refused}`,
+        "x-1-003: held out.",
+        "So far in this campaign, drafts with a proof were held 2 of 2, and drafts without one 0 of 3.",
+      ].join("\n"),
     );
     expect(examined.held).toEqual([s.versionOf("x-1-003", 2)]);
   });
@@ -721,6 +752,7 @@ describe("a session that writes tasks", () => {
         `x-1-003: refused: ${counted(0)}, and a task is held out only where it answers some and not all`,
         `x-1-004: refused: ${counted(3)}, and a task is held out only where it answers some and not all`,
         "x-1-005: refused: 1 of the reference harness's 3 solves of it ended in no reading, so it is not measured",
+        "So far in this campaign, drafts with a proof were held 0 of 0, and drafts without one 2 of 5.",
       ].join("\n"),
     );
     // Its cost a task, on the gate's event; the solves are the session's, named by it, and no

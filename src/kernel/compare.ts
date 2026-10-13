@@ -134,9 +134,8 @@ interface Sides {
   readonly setting: string;
   /** The comparison's id: only a solve whose start names it is a solve of it. */
   readonly comparison: string;
-  /** Where the reference harness was solved twice as often, to be read against itself, which of
-   *  its solves of a task are its first sample: `mirrored`, the first and last of each four in the
-   *  order they started, which sit around the new harness's solve between them (`round.ts`), or
+  /** Where the reference harness is read against itself, which of its solves of a task are its
+   *  first sample: `mirrored`, the first and last of each four in the order they started, or
    *  `in-order`, the first half. Its other solves are the second sample, the other side where the
    *  two harnesses are one: the one case in which both sides may name the same harness. */
   readonly halves?: "mirrored" | "in-order" | undefined;
@@ -610,7 +609,7 @@ export function pairsOf(
     }
     const under = (harness: string) =>
       counted.filter((solve) => solve.under.task === task && solve.under.harness === harness);
-    // Where the reference was solved twice as often, its first sample and its second (`halves`).
+    // Where the reference is read against itself, its first sample and its second (`halves`).
     const first = (at: number, of: number) =>
       halves === "mirrored" ? at % 4 === 0 || at % 4 === 3 : halves === undefined || at < Math.ceil(of / 2);
     const reference = under(old);

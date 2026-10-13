@@ -24,9 +24,10 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import type { Seats } from "../tools/d2/campaign-terms.ts";
+import { flagsOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
 import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
+import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import type { Seated } from "../tools/d2/round.ts";
 import { settleCommand } from "../tools/d2/settle.ts";
@@ -110,8 +111,8 @@ function builderScripts(
   scripts: readonly (readonly (readonly [string, JsonObject])[])[],
 ): Seated {
   return (campaign, given) => {
-    const opened = read(campaign.log).filter(({ kind }) => kind === "build.started").length;
-    return { ...base(campaign, given), builder: scripted(scripts[opened] ?? []) };
+    const conversations = read(campaign.log).filter(({ kind }) => kind === "build.started").length;
+    return { ...base(campaign, given), builder: scripted(scripts[conversations] ?? []) };
   };
 }
 
@@ -197,10 +198,10 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, "build.finished")).toMatchObject([{ session: "b-1", ended: "finished" }]);
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }]);
     const examinerCall = of(name, CALLED).find(({ tool }) => tool === "examine");
-    // One count of the held-out tasks, in the result and in the facts under it (v1's lesson 2).
-    expect(examinerCall?.text).toContain(
-      "ended whole. It held out 0 tasks, and the campaign holds 5 held-out",
-    );
+    // The session writes beside the conversation: the result says so at once, and the facts under
+    // it give no move to make while it writes.
+    expect(examinerCall?.text).toContain("Examiner session x-1 is writing beside this conversation");
+    expect(examinerCall?.text).not.toContain("Suggested action");
     expect(examinerCall?.text).toContain("Campaign facts: 5 held-out tasks, 2 practice tasks.");
     expect(examinerCall?.text).not.toContain("check-product");
   });
@@ -252,7 +253,8 @@ describe("a campaign run by its live Builder", () => {
     const seats: Seats = {
       seated: builderScript(
         scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-        [["examine", {}], CHANGE_GUIDE],
+        // The next action waits for the Examiner session writing beside it, and reads the word.
+        [["examine", {}], ["compare", {}], CHANGE_GUIDE],
       ),
       examine: async (request) => {
         const result = await examine({
@@ -269,7 +271,7 @@ describe("a campaign run by its live Builder", () => {
     expect(await harnessBuilder([...seeded(name), "--target", "5", "--practice", "2"], seats)).toMatchObject({
       ending: "operator",
     });
-    expect(of(name, "build.turn")).toHaveLength(1);
+    expect(of(name, "build.turn")).toHaveLength(2);
     expect(of(name, CALLED).some(({ tool }) => tool === "bash")).toBe(false);
   });
 
@@ -423,7 +425,22 @@ describe("a campaign run by its live Builder", () => {
         };
       },
     };
-    const args = [...seeded(name), "--target", "5", "--practice", "2", "--solves", "1"];
+    // Under a total: a comparison begins with all that is left of it as its cap, so whatever else
+    // bills before it goes on, a Builder's turn among it, leaves less than that cap. Until
+    // 13 October the tool then ended the campaign on its budget, with nearly all of it left.
+    const args = [
+      ...seeded(name),
+      "--target",
+      "5",
+      "--practice",
+      "2",
+      "--solves",
+      "1",
+      "--budget",
+      "20",
+      "--reserve",
+      "0.01",
+    ];
     expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "environment" });
     const [start] = of(name, "comparison.started");
     if (start === undefined) throw new Error("the comparison did not record its original terms");
@@ -488,6 +505,52 @@ describe("a campaign run by its live Builder", () => {
     expect(call?.text).toContain("choose another action");
   });
 
+  it("waits out a provider limit that ended an action before its first event, and has the Builder ask again", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-limit`;
+    const reset = Math.floor(Date.now() / 1000) + 60;
+    let limited = true;
+    const slept: number[] = [];
+    const seats: Seats = {
+      seated: builderScript(
+        scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+        [
+          ["examine", {}],
+          ["examine", {}],
+          ["finish", { note: "The Examiner was asked again after the limit." }],
+        ],
+      ),
+      examine: (request) => {
+        if (limited) {
+          limited = false;
+          throw new Error(`Claude Code: usage limit (limit reached|${String(reset)})`);
+        }
+        return examine({
+          ...request,
+          ...scripted([
+            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: "Nothing to add." }],
+          ]),
+        });
+      },
+      host: {
+        ...HOST,
+        sleep: async (ms: number) => {
+          slept.push(ms);
+        },
+      },
+    };
+    const ending = await harnessBuilder([...seeded(name), "--target", "8", "--practice", "3"], seats);
+    expect(ending).toMatchObject({ move: "end", ending: "finished" });
+    // Until 13 October a throw with nothing written after its move was read as a refusal before the
+    // limit was asked for, and the Builder was told to choose another action.
+    expect(slept).toHaveLength(1);
+    expect(of(name, "campaign.waited")).toMatchObject([{ for: "provider" }]);
+    expect(said(name, "examine")[0]).toContain("call examine again");
+    expect(said(name, "examine")[0]).not.toContain("usage limit");
+    expect(of(name, "exam.started")).toHaveLength(1);
+  });
+
   it("applies operator stop and budget words at the next live boundary", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const stopName = `${STEM}-operator-stop`;
@@ -506,8 +569,8 @@ describe("a campaign run by its live Builder", () => {
     });
 
     const budgetName = `${STEM}-operator-budget`;
-    const budgetArgs = [...seeded(budgetName), "--target", "5", "--practice", "2"];
-    // Set up, the table wants the tasks of a comparison and its repeat written first.
+    const budgetArgs = [...seeded(budgetName), "--target", "6", "--practice", "2"];
+    // Set up, the table wants the tasks a comparison scores and its practice draws written first.
     expect(await harnessBuilder([...budgetArgs, "--budget", "20", "--moves", "2"], seats)).toMatchObject({
       move: "examine",
     });
@@ -568,8 +631,12 @@ describe("a campaign tool where the table names more than the action", () => {
     const [, told] = said(name, "compare");
     expect(told).toContain("repeated harness");
     expect(told).toContain("changes made to harness/ since are not in it");
-    // The status under the first tally says the same before the Builder asks.
-    expect(said(name, "compare")[0]).toContain("Suggested action: compare.\ncompare repeats harness");
+    // The status under the first tally says the same before the Builder asks, and what a
+    // comparison of the tasks held can read: the table would have more written first.
+    expect(said(name, "compare")[0]).toContain(
+      "Suggested action: examine.\nComparison size: 5 held-out tasks",
+    );
+    expect(said(name, "compare")[0]).toContain("compare repeats harness");
     // What a move records: the comparison's id and flags, when it began and the host's load then,
     // which the page and the investigation read, and the harness a promotion named.
     const moves = of(name, MOVED);
@@ -704,6 +771,28 @@ describe("a campaign tool where the table names more than the action", () => {
   });
 });
 
+describe("who makes a campaign's moves, as its opening keeps it", () => {
+  it("opens a campaign led by its Builder, records nothing of the term for one the host runs, and keeps either when run again", () => {
+    const logOf = (name: string) => join(root, "terms", name, LOG_FILE);
+    const flags = (...more: string[]) =>
+      flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, ...more]);
+    const led = logOf("led");
+    expect(opened(led, flags(), "scripted").led).toBe(true);
+    expect(opened(led, flags(), "scripted").led).toBe(true);
+    expect(read(led).map(({ data }) => data.led)).toEqual([true]);
+    // The record of a campaign the host runs is a record from before the term, key for key: run
+    // again by a command that names nothing, either is the host's, and nothing is recorded again.
+    const hosted = logOf("hosted");
+    expect(opened(hosted, flags("--no-builder-led"), "scripted").led).toBe(false);
+    expect(read(hosted)[0]?.data).not.toHaveProperty("led");
+    expect(opened(hosted, flags(), "scripted").led).toBe(false);
+    expect(read(hosted)).toHaveLength(1);
+    // The operator's flag hands the campaign over, on record.
+    expect(opened(hosted, flags("--builder-led"), "scripted").led).toBe(true);
+    expect(read(hosted).at(-1)?.data).toMatchObject({ led: true });
+  });
+});
+
 describe("a campaign's endings", () => {
   const passing = () => scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []);
 
@@ -732,6 +821,51 @@ describe("a campaign's endings", () => {
       { fresh: of(name, "build.finished")[0]?.harness },
     ]);
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }]);
+  });
+
+  it("opens a new conversation where the provider failed one, and ends on the environment where they fail in a row", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-crashed`;
+    // A script with no further call is a turn the provider fails: the session is on record as
+    // crashed, and read back it is refused (`spent`).
+    const seats: Seats = {
+      seated: builderScripts(passing(), [
+        [CHANGE_GUIDE],
+        [
+          ["compare", {}],
+          ["finish", { note: "The harness the crashed conversation left was measured." }],
+        ],
+      ]),
+    };
+    // Until 13 October the refusal was the environment's ending, and the command threw.
+    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
+    expect(of(name, "build.finished").map(({ session, ended }) => [session, ended])).toEqual([
+      ["b-1", "crashed"],
+      ["b-2", "finished"],
+    ]);
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }]);
+    // None of three conversations changed a harness: the table's crash rule ends the campaign.
+    const failing = `${STEM}-crashes`;
+    const none: Seats = { seated: builderScripts(passing(), []) };
+    expect(await harnessBuilder([...seeded(failing), ...FLAGS], none)).toMatchObject({
+      move: "end",
+      ending: "environment",
+    });
+    expect(of(failing, "build.finished").map(({ ended }) => ended)).toEqual([
+      "crashed",
+      "crashed",
+      "crashed",
+    ]);
+    // Nor does a conversation that edited and then crashed leave a harness to go on from.
+    const editing = `${STEM}-edits`;
+    const edits: Seats = {
+      seated: builderScripts(passing(), [[CHANGE_GUIDE], [CHANGE_GUIDE], [CHANGE_GUIDE]]),
+    };
+    expect(await harnessBuilder([...seeded(editing), ...FLAGS], edits)).toMatchObject({
+      move: "end",
+      ending: "environment",
+    });
+    expect(of(editing, "build.finished")).toHaveLength(3);
   });
 
   it("goes on with a new conversation when run again after the Builder finished", async () => {

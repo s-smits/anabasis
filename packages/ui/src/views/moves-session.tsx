@@ -27,6 +27,7 @@ function factsOf(detail: SessionDetail, reading: CampaignReading): (readonly [st
   const common = [
     ["Turns", String(move.turns)],
     ["Last wrote", time(move.last)],
+    ["Table row", move.named === null ? "not recorded" : `${move.named.code} · ${move.named.why}`],
   ] as const;
   if (move.step === "examiner") {
     return [

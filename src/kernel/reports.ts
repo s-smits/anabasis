@@ -35,12 +35,18 @@ import type { LogEvent } from "./log.ts";
 import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
-/** A session or a solve that began and has no end on record: the comparison its start names (a
- *  solve's), and the dollars its turns and compactions metered (`unfinished`). */
+/** A session or a solve that began and has no end on record: what kind of start and its id, the
+ *  comparison its start names (a solve's), the dollars its turns and compactions metered, its turns,
+ *  and when it began and wrote its last event (`unfinished`). */
 interface Unfinished {
+  readonly of: (typeof METERED)[number]["of"];
+  readonly id: JsonValue | undefined;
   readonly comparison: JsonValue | undefined;
   readonly session: JsonValue | undefined;
   dollars: number;
+  turns: number;
+  readonly began: string;
+  last: string;
 }
 
 /** A comparison's last report, with where the comparison stands in the log: at its first report. */
@@ -335,8 +341,9 @@ export function stopRule(events: readonly LogEvent[]) {
  * The pairs a comparison's last report tallied, read as the comparison found them: from the log up
  * to its first report, so a task released, refused or disputed since is still the scored task it
  * was, under the report's own two harnesses and setting, counting the comparison's own solves, and
- * each side cut to the solves it asked for (under `--noise`, the reference's first mirrored half,
- * `halves`). None for a report that compared nothing, or before a solve named its comparison.
+ * each side cut to the solves it asked for: in a log written with `--noise` (until 13 October),
+ * the reference's first mirrored half (`halves`). None for a report that compared nothing, or
+ * before a solve named its comparison.
  */
 export function pairsReported(events: readonly LogEvent[], report: Reported): Paired[] {
   const { session, index, data } = report;
@@ -672,8 +679,8 @@ function lastRead({ tallied, asideAt }: TaskRecord): TalliedIn | "aside" | null 
  * is not this one's, so a comparison gone on from its log after others ran is held to its own
  * spend. A solve of the comparison with no end on record, killed or still running, is counted by
  * what its turns and compactions have metered so far (`unfinished`); a solve still running is held
- * besides at a cap's reserve, which is what its sum may come to (`src/builder/round.ts`). A
- * A live Builder's turns are counted as they are metered, then replaced by its final sum.
+ * besides at a cap's reserve, which is what its sum may come to (`src/builder/round.ts`). A live
+ * Builder's turns are counted as they are metered, then replaced by its final sum.
  */
 export function billedFor(events: readonly LogEvent[], id: string): number {
   const { session, comparison } = billedParts(events, id);
@@ -711,23 +718,43 @@ function unfinished(events: readonly LogEvent[]): Unfinished[] {
   return METERED.flatMap(({ of, id }) => {
     const ended = new Set(events.flatMap(({ kind, data }) => (kind === `${of}.finished` ? [data[id]] : [])));
     const open = new Map<JsonValue | undefined, Unfinished>();
-    for (const { kind, data } of events) {
+    for (const { at, kind, data } of events) {
       if (kind === `${of}.started` && !ended.has(data[id])) {
         open.set(data[id], {
+          of,
+          id: data[id],
           comparison: data.comparison,
           session: of === "build" ? data.session : undefined,
           dollars: 0,
+          turns: 0,
+          began: at,
+          last: at,
         });
       }
       const found = open.get(data[id]);
       if (found === undefined) continue;
-      if (kind === `${of}.turn`) found.dollars += costOf(data.usage);
+      found.last = at;
+      if (kind === `${of}.turn`) {
+        found.dollars += costOf(data.usage);
+        found.turns += 1;
+      }
       if (kind === `${of}.compacted` && Array.isArray(data.usages)) {
         found.dollars += data.usages.reduce((sum: number, usage) => sum + costOf(usage), 0);
       }
     }
     return [...open.values()];
   });
+}
+
+/** The Builder's and the Examiner's sessions that began and never ended on record, with what each
+ *  billed, its turns and its seconds to its last event: a run of the campaign command stopped from
+ *  outside left them, and the next run ends them as killed (`endCut`, `tools/d2/harness-builder.ts`). */
+export function cutSessions(events: readonly LogEvent[]) {
+  return unfinished(events).flatMap(({ of, id, dollars, turns, began, last }) =>
+    (of === "build" || of === "exam") && isString(id)
+      ? [{ of, session: id, turns, billed: dollars, seconds: (Date.parse(last) - Date.parse(began)) / 1000 }]
+      : [],
+  );
 }
 
 /** The same sum in its two parts: what the Builder session under `id` billed, and what the

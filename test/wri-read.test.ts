@@ -107,7 +107,7 @@ function solve(task: string, harness: string, outcome: "pass" | "rejected" | "la
 function started(session: string, old: string, fresh: string) {
   const terms = { old, fresh, starter: "hbase", setting: SETTING, solves: 1, level: 0.1 };
   comparison = session;
-  record(COMPARISON_STARTED, { session, ...terms, noise: false, cap: null, tasks: HELD });
+  record(COMPARISON_STARTED, { session, ...terms, cap: null, tasks: HELD });
   return { session, ...terms, tasks: 4 };
 }
 

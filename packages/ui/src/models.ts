@@ -29,6 +29,8 @@ import type { Handover } from "../../../src/builder/handover.ts";
 import type { Decided, Ending as CampaignEnding } from "../../../src/builder/move.ts";
 import type { Seat, Terms } from "../../../src/builder/opening.ts";
 import type { Tally } from "../../../src/kernel/compare.ts";
+
+export type { Tally };
 import type { EventKind } from "../../../src/kernel/log.ts";
 import type { comparedAs } from "../../../src/kernel/reports.ts";
 import type { Ending as SolveEnding } from "../../../src/kernel/solve.ts";
@@ -131,6 +133,14 @@ type Shown<Step> = Step extends { readonly step: "comparison" }
   ? Omit<Step, "rulings"> & { readonly rulings: Rulings }
   : Step;
 
+/** The decision table's row a move was made by, as the move records it (`campaign.move`): the
+ *  row's code and its reason. Where a Builder leads its campaign, a move it made that the table did
+ *  not name carries `asked` and what the table named, and its conversation carries `led`. */
+export interface Named {
+  readonly code: string;
+  readonly why: string;
+}
+
 /** A step of the campaign, as `campaignOf` hands it over, with when it ran. */
 export type Move = Shown<Handover> & {
   /** The place of its start in the log: what names a move, in the route and to `/api/move`. Its id
@@ -138,6 +148,9 @@ export type Move = Shown<Handover> & {
    *  (`tools/d2/round.ts`). */
   readonly index: number;
   readonly startedAt: string;
+  /** The table's row the move was made by; null where no move of the campaign's command records
+   *  one: a step run by hand, or a campaign from before a move kept its code. */
+  readonly named: Named | null;
   /** Its end, or a comparison's first report; null while open or where it was cut. */
   readonly endedAt: string | null;
 };
@@ -196,7 +209,7 @@ export interface ComparisonBar {
   /** Each side's valid answers over its counted solves on the tallied tasks (the handover's `valid`
    *  read as a share). Null before it reports. */
   readonly valid: { readonly old: Share; readonly fresh: Share } | null;
-  /** The reference against itself beside the test (`--noise`), where the comparison asked for it. */
+  /** The reference against itself beside the test, where the comparison solved four a side. */
   readonly noise: {
     readonly tally: Tally;
     readonly p: number;
@@ -207,6 +220,16 @@ export interface ComparisonBar {
   readonly rulings: Rulings;
   /** The host's one-minute load when it began (`campaign.move`), null where not recorded. */
   readonly load: number | null;
+  /** The two sets the comparison's start fixed, as its report tallied them: the frontier, where the
+   *  step is read, with its p; and the retained tasks, where a step may not lose more than it
+   *  wins, `unmeasured` where none was tallied, which is never no loss. Null where no report holds
+   *  them: a comparison with no report yet, or one from before the sets were read apart. */
+  readonly sets: {
+    readonly frontier: { readonly tally: Tally; readonly p: number };
+    readonly retained: Tally | "unmeasured";
+  } | null;
+  /** The table's row the comparison was made by (`Move.named`). */
+  readonly named: Named | null;
   /** The handover's three: cut before a report, and its solves begun and ended. */
   readonly cut: boolean;
   readonly begun: number;
@@ -304,6 +327,10 @@ export interface CampaignReading extends Answer {
   /** Whether the freeze and a promotion wait for the operator's word (`Opening.attended`,
    *  `--attended`). The table names such a move all the same, and the campaign command waits. */
   readonly attended: boolean;
+  /** Whether the campaign's Builder leads it (`Opening.led`, `--builder-led`): past the exam's
+   *  set-up one Builder conversation makes the moves, and the table's next move is its advice.
+   *  False where the host makes every move the table names. */
+  readonly led: boolean;
   /** The three bars a promotion is read against, as the opening sets them or by default
    *  (`barsOf`, `src/builder/climb.ts`): read and printed, gating nothing. */
   readonly bars: Worth["bars"];
@@ -491,6 +518,10 @@ export interface TaskRow {
    *  by the reference in every solve of two comparisons (`poolOf`). */
   readonly awaitingLabel: boolean;
   readonly exhausted: boolean;
+  /** Whether it is one of the spent tasks the draw keeps (`poolOf`, retained): a comparison scores
+   *  it in its retained set, where a step may not lose more than it wins. A task is exhausted or
+   *  retained, never both. */
+  readonly retained: boolean;
   readonly proposedAt: string | null;
 }
 

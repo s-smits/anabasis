@@ -26,6 +26,7 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
+import { supplyOf } from "#src/builder/admission.ts";
 import { decide } from "#src/builder/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
@@ -35,12 +36,14 @@ import { comparisonsTold } from "#src/builder/past.ts";
 import type { BuildRequest } from "#src/builder/session.ts";
 import { type Bench, snapshot } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/builder/word.ts";
-import { append, read } from "#src/kernel/log.ts";
-import { billedFor, latestBuilt } from "#src/kernel/reports.ts";
+import { examine } from "#src/examiner/session.ts";
+import { append, type LogEvent, read } from "#src/kernel/log.ts";
+import { latestBuilt } from "#src/kernel/reports.ts";
+import { sizeLines } from "#src/kernel/size.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -60,7 +63,6 @@ import {
   packOf,
   SCRIPTED,
   type Seats,
-  STARTED,
   sharedOf,
   startOf,
   type Turn,
@@ -96,10 +98,10 @@ export interface CampaignContext {
   /** The moves this run of the command may make (`--moves`), and those it has made. */
   readonly maxMoves: number;
   used: number;
-  /** Whether a comparison that began cannot go on within what is left of the total. */
-  budgetEnding: boolean;
   /** The action that threw after it began, with what it threw: the environment's ending. */
   failed: { readonly move: string; readonly why: string } | null;
+  /** The Examiner session writing beside the conversation, which settles and never throws. */
+  examining?: { readonly session: string; readonly done: Promise<void> } | null;
 }
 
 /** The code a move carries where the Builder made another than the table named. */
@@ -151,15 +153,6 @@ function actionTurn(context: CampaignContext) {
   return { turn, decided: decide(turn.events, turn.plan) };
 }
 
-/** Whether a comparison that began can go on within what is left of the campaign's total: it
- *  goes on under the cap it began with, less what it has billed. */
-function resumeFits(turn: Turn, decided: Decided): boolean {
-  if (decided.move !== "compare" || decided.id === undefined || turn.plan.left == null) return true;
-  const start = turn.events.find(({ kind, data }) => kind === STARTED && data.session === decided.id)?.data;
-  const cap = asRecord(start?.cap)?.dollars;
-  return !isNumber(cap) || cap - billedFor(turn.events, decided.id) <= turn.plan.left.dollars;
-}
-
 /** The tool that makes the table's move: a release for practice is `release_practice`, and a
  *  lack of room is advice to ask the Examiner while the conversation lives. */
 function toolOf(decided: Decided): string {
@@ -169,10 +162,11 @@ function toolOf(decided: Decided): string {
 
 /**
  * One campaign tool. Before anything runs: the run's moves, the host's stop, an ending the table
- * names (a lack of room excepted, which is advice here), the operator's word for other tasks, and
- * a comparison that cannot go on within the total. `run` is handed `begin`, which writes the move's
- * event (`campaign.move`): the table's code and reason where the Builder made the move it named,
- * and `asked` with what the table named otherwise.
+ * names (a lack of room excepted, which is advice here), and the operator's word for other tasks.
+ * A comparison that began goes on under its own cap whatever is left of the total, as the table
+ * has it (`unafforded`, `src/builder/decide.ts`): the budget's ending is the table's, read above.
+ * `run` is handed `begin`, which writes the move's event (`campaign.move`): the table's code and
+ * reason where the Builder made the move it named, and `asked` with what the table named otherwise.
  */
 function actionTool(
   context: CampaignContext,
@@ -190,10 +184,11 @@ function actionTool(
     name: move,
     label,
     description: {
-      examine: "Ask a separate Examiner to write tasks under the fixed exam. Returns counts only.",
+      examine:
+        "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say what it has held out.",
       release_practice: "Release the host's draw of public practice tasks into this workspace.",
       compare:
-        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one read a step, this is its repeat, of the harness as it was frozen then.",
+        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one read a step, this is its repeat, of the harness as it was frozen then, on the tasks held, those the step did not score first.",
       promote:
         "Make the harness that read a step and its repeat the campaign's reference. Nothing else is promoted, and this measures nothing.",
     }[move],
@@ -208,6 +203,13 @@ function actionTool(
         return halt("The campaign move limit has been reached; the host will stop this conversation.");
       }
       if (signal?.aborted === true) return text("The campaign has been stopped by the host.");
+      // An Examiner session writes beside the conversation, and any other action waits for it, on
+      // the host's time: two actions never spend from the total at once.
+      const writing = context.examining;
+      if (writing != null) {
+        if (move === "examine") return text(`Examiner session ${writing.session} is still writing.`);
+        await bench.within(() => writing.done);
+      }
       const { turn, decided } = actionTurn(context);
       if (decided.move === "end" && decided.ending !== "no-room") {
         return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
@@ -215,12 +217,6 @@ function actionTool(
       // A word is the operator's and reaches no seat: the Builder is told what the campaign waits for.
       if (move !== "examine" && pendingWords(turn.events).some(({ word }) => word === "tasks")) {
         return text("Other tasks are to be written before another action: examine does that.");
-      }
-      if (move === "compare" && !resumeFits(turn, decided)) {
-        context.budgetEnding = true;
-        return halt(
-          "The unfinished comparison cannot fit the remaining campaign budget; the campaign will end on budget.",
-        );
       }
       const named = toolOf(decided) === move;
       // Where the log stood as the move began: an action that threw with nothing written after its
@@ -237,8 +233,7 @@ function actionTool(
         });
       };
       const sleep = context.seats.host?.sleep;
-      // The conversation's wall is read where the action ends, and cuts nothing that began, a wait
-      // for the provider included.
+      // The conversation's wall stops while the action runs, a wait for the provider included.
       return await bench.within(async () => {
         try {
           const outcome = await run(turn, decided, begin, signal);
@@ -248,13 +243,16 @@ function actionTool(
           await waitOut(context.log, crashedRun(read(context.log)).crash, sleep);
           return text(outcome.said);
         } catch (error) {
-          if (begun === null || read(context.log).length <= begun) {
-            return text(`The host refused the ${label} action; choose another action.`);
-          }
+          // Asked before the throw is read as a refusal, as the host's loop asks it: a limit that
+          // ended a session before its first event is no refusal, and asked for again at once the
+          // action would meet the same limit.
           if (await waitOut(context.log, errorMessage(error), sleep)) {
             return text(
               `The provider's limit ended the ${label} action, and the host has waited it out: call ${move} again.`,
             );
+          }
+          if (begun === null || read(context.log).length <= begun) {
+            return text(`The host refused the ${label} action; choose another action.`);
           }
           context.failed = { move: move === RELEASE ? "prepare" : move, why: errorMessage(error) };
           bench.halt.abort();
@@ -284,7 +282,10 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
         decided.move === "examine" && decided.answers ? [...decided.answers] : undefined,
       ),
     });
-    await examineCommand(
+    // The action returns once the session is on record: a throw before that is the action's.
+    const { promise: onRecord, resolve } = Promise.withResolvers<void>();
+    const sitting = seats.examine ?? examine;
+    const work = examineCommand(
       [
         ...packOf(values),
         "--session",
@@ -300,17 +301,26 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
         ...flag("minutes", values["exam-minutes"]),
         ...flag("turns", values["exam-turns"]),
       ],
-      seats.examine,
-      undefined,
+      (request, wall) => sitting({ ...request, opened: resolve }, wall),
+      seats.examine === undefined ? solved : null,
       signal,
-    );
-    await refreshCampaign(context, bench);
-    const events = read(context.log);
-    const held = taskSets(events).held.length;
-    const ending = events.findLast(({ kind, data }) => kind === "exam.finished" && data.session === session)
-      ?.data.ended;
+    ).then(() => refreshCampaign(context, bench));
+    await Promise.race([work, onRecord]);
+    // The session writes beside the conversation: a limit it met is waited out, and a throw after
+    // it began is the environment's ending, as an action's is (`actionTool`).
+    const done = work
+      .then(() => waitOut(context.log, crashedRun(read(context.log)).crash, context.seats.host?.sleep))
+      .catch(async (error: unknown) => {
+        if (await waitOut(context.log, errorMessage(error), context.seats.host?.sleep)) return;
+        context.failed = { move: "examine", why: errorMessage(error) };
+        bench.halt.abort();
+      })
+      .then(() => {
+        context.examining = null;
+      });
+    context.examining = { session, done };
     return {
-      said: `The Examiner session ${EXAMINED.get(isString(ending) ? ending : "") ?? "ended at its limits"}. It held out ${plural(held - taskSets(turn.events).held.length, "task")}, and the campaign holds ${plural(held, "held-out task")}.`,
+      said: `Examiner session ${session} is writing beside this conversation: edit and practise meanwhile. Any other campaign action waits for it to end, and campaign_status says what it held out.`,
     };
   });
 
@@ -352,9 +362,25 @@ async function comparedOf(
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
   const latest = latestBuilt(events);
   if (decided.move === "compare" && decided.id !== undefined) return { move: decided, note: "" };
-  if (decided.move === "compare" && decided.repeats !== undefined && latest !== null) {
+  // A repeat the table would write tasks for first runs on the tasks held where the Builder asks.
+  if (
+    (decided.move === "compare" || decided.move === "examine") &&
+    decided.repeats !== undefined &&
+    latest !== null
+  ) {
+    const { repeats } = decided;
     return {
-      move: { ...decided, fresh: latest },
+      move:
+        decided.move === "compare"
+          ? { ...decided, fresh: latest }
+          : {
+              move: "compare",
+              code: ASKED,
+              fresh: latest,
+              reference: "promoted",
+              repeats,
+              why: "the Builder asked for the repeat",
+            },
       note: `This comparison repeated harness ${short(latest)} as comparison ${decided.repeats} froze it: changes made to harness/ since are not in it.`,
     };
   }
@@ -410,11 +436,16 @@ const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
       args: args.slice(packOf(context.values).length),
     });
     await checkpointCommand(args, context.held, signal);
-    const step = campaignOf(read(context.log)).steps.findLast(
+    const events = read(context.log);
+    const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,
     );
     const tally = comparisonsTold(step === undefined ? [] : [step])[0] ?? "The comparison has no tally yet.";
-    return { said: named.note === "" ? tally : `${tally}\n${named.note}` };
+    const scored = events.findLast(
+      ({ kind, data }) => kind === "comparison.reported" && data.session === session,
+    )?.data.versions;
+    const size = Array.isArray(scored) ? [sizeLine(turn, scored.length)] : [];
+    return { said: [tally, ...size, ...(named.note === "" ? [] : [named.note])].join("\n") };
   });
 
 const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
@@ -450,10 +481,43 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
     return { said: `Harness ${short(candidate)} is now the campaign's reference.` };
   });
 
-/** What the action the table names would do, as the status says it under the suggestion. */
-function namedLine(decided: Decided, latest: string | null): string {
+/** What a comparison of `scored` tasks can read, as the operator reads it before one (`sizeLines`):
+ *  until 13 October the Builder was not told, and a led Builder bought one of six scored tasks,
+ *  whose step and repeat together clear at 6-0 at the least. */
+function sizeLine({ events, plan }: Turn, scored = Math.min(plan.wanted.target, supplyOf(events).held)) {
+  return `Comparison size: ${sizeLines(scored, { ...plan.wanted, patience: plan.patience })[0] ?? ""}.`;
+}
+
+/** The last Examiner session of this conversation: writing, or how it ended and what it held out. */
+function examinedLines(events: readonly LogEvent[], writing: string | undefined): string[] {
+  const since = events.findLastIndex(({ kind }) => kind === "build.started");
+  const begun = events.findLast(
+    ({ kind, data }, at) => at > since && kind === MOVED && data.move === "examine" && isString(data.session),
+  )?.data.session;
+  if (!isString(begun)) return [];
+  const ended = events.findLast(({ kind, data }) => kind === "exam.finished" && data.session === begun)?.data;
+  if (begun === writing || ended === undefined) {
+    return [
+      `Examiner session ${begun} is writing beside this conversation; any other campaign action waits for it.`,
+    ];
+  }
+  const said = EXAMINED.get(isString(ended.ended) ? ended.ended : "") ?? "ended at its limits";
+  return [
+    `Examiner session ${begun} ${said}, and held out ${plural(Array.isArray(ended.held) ? ended.held.length : 0, "task")}.`,
+  ];
+}
+
+/** What the action the table names would do, as the status says it under the suggestion: for a
+ *  comparison or more tasks, what a comparison of the tasks held can read. */
+function namedLine(decided: Decided, latest: string | null, size: string): string {
   if (decided.move === "build") return "Edit and practise the harness.";
   if (decided.move === "promote") return `promote makes harness ${short(decided.harness)} the reference.`;
+  if (decided.move === "examine") {
+    // The tasks a repeat waits on are advice: compare runs it on the tasks held (`comparedOf`).
+    return decided.repeats === undefined || latest === null
+      ? size
+      : `${size}\ncompare repeats harness ${short(latest)} as comparison ${decided.repeats} froze it now, on the tasks held.`;
+  }
   if (decided.move !== "compare") return `Choose the ${toolOf(decided)} action.`;
   if (decided.id !== undefined) {
     return `compare goes on with comparison ${decided.id}, which began and has not reported.`;
@@ -463,7 +527,7 @@ function namedLine(decided: Decided, latest: string | null): string {
   }
   return decided.fresh === "starter"
     ? "While harness/ is the reference harness, compare reads the starter against it on the tasks held out since."
-    : "Choose the compare action.";
+    : size;
 }
 
 /**
@@ -485,6 +549,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
   // the scorable, exhausted and waiting counts follow which tasks were answered (rule 3).
   const sets = taskSets(turn.events);
   const tallies = comparisonsTold(campaignOf(turn.events).steps);
+  const writing = context.examining?.session;
   return [
     `Campaign facts: ${plural(sets.held.length, "held-out task")}, ${plural(sets.released.length, "practice task")}.`,
     ...(turn.plan.left == null
@@ -496,10 +561,15 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
     tallies.length === 0
       ? "No comparison has a tally yet."
       : `${plural(tallies.length, "comparison")} with a tally; the last:\n${tallies.at(-1) ?? ""}`,
-    `Suggested action: ${toolOf(decided)}.`,
-    noRoom
-      ? "Ask the Examiner for more tasks if the current supply is not useful."
-      : namedLine(decided, latestBuilt(turn.events)),
+    ...examinedLines(turn.events, writing),
+    ...(writing === undefined
+      ? [
+          `Suggested action: ${toolOf(decided)}.`,
+          noRoom
+            ? "Ask the Examiner for more tasks if the current supply is not useful."
+            : namedLine(decided, latestBuilt(turn.events), sizeLine(turn)),
+        ]
+      : []),
   ].join("\n");
 }
 

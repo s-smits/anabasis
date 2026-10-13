@@ -35,7 +35,7 @@ import type { LogEvent } from "../kernel/log.ts";
 import { lastReports } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
-import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { median } from "../meta/tally.ts";
 import type { Ruling } from "../review/referee.ts";
 import { type Worth, worthOf } from "./climb.ts";
@@ -179,7 +179,6 @@ export interface Fixed {
   readonly level: number;
   /** The level a first reading clears to buy the repeat (`triggered`, `compare.ts`). */
   readonly trigger: number;
-  readonly noise: boolean;
   readonly tasks: readonly string[];
   /** The scored tasks fixed at the start as retained, from the exhausted third the draw keeps
    *  (`scoredSet`, `round.ts`); the others are the frontier. */
@@ -379,7 +378,6 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const open = new Set(
     rejections(events, fixed, labels).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
   );
-  // Beside the reference read against itself the test takes its first half mirrored in time.
   const sides = {
     old: fixed.old,
     fresh: fixed.fresh,
@@ -387,32 +385,19 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     comparison: fixed.id,
     objective: fixed.objective,
   };
-  const first = pairsOf(
-    events,
-    live,
-    { ...sides, halves: fixed.noise ? "mirrored" : undefined },
-    fixed.solves,
-  );
+  const first = pairsOf(events, live, sides, fixed.solves);
   const kept = (pairs: readonly Paired[]) => pairs.filter(({ task }) => !open.has(task));
   const pairs = kept(first.pairs);
   const aside = live.filter((task) => open.has(task));
   const sets = setsOf(all, fixed, pairs, aside);
   const { frontier } = sets;
-  /** The reference against itself on halves of its own solves (`Sides`, `halves`): of twice the
-   *  solves a side where `--noise` asked for them, and of the test's own otherwise. */
+  /** The reference against itself on halves of the test's own solves (`Sides`, `halves`). */
   const itself = (halves: "mirrored" | "in-order") =>
-    kept(
-      pairsOf(
-        events,
-        live,
-        { ...sides, fresh: fixed.old, halves },
-        fixed.noise ? fixed.solves : fixed.solves / 2,
-      ).pairs,
-    );
-  // The A/A (12 October, the plan's section 4b): where `--noise` solved the reference twice as
-  // often for it, or its own solves of a task are four or more and even, which halves mirrored in
-  // time split two against two at least. At four a side every comparison carries one.
-  const mirrored = fixed.noise || (fixed.solves >= 4 && fixed.solves % 2 === 0) ? itself("mirrored") : null;
+    kept(pairsOf(events, live, { ...sides, fresh: fixed.old, halves }, fixed.solves / 2).pairs);
+  // The A/A (12 October, the plan's section 4b): where the reference's solves of a task are four
+  // or more and even, which halves mirrored in time split two against two at least. At four a
+  // side every comparison carries one.
+  const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself("mirrored") : null;
   const valid = validOf(pairs, fixed.solves);
   // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
   const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
@@ -582,7 +567,7 @@ export function startOf(events: readonly LogEvent[], id: string): JsonObject | u
 /** What comparison `id` fixed at its start, read back from the log; null where it never began. */
 export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
   const start = startOf(events, id) ?? {};
-  const { old, fresh, starter, setting, solves, level, trigger, noise, tasks, retained } = start;
+  const { old, fresh, starter, setting, solves, level, trigger, tasks, retained } = start;
   return isString(old) &&
     isString(fresh) &&
     isString(starter) &&
@@ -599,7 +584,6 @@ export function fixedIn(events: readonly LogEvent[], id: string): Fixed | null {
         solves,
         level,
         trigger,
-        noise: isBoolean(noise) && noise,
         tasks: Array.isArray(tasks) ? tasks.filter(isString) : [],
         retained: Array.isArray(retained) ? retained.filter(isString) : [],
         objective: objectiveRuleIn(start),

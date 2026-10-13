@@ -5,12 +5,13 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
-  fauxAssistantMessage,
   type FauxResponseStep,
+  fauxAssistantMessage,
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { SAID, systemPrompt } from "../src/builder/prompt.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
 import {
   type Bench,
@@ -1485,4 +1486,24 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
       expect(linked).toContain(join("..", name));
     }
   }, 120_000);
+});
+
+describe("the texts a Builder reads, by who makes its campaign's moves", () => {
+  it("tells a Builder that leads its campaign nowhere that finishing has its harness measured", () => {
+    const { host, builder } = SAID;
+    const texts = (said: typeof host) => [
+      said.frozen,
+      said.finish,
+      said.broken.unpractised,
+      said.broken.practised,
+      said.untried,
+    ];
+    // Under the host a session's end is a measurement, and every one of these says so.
+    for (const each of texts(host)) expect(each).toMatch(/\bmeasured\b/);
+    // Led by the Builder, only `compare` measures: finishing freezes, and no text says more.
+    for (const each of texts(builder)) expect(each).not.toMatch(/\bmeasured\b/);
+    expect(systemPrompt(builder)).toContain(builder.closing);
+    expect(systemPrompt(host)).toContain(host.closing);
+    expect(systemPrompt(host)).not.toContain("compare");
+  });
 });

@@ -171,7 +171,13 @@ export interface BuildRequest {
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
   /** Campaign tools and advice, supplied by the host. The Builder remains the only build-side agent. */
-  readonly campaign?: (bench: Bench) => { readonly tools: AgentTool[]; readonly hook: () => string };
+  readonly campaign?: (bench: Bench) => {
+    readonly tools: AgentTool[];
+    readonly hook: () => string;
+    /** Settles once no action of the campaign's runs: an Examiner session writing beside the
+     *  conversation ends on record before the conversation does, however the conversation ended. */
+    readonly closing?: () => Promise<void>;
+  };
 }
 
 export interface Built {
@@ -424,6 +430,7 @@ export async function session(
     clearTimeout(timer);
     done.abort();
   }
+  await campaign?.closing?.();
   const cut = wall.signal.aborted || bench.halt.signal.aborted || request.kill?.aborted === true;
   crash ??= bench.fatal?.message ?? (cut ? null : failedTurn(turns));
   // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still

@@ -9,6 +9,12 @@ import { join } from "../../src/meta/path.ts";
 export const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const TOOL_USE = { stopReason: "toolUse" } as const;
 
+/** One call of a scripted model: a tool and its arguments, or what makes them when the model is
+ *  asked, which may wait on the test. */
+export type Step =
+  | readonly [string, JsonObject]
+  | { readonly wait: () => Promise<readonly [string, JsonObject]> };
+
 /** A fixture task: its answer is six times its base. */
 export interface FixtureTask {
   readonly taskId: string;
@@ -37,14 +43,21 @@ export const gradedOf = (tasks: readonly FixtureTask[]) =>
 /** A model that makes `calls` in order, a turn each, and then says it holds no further call as
  *  often as `asked`: a faux provider asked past its responses waits, and a solve whose submit the
  *  harness blocked is asked again until its turns end. */
-export function scriptedModel(calls: readonly (readonly [string, JsonObject])[], asked = 0) {
+export function scriptedModel(calls: readonly Step[], asked = 0) {
   const faux = fauxProvider({
     models: [
       { id: "script", contextWindow: 200_000, cost: { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } },
     ],
   });
   faux.setResponses([
-    ...calls.map(([name, args]) => fauxAssistantMessage(fauxToolCall(name, args), TOOL_USE)),
+    ...calls.map((call) =>
+      "wait" in call
+        ? async () => {
+            const [name, args] = await call.wait();
+            return fauxAssistantMessage(fauxToolCall(name, args), TOOL_USE);
+          }
+        : fauxAssistantMessage(fauxToolCall(call[0], call[1]), TOOL_USE),
+    ),
     ...Array.from({ length: asked }, () => fauxAssistantMessage("The script holds no further call.")),
   ]);
   const models = createModels();

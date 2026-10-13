@@ -107,7 +107,7 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, type Cap, capHolds, lastReports, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
-import { taskSets, taskStates } from "../kernel/task.ts";
+import { LADDER, taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
@@ -184,6 +184,13 @@ interface Terms {
    *  from its log keeps the one it began with: begun on another, or on none, it is refused with
    *  one, as it is on any other term that moved. */
   readonly prediction?: string | undefined;
+  /** Whether the tasks are the ladder's (`src/kernel/task.ts`): the reading after a promotion of
+   *  the starter and the reference on tasks neither harness's Builder saw, which no reader of the
+   *  table, the stop or the climb's steps counts (`lastReports`). */
+  readonly ladder?: boolean | undefined;
+  /** The ladder a reading reads, by its first reading's id (`laddersOf`); none where the reading
+   *  fixes a new ladder. Recorded at its start. */
+  readonly frozen?: string | undefined;
   /** The Referee, when the caller has a reader for it. */
   readonly referee?:
     | ((solve: string, version: string, kill: AbortSignal) => Promise<RefereeFinding>)
@@ -225,6 +232,8 @@ const SILENT = 3;
 /** The share of a scored set kept for the epochs before the newest: one task in four. */
 const OLDER_SHARE = 4;
 const TASK_STATE = "task.state";
+/** The states a comparison's finding may dispute a task from. */
+const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released", LADDER]);
 /** What a start holds that is no term a continuation may move: its id, and the sets it goes on with. */
 const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]);
 
@@ -358,7 +367,11 @@ function counts(value: number, least: number): boolean {
 /** Refuse, before a session or a solve is spent, tasks that could not be scored. A comparison gone
  *  on from its log is not asked again: its tasks were fixed at its start, and a person may have
  *  released or refused one since, which then leaves it (`withdrawn`). */
-function refuseUnscorable({ tasks, retained }: Terms, log: string, practised: ReadonlySet<string>): void {
+function refuseUnscorable(
+  { tasks, retained, ladder }: Terms,
+  log: string,
+  practised: ReadonlySet<string>,
+): void {
   if (tasks.length === 0) {
     throw new Error(
       "no task to score: a comparison is asked for with at least one held-out task that waits for no label (tools/d2/prepare.ts)",
@@ -380,13 +393,15 @@ function refuseUnscorable({ tasks, retained }: Terms, log: string, practised: Re
       `task ${waiting} waits for a person's label, and is not scored until it has one: tools/d2/prepare.ts --keep or --infeasible`,
     );
   }
-  const { states, held } = taskSets(events);
+  const sets = taskSets(events);
+  // The ladder's tasks are scored on the ladder alone, and only they are (`LADDER`).
+  const [open, set] = ladder === true ? [sets.ladder, "ladder"] : [sets.held, "held-out"];
   // A task this comparison disputed in an earlier run of it is where that run left it.
-  const unfit = tasks.find((version) => !held.includes(version) && states.get(version) !== "disputed");
+  const unfit = tasks.find((version) => !open.includes(version) && sets.states.get(version) !== "disputed");
   if (unfit !== undefined) {
-    const state = states.get(unfit);
+    const state = sets.states.get(unfit);
     const why = state === undefined ? "not proposed" : state === "held" ? "short of its gate" : state;
-    throw new Error(`task ${unfit} is ${why}, and only a held-out task is scored`);
+    throw new Error(`task ${unfit} is ${why}, and only a ${set} task is scored`);
   }
 }
 
@@ -433,7 +448,7 @@ export function refuseTerms(
  */
 function dispute(log: string, id: string, version: string, found: { solve: string; reason: string }) {
   const state = taskStates(read(log)).get(version);
-  if (state !== "held" && state !== "released") return false;
+  if (state === undefined || !DISPUTABLE.has(state)) return false;
   append(log, TASK_STATE, { version, state: "disputed", session: id, ...found });
   return true;
 }
@@ -466,8 +481,10 @@ function unanswered(log: string, id: string, { solve, ending }: Practised): stri
  *  would keep it aside for good: one Referee call cut by the provider's session limit cost a step
  *  that way on 12 October. */
 function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
-  const held = new Set(taskSets(events).held);
-  return rejections(events, fixed, NO_LABELS).filter(({ task, ruling }) => ruling === null && held.has(task));
+  const apart = new Set(taskSets(events).apart);
+  return rejections(events, fixed, NO_LABELS).filter(
+    ({ task, ruling }) => ruling === null && apart.has(task),
+  );
 }
 
 /**
@@ -543,7 +560,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
       for (let job = jobs.shift(); job !== undefined && going(); job = jobs.shift()) {
         const events = read(log);
         // A task this comparison disputed, or a person released or refused since, is solved no more.
-        if (!taskSets(events).held.includes(job.task)) continue;
+        if (!taskSets(events).apart.includes(job.task)) continue;
         if (cap !== undefined && billedFor(events, id) + (running + 1) * cap.reserve > cap.dollars) {
           // The job is left for a lane that can afford it. With solves in flight the reserve held
           // for each may come back in part, so this lane steps aside; with none in flight nothing
@@ -613,6 +630,8 @@ function begin(request: CheckpointRequest): Fixed {
     trigger: request.trigger,
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
+    ...keyIfDefined("ladder", request.ladder === true ? true : undefined),
+    ...keyIfDefined("frozen", request.frozen),
     ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
   };
   const was = startOf(read(log), id);
@@ -638,7 +657,7 @@ function begin(request: CheckpointRequest): Fixed {
 
 /** Write a comparison's report under its id, with the terms it was made on, and return it. */
 function write(
-  request: Pick<CheckpointRequest, "log" | "id" | "tasks" | "solves" | "level" | "setting">,
+  request: Pick<CheckpointRequest, "log" | "id" | "tasks" | "solves" | "level" | "setting" | "ladder">,
   told: Report,
   beside: { readonly broken: string | null; readonly reviewFaults: readonly string[] },
 ): Report {
@@ -651,6 +670,7 @@ function write(
     setting: request.setting,
     broken: beside.broken,
     reviewFaults: [...beside.reviewFaults],
+    ...keyIfDefined("ladder", request.ladder === true ? true : undefined),
     // A report is strings, numbers and lists and records of them.
     ...asRecord(told),
   });

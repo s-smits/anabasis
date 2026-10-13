@@ -54,13 +54,15 @@ interface Compared {
 type Reported = Compared & { readonly report: JsonObject; readonly reported: number };
 
 /** Every comparison of a log that began, in the order they began; one whose start is on record
- *  twice stands where it last began. */
+ *  twice stands where it last began. The ladder's readings are no comparison of the table's
+ *  (`ladderOwed`, `decide.ts`). */
 export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
   const begun = new Map<string, Compared>();
   for (const [at, { kind, data }] of events.entries()) {
     const { session, old, fresh } = data;
     if (kind !== "comparison.started" || !isString(session) || !isString(old) || !isString(fresh)) continue;
+    if (data.ladder === true) continue;
     const last = reports.get(session);
     begun.set(session, {
       id: session,

@@ -135,6 +135,12 @@ export interface Cap {
   readonly reserve: number;
 }
 
+/** A ladder: the tasks its first reading fixed, by that reading's id. */
+export interface Ladder {
+  readonly id: string;
+  readonly tasks: readonly string[];
+}
+
 /**
  * The campaign's patience, where its opening names none: the moves in a row that could have shown
  * a gain and showed none before the stop rule ends it, and move 7's bound on Examiner sessions in
@@ -153,6 +159,7 @@ const STEP = "step";
 /** How a Builder session ends when it was cut and left half a session's work. */
 const CUT: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
 const REPORTED = "comparison.reported";
+const STARTED = "comparison.started";
 const BUILD_FINISHED = "build.finished";
 /** Each kind of start whose turns and compactions are billed where no end is on record, with the
  *  field that names the session or the solve in all four events: a Builder's session, an
@@ -179,15 +186,41 @@ export function capHolds({ dollars, reserve }: Cap): boolean {
   return [dollars, reserve].every((amount) => Number.isFinite(amount) && amount > 0);
 }
 
-/** Each comparison's last report in a log, in the order the comparisons first reported. */
-export function lastReports(events: readonly LogEvent[]): Reported[] {
+/**
+ * Each comparison's last report in a log, in the order the comparisons first reported: the ones
+ * on the ladder where `ladder` is true, and the others otherwise. A ladder's reading after a
+ * promotion is no step, no control and no supply: the table, the stop, the pool and the climb's
+ * steps read the others alone, and the climb's curve reads the ladder's (`src/kernel/task.ts`).
+ */
+export function lastReports(events: readonly LogEvent[], ladder = false): Reported[] {
   const found = new Map<string, Reported>();
   for (const [index, { kind, data }] of events.entries()) {
-    if (kind !== REPORTED || !isString(data.session)) continue;
+    if (kind !== REPORTED || !isString(data.session) || (data.ladder === true) !== ladder) continue;
     // A map keeps the place of a key's first entry, which is the comparison's first report.
     found.set(data.session, { session: data.session, index: found.get(data.session)?.index ?? index, data });
   }
   return [...found.values()];
+}
+
+/**
+ * The campaign's ladders, in the order each was first read. A ladder's set is fixed by its first
+ * reading (`comparison.started` with `ladder` and no `frozen`), and each later reading of it names
+ * it (`frozen`), so every reading of one ladder is on one set and its curve compares like with
+ * like. A task held for the ladder after that waits for the next ladder's first reading
+ * (`unladdered`): the Examiner may go on writing, and no reading of an earlier ladder moves.
+ */
+export function laddersOf(events: readonly LogEvent[]): Ladder[] {
+  return events.flatMap(({ kind, data }) =>
+    kind === STARTED && data.ladder === true && data.frozen === undefined && isString(data.session)
+      ? [{ id: data.session, tasks: Array.isArray(data.tasks) ? data.tasks.filter(isString) : [] }]
+      : [],
+  );
+}
+
+/** The tasks held for the ladder that no ladder holds yet: what the next first reading fixes. */
+export function unladdered(events: readonly LogEvent[]): string[] {
+  const fixed = new Set(laddersOf(events).flatMap(({ tasks }) => tasks));
+  return taskSets(events).ladder.filter((version) => !fixed.has(version));
 }
 
 /**
@@ -352,9 +385,7 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
   if (data.scored === null || !isString(old) || !isString(fresh) || !isString(setting) || !isNumber(solves)) {
     return [];
   }
-  const begun = events.find(
-    ({ kind, data: start }) => kind === "comparison.started" && start.session === session,
-  );
+  const begun = events.find(({ kind, data: start }) => kind === STARTED && start.session === session);
   const halves = begun?.data.noise === true ? ("mirrored" as const) : undefined;
   const sides = { old, fresh, setting, comparison: session, objective: objectiveRuleIn(data), halves };
   return pairsOf(events.slice(0, index + 1), versions, sides, solves).pairs;

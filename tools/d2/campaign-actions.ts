@@ -153,6 +153,47 @@ function actionTurn(context: CampaignContext) {
   return { turn, decided: decide(turn.events, turn.plan) };
 }
 
+/**
+ * The ladders' readings the table owes after a promotion, made by the host where they are owed and
+ * said to no Builder (`ladderOwed`, `decide.ts`): after `promote`, and before any action, one ladder
+ * after another. Each move is on record as every move is, and counts as one. A provider's limit is waited out and the
+ * reading goes on; anything else it threw stops the campaign, as an action's failure does.
+ */
+async function readLadder(context: CampaignContext, bench: Bench): Promise<void> {
+  // A reading that ended without its report is not begun again here: the table owes it still.
+  let ended: string | undefined;
+  for (;;) {
+    const { turn, decided } = actionTurn(context);
+    if (
+      decided.move !== "compare" ||
+      decided.ladder !== true ||
+      (ended !== undefined && decided.id === ended)
+    ) {
+      return;
+    }
+    const { session, args } = comparisonOf(decided, turn);
+    context.used += 1;
+    append(context.log, MOVED, {
+      move: "compare",
+      code: decided.code,
+      why: decided.why,
+      ...startOf("compare", context.seats),
+      session,
+      args: args.slice(packOf(context.values).length),
+    });
+    try {
+      await checkpointCommand(args, context.held);
+      ended = session;
+    } catch (error) {
+      if (!(await waitOut(context.log, errorMessage(error), context.seats.host?.sleep))) {
+        context.failed = { move: "compare", why: errorMessage(error) };
+        bench.halt.abort();
+        return;
+      }
+    }
+  }
+}
+
 /** The tool that makes the table's move: a release for practice is `release_practice`, and a
  *  lack of room is advice to ask the Examiner while the conversation lives. */
 function toolOf(decided: Decided): string {
@@ -210,6 +251,8 @@ function actionTool(
         if (move === "examine") return text(`Examiner session ${writing.session} is still writing.`);
         await bench.within(() => writing.done);
       }
+      await bench.within(() => readLadder(context, bench));
+      if (context.failed !== null) return text("The campaign has been stopped by the host.");
       const { turn, decided } = actionTurn(context);
       if (decided.move === "end" && decided.ending !== "no-room") {
         return halt(`The campaign is at its ${decided.ending} gate; no action may start.`);
@@ -483,6 +526,7 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
     }
     begin({ ...began, harness: candidate });
     await refreshCampaign(context, bench);
+    await readLadder(context, bench);
     return { said: `Harness ${short(candidate)} is now the campaign's reference.` };
   });
 
@@ -503,6 +547,7 @@ function examinedLines(events: readonly LogEvent[], writing: string | undefined)
   const ended = events.findLast(({ kind, data }) => kind === "exam.finished" && data.session === begun)?.data;
   if (begun === writing || ended === undefined) {
     const started = events.findIndex(({ kind, data }) => kind === "exam.started" && data.session === begun);
+    // Held out, and never the ladder's: the Builder hears nothing of the ladder (rule 4).
     const held = started === -1 ? 0 : heldAfter(events, started);
     return [
       `Examiner session ${begun} is writing beside this conversation and has held out ${plural(held, "task")} so far; any other campaign action waits for it.`,

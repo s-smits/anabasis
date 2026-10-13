@@ -21,8 +21,9 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { readsStepEitherWay, readTwice, triggered } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { billedParts, poolOf, roomOf } from "../kernel/reports.ts";
+import { billedParts, laddersOf, poolOf, roomOf, unladdered } from "../kernel/reports.ts";
 import { practiceRan } from "../kernel/solves.ts";
+import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
@@ -47,6 +48,8 @@ const ROWS: readonly { readonly code: string; readonly move: (ground: Ground) =>
   { code: "exam", move: exam },
   // A bound is spent: the total, the provider, the patience, the control, a comparison cut short.
   { code: "bound", move: bound },
+  // A promotion owes the ladder its reading, which the host makes and no Builder is told of.
+  { code: "ladder", move: ladderOwed },
   // The tasks are not set up: taken in, released, written on the operator's word, or written up
   // to a comparison's and its practice's before the first session is paid for.
   { code: "tasks", move: tasks },
@@ -549,25 +552,69 @@ function unread(ground: Ground): Move | null {
 }
 
 /**
- * A reading a promotion owes (the overhaul plan's P3, as ruled on 12 October). The first harness
- * promoted over the empty Starter is set-up, epoch 0, and the climb counts from it (`epochLine`).
- * A promoted harness that installed programs has them read alone against it (`programs-of`): what
- * its guide and tools add to them, and at epoch 0 what the first win was. After each later
- * promotion the Starter is read against the new reference once, the lower control and never the
- * reference (`starter_share`). A reading and never a gate. Null where none is owed.
+ * The ladders' readings a promotion owes (`laddersOf`, `src/kernel/reports.ts`): the starter
+ * against the new reference on fresh solves, once on each ladder that still holds a task, and then
+ * once on the tasks held for the ladder since the last one was fixed, which that reading fixes as
+ * the next ladder. One that began since goes on. A ladder is the climb's yardstick: tasks no
+ * Builder saw and no promotion was decided on, read on one set after every promotion (`ladderOf`,
+ * `climb.ts`). Neither a gate nor a step: no row reads it (`lastReports`), and the Builder is told
+ * nothing of it.
+ */
+function ladderOwed({ events, reference, starter }: Ground): Move | null {
+  const at = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  if (at === -1 || reference === null || reference === starter) return null;
+  const since = events.flatMap(({ kind, data }, index) =>
+    index > at && kind === "comparison.started" && data.ladder === true && isString(data.session)
+      ? [{ session: data.session, frozen: isString(data.frozen) ? data.frozen : undefined }]
+      : [],
+  );
+  const read = (why: string, frozen?: string, id?: string): Move => ({
+    move: "compare",
+    fresh: "starter",
+    reference: "promoted",
+    why,
+    ladder: true,
+    ...keyIfDefined("frozen", frozen),
+    ...keyIfDefined("id", id),
+  });
+  const open = since.find(
+    ({ session }) =>
+      !events.some(({ kind, data }) => kind === "comparison.reported" && data.session === session),
+  );
+  if (open !== undefined) {
+    return read(`the ladder's reading ${open.session} began and has not reported`, open.frozen, open.session);
+  }
+  const promoted = `harness ${short(reference)} was promoted`;
+  const standing = new Set(taskSets(events).ladder);
+  const owed = laddersOf(events).find(
+    ({ id, tasks: fixed }) =>
+      fixed.some((version) => standing.has(version)) &&
+      !since.some(({ session, frozen }) => (frozen ?? session) === id),
+  );
+  if (owed !== undefined) {
+    return read(`${promoted}: the starter is read against it on ladder ${owed.id}`, owed.id);
+  }
+  const fresh = unladdered(events).length;
+  return fresh === 0 || since.some(({ frozen }) => frozen === undefined)
+    ? null
+    : read(
+        `${promoted}: the starter is read against it on ${plural(fresh, "ladder task")} no ladder holds yet, which this reading fixes as a ladder`,
+      );
+}
+
+/**
+ * A reading a promotion owes where the campaign holds no ladder (the overhaul plan's P3, as ruled
+ * on 12 October). The first harness promoted over the empty Starter is set-up, epoch 0, and the
+ * climb counts from it (`epochLine`). After each later promotion the Starter is read against the
+ * new reference once on the held-out tasks, the lower control and never the reference
+ * (`starter_share`). A reading and never a gate. Null where none is owed.
  */
 function owedReading({ events, all, reference, starter }: Ground): Move | null {
   const at = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  if (at === -1 || reference === null || reference === starter) return null;
-  const since = all.filter((each) => each.at > at);
-  if (events[at]?.data.programs === true && !since.some(({ fresh }) => fresh === reference)) {
-    return {
-      move: "compare",
-      fresh: "promoted",
-      reference: "programs-of:promoted",
-      why: `harness ${short(reference)} was promoted with programs it installed: they are read alone against it, for what its guide and tools add to them`,
-    };
+  if (at === -1 || reference === null || reference === starter || taskSets(events).ladder.length > 0) {
+    return null;
   }
+  const since = all.filter((each) => each.at > at);
   const later = events.slice(0, at).some(({ kind }) => kind === "harness.promoted");
   return later && !since.some(({ fresh, old }) => fresh === starter && old === reference)
     ? compare(

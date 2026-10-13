@@ -814,7 +814,9 @@ and promotes nothing, and the step and its repeat read together clear the level 
 since 12 October: 6 to 0, 8 to 1, 10 to 2, 12 to 3; at 0.10, 4 to 0, 6 to 1, 7 to 2, 9 to 3), the
 repeat having untied a task and won at least as many pairs as it lost, neither stage losing on
 its retained tasks, and their untied tasks not all in one family of two
-or more (`readTwice`). Every reading prints its untied count, the least share of them it detects
+or more (`readTwice`). A task both stages scored counts once, its differences summed: the null is
+the fixed-task one, each drawn task as likely won as lost on fresh solves, and a repeat on the same
+tasks adds solves to them and no task (14 October; buffer-149's g-2 scored g-1's eleven). Every reading prints its untied count, the least share of them it detects
 four times in five (`detectable`), and the chance an attempt at its margins promotes equal
 harnesses (`falseRate`). A reading under the trigger counts for the
 stop rule as a move that showed a gain. Both terms are recorded in the campaign's opening, so a

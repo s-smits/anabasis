@@ -375,6 +375,7 @@ describe("a round", () => {
           tasks: HELD,
           aside: [],
           differences: [4, 4, 4, 4],
+          of: HELD,
           detectable: 0.95,
           falseRate: 5 / 256,
         },

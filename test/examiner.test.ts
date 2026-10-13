@@ -443,6 +443,21 @@ describe("a session that writes tasks", () => {
     expect(second.held).toEqual([again.versionOf("x-2-001", 8)]);
   });
 
+  it("takes again an instance a cut session proposed and never gated", async () => {
+    const cut = seat("write", [propose(7), finish, finish]);
+    // A session cut while its task was measured: the proposal is on record, and no gate is.
+    append(cut.log, "task.proposed", {
+      version: cut.versionOf("x-1-001", 7),
+      taskId: "x-1-001",
+      session: "x-1",
+      task: { taskId: "x-1-001", family: "fixture", publicInput: { base: 7 }, hidden: { seed: 1 } },
+    });
+    // Until 13 October the next session was told an earlier one wrote it, and it was never gated.
+    const next = await examine({ ...cut.request, id: "x-2" });
+    expect(next.held).toEqual([cut.versionOf("x-2-001", 7)]);
+    expect(cut.sent.join("\n")).not.toContain("An instance an earlier session wrote");
+  });
+
   it("ends when the host has its tasks, and declines a first finish once while it has not", async () => {
     const both = fauxAssistantMessage(
       [

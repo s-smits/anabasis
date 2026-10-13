@@ -80,7 +80,7 @@ import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from 
 import { mountDiskCap } from "../verify/disk-cap.ts";
 import { campaignOf } from "./handover.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
-import { comparisonsTold, failsTold, shortDigest } from "./past.ts";
+import { comparisonsTold, failsTold, startTold } from "./past.ts";
 import {
   continuation,
   firstMessage,
@@ -344,7 +344,7 @@ export async function session(
         solve: request.solve,
       },
       {
-        start: shortDigest(parent.digest),
+        start: startTold(campaign, parent.digest, request.id),
         fails: failsTold(
           campaign.fails,
           new Map(bench.tasks.map(({ version, task }) => [version, task.taskId])),

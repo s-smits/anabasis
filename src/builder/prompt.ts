@@ -69,7 +69,8 @@ interface Listed {
 
 /** What a session is told of the sessions before it (`memory.ts`). */
 export interface Past {
-  /** The harness the session starts from, as the lists below name a harness. */
+  /** The harness the session starts from, as the lists below name a harness, where it came from
+   *  and how the last session ended, as a sentence (`startTold`, `past.ts`). */
   readonly start: string;
   /** Every failed practice solve of the campaign on this session's tasks, a line each. */
   readonly fails: readonly string[];
@@ -284,7 +285,7 @@ export function firstMessage(contract: Contract, tasks: readonly Listed[], told:
     `The solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     "The public resources every solve's home holds under public/resources/ are in resources.json.",
     `Practice tasks, each one's public part in practice/<task>.json:\n${listed.join("\n") || "(none)"}`,
-    `You start from harness ${past.start}.${
+    `${past.start}${
       past.fails.length === 0
         ? " No practice solve of these tasks has failed in this campaign so far."
         : ` Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\n${past.fails.join("\n")}`

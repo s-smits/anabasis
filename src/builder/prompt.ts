@@ -54,6 +54,7 @@
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
+import type { Limits } from "../kernel/condition.ts";
 import type { NetworkReach } from "../solve/command.ts";
 import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
 
@@ -78,17 +79,26 @@ export interface Past {
   readonly memory: string;
 }
 
-/** The limits a session is told it runs under. */
+/** Who solves with a harness: the model as a condition names it, and its effort. */
+export interface Solver {
+  readonly model: string;
+  readonly effort: string;
+}
+
+/** The limits a session is told it runs under, and the solver and limits each of its harness's
+ *  solves is held to. */
 export interface Told {
   readonly wallSeconds: number;
   readonly turns: number;
   readonly practiceSolves: number;
+  readonly solver: Solver;
+  readonly solve: Pick<Limits, "wallSeconds" | "modelTurns">;
 }
 
 /** What a session's work is measured by: said in the system prompt, and again in every
  *  continuation, so that the goal is one sentence with one owner. */
 const GOAL =
-  "Your harness is measured against a reference harness, by that solver and under the same limits, on tasks you are never shown.";
+  "Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.";
 
 /** The texts a Builder reads that differ by who makes its campaign's moves. */
 export interface Said {
@@ -282,6 +292,11 @@ export function firstMessage(contract: Contract, tasks: readonly Listed[], told:
     ...(past.comparisons.length === 0
       ? []
       : [`Comparisons so far, on tasks you are not shown:\n${past.comparisons.join("\n")}`]),
+    // Who solves with the harness and what each solve is held to. Until 13 October a Builder was
+    // told neither: the solver as "a separate solving model", and a solve's limits only as the "of"
+    // in a practice result, while one campaign of that day ran a smaller solver under a Builder of
+    // the larger, and a guide written for one reads differently to the other.
+    `The solver your harness is measured with is ${told.solver.model} at ${told.solver.effort} effort. Each of its solves, in practice and in a comparison, has ${plural(Math.round(told.solve.wallSeconds / 60), "minute")} and ${told.solve.modelTurns === undefined ? "its model turns unlimited" : plural(told.solve.modelTurns, "model turn")}.`,
     HANDOVER,
     `This session has ${plural(told.practiceSolves, "practice solve")}, ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
   ].join("\n\n");

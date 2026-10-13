@@ -81,7 +81,15 @@ import { mountDiskCap } from "../verify/disk-cap.ts";
 import { campaignOf } from "./handover.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
 import { comparisonsTold, failsTold, shortDigest } from "./past.ts";
-import { continuation, firstMessage, SAID, systemPrompt, type Used, usedLine } from "./prompt.ts";
+import {
+  continuation,
+  firstMessage,
+  SAID,
+  type Solver,
+  systemPrompt,
+  type Used,
+  usedLine,
+} from "./prompt.ts";
 import {
   type Bench,
   endingWith,
@@ -145,6 +153,10 @@ export interface BuildRequest {
   /** What a practice solve is held to, which `preview_harness` shows a solver being told. The
    *  session's own wall, turns and command limits are `limits`. */
   readonly solve: Limits;
+  /** Who solves with the harness, in practice and in every comparison: the campaign's setting, as a
+   *  condition names the model. The opening tells it, since a guide that serves one solver well can
+   *  leave another short (`firstMessage`). */
+  readonly solver: Solver;
   /** The backends, built on the home the Builder's model process keeps its state in. */
   readonly models: (home: string) => Models;
   readonly log: string;
@@ -325,7 +337,12 @@ export async function session(
         ...record(recorded, version, parent.digest),
       })),
       // The count it opens with is the one `practice` holds it to: its own, or its cap's where fewer.
-      { ...limits, practiceSolves: practiceLeft(bench, recorded) },
+      {
+        ...limits,
+        practiceSolves: practiceLeft(bench, recorded),
+        solver: request.solver,
+        solve: request.solve,
+      },
       {
         start: shortDigest(parent.digest),
         fails: failsTold(

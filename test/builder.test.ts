@@ -198,6 +198,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     model: faux.getModel(),
     effort: "medium",
     limits: LIMITS,
+    solver: { model: "faux/faux-solver", effort: "medium" },
     solve: { ...LIMITS, wallSeconds: 480 },
     models: () => models,
     log: log,
@@ -451,6 +452,10 @@ describe("a Builder session", () => {
     );
     expect(s.sent[0]).toContain("t-2 (family fixture): not yet solved under the harness you start from.");
     expect(s.sent[0]).toContain("3 practice solves, 10 minutes and 12 turns");
+    // Who solves, and what each solve is held to, which the session's own limits are not.
+    expect(s.sent[0]).toContain(
+      "The solver your harness is measured with is faux/faux-solver at medium effort. Each of its solves, in practice and in a comparison, has 8 minutes and its model turns unlimited.",
+    );
     // What the log holds of the campaign so far: the fail on record, and no notes yet.
     expect(s.sent[0]).toContain(
       `You start from harness ${s.digest.slice(0, 8)}. Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\\n- s-1, t-1, harness ${s.digest.slice(0, 8)}: fail (rejected); open.`,
@@ -1060,7 +1065,7 @@ describe("a Builder session", () => {
       role: "user",
       content: [
         `${GOES_ON}, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is frozen and measured.`,
-        "The goal, unchanged: Your harness is measured against a reference harness, by that solver and under the same limits, on tasks you are never shown.",
+        "The goal, unchanged: Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.",
         "This session so far: 3 of 12 turns and 0 of 10 minutes used, 2 practice solves left. harness/ is as your last practice solve ran it.",
         "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
       ].join("\n\n"),

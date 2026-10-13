@@ -12,6 +12,12 @@
  * practised on. Or its package is refused at the gate, and it never was one. Each task version's
  * state is a view over the log.
  *
+ * A draft the reference harness answered in none of its gate's solves, with an answer of its
+ * author's that passes on it, is held for the ladder instead (`gated`, `src/examiner/write.ts`):
+ * its gate's outcome is `ladder` and it is in the ladder state from then on, a fixed set the
+ * starter and each promoted reference solve after a promotion (`owedReading`), never scored for a
+ * promotion and never released for practice.
+ *
  * The shape is the only gate (`docs/plan.md`, Phase 2, and `docs/v1.md` for what v1 measured):
  *
  * - No stronger solver proves a task possible. v1's solver matched whatever its author's side
@@ -59,7 +65,7 @@ export interface TaskPackage extends Task {
   readonly checks: string;
 }
 
-/** The gate passes or refuses. */
+/** The gate passes or refuses. A draft's gate may also hold it for the ladder (`LADDER`). */
 type Passed = { readonly outcome: "passed" };
 type Refused = { readonly outcome: "refused"; readonly reason: string };
 
@@ -77,9 +83,13 @@ interface TaskSets {
   readonly held: readonly string[];
   /** The practice tasks. */
   readonly released: readonly string[];
+  /** The ladder: tasks held apart from every promotion and every Builder. */
+  readonly ladder: readonly string[];
 }
 
-const TASK_STATES = ["held", "refused", "released", "disputed"] as const;
+/** The gate's outcome, and the state, of a task held for the ladder. */
+export const LADDER = "ladder";
+const TASK_STATES = ["held", "refused", "released", "disputed", LADDER] as const;
 
 type TaskState = (typeof TASK_STATES)[number];
 
@@ -90,8 +100,9 @@ type TaskState = (typeof TASK_STATES)[number];
  * refusal.
  */
 const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
-  held: ["refused", "released", "disputed"],
+  held: ["refused", "released", "disputed", LADDER],
   released: ["disputed"],
+  ladder: ["disputed"],
   refused: [],
   disputed: [],
 };
@@ -208,6 +219,7 @@ export function taskSets(events: readonly LogEvent[]): TaskSets {
     states: new Map([...tasks].map(([version, task]) => [version, task.state])),
     held: inState("held"),
     released: inState("released"),
+    ladder: inState(LADDER),
   };
 }
 
@@ -230,7 +242,7 @@ function step(tasks: Map<string, Folded>, { at, kind, data }: LogEvent): void {
 function gate(task: Folded, data: JsonObject): string | null {
   if (data.gate !== GATE) return null;
   if (task.gated) return "logs its gate twice";
-  task.gated = data.outcome === "passed";
+  task.gated = data.outcome === "passed" || data.outcome === LADDER;
   return null;
 }
 

@@ -35,7 +35,7 @@ import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
+import { LADDER, packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
@@ -114,7 +114,7 @@ const GATES = {
   },
   try_task: {
     label: "Try tasks",
-    description: `Put task instances to the host's gate, one at a time. The gate reads the shape of each package, and then the reference harness solves the task ${String(TRIED)} times under the budget; it is held out only where some of those solves gave a valid answer and not all. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out with how many solves were valid, or refused with the gate's reason; no solve's answer or trace is returned. A task that is held out is in the exam from then on, and those solves are never scored.`,
+    description: `Put task instances to the host's gate, one at a time. The gate reads the shape of each package, and then the reference harness solves the task ${String(TRIED)} times under the budget; it is held out only where some of those solves gave a valid answer and not all. Where none did and an answer of yours passed try_answer on it, it is held for the ladder, a fixed set apart from the exam. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out with how many solves were valid, or refused with the gate's reason; no solve's answer or trace is returned. A task that is held out is in the exam from then on, and those solves are never scored.`,
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */
@@ -124,6 +124,9 @@ const HIDDEN = Type.Unknown({ description: "What only the checks receive; null w
 const PLANTED =
   "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
+/** What the Examiner is told of a task held for the ladder: the outcome, and nothing of a solve. */
+const LADDERED =
+  "held for the ladder. This task will never be scored for promotion or released for practice.";
 /** What a first `finish` is answered with while the host has not the tasks it needs: every live
  *  Examiner session of 9 and 10 October proposed one batch of one to three tasks in three turns
  *  and finished, of two hundred turns and twelve tasks it had, so a campaign paid a session's
@@ -197,13 +200,17 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
     reason: solves < TRIED ? unmeasured : some ? null : roomless,
     said: `; ${counted}`,
     reference: { valid, solves, billed: billedFor(read(log), id) - before },
+    unsolved: solves === TRIED && valid === 0,
   };
 }
 
 /** The gate for one instance the Examiner proposed, and the line it is told (`measured`). Its gate
  *  says whether it came with a proof: an answer of its author's that passed the checks on its
- *  content before it was proposed (`proved`, read by `heldShare`). A task held out with one is put
- *  to the checks again under its own id, and is on record as feasible only where it passes there. */
+ *  content before it was proposed (`proved`, read by `heldShare`). The proof is put to the checks
+ *  again under the task's own id, and the task is on record as feasible only where it passes there.
+ *  A task the reference harness answered in none of its solves is held for the ladder where it
+ *  passes so (`LADDER`, `task.ts`): a witness says a valid answer exists, which three failed solves
+ *  do not say either way. Without one it is refused, as is a task the solves left unmeasured. */
 async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
@@ -212,8 +219,16 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   const { taskId, family, publicInput, hidden } = instance;
   append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
   const answer = desk.answered.get(contentOf(instance));
-  const { reason, said, reference } = await measured(desk, task, stop);
-  const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
+  const { reason, said, reference, unsolved } = await measured(desk, task, stop);
+  const proof = async () =>
+    verify === null || answer === undefined
+      ? null
+      : await Promise.try(() => verify(instance, answer)).catch(
+          (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
+        );
+  const ladder = reason !== null && unsolved === true && (await proof())?.kind === "pass";
+  const outcome =
+    reason === null ? { outcome: "passed" } : ladder ? { outcome: LADDER } : { outcome: "refused", reason };
   append(log, "task.gate", {
     version,
     gate: 1,
@@ -221,16 +236,19 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
     ...keyIfDefined("reference", reference),
     proved: answer !== undefined,
   });
+  if (ladder) {
+    append(log, "task.feasible", { version, session });
+    append(log, "task.state", { version, state: LADDER, session });
+    return `${taskId}: ${LADDERED}`;
+  }
   if (reason !== null) {
     append(log, "task.state", { version, state: "refused", session });
     desk.refused.push(version);
     return `${taskId}: refused: ${reason}`;
   }
   desk.held.push(version);
-  if (verify === null || answer === undefined) return `${taskId}: held out${said}.`;
-  const verdict = await Promise.try(() => verify(instance, answer)).catch(
-    (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
-  );
+  const verdict = await proof();
+  if (verdict === null) return `${taskId}: held out${said}.`;
   if (verdict.kind !== "pass") {
     return `${taskId}: held out${said}. Author proof was not retained under this task id: ${tried(verdict)}`;
   }

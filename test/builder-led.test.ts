@@ -4,6 +4,7 @@
 // The paid run keeps a Receipt beside its log; these tests use scripted seats and inspect the log.
 
 import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:test";
+import { crashedRun } from "../src/builder/ground.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
@@ -1023,6 +1024,42 @@ describe("a campaign's endings", () => {
       ending: "environment",
     });
     expect(of(editing, FINISHED)).toHaveLength(3);
+  });
+
+  it("ends on the environment, on record, where three Examiner sessions crash while the Builder lives", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-halted`;
+    // A release waits for the Examiner writing beside it, so each examine starts a session.
+    const release: Step = ["release_practice", {}];
+    const seats: Seats = {
+      seated: builderScript(
+        scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+        [
+          ["examine", {}],
+          release,
+          ["examine", {}],
+          release,
+          ["examine", {}],
+          release,
+          ["finish", { note: "Not reached: the host halts this conversation." }],
+        ],
+      ),
+      // A script with no call is a turn the provider fails: each session is on record as crashed.
+      examine: (request) => examine({ ...request, ...scripted([]) }),
+    };
+    expect(await harnessBuilder([...seeded(name), "--target", "8", "--practice", "3"], seats)).toMatchObject({
+      move: "end",
+      ending: "environment",
+    });
+    // Until 14 October the halted Builder read as a whole session, the crash count went back to
+    // nought, and the command returned with no ending on record.
+    expect(of(name, "exam.finished").map(({ ended }) => ended)).toEqual(["crashed", "crashed", "crashed"]);
+    expect(of(name, FINISHED).map(({ ended }) => ended)).toEqual(["stopped"]);
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment" }]);
+    // Three in a row stand up to the ending, which starts the count again for a run by its name.
+    const events = read(join(REPO, ".ana", "d2", name, LOG_FILE));
+    const end = events.findIndex(({ kind }) => kind === "campaign.ended");
+    expect(crashedRun(events.slice(0, end)).count).toBe(3);
   });
 
   it("goes on with a new conversation when run again after the Builder finished", async () => {

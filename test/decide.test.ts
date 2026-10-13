@@ -281,6 +281,11 @@ describe("a row of the table", () => {
     expect(
       decide([READ, ...whole, edited("b-1"), kept, edited("b-2"), edited("b-3")], PLAN),
     ).not.toMatchObject({ ending: "environment" });
+    // A Builder the host stopped as the third crash ended the campaign says nothing of the
+    // provider: until 14 October it read as whole, the count went back to nought, and the command
+    // exited with no ending on record.
+    const halted = event("build.finished", { session: "b-2", ended: "stopped", changed: false });
+    expect(decide([...dead, halted], PLAN)).toMatchObject({ move: "end", ending: "environment" });
     // Run again after that ending, the count starts afresh.
     const ended = event("campaign.ended", { ending: "environment", why: "3 sessions in a row crashed" });
     expect(move([...dead, ended])).toMatchObject({ move: "examine" });

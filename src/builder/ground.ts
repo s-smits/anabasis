@@ -89,9 +89,14 @@ export function crashedRun(events: readonly LogEvent[]) {
   const since = events.findLastIndex(
     ({ kind, data }) => kind === "campaign.ended" || (kind === "campaign.waited" && data.for === "provider"),
   );
+  // A session the host stopped says nothing of the provider, and is passed over: until 14 October
+  // a Builder halted as a third crash ended the campaign read as whole, the count went back to
+  // nought, and the command exited with no ending on record.
   const sessions = events
     .slice(since + 1)
-    .filter(({ kind }) => kind === "exam.finished" || kind === "build.finished")
+    .filter(
+      ({ kind, data }) => (kind === "exam.finished" || kind === "build.finished") && data.ended !== "stopped",
+    )
     .toReversed();
   // A session moved the campaign whatever its ending where an Examiner's held a task out: one that
   // did and then lost a turn to the provider is `crashed` with its tasks held (`exam.finished.held`

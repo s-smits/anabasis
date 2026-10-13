@@ -457,10 +457,11 @@ async function lead(context: CampaignContext, named: Decided): Promise<Decided |
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
-  // An environment's ending is on record already, and hands nothing over.
-  const whole = left.move === "end" && left.ending !== "environment";
-  if (whole) ended(log, read(log), left);
-  if (whole && values.handover !== undefined) {
+  // Every ending goes on record once (`ended`). Until 14 October an environment's was taken to be
+  // there already, and the crash rule's, read after the host halted a live Builder, never was.
+  if (left.move === "end") ended(log, read(log), left);
+  // An environment's ending hands nothing over.
+  if (left.move === "end" && left.ending !== "environment" && values.handover !== undefined) {
     await closeCommand([...packOf(values), "--to", values.handover]);
   }
   return left;

@@ -454,6 +454,9 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
   // What the last Examiner session that finished said at its `finish`, where one did.
   const note = before.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data
     .note;
+  // The last session, where the provider failed its turn with no command running: its home is kept.
+  const cut = before.findLast(({ kind }) => kind === "exam.finished")?.data;
+  const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;
   return {
     kind: "exam" as const,
     system: systemPrompt(attempts),
@@ -478,7 +481,9 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
     home:
       keep === undefined
         ? undefined
-        : "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first",
+        : kept === null
+          ? "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first"
+          : `holds what Examiner session ${kept} of this campaign left in it when the provider failed one of its turns, before it finished`,
     checked: undefined,
     nudge: "Propose further tasks",
     finish:
@@ -493,12 +498,14 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
     },
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every
-    // wall closes. No link is followed, as the Builder's carry follows none. Not a crashed
-    // session's, which is as its last command left it: until 12 October it replaced the kept home
-    // all the same, and on buffer the next session opened in the working files of one whose turn
-    // the provider failed mid-script, under an earlier session's note.
-    leave: (home: string, ended: string) => {
-      if (keep === undefined || ended === "crashed") return;
+    // wall closes. No link is followed, as the Builder's carry follows none. Not a session that
+    // crashed with a command running, whose home is as no command left it. Until 12 October every
+    // crashed session's home replaced the kept one, and on buffer the next session opened in the
+    // working files of one whose turn the provider failed, under an earlier session's note; from
+    // then until 14 October none did, and a crashed Examiner's work was lost to the provider. A
+    // crash in a model request is now kept, and the next session is told whose home it is (`home`).
+    leave: (home: string, ended: string, running: number) => {
+      if (keep === undefined || (ended === "crashed" && running > 0)) return;
       rmSync(keep, { recursive: true, force: true });
       if (existsSync(home)) cpSync(home, keep, { recursive: true });
     },

@@ -37,6 +37,7 @@ import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { billedAll } from "../kernel/reports.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
@@ -125,7 +126,8 @@ interface Mode {
   readonly result: () => Omit<Examined, "ended">;
   /** What is laid in the shell's home before the session, and what is kept of it after. */
   readonly enter: ((home: string) => void) | undefined;
-  readonly leave: ((home: string, ended: Examined["ended"]) => void) | undefined;
+  /** `running` is how many of its commands were running as the session ended. */
+  readonly leave: ((home: string, ended: Examined["ended"], running: number) => void) | undefined;
 }
 
 /** What one kind of session that puts a whole thing is told and puts (`putting`). */
@@ -307,6 +309,10 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   // Claude Code keeps its session here, the checks and hidden values it wrote or read included.
   const state = hostScratch("claude-cli-examiner-");
   let crash: string | null = null;
+  // The commands running as the session ends: a crash in a model request leaves the home as its
+  // last command left it, and one in a command does not (`leave`).
+  let running = 0;
+  const trace = traceSink(log, kind, id, () => turns.length);
   try {
     const models = request.models(state);
     const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
@@ -327,7 +333,11 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
           over() ? [] : [user(`You have not called finish. ${mode.nudge}, or call finish.`)],
         prepareRequest: withinBudget(log, spent, loopCompaction(log, kind, id, stream, summaries)),
       },
-      traceSink(log, kind, id, () => turns.length),
+      (event) => {
+        if (event.type === "tool_execution_start") running += 1;
+        if (event.type === "tool_execution_end") running -= 1;
+        trace(event);
+      },
       signal,
       stream,
     );
@@ -358,13 +368,14 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     note: said.note,
     ...mode.counted(),
     crash,
+    ...keyIfDefined("running", ended === "crashed" ? running : undefined),
     turns: turns.length,
     tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
     reportedCost: await reportedCost(id, turns),
     seconds: (performance.now() - began) / 1000,
   });
-  if (home !== undefined) mode.leave?.(home, ended);
+  if (home !== undefined) mode.leave?.(home, ended, running);
   return { ended, ...mode.result() };
 }
 

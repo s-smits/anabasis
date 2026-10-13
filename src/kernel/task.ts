@@ -117,6 +117,13 @@ const ONCE_HELD: ReadonlySet<string> = new Set(["held", "too-hard", "admitted", 
  *  say nothing of its shape. */
 const GATE = 1;
 
+/** The tasks Examiner session `session` held for the ladder, which its `held` leaves out. */
+export function ladderedBy(events: readonly LogEvent[], session: string): number {
+  return events.filter(
+    ({ kind, data }) => kind === "task.state" && data.state === LADDER && data.session === session,
+  ).length;
+}
+
 /**
  * The gate, on a package's shape: every part is present, and every rule id is in the contract. A check
  * program none of whose checks applies to the family would pass any answer, and a check that

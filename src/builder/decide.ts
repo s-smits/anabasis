@@ -427,7 +427,7 @@ function dueOf(ground: Ground) {
 }
 
 function unfinished(ground: Ground): Move | null {
-  const { events, all } = ground;
+  const { all } = ground;
   const open = all.find(({ report }) => report === null);
   if (open !== undefined) {
     return {
@@ -439,26 +439,27 @@ function unfinished(ground: Ground): Move | null {
     };
   }
   // A reading that clears the trigger buys the repeat and promotes nothing: the two are then read
-  // together (`readTwice`), which the next row does. The repeat is a fresh draw where the campaign
-  // holds one, so one Examiner session writes up to the target first where it does not, and the
-  // repeat then runs on what is held, its first stage's tasks last.
+  // together (`readTwice`), which the next row does. The repeat is a fresh draw: the Examiner
+  // writes until the campaign holds the target of tasks the first stage did not score. Until
+  // 14 October one Examiner session was asked for and the repeat then ran on what was held, and
+  // buffer-149's g-2 scored 8 of g-1's 9 frontier tasks again. A session that holds out nothing
+  // counts towards the campaign's patience (`roomless`), so a want of tasks still ends.
   const first = dueOf(ground)?.first;
   if (first === undefined) return null;
   const missing = shortBy(ground);
-  const examined = events.some(
-    ({ kind, data }, at) => at > first.reported && kind === "exam.finished" && data.ended !== "crashed",
+  if (missing > 0) {
+    const asked = examine(
+      ground,
+      "tasks",
+      `comparison ${first.id} cleared the trigger, and the campaign is ${plural(missing, "held-out task")} short of a repeat on tasks its first stage did not score: the Examiner writes more first`,
+    );
+    return asked.move === "examine" ? { ...asked, repeats: first.id } : asked;
+  }
+  return compare(
+    `comparison ${first.id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`,
+    "latest",
+    first.id,
   );
-  return missing > 0 && !examined
-    ? {
-        move: "examine",
-        why: `comparison ${first.id} cleared the trigger, and the campaign is ${plural(missing, "held-out task")} short of a repeat on tasks its first stage did not score: the Examiner writes more first`,
-        repeats: first.id,
-      }
-    : compare(
-        `comparison ${first.id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`,
-        "latest",
-        first.id,
-      );
 }
 
 /** Whether `harness` read a step and its repeat against the reference: the two read together

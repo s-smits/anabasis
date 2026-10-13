@@ -27,7 +27,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { supplyOf } from "#src/builder/admission.ts";
-import { decide, heldAfter } from "#src/builder/decide.ts";
+import { decide, heldAfter, shortOf } from "#src/builder/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
 import { type Decided, short } from "#src/builder/move.ts";
@@ -229,7 +229,7 @@ function actionTool(
         "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say what it has held out.",
       release_practice: "Release the host's draw of public practice tasks into this workspace.",
       compare:
-        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one read a step, this is its repeat, of the harness as it was frozen then, on the tasks held, those the step did not score first.",
+        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one read a step, this is its repeat, of the harness as it was frozen then, on tasks the step did not score; it waits until the campaign holds enough of them.",
       promote:
         "Make the harness that read a step and its repeat the campaign's reference. Nothing else is promoted, and this measures nothing.",
     }[move],
@@ -405,30 +405,21 @@ const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
 async function comparedOf(
   context: CampaignContext,
   bench: Bench,
-  { events }: Turn,
+  { events, plan }: Turn,
   decided: Decided,
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
   const latest = latestBuilt(events);
   if (decided.move === "compare" && decided.id !== undefined) return { move: decided, note: "" };
-  // A repeat the table would write tasks for first runs on the tasks held where the Builder asks.
-  if (
-    (decided.move === "compare" || decided.move === "examine") &&
-    decided.repeats !== undefined &&
-    latest !== null
-  ) {
-    const { repeats } = decided;
+  // A repeat waits for the tasks its first stage did not score: until 14 October it ran on the
+  // tasks held where the Builder asked, and buffer-149's g-2 scored 8 of g-1's 9 frontier tasks.
+  if (decided.move === "examine" && decided.repeats !== undefined) {
     return {
-      move:
-        decided.move === "compare"
-          ? { ...decided, fresh: latest }
-          : {
-              move: "compare",
-              code: ASKED,
-              fresh: latest,
-              reference: "promoted",
-              repeats,
-              why: "the Builder asked for the repeat",
-            },
+      refused: `The repeat of comparison ${decided.repeats} waits for ${plural(shortOf(events, plan), "more held-out task")} its first stage did not score: call examine first.`,
+    };
+  }
+  if (decided.move === "compare" && decided.repeats !== undefined && latest !== null) {
+    return {
+      move: { ...decided, fresh: latest },
       note: `This comparison repeated harness ${short(latest)} as comparison ${decided.repeats} froze it: changes made to harness/ since are not in it.`,
     };
   }
@@ -565,10 +556,10 @@ function namedLine(decided: Decided, latest: string | null, size: string): strin
   if (decided.move === "build") return "Edit and practise the harness.";
   if (decided.move === "promote") return `promote makes harness ${short(decided.harness)} the reference.`;
   if (decided.move === "examine") {
-    // The tasks a repeat waits on are advice: compare runs it on the tasks held (`comparedOf`).
-    return decided.repeats === undefined || latest === null
+    // A repeat waits on the tasks its first stage did not score (`comparedOf`).
+    return decided.repeats === undefined
       ? size
-      : `${size}\ncompare repeats harness ${short(latest)} as comparison ${decided.repeats} froze it now, on the tasks held.`;
+      : `${size}\nThe repeat of comparison ${decided.repeats} waits for the tasks examine writes.`;
   }
   if (decided.move !== "compare") return `Choose the ${toolOf(decided)} action.`;
   if (decided.id !== undefined) {

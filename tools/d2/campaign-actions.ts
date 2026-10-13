@@ -1,6 +1,6 @@
 /**
  * The campaign's moves as a live Builder makes them: the tools its conversation is given beside
- * its own, and the advice each tool result ends with. This module is the whole of what a campaign
+ * its own, and the advice their results end with. This module is the whole of what a campaign
  * led by its Builder adds to one the host runs (`--builder-led`, `harness-builder.ts`); the flags
  * and terms both run by are `campaign-terms.ts`.
  *
@@ -9,7 +9,7 @@
  * and has it compared (`compare`), and has an eligible harness made the reference (`promote`).
  * The decision table says which move follows from the log (`decide`, `src/builder/decide.ts`), and
  * the Builder is told it as advice, with the campaign's public counts (`campaign_status`, and under
- * every tool result). It may choose another. What it cannot do is go past a condition of the
+ * each action's result). It may choose another. What it cannot do is go past a condition of the
  * host's: each action runs the command an operator would run, with that command's admission and
  * refusals, under what is left of the campaign's total, behind the operator's words, and on the
  * exam's side of the wall. A tool returns counts and tallies and nothing of a held-out task.
@@ -34,7 +34,7 @@ import { type Decided, short } from "#src/builder/move.ts";
 import { type Opening } from "#src/builder/opening.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
 import type { BuildRequest } from "#src/builder/session.ts";
-import { type Bench, snapshot } from "#src/builder/tools.ts";
+import { type Bench, endingWith, snapshot } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
@@ -531,10 +531,10 @@ function namedLine(decided: Decided, latest: string | null, size: string): strin
 }
 
 /**
- * What the Builder is told of its campaign, by `campaign_status` and under every tool result: the
- * counts of what was written and released, what is left of the total, the last tally, and the
- * action the table names. Reading it is also where the host looks at its bounds: the run's moves
- * spent, or an ending the table names, stops the conversation (`Bench.halt`).
+ * What the Builder is told of its campaign, where it can have moved (a campaign tool's result):
+ * what was written and released, what is left of the total, the last tally, and the table's
+ * action. Reading it is also where the host looks at its bounds: the run's moves spent, or an
+ * ending the table names, stops the conversation (`Bench.halt`).
  */
 function campaignStatus(context: CampaignContext, bench: Bench): string {
   const { turn, decided } = actionTurn(context);
@@ -577,10 +577,9 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
 export function campaignTools(context: CampaignContext): NonNullable<BuildRequest["campaign"]> {
   return (bench) => ({
     tools: [
-      examineTool(context, bench),
-      releaseTool(context, bench),
-      compareTool(context, bench),
-      promoteTool(context, bench),
+      ...[examineTool, releaseTool, compareTool, promoteTool].map((made) =>
+        endingWith(made(context, bench), () => campaignStatus(context, bench)),
+      ),
       tool({
         name: "campaign_status",
         label: "Campaign Status",

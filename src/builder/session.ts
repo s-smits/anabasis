@@ -349,11 +349,7 @@ export async function session(
     openingTool(campaign === undefined ? first : opening, bench.said),
     finishTool(bench),
     ...(campaign?.tools ?? []),
-  ].map((each) =>
-    endingWith(each, () =>
-      [usedLine(used(), limits), campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"),
-    ),
-  );
+  ].map((each) => endingWith(each, () => usedLine(used(), limits)));
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
   const signal = AbortSignal.any([

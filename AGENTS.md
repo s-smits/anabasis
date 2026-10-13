@@ -395,7 +395,7 @@ The host opens the exam and prepares the campaign first. Then `tools/d2/harness-
 one Builder conversation and one workspace open while its campaign tools run. An Examiner call
 runs a separate agent with its own view: it returns at once, the session writes beside the
 conversation, any other campaign action waits for it on the host's time, and the campaign's facts
-under each tool result say what it held out. A comparison returns the same
+under each campaign tool's result say what it held out. A comparison returns the same
 aggregate tally and reading the Builder already receives. A promotion names only the harness the
 existing rule allows. The model cannot choose a checker, held-out task, solve limit or reference.
 
@@ -423,7 +423,8 @@ refuses keeps that record, as a host's does, and counts against `--moves`. The c
 is a `build` move with the code `led`.
 
 `decide` (`src/builder/decide.ts`) remains the one table over the log. It supplies advice at the
-opening, after every tool result and when a turn ends without a call. The Builder may ignore an
+opening, under each campaign tool's result and when a turn ends without a call; an edit or a
+practice solve ends with the session's limits alone. The Builder may ignore an
 advised build, comparison or task-writing move. Budget exhaustion, the stop rule, an operator
 stop, a faulty exam and a failed environment still end the run in code. Every tool uses the same
 admissions and commands as a move launched by the operator. The controller's private reasons

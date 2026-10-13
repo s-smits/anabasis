@@ -818,6 +818,41 @@ describe("a campaign's endings", () => {
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }]);
   });
 
+  it("opens a new conversation where the provider failed one, and ends on the environment where they fail in a row", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-crashed`;
+    // A script with no further call is a turn the provider fails: the session is on record as
+    // crashed, and read back it is refused (`spent`).
+    const seats: Seats = {
+      seated: builderScripts(passing(), [
+        [CHANGE_GUIDE],
+        [
+          ["compare", {}],
+          ["finish", { note: "The harness the crashed conversation left was measured." }],
+        ],
+      ]),
+    };
+    // Until 13 October the refusal was the environment's ending, and the command threw.
+    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
+    expect(of(name, "build.finished").map(({ session, ended }) => [session, ended])).toEqual([
+      ["b-1", "crashed"],
+      ["b-2", "finished"],
+    ]);
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }]);
+    // None of three conversations changed a harness: the table's crash rule ends the campaign.
+    const failing = `${STEM}-crashes`;
+    const none: Seats = { seated: builderScripts(passing(), []) };
+    expect(await harnessBuilder([...seeded(failing), ...FLAGS], none)).toMatchObject({
+      move: "end",
+      ending: "environment",
+    });
+    expect(of(failing, "build.finished").map(({ ended }) => ended)).toEqual([
+      "crashed",
+      "crashed",
+      "crashed",
+    ]);
+  });
+
   it("goes on with a new conversation when run again after the Builder finished", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-again`;

@@ -82,7 +82,9 @@
  * `--handover <dir>` it then writes what it hands over there: the reference harness as a directory
  * that stands by itself, the public rules and the closing report (`close.ts`, row F51). A move that
  * threw after it had begun is the environment's ending, and run again the command goes on from the
- * log. A move refused before it began is no ending: the refusal is printed, nothing kept.
+ * log; one whose session is on record as crashed is the provider's failure, which the campaign
+ * goes on from (`goesOn`). A move refused before it began is no ending: the refusal is printed,
+ * nothing kept.
  *
  * A move is recorded as it begins (`campaign.move`), with the code of the table's row that chose it and its
  * reason, so the log holds what was decided before what was done. Each run of the command keeps a receipt beside the
@@ -156,6 +158,28 @@ const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
  *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
+
+/**
+ * Whether the campaign goes on from a move that threw, which began where the log held `from`
+ * events: a provider's limit with a reset is waited out, and so is a session on record as
+ * crashed. A Builder's session that crashed is refused where it is read back (`spent`,
+ * `src/builder/session.ts`), so its move throws, and until 13 October that throw was the
+ * environment's ending: a provider's failure on the Builder's own turn ended the campaign, and led
+ * by its Builder that turn is most of the campaign. It is the provider's failure as an Examiner's
+ * crashed session is, which the campaign goes on from and the table's crash rule bounds
+ * (`crashedRun`).
+ */
+async function goesOn(log: string, from: number, error: unknown, sleep: Seats["host"]): Promise<boolean> {
+  if (await waitOut(log, errorMessage(error), sleep?.sleep)) return true;
+  const events = read(log);
+  const crashed = events
+    .slice(from)
+    .some(
+      ({ kind, data }) => (kind === "build.finished" || kind === "exam.finished") && data.ended === "crashed",
+    );
+  if (crashed) await waitOut(log, crashedRun(events).crash, sleep?.sleep);
+  return crashed;
+}
 
 /** Make one decided move by the command an operator would run, after `begin` is given what names
  *  it in the log: a session's or a comparison's id, a harness, the checks admitted, or nothing. */
@@ -381,9 +405,9 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
       campaignTools(context),
     );
   } catch (error) {
-    // A provider's limit with a reset is waited out, and the campaign goes on; anything else a
-    // conversation threw is the environment's ending, as for every move that began.
-    if (await waitOut(log, errorMessage(error), seats.host?.sleep)) return null;
+    // A provider's limit or a crashed conversation is waited out, and the campaign goes on;
+    // anything else a conversation threw is the environment's ending, as for every move that began.
+    if (await goesOn(log, turn.events.length, error, seats.host)) return null;
     append(log, ENDED, { ending: "environment", why: errorMessage(error), move: "build" });
     throw error;
   }
@@ -545,14 +569,15 @@ export async function harnessBuilder(
     try {
       await make(decided, turn, begin);
     } catch (error) {
-      // A move the provider's limit ended is waited out and made again, and it counts against
-      // `--moves` as the move it was: it is on record as one.
-      if (await waitOut(log, errorMessage(error), seats.host?.sleep)) {
+      // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
+      // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
+      // the table's crash rule ends the campaign where sessions crash in a row.
+      if (await goesOn(log, events.length, error, seats.host)) {
         made += 1;
         continue;
       }
-      // A move that began and threw is the environment's ending, and the campaign goes on from
-      // its log when it is run again. One refused before it began leaves the log alone.
+      // Any other move that began and threw is the environment's ending, and the campaign goes on
+      // from its log when it is run again. One refused before it began leaves the log alone.
       if (read(log).length > events.length) {
         append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
       }

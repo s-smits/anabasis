@@ -22,6 +22,7 @@ import { unadmitted } from "../kernel/acceptance.ts";
 import { readsStepEitherWay, readTwice, triggered } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, laddersOf, poolOf, roomOf, unladdered } from "../kernel/reports.ts";
+import { SIZE } from "../kernel/size.ts";
 import { practiceRan } from "../kernel/solves.ts";
 import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
@@ -30,6 +31,7 @@ import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { epochsOf } from "./climb.ts";
 import { crashedRun, groundOf, type Plan } from "./ground.ts";
+import { openingOf } from "./opening.ts";
 import { type Decided, type Ending, short } from "./move.ts";
 import { pendingWords } from "./word.ts";
 
@@ -725,19 +727,26 @@ function risked({ events, reports }: Ground, named: Move): Move | null {
  * reported, nothing says what one bills, and the move is made; one that began goes on under
  * whatever is left.
  */
-function unafforded({ events, plan, reports }: Ground, named: Move): Move | null {
+function unafforded(ground: Ground, named: Move): Move | null {
+  const { events, plan, reports } = ground;
   const last = reports.findLast(({ report }) => report.capped !== true);
-  if (plan.left === null || last === undefined) return null;
+  if (plan.left === null) return null;
   const left = plan.left.dollars;
-  const was = billedParts(events, last.id).comparison;
   if (named.move === "compare" && named.id === undefined) {
-    return left >= was
+    const billed = last === undefined ? 0 : billedParts(events, last.id).comparison;
+    const was =
+      last === undefined
+        ? firstPriced(ground)
+        : { dollars: billed, said: `comparison ${last.id} billed $${billed.toFixed(2)}` };
+    return was === null || left >= was.dollars
       ? null
       : end(
           "budget",
-          `$${left.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)}: the next would bill about as much, so it would be cut before it reports`,
+          `$${left.toFixed(2)} of the campaign's budget are left, and ${was.said}: the next would bill about as much, so it would be cut before it reports`,
         );
   }
+  if (last === undefined) return null;
+  const was = billedParts(events, last.id).comparison;
   const session = events.findLast(({ kind }, at) => kind === "exam.finished" && at < last.reported)?.data;
   if (named.move !== "examine" || session === undefined) return null;
   const round =
@@ -750,6 +759,36 @@ function unafforded({ events, plan, reports }: Ground, named: Move): Move | null
         `the last Examiner session and comparison ${last.id}, which read its tasks, billed $${round.toFixed(2)}, more than half of the $${left.toFixed(2)} left: another round could not be read`,
       )
     : null;
+}
+
+/** What a first comparison would bill, priced by the reference harness's solves of draft tasks
+ *  (`try_task`): two harnesses, the tasks it would score, the solves a side. Until 14 October a
+ *  campaign with no report was held to nothing, and buffer-149's gate billed about $0.43 a solve.
+ *  Null where no draft was solved. */
+function firstPriced({ events, plan }: Ground): { dollars: number; said: string } | null {
+  const tried = events.flatMap(({ kind, data }) => {
+    const reference = asRecord(data.reference);
+    return kind === "task.gate" && isNumber(reference?.billed) && isNumber(reference.solves)
+      ? [{ billed: reference.billed, solves: reference.solves }]
+      : [];
+  });
+  const solves = tried.reduce((sum, { solves: each }) => sum + each, 0);
+  if (solves === 0) return null;
+  const each = tried.reduce((sum, { billed }) => sum + billed, 0) / solves;
+  const scored = Math.min(plan.wanted.target, taskSets(events).held.length);
+  const aside = Number(openingOf(events)?.terms.solves ?? SIZE.solves);
+  const dollars = each * 2 * scored * aside;
+  return {
+    dollars,
+    said: `the reference harness's solves of draft tasks billed $${each.toFixed(2)} a solve, so a first comparison of ${plural(scored, "task")} at ${String(aside)} solves a side would bill about $${dollars.toFixed(2)}`,
+  };
+}
+
+/** Why the table's budget hold would refuse a comparison the Builder asked for where it named
+ *  another move, or null (14 October: the holds were asked of the table's own move alone). */
+export function unaffordedAsked(events: readonly LogEvent[], plan: Plan): string | null {
+  const held = unafforded(groundOf(events, plan), compare("the Builder asked for a comparison"));
+  return held?.move === "end" ? held.why : null;
 }
 
 /**

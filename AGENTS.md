@@ -566,7 +566,8 @@ solve is held at (`--reserve`), or than the next comparison would bill by what t
 of room is advice to request other tasks while a conversation lives, and the campaign's ending
 once that conversation has ended at its limits. `finished` ends this run of the command: run again
 by its name, the campaign goes on with a new conversation, as after the operator's stop. A
-move that threw after it began ends the campaign on its environment, and so do three Builder or
+move that threw after it began ends the campaign on its environment, except one whose session is on
+record as crashed, which the campaign goes on from (`goesOn`, `tools/d2/harness-builder.ts`); so do three Builder or
 Examiner sessions in a row that the provider failed before they held out a task or changed a
 harness (`crashedRun`, `src/builder/ground.ts`): such a session held out nothing because it was
 refused a turn, not because the domain gave it none, so it is not an idle session for the

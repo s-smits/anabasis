@@ -407,7 +407,7 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
   } catch (error) {
     // A provider's limit or a crashed conversation is waited out, and the campaign goes on;
     // anything else a conversation threw is the environment's ending, as for every move that began.
-    if (await goesOn(log, turn.events.length, error, seats.host)) return null;
+    if (context.failed === null && (await goesOn(log, turn.events.length, error, seats.host))) return null;
     append(log, ENDED, { ending: "environment", why: errorMessage(error), move: "build" });
     throw error;
   }
@@ -450,6 +450,14 @@ async function lead(context: CampaignContext, named: Decided): Promise<Decided |
     await closeCommand([...packOf(values), "--to", values.handover]);
   }
   return left;
+}
+
+/** Whether a conversation that began where the log held `from` events ended other than crashed:
+ *  one the provider failed has not answered a lack of room, and the next one may. */
+function closed(log: string, from: number): boolean {
+  return read(log)
+    .slice(from)
+    .some(({ kind, data }) => kind === "build.finished" && data.ended !== "crashed");
 }
 
 /**
@@ -531,20 +539,11 @@ export async function harnessBuilder(
     if (led) {
       if (values["dry-run"] || made >= most) return decided;
       campaign ??= await openCampaign(packNamed(values));
-      const context: CampaignContext = {
-        log,
-        values,
-        opening,
-        seats,
-        held,
-        campaign,
-        paid,
-        maxMoves: most,
-        used: made,
-        failed: null,
-      };
+      const turns = { maxMoves: most, used: made, failed: null };
+      const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
       const left = await lead(context, decided);
-      [made, talked, { opening }] = [context.used, true, context];
+      const answered: boolean = talked || left !== null || closed(log, events.length);
+      [made, talked, { opening }] = [context.used, answered, context];
       if (left !== null) return left;
       continue;
     }

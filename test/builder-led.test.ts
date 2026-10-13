@@ -851,6 +851,16 @@ describe("a campaign's endings", () => {
       "crashed",
       "crashed",
     ]);
+    // Nor does a conversation that edited and then crashed leave a harness to go on from.
+    const editing = `${STEM}-edits`;
+    const edits: Seats = {
+      seated: builderScripts(passing(), [[CHANGE_GUIDE], [CHANGE_GUIDE], [CHANGE_GUIDE]]),
+    };
+    expect(await harnessBuilder([...seeded(editing), ...FLAGS], edits)).toMatchObject({
+      move: "end",
+      ending: "environment",
+    });
+    expect(of(editing, "build.finished")).toHaveLength(3);
   });
 
   it("goes on with a new conversation when run again after the Builder finished", async () => {

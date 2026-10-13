@@ -29,7 +29,7 @@
  * its minutes and turns, or when the Examiner calls `finish`, which it may at any count: on
  * 10 October every session held out two to four tasks and finished of its own accord. `--tasks` is
  * the host's and is never told to the Examiner. The campaign command names it from what the
- * campaign is short of (`examineTool`, `tools/d2/campaign-actions.ts`); run by hand it defaults to a
+ * campaign is short of (`examTasks`, `tools/d2/campaign-terms.ts`); run by hand it defaults to a
  * scored set's size, 12. Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`docs/plan.md`).
  *

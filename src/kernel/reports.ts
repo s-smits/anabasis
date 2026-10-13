@@ -672,8 +672,8 @@ function lastRead({ tallied, asideAt }: TaskRecord): TalliedIn | "aside" | null 
  * is not this one's, so a comparison gone on from its log after others ran is held to its own
  * spend. A solve of the comparison with no end on record, killed or still running, is counted by
  * what its turns and compactions have metered so far (`unfinished`); a solve still running is held
- * besides at a cap's reserve, which is what its sum may come to (`src/builder/round.ts`). A
- * A live Builder's turns are counted as they are metered, then replaced by its final sum.
+ * besides at a cap's reserve, which is what its sum may come to (`src/builder/round.ts`). A live
+ * Builder's turns are counted as they are metered, then replaced by its final sum.
  */
 export function billedFor(events: readonly LogEvent[], id: string): number {
   const { session, comparison } = billedParts(events, id);

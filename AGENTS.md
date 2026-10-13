@@ -408,11 +408,12 @@ Where the table names more than the action, the tool does what the table names
 - `promote` names the harness the rule names, which is not always the last one frozen (`twice`,
   `src/builder/decide.ts`).
 
-An action the host refuses, or that makes nothing, is counted as no move and writes no
-`campaign.move`. An Examiner session and a comparison are on record as they begin, as every move
-the host makes is, with the code of the table's row where the Builder made the move the table
-named, and `asked` with what the table named where it made another; the conversation itself is a
-`build` move with the code `led`.
+An action the host refuses before it begins, or that makes nothing, is counted as no move and
+writes no `campaign.move`. An Examiner session and a comparison are on record as they begin, as
+every move the host makes is, with the code of the table's row where the Builder made the move the
+table named, and `asked` with what the table named where it made another; one its command then
+refuses keeps that record, as a host's does, and counts against `--moves`. The conversation itself
+is a `build` move with the code `led`.
 
 `decide` (`src/builder/decide.ts`) remains the one table over the log. It supplies advice at the
 opening, after every tool result and when a turn ends without a call. The Builder may ignore an

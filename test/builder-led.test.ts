@@ -423,12 +423,10 @@ describe("a campaign run by its live Builder", () => {
         CHANGE_GUIDE,
         ["compare", {}],
         ["compare", {}],
-        ["promote", {}],
         ["examine", {}],
         CHANGE_GUIDE,
         ["compare", {}],
         ["compare", {}],
-        ["promote", {}],
         ["finish", { note: "Two harnesses are promoted and measured." }],
       ]),
       // One task the session held is moved to the ladder, as the gate holds one there.
@@ -502,8 +500,8 @@ describe("a campaign run by its live Builder", () => {
     const readings = of(name, "comparison.started").filter((started) => started.ladder === true);
     expect(readings).toMatchObject([{ session: owed?.session }, { frozen: owed?.session }]);
     expect(readings[0]?.frozen).toBeUndefined();
-    expect(of(name, CALLED).findLast(({ tool }) => tool === "promote")?.text).toStartWith(
-      `Harness ${isString(second?.fresh) ? second.fresh.slice(0, 8) : ""} is now the campaign's reference.`,
+    expect(of(name, CALLED).findLast(({ tool }) => tool === "compare")?.text).toContain(
+      `Harness ${isString(second?.fresh) ? second.fresh.slice(0, 8) : ""} read a step and its repeat against the reference, and the host has made it the campaign's reference.`,
     );
     expect(first).toMatchObject({ reading: "step", scored: { wins: 5, losses: 0, ties: 0 } });
     expect(repeat).toMatchObject({ reading: "step", old: first?.old, fresh: first?.fresh });
@@ -754,7 +752,6 @@ describe("a campaign tool where the table names more than the action", () => {
         ["compare", {}],
         CHANGE_AGAIN,
         ["compare", {}],
-        ["promote", {}],
         // harness/ holds the second change, which no practice solve ran: said once, and not refused.
         ["finish", { note: "The step was read twice." }],
         ["finish", { note: "The step was read twice." }],
@@ -771,6 +768,9 @@ describe("a campaign tool where the table names more than the action", () => {
     const [, told] = said(name, "compare");
     expect(told).toContain("repeated harness");
     expect(told).toContain("changes made to harness/ since are not in it");
+    // The host promotes as the repeat reports, and the repeat's result says so: until 14 October
+    // the promotion waited on the Builder's own call.
+    expect(told).toContain("and the host has made it the campaign's reference");
     // The status under the first tally says the same before the Builder asks, and what a
     // comparison of the tasks held can read.
     expect(said(name, "compare")[0]).toContain("Suggested action: compare.");
@@ -786,10 +786,13 @@ describe("a campaign tool where the table names more than the action", () => {
       expect(move).toMatchObject({ load: expect.any(Number), began: expect.any(String) });
       expect(move.args).toContain("--trigger");
     }
-    expect(moves.find(({ move }) => move === "promote")).toMatchObject({ harness: first?.fresh });
+    expect(moves.find(({ move }) => move === "promote")).toMatchObject({
+      harness: first?.fresh,
+      code: "twice",
+    });
   });
 
-  it("promotes the harness the rule names where a later one was frozen since", async () => {
+  it("promotes the harness the rule names as its repeat reports, before a later one is frozen", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-owed`;
     const seats: Seats = {
@@ -806,9 +809,12 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
     const [first, , later] = of(name, REPORTED);
     expect(later?.fresh).not.toBe(first?.fresh);
-    // Until 12 October the tool named the last harness frozen, which the rule refused every time.
+    // Until 12 October the tool named the last harness frozen, which the rule refused every time;
+    // since 14 October the host promotes as the repeat reports, so the later harness is read
+    // against the promoted one, and the Builder's own call finds nothing to promote.
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
-    expect(said(name, "promote")[0]).toContain("is now the campaign's reference");
+    expect(later?.old).toBe(first?.fresh);
+    expect(said(name, "promote")[0]).toContain("Nothing was promoted");
   });
 
   it("reads the starter against a promoted reference while harness/ is that reference", async () => {
@@ -819,7 +825,6 @@ describe("a campaign tool where the table names more than the action", () => {
         CHANGE_GUIDE,
         ["compare", {}],
         ["compare", {}],
-        ["promote", {}],
         ["examine", {}],
         ["compare", {}],
         ["finish", { note: "The control was read." }],

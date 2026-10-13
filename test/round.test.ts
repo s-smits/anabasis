@@ -1449,8 +1449,6 @@ describe("a checkpoint with no session", () => {
       // two of its four solves of s1 that disagree are four of its six pairs.
       noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6 },
     });
-    // Its earlier two against its later two are the drift, standing in every such comparison.
-    expect(report.noise?.drift).toEqual({ wins: 0, losses: 1, ties: 3 });
     // No solve was made for it: four a side on each of four tasks.
     expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(16);
     expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(16);

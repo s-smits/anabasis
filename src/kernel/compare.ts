@@ -134,11 +134,11 @@ interface Sides {
   readonly setting: string;
   /** The comparison's id: only a solve whose start names it is a solve of it. */
   readonly comparison: string;
-  /** Where the reference harness is read against itself, which of its solves of a task are its
-   *  first sample: `mirrored`, the first and last of each four in the order they started, or
-   *  `in-order`, the first half. Its other solves are the second sample, the other side where the
-   *  two harnesses are one: the one case in which both sides may name the same harness. */
-  readonly halves?: "mirrored" | "in-order" | undefined;
+  /** Where the reference harness is read against itself, `mirrored`: its first sample of a task
+   *  is the first and last of each four of its solves in the order they started, and its other
+   *  solves are the second, the other side where the two harnesses are one: the one case in which
+   *  both sides may name the same harness. */
+  readonly halves?: "mirrored" | undefined;
   /** The objective two valid answers are compared by, where the comparison fixed one. */
   readonly objective?: ObjectiveRule | undefined;
 }
@@ -610,11 +610,10 @@ export function pairsOf(
     const under = (harness: string) =>
       counted.filter((solve) => solve.under.task === task && solve.under.harness === harness);
     // Where the reference is read against itself, its first sample and its second (`halves`).
-    const first = (at: number, of: number) =>
-      halves === "mirrored" ? at % 4 === 0 || at % 4 === 3 : halves === undefined || at < Math.ceil(of / 2);
+    const first = (at: number) => halves === undefined || at % 4 === 0 || at % 4 === 3;
     const reference = under(old);
-    const own = reference.filter((_, at) => first(at, reference.length));
-    const other = reference.filter((_, at) => !first(at, reference.length));
+    const own = reference.filter((_, at) => first(at));
+    const other = reference.filter((_, at) => !first(at));
     const [before, after] = [own, old === fresh ? other : under(fresh)];
     if (before.length < solves || after.length < solves) {
       short.push(task);

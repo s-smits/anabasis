@@ -42,10 +42,11 @@ import { openingOf } from "#src/builder/opening.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedAll, promoted } from "#src/kernel/reports.ts";
+import { comparisonsOf } from "#src/builder/ground.ts";
+import { billedAll, billedParts, promoted } from "#src/kernel/reports.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -54,6 +55,7 @@ import { openHarness } from "#src/solve/harness.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
 import { recordedSetting } from "./setting.ts";
+import { ladderedBy } from "#src/kernel/task.ts";
 
 type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 type Compared = Extract<Handover, { step: "comparison" }>;
@@ -187,8 +189,57 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     ].join("\n"),
     "## Work and spend",
     `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a budget of $${String(budget.dollars)}`}.`,
+    economyLines(events).join("\n"),
     "",
   ].join("\n\n");
+}
+
+/**
+ * What each measured thing cost, from the log alone: the Examiner's dollars a task it held out,
+ * its own turns and its admission solves together; a comparison's a task it scored; the ladder's
+ * a point the reference gained on it between its first reading and its last; and how many of the
+ * comparisons that began reported, since one cut before its report bought nothing it can show.
+ */
+function economyLines(events: readonly LogEvent[]): string[] {
+  const per = (dollars: number, count: number, what: string) =>
+    count > 0 ? `$${(dollars / count).toFixed(2)} a ${what} (${String(count)})` : `no ${what}`;
+  const exams = events.flatMap(({ kind, data }) =>
+    kind === "exam.finished" && isString(data.session) ? [{ session: data.session, data }] : [],
+  );
+  const examined = exams.reduce(
+    (sum, { session, data }) =>
+      sum + (isNumber(data.billed) ? data.billed : 0) + billedParts(events, session).comparison,
+    0,
+  );
+  // A task held for the ladder was paid for as one held out was, and is no less written.
+  const held = exams.reduce(
+    (sum, { session, data }) =>
+      sum + (Array.isArray(data.held) ? data.held.length : 0) + ladderedBy(events, session),
+    0,
+  );
+  const all = comparisonsOf(events);
+  const reported = all.filter(({ report }) => report !== null);
+  const compared = reported.reduce((sum, { id }) => sum + billedParts(events, id).comparison, 0);
+  const scored = reported.reduce((sum, { report }) => sum + (isNumber(report?.tasks) ? report.tasks : 0), 0);
+  const curve = ladderOf(events);
+  // Each ladder's price is read on its own curve: a point is one of its fixed set, and what was
+  // billed between its first reading and its last is every rung's since the reading before.
+  const ladders = [...new Set(curve.map(({ ladder }) => ladder))].map((id) => {
+    const first = curve.findIndex(({ ladder }) => ladder === id);
+    const last = curve.findLastIndex(({ ladder }) => ladder === id);
+    const [from, to] = [curve[first]?.reference_share, curve[last]?.reference_share];
+    const climbed = curve.slice(first + 1, last + 1).reduce((sum, rung) => sum + rung.dollars, 0);
+    if (first === last || from == null || to == null) {
+      return `- Ladder ${id}: fewer than two readings, so no point is priced.`;
+    }
+    const points = Math.round(100 * (to - from));
+    return `- Ladder ${id}: ${points > 0 ? per(climbed, points, "point the reference gained") : `no point gained over $${climbed.toFixed(2)}`} between its first reading and its last.`;
+  });
+  return [
+    `- The Examiner: ${per(examined, held, "task held out or for the ladder")}.`,
+    `- Comparisons: ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
+    ...(ladders.length === 0 ? ["- The ladder: no reading, so no point is priced."] : ladders),
+  ];
 }
 
 /** A promotion a line: the comparisons that read its step, its last tally against the reference

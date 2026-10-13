@@ -152,8 +152,8 @@ function writtenSince({ events, refused }: Ground, reading: Reading): boolean {
  * does a session whose tasks no comparison has read yet,
  * since it moved the campaign, however few it wrote: on 9 October a campaign ended on three
  * sessions that had written four tasks between them. A session whose tasks a comparison has read
- * is passed over, the comparison being the reading of them, and so is one the provider failed,
- * which was given no chance to write (`crashedRun`).
+ * is passed over, the comparison being the reading of them, and so is one the provider failed or
+ * a stopped run cut, which was given no chance to write (`crashedRun`; `endCut`, `tools/d2/harness-builder.ts`).
  *
  * It is the one count that ends a campaign for want of tasks or of room (`spent`). Until
  * 12 October three counted: idle Examiner sessions in a row, which every session that held out a
@@ -170,7 +170,7 @@ function roomless({ events, reports, reference }: Ground) {
   const examined = events.flatMap(({ kind, data }, at) => {
     if (kind !== "exam.finished") return [];
     const wrote = Array.isArray(data.held) && data.held.length > 0;
-    const passed = wrote ? at < read : data.ended === "crashed";
+    const passed = wrote ? at < read : data.ended === "crashed" || data.ended === "killed";
     return passed ? [] : [{ at, id: null, gain: wrote }];
   });
   const readings = [...compared, ...examined].toSorted((one, other) => one.at - other.at);

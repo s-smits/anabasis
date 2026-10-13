@@ -35,12 +35,18 @@ import type { LogEvent } from "./log.ts";
 import { passed, practiceRan, ranUnder, solvesIn } from "./solves.ts";
 import { taskSets } from "./task.ts";
 
-/** A session or a solve that began and has no end on record: the comparison its start names (a
- *  solve's), and the dollars its turns and compactions metered (`unfinished`). */
+/** A session or a solve that began and has no end on record: what kind of start and its id, the
+ *  comparison its start names (a solve's), the dollars its turns and compactions metered, its turns,
+ *  and when it began and wrote its last event (`unfinished`). */
 interface Unfinished {
+  readonly of: (typeof METERED)[number]["of"];
+  readonly id: JsonValue | undefined;
   readonly comparison: JsonValue | undefined;
   readonly session: JsonValue | undefined;
   dollars: number;
+  turns: number;
+  readonly began: string;
+  last: string;
 }
 
 /** A comparison's last report, with where the comparison stands in the log: at its first report. */
@@ -712,23 +718,43 @@ function unfinished(events: readonly LogEvent[]): Unfinished[] {
   return METERED.flatMap(({ of, id }) => {
     const ended = new Set(events.flatMap(({ kind, data }) => (kind === `${of}.finished` ? [data[id]] : [])));
     const open = new Map<JsonValue | undefined, Unfinished>();
-    for (const { kind, data } of events) {
+    for (const { at, kind, data } of events) {
       if (kind === `${of}.started` && !ended.has(data[id])) {
         open.set(data[id], {
+          of,
+          id: data[id],
           comparison: data.comparison,
           session: of === "build" ? data.session : undefined,
           dollars: 0,
+          turns: 0,
+          began: at,
+          last: at,
         });
       }
       const found = open.get(data[id]);
       if (found === undefined) continue;
-      if (kind === `${of}.turn`) found.dollars += costOf(data.usage);
+      found.last = at;
+      if (kind === `${of}.turn`) {
+        found.dollars += costOf(data.usage);
+        found.turns += 1;
+      }
       if (kind === `${of}.compacted` && Array.isArray(data.usages)) {
         found.dollars += data.usages.reduce((sum: number, usage) => sum + costOf(usage), 0);
       }
     }
     return [...open.values()];
   });
+}
+
+/** The Builder's and the Examiner's sessions that began and never ended on record, with what each
+ *  billed, its turns and its seconds to its last event: a run of the campaign command stopped from
+ *  outside left them, and the next run ends them as killed (`endCut`, `tools/d2/harness-builder.ts`). */
+export function cutSessions(events: readonly LogEvent[]) {
+  return unfinished(events).flatMap(({ of, id, dollars, turns, began, last }) =>
+    (of === "build" || of === "exam") && isString(id)
+      ? [{ of, session: id, turns, billed: dollars, seconds: (Date.parse(last) - Date.parse(began)) / 1000 }]
+      : [],
+  );
 }
 
 /** The same sum in its two parts: what the Builder session under `id` billed, and what the

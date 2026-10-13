@@ -43,6 +43,8 @@ const OPENED = "campaign.opened";
 /** The project every campaign here is opened under. */
 const PROJECT = "fixture-products";
 const MOVED = "campaign.move";
+/** What a scripted Examiner says as it finishes having written nothing. */
+const NOTHING = "Nothing to add.";
 // Fourteen held once two are released: a comparison's seven and its repeat's, which a campaign holds
 // before its first comparison (12 October). At the default level, 0.02 since 12 October, a step
 // takes six tasks all won (`sweepOf`), and seven still read one after a pass labelled wrong.
@@ -112,8 +114,8 @@ describe("a campaign run by its log", () => {
         return examine({
           ...request,
           ...scripted([
-            ["finish", { note: "Nothing to add." }],
-            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
           ]),
         });
       },
@@ -146,8 +148,8 @@ describe("a campaign run by its log", () => {
         return examine({
           ...request,
           ...scripted([
-            ["finish", { note: "Nothing to add." }],
-            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
           ]),
         });
       },
@@ -183,6 +185,44 @@ describe("a campaign run by its log", () => {
     ]);
   });
 
+  it("ends as killed, before its first move, each session a stopped run left open, and none that ended", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-cut`;
+    const flags = [...seeded(name), "--patience", "1", "--target", "10", "--practice", "3"];
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+      examine: (request) =>
+        examine({
+          ...request,
+          ...scripted([
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
+          ]),
+        }),
+    };
+    await harnessBuilder([...flags, "--moves", "2"], seats);
+    // A run stopped from outside mid-session: an Examiner's and a Builder's start, a turn each.
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const usage = { cost: { total: 0.25 } };
+    append(log, "exam.started", { session: "x-1" });
+    append(log, "exam.turn", { session: "x-1", usage });
+    append(log, "build.started", { session: "b-1" });
+    append(log, "build.turn", { session: "b-1", usage });
+    const before = read(log).length;
+    await harnessBuilder([...flags, "--moves", "1"], seats);
+    const after = read(log).slice(before);
+    const cut = { ended: "killed", crash: null, turns: 1, billed: 0.25 };
+    expect(after.slice(0, 2)).toMatchObject([
+      { kind: "build.finished", data: { session: "b-1", ...cut } },
+      { kind: "exam.finished", data: { session: "x-1", ...cut } },
+    ]);
+    expect(after.findIndex(({ kind }) => kind === MOVED)).toBeGreaterThan(1);
+    // Reopened once more, with every session ended: nothing more is ended.
+    const ends = () => read(log).filter(({ data }) => data.ended === "killed").length;
+    await harnessBuilder(flags, seats);
+    expect(ends()).toBe(2);
+  });
+
   it("runs from set-up to an ending on one command, with every move on record: a session with nothing to work on sends it to the Examiner", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-idle`;
@@ -206,8 +246,8 @@ describe("a campaign run by its log", () => {
           ...request,
           // Twice: a first finish while the host has not the tasks it needs is declined once.
           ...scripted([
-            ["finish", { note: "Nothing to add." }],
-            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
           ]),
         }),
     };
@@ -773,8 +813,8 @@ describe("a campaign run by its log", () => {
           ...request,
           // Twice: a first finish while the host has not the tasks it needs is declined once.
           ...scripted([
-            ["finish", { note: "Nothing to add." }],
-            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
           ]),
         }),
     };

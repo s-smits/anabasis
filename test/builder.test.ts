@@ -319,7 +319,8 @@ describe("the Builder running its campaign", () => {
     expect(s.ran).toHaveLength(1);
     expect(s.sent[2]).toContain("Examiner returned; practice was refreshed.");
     expect(s.sent[2]).toContain(GUIDE.trim());
-    expect(s.sent[2]).toContain("Advice: compare");
+    // The advice ends a campaign tool's result only where that tool appends it (`campaignTools`).
+    expect(s.sent[2]).not.toContain("Advice: compare");
     expect(s.sent[3]).toContain(late.task.taskId);
     expect(s.sent.join("\n")).not.toContain(CHECK);
     expect(s.sent.join("\n")).not.toContain(REASON);

@@ -2,16 +2,16 @@
  * What an Examiner reads before its first call: the system prompt and the opening message.
  *
  * The Examiner writes task instances only, against a fixed contract and check program. It is told
- * why a package was refused, and at its opening one outcome of each task the campaign holds, the
- * pack's and the ones earlier sessions wrote, whether a valid answer to it is on record, and since
- * 11 October those tasks counted by family (`record.ts`). Its prompt carries no zone, share or
- * target count, which is the line v1 drew after measuring both: the counts are measured facts with
- * their denominators, told on the operator's decision of 11 October, and name no number to reach.
- * Until that day the system prompt said it was told "one thing" of each task, and that a task the
- * reference answers in no solve "is where a better harness could show"; the second holds only where
- * a valid answer to the task is on record, and the prompt says so since. v1 had no such author. Its Builder wrote the exam beside the harness, and
- * what is taken here is what its prompt said of tasks, from `src/author/builder-start-prompt.ts`
- * at 3f93d06b:
+ * why a package was refused, and at its opening, of each task the campaign holds, the pack's and
+ * the ones earlier sessions wrote, one outcome and whether a valid answer to it is on record, with
+ * those tasks counted by family, or in a total where a family holds one task (`record.ts`). Its
+ * prompt carries no zone, share or target count, which is the line v1 drew after measuring both:
+ * the counts are measured facts with their denominators, told on the operator's decision of 11
+ * October, and name no number to reach. A task the reference answers in no solve "is where a
+ * better harness could show" only where a valid answer to it is on record, and the prompt says so.
+ *
+ * v1 had no such author. Its Builder wrote the exam beside the harness, and what is taken here is
+ * what its prompt said of tasks, from `src/author/builder-start-prompt.ts` at 3f93d06b:
  * - `INTENT_CLAUSE`'s last line, that requirements must act together on one answer. Its evidence is
  *   v1's own: on the truss packs the same requirements passed 22 of 23 one at a time and 7 of 20
  *   inside one shared limit. The plan names it the one change that made tasks harder.
@@ -27,48 +27,44 @@
  * the tools, none of which an Examiner writes. On 7 October a Builder told to make its exam harder
  * removed a solver tool instead; an Examiner has no harness to weaken.
  *
- * Until 2026-10-09 the prompt described a stronger solver that had to pass a task, three reject
- * controls the Examiner wrote from that solver's answer, and a word for how the measured solver
- * did. The plan removes all three (`docs/plan.md`, Phase 2), and the prompt says instead how a
- * task is scored now: under one compute budget for both harnesses, an answer that passes every
- * check within it is valid, and the harness with more valid answers wins the task. A task that can
- * tell two harnesses apart is therefore one a better method answers validly within the budget and
- * a worse one does not, which is what the text asks for. Until 10 October the budget's size was
- * not told, on the reasoning that an author told it would write towards it; the tasks of ten
+ * The prompt describes no stronger solver and asks for no reject controls (`docs/plan.md`, Phase
+ * 2). It says how a task is scored: under one compute budget for both harnesses, an answer that
+ * passes every check within it is valid, and the harness with more valid answers wins the task. A
+ * task that can tell two harnesses apart is therefore one a better method answers validly within
+ * the budget and a worse one does not, which is what the text asks for. The budget's size is told
+ * as a fact (`Facts`, `firstMessage`), with the sentence that it is no target: while it was
+ * withheld, on the reasoning that an author told it would write towards it, the tasks of ten
  * campaigns tied under both harnesses, and a task that separates two harnesses at three turns
- * cannot be written without knowing three. It is told now as a fact (`Facts`, `firstMessage`),
- * with the sentence that it is no target. The minutes are the recorded setting's: until
- * 11 October the examine command read them from the campaign's default limits, so the two buffer
- * sessions of that day were told 120 minutes where every solve ran under 8.
+ * cannot be written without knowing three. The minutes are the recorded setting's, which the
+ * caller reads (`tools/d1b/examine.ts`).
  *
- * Since 2026-10-09 the prompt says that a task needs a valid answer, and one way to be sure of
- * one; since 10 October `try_answer` runs the checks on an instance with an answer of the
- * Examiner's, and a walled shell computes, where before the Examiner could run nothing and said
- * so (`session.ts`). A task is held out on the shape of its package, and nothing solves it first (`AGENTS.md`,
- * rule 9), so nothing but its author stands between the exam and a task no answer satisfies. In
- * the first campaign opened from a prompt an Examiner whose tasks had all tied pressed the next
- * ones to the margin, and two of seven asked for more addresses than their block had free: every
- * solve of both harnesses failed them, which a comparison reads as two ties and its reader, until
- * the same day, as room. The same day's notes of nine Examiner sessions on two stored packs say
- * in at least eight that a task's feasibility rests on hand estimates. The sentence asks for no
- * easier task: an answer chosen first can sit as close to a limit as its author likes.
+ * The prompt says that a task needs a valid answer, and one way to be sure of one: `try_answer`
+ * runs the checks on an instance with an answer of the Examiner's, and a walled shell computes
+ * (`session.ts`). A task is held out on the shape of its package, and nothing solves it first
+ * (`AGENTS.md`, rule 9), so nothing but its author stands between the exam and a task no answer
+ * satisfies. In the first campaign opened from a prompt an Examiner whose tasks had all tied
+ * pressed the next ones to the margin, and two of seven asked for more addresses than their block
+ * had free: every solve of both harnesses failed them, which a comparison reads as two ties. On
+ * 10 October the notes of nine Examiner sessions on two stored packs said in at least eight that a
+ * task's feasibility rested on hand estimates. The sentence asks for no easier task: an answer
+ * chosen first can sit as close to a limit as its author likes.
  *
- * Since 12 October the prompt names v1's lever as such, several requirements that share one
- * limit, and for a domain whose instances scale has the Examiner plant an answer and grow the task
- * around it (the overhaul plan, S.4 and L2). The planted answer is the witness of the feasibility
- * gate and is then discarded: `try_answer` keeps no answer, and the gate refuses a task that
- * carries one whole (`session.ts`), so it never reaches a solver and rule 9 holds. Growing by size
- * alone is named as no growth: in the overhaul's research a reference solver's time correlated
- * -0.15 with how hard a generated task was for a model, and a harness with the field's solver
- * tools gained 28 points on such tasks, so a harness that holds the engine absorbs scale.
+ * The prompt names v1's lever as such, several requirements that share one limit, and for a domain
+ * whose instances scale has the Examiner plant an answer and grow the task around it (the overhaul
+ * plan, S.4 and L2). The planted answer is the witness of the feasibility gate and is then
+ * discarded: `try_answer` keeps no answer, and the gate refuses a task that carries one whole
+ * (`session.ts`), so it never reaches a solver and rule 9 holds. Growing by size alone is named as
+ * no growth: in the overhaul's research a reference solver's time correlated -0.15 with how hard a
+ * generated task was for a model, and a harness with the field's solver tools gained 28 points on
+ * such tasks, so a harness that holds the engine absorbs scale.
  *
- * Since 12 October a session whose host can have the reference harness solve a draft task holds
- * tasks out by `try_task` in `propose_tasks`' place: a package that passes the shape is solved
- * `TRIED` times afresh under the budget, and held out only where some of those solves gave a valid
- * answer and not all (the operator's ruling of that day, which reverses the plan's refusal of a
- * screen; `session.ts`). The prompt says so, and that the Examiner is told the count and nothing
- * else of them. The reference harness is the one the campaign measures against, and no stronger
- * solver: rule 9 of `AGENTS.md` still holds, and a check still decides every answer.
+ * A session whose host can have the reference harness solve a draft task holds tasks out by
+ * `try_task` in `propose_tasks`' place: a package that passes the shape is solved `TRIED` times
+ * afresh under the budget, and held out only where some of those solves gave a valid answer and not
+ * all (the operator's ruling of 12 October, which reverses the plan's refusal of a screen;
+ * `session.ts`). The prompt says so, and that the Examiner is told the count and nothing else of
+ * them. The reference harness is the one the campaign measures against, and no stronger solver:
+ * rule 9 of `AGENTS.md` still holds, and a check still decides every answer.
  */
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -82,18 +78,17 @@ export interface CheckRow {
   readonly families: "all" | readonly string[];
 }
 
-/** The limits a session is told it runs under. How many tasks are wanted is not among them. */
 /** What a session is told of its campaign beside the contract: the operator's brief, where the
  *  campaign opened from one, and the budget every solve is held to, where the caller knows it. */
 interface Facts {
   readonly brief?: string | null | undefined;
   readonly budget?: { readonly modelTurns: number | null; readonly minutes: number } | null | undefined;
   /** What the last Examiner session of the campaign said at its `finish`, in its own words, where
-   *  one did: the one thing a session leaves the next beside its tasks and its home (11 October;
-   *  until then the note was logged and shown to nobody). */
+   *  one did: the one thing a session leaves the next beside its tasks and its home. */
   readonly lastNote?: string | null | undefined;
 }
 
+/** The limits a session is told it runs under. How many tasks are wanted is not among them. */
 export interface Told {
   readonly wallSeconds: number;
   readonly turns: number;
@@ -122,8 +117,8 @@ export function systemPrompt(tried: number | undefined): string {
 
 /** The opening message: the operator's brief where the campaign opened from one, the domain's
  *  public contract, its checks by id and assertion, the session's limits, and every task the
- *  campaign holds with its one outcome, a line a task, with the counts by family beside them, as
- *  `record.ts` renders both. */
+ *  campaign holds with its one outcome, a line a task, with the counts by family or in a total
+ *  beside them, as `record.ts` renders both. */
 export function firstMessage(
   contract: Contract,
   checks: readonly CheckRow[],
@@ -135,7 +130,7 @@ export function firstMessage(
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
   return [
     // The brief first, where the campaign opened from one: every session rereads the domain as the
-    // operator put it, and not only the exam drafted from it (10 October). The rules govern.
+    // operator put it, and not only the exam drafted from it. The rules govern.
     ...(brief === null
       ? []
       : [
@@ -148,7 +143,7 @@ ${brief}`,
     ...(contract.objective === undefined ? [] : [`Objective: ${objectiveLine(contract.objective)}`]),
     `A solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     // The budget as a fact: a task that tells two harnesses apart is one a better method answers
-    // within it and a worse one does not, which nobody can write without knowing it (10 October).
+    // within it and a worse one does not, which nobody can write without knowing it.
     ...(budget === null
       ? []
       : [

@@ -19,9 +19,7 @@
  * returns the canary at exit 0. These rules refuse that last rename.
  *
  * The hole belongs to the allow-by-default posture the command wall needs, so that a command
- * reaches the network and the host's programs (`solve-command-isolation.ts`). The verifier
- * isolation never had it: `darwin-seatbelt.ts` is deny-by-default and allows writes only under its
- * private workdir, so a rename elsewhere has no allow to match and needs no rule of this kind.
+ * reaches the network and the host's programs (`solve-command-isolation.ts`).
  *
  * Two deliberate departures from upstream:
  * - No `(with message ...)` log tag. Upstream tags its rules so a log stream can attribute
@@ -40,9 +38,9 @@ export function covers(root: string, target: string): boolean {
   return posixContainsPath(target, root);
 }
 
-/** One SBPL rule block: a verb and its path filters, or nothing when no path applies. Every profile
- *  in this family emits through here, so the solve and verifier isolations cannot drift apart on
- *  quoting or on what an empty path list means. */
+/** One SBPL rule block: a verb and its path filters, or nothing when no path applies. The command
+ *  profile's path-list rules emit through here, so they cannot drift apart on quoting or on what an
+ *  empty path list means. */
 export function sbRule(verb: string, form: "subpath" | "literal", paths: readonly string[]): string[] {
   return paths.length === 0
     ? []

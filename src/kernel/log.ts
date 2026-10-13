@@ -28,40 +28,38 @@ import { asRecord, type JsonObject, type JsonValue, isString } from "../meta/jso
 import { foldsEvent, taskStates } from "./task.ts";
 
 /** The kinds of event a log holds. A kind that no command writes any more stays in the list where a
- *  log may hold it, since a log is evidence and has to read. A kind no log holds is none: three
- *  were in this list until 2026-10-09 that no command wrote (two never, one for ten minutes of
- *  8 October's history) and that none of the 25 campaign logs kept then held.
- *  `comparison.started` fixes a
- *  comparison's terms before its first solve: the harnesses, the setting and the scored tasks
- *  (`src/builder/round.ts`). `anchor.drawn`, `anchor.scored` and `exam.word` are written by no
- *  command since 2026-10-09 and are kinds still, so that a log written before then reads: the
- *  anchor's draw and its test, and the word an Examiner was told of a task. `solve.turn` and `solve.call` are
- *  a solve's trace, one per model turn and one per tool call, so the trace is in the log rather than
- *  in a file beside it. `condition.recorded` holds a condition under the id its solves name
- *  (`condition.ts`), so a comparison can be checked from the log alone. The four `build.*` kinds are
- *  a Builder session's: what it was given, its own turns and calls, and how it ended
- *  (`src/builder/session.ts`). `solve.compacted`, `build.compacted` and `exam.compacted` are a compaction
- *  in pi's own loop, and what its summary spent (`src/backends/pi-compaction.ts`). The `exam.*` kinds are an Examiner session's: the same four
- *  (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to do, by
- *  the version it was read at (`acceptance.ts`); `contract.frozen` is the operator's word that the
- *  contract and that version stand, and a campaign whose own differ from it does not open.
+ *  log may hold it, since a log is evidence and has to read; a kind no log holds is none.
+ *  `comparison.started` fixes a comparison's terms before its first solve: the harnesses, the
+ *  setting and the scored tasks (`src/builder/round.ts`). `anchor.drawn`, `anchor.scored` and
+ *  `exam.word` are written by no command since 9 October and are kinds still, so that a log
+ *  written before then reads: the anchor's draw and its test, and the word an Examiner was told of
+ *  a task. `solve.turn` and `solve.call` are a solve's trace, one per model turn and one per tool
+ *  call, so the trace is in the log rather than in a file beside it. `condition.recorded` holds a
+ *  condition under the id its solves name (`condition.ts`), so a comparison can be checked from
+ *  the log alone. The four `build.*` kinds are a Builder session's: what it was given, its own
+ *  turns and calls, and how it ended (`src/builder/session.ts`). `solve.compacted`,
+ *  `build.compacted` and `exam.compacted` are a compaction in pi's own loop, and what its summary
+ *  spent (`src/backends/pi-compaction.ts`). The `exam.*` kinds are an Examiner session's: the same
+ *  four (`src/examiner/session.ts`). `checker.read` is what a campaign's check program was seen to
+ *  do, by the version it was read at (`acceptance.ts`); `contract.frozen` is the operator's word
+ *  that the contract and that version stand, and a campaign whose own differ from it does not open.
  *  `campaign.setting` is who solves a campaign's tasks, what a solve is held to and which tasks are
- *  scored, recorded once and again only on the operator's word (`tools/d2/setting.ts`).
+ *  scored, recorded once and not changed (`tools/d2/setting.ts`).
  *  `harness.promoted` is the operator's word that a kept harness is the reference harness from
  *  there on (`tools/d2/promote.ts`), and `harness.imported` the operator's word that a harness
  *  built elsewhere is one the campaign keeps, with where it came from (`tools/d2/import.ts`).
  *  `stop.overridden` is the operator's reason for a comparison begun after the plan's stop rule
  *  had stopped the campaign (`src/builder/admission.ts`).
- *  The three `campaign.*` kinds beside the setting are the Harness Builder's
+ *  The four `campaign.*` kinds beside the setting are the Harness Builder's
  *  (`tools/d2/harness-builder.ts`): `campaign.opened` is what a campaign runs by, its total budget
  *  and its seats; `campaign.move` is a move it made, written as the move began, with the row of
  *  its decision table that chose it and its reason (`src/builder/decide.ts`), the host's load; and
- *  `campaign.ended` is how the
- *  campaign ended, which is its last event. `campaign.word` is a word the operator left for a
- *  running campaign (`tools/d2/word.ts`): to stop, to have other tasks written, another total
- *  budget or the cause of an A/A that read a step. It is read at the next move's boundary, and the
- *  event that acts on it names it. `campaign.waited` is a solve that waited for a loaded host
- *  before it started (`tools/d2/host.ts`): its task and harness, the load and how long.
+ *  `campaign.ended` is how the campaign ended, which is its last event. `campaign.word` is a word
+ *  the operator left for a running campaign (`tools/d2/word.ts`): to stop, to have other tasks
+ *  written, another total budget or the cause of an A/A that read a step. It is read at the next
+ *  move's boundary, and the event that acts on it names it. `campaign.waited` is a solve that
+ *  waited for a loaded host before it started (`tools/d2/host.ts`): its task and harness, the load
+ *  and how long.
  *  The `draft.*` kinds are the session in which an Examiner drafts a campaign's exam from the
  *  operator's prompt (`src/examiner/draft.ts`), the same five as an Examiner session's, and
  *  `exam.drafted` holds the draft that stood, whole: its rules with their sources, its answer
@@ -125,9 +123,9 @@ const EVENT_KINDS = [
 
 export type EventKind = (typeof EVENT_KINDS)[number];
 
-/** The file a campaign's log is, under the campaign's folder. Five files joined this name onto a
- *  folder of their own on 10 October, two of them beside a constant of their own, and
- *  `identity-without-owner` reported it; the module that reads and appends the file owns its name. */
+/** The file a campaign's log is, under the campaign's folder. The module that reads and appends
+ *  the file owns its name, since five files that joined it onto a folder of their own were what
+ *  `identity-without-owner` reported. */
 export const LOG_FILE = "log.jsonl";
 
 const NEWLINE = 0x0a;

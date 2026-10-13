@@ -1,12 +1,7 @@
 /**
  * Shared protected paths and toolchain locations for the command wall, which a seat's commands and
- * a check both run under (`solve-command-isolation.ts`).
- *
- * Until 11 October the verifier had a deny-default wall of its own, which granted declared reads
- * and the platform roots named here; it ended with the fewest system roots of the three walls, so
- * `(allow process*)` let a compiler start while its read rules stopped it opening its own
- * toolchain. A check now runs under the command wall with the network closed (`docs/simplify.md`,
- * W6), and reads open by default with the protected paths denied.
+ * a check both run under (`solve-command-isolation.ts`). A check runs there with the network
+ * closed, and reads open by default with the protected paths denied.
  */
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -152,13 +147,13 @@ export function userTempRules() {
  * A read grant lets a toolchain be opened, but PATH decides whether it can be named at all, and the
  * two come apart: with reads already open, `rustc` still reports `command not found` while
  * `~/.cargo/bin/rustc` sits present and readable. So the same install roots that grant the read
- * supply the search path too, which makes a toolchain the Harness Builder installs usable without a
+ * supply the search path too, which makes a toolchain a Builder installs usable without a
  * second list being edited.
  *
  * `shims` is here for pyenv and rbenv, which put no binaries in `bin` at all.
  */
 export function toolchainPathDirs(): string[] {
-  // Both /opt entries sit under the granted /opt read root, so neither needs a read rule of its
+  // Both /opt entries are readable under the open read default, so neither needs a read rule of its
   // own. This host may have its only system Node under zerobrew, so the derived toolchain owner has
   // to retain that executable directory rather than assume /usr/bin holds one.
   // The active developer directory goes ahead of /usr/bin, where Darwin keeps `python3`, `make`,

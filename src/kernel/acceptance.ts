@@ -3,13 +3,12 @@
  * counts on it.
  *
  * v1's record is why. Its passes were sound, the Judge vetoing 5 of 1,411, and its rejections were
- * not: of 47 rehearsal misses 36 were a check or its instrument refusing a right answer (v1 #124),
- * and 24 of 32 firmware fails were an author's stand-in refusing valid code. This host took a v1
- * check program as it stood, and what it asked of it was each task's own: gate 3 reruns the checks
- * on one accepted answer, and gate 4 puts three reject controls to the checks they name (`task.ts`).
- * Nothing asked the checker as a whole whether every control gets the verdict its author labelled it
- * with, whether a second run agrees, whether every check has been seen both to refuse an answer and
- * to let one pass, and whether every instrument a check names is there to run.
+ * not: of 47 rehearsal misses 36 were a check or its instrument refusing a right answer, and 24
+ * of 32 firmware fails were an author's stand-in refusing valid code. A task's own gate reads only
+ * its package's shape (`task.ts`), so this asks the checker as a whole whether every control gets
+ * the verdict its author labelled it with, whether a second run agrees, whether every check has
+ * been seen both to refuse an answer and to let one pass, and whether every instrument a check
+ * names is there to run.
  *
  * Two readings ask what no control of the pack's does (`docs/plan.md`, the correctness model). The
  * do-nothing answer, the smallest the answer format allows, must be rejected on every task: Anchor
@@ -247,7 +246,7 @@ export function acceptance(
     ...stored,
   ];
   // The objective is read as a check is: its author's own computation, which the operator admits
-  // by name, and seen to measure every valid answer or none (10 October).
+  // by name, and seen to measure every valid answer or none.
   const measured: CheckReading[] =
     brief.objective === undefined
       ? []
@@ -284,8 +283,7 @@ export function acceptance(
   });
   // A check that could not run is the fault, and what it then never refused or passed is not a
   // second one: said so, the remedy reads as another control. v1's gate told a Builder to add a
-  // reject when twelve existed and the check's tool could not write its output (a buffer run
-  // of 8 October, as its sessions were recounted that day).
+  // reject when twelve existed and the check's tool could not write its output.
   const unrun = new Map(
     graded
       .flatMap(({ verdict }) => (verdict.kind === "faulty" ? [verdict] : []))
@@ -324,11 +322,10 @@ export function acceptance(
  * command records it (`tools/c/accept.ts`), and an Examiner's draft is held to the same reading
  * before it stands (`tools/d2/exam.ts`), so an exam is drafted against what it will be read by.
  *
- * A do-nothing answer that does not follow the format is a fault of the reading's own. Until
- * 11 October it was put to no check and named no fault, and both callers dropped it: a format
- * with a `pattern` on its one string and a check that let every answer pass stood as a draft
- * with no fault, though a draft stands only once that answer is refused on every example
- * (`AGENTS.md`, section 6).
+ * A do-nothing answer that does not follow the format is a fault of the reading's own. Put to no
+ * check and named no fault, it let a format with a `pattern` on its one string and a check that
+ * let every answer pass stand as a draft with no fault, though a draft stands only once that
+ * answer is refused on every example (`AGENTS.md`, section 6).
  */
 export async function readChecker(given: Read) {
   const { verify, brief, tasks, width } = given;

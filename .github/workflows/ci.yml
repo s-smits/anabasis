@@ -4,7 +4,9 @@
 # platform: the Darwin job proves Seatbelt and the disk image a solve and a Builder session mount
 # there; the Linux job proves Bubblewrap. A whole suite passing on one says nothing of the other.
 # The lint is strict: the two repository plugins' findings fail it, as they do a strict run by hand
-# (`bun run lint -- --strict`, AGENTS.md section 12.2).
+# (`bun run lint -- --strict`, `tools/oxlint/HABITS.md` 12.2). The Linux job also runs the climb
+# simulation, which the suite skips without `ANA_CLIMB`: the controller's guard in
+# `docs/simplify.md` section 9, a few minutes.
 name: ci
 on:
   pull_request:
@@ -52,3 +54,5 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: bun install --frozen-lockfile
       - run: bun run test
+      - name: The climb simulation
+        run: ANA_CLIMB=1 bun run test -- test/climb.test.ts

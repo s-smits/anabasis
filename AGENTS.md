@@ -203,9 +203,11 @@ numbered otherwise. The design around the copied code is different.
 | A controller loop chose build, measure, rebuild or stop | One table over the log names the move that follows, and one command makes it (section 4). It chooses no content |
 | Runs lived in `campaigns/` and `domains/` with opening, terminal and claim files | One log a campaign, under `.ana/d2/<name>/` |
 
-Words v1 used that have no meaning here: battery, epoch, climb, band, level, witness, F2, census,
-submit gate, claim, adoption, veto. Do not bring them back in new text. Two survive with a narrow
-meaning: a **cycle** and a **sweep** name a stored v1 run that a campaign takes its pack from
+Words v1 used that have no meaning here: battery, band, witness, F2, census, submit gate,
+adoption, veto. Do not bring them back in new text. Three of v1's words have a v2 meaning of their
+own: a **climb** is factor 2 of section 1, an **epoch** is the stretch of a campaign under one
+reference harness (`src/builder/climb.ts`), and the **level** is the step test's (`--level`). Two
+survive with a narrow meaning: a **cycle** and a **sweep** name a stored v1 run that a campaign takes its pack from
 (`--sweep`, `--cycle`), and **bundle** names that pack's directory (`--bundle`).
 
 ## 2. The stance: code owns the conditions, models own the content
@@ -236,27 +238,30 @@ Six consequences guide a change:
    ending, a limit and how much of it is used. It does not tell the agent what to write. A v1
    campaign that was told a three-stage course changed only its published magnitudes for four test
    sets in a row.
-2. **Give an author no target.** The Examiner is told no zone, share or target count. v1 measured
-   why: an author told a zone, a share or a count wrote towards it, and one told each answer's
-   distance from its limit moved the limits. It is told facts. Since 10 October it is told the
-   budget every solve is held to, as a fact and not a target: a task that tells two harnesses
-   apart is one a better method answers within that budget and a worse one does not, which
-   nobody can write without knowing it, and ten campaigns' tasks tied without it. Since
-   11 October, on the operator's decision of that day, it is told beside each task's one outcome
-   the tasks counted by family, read from the same comparisons: how many were told apart and which
-   side won them, how many tied with both harnesses valid in every solve, how many tied with
-   neither valid in any and of those how many have a valid answer on record, how many tied
-   otherwise and how many were set aside, with the solves a side they rest on and no number to
-   reach (`src/examiner/record.ts`). Until then it heard one outcome a task and no count, and could
-   not tell a tie that left no room from one nobody could answer. The other harness's result on
-   any one task is still not told. The decision is untested, and two recorded counts would speak
-   against it (`docs/plan.md`, row F60): the tasks the next Examiner sessions hold out falling
-   more than three in four into one family where the exam held two or more, or the share of
-   scored tasks tied with both harnesses valid in every solve not falling between the last
-   comparison before a session was told counts and the comparison after the third such session.
+2. **Give an author facts and no target.** v1 measured why: an author told a zone, a share or a
+   count wrote towards it, and one told each answer's distance from its limit moved the limits. So
+   the Examiner is told what was measured and no number to reach: each task's one outcome under
+   the reference harness and whether a valid answer to it is on record; the budget every solve is
+   held to (since 10 October: a task that tells two harnesses apart is one a better method answers
+   within that budget and a worse one does not, which nobody can write without knowing it, and ten
+   campaigns' tasks tied without it); the tasks counted by family, with the solves a side they
+   rest on (since 11 October, the operator's decision, `src/examiner/record.ts`); and by family the
+   solver's own turns each valid answer of the reference harness took, read from the reference's
+   side alone (`turns`, since 12 October), so that it sees how much of the budget the answers it
+   already gets spend. What it is never
+   told is how the other harness did on any one task: a family of one task would tell it, so where
+   any family counted holds one the counts are a total alone, and a count of one task is not told
+   (since 12 October, when one campaign's 40 families held one task each). The counts are
+   untested, and two recorded counts would speak against them (`docs/plan.md`, row F60): the
+   tasks the next Examiner sessions hold out falling more than three in four into one family
+   where the exam held two or more, or the share of scored tasks tied with both harnesses valid in
+   every solve not falling between the last comparison before a session was told counts and the
+   comparison after the third such session.
 3. **Keep the Builder free.** It may change or rewrite anything in the harness. One limit stands:
-   nothing in a harness returns a finished answer for a task. Do not add a second limit in a
-   prompt or a check. Both harnesses run under one budget, and that budget prices whatever a
+   nothing in a harness returns a finished answer for a task. A part that both proposes a
+   candidate and reports it as meeting the rules has returned one, so no one part both searches
+   and judges (the operator's ruling of 10 October, stated in the Builder's prompt,
+   `src/builder/prompt.ts`). Do not add a second limit in a prompt or a check. Both harnesses run under one budget, and that budget prices whatever a
    harness does.
 4. **Do not let code choose content because reasoning about it is hard.** Code may validate a
    declared structure. A classifier in code that decides what a harness or a task should contain
@@ -289,7 +294,7 @@ wall keeps from it.
 
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
-| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, those tasks counted by family (since 11 October), what the last session said at its `finish`, and the home that session left; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none, but how many of the reference harness's three solves of its own draft task were valid (`try_task`), and nothing else of those solves. It makes no solve of the exam's | `src/examiner/` |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, those tasks counted by family, or in a total where a family holds one task (since 11 October), what the last session said at its `finish`, and the home that session left; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none, but how many of the reference harness's three solves of its own draft task were valid (`try_task`), and nothing else of those solves. It makes no solve of the exam's | `src/examiner/` |
 | **Builder** (model) | Edits `harness/` in its home and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
@@ -460,7 +465,8 @@ as truth.
 - A **condition** is everything that could change a solve's result, as one content-addressed
   record (`src/kernel/condition.ts`): the contract, the harness, the task version, the model and
   its effort, the price table, the runtime's packages, the compaction mode, the tool trees and the
-  sandbox policy. Two solves are comparable only when their conditions differ in the one thing
+  sandbox, which it names by the isolation profile, the platform and the disk cap
+  (`tools/d2/campaign.ts`). Two solves are comparable only when their conditions differ in the one thing
   compared.
 - A solve's trace is in the log (`solve.turn`, `solve.call`), as are a Builder session's and an
   Examiner session's own turns and calls.
@@ -601,7 +607,8 @@ harness failed in the last comparison, and the rest by the contract's draw
 on. A task that a comparison scored before its release keeps that comparison's solves on the
 exam side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
 Before a comparison the campaign holds as many scorable tasks as the comparison scores
-(`--target`), or the Examiner writes more first.
+(`--target`), and before its first twice as many, so that the repeat draws tasks its first stage
+did not score; or the Examiner writes more first.
 
 ### What refuses a move
 
@@ -640,7 +647,8 @@ until one is; a Builder session of 240 minutes, 300 turns and 24 practice solves
 120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
 names a number. An Examiner session ends when the Examiner calls `finish` a second time, or a
 first time once the host has the tasks it asked for: what the campaign is short of a comparison's
-target and of its practice (`examTasks`, `tools/d2/harness-builder.ts`), or `--exam-tasks` where
+target, before its first comparison of a repeat's as well, and of its practice (`examTasks`,
+`tools/d2/harness-builder.ts`), or `--exam-tasks` where
 the operator names a count. A first `finish` short of them is declined once, with the need and
 no count, since every live session of 9 and 10 October proposed one batch of one to three tasks
 in three turns and finished. The session's home is carried whole into the next session's, and
@@ -675,14 +683,20 @@ head comments are the full account. The short form follows.
 harnesses, its setting, its scored tasks, its solves a side, its level, its objective rule, its
 dollar cap and, where given, its prediction (`--predict`). One continued from its log keeps those
 terms, and one asked for again on other terms is refused. The scored tasks are `--target` of the
-held-out ones, the newest epoch's first and within an epoch drawn by the contract's hash, less
-two kinds the draw leaves out: a task with no valid answer after two comparisons, until a person
-labels it (`awaitingLabel`), and one the reference harness answered in every solve of two
-comparisons, on whichever side it stood, which can only tie again or be lost (`exhausted`); a task
-the objective told two valid answers apart on is not closed, since the next harness can still win
-it. A third of the closed ones stays in by a hash of its own, so that a harness that breaks what
-the reference answers still shows its losses. The Examiner is told such a task is exhausted, in
-those words.
+held-out ones, the newest epoch's first, within an epoch the ones held out since the last
+comparison began before the others, and each drawn by the contract's hash, less two kinds the
+draw leaves out: a task with no valid answer after two comparisons, until a person labels it
+(`awaitingLabel`), and one the reference harness answered in every solve of two comparisons, on
+whichever side it stood, which can only tie again or be lost (`exhausted`); a task the objective
+told two valid answers apart on is not closed, since the next harness can still win it. A third of
+the closed ones stays in by a hash of its own, so that a harness that breaks what the reference
+answers still shows its losses. The Examiner is told such a task is exhausted, in those words. The
+second kind is a choice by the reference's results and is not neutral: a loss can only come from a
+task the reference answers, so with two thirds of those out of the draw a harness that answers new
+tasks and loses old ones would read better than it is over the tasks written, the more so as the
+newest tasks are drawn first. So the third kept is the retained set, read apart from the frontier
+the step is read on, and a step that loses more retained pairs than it wins reads `regressed` and
+promotes nothing (section 7, The test).
 
 **Fresh solves.** Each scored task is solved under each harness, afresh. A task's solves run
 together, the tasks in an order a hash of each draws, and within a task the harness that goes
@@ -838,8 +852,9 @@ prints it as its last line. In the order the table asks:
    where neither harness answered, sends the Examiner for other tasks: there is no shorter budget
    to fall back to.
 9. Nothing new to compare: the Builder builds, once the campaign holds as many scorable tasks as
-   a comparison scores; before any comparison the Examiner writes the rest first, so that the
-   release before the first session has them to draw practice from. Something new: it is
+   a comparison scores, and before its first comparison as many as a comparison and its repeat
+   score; before any comparison the Examiner writes the rest first, so that the release before the
+   first session has them to draw practice from. Something new: it is
    compared once the sessions before a comparison have run, or tasks are written first where the
    comparison would be short of them.
 
@@ -1065,12 +1080,19 @@ on macOS, where a sparse image is mounted at the root of each solve and each Bui
 Linux nothing caps a solve, a Builder session or an Examiner session: each runs its commands
 under the command wall, which binds its root from the host's disk and mounts no tmpfs there; the
 head comment of `src/verify/disk-cap.ts` says so (`docs/simplify.md`, F6). When the required wall
-is unavailable the result is a typed non-result, never an unconfined run. Each wall is probed once
-a process before its first use, by one command launched as a seat's commands are (`runWalled`): a
-canary in the repository and its first other worktree's `package.json`, which the probe never
-writes, are refused to it, and a file it writes in its own folder reads back. A probe that does not
-hold refuses the start with its lines (`walledBase`, `src/solve/command.ts`); until 10 October the
-probe ran in the test suite alone, and until 11 October it ran v1's launch, which no seat runs.
+is unavailable the result is a typed non-result, never an unconfined run. A seat's wall, a
+solve's, a Builder's or an Examiner's, is probed once a process before its first use, by one
+command launched as a seat's commands are (`runWalled`): a canary in the repository and its first
+other worktree's `package.json`, which the probe never writes, are refused to it, and a file it
+writes in its own folder reads back. A probe that does not hold refuses the start with its lines
+(`walledBase`, `src/solve/command.ts`). The verifier's cells share that base, are launched without
+the seat's shell, and are not probed; the suite tests them (`test/verify.test.ts`).
+
+Every seat's commands reach the network: a solver and a Builder install what a task needs and can
+look things up, under both harnesses alike (`network`, `src/verify/solve-sandbox.ts`). Only the
+verifier's cells run with it closed. The condition does not record it apart, since it does not
+vary between the two sides of a comparison, and whether to narrow it to a package index is the
+plan's open row (`docs/plan.md`, "Tuning", the row "Network in a solve").
 
 ## 11. Working in the repository
 

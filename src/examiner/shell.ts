@@ -7,27 +7,26 @@
  * and the wall is probed before its first command. Nothing in the home enters the exam: a session
  * puts a task or a draft through its own tool, and the host reads that alone.
  *
- * The task-writing session has had one since 10 October, when its notes said that a task's
- * feasibility rested on hand estimates. Until 11 October the session that drafts an exam had none:
- * it named a source for each rule from memory, could look nothing up, and could not run its own
- * check program on its own controls before it put a draft (`docs/plan.md`, row F57). One mount and
- * one sentence serve both, so that the two seats' walls cannot drift apart.
+ * The task-writing session has one because, without it, its notes said that a task's feasibility
+ * rested on hand estimates. The drafting session has one so that it can look up the source it names
+ * for each rule, and run its own check program on its own controls before it puts a draft
+ * (`docs/plan.md`, row F57). One mount and one sentence serve both, so that the two seats' walls
+ * cannot drift apart.
  *
- * Since 12 October a task-writing session's shell also has the field's engines: the programs its
- * campaign's check program names (`requiredToolsOf`), each as the verifier's tool tree resolves it,
- * run by name, and no other program of that tree (`pinnedEngines`, `src/kernel/verify.ts`, which
- * names each by its digest). The operator ruled that day
- * that the Examiner may have them, as the exam's side and never the agent under test, from a
- * pinned list; the tree a campaign's checks run under is that list, its content in every solve's
- * setting (`verifierTools`). Until then the shell had the host's toolchains alone: buffer's two
- * sessions of 11 October each spent their first minutes fetching and compiling an engine, and the
- * overhaul plan counts esp32's six sessions writing 40 tasks with no instrument to tell a hard
- * task from a large one. A stored pack's tool tree can hold more than its checks run, since a v1
- * Builder installed its own tools beside them, so a program no check names stays off the path:
- * the Examiner computes with the instruments, and is never given a solver. The tree itself is open
- * to read, since an engine runs from it, so such a program is off the path and not out of reach.
- * Its tasks still enter through the gate alone (`propose_tasks`, or `try_task` where the reference
- * harness solves a draft task), and its answers are ruled on by `try_answer` alone.
+ * A task-writing session's shell also has the field's engines: the programs its campaign's check
+ * program names (`requiredToolsOf`), each as the verifier's tool tree resolves it, run by name, and
+ * no other program of that tree (`pinnedEngines`, `src/kernel/verify.ts`, which names each by its
+ * digest). The operator ruled on 12 October that the Examiner may have them, as the exam's side and
+ * never the agent under test, from a pinned list; the tree a campaign's checks run under is that
+ * list, its content in every solve's setting (`verifierTools`). With the host's toolchains alone,
+ * buffer's two sessions of 11 October each spent their first minutes fetching and compiling an
+ * engine, and the overhaul plan counts esp32's six sessions writing 40 tasks with no instrument to
+ * tell a hard task from a large one. A stored pack's tool tree can hold more than its checks run,
+ * since a v1 Builder installed its own tools beside them, so a program no check names stays off the
+ * path: the Examiner computes with the instruments, and is never given a solver. The tree itself is
+ * open to read, since an engine runs from it, so such a program is off the path and not out of
+ * reach. Its tasks still enter through the gate alone (`propose_tasks`, or `try_task` where the
+ * reference harness solves a draft task), and its answers are ruled on by `try_answer` alone.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { wrapToolDefinitions } from "../../vendor/pi-coding-agent/core/tools/tool-definition-wrapper.ts";

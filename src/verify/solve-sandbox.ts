@@ -1,15 +1,14 @@
-// Copied from v1 (github.com/s-smits/anabasis, 3f93d06b): src/verify/solve-sandbox.ts, its policy
-// alone. v1 launched its sandboxed model process here (`isolationArgv`) and probed that launch; v2
-// runs the loop in the host process and every command under the command wall, so the launch, its
-// probe and the disk cap only that launch mounted went on 11 October (`docs/simplify.md`, W2). The
-// wall is probed through the launch in use (`walledBase`, `src/solve/command.ts`).
+// The policy part of v1's `src/verify/solve-sandbox.ts`. v2 runs the loop in the host process and
+// every command under the command wall, which is probed through the launch in use (`walledBase`,
+// `src/solve/command.ts`).
 /** Host-owned OS isolation for a seat's commands: the base every command wall is built on
  *  (`commandIsolationPolicy`, `solve-command-isolation.ts`).
  *
  * The solver reaches its provider over the network and its commands reach the host's programs, so
  * this wall cannot work by closing the machine and reopening a list of allowed paths. It allows by
  * default and then closes the trees that hold what a command must not read: the repository, which
- * carries the hidden expectations and the evaluator, its other worktrees, and the operator's home.
+ * carries the hidden expectations and the evaluator, its other worktrees, a stored pack, and the
+ * operator's home.
  * Closing the home also closes a runtime installed there, which is why the exact paths
  * `nodeRuntimeReadRoots` names are reopened read-only and nothing else is.
  *
@@ -48,13 +47,11 @@ export interface SolveIsolationPolicy {
 /** Author the solve isolation for one repository. */
 export function solveIsolationPolicy(input: {
   repoRoot: string;
-  /** The repository's other worktrees, denied with it. Until 10 October only the worktree a
-   *  command ran in was denied, and a shell in one worktree read a sibling's `.ana` log, every
-   *  hidden value of that campaign in it, on the Linux container (an Examiner's shell, by hand). */
+  /** The repository's other worktrees, denied with it. With only the worktree a command ran in
+   *  denied, a shell in one worktree read a sibling's `.ana` log, every hidden value of that
+   *  campaign in it, on the Linux container (an Examiner's shell, by hand). */
   otherTrees?: readonly string[];
-  /** A stored pack's root and bundle, denied with it by path. Until 11 October v1's run-data names
-   *  closed them (`/correctness-model`, `/domains/<slug>/…`) on Darwin, and on Linux a scan for
-   *  folders carrying those names beside a denied root (docs/simplify.md, F10 and W5). */
+  /** A stored pack's root and bundle, denied with it by path. */
   packRoots?: readonly string[];
   runtime?: OsIsolationRuntime;
   readAllowRoots?: readonly string[];

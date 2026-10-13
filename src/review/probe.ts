@@ -1,8 +1,8 @@
 /**
  * The Referee's one executing tool: run the task's checks over the answer under review and over a
- * copy with one field changed, and say which checks moved. Sed from harness-builder-v4 at 7af7315,
- * `src/review/review-probe.ts`: the budget, the value cap, the one-grammar path and its refusals,
- * the symmetric move and the conclusive rule are v1's, as is most of the tool's text.
+ * copy with one field changed, and say which checks moved. Taken from harness-builder-v4 at
+ * 7af7315, `src/review/review-probe.ts`: the budget, the value cap, the one-grammar path and its
+ * refusals, the symmetric move and the conclusive rule are v1's, as is most of the tool's text.
  *
  * A change is a whole replacement value, or an edit of one passage inside a text field (v1's
  * `editedPassage`, github.com/s-smits/anabasis at 3f93d06b, `src/review/review-probe.ts:264-282`).

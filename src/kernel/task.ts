@@ -12,25 +12,22 @@
  * practised on. Or its package is refused at the gate, and it never was one. Each task version's
  * state is a view over the log.
  *
- * Until 2026-10-09 a task met five gates. Gate 2 was one solve by a stronger solver, whose pass
- * was the witness that the task could be done; gate 3 ran the checks again on that answer; gate 4
- * ran three reject controls its author wrote as edits of it; gate 5 screened it under two
- * harnesses and admitted it when one of them failed it. The plan after the v1 review removes all
- * four (`docs/plan.md`, Phase 2, and `docs/v1.md` for what v1 measured):
+ * The shape is the only gate (`docs/plan.md`, Phase 2, and `docs/v1.md` for what v1 measured):
  *
  * - No stronger solver proves a task possible. v1's solver matched whatever its author's side
- *   found, and the first live sessions here lost 14 of 25 tasks at gate 2. A task no solve has
- *   answered validly is held out like any other and ties until one does.
+ *   found, and the first live sessions here lost 14 of 25 tasks at a gate of one stronger solve.
+ *   A task no solve has answered validly is held out like any other and ties until one does.
  * - The reject controls are the check program's and are read once for it (`tools/c/accept.ts`),
- *   where they were written per task from the stronger solve's answer.
- * - Nothing selects tasks by pass or fail. Both harnesses solve every held-out task under one
+ *   not written per task.
+ * - No gate selects tasks by pass or fail. Both harnesses solve the same scored tasks under one
  *   compute budget, and a valid answer within it is what the comparison counts.
  *
- * A log written before that holds the old gates and the states screening moved a task through:
- * `too-hard`, `admitted`, `too-easy`, `wall-bound`, and the anchor's draw. They are read here as
- * history. A later gate says nothing of a task's shape, and each of those states leaves the task
- * what it was, a held-out task; a refusal one of the later gates led to stands, since its state
- * was logged beside it. No command writes any of them now.
+ * A log written before 9 October holds four later gates (a stronger solve, the checks run again
+ * on its answer, three reject controls, and a screening under two harnesses) and the states
+ * screening moved a task through: `too-hard`, `admitted`, `too-easy`, `wall-bound`, and the
+ * anchor's draw. They are read here as history. A later gate says nothing of a task's shape, and
+ * each of those states leaves the task what it was, a held-out task; a refusal one of the later
+ * gates led to stands, since its state was logged beside it. No command writes any of them now.
  *
  * Departure from the plan, which hashes statement, inputs, check and controls into the task
  * version: a task carries no statement, since v1's tasks have none and a stand-in would be hashed

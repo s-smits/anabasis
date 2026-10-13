@@ -3,14 +3,15 @@
  * own `read`, `bash`, `edit` and `write` on the command wall (`src/solve/coding-tools.ts`), in one
  * working directory, its home. On top of them are the tools that are a Builder's alone. Three ask
  * the host about `harness/` as it stands and run on the same wall: `check_harness`,
- * `preview_harness` and `reset_harness`. Three are the host's: `practice`, `read_trace`, `finish`.
+ * `preview_harness` and `reset_harness`. Four are the host's: `practice`, `read_trace`,
+ * `read_opening` and `finish`.
  *
  * v1's Builder had pi's file tools too, with `harness_inspect`, `harness_trial` and `harness_reset`
- * (`src/builder/tools.ts:75` at 7af7315). Until 2026-10-09 a v2 Builder had the shell and one
- * `write_file`, which wrote a file whole: it rewrote a 30 KB tools file through a heredoc to change
- * a line, backed its tools file up by hand before it tried something, and could not see what a
- * solver would be shown. The shell is the whole of its action space beyond these: it searches,
- * lists and installs through it, and no tool is given for what a command already does.
+ * (`src/builder/tools.ts:75` at 7af7315). A Builder with the shell and one `write_file` alone
+ * rewrote a 30 KB tools file through a heredoc to change a line, backed its tools file up by hand
+ * before it tried something, and could not see what a solver would be shown. The shell is the
+ * whole of its action space beyond these: it searches, lists and installs through it, and no tool
+ * is given for what a command already does.
  *
  * The wall is the solver's, so the repository, the operator's home and every other solve's scratch
  * are closed to the Builder by the operating system and not by a path check in this process. v1
@@ -33,11 +34,10 @@
  *
  * `practice` is where the Referee meets the Builder. A fail goes to it; a fail it rules a check
  * defect does not count and its task leaves the session. What comes back names the ending and the
- * task's record, and never a check, a verdict's detail or the Referee's reasons. Until 11 October
- * an earned fail went on to a Diagnoser, whose reading came back too; 20 of 20 of its readings
- * named the solver, and it went (`docs/simplify.md`, E1). A practice solve that
- * could not be run at all, the verifier failing to decide for one, ends the session: its error can
- * name a check, so it is kept for the host and the Builder is told only that the session ends.
+ * task's record, and never a check, a verdict's detail or the Referee's reasons. A practice solve
+ * that could not be run at all, the verifier failing to decide for one, ends the session: its
+ * error can name a check, so it is kept for the host and the Builder is told only that the session
+ * ends.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -189,8 +189,8 @@ function refuseNamingHome(dir: string, home: string, under: string): void {
 
 /** Remove a tree copy no kept state's `.toolchain` names, which is what the last copy becomes once
  *  the tree has changed and nothing was frozen under it. A `check_harness` call keeps nothing and
- *  makes one all the same: buffer's first session left a 6.4 MB copy linked by no state
- *  (2026-10-10), and a truss tree is 316 MB, so a check after each tree edit would leave one each. */
+ *  makes one all the same: on 10 October a first session left a 6.4 MB copy linked by no state,
+ *  and one domain's tree is 316 MB, so a check after each tree edit would leave one each. */
 function dropUnlinked(states: string, dir: string): void {
   const named = join("..", basename(dir));
   const links = readdirSync(states).map((name) => join(states, name, TOOL_TREE_DIR));
@@ -200,12 +200,12 @@ function dropUnlinked(states: string, dir: string): void {
 }
 
 /** A copy of `harness/.toolchain` beside the states, for a frozen harness to link to; the last one
- *  kept while the tree's stamp holds. A truss tree is 316 MB, which a copy at every freeze spent
- *  again on each check and practice. Null when the harness has no tree.
+ *  kept while the tree's stamp holds. One domain's tree is 316 MB, which a copy at every freeze
+ *  would spend again on each check and practice. Null when the harness has no tree.
  *
- *  The tree is the directory itself, inside the home. Until 11 October a Builder could make it a
- *  link, and the freeze copied what the link named, the repository with its logs among what it
- *  could name, into the tree every later solve reads. */
+ *  The tree is the directory itself, inside the home. A link there is refused: the freeze would
+ *  copy what the link named, the repository with its logs among what it could name, into the tree
+ *  every later solve reads. */
 function keptTree(bench: Bench): string | null {
   const own = join(bench.home, HOME_TOOL_TREE);
   const found = lstatSync(own, { throwIfNoEntry: false });
@@ -232,22 +232,11 @@ function keptTree(bench: Bench): string | null {
 }
 
 /**
- * `harness/` as it stands, copied beside the kept states, opened as a solve would open it and, under
- * a wall, asked for its tools as a solve would ask. Throws, with the harness's own error, when a
- * solve could not: a harness whose tools do not list fails every task before its first turn, and
- * one frozen so would be screened and scored at a full round's cost to say only that. Links are
- * copied as they are: a stored state carries links that resolve to nothing, and following one would
- * copy what it points at. The copy is the caller's to keep or to remove.
- *
- * Every question is asked of the copy, which no command of the Builder's can reach, and none of
- * `harness/` itself, which a process a command left behind could still be changing.
- */
-/**
  * `source`, a harness directory, copied into a fresh folder among `states` as a state is kept:
  * its files less its own `.toolchain`, links as they are, and its programs named by a link to
  * `tree` beside it, so both go where the campaign's folder goes. The caller opens the copy and
  * keeps it or removes it. Shared with the import of a harness built elsewhere
- * (`tools/d2/import.ts`, 11 October), which keeps one the same way.
+ * (`tools/d2/import.ts`), which keeps one the same way.
  */
 export function stagedState(source: string, states: string, tree: string | null, prefix: string): string {
   mkdirSync(states, { recursive: true });
@@ -264,6 +253,17 @@ export function stagedState(source: string, states: string, tree: string | null,
   }
 }
 
+/**
+ * `harness/` as it stands, copied beside the kept states, opened as a solve would open it and, under
+ * a wall, asked for its tools as a solve would ask. Throws, with the harness's own error, when a
+ * solve could not: a harness whose tools do not list fails every task before its first turn, and
+ * one frozen so would be scored at a full round's cost to say only that. Links are
+ * copied as they are: a stored state carries links that resolve to nothing, and following one would
+ * copy what it points at. The copy is the caller's to keep or to remove.
+ *
+ * Every question is asked of the copy, which no command of the Builder's can reach, and none of
+ * `harness/` itself, which a process a command left behind could still be changing.
+ */
 async function frozen(bench: Bench): Promise<Snapshot> {
   const { states } = bench.request;
   mkdirSync(states, { recursive: true });
@@ -313,9 +313,10 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
  *  its start to its end, the verifier's among them, of its time limit, the model's own turns, and
  *  the tokens the model read and wrote over them. Empty where the log holds no end for the solve.
  *  A Builder that is not told this cannot tell a harness that passes with a minute to spare from
- *  one that passes at the limit (`docs/plan.md`, Phase 2). The tokens are the one measure of what a tool or a program costs a
- *  solve that the Builder can act on (10 October): a promoted harness's solve read 8,600 to 13,200
- *  tokens over two turns in t-4, t-9 and t-10, nearly all of it the prompt read twice. */
+ *  one that passes at the limit (`docs/plan.md`, Phase 2). The tokens are the one measure of what
+ *  a tool or a program costs a solve that the Builder can act on: on 10 October a promoted
+ *  harness's solve read 8,600 to 13,200 tokens over two turns in three campaigns, nearly all of it
+ *  the prompt read twice. */
 export function usedText(events: readonly LogEvent[], solve: string): string {
   const { start, end } = solvesIn(events).find(({ id }) => id === solve) ?? {};
   const limits = limitsIn(start?.limits);
@@ -432,9 +433,8 @@ export function practiceTool(bench: Bench): AgentTool {
       // practice in flight ends with the session and not a solve's whole wall after it.
       const kill = signal ?? bench.halt.signal;
       // Under the parent, the solve runs the harness the session started from, as kept outside the
-      // home, and harness/ as it stands need not open: until 10 October a Builder could read its
-      // change only against the parent's comparison record, and t-10's first session had none
-      // (its whole-run investigation, lane 16).
+      // home, and harness/ as it stands need not open: without it a Builder reads its change only
+      // against the parent's comparison record, which a campaign's first session does not have.
       // Under the reference the solve runs the harness the session's is compared with: the fact
       // "what does the reference do on this task" is the Builder's to buy with its own solve,
       // and the host hands it no table of it (the plan's climb section, C5).
@@ -537,9 +537,9 @@ export function traceTool(bench: Bench): AgentTool {
  *
  * Neither is a gate. v1's submit refused a round that then measured nothing, 13 firmware rounds by
  * its own count, and a session here is frozen whatever it holds (`session.ts`). But a Builder that
- * finishes is the one reader who can still act. In both truss sessions of 2026-10-09 the harness
- * that went to the comparison was one no practice solve had run: the six solves were spent on
- * earlier versions, which is why `practice` says when the last one is gone. A session that never
+ * finishes is the one reader who can still act. In two sessions of 9 October the harness that
+ * went to the comparison was one no practice solve had run: the six solves were spent on earlier
+ * versions, which is why `practice` says when the last one is gone. A session that never
  * practised chose so and is told nothing here. A second `finish` ends the session as it is.
  */
 async function standing(bench: Bench): Promise<string | null> {
@@ -634,9 +634,9 @@ export function finishTool(bench: Bench): AgentTool {
 }
 
 /** What a harness that opens gives a solver, a line for each of its four parts, and a note where
- *  one part makes another unreachable: programs under a solver with no shell. Until 10 October a
- *  second note said that tools beside the shell were a program built twice; that was a steer, and
- *  the account now states what each costs (`HARNESS.md`). */
+ *  one part makes another unreachable: programs under a solver with no shell. No note says that
+ *  tools beside the shell are a program built twice, which would be a steer: the account states
+ *  what each costs (`HARNESS.md`). */
 function opens(harness: Harness, tools: readonly string[]): string {
   const presets = selectedCodingTools(harness.presets);
   const programs = installedPrograms(harness.toolTree);

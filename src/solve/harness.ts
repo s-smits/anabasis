@@ -2,20 +2,20 @@
  * A v1 Built Harness state, opened for a v2 solve: its guide, its tool kinds, its tool tree, and
  * its domain tools as pi tools whose every call runs one-shot under the command wall.
  *
- * The state is v1's on-disk format (harness-builder-v4 at 7af7315): `agent/BUILT_AGENTS.md`,
- * `agent/tools-spec.json`, `agent/tools.ts` exporting `createDomainHarness`, and `.toolchain/`.
- * `agent/config.yaml` is never read: the host owns every limit a solve runs under (plan exit test
- * 4), so a harness's own figures for turns, minutes or command seconds change nothing.
+ * The state is v1's on-disk format: `agent/BUILT_AGENTS.md`, `agent/tools-spec.json`,
+ * `agent/tools.ts` exporting `createDomainHarness`, and `.toolchain/`. `agent/config.yaml` is never
+ * read: the host owns every limit a solve runs under (`AGENTS.md`, rule 11), so a harness's own
+ * figures for turns, minutes or command seconds change nothing.
  *
  * Departure from v1: harness tools keep no state across calls in v2, each call runs alone under the
  * command wall. v1 loaded the factory once into a long-lived confined worker that held the solve's
- * DraftStore (generated-tool-worker.ts); here every call, and the one listing before them, is a
- * fresh `bun` over the bundled module in the command's own folder, which is removed when it ends,
- * so stdout is the only channel back. A call names no timeout, so it runs for the condition's
- * shell default, where v1 gave a request 30 s (generated-tool-worker-process.ts:75). What the bundle sees in place of `@ana/agent-bundle` and
- * pi-ai, and the departures there, are in `harness-shim.ts`.
+ * DraftStore; here every call, and the one listing before them, is a fresh `bun` over the bundled
+ * module in the command's own folder, which is removed when it ends, so stdout is the only channel
+ * back. A call names no timeout, so it runs for the condition's shell default, where v1 gave a
+ * request 30 s. What the bundle sees in place of `@ana/agent-bundle` and pi-ai, and the departures
+ * there, are in `harness-shim.ts`.
  *
- * Two more departures, of 2026-10-09. `presets` names pi's coding tools, any of `read`, `bash`,
+ * Two more departures. `presets` names pi's coding tools, any of `read`, `bash`,
  * `edit` and `write`, where v1's named its own `files` and `shell` (`coding-tools.ts`). And the
  * answer is no tool's: a state need declare no artifact-writer, and one that does has it listed
  * and not served (`harnessTools`, `answer.ts`).
@@ -24,14 +24,7 @@ import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { AGENT_DIR, GENERATED_TOOLS_FILE, GUIDE_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { sha256OfFile } from "../meta/digest.ts";
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readlinkSync,
-  realpathSync,
-  writeFileSync,
-} from "../meta/filesystem.ts";
+import { existsSync, lstatSync, readlinkSync, realpathSync, writeFileSync } from "../meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, asRecord, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -58,11 +51,11 @@ export interface Harness {
   /** `agent/tools.ts` bundled into one self-contained ESM module over `harness-shim.ts`. */
   readonly module: string;
   /** sha256 over everything the solver-visible tools depend on: module, spec, guide and the tool
-   *  tree's files, so a tool tree changed under an unchanged module changes it (v1's row G7). */
+   *  tree's files, so a tool tree changed under an unchanged module changes it. */
   readonly digest: string;
 }
 
-/** A tool's result as the shim's `call` returns it (v1's `Evidence`, define-tool.ts:13). */
+/** A tool's result as the shim's `call` returns it (v1's `Evidence`). */
 interface Evidence {
   text: string;
   details?: JsonValue;
@@ -94,7 +87,7 @@ const OUTPUT_TAIL_BYTES = 8 * 1024 * 1024;
  * What runs inside the wall: read `input.json`, load the factory, and print one marker line with
  * the listing, the tool's evidence or the error, last on stdout. Fixed text, never composed from
  * the harness, and plain JavaScript because it runs where nothing of this repository is readable.
- * The brand and the "must return tools" refusals are v1's (built-starter.ts:446-448, :558). The
+ * The brand and the "must return tools" refusals are v1's. The
  * signal `run` receives never fires: the host's abort reaches the call by killing its process tree.
  */
 const CALLER = `import { readFileSync } from "node:fs";
@@ -135,18 +128,6 @@ function located(module: string, dir: string): string {
   return places
     .reduce((text, place) => text.replaceAll(place, "<harness>"), module)
     .replace(BUNDLED_PATH, "");
-}
-
-/**
- * The guide a kept harness state holds, as a solver under it read it, or null where the state holds
- * none. For a reader of a solve that has the state's folder and no use for its tools. Read only
- * where it is a file of the state's own: a state is kept with its links as they were, and a guide
- * linked to a host file is refused where the harness is opened (`openHarness`), so it is not read
- * here either.
- */
-export function guideOf(dir: string): string | null {
-  const file = join(dir, `${AGENT_DIR}${GUIDE_FILE}`);
-  return existsSync(file) && lstatSync(file).isFile() ? readFileSync(file, "utf8") : null;
 }
 
 export async function openHarness(dir: string): Promise<Harness> {
@@ -224,8 +205,8 @@ const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeCo
 /** What a tool tree is read under: a file in it added, removed, resized, rewritten or with its mode
  *  changed changes it. It is what the runner's own moved-files check trusts (`run.ts`, `treeStamp`).
  *  It holds each entry's change time with its modification time: `tar` and `cp -p` set the
- *  modification time back, so until 11 October a rewrite of the same size under them kept the stamp
- *  and a freeze reused the copy from before it. No process can set the change time back, and
+ *  modification time back, so a stamp of size and modification time alone survived a rewrite of
+ *  the same size under them, and a freeze reused the copy from before it. No process can set the change time back, and
  *  hashing the content, which the stamp stands in for, reads a tree of 316 MB. */
 export function toolTreeStamp(real: string): string {
   return hashJsonValue(
@@ -252,7 +233,7 @@ function keptTreeContent(toolTree: string) {
 }
 
 /**
- * v1's bundling (generated-tool-worker-process.ts:103-112), with the two imports a harness makes of
+ * v1's bundling, with the two imports a harness makes of
  * the host resolved to the shim, and the output kept in memory rather than in a temporary directory,
  * since every call stages it afresh.
  *
@@ -308,13 +289,13 @@ async function bundle(entry: string): Promise<string> {
 
 /**
  * The harness's domain tools for one task, in the factory's order, after one walled listing. The
- * name check is v1's (built-starter.ts:449-460).
+ * name check is v1's.
  *
- * An artifact-writer is listed and not served. Until 2026-10-09 a harness had to declare one, the
- * host bound it to the answer format, and its arguments were the answer; three of four Sol Builders
- * on 2026-10-08 froze a harness without one, and every solve under each ended with no answer. The
- * answer is now a file the host reads at `submit` (`answer.ts`), so no harness carries the answer's
- * path and none can break it. A harness kept before then still declares its writer, and opens.
+ * An artifact-writer is listed and not served: the answer is a file the host reads at `submit`
+ * (`answer.ts`), so no harness carries the answer's path and none can break it. When a harness had
+ * to declare a writer bound to the answer format, three of four Builders on 8 October froze a
+ * harness without one, and every solve under each ended with no answer. A harness kept with a
+ * writer still opens.
  */
 export async function harnessTools(
   harness: Harness,

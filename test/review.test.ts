@@ -1,7 +1,6 @@
-// The two reviewers on the faux provider: the probe's field replacement and refusals, the Referee's
-// three rulings with a check-defect standing only on a probe that decided both sides and reached the
-// named check, its replay of the checks before any reading, and the Diagnoser reading only earned
-// fails on released tasks, against a pass under the same condition, quoting what it read or abstaining.
+// The Referee on the faux provider: the probe's field replacement and refusals, its three rulings
+// with a check-defect standing only on a probe that decided both sides and reached the named check,
+// and its replay of the checks before any reading.
 import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import {
   createModels,

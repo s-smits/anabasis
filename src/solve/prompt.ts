@@ -8,22 +8,16 @@
  * whoever runs it:
  * - pi's addendum holds what a solver cannot find out for itself and no harness may change: what it
  *   must deliver, where the published requirements are, which file is its answer, the solve wall
- *   and what the wall does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime` at
- *   3f93d06b; the wall's last sentence is this host's, which ends a solve as a fail and submits
+ *   and what the wall does. The duty and the minutes are v1's `BUILT_SOLVE_DUTY` and `solveTime`;
+ *   the wall's last sentence is this host's, which ends a solve as a fail and submits
  *   nothing.
  * - A section of its own, `environment`, holds the wall's facts: what a command may write and
  *   reach, the volume, the command limits, and the programs the harness installed.
  * - pi's project context holds the harness's guide, as pi gives a project's own instructions,
  *   under one sentence on what a guide cannot override (v1's `BUILT_GUIDE_PREAMBLE`).
  *
- * Nothing here says how to reach an answer, which is the harness's to say. Until 2026-10-09 the
- * wall's facts sat in the bash tool's description, as v1 had them, and with them a sentence telling
- * every solver to keep a driver script and re-run it, one telling it never to pass a timeout for a
- * search, and one telling it to use the installed programs rather than re-implement them. v1 took
- * the first out itself on 29 September (bd9f187). The prompt was then a general paragraph and a
- * closed tool roster, which contradicted a second prompt in front of it: under the Claude backend a
- * solver read Claude Code's own system prompt first, for tools it did not have. It now reads this
- * one alone (`tools/d2/campaign.ts`).
+ * Nothing here says how to reach an answer, which is the harness's to say. Under the Claude backend
+ * too a solver reads this prompt alone, with no other in front of it (`src/backends/claude.ts`).
  */
 import type { ToolDefinition } from "../../vendor/pi-coding-agent/core/extensions/types.ts";
 import { buildSystemPrompt } from "../../vendor/pi-coding-agent/core/system-prompt.ts";
@@ -64,10 +58,10 @@ export interface Told {
   readonly network: NetworkReach;
 }
 
-/** The prompt a turn that ended without a submit is followed by (v1's built-starter.ts:67-68). */
+/** The prompt a turn that ended without a submit is followed by, as v1 worded it. */
 export const NUDGE = "Finish the task with the available tools, then submit your answer.";
 
-/** Installed program names the prompt lists before it elides the rest (v1's built-bash.ts:98). */
+/** Installed program names the prompt lists before it elides the rest, as v1 had it. */
 const LISTED_PROGRAMS = 20;
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
@@ -140,7 +134,7 @@ export function systemPrompt(told: Told): string {
 }
 
 /** Whether a command could run this entry by name: a venv's sourced `activate` siblings are mode
- *  644, and a broken link runs nothing (v1's built-bash.ts:152-159). */
+ *  644, and a broken link runs nothing. */
 function canRun(path: string): boolean {
   try {
     const entry = statSync(path);
@@ -151,8 +145,8 @@ function canRun(path: string): boolean {
 }
 
 /** The programs a harness installed, by the names that run them, from the directories a command's
- *  PATH holds, in its order (v1's built-bash.ts:176-186). Without the list, every case of truss run
- *  298967 wrote its own solver in the host's python3 beside the Builder's interpreter. */
+ *  PATH holds, in its order, as v1 listed them. Without the list, every case of one truss run
+ *  wrote its own solver in the host's python3 beside the Builder's interpreter. */
 export function installedPrograms(toolTree: string | null): string[] {
   const dirs = toolTree === null ? [] : toolTreeSearchDirs(toolTree);
   return [
@@ -172,7 +166,7 @@ export function publicView({ taskId, family, publicInput }: PublicTask): PublicT
   return { taskId, family, publicInput };
 }
 
-/** v1's built-starter.ts:72-77. */
+/** The opening message, as v1 worded it. */
 export function firstTurn(task: PublicTask): string {
   return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(task.publicInput, null, 2)}`;
 }
@@ -180,7 +174,7 @@ export function firstTurn(task: PublicTask): string {
 /**
  * The task as `public/task.json`, the contract's answer format as `public/answer-format.json`, and
  * each public resource as `public/resources/<name>.json`, which the prompt says the home holds
- * (the task and the resources as v1's generated-tool-worker.ts:262-285 seeded them). Returns how
+ * (the task and the resources as v1 seeded them). Returns how
  * many resource files it wrote.
  */
 export function seedHome(

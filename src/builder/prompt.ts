@@ -54,8 +54,8 @@
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
-import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
 import type { NetworkReach } from "../solve/command.ts";
+import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
 
 /** A practice task as the opening message lists it. */
 interface Listed {
@@ -111,8 +111,12 @@ export interface Said {
  * campaign command makes each move the table names, and a session ends in a harness the host
  * measures. Under `builder` one live conversation makes them through its campaign tools
  * (`BuildRequest.campaign`; `--builder-led` on the campaign command, `tools/d2/harness-builder.ts`).
- * A session takes its row once (`Bench.said`), and nothing else in `src/builder` asks which it is,
- * so the texts of a campaign the host runs are these and no others whatever the other row says.
+ * A session takes its row once (`Bench.said`), and no text asks which it is anywhere else, so the
+ * texts of a campaign the host runs are these and no others whatever the other row says. What a
+ * session does differently with campaign tools, and not what it says, is asked of the same
+ * request where it is done: its turns are metered as they end and its opening is served as the log
+ * stands (`session.ts`), and its practice is held to the campaign's total (`practiceLeft`,
+ * `tools.ts`).
  */
 export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   host: {

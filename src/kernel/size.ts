@@ -14,7 +14,7 @@
  * task ties only where both gave as many; a campaign short of tasks still reads each one closely.
  * Twenty-four untied tasks detect a harness that wins 73% of them four times in five, where twelve
  * need 81%. A comparison buys tasks and the power is in untied ones: the tie share between them is
- * what the reference read against itself measures (`round.ts`, `noise`), and until it has been
+ * what the reference read against itself measures (`comparison.ts`, `noise`), and until it has been
  * read the size is said as if no task tied, which is the best case.
  *
  * Until 12 October this file also held a model of tasks alike, each a win, a loss or a tie by fixed

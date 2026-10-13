@@ -21,7 +21,7 @@
 import { unadmitted } from "../kernel/acceptance.ts";
 import { readsStepEitherWay, readTwice, triggered } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { billedParts, roomOf } from "../kernel/reports.ts";
+import { billedParts, poolOf, roomOf } from "../kernel/reports.ts";
 import { practiceRan } from "../kernel/solves.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -48,9 +48,10 @@ const ROWS: readonly { readonly code: string; readonly move: (ground: Ground) =>
   // A bound is spent: the total, the provider, the patience, the control, a comparison cut short.
   { code: "bound", move: bound },
   // The tasks are not set up: taken in, released, written on the operator's word, or written up
-  // to a comparison's and its repeat's before the first session is paid for.
+  // to a comparison's and its practice's before the first session is paid for.
   { code: "tasks", move: tasks },
-  // A comparison that began goes on, and one draw that cleared the trigger is drawn again.
+  // A comparison that began goes on, and one draw that cleared the trigger is drawn again, on
+  // tasks its first stage did not score.
   { code: "unfinished", move: unfinished },
   // A step and its repeat, read together, promote.
   { code: "twice", move: twice },
@@ -151,8 +152,8 @@ function writtenSince({ events, refused }: Ground, reading: Reading): boolean {
  * does a session whose tasks no comparison has read yet,
  * since it moved the campaign, however few it wrote: on 9 October a campaign ended on three
  * sessions that had written four tasks between them. A session whose tasks a comparison has read
- * is passed over, the comparison being the reading of them, and so is one the provider failed,
- * which was given no chance to write (`crashedRun`).
+ * is passed over, the comparison being the reading of them, and so is one the provider failed or
+ * a stopped run cut, which was given no chance to write (`crashedRun`; `endCut`, `tools/d2/harness-builder.ts`).
  *
  * It is the one count that ends a campaign for want of tasks or of room (`spent`). Until
  * 12 October three counted: idle Examiner sessions in a row, which every session that held out a
@@ -169,7 +170,7 @@ function roomless({ events, reports, reference }: Ground) {
   const examined = events.flatMap(({ kind, data }, at) => {
     if (kind !== "exam.finished") return [];
     const wrote = Array.isArray(data.held) && data.held.length > 0;
-    const passed = wrote ? at < read : data.ended === "crashed";
+    const passed = wrote ? at < read : data.ended === "crashed" || data.ended === "killed";
     return passed ? [] : [{ at, id: null, gain: wrote }];
   });
   const readings = [...compared, ...examined].toSorted((one, other) => one.at - other.at);
@@ -367,18 +368,16 @@ function tasks(ground: Ground): Move | null {
       answers: [asked.at],
     };
   }
-  // Before its first comparison a campaign holds a comparison's tasks and a repeat's, written
-  // before the first session is paid for, so that the release before it has them to draw practice
-  // from and the Examiner is not on the critical path between the session and the comparison:
-  // campaigns that built first on three practice tasks cleared them in three to five harness
-  // versions, and then waited on an Examiner session. The repeat takes the tasks its first stage
-  // did not score first (`scoredSet`): a first comparison held to one target left none, and on
-  // 12 October a repeat re-scored the versions its first stage had scored. A repeat's draw buys no
-  // power (0.51 against 0.52 in the overhaul plan's simulation, section 4b): it is held against
-  // reusing one test set across attempts. It is a wish and no refusal of the gate's, which admits
-  // a comparison by hand on fewer.
-  const target = 2 * plan.wanted.target;
-  if (all.length > 0 || supply.held >= target) return null;
+  // Before its first comparison a campaign holds the tasks it scores and the practice its release
+  // still draws, written before the first session is paid for, so that the Examiner is not on the
+  // critical path between the session and the comparison: campaigns that built first on three
+  // practice tasks cleared them in three to five harness versions, and then waited on an Examiner
+  // session. It is a wish and no refusal of the gate's, which admits a comparison by hand on fewer.
+  // Until 13 October it held a repeat's tasks as well, twice the target, and the two host-run
+  // campaigns of 12 October examined for 16 hours, held 41 and 31 of 48, and never compared. A
+  // repeat's tasks are written where one is due (`unfinished`).
+  const missing = all.length > 0 ? 0 : shortBy(ground);
+  if (missing === 0) return null;
   const before =
     waiting === null
       ? "no comparison has run yet"
@@ -386,12 +385,46 @@ function tasks(ground: Ground): Move | null {
   return examine(
     ground,
     "tasks",
-    `the campaign holds ${String(supply.held)} of the ${plural(target, "task")} a comparison and its repeat score, and ${before}: the Examiner writes more first`,
+    `the campaign is ${plural(missing, "held-out task")} short of a comparison's target and the practice its release draws, and ${before}: the Examiner writes more first`,
   );
 }
 
+/**
+ * How many held-out tasks the campaign is short of: a comparison's target and what the next
+ * release still draws for practice, which leaves the held ones, less what it holds; where a repeat
+ * is due only the tasks its first stage did not score count, which the repeat draws first
+ * (`scoredSet`). The table's examine before a comparison (`tasks`, `unfinished`) and the session's
+ * ask (`examTasks`, `tools/d2/campaign-terms.ts`) are this one count.
+ */
+export function shortOf(events: readonly LogEvent[], plan: Plan): number {
+  return shortBy(groundOf(events, plan));
+}
+
+function shortBy(ground: Ground): number {
+  const { plan, supply } = ground;
+  const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
+  return Math.max(0, plan.wanted.target + practice - (dueOf(ground)?.fresh ?? supply.held));
+}
+
+/** The repeat the pair's last reading bought, where one is due, and how many held tasks its first
+ *  stage did not score; null where none is: a control is never repeated, since the starter winning
+ *  on new tasks is room by another name. */
+function dueOf(ground: Ground) {
+  const { events, read, plan } = ground;
+  if (
+    read === null ||
+    read.control ||
+    !triggered(read.report, plan.wanted.trigger) ||
+    twice(ground) !== null
+  ) {
+    return null;
+  }
+  const scored = new Set(Array.isArray(read.report.versions) ? read.report.versions : []);
+  return { first: read, fresh: poolOf(events).scorable.filter((task) => !scored.has(task)).length };
+}
+
 function unfinished(ground: Ground): Move | null {
-  const { all, read, plan } = ground;
+  const { events, all } = ground;
   const open = all.find(({ report }) => report === null);
   if (open !== undefined) {
     return {
@@ -403,16 +436,26 @@ function unfinished(ground: Ground): Move | null {
     };
   }
   // A reading that clears the trigger buys the repeat and promotes nothing: the two are then read
-  // together (`readTwice`), which the next row does. A control is never repeated: the starter
-  // winning on new tasks is room by another name.
-  const bought = read !== null && !read.control && triggered(read.report, plan.wanted.trigger);
-  return bought && twice(ground) === null
-    ? compare(
-        `comparison ${read.id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`,
+  // together (`readTwice`), which the next row does. The repeat is a fresh draw where the campaign
+  // holds one, so one Examiner session writes up to the target first where it does not, and the
+  // repeat then runs on what is held, its first stage's tasks last.
+  const first = dueOf(ground)?.first;
+  if (first === undefined) return null;
+  const missing = shortBy(ground);
+  const examined = events.some(
+    ({ kind, data }, at) => at > first.reported && kind === "exam.finished" && data.ended !== "crashed",
+  );
+  return missing > 0 && !examined
+    ? {
+        move: "examine",
+        why: `comparison ${first.id} cleared the trigger, and the campaign is ${plural(missing, "held-out task")} short of a repeat on tasks its first stage did not score: the Examiner writes more first`,
+        repeats: first.id,
+      }
+    : compare(
+        `comparison ${first.id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`,
         "latest",
-        read.id,
-      )
-    : null;
+        first.id,
+      );
 }
 
 /** Whether `harness` read a step and its repeat against the reference: the two read together
@@ -633,7 +676,7 @@ function buildsOn(ground: Ground): string {
  * M2.5): P4's union bound over the attempts under the reference, indicative or not
  * (`falsePromotion`, `climb.ts`), until an A/A has run since the last report, which a comparison of
  * four solves a side carries, or the operator leaves a cause (`--cause`). It is no refusal of the
- * gate's, since its remedy is itself a comparison by hand (`tools/d2/checkpoint.ts --noise`).
+ * gate's, since its remedy is itself a comparison by hand (`tools/d2/checkpoint.ts`).
  */
 function risked({ events, reports }: Ground, named: Move): Move | null {
   if (named.move !== "compare" || named.id !== undefined || named.fresh !== "latest") return null;
@@ -644,7 +687,7 @@ function risked({ events, reports }: Ground, named: Move): Move | null {
     ? null
     : end(
         "control",
-        `a false promotion is at most ${String(Math.round(100 * risk.union))}% over ${plural(risk.attempts, "attempt")} under this reference, past a quarter, and comparison ${last.id} read no A/A: run one (tools/d2/checkpoint.ts --noise), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again`,
+        `a false promotion is at most ${String(Math.round(100 * risk.union))}% over ${plural(risk.attempts, "attempt")} under this reference, past a quarter, and comparison ${last.id} read no A/A: run a comparison of four solves a side (tools/d2/checkpoint.ts --solves 4), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again`,
       );
 }
 
@@ -653,23 +696,20 @@ function risked({ events, reports }: Ground, named: Move): Move | null {
  * comparison a row named. A comparison the cap cuts before its last solve tallies nothing, and
  * what it billed bought no reading: on 9 October a campaign with $1.45 left began a comparison
  * after one that had billed $1.00, and was cut after $1.06. What a comparison will bill is read
- * from the last one that reported, by the sides each solves: two, and three where the operator
- * read the reference against itself (`--noise`, a checkpoint). Where no comparison has reported,
- * nothing says what one bills, and it starts; one that began goes on under whatever is left.
+ * from the last one that reported. Where no comparison has reported, nothing says what one
+ * bills, and it starts; one that began goes on under whatever is left.
  */
 function unafforded({ events, plan, reports }: Ground, named: Move): Move | null {
   const last = reports.findLast(({ report }) => report.capped !== true);
   if (named.move !== "compare" || named.id !== undefined || plan.left === null || last === undefined) {
     return null;
   }
-  const sides = last.noise ? 3 : 2;
   const was = billedParts(events, last.id).comparison;
-  const expected = (was * 2) / sides;
-  return plan.left.dollars >= expected
+  return plan.left.dollars >= was
     ? null
     : end(
         "budget",
-        `$${plan.left.dollars.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)} for ${String(sides)} sides: the next solves 2 and would bill about $${expected.toFixed(2)}, so it would be cut before it reports`,
+        `$${plan.left.dollars.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)}: the next would bill about as much, so it would be cut before it reports`,
       );
 }
 

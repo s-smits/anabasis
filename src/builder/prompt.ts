@@ -54,8 +54,8 @@
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
-import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
 import type { NetworkReach } from "../solve/command.ts";
+import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
 
 /** A practice task as the opening message lists it. */
 interface Listed {
@@ -111,8 +111,15 @@ export interface Said {
  * campaign command makes each move the table names, and a session ends in a harness the host
  * measures. Under `builder` one live conversation makes them through its campaign tools
  * (`BuildRequest.campaign`; `--builder-led` on the campaign command, `tools/d2/harness-builder.ts`).
- * A session takes its row once (`Bench.said`), and nothing else in `src/builder` asks which it is,
- * so the texts of a campaign the host runs are these and no others whatever the other row says.
+ * A session takes its row once (`Bench.said`), and no text asks which it is anywhere else, so the
+ * texts of a campaign the host runs are these and no others whatever the other row says. What a
+ * session does differently with campaign tools, and not what it says, is asked of the same
+ * request where it is done: its turns are metered as they end and its opening is served as the log
+ * stands (`session.ts`), and its practice is held to the campaign's total (`practiceLeft`,
+ * `tools.ts`). A led Builder is told each fact once, where it is owned: what its tools do in their
+ * descriptions, and here what a tool result ends with and what ends the campaign. A promotion ends
+ * nothing: the operator's milestone of twelve is no rule (`AGENTS.md`, "Climb"), and `finish` is
+ * the one ending a model chooses.
  */
 export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   host: {
@@ -131,12 +138,12 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   },
   builder: {
     closing:
-      "read_opening returns the public opening facts for when this conversation no longer holds them. When harness/ holds what you want measured, use compare if that tool is available; otherwise call finish for the host to measure it. With campaign tools, you are the main Harness Builder: choose when to edit, practise, ask the Examiner, compare and promote. finish ends the conversation and does not call those tools.",
+      "read_opening returns the public opening facts for when this conversation no longer holds them. With the campaign tools you make the campaign's moves yourself; every tool result ends with the campaign's facts, what a comparison of the tasks held can read, and the move the host's table would make, which you may follow or not. The campaign ends at its budget, after as many comparisons in a row without a gain as its patience, or on its provider; a promotion ends nothing, and the campaign goes on against the promoted harness. finish ends this conversation and freezes harness/: it measures nothing, and the campaign waits for the operator.",
     frozen: "frozen",
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
     finish:
-      "End this campaign's Builder conversation and freeze harness/. This does not run a comparison or promote it: compare and promote are separate tools. Say what changed and what remains unmeasured. A notice about an untried or broken harness can be acknowledged by calling finish again.",
+      "End this campaign's Builder conversation and freeze harness/. Say what changed and what remains unmeasured. A notice about an untried or broken harness can be acknowledged by calling finish again.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",

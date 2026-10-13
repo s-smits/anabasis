@@ -3,7 +3,7 @@
  * `campaign-actions.ts`): the command's flags, what a campaign runs by and keeps in its opening,
  * and the flags of each move's command. Nothing here knows who makes a move.
  */
-import { supplyOf } from "#src/builder/admission.ts";
+import { shortOf } from "#src/builder/decide.ts";
 import { type Plan } from "#src/builder/ground.ts";
 import type { Decided } from "#src/builder/move.ts";
 import { type Opening, openingOf, planOf, SEATS, SESSIONS, type Seat, TERMS } from "#src/builder/opening.ts";
@@ -105,7 +105,7 @@ const OPTIONS = {
 export const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
 const OPENED = "campaign.opened";
 export const MOVED = "campaign.move";
-export const STARTED = "comparison.started";
+const STARTED = "comparison.started";
 /** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
  *  command wants a name, and the script is what is asked. */
 export const SCRIPTED = "claude/claude-opus-5-5";
@@ -255,17 +255,13 @@ export function opened(
 
 /**
  * The held-out tasks an Examiner session is asked for where no flag names them: what the campaign
- * is short of a comparison's target, before its first comparison of a repeat's as well, plus what
- * the next release takes for practice; undefined where it is short of neither. Until 11 October it
- * was the command's default, 12 (buffer was short 9), and until 12 October one target, so a repeat
- * on a campaign holding exactly that re-scored its first stage's versions (buffer-141-m3's g-2).
+ * is short of (`shortOf`, `decide.ts`); undefined where it is short of nothing. Until 11 October it
+ * was the command's default, 12 (buffer was short 9), and from 12 to 13 October twice the target
+ * before the first comparison, which two campaigns examined towards for 16 hours.
  */
 export function examTasks({ events, plan }: Turn): string | undefined {
-  const supply = supplyOf(events);
-  const draws = events.some(({ kind }) => kind === STARTED) ? 1 : 2;
-  const wanting = Math.max(0, draws * plan.wanted.target - supply.held);
-  const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
-  return wanting + practice > 0 ? String(wanting + practice) : undefined;
+  const wanting = shortOf(events, plan);
+  return wanting > 0 ? String(wanting) : undefined;
 }
 
 /** The next free id under `prefix`, as `b-3` after `b-1` and `b-2`. */
@@ -311,7 +307,6 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
   return [
     ...flag("solves", isNumber(start.solves) ? String(start.solves) : undefined),
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
-    ...(start.noise === true ? ["--noise"] : []),
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
     // A margin the A/A set, or the default before one, is read again from the log as it stood at

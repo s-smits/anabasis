@@ -43,6 +43,8 @@ const OPENED = "campaign.opened";
 /** The project every campaign here is opened under. */
 const PROJECT = "fixture-products";
 const MOVED = "campaign.move";
+/** What a scripted Examiner says as it finishes having written nothing. */
+const NOTHING = "Nothing to add.";
 // Fourteen held once two are released: a comparison's seven and its repeat's, which a campaign holds
 // before its first comparison (12 October). At the default level, 0.02 since 12 October, a step
 // takes six tasks all won (`sweepOf`), and seven still read one after a pass labelled wrong.
@@ -89,15 +91,16 @@ describe("a campaign run by its log", () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-short`;
     // Sixteen tasks in the pack, two released: fourteen held of the twenty a comparison at a target
-    // of ten and its repeat score, and two practice tasks of the three the campaign names. The
-    // session is asked for six and one, and the Examiner is told nothing of the number. The wall is the campaign's term, and until
-    // 11 October the Examiner was told the default of two hours whatever the term said.
+    // of twenty scores, and two practice tasks of the three the campaign names, which the release
+    // draws from the held ones. The session is asked for seven, and the Examiner is told nothing of
+    // the number. The wall is the campaign's term, and until 11 October the Examiner was told the
+    // default of two hours whatever the term said.
     const flags = [
       ...seeded(name),
       "--patience",
       "1",
       "--target",
-      "10",
+      "20",
       "--practice",
       "3",
       "--solve-minutes",
@@ -111,8 +114,8 @@ describe("a campaign run by its log", () => {
         return examine({
           ...request,
           ...scripted([
-            ["finish", { note: "Nothing to add." }],
-            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
           ]),
         });
       },
@@ -131,7 +134,7 @@ describe("a campaign run by its log", () => {
   it("waits out a provider limit that names its reset, on record, and makes the move again", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-limit`;
-    const flags = [...seeded(name), "--patience", "1", "--target", "10", "--practice", "3"];
+    const flags = [...seeded(name), "--patience", "1", "--target", "20", "--practice", "3"];
     // The first Examiner session is refused on a limit the provider says lifts in a minute.
     const reset = Math.floor(Date.now() / 1000) + 60;
     let refused = false;
@@ -145,8 +148,8 @@ describe("a campaign run by its log", () => {
         return examine({
           ...request,
           ...scripted([
-            ["finish", { note: "Nothing to add." }],
-            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
           ]),
         });
       },
@@ -158,6 +161,12 @@ describe("a campaign run by its log", () => {
         slept.push(ms);
       },
     };
+    // The move the limit ended is one of the run's moves: of three, it was the third, and the run
+    // stops at the move it would make again.
+    expect(await harnessBuilder([...flags, "--moves", "3"], { ...seats, host })).toMatchObject({
+      move: "examine",
+    });
+    expect(of(name, MOVED).map(({ session }) => session ?? null)).toEqual([null, null, "x-1"]);
     const ending = await harnessBuilder(flags, { ...seats, host });
     // Slept to a minute past the named reset, and the session asked again went on to the ending.
     expect(slept).toHaveLength(1);
@@ -174,6 +183,44 @@ describe("a campaign run by its log", () => {
       // The id the move that threw had is not used again.
       ["examine", "x-2", "tasks"],
     ]);
+  });
+
+  it("ends as killed, before its first move, each session a stopped run left open, and none that ended", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-cut`;
+    const flags = [...seeded(name), "--patience", "1", "--target", "10", "--practice", "3"];
+    const seats: Seats = {
+      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
+      examine: (request) =>
+        examine({
+          ...request,
+          ...scripted([
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
+          ]),
+        }),
+    };
+    await harnessBuilder([...flags, "--moves", "2"], seats);
+    // A run stopped from outside mid-session: an Examiner's and a Builder's start, a turn each.
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const usage = { cost: { total: 0.25 } };
+    append(log, "exam.started", { session: "x-1" });
+    append(log, "exam.turn", { session: "x-1", usage });
+    append(log, "build.started", { session: "b-1" });
+    append(log, "build.turn", { session: "b-1", usage });
+    const before = read(log).length;
+    await harnessBuilder([...flags, "--moves", "1"], seats);
+    const after = read(log).slice(before);
+    const cut = { ended: "killed", crash: null, turns: 1, billed: 0.25 };
+    expect(after.slice(0, 2)).toMatchObject([
+      { kind: "build.finished", data: { session: "b-1", ...cut } },
+      { kind: "exam.finished", data: { session: "x-1", ...cut } },
+    ]);
+    expect(after.findIndex(({ kind }) => kind === MOVED)).toBeGreaterThan(1);
+    // Reopened once more, with every session ended: nothing more is ended.
+    const ends = () => read(log).filter(({ data }) => data.ended === "killed").length;
+    await harnessBuilder(flags, seats);
+    expect(ends()).toBe(2);
   });
 
   it("runs from set-up to an ending on one command, with every move on record: a session with nothing to work on sends it to the Examiner", async () => {
@@ -199,8 +246,8 @@ describe("a campaign run by its log", () => {
           ...request,
           // Twice: a first finish while the host has not the tasks it needs is declined once.
           ...scripted([
-            ["finish", { note: "Nothing to add." }],
-            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
           ]),
         }),
     };
@@ -442,9 +489,6 @@ describe("a campaign run by its log", () => {
     );
     expect([once.length, again.length]).toEqual([7, 7]);
     expect(again.filter((task) => once.includes(task))).toEqual([]);
-    // The table reads the reference against itself in no comparison since 2026-10-11: that is the
-    // operator's `--noise` on a checkpoint.
-    expect(of(name, "comparison.started").map(({ noise }) => noise)).toEqual([false, false]);
     expect(of(name, "harness.promoted")).toEqual([]);
     // Reopened by its name alone, it still waits: the opening keeps the word. Until 12 October it
     // was the running command's flag, and a reopen that left it off promoted without the operator.
@@ -467,13 +511,11 @@ describe("a campaign run by its log", () => {
     // against the promoted harness. Until 10 October the Builder built here, three times, on
     // practice the promoted harness passed (t-4, t-9, t-10).
     expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted" });
-    expect(next).not.toHaveProperty("noise");
     const after = await harnessBuilder([...flags, "--moves", "1"], seats);
     expect(of(name, "comparison.started").at(-1)).toMatchObject({
       session: "g-3",
       fresh: first?.starter,
       old: first?.fresh,
-      noise: false,
     });
     // The script answers nothing under the reference nor the starter, so the control reads the new
     // tasks as beyond both, and the table has other tasks written rather than a harness built.
@@ -771,8 +813,8 @@ describe("a campaign run by its log", () => {
           ...request,
           // Twice: a first finish while the host has not the tasks it needs is declined once.
           ...scripted([
-            ["finish", { note: "Nothing to add." }],
-            ["finish", { note: "Nothing to add." }],
+            ["finish", { note: NOTHING }],
+            ["finish", { note: NOTHING }],
           ]),
         }),
     };

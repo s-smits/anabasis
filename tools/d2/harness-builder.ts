@@ -82,7 +82,10 @@
  * `--handover <dir>` it then writes what it hands over there: the reference harness as a directory
  * that stands by itself, the public rules and the closing report (`close.ts`, row F51). A move that
  * threw after it had begun is the environment's ending, and run again the command goes on from the
- * log. A move refused before it began is no ending: the refusal is printed, nothing kept.
+ * log; one whose session is on record as crashed is the provider's failure, which the campaign
+ * goes on from (`goesOn`). A session a stopped run left open is ended on record as killed before
+ * the next run's first move (`endCut`). A move refused before it began is no ending: the refusal is printed,
+ * nothing kept.
  *
  * A move is recorded as it begins (`campaign.move`), with the code of the table's row that chose it and its
  * reason, so the log holds what was decided before what was done. Each run of the command keeps a receipt beside the
@@ -105,7 +108,7 @@ import { pendingWords } from "#src/builder/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { latestBuilt, promoted } from "#src/kernel/reports.ts";
+import { cutSessions, latestBuilt, promoted } from "#src/kernel/reports.ts";
 import { openingLines } from "#src/kernel/size.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -156,6 +159,28 @@ const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
  *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
+
+/**
+ * Whether the campaign goes on from a move that threw, which began where the log held `from`
+ * events: a provider's limit with a reset is waited out, and so is a session on record as
+ * crashed. A Builder's session that crashed is refused where it is read back (`spent`,
+ * `src/builder/session.ts`), so its move throws, and until 13 October that throw was the
+ * environment's ending: a provider's failure on the Builder's own turn ended the campaign, and led
+ * by its Builder that turn is most of the campaign. It is the provider's failure as an Examiner's
+ * crashed session is, which the campaign goes on from and the table's crash rule bounds
+ * (`crashedRun`).
+ */
+async function goesOn(log: string, from: number, error: unknown, sleep: Seats["host"]): Promise<boolean> {
+  if (await waitOut(log, errorMessage(error), sleep?.sleep)) return true;
+  const events = read(log);
+  const crashed = events
+    .slice(from)
+    .some(
+      ({ kind, data }) => (kind === "build.finished" || kind === "exam.finished") && data.ended === "crashed",
+    );
+  if (crashed) await waitOut(log, crashedRun(events).crash, sleep?.sleep);
+  return crashed;
+}
 
 /** Make one decided move by the command an operator would run, after `begin` is given what names
  *  it in the log: a session's or a comparison's id, a harness, the checks admitted, or nothing. */
@@ -309,6 +334,18 @@ function keepReceipt(log: string, args: readonly string[]): void {
   });
 }
 
+/**
+ * End on record, as killed, each Builder and Examiner session a stopped run of the command left
+ * open, with what the log holds of it. Until 13 October a reopened campaign started new sessions
+ * beside them, and readers metered each only to its last turn and counted it open (x-1 and x-2 of
+ * two campaigns stopped and reopened). Killed is no crash, so the crash rule counts none of them.
+ */
+function endCut(log: string): void {
+  for (const { of, session, ...spent } of cutSessions(read(log))) {
+    append(log, `${of}.finished`, { session, ended: "killed", crash: null, ...spent });
+  }
+}
+
 /** Record how the campaign ended, as its last event, unless that is what its last event says. */
 function ended(log: string, events: readonly LogEvent[], decided: Extract<Decided, { move: "end" }>): void {
   const last = events.at(-1);
@@ -363,27 +400,32 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
     session,
   });
   try {
-    await sessionCommand(
-      [
-        ...packOf(values),
-        ...setting,
-        "--session",
-        session,
-        ...(builder === null ? [] : ["--builder", builder.model, "--builder-effort", builder.effort]),
-        ...flag("minutes", values.minutes),
-        ...flag("turns", values.turns),
-        ...flag("practice-solves", values["practice-solves"]),
-        ...cap,
-        ...reviewer,
-        ...pastStop,
-      ],
-      context.held,
-      campaignTools(context),
-    );
+    // An Examiner session still writing beside the conversation is waited for (`examineTool`).
+    try {
+      await sessionCommand(
+        [
+          ...packOf(values),
+          ...setting,
+          "--session",
+          session,
+          ...(builder === null ? [] : ["--builder", builder.model, "--builder-effort", builder.effort]),
+          ...flag("minutes", values.minutes),
+          ...flag("turns", values.turns),
+          ...flag("practice-solves", values["practice-solves"]),
+          ...cap,
+          ...reviewer,
+          ...pastStop,
+        ],
+        context.held,
+        campaignTools(context),
+      );
+    } finally {
+      await context.examining?.done;
+    }
   } catch (error) {
-    // A provider's limit with a reset is waited out, and the campaign goes on; anything else a
-    // conversation threw is the environment's ending, as for every move that began.
-    if (await waitOut(log, errorMessage(error), seats.host?.sleep)) return null;
+    // A provider's limit or a crashed conversation is waited out, and the campaign goes on;
+    // anything else a conversation threw is the environment's ending, as for every move that began.
+    if (context.failed === null && (await goesOn(log, turn.events.length, error, seats.host))) return null;
     append(log, ENDED, { ending: "environment", why: errorMessage(error), move: "build" });
     throw error;
   }
@@ -394,14 +436,6 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
     const { move, why } = context.failed;
     append(log, ENDED, { ending: "environment", why, move });
     return { move: "end", ending: "environment", code: "failed", why };
-  }
-  if (context.budgetEnding) {
-    return {
-      move: "end",
-      ending: "budget",
-      code: "bound",
-      why: "the comparison that began cannot go on within what is left of the campaign's total",
-    };
   }
   if (how === "finished") {
     return {
@@ -434,6 +468,14 @@ async function lead(context: CampaignContext, named: Decided): Promise<Decided |
     await closeCommand([...packOf(values), "--to", values.handover]);
   }
   return left;
+}
+
+/** Whether a conversation that began where the log held `from` events ended other than crashed:
+ *  one the provider failed has not answered a lack of room, and the next one may. */
+function closed(log: string, from: number): boolean {
+  return read(log)
+    .slice(from)
+    .some(({ kind, data }) => kind === "build.finished" && data.ended !== "crashed");
 }
 
 /**
@@ -481,6 +523,7 @@ export async function harnessBuilder(
   settingHeld(log, given);
   let opening = opened(log, given, paid);
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
+  if (!given["dry-run"] && existsSync(log)) endCut(log);
   // Every move is made with the terms the opening keeps: this command's, and the record's for
   // each it does not name.
   const values: Values = { ...given, ...opening.terms };
@@ -515,21 +558,11 @@ export async function harnessBuilder(
     if (led) {
       if (values["dry-run"] || made >= most) return decided;
       campaign ??= await openCampaign(packNamed(values));
-      const context: CampaignContext = {
-        log,
-        values,
-        opening,
-        seats,
-        held,
-        campaign,
-        paid,
-        maxMoves: most,
-        used: made,
-        budgetEnding: false,
-        failed: null,
-      };
+      const turns = { maxMoves: most, used: made, failed: null };
+      const context: CampaignContext = { log, values, opening, seats, held, campaign, paid, ...turns };
       const left = await lead(context, decided);
-      [made, talked, { opening }] = [context.used, true, context];
+      const answered: boolean = talked || left !== null || closed(log, events.length);
+      [made, talked, { opening }] = [context.used, answered, context];
       if (left !== null) return left;
       continue;
     }
@@ -554,9 +587,15 @@ export async function harnessBuilder(
     try {
       await make(decided, turn, begin);
     } catch (error) {
-      if (await waitOut(log, errorMessage(error), seats.host?.sleep)) continue;
-      // A move that began and threw is the environment's ending, and the campaign goes on from
-      // its log when it is run again. One refused before it began leaves the log alone.
+      // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
+      // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
+      // the table's crash rule ends the campaign where sessions crash in a row.
+      if (await goesOn(log, events.length, error, seats.host)) {
+        made += 1;
+        continue;
+      }
+      // Any other move that began and threw is the environment's ending, and the campaign goes on
+      // from its log when it is run again. One refused before it began leaves the log alone.
       if (read(log).length > events.length) {
         append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
       }

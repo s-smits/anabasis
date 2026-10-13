@@ -65,6 +65,8 @@ interface Sitting {
   readonly log: string;
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
+  /** Called once the session is on record, so a caller can let it run on beside other work. */
+  readonly opened?: () => void;
 }
 
 /** What a session of each mode is handed beside who sits, as the mode's own file takes it. */
@@ -269,6 +271,7 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     effort: request.effort,
     ...mode.started,
   });
+  request.opened?.();
   const said: Said = { note: null, declined: false };
   const finish = tool({
     name: "finish",

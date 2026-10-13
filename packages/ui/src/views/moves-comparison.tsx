@@ -2,7 +2,14 @@ import { useState } from "react";
 import { Section } from "../components/layout.tsx";
 import { TriggerList } from "../components/triggers.tsx";
 import { Badge, Button, Card, DataTable, Disclosure, HashValue } from "../components/primitives.tsx";
-import type { CampaignReading, ComparisonBar, ComparisonDetail, Outcome, SolveRow } from "../models.ts";
+import type {
+  CampaignReading,
+  ComparisonBar,
+  ComparisonDetail,
+  Outcome,
+  SolveRow,
+  Tally,
+} from "../models.ts";
 import { shortHash } from "../models.ts";
 import type { Navigation } from "../route.ts";
 import { leftOutText } from "./campaign-data.ts";
@@ -25,6 +32,10 @@ import { plural } from "../../../../src/meta/text.ts";
  */
 
 const RULING_KINDS = ["earned", "check-defect", "unclear"] as const;
+
+/** A tally in words, in the page's order. */
+const tallyWords = ({ wins, losses, ties }: Tally): string =>
+  `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
 
 /** A comparison's rulings in words: by kind, or how many were ruled while one is withheld. */
 function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
@@ -148,6 +159,20 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
         ? "no report"
         : `${String(bar.valid.fresh.valid)} of ${plural(bar.valid.fresh.solves, "solve")}`,
     ],
+    ...(bar.sets === null
+      ? []
+      : ([
+          [
+            "Frontier, where the step is read",
+            `${tallyWords(bar.sets.frontier.tally)} · p ${bar.sets.frontier.p.toFixed(3)}`,
+          ],
+          [
+            "Retained, where a step may not lose more than it wins",
+            bar.sets.retained === "unmeasured"
+              ? "unmeasured: no retained task was tallied, which is not no loss"
+              : tallyWords(bar.sets.retained),
+          ],
+        ] as const)),
     ["Rulings", rulingsText(bar)],
     ...(bar.noise === null
       ? []
@@ -171,6 +196,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
     ],
     ["Starter", harnessLabel(reading, terms.starter)],
     ["Host load", bar.load === null ? "not recorded" : bar.load.toFixed(1)],
+    ["Table row", bar.named === null ? "not recorded" : `${bar.named.code} · ${bar.named.why}`],
     ["Prediction", terms.prediction ?? "none"],
   ] as const;
   return (

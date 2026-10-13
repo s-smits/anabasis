@@ -433,7 +433,6 @@ describe("a round", () => {
         solves: 2,
         level: 0.1,
         trigger: 0.25,
-        noise: false,
         cap: null,
         tasks: HELD,
         retained: [],
@@ -644,9 +643,7 @@ describe("a round", () => {
       await expect(round({ ...s.request, cap: { dollars: 500, reserve: 10 } })).rejects.toThrow(
         "other terms (cap)",
       );
-      await expect(round({ ...s.request, noise: true, level: 0.05 })).rejects.toThrow(
-        "other terms (level, noise)",
-      );
+      await expect(round({ ...s.request, level: 0.05 })).rejects.toThrow("other terms (level)");
       // It began with no objective, and its pairs were read on validity alone.
       await expect(round({ ...s.request, objective: { direction: "lower", margin: 0.01 } })).rejects.toThrow(
         "other terms (objective)",
@@ -1108,6 +1105,28 @@ describe("a round", () => {
     }
   });
 
+  it("stops at the first solve a limit that names its reset ended, and asks for that solve no more", async () => {
+    // buffer-147-fork, 13 October: a weekly limit ended 14 solves of one task, and it read short.
+    const weekly: Ending = {
+      outcome: "non-result",
+      kind: "provider",
+      reason: "You've hit your weekly limit · resets 3pm (Europe/Amsterdam)",
+    };
+    let left = 5;
+    const s = await setup([edit, finish], (version, side, nth, digest) => {
+      left -= 1;
+      return left < 0 ? weekly : step(version, side, nth, digest);
+    });
+    await expect(round(s.request)).rejects.toThrow(
+      `the provider's limit ended a solve, so the comparison stops: ${weekly.reason}`,
+    );
+    expect(s.of(COMPARISON_REPORTED)).toEqual([]);
+    expect(s.asked).toHaveLength(6);
+    // The limit lifted: the round goes on from its log, and no task is short.
+    left = 99;
+    expect(await round(s.request)).toMatchObject({ scored: { wins: 4, losses: 0 }, short: [] });
+  });
+
   it("reports a task short when its solves end in nothing countable, and tallies the rest", async () => {
     const s = await setup([edit, finish], (version, side, nth, digest) =>
       version === "s4" && side === "fresh"
@@ -1414,64 +1433,29 @@ describe("a checkpoint with no session", () => {
     expect(s.of(COMPARISON_STARTED)[1]).not.toHaveProperty("prediction");
   });
 
-  it("reads the reference harness against itself as it reads two harnesses: on its own solves at four a side, and on the solves --noise buys at two", async () => {
-    {
-      // The plan's A/A comparison. The harness answers s1 in its first two solves and not after.
-      const s = await setup([], (version, side, nth) => {
-        if (side === "starter") return LATE;
-        return version === "s1" && nth >= 2 ? LATE : PASS;
-      });
-      const report = await checkpoint(s.compare("g2", { noise: true }));
-      expect(report).toMatchObject({
-        // Each solve under the starter sits between two of the reference harness's, and the test
-        // takes the first and the last of the reference's four.
-        scored: { wins: 0, losses: 4, ties: 0, differences: [-2, -4, -4, -4] },
-        // Its other two against those are mirrored in time as well, so a drift across a task's
-        // solves falls on both alike and the reference ties itself on every task. Its two solves
-        // of four that disagree on s1 are four of its six pairs.
-        noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6 },
-        reading: NO_STEP,
-      });
-      // Earlier against later is the drift, read apart: s1's later solves lost what its first won.
-      expect(report.noise?.drift).toEqual({ wins: 0, losses: 1, ties: 3 });
-      // Four tasks: four solves under the reference harness and two under the starter, as G2 costs,
-      // a task's six together, the starter's between the reference's.
-      expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(16);
-      expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(8);
-      expect(s.asked.slice(0, 6).map(({ side }) => side)).toEqual([
-        "old",
-        "starter",
-        "old",
-        "old",
-        "starter",
-        "old",
-      ]);
-      expect(new Set(s.asked.slice(0, 6).map(({ version }) => version)).size).toBe(1);
-    }
-    {
-      // The plan's section 4b: at four solves a side every comparison carries its A/A, the
-      // reference's four solves of a task split by slot two against two, read as the test is. The
-      // reference answers s1 in its first two solves and not after; the starter answers nothing.
-      const s = await setup([], (version, side, nth) => {
-        if (side === "starter") return LATE;
-        return version === "s1" && nth >= 2 ? LATE : PASS;
-      });
-      const report = await checkpoint(s.compare("g2", { solves: 4 }));
-      expect(report).toMatchObject({
-        // The test reads all four of the reference's solves against the starter's four.
-        scored: { wins: 0, losses: 4, ties: 0, differences: [-8, -16, -16, -16] },
-        // The first and last slot against the two between tie the reference with itself on s1, and
-        // two of its four solves of s1 that disagree are four of its six pairs.
-        noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6 },
-      });
-      // Its earlier two against its later two are the drift, standing in every such comparison.
-      expect(report.noise?.drift).toEqual({ wins: 0, losses: 1, ties: 3 });
-      // No solve was made for it: four a side on each of four tasks.
-      expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(16);
-      expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(16);
-      // Two solves a side split one against one, too few: an A/A there is `--noise`'s.
-      expect((await checkpoint(s.compare("g3"))).noise).toBeNull();
-    }
+  it("reads the reference harness against itself as it reads two harnesses, on its own solves at four a side", async () => {
+    // The plan's section 4b: at four solves a side every comparison carries its A/A, the
+    // reference's four solves of a task split by slot two against two, read as the test is. The
+    // reference answers s1 in its first two solves and not after; the starter answers nothing.
+    const s = await setup([], (version, side, nth) => {
+      if (side === "starter") return LATE;
+      return version === "s1" && nth >= 2 ? LATE : PASS;
+    });
+    const report = await checkpoint(s.compare("g2", { solves: 4 }));
+    expect(report).toMatchObject({
+      // The test reads all four of the reference's solves against the starter's four.
+      scored: { wins: 0, losses: 4, ties: 0, differences: [-8, -16, -16, -16] },
+      // The first and last slot against the two between tie the reference with itself on s1, and
+      // two of its four solves of s1 that disagree are four of its six pairs.
+      noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6 },
+    });
+    // Its earlier two against its later two are the drift, standing in every such comparison.
+    expect(report.noise?.drift).toEqual({ wins: 0, losses: 1, ties: 3 });
+    // No solve was made for it: four a side on each of four tasks.
+    expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(16);
+    expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(16);
+    // Two solves a side split one against one, too few for an A/A.
+    expect((await checkpoint(s.compare("g3"))).noise).toBeNull();
   });
 
   it("reads no step on either tier where the reference meets itself, and sets the next comparison's margin from its own spread", async () => {
@@ -1481,7 +1465,7 @@ describe("a checkpoint with no session", () => {
       side === "starter" ? LATE : { ending: PASS, objective: nth % 2 === 0 ? 10 : 10.4 },
     );
     const objective = { direction: "lower", margin: 0.01 } as const;
-    const report = await checkpoint({ ...s.compare("g2", { noise: true }), objective });
+    const report = await checkpoint({ ...s.compare("g2", { solves: 4 }), objective });
     // The objective tells its answers apart past the margin, pairing by pairing, and decides no
     // task: on validity and on the objective alike, the reference ties itself.
     expect(report.noise).toMatchObject({ wins: 0, losses: 0, ties: 4, p: 1, flips: 0 });

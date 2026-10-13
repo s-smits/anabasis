@@ -99,7 +99,6 @@ function campaign() {
       setting: "s",
       solves: 2,
       level: 0.1,
-      noise: false,
       cap: { dollars: 100, reserve: 10 },
       tasks: HELD,
     });

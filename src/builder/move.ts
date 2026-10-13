@@ -23,14 +23,20 @@ export type Decided =
     /** `practice` names the count practice is brought to where it is more than the campaign's. */
     | { readonly move: "prepare"; readonly why: string; readonly practice?: number }
     /** An Examiner session, which is always asked for tasks the reference harness fails (row F52).
-     *  `answers` names the operator's word it follows, where it follows one (`pendingWords`). */
-    | { readonly move: "examine"; readonly why: string; readonly answers?: readonly number[] }
+     *  `answers` names the operator's word it follows, where it follows one (`pendingWords`), and
+     *  `repeats` the reading under the trigger whose repeat waits on the tasks it writes. */
+    | {
+        readonly move: "examine";
+        readonly why: string;
+        readonly answers?: readonly number[];
+        readonly repeats?: string;
+      }
     | { readonly move: "build"; readonly why: string }
     /** A comparison of `fresh` with `reference`: `latest`, `promoted`, `starter`, or a digest. The
-     *  reference against itself is the operator's `--noise` on a checkpoint, and no move of the
-     *  table. `id` names one that began and goes on. `repeats` names the reading under the trigger
-     *  this one is the repeat of: the same two harnesses, so the new one is the one that reading
-     *  froze, whatever a live Builder has changed since. */
+     *  reference against itself is read beside every comparison of four solves a side, and is no
+     *  move of the table. `id` names one that began and goes on. `repeats` names the reading under
+     *  the trigger this one is the repeat of: the same two harnesses, so the new one is the one
+     *  that reading froze, whatever a live Builder has changed since. */
     | {
         readonly move: "compare";
         readonly why: string;

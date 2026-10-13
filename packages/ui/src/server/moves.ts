@@ -19,7 +19,7 @@ import type { Share } from "../../../../src/builder/climb.ts";
 import { type Paired, pairings } from "../../../../src/kernel/compare.ts";
 import { pairsReported } from "../../../../src/kernel/reports.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";
-import type { ComparisonBar, LeftOut, Move, Outcome } from "../models.ts";
+import type { ComparisonBar, LeftOut, Move, Outcome, Tally } from "../models.ts";
 import { campaignIn, type Log, once, reportsIn } from "./folds.ts";
 import { rulingsOf } from "./withheld.ts";
 
@@ -57,6 +57,30 @@ const placesIn = once(({ events }) => {
   return { starts, ends };
 });
 
+/** The step a recorded move of the campaign's command runs, for the three that run one. */
+const STEP_OF = new Map([
+  ["examine", "examiner"],
+  ["build", "builder"],
+  ["compare", "comparison"],
+]);
+
+/** What the campaign's command recorded of each step as its move began, by the step and its id
+ *  (a round runs a Builder session and its comparison under one id): the host's one-minute load,
+ *  and the table's row the move was made by. Read from `campaign.move`, which no fold reads. */
+const recordsIn = once(
+  ({ events }) =>
+    new Map(
+      events.flatMap(({ kind, data }) => {
+        const step = kind === "campaign.move" && isString(data.move) ? STEP_OF.get(data.move) : undefined;
+        if (step === undefined || !isString(data.session)) return [];
+        const named = isString(data.code) && isString(data.why) ? { code: data.code, why: data.why } : null;
+        return [
+          [`${step} ${data.session}`, { load: isNumber(data.load) ? data.load : null, named }] as const,
+        ];
+      }),
+    ),
+);
+
 /** Every step of `campaignOf`, in the order they started, with where and when. */
 export const movesIn = once((log): Move[] => {
   const { events } = log;
@@ -65,7 +89,8 @@ export const movesIn = once((log): Move[] => {
     const index = starts.get(`${step.step} ${step.id}`) ?? 0;
     const end = ends.get(`${step.step} ${step.id}`);
     const done = step.step === "comparison" ? step.reading !== null : step.ended !== null;
-    const when = { index, startedAt: events[index]?.at ?? "" };
+    const named = recordsIn(log).get(`${step.step} ${step.id}`)?.named ?? null;
+    const when = { index, startedAt: events[index]?.at ?? "", named };
     const endedAt = done && end !== undefined ? (events[end]?.at ?? null) : null;
     return step.step === "comparison"
       ? { ...step, rulings: rulingsOf(log, step), ...when, endedAt }
@@ -120,18 +145,8 @@ function validShare(counts: readonly number[]): Share {
   return { valid, solves: tasks * Math.max(0, counts.length - 1) };
 }
 
-/** The host's one-minute load as each comparison the campaign command made began, by its id. Read
- *  from `campaign.move`, which no fold reads. */
-const loadsIn = once(
-  ({ events }) =>
-    new Map(
-      events.flatMap(({ kind, data }) =>
-        kind === "campaign.move" && data.move === "compare" && isString(data.session) && isNumber(data.load)
-          ? [[data.session, data.load] as const]
-          : [],
-      ),
-    ),
-);
+/** The three counts of a tally that carries more. */
+const tallyOf = ({ wins, losses, ties }: Tally): Tally => ({ wins, losses, ties });
 
 /** A comparison's kind and, for a repeat, the comparison it repeats: a control sets the starter,
  *  or a harness, against the reference; a repeat sets the same two harnesses as an earlier
@@ -155,7 +170,7 @@ export const barsIn = once((log): ComparisonBar[] => {
   const moves = movesIn(log);
   const reports = new Map(reportsIn(log).map((report) => [report.session, report]));
   const pairs = pairsIn(log);
-  const loads = loadsIn(log);
+  const records = recordsIn(log);
   const starter = starterIn(log);
   const comparisons = moves
     .flatMap((move) => (move.step === "comparison" ? [move] : []))
@@ -196,12 +211,20 @@ export const barsIn = once((log): ComparisonBar[] => {
         report?.noise == null
           ? null
           : {
-              tally: { wins: report.noise.wins, losses: report.noise.losses, ties: report.noise.ties },
+              tally: tallyOf(report.noise),
               p: report.noise.p,
               differences: report.noise.differences,
             },
       rulings: move.rulings,
-      load: loads.get(move.id) ?? null,
+      sets:
+        report?.frontier == null || report.retained === null
+          ? null
+          : {
+              frontier: { tally: tallyOf(report.frontier), p: report.frontier.p },
+              retained: report.retained === "unmeasured" ? report.retained : tallyOf(report.retained),
+            },
+      load: records.get(`comparison ${move.id}`)?.load ?? null,
+      named: move.named,
       cut: move.cut,
       begun: move.begun,
       solved: move.solved,

@@ -121,9 +121,9 @@ export interface Bench {
   lists: ((harness: Harness) => Promise<string[] | null>) | null;
   /** Aborted when a practice solve could not be run, which ends the session. */
   readonly halt: AbortController;
-  /** Runs a campaign action the session's wall does not cut: a wall that falls while one runs is
-   *  read where the action ends, as the operator's word is read at a move's boundary. A comparison
-   *  cut at the Builder's wall would lose its solves in flight and read as a failed host. */
+  /** Runs a campaign action, whose time is the host's: the session's wall stops while one runs.
+   *  Until 13 October it counted them, and a led Builder had 45 of its 240 minutes to build and
+   *  ended one second after the comparison it bought reported, which it never read. */
   readonly within: <T>(action: () => Promise<T>) => Promise<T>;
   /** What that practice solve threw; the session throws it again once its record is written. */
   fatal: Error | null;

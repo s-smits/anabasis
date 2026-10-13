@@ -46,7 +46,6 @@ interface Compared {
   readonly at: number;
   readonly old: string;
   readonly fresh: string;
-  readonly noise: boolean;
   readonly report: JsonObject | null;
   readonly reported: number | null;
 }
@@ -63,8 +62,14 @@ export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
     const { session, old, fresh } = data;
     if (kind !== "comparison.started" || !isString(session) || !isString(old) || !isString(fresh)) continue;
     const last = reports.get(session);
-    const compared = { id: session, at, old, fresh, noise: data.noise === true };
-    begun.set(session, { ...compared, report: last?.data ?? null, reported: last?.index ?? null });
+    begun.set(session, {
+      id: session,
+      at,
+      old,
+      fresh,
+      report: last?.data ?? null,
+      reported: last?.index ?? null,
+    });
   }
   return [...begun.values()].toSorted((one, other) => one.at - other.at);
 }
@@ -86,11 +91,17 @@ export function crashedRun(events: readonly LogEvent[]) {
     .slice(since + 1)
     .filter(({ kind }) => kind === "exam.finished" || kind === "build.finished")
     .toReversed();
-  // A session moved the campaign whatever its ending where an Examiner's held a task out or a
-  // Builder's changed its harness: one that did and then lost a turn to the provider is `crashed`
-  // with its tasks held (`exam.finished.held` is written whatever `ended` says).
+  // A session moved the campaign whatever its ending where an Examiner's held a task out: one that
+  // did and then lost a turn to the provider is `crashed` with its tasks held (`exam.finished.held`
+  // is written whatever `ended` says). A Builder's moved it where its harness is one the campaign
+  // goes on from (`latestBuilt`), which a crashed session's is only where it was checkpointed: one
+  // that edited and then crashed leaves the next session the same parent, so it counts as a crash.
+  const kept = new Set(
+    events.slice(since + 1).flatMap(({ kind, data }) => (kind === "build.checkpoint" ? [data.session] : [])),
+  );
   const moved = (data: JsonObject) =>
-    (Array.isArray(data.held) && data.held.length > 0) || data.changed === true;
+    (Array.isArray(data.held) && data.held.length > 0) ||
+    (data.changed === true && (data.ended !== "crashed" || kept.has(data.session)));
   const whole = sessions.findIndex(({ data }) => data.ended !== "crashed" || moved(data));
   const count = whole === -1 ? sessions.length : whole;
   const crash = sessions[0]?.data.crash;

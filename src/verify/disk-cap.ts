@@ -60,6 +60,12 @@ export type ReleaseDiskCap = () => Promise<void>;
 /** hdiutil sizes in 512-byte sectors; its `-size 1b` means a sector too, not a byte. */
 const SECTOR_BYTES = 512;
 
+/** How often a create or an attach the host answered "Resource busy" is made, and the wait before
+ *  the second, doubled before each one after. On 13 October three tests of a macOS CI run failed so
+ *  at a load of 15.8 on three cores, and passed when run again. */
+const BUSY_TRIES = 4;
+const BUSY_MS = 500;
+
 /** Null, or why hdiutil failed in its own words. No call passes `-quiet`, which drops those words:
  *  until 12 October every failure on a loaded runner read "hdiutil detach exited 1:" and no more. */
 async function hdiutil(args: readonly string[]): Promise<string | null> {
@@ -70,6 +76,15 @@ async function hdiutil(args: readonly string[]): Promise<string | null> {
   });
   const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
   return code === 0 ? null : `hdiutil ${args[0]} exited ${code}: ${stderr.trim()}`;
+}
+
+/** `hdiutil` with `args`, made again while the host says it is busy, and its last answer. */
+async function patiently(args: readonly string[]): Promise<string | null> {
+  for (let tried = 1, ms = BUSY_MS; ; tried += 1, ms *= 2) {
+    const failed = await hdiutil(args);
+    if (failed === null || tried >= BUSY_TRIES || !/resource busy/i.test(failed)) return failed;
+    await Bun.sleep(ms);
+  }
 }
 
 /**
@@ -88,8 +103,8 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
   const sectors = String(Math.ceil(cap.bytes / SECTOR_BYTES));
   const volume = ["-type", "SPARSE", "-fs", "APFS", "-volname", "disk-cap"];
   const failed =
-    (await hdiutil(["create", "-sectors", sectors, ...volume, image])) ??
-    (await hdiutil(["attach", "-nobrowse", "-noautoopen", "-owners", "on", "-mountpoint", root, image]));
+    (await patiently(["create", "-sectors", sectors, ...volume, image])) ??
+    (await patiently(["attach", "-nobrowse", "-noautoopen", "-owners", "on", "-mountpoint", root, image]));
   if (failed !== null) {
     // What this call made goes, so the root can be claimed again: until 12 October a failed create
     // left it, and a retry failed at EEXIST (the stack review, finding 5). An attach that failed

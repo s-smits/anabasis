@@ -53,6 +53,7 @@
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
+  type History,
   lastReports,
   type Outcome,
   poolOf,
@@ -115,7 +116,7 @@ const TURNS =
  *  the log does not hold, and one no comparison has scored, is not yet compared and in no count. */
 export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "taskId" | "family">[]): Heard {
   const states = taskStates(events);
-  const { outcomes, standings, feasible } = poolOf(events);
+  const { outcomes, standings, feasible, histories } = poolOf(events);
   const answers = referenceAnswers(events);
   const took = new Map(
     solvesIn(events).flatMap(({ id, end }) => (isNumber(end?.turns) ? [[id, end.turns] as const] : [])),
@@ -141,9 +142,27 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     if (valid.length > 0) turns.set(family, [...(turns.get(family) ?? []), ...valid]);
     const outcome = outcomes.get(version);
     const said = outcome === undefined ? "not yet compared" : SAID[outcome];
-    return [`${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}`];
+    const history = historyLine(histories.get(version));
+    return [
+      `${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}${history}`,
+    ];
   });
   return { lines, counts: counts(families), turns: turnsOf(turns) };
+}
+
+/** A task's last comparisons with the reference harness, newest first, as one clause after its
+ *  line, or nothing where it stood in fewer than two (`poolOf`, histories): each as every, some or
+ *  none of the reference's solves valid, a limit that cut a solve named apart, and how many of the
+ *  newest closed the task in a row. A fact of the record and no target: which of them is too easy
+ *  is the author's to judge. */
+function historyLine(history: History | undefined): string {
+  if (history === undefined || history.reads.length < 2) return "";
+  const reads = history.reads.map(({ valid, cut }) => `${valid}${cut ? " (a solve cut at a limit)" : ""}`);
+  const run =
+    history.closedRun === 0
+      ? ""
+      : `, the ${history.closedRun === 1 ? "last" : `last ${String(history.closedRun)} in a row`} closing it`;
+  return `; of its last ${plural(reads.length, "comparison")} with the current reference harness, newest first, the reference answered it validly in ${reads.join(", ")} of its solves${run}`;
 }
 
 /** The reference harness's valid answers to each task, by solve id, in the last comparison that

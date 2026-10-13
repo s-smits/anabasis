@@ -461,6 +461,7 @@ export async function session(
   // never practised has no such state, and leaves none.
   let frozen: Snapshot | null;
   let broken: string | null = null;
+  const lastPractised = bench.opened?.harness.digest ?? null;
   try {
     frozen = await snapshot(bench);
   } catch (error) {
@@ -486,6 +487,13 @@ export async function session(
           turns: turns.length >= limits.turns,
         })
       : "crashed";
+  // A crashed session's harness is passed over (`latestBuilt`), as one it may have left half way
+  // through an edit. One its own practice solve last ran on is no half-edit, and is kept as a
+  // checkpoint: on 13 October buffer-149's b-1 crashed on a provider error with a harness it had
+  // practised three of three on, and b-2 rebuilt it from b-1's notes for 25 turns.
+  if (ended === "crashed" && changed && frozen?.harness.digest === lastPractised) {
+    append(log, "build.checkpoint", { session: request.id, harness: lastPractised });
+  }
   const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
   // Kept before the session is recorded as ended, so a session on record as ended has its notes.
   keepMemory(dirs.home, request.memory, request.id);

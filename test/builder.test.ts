@@ -11,6 +11,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { crashedRun } from "../src/builder/ground.ts";
 import { SAID, systemPrompt } from "../src/builder/prompt.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
 import {
@@ -938,6 +939,24 @@ describe("a Builder session", () => {
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "crashed", crash: "overloaded" });
     await expect(session(s.request, s, s.walled)).rejects.toThrow("session b-1 is in the log already");
     expect(s.of("build.started")).toHaveLength(1);
+  });
+
+  // Found in buffer-149, 13 October: b-1 crashed on a provider error with a harness it had
+  // practised three of three on, and b-2 started from the starter.
+  it("keeps a crashed session's harness as a checkpoint where its last practice solve ran it, and only there", async () => {
+    const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
+    const tried = await setup([edit, call("practice", { tasks: ["t-1"] }), failed]);
+    const kept = await session(tried.request, tried, tried.walled);
+    expect(kept).toMatchObject({ changed: true, ended: "crashed" });
+    expect(tried.of("build.checkpoint")).toEqual([{ session: "b-1", harness: kept.harness }]);
+    // The checkpointed crash moved the campaign, so the provider's crash rule does not count it.
+    expect(crashedRun(read(tried.request.log)).count).toBe(0);
+    // A crash after an edit no solve ran leaves no checkpoint: that harness may be half an edit.
+    const later = call(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: `${GUIDE}More.\n` });
+    const edited = await setup([edit, call("practice", { tasks: ["t-1"] }), later, failed]);
+    expect(await session(edited.request, edited, edited.walled)).toMatchObject({ ended: "crashed" });
+    expect(edited.of("build.checkpoint")).toEqual([]);
+    expect(crashedRun(read(edited.request.log)).count).toBe(1);
   });
 
   it("ends at finish though another call shares its turn", async () => {

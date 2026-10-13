@@ -70,6 +70,7 @@ const OPTIONS = {
   "reviewer-effort": { type: "string" },
   solver: SETTING_OPTIONS.solver,
   "solver-effort": SETTING_OPTIONS["solver-effort"],
+  "solver-window": SETTING_OPTIONS["solver-window"],
   "solve-minutes": SETTING_OPTIONS["solve-minutes"],
   "solve-model-turns": SETTING_OPTIONS["solve-model-turns"],
   // With no default of their own: one no command has named is the comparison's to default, and
@@ -344,6 +345,7 @@ export function sharedOf({ events, plan, opening, values }: Turn) {
         ? [
             ...flag("solver", values.solver ?? opening.solver?.model),
             ...flag("solver-effort", values["solver-effort"] ?? opening.solver?.effort),
+            ...flag("solver-window", values["solver-window"]),
             ...flag("solve-minutes", values["solve-minutes"]),
             ...flag(
               "solve-model-turns",

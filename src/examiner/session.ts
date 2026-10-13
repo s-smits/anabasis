@@ -1,13 +1,14 @@
 /**
- * The Examiner's one session, in its three modes: it drafts an exam (`draft.ts`), it writes tasks
- * (`write.ts`), or it repairs a check (`repair.ts`).
+ * The Examiner's one session, in its two modes: it drafts an exam (`draft.ts`), or it writes tasks
+ * (`write.ts`). Until 13 October a third mode repaired a check; no campaign opened one, and no seat
+ * repairs a check (`AGENTS.md` rule 2). A log of before keeps its `repair.*` events.
  *
  * A mode is what a session is told, the tools it works with and when its work is done (`Mode`);
  * everything else is one loop (`sit`): the id it claims, its start event, its wall, its `finish`,
  * its shell where it has one (`shell.ts`), the turns and calls in the log under the mode's kind,
  * and its end event with what it billed. A turn of its own the provider failed ends it crashed,
- * with what the provider said. Two modes put one whole thing to the host's reading until one
- * stands (`putting`): a draft and a repair. The third proposes many.
+ * with what the provider said. A drafting session puts one whole draft to the host's reading until
+ * one stands (`putting`); a writing session proposes many tasks.
  *
  * What the Examiner is never given, in any mode: a harness, a solver's trace or answer. Its
  * shell, where it has one, is a walled home of its own, closed to the repository.
@@ -42,7 +43,6 @@ import { text, tool } from "../solve/answer.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import { drafting } from "./draft.ts";
-import { type Repair, repairing } from "./repair.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
 import { writing } from "./write.ts";
 
@@ -57,7 +57,7 @@ interface Sitting {
     readonly wallSeconds: number;
     /** The model's turns, each reply one, with or without a tool call. */
     readonly turns: number;
-    /** What the session may put to the host: drafts, repairs, or instances to the gate. */
+    /** What the session may put to the host: drafts, or instances to the gate. */
     readonly puts: number;
   };
   /** The backends, built on the home the Examiner's model process keeps its state in. */
@@ -72,23 +72,20 @@ interface Sitting {
 /** What a session of each mode is handed beside who sits, as the mode's own file takes it. */
 type DraftTerms = { readonly mode: "draft" } & Omit<Parameters<typeof drafting>[0], keyof Sitting>;
 type WriteTerms = { readonly mode: "write" } & Omit<Parameters<typeof writing>[0], keyof Sitting>;
-type RepairTerms = { readonly mode: "repair" } & Omit<Parameters<typeof repairing>[0], keyof Sitting>;
 
 /** One Examiner session: who sits, and what its mode hands it. */
-export type ExamRequest = Sitting & (DraftTerms | WriteTerms | RepairTerms);
+export type ExamRequest = Sitting & (DraftTerms | WriteTerms);
 
 export interface Examined {
-  /** How the session ended: with a draft or a repair that stands, by `finish`, with the tasks the
-   *  host asked for, at a limit, or otherwise. */
+  /** How the session ended: with a draft that stands, by `finish`, with the tasks the host asked
+   *  for, at a limit, or otherwise. */
   readonly ended: (typeof ENDINGS)[number] | "stopped";
-  /** The drafts or repairs it put to the host, or the instances it put to the gate. */
+  /** The drafts it put to the host, or the instances it put to the gate. */
   readonly puts: number;
   /** The versions of the tasks it held out, in the order it proposed them; none but in writing. */
   readonly held: readonly string[];
   /** The versions of the instances the gate refused. */
   readonly refused: readonly string[];
-  /** The repair that stood; null in any other mode, and where none did. */
-  readonly repair: Repair | null;
 }
 
 /** A session of one mode as a caller may stand in for it: `examine`, or a script with no model. */
@@ -100,8 +97,8 @@ export type Session<M extends ExamRequest["mode"]> = (
 /** What a mode is: what a session of it is told, what it works with, and when its work is done.
  *  The loop reads nothing else of the mode (`sit`). */
 interface Mode {
-  /** The log's kind for the session's events: `exam.*`, `draft.*` or `repair.*`. */
-  readonly kind: "exam" | "draft" | "repair";
+  /** The log's kind for the session's events: `exam.*` or `draft.*`. */
+  readonly kind: "exam" | "draft";
   readonly system: string;
   readonly opening: string;
   /** What its start event holds beside the session, the model and the effort: its limits under
@@ -133,7 +130,7 @@ interface Mode {
 
 /** What one kind of session that puts a whole thing is told and puts (`putting`). */
 interface Put<Parameters extends TSchema, Thing> {
-  readonly kind: "draft" | "repair";
+  readonly kind: "draft";
   readonly system: string;
   /** Its opening message, before the sentence that tells its limits. */
   readonly opening: string;
@@ -155,8 +152,6 @@ interface Put<Parameters extends TSchema, Thing> {
   readonly home?: string;
   readonly checked?: string;
   readonly enter?: (home: string) => void;
-  /** The repair that stood, for the caller; null for a draft, which the log holds. */
-  readonly handed: () => Repair | null;
 }
 
 /** What `finish` leaves the loop: the note, and whether a first `finish` was declined. */
@@ -217,7 +212,7 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
     declined: null,
     done: () => (desk.stands ? "stands" : null),
     counted: () => ({ ...desk }),
-    result: () => ({ puts: desk.tries, held: [], refused: [], repair: of.handed() }),
+    result: () => ({ puts: desk.tries, held: [], refused: [] }),
     enter: of.enter,
     leave: undefined,
   };
@@ -388,8 +383,6 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
         return sit(request, putting(request, drafting(request)), walls);
       case "write":
         return sit(request, writing(request, pinned, wall?.keep), walls);
-      case "repair":
-        return sit(request, putting(request, repairing(request, pinned)), walls);
     }
   };
   if (wall === undefined) return await seated(undefined);

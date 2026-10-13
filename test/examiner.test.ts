@@ -1,6 +1,6 @@
-// The Examiner's one session, `examine`, in its three modes on the faux provider: what every mode
-// shares (an id, a wall, a shell, an ending, a bill), what the two modes that put one whole thing
-// share, what a writing session's gate and tools hold, and what a task's author hears of it.
+// The Examiner's one session, `examine`, in its two modes on the faux provider: what both modes
+// share (an id, a wall, a shell, an ending, a bill), what a drafting session that puts one whole
+// draft is told, what a writing session's gate and tools hold, and what a task's author hears of it.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import {
   createAssistantMessageEventStream,
@@ -34,7 +34,6 @@ import {
   finish,
   instance,
   KIND,
-  MENDED,
   MODES,
   NOTE,
   PUT,
@@ -55,7 +54,6 @@ const GOOD = { answer: "42", unit: "N" };
 const ENTERS = {
   draft: "a draft enters it through draft_exam alone",
   write: "a task enters it through propose_tasks alone",
-  repair: "a repair enters it through repair_check alone",
 } as const;
 const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A verifier that passes every answer whose `answer` is "42" and refuses any other. */
@@ -83,7 +81,6 @@ describe("a session of any mode", () => {
         puts: 0,
         held: [],
         refused: [],
-        repair: null,
       });
       expect(s.of(`${KIND[mode]}.started`)).toMatchObject([
         { session: s.request.id, effort: "medium", limits: { wallSeconds: 600, turns: 12 } },
@@ -165,7 +162,7 @@ describe("a session of any mode", () => {
 
   it("ends at its turns, at its wall, and when the run is killed", async () => {
     for (const mode of MODES) {
-      // A put that does not end the session: a draft or a repair with a fault, one task of many.
+      // A put that does not end the session: a draft with a fault, one task of many.
       const faulted = <T extends object>(request: T) => ({ ...request, reading: async () => ["a fault"] });
       const turned = seat(mode, [PUT[mode], finish]);
       const { limits } = turned.request;
@@ -204,10 +201,6 @@ describe("a session of any mode", () => {
         // The hostile cases: the repository's own file, and a write beside it.
         bash(`cat ${join(REPO, "package.json")} >/dev/null 2>&1 && echo read || echo refused`),
         bash(`(echo x > ${outside}) 2>/dev/null && echo written || echo refused`),
-        // What a repair's home holds at its start; nothing of it is in another mode's.
-        bash(
-          String.raw`ls check-program 2>/dev/null; cat controls.json tasks.json evidence.json 2>/dev/null | tr -d ' \n'`,
-        ),
         PUT[mode],
         finish,
         finish,
@@ -216,8 +209,8 @@ describe("a session of any mode", () => {
       expect(examined.ended).toBe(mode === "write" ? "finished" : "stands");
       // The session's calls are in the log as the session's own, in order.
       const calls = s.of(`${KIND[mode]}.call`);
-      expect(calls.slice(0, 5).map(({ tool, isError }) => [tool, isError])).toEqual(
-        ["bash", "read", "bash", "bash", "bash"].map((tool) => [tool, false]),
+      expect(calls.slice(0, 4).map(({ tool, isError }) => [tool, isError])).toEqual(
+        ["bash", "read", "bash", "bash"].map((tool) => [tool, false]),
       );
       expect(calls.slice(1, 4).map(({ text }) => text)).toEqual(["noted", "refused", "refused"]);
       expect(existsSync(outside)).toBe(false);
@@ -229,93 +222,59 @@ describe("a session of any mode", () => {
       expect(told).toContain("but no repository or private data");
       expect(told).toMatch(/It has (no )?network access: a package index (was|could not be) reached/);
       expect(told).toContain(`Nothing in your home enters the exam: ${ENTERS[mode]}.`);
-      const listed = isString(calls[4]?.text) ? calls[4].text : "";
-      if (mode === "repair") {
-        // The exam's side of the campaign as files: the program, the controls in the tool's own
-        // shape, every task whole, and what the session is shown of the log.
-        expect(told).toContain("holds, at its start, the check program in check-program/");
-        expect(told).not.toContain("empty at its start");
-        expect(listed).toStartWith("brief.json\nevaluator.ts\n");
-        expect(listed).toContain(
-          `"reject":[{"task":"t-1","answer":{"answer":"13","unit":"N"},"check":"check-product"}]`,
-        );
-        expect(listed).toContain(`"hiddenSeed":"seed-3"`);
-        expect(listed).toContain(`"rejections":[]`);
-      } else {
-        expect(told).toContain("empty at its start");
-        expect(listed).not.toContain("brief.json");
-      }
+      expect(told).toContain("empty at its start");
       if (mode === "draft") expect(told).not.toMatch(/research/i);
     }
   });
 });
 
-describe("a session that puts one whole thing, a draft or a repair", () => {
-  const PUTTING = ["draft", "repair"] as const;
-  const STANDS = {
-    draft: "The draft stands: it is the campaign's exam. The session ends here.",
-    repair: "The repair stands: the host takes it into a campaign of its own. The session ends here.",
-  } as const;
-
+describe("a session that drafts an exam", () => {
   it("is told the faults of what it put, mends it, and ends at the first that stands", async () => {
-    for (const mode of PUTTING) {
-      const s = seat(mode, [PUT[mode], PUT[mode], finish]);
-      let readings = 0;
-      const reading = async () => {
-        readings += 1;
-        return readings === 1 ? ["the accept control of t-1 did not pass: fail check-product"] : [];
-      };
-      const examined = await examine({ ...s.request, reading });
-      expect(examined).toEqual({
-        ended: "stands",
-        puts: 2,
-        held: [],
-        refused: [],
-        repair: mode === "repair" ? MENDED : null,
-      });
-      expect(s.of(`${mode}.call`).map(({ text }) => text)).toEqual([
-        `The ${mode} does not stand. 1 fault:\n- the accept control of t-1 did not pass: fail check-product\nMend them and put the whole ${mode} again. This session can put 3 more ${mode}s.`,
-        STANDS[mode],
-      ]);
-      expect(s.of(`${mode}.finished`)).toMatchObject([{ ended: "stands", stands: true, tries: 2 }]);
-      // Its start holds the mode's own facts beside its limits, under the log's own words.
-      expect(s.of(`${mode}.started`)).toMatchObject([
-        {
-          limits: { wallSeconds: 600, turns: 12, tries: 4 },
-          ...(mode === "draft" ? { prompt: "A fixture." } : { successor: "fixture-r-1", engines: [] }),
-        },
-      ]);
-      // The draft that stands is in the log whole, and a campaign reads its exam from there.
-      expect(draftOf(read(s.log))).toEqual(mode === "draft" ? SOUND : null);
-      expect(s.sent[0]).toContain(`This session has 10 minutes, 12 turns and 4 ${mode}s.`);
-    }
+    const s = seat("draft", [PUT.draft, PUT.draft, finish]);
+    let readings = 0;
+    const reading = async () => {
+      readings += 1;
+      return readings === 1 ? ["the accept control of t-1 did not pass: fail check-product"] : [];
+    };
+    const examined = await examine({ ...s.request, reading });
+    expect(examined).toEqual({ ended: "stands", puts: 2, held: [], refused: [] });
+    expect(s.of("draft.call").map(({ text }) => text)).toEqual([
+      "The draft does not stand. 1 fault:\n- the accept control of t-1 did not pass: fail check-product\nMend them and put the whole draft again. This session can put 3 more drafts.",
+      "The draft stands: it is the campaign's exam. The session ends here.",
+    ]);
+    expect(s.of("draft.finished")).toMatchObject([{ ended: "stands", stands: true, tries: 2 }]);
+    // Its start holds the mode's own facts beside its limits, under the log's own words.
+    expect(s.of("draft.started")).toMatchObject([
+      { limits: { wallSeconds: 600, turns: 12, tries: 4 }, prompt: "A fixture." },
+    ]);
+    // The draft that stands is in the log whole, and a campaign reads its exam from there.
+    expect(draftOf(read(s.log))).toEqual(SOUND);
+    expect(s.sent[0]).toContain("This session has 10 minutes, 12 turns and 4 drafts.");
   });
 
   it("puts no more than it has, and ends at finish with nothing standing", async () => {
-    for (const mode of PUTTING) {
-      const s = seat(mode, [PUT[mode], PUT[mode], PUT[mode], finish]);
-      const examined = await examine({
-        ...s.request,
-        limits: { ...s.request.limits, puts: 2 },
-        reading: async () => ["a fault"],
-      });
-      expect(examined).toMatchObject({ ended: "finished", puts: 2, repair: null });
-      const last = ({ text }: JsonObject) => (isString(text) ? text.split("\n").at(-1) : null);
-      expect(s.of(`${mode}.call`).map((result) => [last(result), result.isError])).toEqual([
-        [`Mend them and put the whole ${mode} again. This session can put 1 more ${mode}.`, false],
-        [`This session can put no further ${mode}. Call finish.`, false],
-        [`This session can put no further ${mode}. Call finish.`, true],
-        ["Finished.", false],
-      ]);
-      expect(s.of(`${mode}.finished`)).toMatchObject([{ stands: false, tries: 2, note: NOTE }]);
-      expect(draftOf(read(s.log))).toBeNull();
-      // A turn with no call is answered with what the session can still do.
-      const idle = seat(mode, [fauxAssistantMessage("Thinking."), finish]);
-      await examine(idle.request);
-      expect(idle.sent[1]).toContain(
-        `You have not called finish. Put a ${mode} with ${mode === "draft" ? "draft_exam" : "repair_check"}, or call finish.`,
-      );
-    }
+    const s = seat("draft", [PUT.draft, PUT.draft, PUT.draft, finish]);
+    const examined = await examine({
+      ...s.request,
+      limits: { ...s.request.limits, puts: 2 },
+      reading: async () => ["a fault"],
+    });
+    expect(examined).toMatchObject({ ended: "finished", puts: 2 });
+    const last = ({ text }: JsonObject) => (isString(text) ? text.split("\n").at(-1) : null);
+    expect(s.of("draft.call").map((result) => [last(result), result.isError])).toEqual([
+      ["Mend them and put the whole draft again. This session can put 1 more draft.", false],
+      ["This session can put no further draft. Call finish.", false],
+      ["This session can put no further draft. Call finish.", true],
+      ["Finished.", false],
+    ]);
+    expect(s.of("draft.finished")).toMatchObject([{ stands: false, tries: 2, note: NOTE }]);
+    expect(draftOf(read(s.log))).toBeNull();
+    // A turn with no call is answered with what the session can still do.
+    const idle = seat("draft", [fauxAssistantMessage("Thinking."), finish]);
+    await examine(idle.request);
+    expect(idle.sent[1]).toContain(
+      "You have not called finish. Put a draft with draft_exam, or call finish.",
+    );
   });
 });
 
@@ -406,7 +365,7 @@ describe("a session that writes tasks", () => {
     const refused = taskVersion(
       s.request.pack({ taskId: "x-1-002", family: "fixture", publicInput: null, hidden: { seed: 1 } }),
     );
-    expect(examined).toEqual({ ended: "finished", puts: 2, held: [held], refused: [refused], repair: null });
+    expect(examined).toEqual({ ended: "finished", puts: 2, held: [held], refused: [refused] });
     // One gate, and the task is a held-out task from then on: no solve, no control, no word.
     expect(s.of("task.gate")).toEqual([
       { version: held, gate: 1, outcome: "passed", proved: false },

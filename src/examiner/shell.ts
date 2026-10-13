@@ -5,7 +5,7 @@
  * The home is a capped root as a Builder's is, under the solver's command wall (`walledBase`,
  * `src/solve/command.ts`): the repository, its other worktrees and a stored pack are closed to it,
  * and the wall is probed before its first command. Nothing in the home enters the exam: a session
- * puts a task, a draft or a repair through its own tool, and the host reads that alone.
+ * puts a task or a draft through its own tool, and the host reads that alone.
  *
  * A task-writing session has one because, without it, its notes said that a task's feasibility
  * rested on hand estimates. A drafting session has one so that it can look up the source it names

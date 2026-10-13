@@ -66,8 +66,8 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  `exam.drafted` holds the draft that stood, whole: its rules with their sources, its answer
  *  format, its check program's source, its example tasks and its controls. A campaign opened from
  *  a prompt reads its exam from that event and from no file beside the log. The `repair.*` kinds
- *  are the session in which the Examiner repairs its own check program or its controls between
- *  comparisons (`src/examiner/repair.ts`), the same five as a drafting session's. `task.feasible`
+ *  were a session in which the Examiner repaired its own check program or its controls between
+ *  comparisons, retired on 13 October; they stay so that a log of before still reads. `task.feasible`
  *  is a task an author's answer passed the checks on, under its own id once its gate passed or in a
  *  `try_answer` after that, by version and never the answer. */
 const EVENT_KINDS = [

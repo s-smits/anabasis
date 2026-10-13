@@ -480,7 +480,7 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
     declined: MORE,
     done: (): "supplied" | null => (supplied(desk) ? "supplied" : null),
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
-    result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused, repair: null }),
+    result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
     // The next session's home is seeded with what the campaign keeps of the last one's.
     enter: (home: string) => {
       if (keep !== undefined && existsSync(keep)) cpSync(keep, home, { recursive: true });

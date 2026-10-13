@@ -105,7 +105,7 @@ export interface SolveRequest {
 
 /** Whose trace a log holds: a solve's, a Builder's session, an Examiner's that writes tasks, or
  *  the one in which it drafts the exam. The word prefixes the event kinds (`draft.turn`). */
-type Traced = "solve" | "build" | "exam" | "draft" | "repair";
+type Traced = "solve" | "build" | "exam" | "draft";
 
 /** What a solve has used of its limits, as its tools are told to say it. */
 export interface Used {
@@ -391,8 +391,8 @@ export function failedTurn(turns: readonly AssistantMessage[]): string | null {
 }
 
 /** Every model turn and every tool call into the log, as they end: a solve's as `solve.turn` and
- *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.`, `exam.`, `draft.`
- *  or `repair.turn` and `.call` under `session`. */
+ *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.`, `exam.` or
+ *  `draft.turn` and `.call` under `session`. */
 export function traceSink(log: string, of: Traced, id: string, turn: () => number) {
   const named = of === "solve" ? { solve: id } : { session: id };
   const calls = new Map<string, { args: JsonValue; at: number }>();

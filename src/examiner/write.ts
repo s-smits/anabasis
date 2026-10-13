@@ -200,9 +200,10 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   };
 }
 
-/** The gate for one instance the Examiner proposed, and the line it is told (`measured`). A task
- *  held out whose content its author's answer passed before is put to the checks again under its
- *  own id, and is on record as feasible only where it passes there. */
+/** The gate for one instance the Examiner proposed, and the line it is told (`measured`). Its gate
+ *  says whether it came with a proof: an answer of its author's that passed the checks on its
+ *  content before it was proposed (`proved`, read by `heldShare`). A task held out with one is put
+ *  to the checks again under its own id, and is on record as feasible only where it passes there. */
 async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
@@ -210,6 +211,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   const version = taskVersion(task);
   const { taskId, family, publicInput, hidden } = instance;
   append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
+  const answer = desk.answered.get(contentOf(instance));
   const { reason, said, reference } = await measured(desk, task, stop);
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, "task.gate", {
@@ -217,6 +219,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
     gate: 1,
     ...outcome,
     ...keyIfDefined("reference", reference),
+    proved: answer !== undefined,
   });
   if (reason !== null) {
     append(log, "task.state", { version, state: "refused", session });
@@ -224,7 +227,6 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
     return `${taskId}: refused: ${reason}`;
   }
   desk.held.push(version);
-  const answer = desk.answered.get(contentOf(instance));
   if (verify === null || answer === undefined) return `${taskId}: held out${said}.`;
   const verdict = await Promise.try(() => verify(instance, answer)).catch(
     (error: unknown) => ({ kind: "non-result", reason: errorMessage(error) }) as const,
@@ -234,6 +236,21 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   }
   append(log, "task.feasible", { version, session });
   return `${taskId}: held out${said}.`;
+}
+
+/** The campaign's gates of drafts so far, as the Examiner is told them after each proposal: how
+ *  many of those that came with a proof were held out, and of those that did not. A fact and no
+ *  rule. On the three run logs read on 13 October the proof foretold the gate: in one campaign the
+ *  drafts with one were held 23 of 23, and of those without, 5 were held and 21 refused, 11 at no
+ *  valid solve of three and 10 at three. A gate with no `proved`, as a pack's task has, is no
+ *  draft's and is not counted. */
+function heldShare(events: readonly LogEvent[]): string {
+  const of = (proved: boolean) => {
+    const gates = events.filter(({ kind, data }) => kind === "task.gate" && data.proved === proved);
+    const held = gates.filter(({ data }) => data.outcome === "passed").length;
+    return `${String(held)} of ${String(gates.length)}`;
+  };
+  return `So far in this campaign, drafts with a proof were held ${of(true)}, and drafts without one ${of(false)}.`;
 }
 
 /** Whether the host has the tasks it asked for. */
@@ -279,6 +296,7 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
       if (spent()) throw new Error("This session can propose no further task. Call finish.");
       const lines: string[] = [];
       for (const given of args.tasks) lines.push(await taken(instanceOf("", given), signal));
+      lines.push(heldShare(read(desk.request.log)));
       return {
         ...text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`),
         terminate: supplied(desk),

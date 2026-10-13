@@ -15,8 +15,10 @@
  * Examiner sessions each and two by a comparison that threw (`waitOut`).
  */
 import { resetOf } from "#src/backends/claude.ts";
+import { CRASHES } from "#src/builder/decide.ts";
+import { crashedRun } from "#src/builder/ground.ts";
 import { affords, flying, inFlight } from "#src/builder/opening.ts";
-import { append } from "#src/kernel/log.ts";
+import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { type Seated, solved } from "./round.ts";
@@ -45,6 +47,10 @@ interface Gate {
 const RESET_MOST_MS = 6 * 3_600_000;
 /** After the named minute, so that the first call is not made in the minute the limit lifts. */
 const RESET_MARGIN_MS = 60_000;
+/** What the host waits after the first and the second session in a row the network failed: in
+ *  buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS lookup. */
+const NETWORK_WAITS_MS = [60_000, 300_000];
+const NETWORK = /\b(?:ENOTFOUND|ECONNRESET|ETIMEDOUT)\b/;
 
 /** This host, with half a minute between two looks at the load. */
 export const HOST: Host = { load: () => loadavg()[0] ?? 0, cores: availableParallelism(), waitMs: 30_000 };
@@ -114,4 +120,27 @@ export async function waitOut(
   append(log, "campaign.waited", { for: "provider", until: reset.toISOString(), ms });
   await sleep(ms);
   return true;
+}
+
+/**
+ * The wait after the sessions in a row that crashed (`crashedRun`), before the campaign starts the
+ * next: to the provider's named reset where the last crash names one (`waitOut`), and otherwise,
+ * where the network failed it, a minute after the first and five after the second, on record as
+ * `campaign.waited` `for: "network"`, which starts no count again. A third ends the campaign on its
+ * environment (`CRASHES`, `decide.ts`), and nothing is waited for before that ending.
+ */
+export async function waitCrashed(
+  log: string,
+  sleep: (ms: number) => Promise<void> = Bun.sleep,
+): Promise<void> {
+  const { count, crash } = crashedRun(read(log));
+  if ((await waitOut(log, crash, sleep)) || crash === null || !NETWORK.test(crash) || count >= CRASHES) {
+    return;
+  }
+  const ms = NETWORK_WAITS_MS[Math.min(count, NETWORK_WAITS_MS.length) - 1] ?? 0;
+  console.log(
+    `the network failed the last session: the campaign waits ${String(ms / 60_000)} minutes, then goes on`,
+  );
+  append(log, "campaign.waited", { for: "network", ms });
+  await sleep(ms);
 }

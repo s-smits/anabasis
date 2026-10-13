@@ -87,7 +87,7 @@ const DRAFTS = 3;
 /** Builder or Examiner sessions in a row the provider failed before the campaign ends on its
  *  environment: as many as drafts, so that a campaign is not built or examined against a dead
  *  provider without end, and no more, since each costs an id and the operator's wait. */
-const CRASHES = DRAFTS;
+export const CRASHES = DRAFTS;
 /** The false-promotion chance this epoch past which an attempt waits for an A/A (`risked`). */
 const RISK = 0.25;
 /** The gate's refusals that are a want of tasks (`refusals`, `admission.ts`). */

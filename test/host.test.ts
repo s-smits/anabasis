@@ -10,7 +10,7 @@ import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import { mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { waitOut } from "../tools/d2/host.ts";
+import { waitCrashed, waitOut } from "../tools/d2/host.ts";
 
 // 12 October, 12:09Z: 14:09 in Amsterdam.
 const NOW = new Date("2026-10-12T12:09:00Z");
@@ -68,6 +68,32 @@ describe("the provider's named reset", () => {
     // A solve's wait at a loaded host is no provider's.
     const loaded: LogEvent = { kind: "campaign.waited", at: NOW.toISOString(), data: { load: 99 } };
     expect(crashedRun([crashed(1), loaded, crashed(2)]).count).toBe(2);
+  });
+});
+
+describe("the wait after a session the network failed", () => {
+  it("is a minute after the first crash and five after the second, starts no count, and none before the ending", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), "ana-host-network-")), "campaign.jsonl");
+    const slept: number[] = [];
+    const sleep = async (ms: number) => {
+      slept.push(ms);
+    };
+    const crash = (session: string, said: string) =>
+      append(log, "exam.finished", { session, ended: "crashed", crash: said, held: [] });
+    crash("x-1", "getaddrinfo ENOTFOUND api.example.test");
+    await waitCrashed(log, sleep);
+    crash("x-2", "read ECONNRESET");
+    await waitCrashed(log, sleep);
+    // The third ends the campaign on its environment, and is not waited for.
+    crash("x-3", "connect ETIMEDOUT");
+    await waitCrashed(log, sleep);
+    expect(slept).toEqual([60_000, 300_000]);
+    expect(crashedRun(read(log)).count).toBe(3);
+    // A crash that is no network's and names no reset is not waited for.
+    const other = join(mkdtempSync(join(tmpdir(), "ana-host-network-")), "campaign.jsonl");
+    append(other, "exam.finished", { session: "x-1", ended: "crashed", crash: "exited 1", held: [] });
+    await waitCrashed(other, sleep);
+    expect(slept).toHaveLength(2);
   });
 });
 

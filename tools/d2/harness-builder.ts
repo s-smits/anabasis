@@ -102,7 +102,6 @@
  * Not run here: see `campaign.ts`.
  */
 import { decide } from "#src/builder/decide.ts";
-import { crashedRun } from "#src/builder/ground.ts";
 import { type Decided, decidedLine } from "#src/builder/move.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
@@ -145,7 +144,7 @@ import {
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
-import { gated, HOST, waitOut } from "./host.ts";
+import { gated, HOST, waitCrashed, waitOut } from "./host.ts";
 import { prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { solved } from "./round.ts";
@@ -179,7 +178,7 @@ async function goesOn(log: string, from: number, error: unknown, sleep: Seats["h
     .some(
       ({ kind, data }) => (kind === "build.finished" || kind === "exam.finished") && data.ended === "crashed",
     );
-  if (crashed) await waitOut(log, crashedRun(events).crash, sleep?.sleep);
+  if (crashed) await waitCrashed(log, sleep?.sleep);
   return crashed;
 }
 
@@ -460,7 +459,7 @@ async function lead(context: CampaignContext, named: Decided): Promise<Decided |
   const { log, values, seats } = context;
   const left = await converse(context, named);
   if (left === null) {
-    await waitOut(log, crashedRun(read(log)).crash, seats.host?.sleep);
+    await waitCrashed(log, seats.host?.sleep);
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
@@ -612,7 +611,7 @@ export async function harnessBuilder(
     }
     last = decided.move;
     made += 1;
-    await waitOut(log, crashedRun(read(log)).crash, seats.host?.sleep);
+    await waitCrashed(log, seats.host?.sleep);
   }
 }
 

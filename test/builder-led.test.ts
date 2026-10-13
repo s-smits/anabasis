@@ -198,10 +198,10 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, "build.finished")).toMatchObject([{ session: "b-1", ended: "finished" }]);
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }]);
     const examinerCall = of(name, CALLED).find(({ tool }) => tool === "examine");
-    // One count of the held-out tasks, in the result and in the facts under it (v1's lesson 2).
-    expect(examinerCall?.text).toContain(
-      "ended whole. It held out 0 tasks, and the campaign holds 5 held-out",
-    );
+    // The session writes beside the conversation: the result says so at once, and the facts under
+    // it give no move to make while it writes.
+    expect(examinerCall?.text).toContain("Examiner session x-1 is writing beside this conversation");
+    expect(examinerCall?.text).not.toContain("Suggested action");
     expect(examinerCall?.text).toContain("Campaign facts: 5 held-out tasks, 2 practice tasks.");
     expect(examinerCall?.text).not.toContain("check-product");
   });
@@ -253,7 +253,8 @@ describe("a campaign run by its live Builder", () => {
     const seats: Seats = {
       seated: builderScript(
         scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-        [["examine", {}], CHANGE_GUIDE],
+        // The next action waits for the Examiner session writing beside it, and reads the word.
+        [["examine", {}], ["compare", {}], CHANGE_GUIDE],
       ),
       examine: async (request) => {
         const result = await examine({
@@ -270,7 +271,7 @@ describe("a campaign run by its live Builder", () => {
     expect(await harnessBuilder([...seeded(name), "--target", "5", "--practice", "2"], seats)).toMatchObject({
       ending: "operator",
     });
-    expect(of(name, "build.turn")).toHaveLength(1);
+    expect(of(name, "build.turn")).toHaveLength(2);
     expect(of(name, CALLED).some(({ tool }) => tool === "bash")).toBe(false);
   });
 

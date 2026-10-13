@@ -307,7 +307,6 @@ function termsOf(events: readonly LogEvent[], id: string): string[] {
   return [
     ...flag("solves", isNumber(start.solves) ? String(start.solves) : undefined),
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),
-    ...(start.noise === true ? ["--noise"] : []),
     ...flag("cap", isNumber(cap?.dollars) ? String(cap.dollars) : undefined),
     ...flag("reserve", isNumber(cap?.reserve) ? String(cap.reserve) : undefined),
     // A margin the A/A set, or the default before one, is read again from the log as it stood at

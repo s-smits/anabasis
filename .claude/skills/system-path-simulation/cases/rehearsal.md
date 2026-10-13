@@ -83,11 +83,11 @@ bun run runs rehearse <pack flags> --name sim-<what> --id g2 --new latest
 Flags that hold `--id` are a checkpoint's (`tools/d2/checkpoint.ts`): one comparison of two kept
 harnesses, with no Builder session. It compares the latest harness a session left with the
 starter, so the seed has to hold one: rehearse a round on it first. The plan's gate G2 is a
-checkpoint with the starter read against itself beside it:
+checkpoint at four solves a side, which reads the starter against itself beside it:
 
 ```sh
 bun run runs rehearse <pack flags> --name sim-<what> --id g2 --tasks <task ids> \
-  --noise --held pass:pass
+  --solves 4 --held pass:pass
 ```
 
 Every scripted solve uses the same few turns, so a rehearsal shows nothing of where a budget

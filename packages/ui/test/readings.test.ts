@@ -316,21 +316,6 @@ describe("what a comparison came to", () => {
     expect(["tiedEvery", "tiedSome", "tiedNone"].every((kind) => kinds.has(kind))).toBe(true);
   });
 
-  test("cuts each side of a set-aside task to its solves a side, so that an A/A reading's further arm is no part of the reference's", async () => {
-    const { answer: grid } = await ask("tasks", { key: KEY }, "default");
-    const column = grid.columns.findIndex(({ id }) => id === "c-1");
-    const aside = grid.rows.flatMap(({ id, cells }) => {
-      const cell = cells[column];
-      return cell?.outcome === "aside" ? [[id, cell.old.solves, cell.fresh.solves]] : [];
-    });
-    expect(aside).toEqual([["word-14", 2, 2]]);
-    const detail = (await ask("move", { key: KEY, move: await placeOf("comparison", "c-1") }, "default"))
-      .answer;
-    if (detail.kind !== "comparison") throw new Error("c-1 is a comparison");
-    const task = detail.tasks.find(({ outcome }) => outcome === "aside");
-    expect([task?.old.length, task?.fresh.length]).toEqual([2, 2]);
-  });
-
   test("lists a comparison with no report by the tasks its start fixed and its solves so far, with no outcome", async () => {
     const { answer: reading } = await ask("campaign", { key: KEY }, "default");
     const cut = reading.comparisons.find(({ id }) => id === "b-4");

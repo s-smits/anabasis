@@ -39,11 +39,10 @@
  * The reference is read against itself as the test is (the plan's A/A): its solves of a task
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
  * disagree (`flips`) and its earlier against its later ones apart as the drift (`comparison.ts`).
- * At four solves a side the test's own solves hold it, two against two. `noise` gives one at fewer:
- * the reference is solved twice as often, a slot being the reference, the new harness and the
- * reference again, and the first and last of each four are the test's (`halves`, `compare.ts`).
+ * At four solves a side the test's own solves hold it, two against two, and at fewer there is none.
  * It should read no step, and decides nothing here. Until 12 October its later solves ran after
- * the test's own were done, so a drift read as a difference.
+ * the test's own were done, so a drift read as a difference, and until 13 October `--noise` read
+ * one at fewer by solving the reference twice as often.
  *
  * A comparison is read at the one budget its solves were told: a reading of the same solves at a
  * shorter budget would read a solver told the longer one.
@@ -176,8 +175,6 @@ interface Terms {
   /** The setting `solve` records in each condition (`settingId`): the solver, its limits and the
    *  host. Only solves made under it are counted. */
   readonly setting: string;
-  /** Whether the reference harness is also read against itself, on solves of its own. */
-  readonly noise?: boolean | undefined;
   /** The dollar cap, where the solves are paid for. */
   readonly cap?: Cap | undefined;
   /** What the operator expects the comparison to read, in their own words, written with its terms
@@ -330,23 +327,18 @@ function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
  * (`draw`), so that what drifts over the comparison's hours falls between tasks, which the test
  * does not read, and no slot's solves gather at one end. Within a task its slots run in turn and
  * the harness that goes first is mirrored, slot by slot and from one task to the next: the
- * reference then the new harness, the new then the reference. Beside the reference read against
- * itself a slot is the reference, the new harness and the reference again, so that the new
- * harness's solves sit at the middle of the reference's (`halves`, `compare.ts`). `had` says how
- * many counted solves a task has under a harness; a comparison gone on from its log runs the
- * slots' solves it lacks.
+ * reference then the new harness, the new then the reference. `had` says how many counted solves
+ * a task has under a harness; a comparison gone on from its log runs the slots' solves it lacks.
  */
 function unsolvedJobs(
-  request: Pick<CheckpointRequest, "id" | "old" | "fresh" | "solves" | "noise">,
+  request: Pick<CheckpointRequest, "id" | "old" | "fresh" | "solves">,
   tasks: readonly string[],
   had: (task: string, digest: string) => number,
 ): Job[] {
   const { old, fresh, solves } = request;
   return draw(tasks, new Set(tasks).size, request.id).flatMap((task, index) => {
     const left = new Map([old, fresh].map(({ digest }) => [digest, had(task, digest)]));
-    const slot = (at: number) =>
-      request.noise === true ? [old, fresh, old] : (index + at) % 2 === 0 ? [old, fresh] : [fresh, old];
-    return Array.from({ length: solves }, (_, at) => slot(at))
+    return Array.from({ length: solves }, (_, at) => ((index + at) % 2 === 0 ? [old, fresh] : [fresh, old]))
       .flat()
       .flatMap((under) => {
         const skipped = left.get(under.digest) ?? 0;
@@ -605,7 +597,6 @@ function begin(request: CheckpointRequest): Fixed {
     solves: request.solves,
     level: request.level,
     trigger: request.trigger,
-    noise: request.noise === true,
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
     ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
@@ -654,7 +645,7 @@ function write(
 
 /**
  * One comparison of `fresh` with the reference harness `old`, with no session: the plan's
- * checkpoint after several sessions, and with `noise` its gate G2.
+ * checkpoint after several sessions, and at four solves a side its gate G2.
  */
 export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   const { log, id, old, fresh } = request;
@@ -663,7 +654,7 @@ export async function checkpoint(request: CheckpointRequest): Promise<Report> {
   if (before !== null) return before;
   if (old.digest === fresh.digest) {
     throw new Error(
-      `a comparison sets two harnesses against each other, and both sides are ${old.digest}; the reference harness is read against itself beside a comparison, with noise`,
+      `a comparison sets two harnesses against each other, and both sides are ${old.digest}; the reference harness is read against itself beside a comparison of four solves a side`,
     );
   }
   refuseTerms(request, { log, id, practised: new Set() });

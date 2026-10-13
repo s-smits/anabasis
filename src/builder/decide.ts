@@ -676,7 +676,7 @@ function buildsOn(ground: Ground): string {
  * M2.5): P4's union bound over the attempts under the reference, indicative or not
  * (`falsePromotion`, `climb.ts`), until an A/A has run since the last report, which a comparison of
  * four solves a side carries, or the operator leaves a cause (`--cause`). It is no refusal of the
- * gate's, since its remedy is itself a comparison by hand (`tools/d2/checkpoint.ts --noise`).
+ * gate's, since its remedy is itself a comparison by hand (`tools/d2/checkpoint.ts`).
  */
 function risked({ events, reports }: Ground, named: Move): Move | null {
   if (named.move !== "compare" || named.id !== undefined || named.fresh !== "latest") return null;
@@ -687,7 +687,7 @@ function risked({ events, reports }: Ground, named: Move): Move | null {
     ? null
     : end(
         "control",
-        `a false promotion is at most ${String(Math.round(100 * risk.union))}% over ${plural(risk.attempts, "attempt")} under this reference, past a quarter, and comparison ${last.id} read no A/A: run one (tools/d2/checkpoint.ts --noise), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again`,
+        `a false promotion is at most ${String(Math.round(100 * risk.union))}% over ${plural(risk.attempts, "attempt")} under this reference, past a quarter, and comparison ${last.id} read no A/A: run a comparison of four solves a side (tools/d2/checkpoint.ts --solves 4), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again`,
       );
 }
 
@@ -696,23 +696,20 @@ function risked({ events, reports }: Ground, named: Move): Move | null {
  * comparison a row named. A comparison the cap cuts before its last solve tallies nothing, and
  * what it billed bought no reading: on 9 October a campaign with $1.45 left began a comparison
  * after one that had billed $1.00, and was cut after $1.06. What a comparison will bill is read
- * from the last one that reported, by the sides each solves: two, and three where the operator
- * read the reference against itself (`--noise`, a checkpoint). Where no comparison has reported,
- * nothing says what one bills, and it starts; one that began goes on under whatever is left.
+ * from the last one that reported. Where no comparison has reported, nothing says what one
+ * bills, and it starts; one that began goes on under whatever is left.
  */
 function unafforded({ events, plan, reports }: Ground, named: Move): Move | null {
   const last = reports.findLast(({ report }) => report.capped !== true);
   if (named.move !== "compare" || named.id !== undefined || plan.left === null || last === undefined) {
     return null;
   }
-  const sides = last.noise ? 3 : 2;
   const was = billedParts(events, last.id).comparison;
-  const expected = (was * 2) / sides;
-  return plan.left.dollars >= expected
+  return plan.left.dollars >= was
     ? null
     : end(
         "budget",
-        `$${plan.left.dollars.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)} for ${String(sides)} sides: the next solves 2 and would bill about $${expected.toFixed(2)}, so it would be cut before it reports`,
+        `$${plan.left.dollars.toFixed(2)} of the campaign's budget are left, and comparison ${last.id} billed $${was.toFixed(2)}: the next would bill about as much, so it would be cut before it reports`,
       );
 }
 

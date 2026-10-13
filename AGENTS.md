@@ -106,9 +106,7 @@ until it is measured on the real solver, whose variance is unknown: the same har
 once and passes it next time. The measurement is an A/A test, built as the test is: the
 reference's solves of a task split into two halves mirrored in time, tallied and tested as a
 comparison is (`src/builder/comparison.ts`). At four solves a side every comparison carries one, on
-the solves its test reads, two against two; at fewer, `--noise` on a checkpoint solves the
-reference twice as often for it, a slot being the reference, the new harness and the reference
-again (`src/builder/round.ts`). A step there is a false positive by construction. Its earlier solves against its later ones are kept apart as the drift, and how often
+the solves its test reads, two against two, and at fewer there is none. A step there is a false positive by construction. Its earlier solves against its later ones are kept apart as the drift, and how often
 two of its solves of a task disagree as the flip rate. Bar: no step in the ten controls after the
 six on record. Ten controls still bound the rate loosely. The same control gives the tie share, the
 floor a real comparison has to beat before its wins mean anything. A campaign makes many promotion
@@ -395,7 +393,9 @@ harness, or promote an eligible harness. There is no coordinating model above it
 
 The host opens the exam and prepares the campaign first. Then `tools/d2/harness-builder.ts` keeps
 one Builder conversation and one workspace open while its campaign tools run. An Examiner call
-runs a separate agent with its own view and returns counts only. A comparison returns the same
+runs a separate agent with its own view: it returns at once, the session writes beside the
+conversation, any other campaign action waits for it on the host's time, and the campaign's facts
+under each tool result say what it held out. A comparison returns the same
 aggregate tally and reading the Builder already receives. A promotion names only the harness the
 existing rule allows. The model cannot choose a checker, held-out task, solve limit or reference.
 
@@ -817,10 +817,9 @@ starter answered 0 of 10 solves read at two turns, and 10 of 10 once it was told
 **Beside the test.** The report holds how each harness did by itself (`valid`: on how many tasks
 every solve, some or none were valid), which tasks entered each of its two sets, and its overlap
 with the comparison of the same two harnesses before it. The reference read against itself on
-halves of its own solves mirrored in time stands beside every comparison of four solves a side, and
-`--noise` on a checkpoint gives one at fewer; it should read no step, and its tie share is the
-noise every comparison has to exceed, its flip rate how often two solves of a task disagree, and
-its drift its earlier solves against its later ones. The epoch's first is its control: read
+halves of its own solves mirrored in time stands beside every comparison of four solves a side; it
+should read no step, and its tie share is the noise every comparison has to exceed, its flip rate
+how often two solves of a task disagree, and its drift its earlier solves against its later ones. The epoch's first is its control: read
 two-sided at the comparison's level, since which half is which is arbitrary, a step there either
 way ends the campaign on its control, as its two sides are not interchangeable, and no comparison
 against that reference reads anything until the operator leaves the cause on record
@@ -1065,7 +1064,7 @@ turn.
 
 | Claim | Requires |
 | --- | --- |
-| A step | A comparison that read `step`, named with its condition: the setting, the tasks, the solves a side, the level, the budget and the starter it was read on. One comparison is one draw, so a step is repeated on fresh solves, with the reference read against itself (`--noise`), before the word is used without qualification or anything is promoted |
+| A step | A comparison that read `step`, named with its condition: the setting, the tasks, the solves a side, the level, the budget and the starter it was read on. One comparison is one draw, so a step is repeated on fresh solves, with the reference read against itself beside it, before the word is used without qualification or anything is promoted |
 | No step | The same naming, and the size of the test. `no-step` says that a test of this size found no gain. It says nothing about equality |
 | A mechanism | The event it writes, in a live run's log, where its trigger occurred |
 | A refusal | The refusal's text. It establishes its own condition and nothing about the answers |

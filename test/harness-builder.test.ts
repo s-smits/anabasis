@@ -449,9 +449,6 @@ describe("a campaign run by its log", () => {
     );
     expect([once.length, again.length]).toEqual([7, 7]);
     expect(again.filter((task) => once.includes(task))).toEqual([]);
-    // The table reads the reference against itself in no comparison since 2026-10-11: that is the
-    // operator's `--noise` on a checkpoint.
-    expect(of(name, "comparison.started").map(({ noise }) => noise)).toEqual([false, false]);
     expect(of(name, "harness.promoted")).toEqual([]);
     // Reopened by its name alone, it still waits: the opening keeps the word. Until 12 October it
     // was the running command's flag, and a reopen that left it off promoted without the operator.
@@ -474,13 +471,11 @@ describe("a campaign run by its log", () => {
     // against the promoted harness. Until 10 October the Builder built here, three times, on
     // practice the promoted harness passed (t-4, t-9, t-10).
     expect(next).toMatchObject({ move: "compare", fresh: "starter", reference: "promoted" });
-    expect(next).not.toHaveProperty("noise");
     const after = await harnessBuilder([...flags, "--moves", "1"], seats);
     expect(of(name, "comparison.started").at(-1)).toMatchObject({
       session: "g-3",
       fresh: first?.starter,
       old: first?.fresh,
-      noise: false,
     });
     // The script answers nothing under the reference nor the starter, so the control reads the new
     // tasks as beyond both, and the table has other tasks written rather than a harness built.

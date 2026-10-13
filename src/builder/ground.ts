@@ -46,7 +46,6 @@ interface Compared {
   readonly at: number;
   readonly old: string;
   readonly fresh: string;
-  readonly noise: boolean;
   readonly report: JsonObject | null;
   readonly reported: number | null;
 }
@@ -63,8 +62,14 @@ export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
     const { session, old, fresh } = data;
     if (kind !== "comparison.started" || !isString(session) || !isString(old) || !isString(fresh)) continue;
     const last = reports.get(session);
-    const compared = { id: session, at, old, fresh, noise: data.noise === true };
-    begun.set(session, { ...compared, report: last?.data ?? null, reported: last?.index ?? null });
+    begun.set(session, {
+      id: session,
+      at,
+      old,
+      fresh,
+      report: last?.data ?? null,
+      reported: last?.index ?? null,
+    });
   }
   return [...begun.values()].toSorted((one, other) => one.at - other.at);
 }

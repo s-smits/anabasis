@@ -77,12 +77,10 @@ interface Planned {
   readonly id: string;
   readonly old: string;
   readonly fresh: string;
-  readonly noise?: boolean;
+  /** Its solves a side, two unless named: at four the report reads the reference against itself. */
+  readonly solves?: number;
   readonly tasks: Readonly<
-    Record<
-      string,
-      { readonly old: readonly Ends[]; readonly fresh: readonly Ends[]; readonly noise?: readonly Ends[] }
-    >
+    Record<string, { readonly old: readonly Ends[]; readonly fresh: readonly Ends[] }>
   >;
   readonly rulings?: Readonly<Record<string, Ruling>>;
   readonly cutAfter?: number;
@@ -497,7 +495,7 @@ function built(
  *  as `cutAfter` names and no report. It returns each solve by task id, side and number
  *  (`word-02 fresh 0`). */
 function compare(w: Writer, planned: Planned): Map<string, string> {
-  const { id, old, fresh } = planned;
+  const { id, old, fresh, solves = 2 } = planned;
   const versions = Object.keys(planned.tasks).map(versionOf);
   w.record("comparison.started", {
     session: id,
@@ -505,10 +503,9 @@ function compare(w: Writer, planned: Planned): Map<string, string> {
     fresh,
     starter: w.starter,
     setting: w.setting(),
-    solves: 2,
+    solves,
     level: 0.1,
     trigger: 0.25,
-    noise: planned.noise === true,
     cap: CAP,
     tasks: versions,
     retained: [],
@@ -523,7 +520,7 @@ function compare(w: Writer, planned: Planned): Map<string, string> {
   };
   for (const [taskId, sides] of Object.entries(planned.tasks)) {
     const arms = [
-      ["old", old, [...sides.old, ...(sides.noise ?? [])]],
+      ["old", old, sides.old],
       ["fresh", fresh, sides.fresh],
     ] as const;
     for (const [side, harness, ends] of arms) {
@@ -549,7 +546,7 @@ function compare(w: Writer, planned: Planned): Map<string, string> {
   w.record("comparison.reported", {
     session: id,
     tasks: versions.length,
-    solves: 2,
+    solves,
     level: 0.1,
     setting: w.setting(),
     broken: null,
@@ -673,11 +670,14 @@ function firstPart(w: Writer) {
     id: "c-1",
     old: a,
     fresh: starter,
-    noise: true,
+    solves: 4,
     tasks: {
-      "word-13": { old: ["pass", "pass"], noise: ["pass", "pass"], fresh: ["no-answer", "rejected"] },
-      "word-14": { old: ["pass", "rejected"], noise: ["pass", "pass"], fresh: ["rejected", "pass"] },
-      "word-15": { old: ["pass", "pass"], noise: ["pass", "no-answer"], fresh: ["pass", "pass"] },
+      "word-13": {
+        old: ["pass", "pass", "pass", "pass"],
+        fresh: ["no-answer", "rejected", "no-answer", "no-answer"],
+      },
+      "word-14": { old: ["pass", "rejected", "pass", "pass"], fresh: ["rejected", "pass", "pass", "pass"] },
+      "word-15": { old: ["pass", "pass", "pass", "no-answer"], fresh: ["pass", "pass", "pass", "pass"] },
     },
     rulings: { "word-13 fresh 1": "earned", "word-14 old 1": "earned", "word-14 fresh 0": "unclear" },
   });
@@ -820,15 +820,14 @@ function unitsCampaign(root: string, name: string): void {
   // which a one-sided test of wins reads as nothing and is a false step all the same. The halves
   // are mirrored in time, the first and last of a task's four solves against the two between.
   const lostLater = {
-    old: ["pass", "no-answer"],
-    noise: ["no-answer", "pass"],
-    fresh: ["pass", "pass"],
+    old: ["pass", "no-answer", "no-answer", "pass"],
+    fresh: ["pass", "pass", "pass", "pass"],
   } as const;
   compare(w, {
     id: "c-1",
     old: UNITS.a,
     fresh: UNITS.starter,
-    noise: true,
+    solves: 4,
     tasks: { "unit-01": lostLater, "unit-02": lostLater, "unit-03": lostLater, "unit-04": lostLater },
   });
   built(w, "b-2", { parent: UNITS.a, harness: UNITS.b, practice }, ["pass", "pass"]);

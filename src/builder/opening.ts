@@ -23,7 +23,7 @@
  * name alone, recorded a setting of 120 minutes and 12 tasks and gave each session 240 minutes and
  * 24 practice solves, and nothing said so.
  */
-import type { LogEvent } from "../kernel/log.ts";
+import { type LogEvent, read } from "../kernel/log.ts";
 import { billedAll, type Cap, patienceOf } from "../kernel/reports.ts";
 import { SIZE } from "../kernel/size.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -99,6 +99,36 @@ export const SEATS = ["builder", "examiner", "reviewer"] as const;
  *  harness is compared, and until 12 October three were the default after the first comparison. */
 export const SESSIONS = 2;
 const SETTING = "campaign.setting";
+
+/** The paid solves of each campaign in flight in this process, by its log: a Builder's practice,
+ *  a comparison's solves and the Examiner's tries of a draft task share one budget (14 October:
+ *  until then a `try_task` solve was held to no reserve, and two remaining reserves could start a
+ *  three-solve admission beside a Builder's practice). */
+const FLYING = new Map<string, number>();
+
+/** How many paid solves of the campaign whose log is `log` are in flight in this process. */
+export function inFlight(log: string): number {
+  return FLYING.get(log) ?? 0;
+}
+
+/** Whether the campaign whose log is `log` holds a reserve for `count` more solves beside those in
+ *  flight. A log whose opening names no budget holds every one. */
+export function affords(log: string, count: number): boolean {
+  const events = read(log);
+  const budget = openingOf(events)?.budget;
+  if (budget == null) return true;
+  return budget.dollars - billedAll(events) >= (inFlight(log) + count) * budget.reserve;
+}
+
+/** `run`, counted in flight for the campaign whose log is `log` while it runs. */
+export async function flying<T>(log: string, run: () => Promise<T>): Promise<T> {
+  FLYING.set(log, inFlight(log) + 1);
+  try {
+    return await run();
+  } finally {
+    FLYING.set(log, inFlight(log) - 1);
+  }
+}
 
 /** What a log's last opening holds a campaign to run by, or null where it holds none. */
 export function openingOf(events: readonly LogEvent[]): Opening | null {

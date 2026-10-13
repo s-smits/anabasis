@@ -258,6 +258,8 @@ async function make(
         ...flag("turns", values["exam-turns"]),
       ],
       seats.examine,
+      // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).
+      seats.examine === undefined ? turn.held : null,
     );
     return;
   }

@@ -353,7 +353,8 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
         ...flag("turns", values["exam-turns"]),
       ],
       (request, wall) => sitting({ ...request, opened: resolve }, wall),
-      seats.examine === undefined ? solved : null,
+      // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).
+      seats.examine === undefined ? context.held : null,
       // The host's halt, on its bounds or an ending, and the run's kill stop it; the
       // conversation's own end is neither.
       AbortSignal.any([bench.halt.signal, ...(bench.request.kill === undefined ? [] : [bench.request.kill])]),

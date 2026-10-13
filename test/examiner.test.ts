@@ -46,6 +46,8 @@ import {
 } from "./helpers/examiner-seat.ts";
 
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
+/** The event a tool call of the Examiner writes, with the text it was told. */
+const CALLED = "exam.call";
 const SOLVER = "solver-canary-7f3a";
 const PASS: Ending = { outcome: "pass" };
 const REJECTED: Ending = { outcome: "fail", kind: "rejected" };
@@ -431,14 +433,14 @@ describe("a session that writes tasks", () => {
     expect(examined).toMatchObject({ ended: "supplied", puts: 2 });
     expect(examined.held).toHaveLength(2);
     // The second call of the turn was told that the host has what it needs, and no turn followed.
-    expect(JSON.stringify(s.of("exam.call").at(-1))).toContain("The host has the tasks it needs");
+    expect(JSON.stringify(s.of(CALLED).at(-1))).toContain("The host has the tasks it needs");
     expect(s.of("exam.turn")).toHaveLength(1);
 
     // Every live session of 9 and 10 October proposed one batch of one to three tasks in three
     // turns and finished, of twelve tasks and two hundred turns it had.
     const short = seat("write", [propose(1), finish, propose(2), finish]);
     expect(await examine(short.request)).toMatchObject({ ended: "finished", puts: 2 });
-    expect(short.of("exam.call")[1]?.text).toBe(
+    expect(short.of(CALLED)[1]?.text).toBe(
       "Noted, and the session goes on: the host does not yet have the tasks it needs from it. Propose further tasks, varying what they ask, and call finish again when you have none left worth proposing.",
     );
     expect(short.of("exam.turn")).toHaveLength(4);
@@ -473,7 +475,7 @@ describe("a session that writes tasks", () => {
     );
     expect(
       s
-        .of("exam.call")
+        .of(CALLED)
         .slice(0, 2)
         .map(({ text }) => text),
     ).toEqual([
@@ -608,7 +610,7 @@ describe("a session that writes tasks", () => {
       const proved = order.proved.map((id) => ({ version: versions[id], session: "x-1" }));
       expect(s.of("task.feasible")).toEqual(proved);
       expect(poolOf(read(s.log)).feasible).toEqual(new Set(proved.map(({ version }) => version)));
-      const texts = s.of("exam.call").map(({ text }) => text);
+      const texts = s.of(CALLED).map(({ text }) => text);
       if (order.said !== undefined) expect(texts.filter(isString).join("\n")).toContain(order.said);
       if (order.checked.length === 0) {
         expect(texts[0]).toStartWith(
@@ -649,7 +651,7 @@ describe("a session that writes tasks", () => {
     const examined = await examine({ ...s.request, verify });
     const refused =
       "refused: it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
-    expect(s.of("exam.call")[2]?.text).toBe(
+    expect(s.of(CALLED)[2]?.text).toBe(
       [
         `x-1-001: ${refused}`,
         `x-1-002: ${refused}`,
@@ -685,8 +687,25 @@ describe("a session that writes tasks", () => {
     expect(s.of("task.gate").map(({ outcome }) => outcome)).toEqual(["ladder", "refused", "refused"]);
     expect(s.of("task.feasible")).toEqual([{ version: ladder, session: "x-1" }]);
     expect(poolOf(read(s.log)).scorable).toEqual([]);
-    expect(s.of("exam.call")[2]?.text).toStartWith(
+    expect(s.of(CALLED)[2]?.text).toStartWith(
       "x-1-001: held for the ladder. This task will never be scored for promotion or released for practice.\nx-1-002: refused: ",
+    );
+  });
+
+  it("starts no solve of a draft where the campaign's budget holds no reserve for all three", async () => {
+    const s = seat("write", [call("try_task", { tasks: [instance(2)] }), finish, finish]);
+    // Two reserves of $0.5 are left: until 14 October the three solves started all the same.
+    append(s.log, "campaign.opened", { budget: { dollars: 1, reserve: 0.5 } });
+    let asked = 0;
+    const probe = async () => {
+      asked += 1;
+      return PASS;
+    };
+    const examined = await examine({ ...s.request, limits: { ...s.request.limits, puts: 1 }, probe });
+    expect(asked).toBe(0);
+    expect(examined.refused).toEqual([s.versionOf("x-1-001", 2)]);
+    expect(s.of(CALLED)[0]?.text).toStartWith(
+      "x-1-001: refused: the campaign's budget holds no reserve for the reference harness's three solves of it",
     );
   });
 
@@ -735,7 +754,7 @@ describe("a session that writes tasks", () => {
     expect(taskSets(read(s.log)).held).toEqual(versions.slice(0, 2));
     const counted = (valid: number) =>
       `the reference harness answered it validly in ${String(valid)} of 3 solves`;
-    expect(s.of("exam.call")[0]?.text).toBe(
+    expect(s.of(CALLED)[0]?.text).toBe(
       [
         `x-1-001: held out; ${counted(1)}.`,
         `x-1-002: held out; ${counted(2)}.`,
@@ -835,7 +854,7 @@ describe("a session that writes tasks", () => {
     // pack's other files stay closed; and the program that starts the engine is the host's.
     expect(
       s
-        .of("exam.call")
+        .of(CALLED)
         .slice(0, 4)
         .map(({ text }) => text),
     ).toEqual(["engine data", "absent", "refused", "refused"]);
@@ -867,7 +886,7 @@ describe("a session that writes tasks", () => {
     expect((await examine({ ...s.request, id: "x-2" }, wall)).ended).toBe("finished");
     // The next session found what was kept, and its home replaced the kept copy: what it deleted
     // stays deleted.
-    expect(s.of("exam.call")[1]?.text).toBe("kept.txt\nstale.txt");
+    expect(s.of(CALLED)[1]?.text).toBe("kept.txt\nstale.txt");
     expect(readdirSync(keep).sort()).toEqual(["kept.txt", "whole.txt"]);
     expect(s.sent[0]).toContain(
       "holds what the last Examiner session of this campaign left in it, or nothing at the campaign's first",

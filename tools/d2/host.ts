@@ -15,6 +15,7 @@
  * Examiner sessions each and two by a comparison that threw (`waitOut`).
  */
 import { resetOf } from "#src/backends/claude.ts";
+import { affords, flying, inFlight } from "#src/builder/opening.ts";
 import { append } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
@@ -49,23 +50,27 @@ const RESET_MARGIN_MS = 60_000;
 export const HOST: Host = { load: () => loadavg()[0] ?? 0, cores: availableParallelism(), waitMs: 30_000 };
 
 /**
- * `seated` with each solve held until the host's load is at or under its cores. A solve that
- * waited is said once as it waits, and recorded in `log` before it starts: the task, the harness,
- * the comparison it is for where one asks, the load it first read and how long it waited. `loaded`
- * (`--loaded` on the campaign command) seats the solves ungated, the operator's word that their
- * times will not be compared, and so are a rehearsal's scripts, whose times nobody compares,
- * unless a test stands in a host for them.
+ * `seated` with each solve held until the host's load is at or under its cores, and then until the
+ * campaign's budget holds a reserve for it beside the solves in flight, where any are (`affords`).
+ * A solve that waited on the load is said once as it waits, and recorded in `log` before it
+ * starts: the task, the harness, the comparison it is for where one asks, the load it first read
+ * and how long it waited. `loaded` (`--loaded` on the campaign command) skips the load, the
+ * operator's word that the solves' times will not be compared; a rehearsal's scripts, whose times
+ * nobody compares and which bill nothing, are seated ungated unless a test stands in a host. With
+ * none in flight a solve starts: each move's cap and the table's budget ending hold the total.
+ * Until 14 October a Builder's practice, a comparison and the Examiner's tries of a draft each
+ * held their own reserve, and none saw the others in flight.
  */
 export function gated(on: Gate, log: string): Seated {
   const { seated, loaded, host = seated === solved ? HOST : undefined } = on;
-  if (loaded || host === undefined) return seated;
+  if (host === undefined) return seated;
   return (campaign, given) => {
     const seats = seated(campaign, given);
     return {
       ...seats,
       solve: async (task, harness, kill, comparison) => {
         const [since, load] = [Date.now(), host.load()];
-        if (load > host.cores) {
+        if (!loaded && load > host.cores) {
           console.log(
             `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, or pass --loaded`,
           );
@@ -79,7 +84,8 @@ export function gated(on: Gate, log: string): Seated {
             ms: Date.now() - since,
           });
         }
-        return seats.solve(task, harness, kill, comparison);
+        while (inFlight(log) > 0 && !affords(log, 1)) await Bun.sleep(host.waitMs);
+        return flying(log, () => seats.solve(task, harness, kill, comparison));
       },
     };
   };

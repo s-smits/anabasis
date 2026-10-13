@@ -74,4 +74,15 @@ describe("a stored sweep", () => {
     ).toEqual([true, true, true]);
     expect(["tasks.json", "controls.json"].some((file) => existsSync(join(checks, file)))).toBe(false);
   });
+
+  it("leaves no check program where a copy of one was cut short", () => {
+    const bundle = join(root, "cut");
+    mkdirSync(join(bundle, "correctness-model"), { recursive: true });
+    writeFileSync(join(bundle, "correctness-model", "brief.json"), "{}");
+    // A file the copy cannot read stops it part of the way through.
+    writeFileSync(join(bundle, "correctness-model", "zz-unreadable.ts"), "{}", { mode: 0o000 });
+    const to = join(root, "cut-checks");
+    expect(() => checkProgram(bundle, to)).toThrow();
+    expect(existsSync(to)).toBe(false);
+  });
 });

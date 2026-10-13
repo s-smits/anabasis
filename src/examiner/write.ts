@@ -31,7 +31,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { openingOf } from "../builder/opening.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
-import { writtenTasks } from "../kernel/history.ts";
+import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
@@ -376,6 +376,21 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
   });
 }
 
+/**
+ * The instances earlier sessions wrote that were put to their gate. A session cut while a task was
+ * being measured leaves its proposal with no gate on record, and until 13 October the next session
+ * was told that instance was written already: it was neither held out nor refused, and could not
+ * be proposed again (one such proposal in each of two campaigns on 12 October, each cut inside its
+ * second session). Without a gate it is no task of the campaign's, so it may be proposed again,
+ * and is gated then under the id it is given.
+ */
+function gatedTasks(events: readonly LogEvent[]): Task[] {
+  const gates = new Set(events.flatMap(({ kind, data }) => (kind === "task.gate" ? [data.version] : [])));
+  return proposalsOf(events).flatMap(({ version, task }) =>
+    task !== null && gates.has(version) ? [task] : [],
+  );
+}
+
 /** The mode that writes tasks: the exam's own tools, `try_answer` where the host verifies, and
  *  the home carried from the campaign's last session where the wall keeps one (`keep`). */
 export function writing(request: Terms, pinned: readonly Engine[], keep: string | undefined) {
@@ -384,7 +399,7 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
   const desk: Desk = {
     request,
     proposed: 0,
-    seen: new Map(writtenTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
+    seen: new Map(gatedTasks(before).map((task) => [contentOf(task), "earlier"] as const)),
     answered: new Map(),
     planted: new Set(),
     held: [],

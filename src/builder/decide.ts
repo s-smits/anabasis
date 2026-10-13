@@ -124,7 +124,7 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
 }
 
 /** The tasks held out after the log's index `after`. */
-function heldAfter(events: readonly LogEvent[], after: number): number {
+export function heldAfter(events: readonly LogEvent[], after: number): number {
   return events.filter(
     ({ kind, data }, index) => index > after && kind === "task.gate" && data.outcome === "passed",
   ).length;

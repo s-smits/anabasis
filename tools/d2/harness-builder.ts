@@ -400,28 +400,23 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
     session,
   });
   try {
-    // An Examiner session still writing beside the conversation is waited for (`examineTool`).
-    try {
-      await sessionCommand(
-        [
-          ...packOf(values),
-          ...setting,
-          "--session",
-          session,
-          ...(builder === null ? [] : ["--builder", builder.model, "--builder-effort", builder.effort]),
-          ...flag("minutes", values.minutes),
-          ...flag("turns", values.turns),
-          ...flag("practice-solves", values["practice-solves"]),
-          ...cap,
-          ...reviewer,
-          ...pastStop,
-        ],
-        context.held,
-        campaignTools(context),
-      );
-    } finally {
-      await context.examining?.done;
-    }
+    await sessionCommand(
+      [
+        ...packOf(values),
+        ...setting,
+        "--session",
+        session,
+        ...(builder === null ? [] : ["--builder", builder.model, "--builder-effort", builder.effort]),
+        ...flag("minutes", values.minutes),
+        ...flag("turns", values.turns),
+        ...flag("practice-solves", values["practice-solves"]),
+        ...cap,
+        ...reviewer,
+        ...pastStop,
+      ],
+      context.held,
+      campaignTools(context),
+    );
   } catch (error) {
     // A provider's limit or a crashed conversation is waited out, and the campaign goes on;
     // anything else a conversation threw is the environment's ending, as for every move that began.

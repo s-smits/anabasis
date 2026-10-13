@@ -27,7 +27,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { supplyOf } from "#src/builder/admission.ts";
-import { decide } from "#src/builder/decide.ts";
+import { decide, heldAfter } from "#src/builder/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
 import { type Decided, short } from "#src/builder/move.ts";
@@ -264,7 +264,7 @@ function actionTool(
 }
 
 const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
-  actionTool(context, bench, "examine", async (turn, decided, begin, signal) => {
+  actionTool(context, bench, "examine", async (turn, decided, begin) => {
     const { seats, values } = context;
     if (seats.seated !== solved && seats.examine === undefined) {
       return { refused: "This campaign has no Examiner seat, so the host cannot write more tasks." };
@@ -274,6 +274,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
       throw new Error("name --examiner: the campaign needs an Examiner");
     }
     const session = nextId(turn.events, "x");
+    const tasks = values["exam-tasks"] ?? examTasks(turn);
     begin({
       ...startOf("examine", seats),
       session,
@@ -294,7 +295,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
         examiner?.model ?? SCRIPTED,
         "--examiner-effort",
         examiner?.effort ?? DEFAULTS.effort,
-        ...flag("tasks", values["exam-tasks"] ?? examTasks(turn)),
+        ...flag("tasks", tasks),
         // The campaign's setting before one is recorded: the Examiner's budget, and `try_task`'s.
         ...sharedOf(turn).setting,
         ...flag("proposals", values["exam-proposals"]),
@@ -303,11 +304,15 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
       ],
       (request, wall) => sitting({ ...request, opened: resolve }, wall),
       seats.examine === undefined ? solved : null,
-      signal,
+      // The host's halt, on its bounds or an ending, and the run's kill stop it; the
+      // conversation's own end is neither.
+      AbortSignal.any([bench.halt.signal, ...(bench.request.kill === undefined ? [] : [bench.request.kill])]),
     ).then(() => refreshCampaign(context, bench));
     await Promise.race([work, onRecord]);
-    // The session writes beside the conversation: a limit it met is waited out, and a throw after
-    // it began is the environment's ending, as an action's is (`actionTool`).
+    // The session writes beside the conversation, and on past its end, which waits for it
+    // (`closing`): a Builder's finish or its wall does not stop it, while the host's halt and the
+    // run's kill do, and it then ends on record as stopped. A limit it met is waited out, and a
+    // throw after it began is the environment's ending, as an action's is (`actionTool`).
     const done = work
       .then(() => waitOut(context.log, crashedRun(read(context.log)).crash, context.seats.host?.sleep))
       .catch(async (error: unknown) => {
@@ -320,7 +325,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
       });
     context.examining = { session, done };
     return {
-      said: `Examiner session ${session} is writing beside this conversation: edit and practise meanwhile. Any other campaign action waits for it to end, and campaign_status says what it held out.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit and practise meanwhile. Any other campaign action waits for it to end, and campaign_status says how many it has held out.`,
     };
   });
 
@@ -497,8 +502,10 @@ function examinedLines(events: readonly LogEvent[], writing: string | undefined)
   if (!isString(begun)) return [];
   const ended = events.findLast(({ kind, data }) => kind === "exam.finished" && data.session === begun)?.data;
   if (begun === writing || ended === undefined) {
+    const started = events.findIndex(({ kind, data }) => kind === "exam.started" && data.session === begun);
+    const held = started === -1 ? 0 : heldAfter(events, started);
     return [
-      `Examiner session ${begun} is writing beside this conversation; any other campaign action waits for it.`,
+      `Examiner session ${begun} is writing beside this conversation and has held out ${plural(held, "task")} so far; any other campaign action waits for it.`,
     ];
   }
   const said = EXAMINED.get(isString(ended.ended) ? ended.ended : "") ?? "ended at its limits";
@@ -590,5 +597,8 @@ export function campaignTools(context: CampaignContext): NonNullable<BuildReques
       }),
     ],
     hook: () => campaignStatus(context, bench),
+    closing: async () => {
+      await context.examining?.done;
+    },
   });
 }

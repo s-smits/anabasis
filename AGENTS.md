@@ -395,9 +395,12 @@ The host opens the exam and prepares the campaign first. Then `tools/d2/harness-
 one Builder conversation and one workspace open while its campaign tools run. An Examiner call
 runs a separate agent with its own view: it returns at once, the session writes beside the
 conversation, any other campaign action waits for it on the host's time, and the campaign's facts
-under each campaign tool's result say what it held out. A comparison returns the same
-aggregate tally and reading the Builder already receives. A promotion names only the harness the
-existing rule allows. The model cannot choose a checker, held-out task, solve limit or reference.
+under each campaign tool's result say what it held out. The conversation's end waits for it where
+the Builder finished or met its wall, and does not stop it; the host's halt, on the run's moves, an
+ending the table names or the operator's stop, and a kill of the run do, and it ends on record as
+killed. A comparison returns the same aggregate tally and reading the Builder already receives. A
+promotion names only the harness the existing rule allows. The model cannot choose a checker,
+held-out task, solve limit or reference.
 
 Where the table names more than the action, the tool does what the table names
 (`comparedOf`, `tools/d2/campaign-actions.ts`), and the status and the result say so as a fact:

@@ -352,7 +352,7 @@ describe("the Builder running its campaign", () => {
     expect(s.of(BUILD_FINISHED)[0]?.crash).toBeNull();
   });
 
-  it("reads its wall where a campaign action ends, and cuts an action outside one", async () => {
+  it("counts its wall on the Builder's own time, and cuts an action outside one", async () => {
     /** One session at a wall of 50 ms whose first call outlasts it: whether the call's signal was
      *  aborted while it ran, and how the session ended. */
     const outlasting = async (held: "within" | "outside") => {
@@ -392,8 +392,12 @@ describe("the Builder running its campaign", () => {
       return { cut, ended: built.ended, calls: s.of(BUILD_CALL).map(({ tool: name }) => name) };
     };
     // A comparison cut at the Builder's wall would lose its solves in flight and read as a failed
-    // host: the wall falls where the action ends, and the session ends there, before `finish`.
-    expect(await outlasting("within")).toEqual({ cut: false, ended: "wall", calls: ["long_action"] });
+    // host, and the action's time is the host's: the session goes on past it to its `finish`.
+    expect(await outlasting("within")).toEqual({
+      cut: false,
+      ended: "finished",
+      calls: ["long_action", "finish"],
+    });
     expect(await outlasting("outside")).toMatchObject({ cut: true, ended: "wall" });
   });
 });

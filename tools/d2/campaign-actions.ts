@@ -220,8 +220,7 @@ function actionTool(
         });
       };
       const sleep = context.seats.host?.sleep;
-      // The conversation's wall is read where the action ends, and cuts nothing that began, a wait
-      // for the provider included.
+      // The conversation's wall stops while the action runs, a wait for the provider included.
       return await bench.within(async () => {
         try {
           const outcome = await run(turn, decided, begin, signal);

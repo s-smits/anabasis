@@ -430,10 +430,10 @@ current public practice tasks and aggregate tallies, even after compaction.
 A comparison of the working copy freezes it and records `build.checkpoint`, without ending the
 conversation. The next edit changes the working copy, not the harness being compared.
 The same model conversation continues after the tool returns. Its session limits cover the whole
-conversation, including time spent in nested tools. A wall that falls while a campaign action
-runs is read where the action ends, as the operator's word is read at a move's boundary
-(`Bench.within`, `src/builder/tools.ts`): a comparison cut there would lose its solves in flight
-and read as a failed host. Both compaction modes still apply, and model usage is recorded before
+conversation, and its wall counts the Builder's own time: the clock stops while a campaign action
+runs, which is the host's time, bounded by the campaign's total and `--moves` (`Bench.within`,
+`src/builder/tools.ts`). A comparison cut at the wall would lose its solves in flight and read as
+a failed host, and one bought in the conversation is read in it. Both compaction modes still apply, and model usage is recorded before
 a tool can spend more of the campaign's budget. A conversation that ends at its own limits is
 followed, in the same run of the command, by a new one with the existing notes and results as
 its fallback, and so is a process restart.

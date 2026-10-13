@@ -270,8 +270,15 @@ export async function session(
     limits: { ...limits },
   });
   const wall = new AbortController();
-  // Campaign actions running, and whether the wall fell while one ran (`Bench.within`).
-  const nested = { running: 0, overdue: false };
+  // The wall counts the Builder's own time: its clock stops while a campaign action runs, which is
+  // the host's time (`Bench.within`), and `aside` is what the actions took.
+  let aside = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const ownSeconds = () => (performance.now() - began - aside) / 1000;
+  const arm = () => {
+    if (done.signal.aborted) return;
+    timer = setTimeout(() => wall.abort(), (limits.wallSeconds - ownSeconds()) * 1000);
+  };
   const bench: Bench = {
     request,
     said: SAID[request.campaign === undefined ? "host" : "builder"],
@@ -291,12 +298,13 @@ export async function session(
     fatal: null,
     note: null,
     within: async (action) => {
-      nested.running += 1;
+      clearTimeout(timer);
+      const since = performance.now();
       try {
         return await action();
       } finally {
-        nested.running -= 1;
-        if (nested.running === 0 && nested.overdue) wall.abort();
+        aside += performance.now() - since;
+        arm();
       }
     },
   };
@@ -330,7 +338,7 @@ export async function session(
   // A session under a cap reads what its practice solves billed from the log.
   const used = (): Used => ({
     turns: turns.length,
-    seconds: (performance.now() - began) / 1000,
+    seconds: ownSeconds(),
     practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
     practised: bench.opened !== null,
   });
@@ -362,10 +370,7 @@ export async function session(
   const compact = loopCompaction(log, "build", request.id, stream, summaries);
   const trace = traceSink(log, "build", request.id, () => turns.length);
   let crash: string | null = null;
-  const timer = setTimeout(() => {
-    if (nested.running > 0) nested.overdue = true;
-    else wall.abort();
-  }, limits.wallSeconds * 1000);
+  arm();
   try {
     await runAgentLoop(
       [user([first, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"))],

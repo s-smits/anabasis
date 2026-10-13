@@ -148,7 +148,7 @@ describe("a campaign's reading", () => {
     });
     // Both through JSON, as the page receives them.
     const steps = reading.moves.map(
-      ({ index: _index, startedAt: _started, endedAt: _ended, ...step }) => step,
+      ({ index: _index, startedAt: _started, endedAt: _ended, named: _named, ...step }) => step,
     );
     expect(capturedJsonParse(capturedJsonStringify(steps))).toEqual(
       capturedJsonParse(capturedJsonStringify(expected)),
@@ -225,8 +225,14 @@ describe("a campaign's reading", () => {
 });
 
 describe("what a comparison came to", () => {
-  test("gives each comparison the table's row its move recorded, and none where no move recorded one", async () => {
+  test("gives each move the table's row its record carries, a Builder session's and a comparison's each its own under one id", async () => {
     const { answer: reading } = await ask("campaign", { key: KEY }, "default");
+    const rows = (step: string) =>
+      new Set(reading.moves.flatMap((move) => (move.step === step && move.named ? [move.named.code] : [])));
+    expect([...rows("builder")]).toEqual(["build"]);
+    expect([...rows("comparison")]).toEqual(["new"]);
+    // The fixture's Examiner move records no code, as a campaign from before the rows were coded.
+    expect([...rows("examiner")]).toEqual([]);
     const named = reading.comparisons.map((bar) => bar.named);
     expect(named.filter((each) => each !== null).length).toBeGreaterThan(0);
     for (const each of named) {
@@ -243,6 +249,14 @@ describe("what a comparison came to", () => {
       const kept = sets.retained === "unmeasured" ? { wins: 0, losses: 0, ties: 0 } : sets.retained;
       expect(sets.frontier.tally.wins + kept.wins).toBe(tally.wins);
       expect(sets.frontier.tally.losses + kept.losses).toBe(tally.losses);
+    }
+  });
+
+  test("puts no task in two places: one exhausted is not retained, and both are held out", async () => {
+    const { answer } = await ask("tasks", { key: KEY }, "default");
+    for (const row of answer.rows) {
+      expect(row.exhausted && row.retained).toBe(false);
+      if (row.exhausted || row.retained) expect(row.state).toBe("held");
     }
   });
 

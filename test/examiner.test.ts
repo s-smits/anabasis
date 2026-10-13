@@ -700,6 +700,36 @@ describe("a session that writes tasks", () => {
     expect(examined.held).toEqual([s.versionOf("x-1-003", 2)]);
   });
 
+  it("holds for the ladder a task the reference harness answered in none of its solves, where its author's answer passes on it", async () => {
+    // Bases 4 and 7 are answered in none of three solves; 4 alone has its author's answer, and 5,
+    // answered in every solve, has one too.
+    const s = seat("write", [
+      tried(4),
+      tried(5),
+      call("try_task", { tasks: [4, 7, 5].map(instance) }),
+      finish,
+      finish,
+    ]);
+    const probe = async (task: TaskPackage) =>
+      Number(asRecord(task.publicInput)?.base) === 5 ? PASS : REJECTED;
+    const examined = await examine({ ...s.request, verify, limits: { ...s.request.limits, puts: 3 }, probe });
+    const [ladder, unwitnessed, solved] = [
+      s.versionOf("x-1-001", 4),
+      s.versionOf("x-1-002", 7),
+      s.versionOf("x-1-003", 5),
+    ];
+    expect(examined).toMatchObject({ held: [], refused: [unwitnessed, solved] });
+    const sets = taskSets(read(s.log));
+    expect(sets.ladder).toEqual([ladder]);
+    expect(sets.held).toEqual([]);
+    expect(s.of("task.gate").map(({ outcome }) => outcome)).toEqual(["ladder", "refused", "refused"]);
+    expect(s.of("task.feasible")).toEqual([{ version: ladder, session: "x-1" }]);
+    expect(poolOf(read(s.log)).scorable).toEqual([]);
+    expect(s.of("exam.call")[2]?.text).toStartWith(
+      "x-1-001: held for the ladder. This task will never be scored for promotion or released for practice.\nx-1-002: refused: ",
+    );
+  });
+
   it("holds a task out by try_task at some valid solves of the reference harness and not all, and tells the counts alone", async () => {
     // Each base's three solves by the reference harness, seeded: valid in one, two, none and all of
     // them, and one that ends in no reading. A solver's flag that the task is malformed is a solve

@@ -344,8 +344,8 @@ export function usedText(events: readonly LogEvent[], solve: string): string {
   return ` It took ${clockText(end.seconds)} of ${clockText(limits.wallSeconds)} and ${plural(end.turns, "model turn")}${given}${counted}.`;
 }
 
-/** One practice solve and what the reviewers read of its fail. Throws only what the solve itself
- *  threw: a reviewer that fails is noted for the host and the solve stands. */
+/** One practice solve and what the Referee read of its fail. Throws only what the solve itself
+ *  threw: a Referee that fails is noted for the host and the solve stands. */
 async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: AbortSignal) {
   const { request } = bench;
   const { solve, ending } = await request.practise(task, kept.dir, kept.harness.digest, kill);
@@ -379,7 +379,7 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
  * The practice solves a session may still start: what is left of its own count, and no more than
  * its dollar cap holds a reserve for, where it runs under one (`BuildRequest.cap`). The dollars are
  * the log's, as a comparison's are (`billedFor`): the practice solves this session ran and their
- * reviewers, and its own live turns. In a live campaign, the current total includes every seat
+ * Referee, and its own live turns. In a live campaign, the current total includes every seat
  * and any budget change the operator left. The Builder is told a count and never a sum.
  */
 export function practiceLeft({ request, spent }: Bench, events: readonly LogEvent[]): number {
@@ -406,7 +406,7 @@ export function practiceTool(bench: Bench): AgentTool {
     name: "practice",
     label: "Practise",
     description:
-      'Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host\'s limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task\'s record under this harness and under the one you started from, the solve\'s id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: "parent"` the tasks are solved under the harness you started from instead, and with `under: "reference"` under the reference harness, the one yours is compared with; each costs the same solves and shows what your change is measured against.',
+      'Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host\'s limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task\'s record under this harness and under the one you started from, the solve\'s id for read_trace and, for a fail, what the Referee read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: "parent"` the tasks are solved under the harness you started from instead, and with `under: "reference"` under the reference harness, the one yours is compared with; each costs the same solves and shows what your change is measured against.',
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,

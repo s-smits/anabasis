@@ -124,13 +124,19 @@ describe("the probe", () => {
     expect(moved.content).toEqual([
       expect.objectContaining({ text: expect.stringContaining("1 check moved: span") }),
     ]);
+    expect(JSON.stringify(moved.content)).toContain(
+      `probe 1 of ${String(PROBE_BUDGET)}: ${String(PROBE_BUDGET - 1)} probes left`,
+    );
+    expect(tool.description).toContain(`at most ${String(PROBE_BUDGET)} probes`);
     await probe("$.members[0].area", "5");
     expect(rows.map((row) => row.moved)).toEqual([["span"], []]);
     await expect(probe(SPAN, "ten")).rejects.toThrow("value must be JSON text");
     await expect(probe("$.depth", "1")).rejects.toThrow("$.depth is not an existing field");
     await expect(probe(SPAN, "12")).rejects.toThrow("already carries that value");
     await expect(probe(SPAN, JSON.stringify("x".repeat(4_000)))).rejects.toThrow("at most 4000 characters");
-    while (rows.length < PROBE_BUDGET) await probe(SPAN, String(rows.length));
+    while (rows.length < PROBE_BUDGET - 1) await probe(SPAN, String(rows.length));
+    const last = await probe(SPAN, "99");
+    expect(JSON.stringify(last.content)).toContain("none left, so record your ruling");
     await expect(probe(SPAN, "1")).rejects.toThrow(`at most ${String(PROBE_BUDGET)} probes`);
   });
 

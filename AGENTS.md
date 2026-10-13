@@ -151,31 +151,31 @@ that attempt's margins, summed over the attempts (`falsePromotion`, `src/builder
 starter read again on the ladder after each promotion is the third control: its share moving is
 drift in the solver, the provider or the host, not the harness.
 
-**3. Verdicts: are the labels correct?** Validity is decided by a check program nobody has
-audited against the field, and a check that rejects a right answer is label noise: in v1, 36 of
-47 rehearsal misses came from a faulty check or instrument. The Referee is the noise filter
-(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison,
-before the rejection counts, and never on a pass, a solve a limit cut or a crash; first the host
-replays the checks on the logged answer, and a verdict that does not repeat is a check defect
-ruled by the host. It reads the task with its hidden values, the public rules, the answer, the
-rejecting checks with the fields each reads, the check program's source, a valid answer for the
-task where one is on record, and a probe that changes one field and reruns the checks; never the
-harness, the trace or anything the Builder wrote. It records one ruling (`referee.finding`):
-`earned` must name the rule broken and the field that breaks it, both cited by a rejecting check;
-`check-defect` must cite a probe that decided both sides on a field the check reads; `unclear` is
-what is left, and a ruling without its evidence is refused. `earned` counts as a loss; the other
-two set the task aside for both harnesses, so a broken check scores nobody. The Referee is a
-model and is measured by agreement with a person who labels the same rejections blind
-(`tools/d2/settle.ts`, `src/review/agreement.ts`): a three-by-three table of label against
-ruling, read as two rates, beside each kind's agreement and PABAK beside kappa, never kappa alone.
-Once a packet is settled, `settle.ts` prints them over every settled packet, and reads each settled
-comparison again with its labels in place of the verdicts they overturn (`swapped`): a decision
-that flips means its packet was too small. Both are reports, and so is the line it prints where a
-person labels more than one in four `unclear` rulings earned. Bar: read on no fewer than thirty
-labels, three in four of the rejections a person calls a check defect caught, and at most one in
-ten of those a person calls earned voided. A packet holds every rejection that set a task aside,
-and a blind sample of three rejections ruled earned and three passes, since no seat reads an
-answer that passed.
+**3. Verdicts: are the labels correct?** Validity is decided by a check program nobody has audited
+against the field, and a check that rejects a right answer is label noise: in v1, 36 of 47
+rehearsal misses came from a faulty check or instrument. The Referee is the noise filter
+(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison or a
+Builder's practice, before the rejection counts, and never on a pass, a solve a limit cut or a
+crash; first the host replays the checks on the logged answer, and a verdict that does not repeat
+is a check defect ruled by the host. It reads the task with its hidden values, the public rules,
+the answer, the rejecting checks with the fields each reads, the check program's source, a valid
+answer for the task where one is on record, and a probe that changes one field and reruns the
+checks, at most eight a ruling; never the harness, the trace or anything the Builder wrote. It
+records one ruling (`referee.finding`): `earned` must name the rule broken and the field that
+breaks it, both cited by a rejecting check; `check-defect` must cite a probe that decided both
+sides on a field the check reads; `unclear` is what is left, and a ruling without its evidence is
+refused. `earned` counts as a loss; the other two set the task aside for both harnesses, so a
+broken check scores nobody. The Referee is a model and is measured by agreement with a person who
+labels the same rejections blind (`tools/d2/settle.ts`, `src/review/agreement.ts`): a
+three-by-three table of label against ruling, read as two rates, beside each kind's agreement and
+PABAK beside kappa, never kappa alone. Once a packet is settled, `settle.ts` prints them over
+every settled packet, and reads each settled comparison again with its labels in place of the
+verdicts they overturn (`swapped`): a decision that flips means its packet was too small. Both are
+reports, and so is the line it prints where a person labels more than one in four `unclear`
+rulings earned. Bar: read on no fewer than thirty labels, three in four of the rejections a person
+calls a check defect caught, and at most one in ten of those a person calls earned voided. A
+packet holds every rejection that set a task aside, and a blind sample of three rejections ruled
+earned and three passes, since no seat reads an answer that passed.
 
 **4. Economy: what did each measured gain cost?** A significant step is not necessarily a useful
 one, and the budget is a practical limit that can end a campaign while the system still has room

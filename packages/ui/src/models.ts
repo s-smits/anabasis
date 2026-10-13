@@ -133,6 +133,14 @@ type Shown<Step> = Step extends { readonly step: "comparison" }
   ? Omit<Step, "rulings"> & { readonly rulings: Rulings }
   : Step;
 
+/** The decision table's row a move was made by, as the move records it (`campaign.move`): the
+ *  row's code and its reason. Where a Builder leads its campaign, a move it made that the table did
+ *  not name carries `asked` and what the table named, and its conversation carries `led`. */
+export interface Named {
+  readonly code: string;
+  readonly why: string;
+}
+
 /** A step of the campaign, as `campaignOf` hands it over, with when it ran. */
 export type Move = Shown<Handover> & {
   /** The place of its start in the log: what names a move, in the route and to `/api/move`. Its id
@@ -140,6 +148,9 @@ export type Move = Shown<Handover> & {
    *  (`tools/d2/round.ts`). */
   readonly index: number;
   readonly startedAt: string;
+  /** The table's row the move was made by; null where no move of the campaign's command records
+   *  one: a step run by hand, or a campaign from before a move kept its code. */
+  readonly named: Named | null;
   /** Its end, or a comparison's first report; null while open or where it was cut. */
   readonly endedAt: string | null;
 };
@@ -217,11 +228,8 @@ export interface ComparisonBar {
     readonly frontier: { readonly tally: Tally; readonly p: number };
     readonly retained: Tally | "unmeasured";
   } | null;
-  /** The decision table's row the comparison was made by, as its move records it
-   *  (`campaign.move`): the row's code and reason, or `asked` and what the table named where a
-   *  Builder that leads its campaign made another move. Null where no move records one: a
-   *  comparison run by hand, or a campaign from before a move kept its code. */
-  readonly named: { readonly code: string; readonly why: string } | null;
+  /** The table's row the comparison was made by (`Move.named`). */
+  readonly named: Named | null;
   /** The handover's three: cut before a report, and its solves begun and ended. */
   readonly cut: boolean;
   readonly begun: number;
@@ -510,6 +518,10 @@ export interface TaskRow {
    *  by the reference in every solve of two comparisons (`poolOf`). */
   readonly awaitingLabel: boolean;
   readonly exhausted: boolean;
+  /** Whether it is one of the spent tasks the draw keeps (`poolOf`, retained): a comparison scores
+   *  it in its retained set, where a step may not lose more than it wins. A task is exhausted or
+   *  retained, never both. */
+  readonly retained: boolean;
   readonly proposedAt: string | null;
 }
 

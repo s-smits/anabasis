@@ -489,7 +489,7 @@ function built(
     billed: 0.21,
     seconds: 1500,
   });
-  w.record(MOVE, { move: "build", why: "nothing new to compare", session });
+  w.record(MOVE, { move: "build", code: "build", why: "nothing new to compare", session });
   return made;
 }
 

@@ -27,6 +27,13 @@ const FILTER_LABELS = new Map([
   ["builder", "Builder sessions"],
   ["comparison", "Comparisons"],
 ]);
+/** A move's table row in the list, where its code says who chose the move and not which row named
+ *  it: a Builder that leads its campaign asked for it, or it is that Builder's conversation. */
+const ROW_WORD = new Map([
+  ["asked", "the Builder asked"],
+  ["led", "the Builder leads"],
+]);
+
 const READING_TONES = new Map<string, Toned["tone"]>([
   ["step", "info"],
   ["no-step", "neutral"],
@@ -127,7 +134,10 @@ function MoveRow({
         >
           {move.id}
         </button>
-        <small className="ana-cell-note">{kindOf(move, reading)}</small>
+        <small className="ana-cell-note" title={move.named?.why}>
+          {kindOf(move, reading)}
+          {move.named === null ? "" : ` · ${ROW_WORD.get(move.named.code) ?? `row ${move.named.code}`}`}
+        </small>
       </td>
       <td>
         <Badge tone={standing.tone}>{standing.label}</Badge>

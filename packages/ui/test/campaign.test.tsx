@@ -160,6 +160,7 @@ test("a campaign says who leads it, and reads the table's next move as advice wh
     code: "new",
     why: "a harness to compare",
     fresh: "latest",
+    reference: "h",
     line: "next · compare",
   } as const;
   const [byHost, byBuilder] = [

@@ -19,7 +19,7 @@ import type { Share } from "../../../../src/builder/climb.ts";
 import { type Paired, pairings } from "../../../../src/kernel/compare.ts";
 import { pairsReported } from "../../../../src/kernel/reports.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";
-import type { ComparisonBar, LeftOut, Move, Outcome } from "../models.ts";
+import type { ComparisonBar, LeftOut, Move, Outcome, Tally } from "../models.ts";
 import { campaignIn, type Log, once, reportsIn } from "./folds.ts";
 import { rulingsOf } from "./withheld.ts";
 
@@ -120,6 +120,9 @@ function validShare(counts: readonly number[]): Share {
   return { valid, solves: tasks * Math.max(0, counts.length - 1) };
 }
 
+/** The three counts of a tally that carries more. */
+const tallyOf = ({ wins, losses, ties }: Tally): Tally => ({ wins, losses, ties });
+
 /** What the campaign's command recorded of each comparison as it began, by the comparison's id:
  *  the host's one-minute load, and the table's row it was made by. Read from `campaign.move`, which
  *  no fold reads. */
@@ -206,11 +209,18 @@ export const barsIn = once((log): ComparisonBar[] => {
         report?.noise == null
           ? null
           : {
-              tally: { wins: report.noise.wins, losses: report.noise.losses, ties: report.noise.ties },
+              tally: tallyOf(report.noise),
               p: report.noise.p,
               differences: report.noise.differences,
             },
       rulings: move.rulings,
+      sets:
+        report?.frontier == null || report.retained === null
+          ? null
+          : {
+              frontier: { tally: tallyOf(report.frontier), p: report.frontier.p },
+              retained: report.retained === "unmeasured" ? report.retained : tallyOf(report.retained),
+            },
       load: records.get(move.id)?.load ?? null,
       named: records.get(move.id)?.named ?? null,
       cut: move.cut,

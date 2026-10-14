@@ -32,6 +32,7 @@ import {
 import { type Static, type TSchema, Type } from "typebox";
 import { reportedCost } from "../backends/claude.ts";
 import { openingOf } from "../builder/opening.ts";
+import { endingWith } from "../builder/tools.ts";
 import { append, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { billedAll } from "../kernel/reports.ts";
@@ -286,7 +287,17 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     },
   });
   const shell = await examinerShell(walls?.shell, mode.enters, mode.home, mode.checked);
-  const tools = [...mode.tools, ...shell, finish];
+  // The model's turns so far, each pushed once its tool results are in (`finishTurn`).
+  const turns: AssistantMessage[] = [];
+  // The ids of the current turn's calls. The result of its last says what the session has used, once
+  // a turn: the limits were told at the opening alone, and on the six logs read on 14 October two of
+  // eleven sessions were cut at their wall while still proposing, one in a command of 207 s.
+  let calls: string[] = [];
+  const used = (call: string) =>
+    call === calls.at(-1)
+      ? `Turn ${String(turns.length + 1)} of ${String(limits.turns)}; ${String(Math.floor((performance.now() - began) / 60_000))} of ${plural(Math.round(limits.wallSeconds / 60), "minute")} used.`
+      : "";
+  const tools = [...[...mode.tools, ...shell].map((each) => endingWith(each, used)), finish];
   // The wall runs from the seat's start (`began`), so the mount, the wall's own probe and the
   // shell's network probe, awaited above, are inside the session's limit.
   const wall = new AbortController();
@@ -299,7 +310,6 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   const [done, spent] = [new AbortController(), new AbortController()];
   const kill = request.kill ? [request.kill] : [];
   const signal = AbortSignal.any([wall.signal, done.signal, spent.signal, ...kill]);
-  const turns: AssistantMessage[] = [];
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   const system = createInitialSystemMessage(mode.system, tools.map(toToolDeclaration));
@@ -334,6 +344,11 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
         prepareRequest: withinBudget(log, spent, loopCompaction(log, kind, id, stream, summaries)),
       },
       (event) => {
+        if (event.type === "message_end" && event.message.role === "assistant") {
+          calls = event.message.content.flatMap((part) =>
+            part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
+          );
+        }
         if (event.type === "tool_execution_start") running += 1;
         if (event.type === "tool_execution_end") running -= 1;
         trace(event);

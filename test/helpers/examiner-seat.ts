@@ -17,7 +17,7 @@ import { type EventKind, read } from "../../src/kernel/log.ts";
 import { type TaskPackage, taskVersion } from "../../src/kernel/task.ts";
 import type { Task } from "../../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../../src/meta/filesystem.ts";
-import { isFunction, type JsonObject } from "../../src/meta/json-shape.ts";
+import { isFunction, isString, type JsonObject } from "../../src/meta/json-shape.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
 
@@ -32,6 +32,8 @@ export const KIND = { draft: "draft", write: "exam" } as const;
 export const NOTE = "Stacked two requirements.";
 /** The repository this suite runs in, which the wall closes to an Examiner's commands. */
 export const REPO = resolve(import.meta.dir, "..", "..");
+/** The line an Examiner session ends each turn's last tool result with (`sit`, `session.ts`). */
+export const USED = /\s*\nTurn \d+ of \d+; \d+ of \d+ minutes? used\.$/;
 export const WALL: Wall = { repoRoot: REPO, packRoots: [], diskBytes: 64 * 1024 ** 2 };
 export const CONTRACT: Contract = {
   answerFormat: {
@@ -224,10 +226,12 @@ export function seat<M extends Mode>(mode: M, responses: readonly FauxResponseSt
     log,
     program,
     sent,
+    /** The events of `kind`. A call's result is read as its tool returned it, without the line
+     *  the session ends each turn's last result with, which a case of its own reads (`USED`). */
     of: (kind: EventKind) =>
       read(log)
         .filter((event) => event.kind === kind)
-        .map(({ data }) => data),
+        .map(({ data }) => (isString(data.text) ? { ...data, text: data.text.replace(USED, "") } : data)),
     /** The version of the task a writing session held out under `taskId` from `instance(base)`. */
     versionOf: (taskId: string, base: number) =>
       taskVersion(pack({ taskId, family: "fixture", publicInput: { base }, hidden: { seed: 1 } })),

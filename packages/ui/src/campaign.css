@@ -194,12 +194,14 @@
 }
 
 /* A hidden block whose controls a keyboard reaches: in view while focus is in it, so that what a
-   key would press is seen. */
+   key would press is seen. It scrolls sideways inside its card: shown at its own width, the counts
+   table made a phone's page 331 px wider than the screen on 14 October. */
 .ana-sr-only.ana-shown-on-focus:focus-within {
   clip-path: none;
   height: auto;
   margin: 12px 0 0;
-  overflow: visible;
+  max-width: 100%;
+  overflow-x: auto;
   position: static;
   white-space: normal;
   width: auto;

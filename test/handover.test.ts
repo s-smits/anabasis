@@ -3,6 +3,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { supplyOf } from "../src/builder/admission.ts";
 import { campaignOf, type Handover, openSteps } from "../src/builder/handover.ts";
+import { calledBy, namesOf } from "../src/builder/names.ts";
 import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -313,6 +314,21 @@ describe("a campaign's reading", () => {
     expect(openSteps(campaignOf(c.events()).steps)).toEqual([]);
     expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toContain(
       "no report yet, cut before it: 1 solve ended, 1 cut",
+    );
+  });
+
+  // A digest's head is an identity, not a name: the view names a harness by a letter beside it
+  // (the hardening plan's PR 8, 14 October), and a reader handed no names keeps the head alone.
+  it("names each harness of a comparison by its letter where the view is given the log's names", () => {
+    const c = campaign();
+    c.setUp();
+    c.compared("g-1", { old: STARTER, fresh: HA }, null);
+    const events = c.events();
+    expect(viewLines("truss", campaignOf(events), Date.now(), calledBy(namesOf(events)))[2]).toContain(
+      "comparison of B (aaaaaaaa) with A (00000000) on",
+    );
+    expect(viewLines("truss", campaignOf(events), Date.now())[2]).toContain(
+      "comparison of aaaaaaaa with 00000000 on",
     );
   });
 

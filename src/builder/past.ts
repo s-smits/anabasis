@@ -32,6 +32,7 @@
  */
 import { plural } from "../meta/text.ts";
 import type { Campaign, Handover, PracticeFail } from "./handover.ts";
+import { short } from "./move.ts";
 
 /** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. The
  *  last two are readings a comparison made before 11 October, which an older log holds. */
@@ -54,13 +55,10 @@ const ENDED = new Map([
   ["stopped", "was stopped as the campaign's run ended"],
 ]);
 
-/** A harness as a Builder is shown one: the head of its digest. */
-export const shortDigest = (digest: string): string => digest.slice(0, 8);
-
 /** Where a fail stands, in a Builder's words. */
 function stands({ standing, under }: PracticeFail): string {
   if (standing === "open" || under === null) return "open";
-  const harness = `under harness ${shortDigest(under)}`;
+  const harness = `under harness ${short(under)}`;
   if (standing === "passed-once") return `open: passed once ${harness}`;
   return standing === "repaired" ? `repaired ${harness}` : `failing again ${harness}`;
 }
@@ -75,7 +73,7 @@ export function failsTold(fails: readonly PracticeFail[], tasks: ReadonlyMap<str
     const task = tasks.get(fail.task);
     if (task === undefined) return [];
     return [
-      `- ${fail.solve}, ${task}, harness ${shortDigest(fail.harness)}: fail${fail.kind === null ? "" : ` (${fail.kind})`}; ${stands(fail)}.`,
+      `- ${fail.solve}, ${task}, harness ${short(fail.harness)}: fail${fail.kind === null ? "" : ` (${fail.kind})`}; ${stands(fail)}.`,
     ];
   });
 }
@@ -95,7 +93,7 @@ export function comparisonsTold(steps: readonly Handover[]): string[] {
         ? ""
         : `, each solve held to ${plural(step.modelTurns, "turn")} of the solver's`;
     return [
-      `- Harness ${shortDigest(step.fresh)} against harness ${shortDigest(step.old)}, one comparison over ${plural(wins + losses + ties, "task")}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
+      `- Harness ${short(step.fresh)} against harness ${short(step.old)}, one comparison over ${plural(wins + losses + ties, "task")}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
     ];
   });
 }
@@ -116,5 +114,5 @@ export function startTold({ steps, reference }: Campaign, digest: string, id: st
       : `, which session ${left.id} left${named}`;
   const last = builders.at(-1);
   const ended = last?.ended == null ? "has no ending on record" : (ENDED.get(last.ended) ?? last.ended);
-  return `You start from harness ${shortDigest(digest)}${origin}.${last === undefined ? "" : ` The last Builder session, ${last.id}, ${ended}.`}`;
+  return `You start from harness ${short(digest)}${origin}.${last === undefined ? "" : ` The last Builder session, ${last.id}, ${ended}.`}`;
 }

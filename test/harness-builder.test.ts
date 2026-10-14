@@ -612,10 +612,14 @@ describe("a campaign run by its log", () => {
     );
     expect(readFileSync(join(to, "RULES.md"), "utf8")).toContain("- R1: The answer is the base times six.");
     const report = readFileSync(join(to, "REPORT.md"), "utf8");
-    // The step is named with the comparisons that read it and its last tally beside it.
+    // The step is named by its letter and digest's head (`namesOf`), with the comparisons that read
+    // it and its last tally beside it.
+    const letter = /harness ([A-Z]+) \(([0-9a-f]{8})\), set-up \(epoch 0\)/u.exec(report);
+    expect(letter?.[2]).toBe(handed.harness.slice(0, 8));
     expect(report).toContain(
-      `harness ${handed.harness.slice(0, 8)}, set-up (epoch 0), read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
+      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
     );
+    expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
     // Its cost beside it, read against the bar and gating nothing (the plan's W), and no ladder.
     expect(report).toMatch(
       /tied 0\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,

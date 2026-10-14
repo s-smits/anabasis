@@ -732,7 +732,8 @@ describe("a campaign", () => {
     // Asked without the operator's word, it says what the log holds and records nothing.
     const asked = promote("--harness", digest);
     expect(asked).toContain("the reference harness is the starter");
-    expect(asked).toContain(`no comparison on record measured ${digest}`);
+    // A harness the log has not named yet is said by its digest alone (`namesOf`).
+    expect(asked).toContain(`no comparison on record measured harness ${digest}`);
     expect(asked).toContain("nothing is recorded without --yes");
     expect(promotions()).toEqual([]);
     expect(promote("--harness", digest.slice(0, 8))).toContain("is no harness this campaign keeps");
@@ -752,7 +753,11 @@ describe("a campaign", () => {
     );
     expect(promotions()).toEqual([{ harness: digest, from: least.digest, rests: [], despite }]);
     expect((await keptAs(campaign, "--reference", "promoted")).digest).toBe(digest);
-    expect(promote("--harness", digest, "--yes")).toContain("is the campaign's reference harness already");
+    // The promotion named it, and from then on it is said by its letter beside its digest; the
+    // suite's cases share one log, so which letter is theirs to say.
+    expect(promote("--harness", digest, "--yes")).toMatch(
+      new RegExp(`^[A-Z]+ ${digest} is the campaign's reference harness already`, "mu"),
+    );
     expect(promotions()).toHaveLength(1);
     // A round that names no --reference is made against it, where it was made against the starter.
     const against: string[] = [];

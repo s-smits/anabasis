@@ -20,6 +20,7 @@ import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
 import { short } from "./move.ts";
+import type { Called } from "./names.ts";
 import { openingOf } from "./opening.ts";
 
 /**
@@ -298,15 +299,15 @@ function falsePromotionOf(
   };
 }
 
-/** One line an epoch, as the view prints them. */
-export function epochLine(epoch: Epoch): string {
+/** One line an epoch, as the view prints them, each harness `called` as the view names it. */
+export function epochLine(epoch: Epoch, called: Called = short): string {
   const share = (named: string, found: Share | null) =>
     found === null ? `${named} unread` : `${named} valid ${String(found.valid)} of ${String(found.solves)}`;
-  const reference = epoch.reference === "starter" ? "the starter" : epoch.reference.slice(0, 8);
+  const reference = epoch.reference === "starter" ? "the starter" : called(epoch.reference);
   const readings = epoch.comparisons.map(({ id, reading }) => `${id} ${reading}`).join(", ") || "none";
   // The first harness promoted over the Starter is set-up, epoch 0, and the climb counts from it.
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
-  const end = epoch.promoted === null ? "open" : `promoted ${epoch.promoted.slice(0, 8)} ${rung}`;
+  const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
   const risk = epoch.falsePromotion;
   return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them at most ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
 }

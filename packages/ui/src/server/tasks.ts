@@ -10,7 +10,17 @@ import { fixedIn, reported } from "../../../../src/builder/comparison.ts";
 import { passed } from "../../../../src/kernel/solves.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
-import type { ComparisonBar, Issue, Query, TaskCell, TaskDetail, TaskGrid, TaskRow } from "../models.ts";
+import type {
+  ComparisonBar,
+  Issue,
+  LeftOut,
+  Query,
+  TaskCell,
+  TaskDetail,
+  TaskGrid,
+  TaskLeftOut,
+  TaskRow,
+} from "../models.ts";
 import { type Reading, Unanswerable } from "./context.ts";
 import { awaitingIn, exhaustedIn, type Log, once, proposalsIn, ranIn, retainedIn, setsIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
@@ -42,16 +52,22 @@ const rowsIn = once((log): TaskRow[] => {
   }));
 });
 
+/** The lists of a report that name a task it fixed and left out, in the order the chart takes them
+ *  (`splitOf`, `moves.ts`), so that a task named in two counts where the chart counts it. */
+const LEFT_OUT = ["disputed", "short", "withdrawn"] as const satisfies readonly (keyof LeftOut)[];
+
 /** What comparison `bar` came to on task `version`: its pair's outcome, or set aside, with each
- *  side's valid answers over its solves; null where it did not score the task. A set-aside task's
- *  sides are cut to the comparison's solves a side, as a pair's are (`pairsOf`,
- *  `src/kernel/compare.ts`): under an A/A reading the reference solved it twice as often, and the
- *  further arm is no part of its side. */
+ *  side's valid answers over its solves; why its report left the task out, where it fixed the task
+ *  and tallied it nowhere; null where it did not fix the task. A set-aside task's sides are cut to
+ *  the comparison's solves a side, as a pair's are (`pairsOf`, `src/kernel/compare.ts`): under an
+ *  A/A reading the reference solved it twice as often, and the further arm is no part of its side.
+ *  Until 14 October a task left out read "not scored" beside its own solves in that comparison: the
+ *  fixture's word-05, which a person's label disputed in b-2. */
 function cellOf(
   log: Log,
   bar: Pick<ComparisonBar, "id" | "old" | "fresh">,
   version: string,
-): TaskCell | null {
+): TaskCell | TaskLeftOut | null {
   const { id } = bar;
   const pair = pairsIn(log)
     .get(id)
@@ -59,7 +75,11 @@ function cellOf(
   if (pair !== undefined) {
     return { outcome: outcomeOf(pair), old: shareOf(pair.old), fresh: shareOf(pair.fresh) };
   }
-  if (!(reported(log.events, id)?.aside ?? []).includes(version)) return null;
+  const report = reported(log.events, id);
+  if (!(report?.aside ?? []).includes(version)) {
+    const leftOut = LEFT_OUT.find((list) => (report?.[list] ?? []).includes(version));
+    return leftOut === undefined ? null : { leftOut };
+  }
   // A task set aside is in no pair: each side's share is of the comparison's own counted solves of
   // it, in the order they started, as many as a side has.
   const solves = fixedIn(log.events, id)?.solves ?? 0;

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button, NoSignal } from "../components/primitives.tsx";
 import { matchesTerms } from "../components/tool-call.tsx";
-import type { Outcome, TaskCell, TaskGrid, TaskRow } from "../models.ts";
+import type { LeftOut, Outcome, TaskCell, TaskGrid, TaskLeftOut, TaskRow } from "../models.ts";
 import { shortHash } from "../models.ts";
 import { Filters, Search, Select } from "./controls.tsx";
 import { OUTCOMES } from "./outcome.ts";
@@ -11,9 +11,10 @@ import type { Share } from "../../../../src/builder/climb.ts";
  * Every task version against every comparison: one row a task, one column a comparison in the order
  * of the Campaign pane's bars, and a cell what the comparison came to on the task with each side's
  * valid answers over its solves. A cell is tinted with its outcome's colour from `outcome.ts` and
- * says its outcome in a word, so that the grid reads without colour; one the comparison did not
- * score says so. The first column and the head stay in place while the grid scrolls inside its
- * card, so a campaign of twenty comparisons and sixty tasks stays readable.
+ * says its outcome in a word, so that the grid reads without colour; one the comparison fixed and
+ * left out of its tally says why, untinted, as no outcome; one it did not fix says it was not
+ * scored. The first column and the head stay in place while the grid scrolls inside its card, so a
+ * campaign of twenty comparisons and sixty tasks stays readable.
  */
 
 const ALL = "all";
@@ -39,11 +40,22 @@ const CELL_WORDS = {
   tiedNone: "tied",
   aside: "set aside",
 } as const satisfies Record<Outcome, string>;
+/** Why a comparison left a task it fixed out of its tally, in a few words. */
+const LEFT_OUT_WORDS = {
+  disputed: "disputed",
+  short: "short of solves",
+  withdrawn: "withdrawn",
+} as const satisfies Record<keyof LeftOut, string>;
 
 /** Each side's valid answers over its solves, reference first. */
 export function countsOf(cell: TaskCell): string {
   const share = ({ valid, solves }: Share) => `${String(valid)}/${String(solves)}`;
   return `${share(cell.old)} · ${share(cell.fresh)}`;
+}
+
+/** Why a comparison left a task out, in the words of a cell and of the task's detail. */
+export function leftOutWords(cell: TaskLeftOut): string {
+  return `left out, ${LEFT_OUT_WORDS[cell.leftOut]}`;
 }
 
 /** The outcome's label and colour, as every chart and grid draws it. */
@@ -61,11 +73,19 @@ function taskNote(row: TaskRow): string {
   ].join(" · ");
 }
 
-function Cell({ cell }: { cell: TaskCell | null }) {
+function Cell({ cell }: { cell: TaskCell | TaskLeftOut | null }) {
   if (cell === null) {
     return (
       <td className="ana-grid-cell is-none" data-outcome="none">
         <span>not scored</span>
+      </td>
+    );
+  }
+  if ("leftOut" in cell) {
+    return (
+      <td className="ana-grid-cell is-left-out" data-outcome="left-out" data-left-out={cell.leftOut}>
+        <span>left out</span>
+        <small>{LEFT_OUT_WORDS[cell.leftOut]}</small>
       </td>
     );
   }

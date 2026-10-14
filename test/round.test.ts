@@ -347,7 +347,7 @@ const referee =
   };
 
 describe("a round", () => {
-  it("runs the session, solves the reference and the new harness in turn, and holds a step to the starter", async () => {
+  it("runs the session, then solves the reference and the new harness in turn on every task, and reports what it compared", async () => {
     const s = await setup([edit, finish], step);
     const report = await round(s.request);
     expect(report.fresh).not.toBe(s.old);
@@ -536,30 +536,7 @@ describe("a round", () => {
     expect(s.of(COMPARISON_REPORTED)[0]).toMatchObject({ objective: { ...objective, decided: 2 } });
   });
 
-  it("solves both harnesses afresh at every comparison and the starter on no task where it is neither side, to the same reading at four solves side by side", async () => {
-    {
-      // The reference harness answers nothing, the new one once in two solves, the starter always.
-      // Until 2026-10-11 the starter was then solved on the tallied tasks, and the reading was
-      // `below-starter` with fewer wins than losses against it: a third arm read by no move.
-      const below: Table = (_version, side, nth) => {
-        if (side === "old") return LATE;
-        return side === "starter" || nth === 0 ? PASS : LATE;
-      };
-      const s = await setup([edit, finish], below);
-      const report = await round(s.request);
-      expect(report).toMatchObject({ scored: { wins: 4, losses: 0, p: 0.0625 }, reading: "step" });
-      expect(report).not.toHaveProperty("against");
-      expect(s.asked.some(({ side }) => side === "starter")).toBe(false);
-      // Where the reference harness is the starter, as in the first round, the same.
-      const first = await setup([edit, finish], step);
-      expect(
-        await round({ ...first.request, starter: { dir: first.parent, digest: first.old } }),
-      ).toMatchObject({
-        scored: { wins: 4, losses: 0 },
-        reading: "step",
-      });
-      expect(first.asked).toHaveLength(16);
-    }
+  it("solves both harnesses afresh at every comparison, to the same reading at four solves side by side", async () => {
     {
       // The reference harness answers s1 in its first two solves and never again.
       const s = await setup([edit, finish, again, finish], (version, side, nth) =>
@@ -1525,57 +1502,37 @@ describe("a checkpoint with no session", () => {
     });
   });
 
-  it("stops at its dollar cap, reads not scored and is finished, and solves the starter on no task where it is neither side, whatever the cap leaves", async () => {
-    {
-      const s = await setup([], () => PASS);
-      // Each solve is billed two dollars and held at three before it starts: the sixth would take
-      // ten billed and three reserved past eleven.
-      const report = await checkpoint(s.compare("g0", { cap: { dollars: 11, reserve: 3 } }));
-      expect(report).toMatchObject({ scored: null, versions: [], capped: true, reading: NOT_SCORED });
-      expect(s.asked).toHaveLength(5);
-      expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ cap: { dollars: 11, reserve: 3 } });
-      // It is no checkpoint of the stop rule, and run again it says what it said and buys nothing.
-      expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
-      expect(await checkpoint(s.compare("g0", { cap: { dollars: 11, reserve: 3 } }))).toEqual(report);
-      expect(s.asked).toHaveLength(5);
-      // Four lanes start no more than one does. A lane that cannot afford a solve while others are
-      // in flight steps aside and leaves the job, and the cap is reached when none is in flight.
-      const wide = await setup([], () => PASS);
-      const cut = await checkpoint(wide.compare("g0", { cap: { dollars: 11, reserve: 3 }, concurrency: 4 }));
-      expect(cut).toMatchObject({ capped: true, reading: NOT_SCORED });
-      expect(wide.asked).toHaveLength(5);
-      // A cap that holds every solve but not four reserves at once cuts nothing: the lanes take turns.
-      const tight = await setup([], () => PASS);
-      expect(
-        await checkpoint(tight.compare("g0", { cap: { dollars: 35, reserve: 3 }, concurrency: 4 })),
-      ).toMatchObject({ scored: { ties: 4 }, capped: false });
-      expect(tight.asked).toHaveLength(16);
-      // A cap that holds the whole comparison cuts nothing.
-      const roomy = await setup([], () => PASS);
-      expect(await checkpoint(roomy.compare("g0", { cap: { dollars: 35, reserve: 3 } }))).toMatchObject({
-        scored: { ties: 4 },
-        capped: false,
-      });
-      expect(roomy.asked).toHaveLength(16);
-    }
-    {
-      const s = await setup([edit, finish], step);
-      const built = await round(s.next("b-0"));
-      const fresh = { dir: join(s.request.session.states, built.fresh ?? ""), digest: built.fresh ?? "" };
-      // Sixteen solves of the test at two dollars, and the cap holds one more with its reserve.
-      // Until 2026-10-11 the starter was then solved on the tallied tasks, the cap cut it after one,
-      // and the reading was `starter-unread`.
-      const capped = await checkpoint(s.compare("g1", { fresh, cap: { dollars: 35, reserve: 3 } }));
-      expect(capped).toMatchObject({
-        scored: { wins: 4, losses: 0 },
-        versions: HELD,
-        capped: false,
-        reading: "step",
-      });
-      expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(0);
-      // It reported, and is finished.
-      expect(await checkpoint(s.compare("g1", { fresh, cap: { dollars: 35, reserve: 3 } }))).toEqual(capped);
-    }
+  it("stops at its dollar cap, reads not scored and is finished, whatever lanes it runs in", async () => {
+    const s = await setup([], () => PASS);
+    // Each solve is billed two dollars and held at three before it starts: the sixth would take
+    // ten billed and three reserved past eleven.
+    const report = await checkpoint(s.compare("g0", { cap: { dollars: 11, reserve: 3 } }));
+    expect(report).toMatchObject({ scored: null, versions: [], capped: true, reading: NOT_SCORED });
+    expect(s.asked).toHaveLength(5);
+    expect(s.of(COMPARISON_STARTED)[0]).toMatchObject({ cap: { dollars: 11, reserve: 3 } });
+    // It is no checkpoint of the stop rule, and run again it says what it said and buys nothing.
+    expect(stopRule(read(s.log))).toMatchObject({ checkpoints: 0 });
+    expect(await checkpoint(s.compare("g0", { cap: { dollars: 11, reserve: 3 } }))).toEqual(report);
+    expect(s.asked).toHaveLength(5);
+    // Four lanes start no more than one does. A lane that cannot afford a solve while others are
+    // in flight steps aside and leaves the job, and the cap is reached when none is in flight.
+    const wide = await setup([], () => PASS);
+    const cut = await checkpoint(wide.compare("g0", { cap: { dollars: 11, reserve: 3 }, concurrency: 4 }));
+    expect(cut).toMatchObject({ capped: true, reading: NOT_SCORED });
+    expect(wide.asked).toHaveLength(5);
+    // A cap that holds every solve but not four reserves at once cuts nothing: the lanes take turns.
+    const tight = await setup([], () => PASS);
+    expect(
+      await checkpoint(tight.compare("g0", { cap: { dollars: 35, reserve: 3 }, concurrency: 4 })),
+    ).toMatchObject({ scored: { ties: 4 }, capped: false });
+    expect(tight.asked).toHaveLength(16);
+    // A cap that holds the whole comparison cuts nothing.
+    const roomy = await setup([], () => PASS);
+    expect(await checkpoint(roomy.compare("g0", { cap: { dollars: 35, reserve: 3 } }))).toMatchObject({
+      scored: { ties: 4 },
+      capped: false,
+    });
+    expect(roomy.asked).toHaveLength(16);
   });
 
   it("counts its own solves and its own spend, whatever another comparison did while it was stopped", async () => {

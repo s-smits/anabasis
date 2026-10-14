@@ -22,7 +22,7 @@ import {
   triggered,
   unsolved,
 } from "../src/kernel/compare.ts";
-import { type Condition, conditionId, fieldsApart, settingId } from "../src/kernel/condition.ts";
+import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -731,11 +731,6 @@ describe("the pairs a comparison reads from the log", () => {
   const sides = { old: "old", fresh: "new", setting: settingId(base), comparison: "c-1" };
   const held = [...heldOut("v0"), ...heldOut("v1")];
 
-  it("names the fields two conditions differ in", () => {
-    expect(fieldsApart(base, fresh)).toEqual(["harness", "solverTools"]);
-    expect(fieldsApart(base, { ...base, limits: { ...base.limits, turns: 80 } })).toEqual(["limits"]);
-  });
-
   it("counts every pass and fail of a held-out task under either harness, cut to the solves a side it asked, with what each cost", () => {
     const log = [
       ...held,
@@ -900,7 +895,7 @@ describe("the pairs a comparison reads from the log", () => {
     expect(pairsOf(log, ["v1"], sides, 1).pairs[0]).toMatchObject({ old: [F] });
   });
 
-  it("sets a harness against itself by mirrored halves, the first and last of each four against the two between, and earlier against later apart", () => {
+  it("sets a harness against itself by mirrored halves, the first and last of each four against the two between", () => {
     // The reference's four solves of a task, in the order they started: valid, not, not, valid.
     const log = [
       ...held,

@@ -94,6 +94,7 @@ import {
   type Bench,
   endingWith,
   finishTool,
+  harnessNow,
   HOME_TOOL_TREE,
   openingTool,
   parentToolTree,
@@ -103,7 +104,6 @@ import {
   type Snapshot,
   snapshot,
   traceTool,
-  triedState,
   walledTools,
 } from "./tools.ts";
 
@@ -195,6 +195,9 @@ export interface BuildRequest {
     /** A move the host makes as the conversation opens, and what it said of it, which the opening
      *  message carries, or nothing: the campaign's first Examiner session (14 October). */
     readonly start?: () => Promise<string>;
+    /** What `finish` tells the Builder where no comparison has read harness `digest` against the
+     *  reference, or null (`standing`, `tools.ts`). */
+    readonly unmeasured?: (digest: string) => Promise<string | null>;
   };
 }
 
@@ -371,7 +374,7 @@ export async function session(
     turns: turns.length - (during && campaign !== undefined ? 1 : 0),
     seconds: ownSeconds(),
     practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
-    practised: bench.opened !== null,
+    practised: bench.opened?.harness.digest ?? null,
   });
   // The line goes under the first result of each turn, once a turn: until 14 October a turn of six
   // calls read it six times, and then the last call carried it, which a call pi refuses before it
@@ -388,7 +391,7 @@ export async function session(
     practiceTool(bench),
     traceTool(bench),
     openingTool(campaign === undefined ? first : opening, bench.said),
-    finishTool(bench),
+    finishTool(bench, campaign?.unmeasured),
     ...(campaign?.tools ?? []),
   ].map((each) => endingWith(each, footer));
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
@@ -430,7 +433,7 @@ export async function session(
             ? [
                 user(
                   [
-                    continuation(used(), limits, await triedState(bench), bench.said),
+                    continuation(used(), limits, await harnessNow(bench), bench.said),
                     memoryOverCapNotice(dirs.home) ?? "",
                     campaign?.hook() ?? "",
                   ]

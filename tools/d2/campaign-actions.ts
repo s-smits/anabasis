@@ -456,8 +456,7 @@ async function comparedOf(
         }
       : { refused: "harness/ is the reference harness: there is nothing to compare until it changes." };
   }
-  const measured = comparisonsOf(events).some(({ fresh, old }) => fresh === working && old === reference);
-  if (measured && decided.move !== "compare") {
+  if (readAgainst(events, working, reference) && decided.move !== "compare") {
     return {
       refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare.`,
     };
@@ -477,6 +476,11 @@ async function comparedOf(
     ...keyIfDefined("froze", working === latest ? undefined : working),
   };
 }
+
+/** Whether a comparison has read harness `fresh` against harness `reference`: what `compare`
+ *  refuses on, and what a led Builder's `finish` is told of where none has. */
+const readAgainst = (events: readonly LogEvent[], fresh: string, reference: string): boolean =>
+  comparisonsOf(events).some((each) => each.fresh === fresh && each.old === reference);
 
 const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
   actionTool(context, bench, "compare", async (turn, decided, begin, signal) => {
@@ -769,6 +773,12 @@ export function campaignTools(
       },
       closing: async () => {
         await context.examining?.done;
+      },
+      unmeasured: async (digest) => {
+        const reference = (await keptAs(context.campaign, "--reference", PROMOTED)).digest;
+        if (digest === reference || readAgainst(read(context.log), digest, reference)) return null;
+        const writing = context.examining?.session;
+        return `No comparison has read harness/ as it stands against the reference, and finish ends this run of the campaign with it unmeasured.${writing === undefined ? "" : ` Examiner session ${writing} is still writing tasks beside this conversation, and compare waits for it to end.`}`;
       },
     };
   };

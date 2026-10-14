@@ -180,20 +180,20 @@ export interface Used {
   readonly seconds: number;
   /** The practice solves the session may still start (`practiceLeft`, `tools.ts`). */
   readonly practiceLeft: number;
-  /** Whether a practice solve of this session has run (`bench.opened`, `tools.ts`). */
-  readonly practised: boolean;
+  /** The harness the session's last practice solve ran, or null before one (`bench.opened`, `tools.ts`). */
+  readonly practised: string | null;
 }
 
-/** Where `harness/` stands against the session's practice: no solve has run in this session, the
- *  harness is as the last solve ran it, it has changed since, or it does not open. */
-export type Tried = "unpractised" | "tried" | "untried" | "broken";
-
-const TRIED: Readonly<Record<Tried, string>> = {
-  unpractised: "No practice solve has run in this session.",
-  tried: "harness/ is as your last practice solve ran it.",
-  untried: "harness/ has changed since your last practice solve, so no solve has run it as it stands.",
-  broken: "harness/ does not open as it stands: check_harness says why.",
-};
+/** Where `harness/` stands against the session's practice, as a continuation says it: no solve has
+ *  run in this session, the harness is as the last solve ran it, it has changed since, or it does
+ *  not open. `practised` is what the last solve ran (`bench.opened`), `harness` what it holds now. */
+function tried(practised: string | null, harness: string | Error): string {
+  if (practised === null) return "No practice solve has run in this session.";
+  if (harness instanceof Error) return "harness/ does not open as it stands: check_harness says why.";
+  return harness === practised
+    ? "harness/ is as your last practice solve ran it."
+    : "harness/ has changed since your last practice solve, so no solve has run it as it stands.";
+}
 
 /** What the Builder's shell is told about its wall, after pi's own description. The command wall
  *  is the solver's, and the facts are the ones a solver's prompt gives of it
@@ -227,7 +227,7 @@ export function systemPrompt(said: Said): string {
  * The practice fact is there because on 10 October a session of 43 turns spent 69% of its wall
  * measuring a tool chain through 40 shell calls, called `check_harness`, `preview_harness` and
  * `practice` not once, and left a tree whose own module spawns a program the tree does not hold;
- * the continuation (`TRIED`), which alone said where `harness/` stood, no turn of it triggered.
+ * the continuation (`tried`), which alone said where `harness/` stood, no turn of it triggered.
  * The line states the condition and no course: which fact matters is the Builder's.
  */
 export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">): string {
@@ -235,7 +235,7 @@ export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">
     const whole = Math.max(0, Math.floor(seconds));
     return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}`;
   };
-  return `[Session: turn ${String(used.turns + 1)} of ${String(limits.turns)}, ${clock(used.seconds)} of ${clock(limits.wallSeconds)} used, ${plural(used.practiceLeft, "practice solve")} left${used.practised ? "" : ", no practice solve has run harness/"}]`;
+  return `[Session: turn ${String(used.turns + 1)} of ${String(limits.turns)}, ${clock(used.seconds)} of ${clock(limits.wallSeconds)} used, ${plural(used.practiceLeft, "practice solve")} left${used.practised === null ? ", no practice solve has run harness/" : ""}]`;
 }
 
 /**
@@ -253,14 +253,14 @@ export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">
 export function continuation(
   used: Used,
   limits: Pick<Told, "wallSeconds" | "turns">,
-  tried: Tried,
+  harness: string | Error,
   said: Said,
 ): string {
   const minutes = (seconds: number) => String(Math.floor(seconds / 60));
   return [
     `You have not called finish, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is ${said.frozen}.`,
     `The goal, unchanged: ${GOAL}`,
-    `This session so far: ${String(used.turns)} of ${plural(limits.turns, "turn")} and ${minutes(used.seconds)} of ${plural(Number(minutes(limits.wallSeconds)), "minute")} used, ${plural(used.practiceLeft, "practice solve")} left. ${TRIED[tried]}`,
+    `This session so far: ${String(used.turns)} of ${plural(limits.turns, "turn")} and ${minutes(used.seconds)} of ${plural(Number(minutes(limits.wallSeconds)), "minute")} used, ${plural(used.practiceLeft, "practice solve")} left. ${tried(used.practised, harness)}`,
     "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
   ].join("\n\n");
 }

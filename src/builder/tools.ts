@@ -80,7 +80,7 @@ import { installedPrograms, systemPrompt } from "../solve/prompt.ts";
 import { clockText, solverTools } from "../solve/run.ts";
 import { memoryOverCapNotice } from "./memory.ts";
 import { openingOf } from "./opening.ts";
-import { type Said, shellWalls, type Tried } from "./prompt.ts";
+import { type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
 /** `harness/` frozen: a copy kept under its digest, what a solve would open it as, and the tools
@@ -130,8 +130,12 @@ export interface Bench {
   /** `finish`'s note; null until it is called. */
   note: string | null;
   /** What `finish` has told the Builder of the harness as it stood, each once (`standing`). */
-  readonly told: Set<"broken" | "untried">;
+  readonly told: Set<"broken" | "untried" | "unread">;
 }
+
+/** What a Builder that leads its campaign is told at `finish` where no comparison has read harness
+ *  `digest` against the reference, or null (`BuildRequest.campaign`). */
+type Unmeasured = (digest: string) => Promise<string | null>;
 
 /** What a submitted answer or a closing text shows of itself in a trace's head. */
 const HEAD_CHARS = 4_000;
@@ -554,37 +558,41 @@ export function traceTool(bench: Bench): AgentTool {
  * went to the comparison was one no practice solve had run: the six solves were spent on earlier
  * versions, which is why `practice` says when the last one is gone. A session that never
  * practised chose so and is told nothing here. A second `finish` ends the session as it is.
+ *
+ * A Builder that leads its campaign is also told that no comparison has read the harness it would
+ * leave, since its finish ends the campaign's run: on 13 October buffer-151-haiku's Builder
+ * finished while an Examiner session wrote, and the campaign ended `finished` with no comparison.
  */
-async function standing(bench: Bench): Promise<string | null> {
+async function standing(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
   const { request, told } = bench;
   const again = "or call finish again to end the session as it is";
-  let digest: string;
-  try {
-    const { dir, harness } = await frozen(bench);
-    rmSync(dir, { recursive: true, force: true });
-    ({ digest } = harness);
-  } catch (error) {
+  const now = await harnessNow(bench);
+  if (!isString(now)) {
     if (told.has("broken")) return null;
     told.add("broken");
     const { unpractised, practised } = bench.said.broken;
-    return `${errorMessage(error)}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
+    return `${errorMessage(now)}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
   }
   const left = practiceLeft(bench, read(request.log));
-  const tried = bench.opened === null || digest === bench.opened.harness.digest || digest === bench.parent;
-  if (tried || left <= 0 || told.has("untried")) return null;
-  told.add("untried");
-  return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.`;
+  const tried = bench.opened === null || now === bench.opened.harness.digest || now === bench.parent;
+  const untried = !tried && left > 0 && !told.has("untried");
+  const unread = told.has("unread") ? null : ((await unmeasured?.(now)) ?? null);
+  if (untried) told.add("untried");
+  if (unread !== null) told.add("unread");
+  if (untried) {
+    return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.${unread === null ? "" : ` ${unread}`}`;
+  }
+  return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
 }
 
-/** Where `harness/` stands against the session's practice, as a continuation says it (`Tried`). */
-export async function triedState(bench: Bench): Promise<Tried> {
-  if (bench.opened === null) return "unpractised";
+/** The digest of `harness/` as it stands, or why it does not open: frozen once, the copy removed. */
+export async function harnessNow(bench: Bench): Promise<string | Error> {
   try {
     const { dir, harness } = await frozen(bench);
     rmSync(dir, { recursive: true, force: true });
-    return harness.digest === bench.opened.harness.digest ? "tried" : "untried";
-  } catch {
-    return "broken";
+    return harness.digest;
+  } catch (error) {
+    return asError(error);
   }
 }
 
@@ -628,7 +636,7 @@ export function endingWith(each: AgentTool, line: (id: string) => string): Agent
   };
 }
 
-export function finishTool(bench: Bench): AgentTool {
+export function finishTool(bench: Bench, unmeasured?: Unmeasured): AgentTool {
   return tool({
     name: "finish",
     label: "Finish",
@@ -640,7 +648,7 @@ export function finishTool(bench: Bench): AgentTool {
       // the call itself carries it, as v1's submit did (`src/gate/submit-tool.ts` at 3f93d06).
       const notes = memoryOverCapNotice(bench.home);
       if (notes !== null) throw new Error(`Not finished. ${notes} Then call finish again.`);
-      const stands = await standing(bench);
+      const stands = await standing(bench, unmeasured);
       if (stands !== null) throw new Error(`Not finished. ${stands}`);
       bench.note = args.note.trim();
       return { ...text("Finished."), terminate: true };

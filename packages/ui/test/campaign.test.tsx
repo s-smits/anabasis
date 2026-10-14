@@ -51,6 +51,11 @@ test("the main campaign renders its line, three readouts, the chart's key, every
   expect(html).toContain("Builder session");
   expect(html).toContain("3 promotions, the last back to the starter");
   expect(html.match(/class="ana-harness-select"/g)?.length).toBe(reading.harnesses.length);
+  // Each card is named by the log's letter with its digest beneath, the starter as the Starter A.
+  const faces = html.match(/<span class="ana-harness-hash">/g)?.length;
+  expect(faces).toBe(reading.harnesses.length);
+  expect(html).toContain("Starter A");
+  expect(html).not.toMatch(/>starter</i);
   // The latest harness is selected where the route names none, and its detail stands under the row.
   expect(html.match(/aria-current="true"/g)?.length).toBe(1);
   expect(html).toContain("Compare with previous");

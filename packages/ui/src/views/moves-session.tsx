@@ -38,7 +38,11 @@ function factsOf(detail: SessionDetail, reading: CampaignReading): (readonly [st
     ];
   }
   const harness = (digest: string | null) =>
-    digest !== null && digest === reading.starter ? "starter" : <HashValue value={digest} length={8} />;
+    digest !== null && digest in reading.names ? (
+      harnessLabel(reading, digest)
+    ) : (
+      <HashValue value={digest} length={8} />
+    );
   const left = move.changed ? harness(move.harness) : "the harness as it was";
   return [
     ["Parent", harness(move.parent)],

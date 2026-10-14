@@ -206,12 +206,26 @@ describe("a campaign's reading", () => {
       [c, "r-3", false, true],
       [starter, "b-4", true, false],
     ]);
+    const { e } = fixture.harnesses;
     expect(reading.harnesses.map(({ digest, reference, latest }) => [digest, reference, latest])).toEqual([
       [starter, true, false],
       [a, false, false],
       [b, false, false],
       [c, false, false],
-      [d, false, true],
+      [d, false, false],
+      [e, false, true],
+    ]);
+    // The harness b-5's conversation froze for a comparison has a card of its own, from b-5's
+    // parent, and is the latest, as the campaign's fold reads it.
+    expect(reading.harnesses.at(-1)).toMatchObject({ session: "b-5", parent: b, broken: null });
+    // Each harness is named by the letter the log gives it, the Starter A by role.
+    expect([starter, a, b, c, d, e].map((digest) => reading.names[digest])).toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
     ]);
     // Each card's comparisons are the ones that measured it, each by its own move's place.
     for (const card of reading.harnesses) {

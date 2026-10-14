@@ -355,6 +355,9 @@ export interface CampaignReading extends Answer {
    *  log names none. */
   readonly reference: string | null;
   readonly starter: string | null;
+  /** Each harness the log names, by digest, with its letter: the Starter A, the rest B on in the
+   *  order the log first names them (`namesOf`, `src/builder/names.ts`). */
+  readonly names: Readonly<Record<string, string>>;
   /** Null where the table could not be asked; an issue says why. */
   readonly nextMove: NextMove | null;
   /** Steps open at the log's end (`openSteps`). */

@@ -296,6 +296,51 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, "exam.started")).toHaveLength(1);
   });
 
+  it("tells a Builder finishing on a harness no comparison read so once, with the Examiner session still writing", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-unread`;
+    // buffer-151-haiku, 13 October: the guide changed, an Examiner session asked for, and finish
+    // called while it wrote. The Examiner writes until the Builder's second finish.
+    const again = Promise.withResolvers<void>();
+    const base = scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []);
+    const seats: Seats = {
+      seated: builderScript(base, [
+        ["examine", {}],
+        CHANGE_GUIDE,
+        ["finish", { note: "Changed the guide." }],
+        {
+          wait: async () => {
+            again.resolve();
+            return ["finish", { note: "Changed the guide." }];
+          },
+        },
+      ]),
+      examine: (request) =>
+        examine({
+          ...request,
+          ...scripted([
+            {
+              wait: async () => {
+                await again.promise;
+                return ["finish", { note: "No more tasks." }];
+              },
+            },
+            ["finish", { note: "No more tasks." }],
+          ]),
+        }),
+    };
+    const ending = await harnessBuilder([...seeded(name), ...FLAGS], seats);
+    expect(ending).toMatchObject({ move: "end", ending: "finished" });
+    const [first, second] = said(name, "finish");
+    expect(first).toContain(
+      "Not finished. No comparison has read harness/ as it stands against the reference, and finish ends this run of the campaign with it unmeasured.",
+    );
+    expect(first).toContain("Examiner session x-1 is still writing tasks beside this conversation");
+    expect(second).not.toContain("No comparison has read");
+    expect(of(name, FINISHED)).toMatchObject([{ ended: "finished", changed: true }]);
+    expect(of(name, "comparison.started")).toHaveLength(0);
+  });
+
   it("stops the Examiner writing beside the conversation when the operator's stop halts it", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-beside-stop`;
@@ -566,7 +611,12 @@ describe("a campaign run by its live Builder", () => {
         const by = base(campaign, given);
         return {
           ...by,
-          builder: scripted([CHANGE_GUIDE, ["compare", {}], ["finish", { note: "The comparison resumed." }]]),
+          builder: scripted([
+            CHANGE_GUIDE,
+            ["compare", {}],
+            ["finish", { note: "The comparison resumed." }],
+            ["finish", { note: "The comparison resumed." }],
+          ]),
           solve: async (...args) => {
             if (cut) throw new Error("PRIVATE-COMPARISON-FAULT check-product t-1");
             return by.solve(...args);

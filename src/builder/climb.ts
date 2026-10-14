@@ -14,7 +14,7 @@
 import { pairings, readTwice, TRIGGER, UNMEASURED } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { billedAll, laddersOf, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
+import { billedBetween, laddersOf, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { countedSolves, passed } from "../kernel/solves.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -373,7 +373,7 @@ function costOf(
 ): Worth["cost"] {
   if (epoch === undefined) return null;
   const attempts = epoch.falsePromotion.attempts + pending;
-  const dollars = billedAll(events.slice(epoch.from, epoch.to ?? undefined));
+  const dollars = billedBetween(events, epoch.from, epoch.to ?? undefined);
   return { attempts, sessions: epoch.sessions, dollars, met: epoch.nth === 1 || attempts <= bar };
 }
 
@@ -457,7 +457,7 @@ export function ladderOf(events: readonly LogEvent[]): Rung[] {
         referenceShare === null || starterShare === null
           ? null
           : Math.round(100 * (referenceShare - starterShare)),
-      dollars: billedAll(events.slice(from, index)),
+      dollars: billedBetween(events, from, index),
     };
     from = index;
     return rung;

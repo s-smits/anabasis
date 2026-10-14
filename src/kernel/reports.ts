@@ -792,6 +792,17 @@ export function billedAll(events: readonly LogEvent[]): number {
   return unfinished(events).reduce((sum, { dollars }) => sum + dollars, summed);
 }
 
+/**
+ * The billed dollars of the stretch from event `from` to event `to` (the log's end where none):
+ * what the log had billed by `to` less what it had by `from`. A sum over the slice alone billed a
+ * session open across its start at its whole sum where it ended, and nothing of one still open at
+ * its end: on 14 October recode-151's epoch b-4 read $6.87 where it billed $0.04, the Builder's
+ * conversation of three epochs ending inside it.
+ */
+export function billedBetween(events: readonly LogEvent[], from: number, to = events.length): number {
+  return billedAll(events.slice(0, to)) - billedAll(events.slice(0, from));
+}
+
 /** The backend's price of one usage, `cost.total`, or nothing where it holds none. */
 function costOf(usage: JsonValue | undefined): number {
   const total = asRecord(asRecord(usage)?.cost)?.total;

@@ -104,6 +104,10 @@ const OPTIONS = {
 export const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
 const OPENED = "campaign.opened";
 export const MOVED = "campaign.move";
+/** The Builder conversations in a row that make no campaign move before a campaign ends. A Codex
+ *  goal stays active across turns until its model calls it met, or blocked once the same blocker
+ *  has held for three; a climb is never met, so three conversations without a move are its block. */
+export const IDLE = 3;
 const STARTED = "comparison.started";
 /** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
  *  command wants a name, and the script is what is asked. */
@@ -261,6 +265,18 @@ export function opened(
 export function examTasks({ events, plan }: Turn): string | undefined {
   const wanting = shortOf(events, plan);
   return wanting > 0 ? String(wanting) : undefined;
+}
+
+/**
+ * The Builder conversations in a row, the latest included, that have made no campaign move since
+ * the campaign last ended: the trailing run of its moves that are conversations (`build`, `led`).
+ * Any other move, the host's own among them, is progress. A run of the command after an ending
+ * starts the count afresh, as Codex audits a resumed goal afresh.
+ */
+export function idleOf(events: readonly LogEvent[]): number {
+  const from = events.findLastIndex(({ kind }) => kind === "campaign.ended");
+  const moves = events.slice(from + 1).flatMap(({ kind, data }) => (kind === MOVED ? [data] : []));
+  return moves.length - 1 - moves.findLastIndex(({ move, code }) => move !== "build" || code !== "led");
 }
 
 /** The next free id under `prefix`, as `b-3` after `b-1` and `b-2`. */

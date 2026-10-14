@@ -612,10 +612,23 @@ that second reading was the no-room row's alone): a comparison the cap cuts tall
 
 **It ends in one of eight ways**, and the log's last event says which (`campaign.ended`):
 `budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment`, `operator`,
-`control` (an A/A that read a step, section 7) or `finished` (the Builder called `finish`). A lack
-of room is advice to request other tasks while a conversation lives, and the campaign's ending
-once that conversation has ended at its limits. `finished` ends this run of the command: run again
-by its name, the campaign goes on with a new conversation, as after the operator's stop. A
+`control` (an A/A that read a step, section 7) or `finished` (three Builder conversations in a row
+made no campaign move, the last ended by `finish` or at its limits). A lack of room is advice to
+request other tasks while a conversation lives, and the campaign's ending once that conversation
+has ended at its limits. A Builder's `finish` ends its conversation. Between conversations the host
+makes what the table names that asks no Builder for anything, a campaign move like any other: a
+repeat and the tasks it waits for, a promotion, a ladder's reading (`hostOwed`,
+`tools/d2/harness-builder.ts`). Then another
+conversation follows on the Builder's notes, as after one that ended at its limits, until three in
+a row have made no campaign move (`idleOf`, `tools/d2/campaign-terms.ts`), which end the campaign
+`finished` where the table names no ending of its own; the status a Builder reads counts the
+conversations before its own that made none. A Codex goal stays active on the same terms: its own
+model ends it only as met, or as blocked once the same blocker has held for three turns, and a
+climb is never met.
+Until 14 October every `finish` ended the run: five of five led campaigns ended so, with $22 to
+$122 of $300 spent, and the two that promoted finished within seconds of their promotion. Run
+again by its name, a campaign that ended `finished` goes on with a new conversation, as after the
+operator's stop. A
 move that threw after it began ends the campaign on its environment, except one whose session is on
 record as crashed, which the campaign goes on from (`goesOn`, `tools/d2/harness-builder.ts`); so do three Builder or
 Examiner sessions in a row that the provider failed before they held out a task or changed a

@@ -129,8 +129,8 @@ export interface Said {
  * stands (`session.ts`), and its practice is held to the campaign's total (`practiceLeft`,
  * `tools.ts`). A led Builder is told each fact once, where it is owned: what its tools do in their
  * descriptions, and here what a tool result ends with and what ends the campaign. A promotion ends
- * nothing: the operator's milestone of twelve is no rule (`AGENTS.md`, "Climb"), and `finish` is
- * the one ending a model chooses.
+ * nothing: the operator's milestone of twelve is no rule (`AGENTS.md`, "Climb"), and `finish` ends
+ * the campaign only after three conversations in a row made no campaign move (`harness-builder.ts`).
  */
 export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   host: {
@@ -149,12 +149,12 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   },
   builder: {
     closing:
-      "read_opening returns the public opening facts when this conversation no longer holds them. You make the campaign's moves with the campaign tools, and each one's result ends with the campaign's facts and the move the host's table would make, which you may follow or not. The campaign ends at its budget, on its provider, or after as many moves in a row without a gain as its patience. A promotion ends nothing: the campaign goes on against the promoted harness. finish ends this conversation and freezes harness/, measuring nothing, and the campaign waits for the operator.",
+      "read_opening returns the public opening facts when this conversation no longer holds them. You lead the campaign with its tools, and each one's result ends with the campaign's facts and the move the host's table would make, which you may follow or not. A promotion ends nothing: the promoted harness becomes the reference, the next step is measured against it, and the climb goes on for as many steps as you find. The campaign ends at its budget, on its provider, or after as many moves in a row without a gain as its patience. finish ends this conversation and freezes harness/, measuring nothing; another conversation follows on your notes, and the campaign ends once three in a row have made no campaign move.",
     frozen: "frozen",
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
     finish:
-      "End this campaign's Builder conversation and freeze harness/. Say what changed and what remains unmeasured. A notice from finish can be acknowledged by calling finish again.",
+      "End this conversation and freeze harness/. Say what changed, what remains unmeasured and what you would try next; the next conversation starts from your notes. A notice from finish can be acknowledged by calling finish again.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",

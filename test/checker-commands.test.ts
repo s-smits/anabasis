@@ -187,9 +187,12 @@ layOut();
 describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack", () => {
   it("records a checker's reading, and names the control that does not get its label", () => {
     const sound = accept();
-    // Three controls and three stored verdicts: the check let three answers pass and refused three.
+    // Fresh controls and historical verdicts have separate counts.
     expect(sound.said).toContain("3 controls twice, 3 stored verdicts");
-    expect(sound.said).toContain("check-product\tauthor\t3\t3\t1 of 1");
+    expect(sound.said).toContain("Fresh controls:");
+    expect(sound.said).toContain("check-product\tauthor\t2\t1\t1 of 1");
+    expect(sound.said).toContain("Historical verdicts (not rerun):");
+    expect(sound.said).toContain("check-product\tauthor\t1\t2\t0 of 0");
     // The smallest answer the format allows is put to both tasks, and the check rejects it on each.
     expect(sound.said).toContain('the do-nothing answer {"answer":""}: rejected on 2 of 2 tasks');
     expect(sound.said).toContain("no fault");
@@ -198,6 +201,8 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
     expect(reading).toMatchObject({
       controls: 3,
       stored: 3,
+      rows: [expect.objectContaining({ passed: 2, refused: 1 })],
+      historicalRows: [expect.objectContaining({ passed: 1, refused: 2 })],
       doNothing: { answer: { answer: "" }, tasks: 2, rejected: 2 },
       admitted: ["check-product"],
       faults: [],

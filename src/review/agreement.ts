@@ -9,6 +9,7 @@
  *
  * Two rates carry the risk, and they pull apart. A check defect the Referee lets stand turns a broken
  * check into a scored task; an earned fail it voids removes a real limit from the count.
+ * Since 14 October both check-defect and unclear rulings count as voiding a labelled earned fail.
  *
  * Beside them, since 12 October, the agreement of each kind and over all three (the overhaul plan's
  * M3, research 06): on kinds as uneven as these, most fails earned, Cohen's kappa can be low while
@@ -88,7 +89,10 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
     table,
     unruled,
     caught: share("check-defect"),
-    voided: share("earned"),
+    voided:
+      labelled("earned") === 0
+        ? null
+        : (table.earned["check-defect"] + table.earned.unclear) / labelled("earned"),
     unclearEarned: ruled("unclear") === 0 ? null : table.earned.unclear / ruled("unclear"),
     // SAFETY: built from RULINGS, so every Ruling key is present.
     specific: Object.fromEntries(

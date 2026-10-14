@@ -185,7 +185,7 @@ describe("a draft read without a model", () => {
     const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
     expect(await draftReading(join(root, "read"), lax, 2)).toEqual([
       "a reject control of ex-001 names check-product, which did not refuse it: pass",
-      "check-product has refused nothing: no control and no stored answer",
+      "check-product has refused nothing in this reading",
       "the do-nothing answer was not rejected on ex-001: pass",
       "the do-nothing answer was not rejected on ex-002: pass",
       "the do-nothing answer was not rejected on ex-003: pass",
@@ -201,7 +201,7 @@ describe("a draft read without a model", () => {
     };
     expect(await draftReading(join(root, "read"), lax, 2)).toEqual([
       "a reject control of ex-001 names check-product, which did not refuse it: pass",
-      "check-product has refused nothing: no control and no stored answer",
+      "check-product has refused nothing in this reading",
       `the do-nothing answer {"answer":""} does not follow the answer format (Validation failed for tool "answer":\n  - answer: must match pattern "^[0-9]+$"), so no check was seen to refuse it: the host builds it from the schema's types, required properties, minimums, least lengths and counts, first enumerated or constant values and first choices, and reads no other keyword`,
     ]);
   });

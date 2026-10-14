@@ -977,6 +977,7 @@ describe("a campaign tool where the table names more than the action", () => {
     const moved = await read_(`${STEM}-won-other`, { "g-1": 1, "g-2": 3 });
     expect(moved).toBe(same);
     expect(same).toContain("4 won, 0 lost, 1 tied");
+    expect(same).toContain("Comparison g-2 took 0 minutes and billed");
   });
 });
 

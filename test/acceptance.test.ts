@@ -105,8 +105,8 @@ describe("a checker's acceptance", () => {
     const bare = acceptance(brief, [roof], runs, [], (tool) => tool !== "fe");
     expect(bare.faults).toEqual([
       "mass names fe, which is not on the verifier's tool path",
-      "mass has refused nothing: no control and no stored answer",
-      "span has refused nothing: no control and no stored answer",
+      "mass has refused nothing in this reading",
+      "span has refused nothing in this reading",
     ]);
     // A stored answer a check refused shows it can refuse, and still no control names it; a verdict
     // that decided nothing shows nothing of any check.
@@ -229,7 +229,7 @@ describe("a checker's acceptance", () => {
     // A verifier that measures nothing, or cannot, is a fault of the objective's and of no check.
     const unweighed = await runControls(verify, [roof, mast], SOUND, 2);
     expect(acceptance(measured, [roof, mast], unweighed, [], everyTool).faults).toEqual([
-      "objective has measured nothing: no accept control and no stored answer passed",
+      "objective has measured nothing in this reading",
     ]);
     const broken: Verifier = async (task, answer) => {
       const verdict = await verify(task, answer);
@@ -300,6 +300,23 @@ describe("the do-nothing answer", () => {
 });
 
 describe("a reading of a checker", () => {
+  it("keeps historical verdicts apart from fresh controls and cannot use them to clear a fresh fault", async () => {
+    const contract: Contract = { answerFormat: { type: "object" }, conventions: "", rules: [], scope: "" };
+    const reading = await readChecker({
+      brief,
+      contract,
+      tasks: [roof],
+      controls: SOUND.slice(1, 2),
+      stored: [{ task: roof, verdict: { kind: "pass" } }],
+      verify,
+      found: everyTool,
+      width: 1,
+    });
+    expect(reading.checks[0]).toMatchObject({ passed: 0, refused: 1 });
+    expect(reading.historical[0]).toMatchObject({ passed: 1, refused: 0 });
+    expect(reading.faults).toContain("mass has let nothing pass in this reading");
+  });
+
   /** A checker read over two tasks under `answerFormat`, with checks that pass every answer. */
   const readUnder = (answerFormat: JsonObject) => {
     const contract: Contract = { answerFormat, conventions: "", rules: [], scope: "" };

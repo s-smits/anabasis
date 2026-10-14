@@ -20,9 +20,12 @@
  * setting it records where the log holds none (`--solver`, `--solve-minutes` and the rest, as every
  * command that solves takes them). Each solve's start names the session, so no comparison counts
  * it and no Builder is shown it, and the gate's event carries what the task's solves billed. The
- * Examiner hears how many of them were valid and nothing else of them. From 9 to 12 October no
- * solve ran here, and a task was held out on its shape; until 9 October each instance was put to
- * a stronger solver and to the measured one, and the second live session spent $48.45 that way,
+ * Examiner hears how many of them were valid and nothing else of them.
+ * Since 14 October a submitted rejection is ruled by the campaign's Referee before the gate counts
+ * it. An unclear, defective or unruled rejection leaves the draft unmeasured; other endings keep
+ * their meaning. Neither the answer nor the ruling reaches the Examiner.
+ * From 9 to 12 October no solve ran here, and a task was held out on its shape; until 9 October each
+ * instance was put to a stronger solver and to the measured one, and the second live session spent $48.45 that way,
  * $2.01 of it on the Examiner.
  *
  * The session stops at `--tasks` held-out tasks, at `--proposals` instances put to the gate, at
@@ -47,7 +50,14 @@ import { parseArgs } from "#src/meta/process.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, REPO, stayAwake } from "../d2/campaign.ts";
-import { type Campaign, type Seated, solved, solvingAs } from "../d2/round.ts";
+import {
+  type Campaign,
+  COMPARISON_OPTIONS,
+  reviewersNamed,
+  type Seated,
+  solved,
+  solvingAs,
+} from "../d2/round.ts";
 import {
   type AskedSetting,
   firstRecord,
@@ -68,6 +78,8 @@ const EXAMINE_OPTIONS = {
   session: { type: "string" },
   examiner: { type: "string" },
   "examiner-effort": { type: "string", default: "high" },
+  reviewer: COMPARISON_OPTIONS.reviewer,
+  "reviewer-effort": COMPARISON_OPTIONS["reviewer-effort"],
   tasks: { type: "string", default: "12" },
   proposals: { type: "string", default: "36" },
   minutes: { type: "string", default: "240" },
@@ -84,14 +96,30 @@ const EXAMINE_OPTIONS = {
  *  solve of a draft task by the reference harness, under the campaign's setting and wall, its start
  *  naming the session where a comparison's names the comparison (`solved`, `tools/d2/round.ts`).
  *  The setting is held to the log's solves and recorded where none is, as a session's is. */
-async function probing(campaign: Campaign, seated: Seated, setting: AskedSetting) {
+async function probing(
+  campaign: Campaign,
+  seated: Seated,
+  setting: AskedSetting,
+  values: Parameters<typeof reviewersNamed>[1],
+) {
   const unrecorded = firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log)));
   if (unrecorded !== undefined) throw new Error(unrecorded);
   keepSetting(campaign.log, setting);
   const reference = await keptAs(campaign, "--reference", PROMOTED);
   const seats = seated(campaign, { builder: undefined, reference: reference.dir });
-  return async (task: TaskPackage, session: string, kill: AbortSignal) =>
-    (await seats.solve(task, reference, kill, session)).ending;
+  const reviewers = reviewersNamed(campaign, values);
+  return async (task: TaskPackage, session: string, kill: AbortSignal) => {
+    const { solve, ending } = await seats.solve(task, reference, kill, session);
+    if (ending.outcome !== "fail" || ending.kind !== "rejected") return ending;
+    const finding = await reviewers?.referee(solve, task, kill);
+    return finding?.ruling === "earned"
+      ? ending
+      : ({
+          outcome: "non-result",
+          kind: "check",
+          reason: "the admission rejection is not ruled earned",
+        } as const);
+  };
 }
 
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
@@ -122,7 +150,7 @@ export async function examineCommand(
   const declared = readBrief(campaign.checks).truthChecks;
   const sofar = read(campaign.log);
   const before = taskStates(sofar);
-  const probe = seated === null ? null : await probing(campaign, seated, setting);
+  const probe = seated === null ? null : await probing(campaign, seated, setting, values);
   stayAwake();
   const examined = await session(
     {

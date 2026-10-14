@@ -599,6 +599,12 @@
   outline: none;
 }
 
+/* A read that has run long enough to be noticed (`views/late.ts`): what it replaces stays, faded,
+   with no transition, so that a fast read changes nothing on screen. */
+.is-reading {
+  opacity: 0.6;
+}
+
 .ana-card > .ana-file-links {
   border-bottom: 0;
   padding-bottom: 0;

@@ -171,6 +171,8 @@ test("the Log pane holds the reader collapsed above a page of events, and says i
   const html = renderToStaticMarkup(
     <LogList
       page={page}
+      offset={0}
+      reading={false}
       filters={{ kind: "all", session: "all" }}
       onFilters={() => {}}
       onOffset={() => {}}

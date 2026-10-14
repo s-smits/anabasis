@@ -970,7 +970,7 @@ describe("a Builder session", () => {
 
   // Found in buffer-149, 13 October: b-1 crashed on a provider error with a harness it had
   // practised three of three on, and b-2 started from the starter.
-  it("keeps a crashed session's harness as a checkpoint where its last practice solve ran it, and only there", async () => {
+  it("keeps the harness a crashed session last practised as a checkpoint, and no edit after it", async () => {
     const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
     const tried = await setup([edit, call("practice", { tasks: ["t-1"] }), failed]);
     const kept = await session(tried.request, tried, tried.walled);
@@ -978,12 +978,23 @@ describe("a Builder session", () => {
     expect(tried.of("build.checkpoint")).toEqual([{ session: "b-1", harness: kept.harness }]);
     // The checkpointed crash moved the campaign, so the provider's crash rule does not count it.
     expect(crashedRun(read(tried.request.log)).count).toBe(0);
-    // A crash after an edit no solve ran leaves no checkpoint: that harness may be half an edit.
+    // A crash after an edit no solve ran keeps the state the practice solve ran, not the edit,
+    // which may be half done.
     const later = call(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: `${GUIDE}More.\n` });
     const edited = await setup([edit, call("practice", { tasks: ["t-1"] }), later, failed]);
-    expect(await session(edited.request, edited, edited.walled)).toMatchObject({ ended: "crashed" });
-    expect(edited.of("build.checkpoint")).toEqual([]);
-    expect(crashedRun(read(edited.request.log)).count).toBe(1);
+    const ran = await session(edited.request, edited, edited.walled);
+    expect(ran).toMatchObject({ changed: true, ended: "crashed" });
+    expect(ran.harness).not.toBe(kept.harness);
+    expect(edited.of("build.checkpoint")).toEqual([{ session: "b-1", harness: kept.harness }]);
+    expect(crashedRun(read(edited.request.log)).count).toBe(0);
+    // A crash in a session that never practised leaves nothing: no state of it was run.
+    const unpractised = await setup([edit, failed]);
+    expect(await session(unpractised.request, unpractised, unpractised.walled)).toMatchObject({
+      changed: true,
+      ended: "crashed",
+    });
+    expect(unpractised.of("build.checkpoint")).toEqual([]);
+    expect(crashedRun(read(unpractised.request.log)).count).toBe(1);
   });
 
   it("ends at finish though another call shares its turn", async () => {

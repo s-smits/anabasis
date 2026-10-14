@@ -119,8 +119,8 @@ export async function mountDiskCap(cap: DiskCap): Promise<ReleaseDiskCap> {
 }
 
 /**
- * Let go of a root a cap was mounted at: detach its volume, move the image away and remove the
- * empty mountpoint. The solve or session that mounted it does this when it ends. One that was
+ * Let go of a root a cap was mounted at: detach its volume, remove the image and remove the empty
+ * mountpoint. The solve or session that mounted it does this when it ends. One that was
  * stopped or killed never does, and its root stays attached until a stop of its run releases it
  * (`tools/runs/stop.ts`): six such roots were mounted on one host on 2026-10-08, two of them a
  * Builder's with a third of a gigabyte each.
@@ -164,10 +164,10 @@ export async function releaseDiskCap(root: string, listing: HolderListing = LSOF
         if (forced !== null && mounted()) throw new Error(forced);
       }
     }
-    // To the Trash rather than unlinked, so a release run against the wrong path can be undone.
-    const image = `${root}.sparseimage`;
-    await Bun.spawn(["/usr/bin/trash", image], { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
-      .exited;
+    // Unlinked. Until 14 October it went to the Trash, so that a release run against the wrong
+    // path could be undone, and every capped solve and session, a test's among them, left one
+    // there for a person to empty.
+    rmSync(`${root}.sparseimage`, { force: true });
   }
   rmSync(root, { recursive: true, force: true });
 }

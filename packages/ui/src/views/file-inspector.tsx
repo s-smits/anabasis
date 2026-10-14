@@ -42,14 +42,19 @@ export function FileInspector({
   children?: ReactNode;
 }) {
   const pane = useRef<HTMLElement>(null);
+  const origin = useRef<Element | null>(null);
   const open = path !== null;
   useEffect(() => {
     if (!open) return;
-    const origin = document.activeElement;
+    // React's StrictMode runs this twice on opening, and the second run finds the pane itself
+    // focused by the first: taken as the origin, it left focus on the page's body at every close
+    // (a browser test of 14 October). The origin is what held focus before the pane did.
+    if (document.activeElement !== pane.current) origin.current = document.activeElement;
     pane.current?.focus({ preventScroll: true });
     return () => {
-      if (origin instanceof HTMLElement && origin.isConnected && document.activeElement === document.body) {
-        origin.focus({ preventScroll: true });
+      const back = origin.current;
+      if (back instanceof HTMLElement && back.isConnected && document.activeElement === document.body) {
+        back.focus({ preventScroll: true });
       }
     };
   }, [open]);

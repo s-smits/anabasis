@@ -4,6 +4,9 @@
  *
  *   --solver claude/claude-sonnet-5-5   the model that solves in the stored cycle's place
  *   --solver-effort high                its effort, read beside --solver and not without it
+ *   --solver-window 200000              the context its Claude Code compacts at, beside --solver
+ *                                       too: 300,000 tokens where not named, which a model served
+ *                                       a 200K context, such as claude-haiku-5-5, cannot hold
  *   --solve-minutes 120                 the wall of one solve
  *   --solve-model-turns 40              the model's own turns a solve is given, told to the solver; no default
  *   --tasks a,b,c                       the scored tasks, by id, where the operator chooses them
@@ -61,14 +64,22 @@ import { LIMITS } from "./campaign.ts";
 /** What the flags name of the solver and its limits, as `openCampaign` takes it: the solver in the
  *  stored cycle's place, or none, and the limits of every solve. */
 interface NamedSetting {
-  readonly solver: { readonly model: string; readonly effort: ThinkingLevel } | undefined;
+  readonly solver: NamedSolver | undefined;
   readonly limits: Limits;
+}
+
+/** Who solves in the stored cycle's place, and the window its Claude Code compacts at where a
+ *  command named one (`SWEEP_COMPACT_WINDOW` otherwise). */
+export interface NamedSolver {
+  readonly model: string;
+  readonly effort: ThinkingLevel;
+  readonly window?: number;
 }
 
 /** A campaign's setting as its log records it. */
 export interface Recorded {
   /** Who solves in the stored cycle's place; null for the cycle's own model at its effort. */
-  readonly solver: { readonly model: string; readonly effort: string } | null;
+  readonly solver: { readonly model: string; readonly effort: string; readonly window?: number } | null;
   readonly minutes: number;
   /** The model's own turns a solve is given; null where they are not limited. */
   readonly modelTurns: number | null;
@@ -82,6 +93,7 @@ export interface Recorded {
 interface SettingFlags {
   readonly solver?: string | undefined;
   readonly "solver-effort"?: string | undefined;
+  readonly "solver-window"?: string | undefined;
   readonly "solve-minutes"?: string | undefined;
   readonly "solve-model-turns"?: string | undefined;
   readonly tasks?: string | undefined;
@@ -116,6 +128,7 @@ const KIND = "campaign.setting";
 export const SETTING_OPTIONS = {
   solver: { type: "string" },
   "solver-effort": { type: "string" },
+  "solver-window": { type: "string" },
   "solve-minutes": { type: "string" },
   "solve-model-turns": { type: "string" },
 } as const;
@@ -139,7 +152,9 @@ const PARTS: readonly {
     of: "solver",
     flag: "--solver",
     said: ({ solver }) =>
-      solver === null ? null : `--solver ${solver.model} --solver-effort ${solver.effort}`,
+      solver === null
+        ? null
+        : `--solver ${solver.model} --solver-effort ${solver.effort}${solver.window === undefined ? "" : ` --solver-window ${String(solver.window)}`}`,
   },
   { of: "minutes", flag: "--solve-minutes", said: ({ minutes }) => `--solve-minutes ${String(minutes)}` },
   {
@@ -186,11 +201,20 @@ export function settingNamed(values: SettingFlags): NamedSetting {
       `--solve-model-turns ${String(named)}: a solve's model turns are a whole number of at least one`,
     );
   }
+  const window = given["solver-window"] === undefined ? undefined : Number(given["solver-window"]);
+  if (window !== undefined && (!Number.isInteger(window) || window < 1)) {
+    throw new Error(
+      `--solver-window ${String(given["solver-window"])}: a solver's compaction window is a whole number of tokens`,
+    );
+  }
   // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
   const effort = given["solver-effort"] as ThinkingLevel;
   const wallSeconds = minutes * 60;
   return {
-    solver: given.solver === undefined ? undefined : { model: given.solver, effort },
+    solver:
+      given.solver === undefined
+        ? undefined
+        : { model: given.solver, effort, ...keyIfDefined("window", window) },
     limits: {
       ...LIMITS,
       wallSeconds,
@@ -206,6 +230,7 @@ function defined(values: SettingFlags): SettingFlags {
   return {
     ...keyIfDefined("solver", values.solver),
     ...keyIfDefined("solver-effort", values["solver-effort"]),
+    ...keyIfDefined("solver-window", values["solver-window"]),
     ...keyIfDefined("solve-minutes", values["solve-minutes"]),
     ...keyIfDefined("solve-model-turns", values["solve-model-turns"]),
     ...keyIfDefined("tasks", values.tasks),
@@ -218,6 +243,7 @@ function flagsOf({ solver, minutes, modelTurns, tasks, target }: Recorded): Sett
   return {
     ...keyIfDefined("solver", solver?.model),
     ...keyIfDefined("solver-effort", solver?.effort),
+    ...keyIfDefined("solver-window", solver?.window === undefined ? undefined : String(solver.window)),
     "solve-minutes": String(minutes),
     ...keyIfDefined("solve-model-turns", modelTurns === null ? undefined : String(modelTurns)),
     ...keyIfDefined("tasks", tasks?.join(",")),
@@ -229,7 +255,7 @@ function flagsOf({ solver, minutes, modelTurns, tasks, target }: Recorded): Sett
 function recordOf(values: SettingFlags): Recorded {
   const { solver, limits } = settingNamed(values);
   return {
-    solver: solver === undefined ? null : { model: solver.model, effort: solver.effort },
+    solver: solver === undefined ? null : { ...solver },
     minutes: limits.wallSeconds / 60,
     modelTurns: limits.modelTurns ?? null,
     tasks: values.tasks === undefined ? null : values.tasks.split(","),
@@ -254,10 +280,18 @@ export function recordedSetting(events: readonly LogEvent[]): Recorded | null {
     isNumber(target) &&
     (modelTurns === null || isNumber(modelTurns)) &&
     (tasks === null || (Array.isArray(tasks) && tasks.every(isString))) &&
-    (solver === null || (isString(by?.model) && isString(by.effort)));
+    (solver === null ||
+      (isString(by?.model) && isString(by.effort) && (by.window === undefined || isNumber(by.window))));
   if (!whole) return null;
   return {
-    solver: isString(by?.model) && isString(by.effort) ? { model: by.model, effort: by.effort } : null,
+    solver:
+      isString(by?.model) && isString(by.effort)
+        ? {
+            model: by.model,
+            effort: by.effort,
+            ...keyIfDefined("window", isNumber(by.window) ? by.window : undefined),
+          }
+        : null,
     minutes,
     modelTurns,
     tasks: Array.isArray(tasks) ? tasks.filter(isString) : null,

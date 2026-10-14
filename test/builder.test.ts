@@ -339,9 +339,9 @@ describe("the Builder running its campaign", () => {
           bench = own;
           return {
             tools: [],
-            hook: () => {
+            hook: () => "The host ended the campaign.",
+            halts: () => {
               if (s.of(BUILD_CALL).length > 0) own.halt.abort();
-              return "The host ended the campaign.";
             },
           };
         },
@@ -353,6 +353,33 @@ describe("the Builder running its campaign", () => {
     expect(s.sent).toHaveLength(1);
     expect(built.ended).toBe("stopped");
     expect(s.of(BUILD_FINISHED)[0]?.crash).toBeNull();
+  });
+
+  // Plan item 6.4: each model request rendered the campaign's status twice, about 70 ms each at
+  // 1,486 events, to check for a halt, and discarded both.
+  it("checks for a halt before each model request without rendering the campaign's status", async () => {
+    const s = await setup([edit, edit, finish]);
+    const counted = { hook: 0, halts: 0 };
+    await session(
+      {
+        ...s.request,
+        campaign: () => ({
+          tools: [],
+          hook: () => {
+            counted.hook += 1;
+            return "Campaign facts.";
+          },
+          halts: () => {
+            counted.halts += 1;
+          },
+        }),
+      },
+      s,
+      s.walled,
+    );
+    // The status is rendered once, for the opening message; each of the three requests checks twice.
+    expect(s.sent).toHaveLength(3);
+    expect(counted).toEqual({ hook: 1, halts: 6 });
   });
 
   it("counts its wall on the Builder's own time, and cuts an action outside one", async () => {

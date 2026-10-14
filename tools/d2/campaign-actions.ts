@@ -666,6 +666,20 @@ function namedLine(decided: Decided, latest: string | null, size: string): strin
     : size;
 }
 
+/** The campaign's turn as `decide` reads it, halting the Builder's conversation where the campaign
+ *  has ended on a bound or spent its moves. */
+function halted(context: CampaignContext, bench: Bench) {
+  const reading = actionTurn(context);
+  const { decided } = reading;
+  if (
+    context.used >= context.maxMoves ||
+    (decided.move === "end" && decided.ending !== "no-room" && decided.ending !== "finished")
+  ) {
+    bench.halt.abort();
+  }
+  return reading;
+}
+
 /**
  * What the Builder is told of its campaign, where it can have moved (a campaign tool's result):
  * what was written and released, what is left of the total, the last tally, and the table's
@@ -673,13 +687,7 @@ function namedLine(decided: Decided, latest: string | null, size: string): strin
  * ending the table names, stops the conversation (`Bench.halt`).
  */
 function campaignStatus(context: CampaignContext, bench: Bench): string {
-  const { turn, decided } = actionTurn(context);
-  if (
-    context.used >= context.maxMoves ||
-    (decided.move === "end" && decided.ending !== "no-room" && decided.ending !== "finished")
-  ) {
-    bench.halt.abort();
-  }
+  const { turn, decided } = halted(context, bench);
   const noRoom = decided.move === "end" && decided.ending === "no-room";
   // The counts are of what was written and released, which no outcome of a held-out task moves:
   // the scorable, exhausted and waiting counts follow which tasks were answered (rule 3).
@@ -743,6 +751,9 @@ export function campaignTools(
         }),
       ],
       hook: () => campaignStatus(context, bench),
+      halts: () => {
+        halted(context, bench);
+      },
       closing: async () => {
         await context.examining?.done;
       },

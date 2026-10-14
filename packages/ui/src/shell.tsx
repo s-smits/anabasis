@@ -170,14 +170,14 @@ export function Shell({
   // The URL names what is shown: a selection it left out, or one the list no longer holds, is
   // written back without a new history entry. A project read off the route's own campaign keeps
   // that campaign, so a link to a move, a solve or a task in it keeps them (`changedRoute`).
-  // The project is written only while no campaign names it (`searchOf`).
+  // The project is written only while no campaign names it (`searchOf`). The same replacement
+  // writes the route in its one spelling, so a pane the page does not have, a move or an event that
+  // is no place in a log, or a parameter the route does not read leaves the address rather than
+  // stand in it beside what is shown (`navigate` changes nothing where the spelling already holds).
   useEffect(() => {
     if (campaigns.data === null) return;
-    const unnamed = selection.campaign === null && selection.project !== route.project;
-    if (selection.campaign !== route.campaign || unnamed) {
-      replace({ project: selection.project, campaign: selection.campaign });
-    }
-  }, [campaigns.data, selection.project, selection.campaign, route.project, route.campaign, replace]);
+    replace({ project: selection.project, campaign: selection.campaign });
+  }, [campaigns.data, selection.project, selection.campaign, route, replace]);
 
   if (campaigns.data?.campaigns.length === 0) {
     return (

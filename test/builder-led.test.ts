@@ -1094,6 +1094,34 @@ describe("a campaign's endings", () => {
     expect(crashedRun(events.slice(0, end)).count).toBe(3);
   });
 
+  it("tells a new conversation how the campaign's last Examiner session ended, in an earlier one", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-reread`;
+    const seats: Seats = {
+      seated: builderScripts(passing(), [
+        [
+          ["examine", {}],
+          ["release_practice", {}],
+          ["finish", { note: "Wait for tasks." }],
+        ],
+        [
+          ["campaign_status", {}],
+          ["finish", { note: "Read." }],
+        ],
+      ]),
+      examine: (request) => examine({ ...request, ...scripted([]) }),
+    };
+    const args = [...seeded(name), "--target", "8", "--practice", "3"];
+    await harnessBuilder(args, seats);
+    await harnessBuilder(args, seats);
+    const sessions = of(name, "exam.finished").map(({ session }) => (isString(session) ? session : ""));
+    const status = of(name, CALLED).findLast(({ tool }) => tool === "campaign_status");
+    // Until 14 October a new conversation was told only of Examiner sessions it had begun itself.
+    expect(status?.text).toContain(
+      `Examiner session ${sessions.at(-1) ?? ""} crashed, and held out 0 tasks.`,
+    );
+  });
+
   it("goes on with a new conversation when run again after the Builder finished", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-again`;

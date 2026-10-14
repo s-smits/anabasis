@@ -571,20 +571,23 @@ function sizeLine({ events, plan }: Turn, scored = Math.min(plan.wanted.target, 
   return `Comparison size: ${sizeLines(scored, { ...plan.wanted, patience: plan.patience })[0] ?? ""}.`;
 }
 
-/** The last Examiner session of this conversation: writing, or how it ended and what it held out. */
+/** The campaign's last Examiner session: writing, stopped with the run that began it, or how it
+ *  ended, and what it held out. Until 14 October a conversation read only the sessions it began,
+ *  so one opened after a session crashed was not told of it. */
 function examinedLines(events: readonly LogEvent[], writing: string | undefined): string[] {
-  const since = events.findLastIndex(({ kind }) => kind === "build.started");
   const begun = events.findLast(
-    ({ kind, data }, at) => at > since && kind === MOVED && data.move === "examine" && isString(data.session),
+    ({ kind, data }) => kind === MOVED && data.move === "examine" && isString(data.session),
   )?.data.session;
   if (!isString(begun)) return [];
   const ended = events.findLast(({ kind, data }) => kind === "exam.finished" && data.session === begun)?.data;
   if (begun === writing || ended === undefined) {
     const started = events.findIndex(({ kind, data }) => kind === "exam.started" && data.session === begun);
     // Held out, and never the ladder's: the Builder hears nothing of the ladder (rule 4).
-    const held = started === -1 ? 0 : heldAfter(events, started);
+    const held = plural(started === -1 ? 0 : heldAfter(events, started), "task");
     return [
-      `Examiner session ${begun} is writing beside this conversation and has held out ${plural(held, "task")} so far; any other campaign action waits for it.`,
+      begun === writing
+        ? `Examiner session ${begun} is writing beside this conversation and has held out ${held} so far; any other campaign action waits for it.`
+        : `Examiner session ${begun} stopped with the run of the campaign that began it, and held out ${held}.`,
     ];
   }
   const said = EXAMINED.get(isString(ended.ended) ? ended.ended : "") ?? "ended at its limits";

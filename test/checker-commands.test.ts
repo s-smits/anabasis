@@ -499,9 +499,16 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
       "each of the 1 tasks named to score has a stored accepted answer that passes today's verifier",
     );
     expect(one.code).toBe(0);
-    // The reading writes nothing: the log holds the tasks' proposals and gates, and no verdict.
-    const kinds = new Set(read(join(prepared, LOG)).map(({ kind }) => kind));
-    expect([...kinds].sort()).toEqual(["task.gate", "task.proposed"]);
+    // The reading writes nothing: the log holds the tasks' proposals and gates, and the one fact
+    // the preparation itself logs since 14 October, that a stored answer to t-1 passes today's
+    // checks, once however often it prepares (`task.feasible`).
+    const events = read(join(prepared, LOG));
+    expect([...new Set(events.map(({ kind }) => kind))].sort()).toEqual([
+      "task.feasible",
+      "task.gate",
+      "task.proposed",
+    ]);
+    expect(events.filter(({ kind }) => kind === "task.feasible")).toHaveLength(1);
     expect(prepare("t-9").said).toContain("--tasks t-9: the campaign holds no task of that id");
   });
 

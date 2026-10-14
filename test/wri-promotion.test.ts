@@ -286,6 +286,19 @@ describe("lane 31 across campaigns", () => {
     expect(climbTable([{ name: "again", events: again.log }])).toContain("| ended |");
   });
 
+  it("reads a campaign that ended and went on from its log by its last move, and one that ended as ended", () => {
+    const resumed = campaign();
+    resumed.put("campaign.opened", { budget: 300, terms: {} });
+    resumed.put("campaign.move", { move: "build", session: "b-1" });
+    resumed.put("campaign.ended", { ending: "environment" });
+    resumed.put("campaign.move", { move: "examine", session: "x-1" });
+    const [, , row] = climbTable([{ name: "resumed", events: resumed.log }]).split("\n");
+    expect(row).toEndWith("| examine x-1 |");
+    resumed.put("campaign.ended", { ending: "finished" });
+    const [, , again] = climbTable([{ name: "resumed", events: resumed.log }]).split("\n");
+    expect(again).toEndWith("| ended |");
+  });
+
   it("names a solve that ran what another campaign's session left, with its side and every path", () => {
     expect(crossings(peers()).left).toEqual([
       "promoting solve r1 (g-1 reference) from 20:01Z: /tmp/phq-inst/bin/phreeqc (building b-1, 20:00Z)",

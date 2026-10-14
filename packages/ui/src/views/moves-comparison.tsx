@@ -41,7 +41,7 @@ const tallyWords = ({ wins, losses, ties }: Tally): string =>
 /** A comparison's rulings in words: by kind, or how many were ruled while one is withheld. */
 function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
   if (rulings.withheld) {
-    return `${plural(rulings.ruled, "rejection")} ruled; the kinds are withheld while a ruling is`;
+    return `${plural(rulings.ruled, "rejection")} ruled; the kinds stay hidden while any ruling is withheld`;
   }
   return RULING_KINDS.map((kind) => `${String(rulings.kinds[kind])} ${rulingLabel(kind)}`).join(" · ");
 }

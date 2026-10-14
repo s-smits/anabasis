@@ -382,7 +382,7 @@ test("a comparison names the tasks its report left out under the split, and one 
     const open = render("b-4", tier);
     expect(open).toContain("Tasks fixed (3)");
     expect(open.match(/>no report yet</g)?.length).toBe(3);
-    expect(open).toContain("1 rejection ruled; the kinds are withheld while a ruling is");
+    expect(open).toContain("1 rejection ruled; the kinds stay hidden while any ruling is withheld");
     expect(open).toContain("1 rejection, withheld until its comparison reports");
     expect(open.includes(">earned<")).toBe(false);
   }

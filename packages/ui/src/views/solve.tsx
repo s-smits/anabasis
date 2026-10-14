@@ -37,7 +37,7 @@ const BY = {
 /** The verdict, as the tier lets it be shown. */
 function Verdict({ detail }: { detail: SolveDetail }) {
   if (detail.verdict === undefined) {
-    return <ExamSide what="the verdict: the answer and the checks that refused it" />;
+    return <ExamSide what="the verdict, with the answer and the checks that refused it" />;
   }
   if (detail.verdict === null) return <p className="ana-faint">No verdict on record.</p>;
   const { kind, refusedBy, fault, answer } = detail.verdict;

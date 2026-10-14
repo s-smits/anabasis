@@ -366,6 +366,16 @@ describe("the simplify ownership catchers", () => {
     ).toHaveLength(2);
   });
 
+  it("counts no prose in a suite, where a note or an asserted sentence is no fixture's name", async () => {
+    const noted = SUITE.replaceAll("opening.json", "Nothing to add.");
+    expect(await reportedLines("ana", "no-repeated-string-literal", noted, "test/fixture.test.ts")).toEqual(
+      [],
+    );
+    expect(
+      await reportedLines("ana", "no-repeated-string-literal", noted, "src/run/fixture.ts"),
+    ).toHaveLength(2);
+  });
+
   it("names a suite's fixture once, after the imports, and reads every copy back from it", async () => {
     const swept = await fixedSource("ana", "no-repeated-string-literal", SUITE, "test/fixture.test.ts");
     expect(swept).toContain('const OPENING_JSON = "opening.json";');

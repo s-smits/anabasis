@@ -196,7 +196,7 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 **Repetition**
 
 - `no-repeated-string-literal` [fix]: six or more characters, four spellings in a file (ten in a
-  test). Import sources, object keys and bare tags are exempt.
+  test). Import sources, object keys and bare tags are exempt, and so is a test's prose.
 - `no-thrice-spelled-object`: three or more properties, three spellings (five in a test).
 
 **Types**

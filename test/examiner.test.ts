@@ -351,7 +351,7 @@ describe("a session that writes tasks", () => {
     const next = seat("write", [finish, finish]);
     await examine({ ...next.request, id: "x-2", log: s.log, budget: { modelTurns: 3, minutes: 8 } });
     expect(next.sent[0]).toContain(
-      "Every solve of a task is held to 3 turns of the solver's own, a turn being one reply with the tool calls in it, and 8 minutes. Both harnesses are measured under that budget",
+      "Every solve of a task is held to 3 turns of the solver's own, a turn being one reply with the tool calls in it, and 8 minutes. This is the budget",
     );
     expect(next.sent[0]).toContain("it is no target of yours");
     expect(next.sent[0]).toContain(String.raw`said at its finish, in its own words:\n${NOTE}`);
@@ -805,6 +805,17 @@ describe("a session that writes tasks", () => {
     expect(s.of("exam.started")).toMatchObject([{ tried: 3 }]);
     expect(s.sent[0]).toContain("try_task takes instances");
     expect(s.sent[0]).not.toContain("propose_tasks");
+    // Plan item 5.1: the gate is explained once, in the system prompt's section the tool points to,
+    // and the ladder there as the tool's result says it; the objective's rule is said once.
+    const once = (part: string) => (s.sent[0] ?? "").split(part).length - 1;
+    expect(once("## The gate")).toBe(1);
+    expect(once("held out where some of those solves gave a valid answer and not all")).toBe(1);
+    expect(once("as the system prompt's section on the gate says")).toBe(1);
+    expect(once("held for the ladder: a fixed set apart from the exam, never scored for a promotion")).toBe(
+      1,
+    );
+    expect(once("declares an objective")).toBe(1);
+    expect(once("Without an objective")).toBe(0);
     expect(s.sent.join("\n")).not.toContain(SOLVER);
   });
 

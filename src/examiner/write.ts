@@ -104,11 +104,11 @@ const GATES = {
   propose_tasks: {
     label: "Propose tasks",
     description:
-      "Put task instances to the host's gate, which reads the shape of each package. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out, or refused with the gate's reason. A task that is held out is in the exam from then on.",
+      "Put task instances to the host's gate, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.",
   },
   try_task: {
     label: "Try tasks",
-    description: `Put task instances to the host's gate, one at a time. The gate reads the shape of each package, and then the reference harness solves the task ${String(TRIED)} times under the budget; it is held out only where some of those solves gave a valid answer and not all. Where none did and an answer of yours passed try_answer on it, it is held for the ladder, a fixed set apart from the exam. Each instance is a family, a public input and hidden values, in the shape of the existing tasks. For each it returns held out with how many solves were valid, or refused with the gate's reason; no solve's answer or trace is returned. A task that is held out is in the exam from then on, and those solves are never scored.`,
+    description: `Put task instances to the host's gate, one at a time: the shape of each package, then ${String(TRIED)} solves of it by the reference harness, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */

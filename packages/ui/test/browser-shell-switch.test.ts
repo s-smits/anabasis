@@ -46,6 +46,8 @@ let served: Served;
 let browser: Browser;
 /** The key of each fixture campaign, as the server forms it. */
 let keys: Keys;
+/** Each fixture campaign's answer, by the path the page asks it at. */
+const answers = new Map<string, string>();
 
 const POLL_MS = 5_000;
 
@@ -56,11 +58,11 @@ beforeAll(async () => {
   // Each campaign read once, so that a switch below waits on a folded log, as it does on a server
   // that has been running, and not on the first fold of it.
   await Promise.all(
-    [keys.fixture, keys.early, keys.units].map((key) =>
-      fetch(`${served.origin}/api/campaign?key=${encodeURIComponent(key)}`, {
-        headers: { [TOKEN_HEADER]: served.token },
-      }),
-    ),
+    [keys.fixture, keys.early, keys.units].map(async (key) => {
+      const path = `/api/campaign?key=${encodeURIComponent(key)}`;
+      const response = await fetch(`${served.origin}${path}`, { headers: { [TOKEN_HEADER]: served.token } });
+      answers.set(path, await response.text());
+    }),
   );
 });
 afterAll(async () => {
@@ -98,6 +100,22 @@ async function observe(page: Page, selector: string): Promise<() => Promise<numb
   return () => page.evaluate(() => window.anaMutations?.mutations ?? -1);
 }
 
+/**
+ * Answer each campaign read at once, with the server's own answer read in `beforeAll`. A switch
+ * paints no placeholder only where the read answers within the page's patience (`waited.ts`), and
+ * ten Chromes beside ten servers, as `bun run ui:gate` runs them, kept one read past it, so these
+ * tests time what the page paints and not how fast a loaded server answers.
+ */
+async function answerAtOnce(page: Page): Promise<void> {
+  await page.route("**/api/campaign?**", async (route) => {
+    const url = new URL(route.request().url());
+    const body = answers.get(`${url.pathname}${url.search}`);
+    await (body === undefined
+      ? route.continue()
+      : route.fulfill({ status: 200, contentType: "application/json", body }));
+  });
+}
+
 /** Resolves once the page has read the selected campaign `count` more times. */
 async function polls(page: Page, count: number): Promise<void> {
   let seen = 0;
@@ -115,6 +133,7 @@ describe("a switch of project or campaign", () => {
   test("paints no placeholder and no blank frame when the project changes", async () => {
     const opened = await sampled(`campaign=${keys.fixture}`, "fixture");
     const { page } = opened;
+    await answerAtOnce(page);
     await pick(page, "Project", "unit-conversion");
     await expect(page.getByRole("heading", { level: 1, name: "units" })).toBeVisible();
     await pick(page, "Project", "vowel-counts");
@@ -129,6 +148,7 @@ describe("a switch of project or campaign", () => {
   test("paints no placeholder and no blank frame when the campaign changes", async () => {
     const opened = await sampled(`campaign=${keys.fixture}`, "fixture");
     const { page } = opened;
+    await answerAtOnce(page);
     await pick(page, "Campaign", "early");
     await expect(page.getByRole("heading", { level: 1, name: "early" })).toBeVisible();
     await pick(page, "Campaign", "fixture");

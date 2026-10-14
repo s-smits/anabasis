@@ -97,8 +97,11 @@ export function sizeLines(tasks: number, asked: Asked): string[] {
       .join(", ");
   const share = detectable(units(tasks, 0), level);
   const rate = falseRate(units(tasks, 0), level, trigger);
+  // Until 14 October a pair that no result clears read "clear at , each task".
+  const both = clearing(2 * tasks, level);
+  const clear = both.length === 0 ? "cannot clear it, all won" : `clear at ${said(both)}`;
   return [
-    `${scored}; at --trigger ${String(trigger)} the smallest results that buy the repeat are ${said(first)}, and at --level ${String(level)} the step and its repeat together clear at ${said(clearing(2 * tasks, level))}, each task won or lost by as many pairs`,
+    `${scored}; at --trigger ${String(trigger)} the smallest results that buy the repeat are ${said(first)}, and at --level ${String(level)} the step and its repeat together ${clear}, each task won or lost by as many pairs`,
     share === null
       ? `were no task to tie, one reading at --level ${String(level)} would detect no share of ${plural(tasks, "task")}: it takes ${String(sweepOf(level))}, all won`
       : `were no task to tie, one reading at --level ${String(level)} would detect four times in five a harness that wins ${String(Math.round(100 * share))}% of the tasks, and fewer untied tasks need a larger share`,

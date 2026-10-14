@@ -363,7 +363,12 @@ async function attempt(session: Session, run: Execution, threadId: string | null
       stderr: stderrFd,
     });
     await child.exited;
-    return { exitCode: child.exitCode, signal: child.signalCode ?? null, spawnError: null, from };
+    return {
+      exitCode: child.exitCode,
+      signal: child.signalCode == null ? null : String(child.signalCode),
+      spawnError: null,
+      from,
+    };
   } catch (error) {
     return { exitCode: null, signal: null, spawnError: errorMessage(error), from };
   } finally {

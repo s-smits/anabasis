@@ -1204,12 +1204,12 @@ plan's open row (`docs/plan.md`, "Tuning", the row "Network in a solve").
 
 ### Runtime and commands
 
-Bun 1.4.2 only, as `package.json` pins it, for every task including one-off inspection. No Node,
+Bun 1.4.3 only, as `package.json` pins it, for every task including one-off inspection. No Node,
 npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABITS.md`, 12.8).
 
 | Command | What it does |
 | --- | --- |
-| `bun run typecheck` | `tsc --noEmit` over `src`, `tools`, `vendor` and `test` |
+| `bun run typecheck` | `bun check`, Bun's port of the TypeScript 7 checker, over `src`, `tools`, `vendor` and `test` |
 | `bun run lint` | Oxlint, type-aware, with the two repository plugins and the not-slop ledger applied. `-- --strict` makes plugin findings fail the run |
 | `bun run format` / `format:check` | Biome writes, or checks |
 | `bun run test -- <paths...>` | The suite through its wrapper. Never bare `bun test` |

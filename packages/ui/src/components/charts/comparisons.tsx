@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useMemo } from "react";
+import { memo, type MouseEvent, type ReactNode, useMemo } from "react";
 import {
   Bar,
   BarChart,
@@ -477,8 +477,14 @@ export const ComparisonsChart = memo(function ComparisonsChart({ bars, promotion
     // A step is the one reading worth finding at a glance, so its column is named in full ink.
     const step = slot.bar.reading === "step";
     const word = [KIND_WORD[slot.bar.kind], step ? "step" : null].filter((part) => part !== null).join(", ");
+    // The chart under the label opens the column its tooltip last pointed at, which after a keyboard
+    // or a hover elsewhere is another; the label's click is the label's alone.
+    const openLabel = (event: MouseEvent) => {
+      event.stopPropagation();
+      onOpen(slot.bar.move);
+    };
     return (
-      <g className="ana-comparisons-tick" onClick={() => onOpen(slot.bar.move)}>
+      <g className="ana-comparisons-tick" onClick={openLabel}>
         <text
           x={Number(x)}
           y={Number(y) + 12}

@@ -80,6 +80,8 @@ export function TasksPane({ reading, navigation }: PaneProps) {
           />
         </div>
       )}
+      {outer.marker}
+      {inner.marker}
     </Section>
   );
 }

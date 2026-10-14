@@ -6,7 +6,7 @@ import { ProjectSidebar } from "./components/project-sidebar.tsx";
 import type { Live } from "./live.ts";
 import type { CampaignList, CampaignReading, CampaignRow, Issue } from "./models.ts";
 import type { Navigation, Pane, PaneProps, Route } from "./route.ts";
-import { useSpelledAddress } from "./spelling.ts";
+import { respelled, SpelledAddress } from "./spelling.ts";
 import { CampaignPane } from "./views/campaign.tsx";
 import { Inspector } from "./views/inspector.tsx";
 import { LogPane } from "./views/log.tsx";
@@ -24,7 +24,7 @@ import { useWaited } from "./waited.ts";
  * A pane and the inspector are keyed by the campaign, so that nothing a pane held for one campaign,
  * a page of the log or its filters, is asked of the next. While the campaign's answer is the
  * previous campaign's, the previous pane stays on screen as it was drawn, inert and marked busy, so
- * that no click acts on the old campaign under the new name; past `PENDING_MS` it gives way to the
+ * that no click acts on the old campaign under the new name; past the page's patience (`waited.ts`) it gives way to the
  * placeholder that says the campaign is being read. Until 14 October the placeholder replaced the
  * whole pane at once, and a switch of project or campaign painted it for about 130 ms (four frames
  * of the operator's recording) before the new campaign drew: DESIGN.md keeps the previous content
@@ -55,11 +55,6 @@ const PANES: Readonly<Record<Pane, ComponentType<PaneProps>>> = {
 };
 
 const TIER_LABEL = { default: "default tier", exam: "exam side" } as const;
-
-/** How long the previous campaign's pane stands, inert, before the placeholder replaces it: a read
- *  of a campaign usually answers well inside it, so a switch paints no placeholder at all, and one
- *  that does not is said to be reading rather than leave the old campaign up indefinitely. */
-const PENDING_MS = 400;
 
 /** The selection a route names, or the newest where it names none the list holds: the route's
  *  campaign decides the project where the route names no project. */
@@ -121,7 +116,7 @@ function Page({
   }
   const pending = fresh === null && reading.error === null;
   const keeping = pending && drawn !== null;
-  const waited = useWaited({ holding: keeping, ms: PENDING_MS });
+  const waited = useWaited(keeping ? "campaign" : null);
   if (campaigns.refused === "token" || campaigns.refused === "host") {
     return (
       <NoSignal title="The server refused this page" tone="bad">
@@ -163,17 +158,15 @@ export function Shell({
   const [collapsed, setCollapsed] = useState(false);
   const { route, push } = navigation;
   const selection = selectionOf(campaigns.data, route);
-  // The address names what is shown, in its one spelling (`spelling.ts`).
-  useSpelledAddress({
-    listed: campaigns.data !== null,
-    project: selection.project,
-    campaign: selection.campaign,
-    navigation,
-  });
+  // The address names what is shown, in its one spelling (`spelling.ts`), once the list is read.
+  const spelled = { project: selection.project, campaign: selection.campaign, navigation };
+  const respelling = campaigns.data === null ? null : respelled(spelled);
+  const spell = respelling === null ? null : <SpelledAddress key={respelling} {...spelled} />;
 
   if (campaigns.data?.campaigns.length === 0) {
     return (
       <main className="ana-empty-workspace">
+        {spell}
         <AnabasisMark className="ana-brand-mark" />
         <h1>No campaigns found</h1>
         <p>No worktree of this repository holds a campaign log under .ana/d2.</p>
@@ -187,6 +180,7 @@ export function Shell({
   const inspecting = (route.harness !== null && (route.file ?? route.diff) !== null) || route.event !== null;
   return (
     <div className={`ana-shell ${collapsed ? "is-collapsed" : ""} ${inspecting ? "has-inspector" : ""}`}>
+      {spell}
       <a className="ana-skip-link" href="#main">
         Skip to the campaign
       </a>

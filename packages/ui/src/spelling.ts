@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import type { Navigation } from "./route.ts";
+import { useMountEffect } from "./mount.ts";
+import { changedRoute, type Navigation, searchOf } from "./route.ts";
 
 /*
  * The address written back in its one spelling once the campaigns are read. The route is read from
@@ -8,25 +8,30 @@ import type { Navigation } from "./route.ts";
  * pane the page does not have, a move or an event that is no place in a log, or a parameter the route
  * does not read, the shown selection is written back without a new history entry. Until 14 October
  * only a campaign or a project that differed was written back, so the rest stayed in the address and
- * a click on the pane already open pushed a second entry. Writing the history is a side effect of a
- * render's result, so it is an effect, and it stands in this hook rather than in a component (the
- * operator's rule of 14 October, after github.com/alejandrobailo/no-use-effect).
+ * a click on the pane already open pushed a second entry.
+ *
+ * Writing the history acts on the world, so it is done as a component mounts (`mount.ts`): the shell
+ * mounts `SpelledAddress` only where the address differs from its spelling, keyed by that spelling,
+ * so each spelling is written once, and an address that already holds it mounts nothing.
  */
 
-/** What the address is written from: whether the list is read, the selection, and the navigation. */
+/** What the address is spelled from: the selection shown, and the navigation that writes it. */
 interface Shown {
-  readonly listed: boolean;
   readonly project: string | null;
   readonly campaign: string | null;
   readonly navigation: Navigation;
 }
 
-/** Replace the address with the route's spelling of what is shown; `navigate` changes nothing where
- *  that spelling already holds, so no history entry is added. */
-export function useSpelledAddress({ listed, project, campaign, navigation }: Shown): void {
-  const { route, replace } = navigation;
-  useEffect(() => {
-    if (!listed) return;
-    replace({ project, campaign });
-  }, [listed, project, campaign, route, replace]);
+/** What the address is now and what it is spelled as, as one key, or null where the two agree. A page
+ *  rendered without a window has no address to spell. */
+export function respelled({ project, campaign, navigation }: Shown): string | null {
+  const spelled = searchOf(changedRoute(navigation.route, { project, campaign }));
+  const now = typeof window === "undefined" ? spelled : window.location.search;
+  return spelled === now ? null : `${now} ${spelled}`;
+}
+
+/** Writes the shown selection's spelling into the address as it mounts, with no history entry. */
+export function SpelledAddress({ project, campaign, navigation }: Shown): null {
+  useMountEffect(() => navigation.replace({ project, campaign }));
+  return null;
 }

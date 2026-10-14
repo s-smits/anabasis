@@ -84,7 +84,11 @@ export function LogList({
                       #{event.index}
                     </button>
                   </td>
-                  <td className="ana-num">{time(event.at)}</td>
+                  {/* Left under its head, in tabular figures: aligned right in the widest column, a
+                      time stood against the kind beside it, far from its head (14 October). */}
+                  <td>
+                    <span className="ana-num">{time(event.at)}</span>
+                  </td>
                   <td className="ana-mono">{event.kind}</td>
                   <td className="ana-mono">{event.session ?? ""}</td>
                   <td className="ana-mono">{event.solve ?? ""}</td>

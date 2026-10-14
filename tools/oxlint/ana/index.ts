@@ -24,6 +24,7 @@ import { noDeepNestingRule } from "./rules/no-deep-nesting.ts";
 import { noHandRolledSleepRule } from "./rules/no-hand-rolled-sleep.ts";
 import { noInlineBlockReducerRule } from "./rules/no-inline-block-reducer.ts";
 import { noInlineSchemaLiteralRule } from "./rules/no-inline-schema-literal.ts";
+import { noReactEffectRule } from "./rules/no-react-effect.ts";
 import { noLifetimeOutsideOwnerRule } from "./rules/no-lifetime-outside-owner.ts";
 import { noPassThroughWrapperRule } from "./rules/no-pass-through-wrapper.ts";
 import { noPropertyReadOnFunctionRule } from "./rules/no-property-read-on-function.ts";
@@ -106,6 +107,7 @@ const anaPlugin = eslintCompatPlugin({
     "no-arms-differing-in-one-term": noArmsDifferingInOneTermRule,
     "no-deep-nesting": noDeepNestingRule,
     "no-hand-rolled-sleep": noHandRolledSleepRule,
+    "no-react-effect": noReactEffectRule,
     "no-lifetime-outside-owner": noLifetimeOutsideOwnerRule,
     "no-pass-through-wrapper": noPassThroughWrapperRule,
     "no-renaming-temporary": noRenamingTemporaryRule,

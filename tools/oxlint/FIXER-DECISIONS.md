@@ -103,17 +103,18 @@ for a reason the rule states more precisely itself.
   `no-positional-boolean-parameter`, `prefer-entries-over-keys-lookup`. Which two words name the
   states, what the extracted function is called, what the entry's value is called — that is the
   change, not a step towards it.
-- **The repair is a structure the rule cannot choose** (10): `no-deep-nesting`, `no-tangled-ternary`,
+- **The repair is a structure the rule cannot choose** (11): `no-deep-nesting`, `no-tangled-ternary`,
   `no-inline-block-reducer`, `no-side-effect-in-predicate`, `prefer-lookup-over-equality-chain`,
   `no-reduce-accumulator-copy`, `no-arms-differing-in-one-term`, `no-hand-rolled-sleep`,
-  `no-single-use-const-chain`, `no-hand-read-argv`. Each offers two or three correct answers —
-  guard clause or extraction, `Record` or `Map` or `satisfies`, mutating accumulator or pipeline,
-  and for the sleep either of the two exact waits or an admitted real clock, and for an argument
-  read the `runCommand` spec that declares the script's options — and which one a site wants is
-  the reading. `no-hand-read-controller-evidence` was in this group until 10 October, when it was
-  removed: it sent a skill script to `openRecordedRun` and the controller's `opening.json` and
-  `terminal.json`, and v2 has none of the three, since a run here is its log, opened through
-  `tools/runs/`.
+  `no-single-use-const-chain`, `no-hand-read-argv`, `no-react-effect`. Each offers two or
+  three correct answers — guard clause or extraction, `Record` or `Map` or `satisfies`, mutating
+  accumulator or pipeline, and for the sleep either of the two exact waits or an admitted real
+  clock, for an argument read the `runCommand` spec that declares the script's options, and for
+  an effect the render, a `key`, a handler, a subscription or a callback ref — and which one a
+  site wants is the reading. `no-hand-read-controller-evidence` was in this group until
+  10 October, when it was removed: it sent a skill script to `openRecordedRun` and the
+  controller's `opening.json` and `terminal.json`, and v2 has none of the three, since a run here
+  is its log, opened through `tools/runs/`.
 - **The repair reaches other files** (5): `no-pass-through-wrapper`, `no-lifetime-outside-owner`,
   `no-module-mocking`, `no-object-parameters`, `no-inline-slop-answer`. Deleting the wrapper means
   editing every caller; moving a kill to its owner is two files and usually a deletion; an

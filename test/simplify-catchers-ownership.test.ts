@@ -306,6 +306,39 @@ export function cases() {
 }
 `.trimStart();
 
+/** A component that asks after the fact, three ways: every call is reported, however it is named. */
+const EFFECT_COMPONENT = `
+import * as React from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+
+export function Panel({ items }: { items: string[] }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => setCount(items.length), [items]); // REPORT state that mirrors a prop
+  useLayoutEffect(() => document.body.focus(), []); // REPORT focus belongs to a callback ref
+  React.useEffect(() => undefined, []); // REPORT off the namespace it is the same hook
+  const sorted = useMemo(() => [...items].sort(), [items]); // ADMITTED derived during render
+  return <p>{count}{sorted.join()}</p>;
+}
+`.trimStart();
+
+/** A hook module: a named hook is no owner of an effect, and an external store is no effect. */
+const EFFECT_HOOKS = `
+import { useEffect, useSyncExternalStore } from "react";
+
+export function useTitle(title: string) {
+  useEffect(() => { document.title = title; }, [title]); // REPORT a named hook holds no effect either
+}
+
+function subscribe(notify: () => void) {
+  globalThis.addEventListener("online", notify);
+  return () => globalThis.removeEventListener("online", notify);
+}
+
+export function useOnline(): boolean {
+  return useSyncExternalStore(subscribe, () => navigator.onLine); // ADMITTED a store whose subscription ends with what it reads
+}
+`.trimStart();
+
 describe("the simplify ownership catchers", () => {
   it("reads a local alias that only restates one function's return type", async () => {
     await pins("no-alias-restating-return", ALIASES, 1);
@@ -345,6 +378,20 @@ describe("the simplify ownership catchers", () => {
     ).toStrictEqual([]);
     expect(
       await reportedLines("ana", "no-lifetime-outside-owner", REAPER, "tools/runtime/fixture.ts"),
+    ).toStrictEqual([]);
+  });
+
+  it("reads every effect a component or a hook calls, and no store read through useSyncExternalStore", async () => {
+    await pins("no-react-effect", EFFECT_COMPONENT, 3, "packages/ui/src/views/panel.tsx");
+    await pins("no-react-effect", EFFECT_HOOKS, 1, "packages/ui/src/views/later.ts");
+  });
+
+  it("says nothing of the one owner of useMountEffect, or of an effect in a test", async () => {
+    expect(
+      await reportedLines("ana", "no-react-effect", EFFECT_HOOKS, "packages/ui/src/mount.ts"),
+    ).toStrictEqual([]);
+    expect(
+      await reportedLines("ana", "no-react-effect", EFFECT_COMPONENT, "packages/ui/test/panel.test.tsx"),
     ).toStrictEqual([]);
   });
 

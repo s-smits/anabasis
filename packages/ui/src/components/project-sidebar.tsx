@@ -64,7 +64,13 @@ export function ProjectSidebar({
   return (
     <aside className={`ana-sidebar ${collapsed ? "is-collapsed" : ""}`}>
       <div className="ana-sidebar-header">
-        <button type="button" className="ana-brand" onClick={onCollapse} title="Toggle sidebar">
+        <button
+          type="button"
+          className="ana-brand"
+          onClick={onCollapse}
+          title="Toggle sidebar"
+          aria-expanded={!collapsed}
+        >
           <AnabasisMark className="ana-brand-mark" />
           <span className="ana-brand-word">
             <AnabasisWordmark />
@@ -95,7 +101,15 @@ export function ProjectSidebar({
         ))}
       </nav>
       <div className="ana-sidebar-footer">
-        <button type="button" className="ana-collapse-button" onClick={onCollapse}>
+        {/* Collapsed, the label is hidden and the icon alone would leave the button unnamed. */}
+        <button
+          type="button"
+          className="ana-collapse-button"
+          onClick={onCollapse}
+          aria-label={collapsed ? "Open" : "Collapse"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Open the sidebar" : "Collapse the sidebar"}
+        >
           {collapsed ? <ChevronRight /> : <ChevronLeft />}
           <span>{collapsed ? "Open" : "Collapse"}</span>
         </button>

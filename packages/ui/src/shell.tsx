@@ -1,4 +1,4 @@
-import { type ComponentType, useEffect, useState } from "react";
+import { type ComponentType, memo, useEffect, useState } from "react";
 import { AnabasisMark } from "./components/brand.tsx";
 import { Callout } from "./components/layout.tsx";
 import { Badge, NoSignal } from "./components/primitives.tsx";
@@ -20,8 +20,13 @@ import { TasksPane } from "./views/tasks.tsx";
  * pane's own name stands in its header, not here.
  *
  * A pane and the inspector are keyed by the campaign, so that nothing a pane held for one campaign,
- * a page of the log or its filters, is asked of the next; and while the campaign's answer is the
- * previous campaign's, the page says it is reading rather than draw the old one under the new name.
+ * a page of the log or its filters, is asked of the next. While the campaign's answer is the
+ * previous campaign's, the previous pane stays on screen as it was drawn, inert and marked busy, so
+ * that no click acts on the old campaign under the new name; past `PENDING_MS` it gives way to the
+ * placeholder that says the campaign is being read. Until 14 October the placeholder replaced the
+ * whole pane at once, and a switch of project or campaign painted it for about 130 ms (four frames
+ * of the operator's recording) before the new campaign drew: DESIGN.md keeps the previous content
+ * until its replacement is ready.
  */
 
 /** The project and the campaign the page shows, and the choices beside them. */
@@ -34,6 +39,12 @@ interface Selection {
   readonly campaign: string | null;
 }
 
+/** What a campaign's pane was last drawn from. */
+interface Drawn {
+  readonly reading: CampaignReading;
+  readonly navigation: Navigation;
+}
+
 const PANES: Readonly<Record<Pane, ComponentType<PaneProps>>> = {
   campaign: CampaignPane,
   moves: MovesPane,
@@ -42,6 +53,11 @@ const PANES: Readonly<Record<Pane, ComponentType<PaneProps>>> = {
 };
 
 const TIER_LABEL = { default: "default tier", exam: "exam side" } as const;
+
+/** How long the previous campaign's pane stands, inert, before the placeholder replaces it: a read
+ *  of a campaign usually answers well inside it, so a switch paints no placeholder at all, and one
+ *  that does not is said to be reading rather than leave the old campaign up indefinitely. */
+const PENDING_MS = 400;
 
 /** The selection a route names, or the newest where it names none the list holds: the route's
  *  campaign decides the project where the route names no project. */
@@ -63,6 +79,28 @@ function Issues({ issues }: { issues: readonly Issue[] }) {
   ));
 }
 
+/** The pane of one campaign's reading, with the tier and the issues above it. Memoised, so that the
+ *  previous campaign's pane, kept while the next is read, is not drawn again under the new route. */
+const CampaignView = memo(function CampaignView({
+  reading,
+  navigation,
+}: {
+  reading: CampaignReading;
+  navigation: Navigation;
+}) {
+  const Selected = PANES[navigation.route.pane];
+  return (
+    <>
+      <div className="ana-record-meta">
+        <Badge tone={reading.tier === "exam" ? "warn" : "neutral"}>{TIER_LABEL[reading.tier]}</Badge>
+        <span>{reading.row.tree}</span>
+      </div>
+      <Issues issues={reading.issues} />
+      <Selected key={reading.row.key} reading={reading} navigation={navigation} />
+    </>
+  );
+});
+
 /** The pane, or what stands in its place while the campaign has not been read. */
 function Page({
   navigation,
@@ -73,6 +111,21 @@ function Page({
   campaigns: Live<CampaignList>;
   reading: Live<CampaignReading>;
 }) {
+  const fresh = reading.current ? reading.data : null;
+  const [drawn, setDrawn] = useState<Drawn | null>(null);
+  useEffect(() => {
+    if (fresh !== null) setDrawn({ reading: fresh, navigation });
+  }, [fresh, navigation]);
+  const pending = fresh === null && reading.error === null;
+  const keeping = pending && drawn !== null;
+  // Whether the previous campaign has stood for `PENDING_MS` while the next is read.
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    setWaited(false);
+    if (!keeping) return;
+    const timer = setTimeout(() => setWaited(true), PENDING_MS);
+    return () => clearTimeout(timer);
+  }, [keeping]);
   if (campaigns.refused === "token" || campaigns.refused === "host") {
     return (
       <NoSignal title="The server refused this page" tone="bad">
@@ -87,25 +140,18 @@ function Page({
       </NoSignal>
     );
   }
-  if (reading.data === null || !reading.current) {
+  if (fresh !== null) return <CampaignView reading={fresh} navigation={navigation} />;
+  if (keeping && !waited) {
     return (
-      <NoSignal title={reading.error === null ? "Reading the campaign" : "The campaign could not be read"}>
-        {reading.error ?? "The selected campaign is loading."}
-      </NoSignal>
+      <div className="ana-pending" inert aria-busy="true">
+        <CampaignView reading={drawn.reading} navigation={drawn.navigation} />
+      </div>
     );
   }
-  const Selected = PANES[navigation.route.pane];
   return (
-    <>
-      <div className="ana-record-meta">
-        <Badge tone={reading.data.tier === "exam" ? "warn" : "neutral"}>
-          {TIER_LABEL[reading.data.tier]}
-        </Badge>
-        <span>{reading.data.row.tree}</span>
-      </div>
-      <Issues issues={reading.data.issues} />
-      <Selected key={reading.data.row.key} reading={reading.data} navigation={navigation} />
-    </>
+    <NoSignal title={reading.error === null ? "Reading the campaign" : "The campaign could not be read"}>
+      {reading.error ?? "The selected campaign is loading."}
+    </NoSignal>
   );
 }
 
@@ -178,7 +224,8 @@ export function Shell({
           <Page navigation={navigation} campaigns={campaigns} reading={reading} />
         </div>
       </main>
-      <Inspector key={shown?.row.key ?? ""} navigation={navigation} reading={shown} />
+      {/* Keyed by the campaign the route names, so that a switch remounts it once, not twice. */}
+      <Inspector key={selection.campaign ?? ""} navigation={navigation} reading={shown} />
     </div>
   );
 }

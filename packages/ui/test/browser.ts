@@ -53,6 +53,30 @@ export interface Viewing {
   readonly reducedMotion?: "reduce" | "no-preference";
 }
 
+/** The sampler's counts, as the page holds them between two reads. */
+interface Sampled {
+  placeholder: number;
+  blank: number;
+  frames: number;
+  /** The address of each frame counted as a placeholder or as blank. */
+  at: string[];
+}
+
+declare global {
+  interface Window {
+    anaFramesSeen?: Sampled;
+  }
+}
+
+/** What the frame sampler counted since it was last read. */
+export interface FramesSeen {
+  /** Frames in which `main` showed the "Reading the campaign" placeholder. */
+  readonly placeholder: number;
+  /** Frames in which `main` held no heading and no table: nothing of a pane was painted. */
+  readonly blank: number;
+  readonly frames: number;
+}
+
 const PACKAGE = join(import.meta.dir, "..");
 const STARTED = /anabasis at (http:\/\/127\.0\.0\.1:\d+)\/\?token=([0-9a-f]+)/u;
 const START_MS = 20_000;
@@ -177,4 +201,45 @@ export async function accessibilityViolations(page: Page, within?: string): Prom
     (violation) =>
       `${violation.id}: ${violation.help} (${violation.nodes.map((node) => node.target.join(" ")).join(", ")})`,
   );
+}
+
+/**
+ * Count, on every animation frame of every page of `context`, whether `main` shows the placeholder
+ * a campaign stands behind while it is read, and whether it shows nothing of a pane at all, with
+ * the address of each such frame. The operator's recording of 14 October caught a switch of project
+ * painting the placeholder for four frames; a screenshot taken before or after never would, so the
+ * page is sampled where it paints. Read and reset the counts with `framesSeen`.
+ */
+export async function sampleFrames(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    const seen: Sampled = { placeholder: 0, blank: 0, frames: 0, at: [] };
+    window.anaFramesSeen = seen;
+    const sample = () => {
+      const main = document.querySelector("main");
+      seen.frames += 1;
+      if (main !== null) {
+        const placeholder = (main.textContent ?? "").includes("Reading the campaign");
+        const blank = main.querySelector("h1, h2, table") === null;
+        if (placeholder) seen.placeholder += 1;
+        if (blank) seen.blank += 1;
+        if (placeholder || blank) seen.at.push(location.search);
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+}
+
+/** The sampler's counts since it was installed or last read, which this resets. */
+export async function framesSeen(page: Page): Promise<FramesSeen> {
+  return await page.evaluate(() => {
+    const seen = window.anaFramesSeen;
+    if (seen === undefined) throw new Error("the frame sampler is not installed: call sampleFrames first");
+    const counts = { placeholder: seen.placeholder, blank: seen.blank, frames: seen.frames };
+    seen.placeholder = 0;
+    seen.blank = 0;
+    seen.frames = 0;
+    seen.at = [];
+    return counts;
+  });
 }

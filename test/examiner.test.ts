@@ -42,6 +42,7 @@ import {
   SOUND,
   seat,
   sweep,
+  USED,
   WALL,
 } from "./helpers/examiner-seat.ts";
 
@@ -445,6 +446,29 @@ describe("a session that writes tasks", () => {
     const next = await examine({ ...cut.request, id: "x-2" });
     expect(next.held).toEqual([cut.versionOf("x-2-001", 7)]);
     expect(cut.of(CALLED)[0]?.text).toContain("An instance an earlier session wrote was not taken again.");
+  });
+
+  // On the six logs read on 14 October two of eleven Examiner sessions were cut at their wall while
+  // still proposing, one in a command; the session's limits were told at its opening alone.
+  it("ends each turn's last tool result with the turn it is in and the minutes it has used", async () => {
+    const example = () => fauxToolCall("read_example", { task: "e-1" });
+    const s = seat("write", [
+      fauxAssistantMessage([example(), example()], TOOL_USE),
+      call("read_example", { task: "e-1" }),
+      finish,
+      finish,
+    ]);
+    await examine(s.request);
+    const texts = read(s.log)
+      .filter(({ kind }) => kind === CALLED)
+      .map(({ data }) => (isString(data.text) ? data.text : ""));
+    expect(texts.map((text) => text.match(USED)?.[0] ?? null)).toEqual([
+      null,
+      "\nTurn 1 of 12; 0 of 10 minutes used.",
+      "\nTurn 2 of 12; 0 of 10 minutes used.",
+      null,
+      null,
+    ]);
   });
 
   it("ends when the host has its tasks, and declines a first finish once while it has not", async () => {

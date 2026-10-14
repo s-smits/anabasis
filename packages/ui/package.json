@@ -3,15 +3,15 @@
   "private": true,
   "type": "module",
   "version": "0.5.0",
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.3",
   "engines": {
-    "bun": "1.4.2"
+    "bun": "1.4.3"
   },
   "scripts": {
     "dev": "bun serve.ts",
     "build": "bun run typecheck && bun build.ts",
     "test": "cd ../.. && bun run test -- packages/ui/test",
-    "typecheck": "bun ../../node_modules/typescript/bin/tsc --project tsconfig.json"
+    "typecheck": "bun check -p tsconfig.json"
   },
   "dependencies": {
     "@fontsource-variable/manrope": "^5.3.0",
@@ -24,7 +24,7 @@
     "recharts": "3.8.0"
   },
   "devDependencies": {
-    "@types/bun": "1.4.0",
+    "@types/bun": "1.4.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5"
   }

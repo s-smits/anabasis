@@ -105,7 +105,7 @@ function Readouts({ reading }: { reading: CampaignReading }) {
           reading.reference === null ? (
             "Starter"
           ) : (
-            <code className="ana-campaign-digest">{digestText(reading.reference, reading.starter)}</code>
+            <code className="ana-campaign-digest">{digestText(reading.reference, reading.names)}</code>
           )
         }
         detail={promoted}
@@ -294,7 +294,7 @@ export function CampaignPane({ reading, navigation }: PaneProps) {
           <ComparisonsChart
             bars={comparisons}
             promotions={reading.promotions}
-            starter={reading.starter}
+            names={reading.names}
             onOpen={open}
           />
         )}

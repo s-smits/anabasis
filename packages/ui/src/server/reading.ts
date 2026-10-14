@@ -30,6 +30,7 @@ import { barsOf, regressionOf } from "../../../../src/builder/climb.ts";
 import { RISK } from "../../../../src/builder/decide.ts";
 import { openSteps } from "../../../../src/builder/handover.ts";
 import { reported } from "../../../../src/builder/comparison.ts";
+import { namesOf } from "../../../../src/builder/names.ts";
 import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
 import { billedAll, billedParts, patienceOf } from "../../../../src/kernel/reports.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
@@ -208,6 +209,7 @@ const coreIn = once((log) => {
     supply: campaign.supply,
     reference: campaign.reference,
     starter: starterIn(log),
+    names: Object.fromEntries(namesOf(log.events)),
     open: openSteps(campaign.steps),
     moves: movesIn(log),
     comparisons: bars,

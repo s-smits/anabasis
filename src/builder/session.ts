@@ -186,6 +186,9 @@ export interface BuildRequest {
   readonly campaign?: (bench: Bench) => {
     readonly tools: AgentTool[];
     readonly hook: () => string;
+    /** Halts the conversation where the campaign has ended, as `hook` does, and renders nothing:
+     *  before each model request, where a status would be discarded (plan item 6.4, 14 October). */
+    readonly halts?: () => void;
     /** Settles once no action of the campaign's runs: an Examiner session writing beside the
      *  conversation ends on record before the conversation does, however the conversation ended. */
     readonly closing?: () => Promise<void>;
@@ -433,10 +436,10 @@ export async function session(
               ]
             : [],
         prepareRequest: async (context, kill) => {
-          campaign?.hook();
+          campaign?.halts?.();
           if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
           const update = await compact(context, kill);
-          campaign?.hook();
+          campaign?.halts?.();
           if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
           return update ?? undefined;
         },

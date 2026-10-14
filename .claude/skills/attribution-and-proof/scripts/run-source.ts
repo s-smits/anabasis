@@ -24,17 +24,27 @@ export function told(folder: string, repo: string, fixes: readonly string[]): st
     return ["no launch receipt: every round here was started by hand, and its commit is on no record"];
   }
   return launches.flatMap((launch) => {
-    // The remote branches that hold the commit: where an outside reader can open it. None for a
+    // The remote branches and the tags that hold the commit: where an outside reader can open it,
+    // and a tag `run/<name>/<n>` (launch-run) keeps it after its branch is rewritten. None for a
     // commit never pushed, and for one this repository does not hold.
-    const branches = (gitMaybe(repo, "branch", "-r", "--contains", launch.commit) ?? "")
+    const branches = (
+      gitMaybe(
+        repo,
+        "for-each-ref",
+        "--contains",
+        launch.commit,
+        "--format=%(refname:lstrip=2)",
+        "refs/remotes",
+        "refs/tags",
+      ) ?? ""
+    )
       .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "" && !line.includes(" -> "));
+      .filter((line) => line !== "" && !line.endsWith("/HEAD"));
     const more = branches.length > SHOWN ? ` and ${String(branches.length - SHOWN)} more` : "";
     const published =
       branches.length === 0 ? "on no remote branch" : `on ${branches.slice(0, SHOWN).join(", ")}${more}`;
     return [
-      `${launch.session}  ${launch.at}  ${launch.commit.slice(0, 9)}  ${launch.dirty ? "with uncommitted changes" : "clean"}  load ${launch.load.toFixed(1)} on ${String(launch.cores)} cores`,
+      `${launch.session}  ${launch.at}  ${launch.commit.slice(0, 9)}  ${launch.dirty ? "with uncommitted changes" : "clean"}  load ${launch.load.toFixed(1)} on ${String(launch.cores)} cores  bun ${launch.bun}`,
       `  published ${published}`,
       // Whether the commit holds the fix among its ancestors: false for a fix it does not hold and
       // for either commit unknown here, which is why a restacked fix is asked for by its replayed

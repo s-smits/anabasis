@@ -358,7 +358,7 @@ The tools of each model seat, as its source names them:
   `draft_exam`, `bash`, `read`, `write`, `finish`, the shell the same kind of walled home
   (`src/examiner/shell.ts`), and nothing in it enters the exam but through `draft_exam`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
-  `check_harness`, `preview_harness`, `reset_harness`, `finish`. In the campaign command it also
+  `check_harness`, `preview_harness`, `finish`. In the campaign command it also
   has `examine`, `release_practice`, `compare`, `promote` and `campaign_status`.
 - Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`;
   `submit` with `malformed` is its word that the task is malformed in place of one.
@@ -587,7 +587,7 @@ cores, says so as it waits, and the wait is on record (`campaign.waited`, `tools
 `--loaded` starts them all the same. Until 12 October the wait was at a move's start, and a
 comparison of hours ran on whatever load came after it. Each run of
 the command keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`):
-its flags, the commit, whether the tree was dirty, and the load it started under, since the log
+its flags, the commit, whether the tree was dirty, the load it started under and the Bun, since the log
 holds the host's code by content and no commit.
 
 **It opens a campaign over a stored pack, or from a prompt** (`--prompt "<text>"` or

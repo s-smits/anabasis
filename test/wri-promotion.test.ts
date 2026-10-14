@@ -8,8 +8,8 @@ import { type Condition, conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { climbTable, crossings } from "../tools/wri/climb.ts";
-import type { TRIGGERS } from "../tools/wri/folds.ts";
+import { climbTable, crossings, safeguardTriggers } from "../tools/wri/climb.ts";
+import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
 import { overview } from "../tools/wri/read.ts";
 
 const START = Date.parse("2026-10-10T20:00:00Z");
@@ -290,6 +290,34 @@ describe("lane 31 across campaigns", () => {
     expect(crossings(peers()).left).toEqual([
       "promoting solve r1 (g-1 reference) from 20:01Z: /tmp/phq-inst/bin/phreeqc (building b-1, 20:00Z)",
       "promoting solve n1 (g-1 new) from 20:01Z: /tmp/m.py (building b-1, 20:00Z)",
+    ]);
+  });
+
+  it("prints each safeguard where a live campaign went wrong before a mechanism answered it", () => {
+    const run = campaign();
+    run.put("campaign.opened", { budget: 300, terms: {} });
+    run.put("build.started", { session: "b-1", limits: { wallSeconds: 14_400 } });
+    run.put("comparison.started", { session: "g-1" });
+    run.put("build.finished", { session: "b-1", ended: "wall" });
+    for (const _ of [1, 2, 3]) {
+      run.put("campaign.move", { move: "compare", code: "unfinished", session: "g-1" });
+    }
+    run.put("comparison.reported", { session: "g-1" });
+    for (const session of ["b-2", "b-3", "b-4", "b-5", "b-6", "b-7"]) {
+      run.put("campaign.move", { move: "build", code: "led", session });
+      run.put("campaign.ended", { ending: "environment" });
+    }
+    run.put("campaign.move", { move: "build", code: "led", session: "b-8" });
+    run.put("build.started", { session: "b-8", limits: { wallSeconds: 86_400 } });
+    run.put("campaign.ended", { ending: "finished" });
+    const said = safeguardTriggers(indexOf(run.log)).map(({ name, detail }) => `${name}: ${detail}`);
+    expect(said[0]).toStartWith("SAFEGUARD-1 ENDED WITH A MOVE NAMED: 20:00Z: ");
+    expect(said[0]).not.toEndWith(": end");
+    expect(said.slice(1)).toEqual([
+      "SAFEGUARD-2 WALL DURING A HOST ACTION: b-1 during g-1",
+      "SAFEGUARD-3 SAME MOVE ASKED AGAIN: compare unfinished g-1 3 times",
+      "SAFEGUARD-4 CONVERSATIONS WITHOUT PROGRESS: 7 in a row",
+      "SAFEGUARD-7 LIMITS MOVED: b-8: wallSeconds 14400 to 86400",
     ]);
   });
 

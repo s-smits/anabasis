@@ -140,9 +140,10 @@ function spent({ kind, data }: LogEvent): number {
 const cost = (data: JsonObject) =>
   `${isNumber(data.seconds) ? ` in ${minutes(data.seconds * 1000)}` : ""}${isNumber(data.billed) ? `, ${dollars(data.billed)}` : ""}`;
 
-/** The line each event a reader wants earns; a kind not here is a trace. `task` names a solve's task. */
+/** The line each event a reader wants earns; a kind not here is a trace, and null is one of its
+ *  kind left unsaid. `task` names a solve's task. */
 const SAID: Partial<
-  Record<EventKind, (data: JsonObject, task: (solve: JsonValue | undefined) => string) => string>
+  Record<EventKind, (data: JsonObject, task: (solve: JsonValue | undefined) => string) => string | null>
 > = {
   "build.started": (data) => `· build ${word(data.session)} started on ${word(data.model)}`,
   "exam.started": (data) => `· exam ${word(data.session)} started on ${word(data.model)}`,
@@ -159,6 +160,13 @@ const SAID: Partial<
     if (ending?.outcome === "fail") return `· ${task(data.solve)} failed${cost(data)}`;
     return `⚠ ${task(data.solve)} ended without a result, ${word(ending?.kind)}: ${short(ending?.reason)}${cost(data)}`;
   },
+  // A campaign's ending, and a wait for the provider or the network: until 15 October the pulse
+  // said neither, and a run waiting out a limit read as quiet. A wait on the load is one a solve.
+  "campaign.ended": (data) => `◆ the campaign ended ${word(data.ending)}: ${short(data.why)}`,
+  "campaign.waited": (data) =>
+    isString(data.for)
+      ? `⚠ waited ${isNumber(data.ms) ? minutes(data.ms) : "?"} for the ${data.for}${isString(data.until) ? ` until ${data.until}` : ""}`
+      : null,
   "referee.finding": (data) => `· the Referee on ${word(data.task)}: ${short(data.reason)}`,
   // A report that scored nothing, one its cap cut, or one with tasks set aside on rejections nobody
   // has settled, is one to look at before it is believed (`src/builder/round.ts`).

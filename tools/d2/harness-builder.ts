@@ -355,6 +355,7 @@ function keepReceipt(log: string, args: readonly string[]): void {
     ...standing(REPO),
     load: HOST.load(),
     cores: HOST.cores,
+    bun: runtimeProcess.versions.bun,
   });
 }
 

@@ -78,6 +78,18 @@ describe("the runs pulse", () => {
     ]);
     const examined = [...examining, event(7, "exam.finished", { session: "x-1", ended: "finished" })];
     expect(pulse(round, examined, "closed", seen, START + 8 * 60_000).said).toEqual(["◆ exam x-1 ended"]);
+    // A wait for the provider and a campaign's ending are said; a wait on the load, one a solve,
+    // is not. Until 15 October neither was, and a run waiting out a limit read as quiet.
+    const waited = [
+      ...examined,
+      event(8, "campaign.waited", { task: "t-1", load: 40, cores: 12, ms: 60_000 }),
+      event(9, "campaign.waited", { for: "provider", until: "2026-10-15T21:00:00.000Z", ms: 7_200_000 }),
+      event(10, "campaign.ended", { ending: "finished", why: "3 conversations in a row made no move" }),
+    ];
+    expect(pulse(round, waited, "closed", { ...seen, lines: 8 }, START + 11 * 60_000).said).toEqual([
+      "⚠ waited 120m for the provider until 2026-10-15T21:00:00.000Z",
+      "◆ the campaign ended finished: 3 conversations in a row made no move",
+    ]);
     // A report with tasks set aside on rejections nobody has settled, one its cap cut, and one
     // that scored nothing, are each something to look at.
     const says = (data: JsonObject) =>

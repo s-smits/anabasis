@@ -308,12 +308,41 @@ export function epochLine(epoch: Epoch): string {
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
   const end = epoch.promoted === null ? "open" : `promoted ${epoch.promoted.slice(0, 8)} ${rung}`;
   const risk = epoch.falsePromotion;
-  const percent = (chance: number) => `${String(Math.round(100 * chance))}%`;
-  const source =
-    risk.pairs === 0
-      ? `${percent(risk.bound)} an attempt by design, before two A/A controls, indicative`
-      : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted, at most ${percent(risk.bound)} an attempt at ${percent(risk.confidence)}${risk.indicative ? ", indicative" : ""}`;
-  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them at most ${percent(risk.union)}: ${source}; ${end}`;
+  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)}${epoch.reference === "starter" ? "" : `, ${share("starter", epoch.starter_share)}`} on them; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them at most ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
+}
+
+/** A chance in whole percent. */
+function percent(chance: number): string {
+  return `${String(Math.round(100 * chance))}%`;
+}
+
+/** What one attempt's false-promotion bound rests on: the rule's design, or pairs of A/A controls. */
+function sourceOf(risk: FalsePromotion): string {
+  return risk.pairs === 0
+    ? `${percent(risk.bound)} an attempt by design, before two A/A controls, indicative`
+    : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted, at most ${percent(risk.bound)} an attempt at ${percent(risk.confidence)}${risk.indicative ? ", indicative" : ""}`;
+}
+
+/**
+ * The campaign's chance of a false promotion, for its closing report (the plan's 7.6): each epoch's
+ * union bound with what it rests on, and their sum capped at one. An epoch's bound restarts at its
+ * promotion, so the opening's bound over one patience's attempts describes one window, and no
+ * epoch's alone the campaign.
+ */
+export function riskLines(events: readonly LogEvent[]): string[] {
+  const epochs = epochsOf(events);
+  const total = Math.min(
+    1,
+    epochs.reduce((sum, { falsePromotion }) => sum + falsePromotion.union, 0),
+  );
+  return [
+    ...epochs.map(({ nth, falsePromotion: risk }) => {
+      const attempts = plural(risk.attempts, "promotion attempt");
+      return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them at most ${percent(risk.union)}: ${sourceOf(risk)}.`;
+    }),
+    `Over the campaign, a false promotion in any epoch at most ${percent(total)}: the sum of the epochs' bounds, capped at one, which assumes nothing of how the attempts depend on one another.`,
+    "A bound by design assumes each untied task is as likely won as lost between two equal harnesses, which a solver whose solves drift can break. A bound from A/A controls assumes a control's halves behave as two equal harnesses do under this setting, and is indicative where they were read on other tasks or in another epoch. Each counts the attempts on record: a campaign that goes on makes more, and its bound grows with them.",
+  ];
 }
 
 function censusOf(census: unknown): Census | null {

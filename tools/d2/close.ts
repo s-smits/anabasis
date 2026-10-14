@@ -17,8 +17,9 @@
  *                folder written to leave the host.
  *   RULES.md     the domain's public contract: its scope, conventions, rules and answer format.
  *   REPORT.md    the closing report: how the campaign ended, each promotion and the comparisons
- *                behind it, every comparison's tally and reading, what the Referee ruled and what
- *                a person's labels settled, and what was billed.
+ *                behind it, every comparison's tally and reading, the chance of a false promotion
+ *                over the whole campaign (`riskLines`), what the Referee ruled and what a person's
+ *                labels settled, and what was billed.
  *
  * The report is a view of the log, written once, and nothing reads it back. It names no task and
  * holds no check, hidden value or answer, so the folder can leave the exam side: `--to` lies
@@ -34,7 +35,7 @@
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
-import { ladderLine, ladderOf, promotionsWorth, worthLine } from "#src/builder/climb.ts";
+import { ladderLine, ladderOf, promotionsWorth, riskLines, worthLine } from "#src/builder/climb.ts";
 import { UNSETTLED } from "#src/builder/comparison.ts";
 import { campaignOf, type Handover } from "#src/builder/handover.ts";
 import { parentToolTree } from "#src/builder/tools.ts";
@@ -178,6 +179,8 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       ...comparisons.map(comparisonRow),
     ].join("\n"),
     "A reading is of one setting. Tallies under different limits, or against different harnesses, are not one series.",
+    "## The chance of a false promotion",
+    riskLines(events).join("\n"),
     "## What was audited, and what was not",
     [
       `- The exam: its checker ${supply.faults === null ? "was never read" : `was read, with ${plural(supply.faults, "fault")} in its last reading`}, and ${frozenChecker(events) === null ? "nobody froze it" : "the operator froze it"}.`,

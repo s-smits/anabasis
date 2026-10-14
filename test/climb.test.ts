@@ -26,6 +26,7 @@ import {
   promotionsWorth,
   regressionLine,
   regressionOf,
+  riskLines,
   worthLine,
   worthOf,
 } from "../src/builder/climb.ts";
@@ -511,6 +512,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epochLine(epoch)).toContain(
       "2 promotion attempts under this reference, a false promotion among them at most 15%: 10% an attempt by design, before two A/A controls, indicative",
     );
+    // The closing report sums the epochs' bounds, here the one epoch's (the plan's 7.6).
+    expect(riskLines(log).slice(0, 2)).toEqual([
+      "- Epoch 1: 2 promotion attempts, a false promotion among them at most 15%: 10% an attempt by design, before two A/A controls, indicative.",
+      "Over the campaign, a false promotion in any epoch at most 15%: the sum of the epochs' bounds, capped at one, which assumes nothing of how the attempts depend on one another.",
+    ]);
   });
 
   it("reads one attempt's rate off pairs of A/A controls by the rule itself, with its errors, its denominator and a one-sided bound", () => {
@@ -534,6 +540,8 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epochLine(second)).toContain(
       "0 of 2 pairs of A/A controls promoted, at most 78% an attempt at 95%, indicative",
     );
+    // Over the campaign the two epochs' bounds sum past one, and the sum is capped there.
+    expect(riskLines(log)[2]).toStartWith("Over the campaign, a false promotion in any epoch at most 100%:");
     // Two controls that each read 2-0 promote as a step and its repeat: one error in one pair.
     const lucky = [started, attempt("g-1", "S", "h2", [1, 1]), attempt("g-2", "S", "h2", [1, 1])];
     expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, pairs: 1, bound: 1, union: 1 });

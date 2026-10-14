@@ -79,6 +79,41 @@ its flags, the commit and whether the tree had uncommitted changes, the load and
 under. The log holds the host's code by content and no commit, so the receipt is where the commit
 is on record, and `bun run runs zip` carries it at every level.
 
+## Name the run and its project
+
+A name is the campaign's folder, `.ana/d2/<name>/`, and the command run again under a name goes
+on from that log, so a name is chosen once and never reused for another campaign. Letters, digits,
+`.`, `_` and `-` only. Until 14 October names were chosen launch by launch, and the table of one
+day read `buffer-149`, `recode-151`, `buffer-159-opus`, `truss-151-m1` and `main0_5_1`: which
+code ran, and on which seat models, had to be looked up in each receipt. A name says four things,
+in this order, and nothing else:
+
+```text
+<pack>-<code>-<model>[-<host>][-r<n>]
+```
+
+| part | what it is | examples |
+| --- | --- | --- |
+| pack | the pack's short name, or for a campaign from a prompt the prompt file's stem | `buffer`, `truss`, `rh-ladder` |
+| code | the published code the worktree is at: `pr<N>` for a pull request's head, `v<release>` for a tag, `main-<sha7>` for `main` between releases | `pr172`, `v0.5.1`, `main-f8889fe` |
+| model | the family of the solver's model, which every comparison of the campaign is read under | `opus`, `sonnet`, `haiku` |
+| host | the host it runs on, where that is not the operator's own | `m1`, `m3` |
+| `r<n>` | a second campaign on the same pack, code and model, where the first still stands | `r2` |
+
+So `buffer-pr172-opus` is the buffer pack on pull request #172's head with an Opus solver on the
+operator's host, and `truss-v0.5.1-opus-m1` the truss pack on v0.5.1 on the M1. The date is the
+receipt's and the log's, and a seat other than the solver is the opening's; neither goes in the
+name. A campaign resumed or reopened keeps its name, whatever code the resume runs: the receipt of
+each run records the commit.
+
+The project (`--project`) groups the campaigns that answer one question, so that the operator's
+page shows them side by side: `<pack>-<question>`, where the question is a word or two, as
+`buffer-led-repeat` for the campaigns run to see a repeat read after a Builder's `finish`. A
+campaign that answers no new question goes under the project of the one it continues.
+
+Write the name, the project and the reason for both into the prediction ledger before the dry
+run, beside the prediction.
+
 ## What is refused, and where
 
 Every refusal is the move's own command's, asked before its first event, so a command started by

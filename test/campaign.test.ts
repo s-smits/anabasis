@@ -431,7 +431,7 @@ describe("a campaign", () => {
     expect(readdirSync(campaign.states).filter((name) => name.startsWith("importing-"))).toEqual([]);
     // One tree for the one import, whatever a session or a control kept beside it.
     expect(trees()).toBe(treesBefore + 1);
-    expect(importCommand(["--name", "never-opened", "--harness", handed])).rejects.toThrow(
+    await expect(importCommand(["--name", "never-opened", "--harness", handed])).rejects.toThrow(
       "has no folder yet",
     );
   });

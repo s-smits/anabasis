@@ -16,16 +16,18 @@
  * The view opens no campaign, so of a log that holds no task it says what holds for a campaign
  * over a pack: that the pack's tasks are taken in first.
  *
- * A step's line holds counts, digests, a tally, a reading and a cost. It names no task, and it is
- * for the operator and the session that stands in for the campaign's owner: what a Builder is told
- * of the same rows is `src/builder/past.ts`.
+ * A step's line holds counts, harnesses, a tally, a reading and a cost. A harness is named by its
+ * letter beside its digest's head (`namesOf`, `src/builder/names.ts`; 14 October), since a run of
+ * eight hex characters a line was what an operator had to match by eye across the view and the
+ * closing report. It names no task, and it is for the operator and the session that stands in for
+ * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
 import { epochLine, epochsOf, regressionLine, regressionOf } from "#src/builder/climb.ts";
 import { decide } from "#src/builder/decide.ts";
-import { type Decided, decidedLine } from "#src/builder/move.ts";
+import { type Decided, decidedLine, short } from "#src/builder/move.ts";
+import { type Called, calledBy, namesOf } from "#src/builder/names.ts";
 import { openingOf, planOf } from "#src/builder/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/builder/handover.ts";
-import { shortDigest } from "#src/builder/past.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
@@ -68,8 +70,8 @@ function stateOf(step: Exclude<Handover, { readonly step: "comparison" }>, now: 
   return `open at the log's end, ${plural(step.turns, "turn")} so far, last wrote at ${step.last.slice(11, 19)}Z (${plural(minutes, "minute")} before this reading)`;
 }
 
-/** One step's handover as a line. */
-function stepLine(step: Handover, now: number): string {
+/** One step's handover as a line, each harness `called` as the view names it. */
+function stepLine(step: Handover, now: number, called: Called): string {
   if (step.step === "examiner") {
     return row(
       step.id,
@@ -79,10 +81,10 @@ function stepLine(step: Handover, now: number): string {
   if (step.step === "builder") {
     const left =
       step.changed && step.harness !== null
-        ? `it left ${shortDigest(step.harness)}`
+        ? `it left ${called(step.harness)}`
         : "it left the harness as it was";
     // A session with no end has left nothing yet.
-    const from = `from ${shortDigest(step.parent ?? "")}${step.ended === null ? "" : ` ${left}`}`;
+    const from = `from ${called(step.parent ?? "")}${step.ended === null ? "" : ` ${left}`}`;
     return row(
       step.id,
       `Builder session, ${stateOf(step, now)}: ${from}, ${plural(step.practiceSolves, "practice solve")} · ${dollars(step.billed)}`,
@@ -103,7 +105,7 @@ function stepLine(step: Handover, now: number): string {
   return row(
     step.id,
     [
-      `comparison of ${shortDigest(step.fresh)} with ${shortDigest(step.old)} on ${plural(step.tasks, "task")}, ${String(step.solves)} solves a side at ${String(step.level)}: ${read}`,
+      `comparison of ${called(step.fresh)} with ${called(step.old)} on ${plural(step.tasks, "task")}, ${String(step.solves)} solves a side at ${String(step.level)}: ${read}`,
       ...(valid === null
         ? []
         : [
@@ -117,8 +119,9 @@ function stepLine(step: Handover, now: number): string {
   );
 }
 
-/** A campaign's reading, a line each, read at `now`. */
-export function viewLines(name: string, campaign: Campaign, now: number): string[] {
+/** A campaign's reading, a line each, read at `now`, each harness `called` by its letter where the
+ *  log names it (`calledBy`) and by its digest's first eight characters otherwise. */
+export function viewLines(name: string, campaign: Campaign, now: number, called: Called = short): string[] {
   const { supply, fails } = campaign;
   const checker =
     supply.faults === null
@@ -132,9 +135,9 @@ export function viewLines(name: string, campaign: Campaign, now: number): string
     name,
     row(
       "set-up",
-      `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted · ${checker} · reference: ${campaign.reference === null ? "the starter" : shortDigest(campaign.reference)}`,
+      `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted · ${checker} · reference: ${campaign.reference === null ? "the starter" : called(campaign.reference)}`,
     ),
-    ...campaign.steps.map((step) => stepLine(step, now)),
+    ...campaign.steps.map((step) => stepLine(step, now, called)),
     ...(fails.length === 0
       ? []
       : [row("practice", `${plural(fails.length, "failed practice solve")}: ${standing.join(", ")}`)]),
@@ -191,12 +194,13 @@ export function view(args: readonly string[]): void {
   }
   const events = logEvents(run.path);
   const campaign = campaignOf(events);
-  const lines = viewLines(name, campaign, Date.now());
+  const called = calledBy(namesOf(events));
+  const lines = viewLines(name, campaign, Date.now(), called);
   // A move the command is making is on record from its start (`campaign.move`), and the table is
   // read on a log that does not hold its end yet.
   const open = openSteps(campaign.steps);
   const decided = decidedOn(events, values);
-  const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch)}`);
+  const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called)}`);
   const regression = regressionOf(events);
   const beside = regression === null ? [] : [`  ${regressionLine(regression)}`];
   for (const line of [

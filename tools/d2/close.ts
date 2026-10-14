@@ -19,7 +19,8 @@
  *   REPORT.md    the closing report: how the campaign ended, each promotion and the comparisons
  *                behind it, every comparison's tally and reading, the chance of a false promotion
  *                over the whole campaign (`riskLines`), what the Referee ruled and what a person's
- *                labels settled, and what was billed.
+ *                labels settled, and what was billed. It names each harness by its letter beside
+ *                its digest's head (`namesOf`, `src/builder/names.ts`).
  *
  * The report is a view of the log, written once, and nothing reads it back. It names no task and
  * holds no check, hidden value or answer, so the folder can leave the exam side: `--to` lies
@@ -38,6 +39,8 @@
 import { ladderLine, ladderOf, promotionsWorth, riskLines, worthLine } from "#src/builder/climb.ts";
 import { UNSETTLED } from "#src/builder/comparison.ts";
 import { campaignOf, type Handover } from "#src/builder/handover.ts";
+import { short } from "#src/builder/move.ts";
+import { type Called, calledBy, namesOf } from "#src/builder/names.ts";
 import { parentToolTree } from "#src/builder/tools.ts";
 import { openingOf } from "#src/builder/opening.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
@@ -71,12 +74,11 @@ const OPTIONS = {
   solve: { type: "string" },
 } as const;
 
-const short = (digest: string): string => digest.slice(0, 8);
 const row = (cells: readonly string[]): string => `| ${cells.join(" | ")} |`;
 
-/** A comparison as one row: its two harnesses, the turns its solves were held to, its reading and
- *  tally, and each harness's valid solves. */
-function comparisonRow(step: Compared): string {
+/** A comparison as one row: its two harnesses as `called`, the turns its solves were held to, its
+ *  reading and tally, and each harness's valid solves. */
+function comparisonRow(step: Compared, called: Called): string {
   const share = (counts: readonly number[] | undefined) => {
     if (counts === undefined) return "";
     const valid = counts.reduce((sum, tasks, solves) => sum + tasks * solves, 0);
@@ -85,8 +87,8 @@ function comparisonRow(step: Compared): string {
   const { tally } = step;
   return row([
     step.id,
-    short(step.fresh),
-    short(step.old),
+    called(step.fresh),
+    called(step.old),
     step.modelTurns === null ? "not limited" : String(step.modelTurns),
     step.reading ?? "not reported",
     tally === null ? "" : `${String(tally.wins)}-${String(tally.losses)}-${String(tally.ties)}`,
@@ -104,7 +106,8 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   const opening = openingOf(events);
   const setting = recordedSetting(events);
   const reference = promoted(events);
-  const promotions = promotionLines(events, comparisons);
+  const called = calledBy(namesOf(events));
+  const promotions = promotionLines(events, comparisons, called);
   const ruled = comparisons.reduce(
     (sum, { rulings }) => ({
       earned: sum.earned + rulings.earned,
@@ -145,11 +148,11 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     ended === undefined
       ? `The campaign has not ended: the last event of its log is \`${events.at(-1)?.kind ?? "none"}\`.`
       : `The campaign ended on its ${isString(ended.ending) ? ended.ending : "?"}: ${isString(ended.why) ? ended.why : ""}.`,
-    `It hands over harness ${short(handed)}, in \`harness/\`: ${
+    `It hands over harness ${called(handed)}, in \`harness/\`: ${
       reference === null
         ? "the Starter Built Harness, since no step was promoted"
         : "the reference harness, promoted as below"
-    }.`,
+    }. A harness is named by a letter in the order the log first names it, the Starter A, with its digest's first eight characters beside it: a later letter is a later harness, not a better one.`,
     ...(isString(opening?.prompt)
       ? [`It opened from this prompt:\n\n> ${opening.prompt.replaceAll("\n", "\n> ")}`]
       : []),
@@ -176,7 +179,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
         "billed $",
       ]),
       row(Array.from({ length: 9 }, () => "---")),
-      ...comparisons.map(comparisonRow),
+      ...comparisons.map((step) => comparisonRow(step, called)),
     ].join("\n"),
     "A reading is of one setting. Tallies under different limits, or against different harnesses, are not one series.",
     "## The chance of a false promotion",
@@ -247,7 +250,11 @@ function economyLines(events: readonly LogEvent[]): string[] {
 
 /** A promotion a line: the comparisons that read its step, its last tally against the reference
  *  it was promoted over, and whether it is set-up (epoch 0) or a rung of the climb. */
-function promotionLines(events: readonly LogEvent[], comparisons: readonly Compared[]): string[] {
+function promotionLines(
+  events: readonly LogEvent[],
+  comparisons: readonly Compared[],
+  called: Called,
+): string[] {
   /** Where an imported harness came from, by its digest (`tools/d2/import.ts`). */
   const imported = new Map(
     events.flatMap(({ kind, data }) =>
@@ -275,7 +282,7 @@ function promotionLines(events: readonly LogEvent[], comparisons: readonly Compa
         ? ". No comparison of it tallied a task"
         : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}`;
     return [
-      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
+      `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
     ];
   });
 }

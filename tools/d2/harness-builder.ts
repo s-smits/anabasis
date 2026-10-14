@@ -165,14 +165,19 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
 /**
  * Whether the table names a move that measures what a conversation left and asks no Builder for
- * anything: a repeat and the tasks it waits for, a promotion, the ladder's reading. Until
- * 14 October a Builder's `finish` ended the campaign whatever was owed: buffer-159-opus's Builder
- * finished a minute after a 9-0-1 step bought a repeat, and the campaign ended as its Examiner
- * session settled two and a half hours later, the repeat never run.
+ * anything: any comparison, the tasks a repeat waits for, a promotion. Until 14 October a
+ * Builder's `finish` ended the campaign whatever was owed: buffer-159-opus's Builder finished a
+ * minute after a 9-0-1 step bought a repeat, and the campaign ended as its Examiner session
+ * settled two and a half hours later, the repeat never run. Until 15 October an ordinary
+ * comparison was the Builder's alone, so three conversations that each changed the harness and
+ * finished ended the campaign with the table naming its comparison (truss-151-m1 b-1,
+ * buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no comparison read). The
+ * host makes a comparison that began under other code as its first move, and its terms refuse it
+ * with the campaign's environment ending (`begin`, `src/builder/round.ts`), where the Builder's
+ * tool was refused it again and again (main0_5_1, three times at 8e0371c58).
  */
 function hostOwed(decided: Decided): boolean {
-  if (decided.move === "promote") return true;
-  if (decided.move === "compare") return decided.repeats !== undefined || decided.ladder === true;
+  if (decided.move === "promote" || decided.move === "compare") return true;
   return decided.move === "examine" && decided.repeats !== undefined;
 }
 

@@ -271,11 +271,20 @@ export function examTasks({ events, plan }: Turn): string | undefined {
  * The Builder conversations in a row, the latest included, that have made no campaign move since
  * the campaign last ended: the trailing run of its moves that are conversations (`build`, `led`).
  * Any other move, the host's own among them, is progress. A run of the command after an ending
- * starts the count afresh, as Codex audits a resumed goal afresh.
+ * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
+ * crashed or a stop killed chose nothing and is left out, as the table leaves it out of the
+ * sessions run (`sessionsRun`): until 15 October finished, crashed, finished counted three.
  */
 export function idleOf(events: readonly LogEvent[]): number {
-  const from = events.findLastIndex(({ kind }) => kind === "campaign.ended");
-  const moves = events.slice(from + 1).flatMap(({ kind, data }) => (kind === MOVED ? [data] : []));
+  const since = events.slice(events.findLastIndex(({ kind }) => kind === "campaign.ended") + 1);
+  const cut = new Set(
+    since.flatMap(({ kind, data }) =>
+      kind === "build.finished" && (data.ended === "crashed" || data.ended === "killed")
+        ? [data.session]
+        : [],
+    ),
+  );
+  const moves = since.flatMap(({ kind, data }) => (kind === MOVED && !cut.has(data.session) ? [data] : []));
   return moves.length - 1 - moves.findLastIndex(({ move, code }) => move !== "build" || code !== "led");
 }
 

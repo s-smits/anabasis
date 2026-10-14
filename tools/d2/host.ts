@@ -42,9 +42,6 @@ interface Gate {
   readonly loaded: boolean;
 }
 
-/** The longest wait for a provider's named reset: a session window's, five hours, and some. A reset
- *  further on (a week's limit) is no wait, and the campaign ends on its environment as before. */
-const RESET_MOST_MS = 6 * 3_600_000;
 /** After the named minute, so that the first call is not made in the minute the limit lifts. */
 const RESET_MARGIN_MS = 60_000;
 /** What the host waits after the first and the second session in a row the network failed: in
@@ -114,9 +111,11 @@ export function gated(on: Gate, log: string): Seated {
 }
 
 /**
- * Whether the campaign waited out the provider limit `said` names: where its reset is named and at
- * most `RESET_MOST_MS` on, the wait is recorded in `log` (`campaign.waited`, `for: "provider"`),
- * said once, and slept to a minute past the reset. The crash rule counts no session before it
+ * Whether the campaign waited out the provider limit `said` names: where its reset is named and
+ * still ahead, the wait is recorded in `log` (`campaign.waited`, `for: "provider"`), said once, and
+ * slept to a minute past the reset. Until 15 October a reset more than six hours on, a week's, was
+ * the environment's ending, and nothing reran buffer-159-opus for 7 h 10 min on 14 October; a long
+ * wait on record is the operator's to move to another login, or to sit out. The crash rule counts no session before it
  * (`crashedRun`), so the campaign goes on where it stood, unattended as it was. The campaign asks
  * after a move that threw, with what it threw, and after each move, with what the last session the
  * crash rule counts said.
@@ -129,7 +128,7 @@ export async function waitOut(
 ): Promise<boolean> {
   const reset = said === null ? null : resetOf(said, now);
   const ms = reset === null ? Number.NaN : reset.getTime() - now.getTime() + RESET_MARGIN_MS;
-  if (!(ms > 0 && ms <= RESET_MOST_MS + RESET_MARGIN_MS) || reset === null) return false;
+  if (!(ms > 0) || reset === null) return false;
   console.log(
     `the provider's limit resets at ${reset.toISOString()}: the campaign waits for it, then goes on`,
   );
@@ -140,7 +139,8 @@ export async function waitOut(
 
 /**
  * The wait after the sessions in a row that crashed (`crashedRun`), before the campaign starts the
- * next: to the provider's named reset where the last crash names one (`waitOut`), and otherwise,
+ * next: to the provider's named reset where the last session's crash names one, counted or not
+ * (`waitOut`), and otherwise,
  * where the network failed it, a minute after the first and five after the second, on record as
  * `campaign.waited` `for: "network"`, which starts no count again. A third ends the campaign on its
  * environment (`CRASHES`, `decide.ts`), and nothing is waited for before that ending. One wait a
@@ -153,7 +153,13 @@ export async function waitCrashed(
 ): Promise<void> {
   const events = read(log);
   const { count, crash } = crashedRun(events);
-  if ((await waitOut(log, crash, sleep)) || crash === null || !NETWORK.test(crash) || count >= CRASHES) {
+  if (
+    (await waitOut(log, crash, sleep)) ||
+    crash === null ||
+    !NETWORK.test(crash) ||
+    count === 0 ||
+    count >= CRASHES
+  ) {
     return;
   }
   const ended = events.findLastIndex(({ kind }) => kind === "exam.finished" || kind === "build.finished");

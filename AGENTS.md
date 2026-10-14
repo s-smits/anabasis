@@ -616,11 +616,13 @@ that second reading was the no-room row's alone): a comparison the cap cuts tall
 made no campaign move, the last ended by `finish` or at its limits). A lack of room is advice to
 request other tasks while a conversation lives, and the campaign's ending once that conversation
 has ended at its limits. A Builder's `finish` ends its conversation. Between conversations the host
-makes what the table names that asks no Builder for anything, a campaign move like any other: a
-repeat and the tasks it waits for, a promotion, a ladder's reading (`hostOwed`,
-`tools/d2/harness-builder.ts`). Then another
+makes what the table names that asks no Builder for anything, a campaign move like any other: any
+comparison, the tasks a repeat waits for, a promotion (`hostOwed`, `tools/d2/harness-builder.ts`).
+A comparison that began under other code is refused there by its own terms, and the campaign ends
+on its environment, to be run at that code until it reports. Then another
 conversation follows on the Builder's notes, as after one that ended at its limits, until three in
-a row have made no campaign move (`idleOf`, `tools/d2/campaign-terms.ts`), which end the campaign
+a row have made no campaign move, a conversation the provider crashed or a stop killed not counted
+(`idleOf`, `tools/d2/campaign-terms.ts`), which end the campaign
 `finished` where the table names no ending of its own; the status a Builder reads counts the
 conversations before its own that made none. A Codex goal stays active on the same terms: its own
 model ends it only as met, or as blocked once the same blocker has held for three turns, and a
@@ -658,7 +660,7 @@ solves and sessions held on the host.
 
 **The opening** (`campaign.opened`) keeps what the campaign runs by, so that its command goes on
 by its name alone: the project it belongs to, the total and the reserve, the full limit of a
-solve, the Builder sessions the table counts before it advises a comparison (`--sessions`, 3), the patience (`--patience`, 6),
+solve, the Builder sessions the table counts before it advises a comparison (`--sessions`, 2), the patience (`--patience`, 6),
 who sits in each seat, and the terms of its moves as a command last named them (`TERMS`,
 `src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks and an
 Examiner session's. A term no command named is its move's default. A later run that names nothing

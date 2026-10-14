@@ -32,6 +32,11 @@ describe("the provider's named reset", () => {
       "2026-10-12T13:30:00.000Z",
     );
     expect(resetOf("You've hit your limit · resets 15:50", NOW)).not.toBeNull();
+    // A week's reset names its date, which until 15 October read as the hour 15, host-local.
+    expect(resetOf("weekly limit · resets Oct 15 at 9pm (Europe/Amsterdam)", NOW)?.toISOString()).toBe(
+      "2026-10-15T19:00:00.000Z",
+    );
+    expect(resetOf("weekly limit · resets Smarch 15 at 9pm (Europe/Amsterdam)", NOW)).toBeNull();
   });
 
   it("is no reset where the message names none, is no limit, or names a zone the host does not know", () => {
@@ -40,7 +45,7 @@ describe("the provider's named reset", () => {
     expect(resetOf("limit reached · resets 3pm (Mars/Olympus)", NOW)).toBeNull();
   });
 
-  it("is waited out to a minute past it and on record, where it is at most six hours on", async () => {
+  it("is waited out to a minute past it and on record, however far on", async () => {
     const log = join(mkdtempSync(join(tmpdir(), "ana-host-reset-")), "campaign.jsonl");
     const slept: number[] = [];
     const sleep = async (ms: number) => {
@@ -49,14 +54,20 @@ describe("the provider's named reset", () => {
     expect(await waitOut(log, "You've hit your limit · resets 3:50pm (Europe/Amsterdam)", sleep, NOW)).toBe(
       true,
     );
-    // A week's limit, a message with no reset and a crash that is no limit are not waited for.
-    expect(await waitOut(log, "Weekly limit reached|1792416600", sleep, NOW)).toBe(false);
+    // A week's limit is waited for too; a reset past, a message with no reset and a crash that is
+    // no limit are not.
+    expect(await waitOut(log, "Weekly limit reached|1792416600", sleep, NOW)).toBe(true);
+    expect(await waitOut(log, "limit reached|1791811800", sleep, new Date("2026-10-12T14:00:00Z"))).toBe(
+      false,
+    );
     expect(await waitOut(log, "exited 1", sleep, NOW)).toBe(false);
     expect(await waitOut(log, null, sleep, NOW)).toBe(false);
     const minutes = 101 * 60_000 + 60_000;
-    expect(slept).toEqual([minutes]);
+    const week = 7 * 86_400_000 + 81 * 60_000 + 60_000;
+    expect(slept).toEqual([minutes, week]);
     expect(read(log).map(({ kind, data }) => [kind, data])).toEqual([
       ["campaign.waited", { for: "provider", until: "2026-10-12T13:50:00.000Z", ms: minutes }],
+      ["campaign.waited", { for: "provider", until: "2026-10-19T13:30:00.000Z", ms: week }],
     ]);
   });
 
@@ -72,6 +83,31 @@ describe("the provider's named reset", () => {
     // A solve's wait at a loaded host is no provider's.
     const loaded: LogEvent = { kind: "campaign.waited", at: NOW.toISOString(), data: { load: 99 } };
     expect(crashedRun([crashed(1), loaded, crashed(2)]).count).toBe(2);
+  });
+
+  it("waits out the limit a Builder crashed on after its checkpoint, which the count leaves out", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), "ana-host-kept-")), "campaign.jsonl");
+    const slept: number[] = [];
+    const sleep = async (ms: number) => {
+      slept.push(ms);
+    };
+    const crash = (said: string) => {
+      append(log, "build.checkpoint", { session: "b-1" });
+      append(log, "build.finished", { session: "b-1", ended: "crashed", changed: true, crash: said });
+    };
+    // The network's failure of a session that moved the campaign is no crash in a row to wait for.
+    crash("read ECONNRESET");
+    await waitCrashed(log, sleep);
+    expect(slept).toEqual([]);
+    // Until 15 October its limit was not waited for either, and the next conversation opened into it.
+    const reset = Math.ceil(Date.now() / 1000) + 3600;
+    crash(`limit reached|${String(reset)}`);
+    expect(crashedRun(read(log))).toEqual({ count: 0, crash: `limit reached|${String(reset)}` });
+    await waitCrashed(log, sleep);
+    expect(slept).toHaveLength(1);
+    expect(read(log).filter(({ kind }) => kind === "campaign.waited")).toMatchObject([
+      { data: { for: "provider" } },
+    ]);
   });
 });
 

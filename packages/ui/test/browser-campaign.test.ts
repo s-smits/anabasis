@@ -463,9 +463,19 @@ describe("accessibility", () => {
     await opened.context.close();
   });
 
-  test("the pane breaks none on a phone", async () => {
+  test("the pane breaks none on a phone, and its table for the keyboard scrolls inside its card", async () => {
     const opened = await openCampaign("fixture", PHONE.width);
-    expect(await accessibilityViolations(opened.page, "main")).toEqual([]);
+    const { page } = opened;
+    expect(await accessibilityViolations(page, "main")).toEqual([]);
+    const shown = page.locator(".ana-shown-on-focus");
+    await shown.getByRole("button", { name: "b-1" }).focus();
+    await expect(shown.locator("table")).toBeVisible();
+    // Shown at its own width the table made the page 331 px wider than a phone on 14 October.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    expect(await shown.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    expect(await accessibilityViolations(page, "main")).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
   });

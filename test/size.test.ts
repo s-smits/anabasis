@@ -66,6 +66,11 @@ describe("what a comparison of a given size can show, said before it runs", () =
     expect(sizeLines(12, { ...ASKED, level: 0.2 }).at(0)).toContain("together clear at 3-0, 4-1, 6-2,");
     expect(sizeLines(3, ASKED).at(0)).toContain("buy the repeat are 2-0, and at --level 0.1");
     expect(sizeLines(3, ASKED).at(0)).toContain("together clear at 4-0, each task");
+    // Two tasks at 0.02 can buy the repeat, and no result of both stages clears: until 14 October
+    // the line read "clear at , each task".
+    expect(sizeLines(2, { ...ASKED, level: 0.02 }).at(0)).toContain(
+      "buy the repeat are 2-0, and at --level 0.02 the step and its repeat together cannot clear it, all won, each task",
+    );
     // Three tasks clear nothing at 0.10 in one reading, though two readings of them can promote.
     expect(sizeLines(3, ASKED).slice(1, 3)).toEqual([
       "were no task to tie, one reading at --level 0.1 would detect no share of 3 tasks: it takes 4, all won",

@@ -229,9 +229,9 @@ function actionTool(
         "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say what it has held out.",
       release_practice: "Release the host's draw of public practice tasks into this workspace.",
       compare:
-        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one read a step, this is its repeat, of the harness as it was frozen then, on tasks the step did not score; it waits until the campaign holds enough of them.",
+        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one bought a repeat, its result at or under the trigger whatever it read by itself, this is that repeat: of the harness as that comparison froze it, on tasks it did not score, and it waits until the campaign holds enough of them. The comparison and its repeat, read together, decide a promotion.",
       promote:
-        "Make the harness that read a step and its repeat the campaign's reference, where the host has not already done so as the repeat reported. Nothing else is promoted, and this measures nothing.",
+        "Make the harness whose comparison and repeat, read together, cleared the level the campaign's reference, where the host has not already done so as the repeat reported. Nothing else is promoted, and this measures nothing.",
     }[move],
     parameters: Type.Object({}),
     executionMode: "sequential",
@@ -523,7 +523,7 @@ async function promoteOwed(context: CampaignContext, bench: Bench): Promise<stri
   await refreshCampaign(context, bench);
   await readLadder(context, bench);
   return [
-    `Harness ${short(decided.harness)} read a step and its repeat against the reference, and the host has made it the campaign's reference.`,
+    `Harness ${short(decided.harness)} and its repeat, read together, cleared the level against the reference, and the host has made it the campaign's reference.`,
   ];
 }
 
@@ -555,7 +555,7 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
     if (!promoted) {
       return {
         refused:
-          "Nothing was promoted: no harness other than the reference has read a step and its repeat against it.",
+          "Nothing was promoted: no harness other than the reference has a comparison and repeat that, read together, cleared the level against it.",
       };
     }
     begin({ ...began, harness: candidate });

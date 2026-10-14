@@ -125,7 +125,7 @@ export function decide(events: readonly LogEvent[], plan: Plan): Decided {
 export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: string): string | null {
   return steppedTwice(groundOf(events, plan), harness)
     ? null
-    : `harness ${short(harness)} has not read a step and its repeat against the reference harness`;
+    : `harness ${short(harness)} has no comparison and repeat that, read together, clear the level against the reference harness`;
 }
 
 /** The tasks held out after the log's index `after`. */

@@ -533,7 +533,7 @@ describe("a campaign run by its live Builder", () => {
     expect(readings).toMatchObject([{ session: owed?.session }, { frozen: owed?.session }]);
     expect(readings[0]?.frozen).toBeUndefined();
     expect(of(name, CALLED).findLast(({ tool }) => tool === "compare")?.text).toContain(
-      `Harness ${isString(second?.fresh) ? second.fresh.slice(0, 8) : ""} read a step and its repeat against the reference, and the host has made it the campaign's reference.`,
+      `Harness ${isString(second?.fresh) ? second.fresh.slice(0, 8) : ""} and its repeat, read together, cleared the level against the reference, and the host has made it the campaign's reference.`,
     );
     expect(first).toMatchObject({ reading: "step", scored: { wins: 5, losses: 0, ties: 0 } });
     expect(repeat).toMatchObject({ reading: "step", old: first?.old, fresh: first?.fresh });

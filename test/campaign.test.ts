@@ -705,7 +705,7 @@ describe("a campaign", () => {
     // limit, and a harness no comparison measured is refused the word alone.
     const refused = promote("--harness", digest, "--yes");
     expect(refused).toContain(
-      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not read a step and its repeat against the reference harness`,
+      `the plan would not promote it now: harness ${digest.slice(0, 8)} has no comparison and repeat that, read together, clear the level against the reference harness`,
     );
     expect(refused).toContain("not promoted: a step is promoted once it was read again");
     expect(promotions()).toEqual([]);

@@ -1044,12 +1044,14 @@ describe("a promotion by hand", () => {
   it("is the plan's where the harness read a step and its repeat, and says why where not", () => {
     const stepped = [...FIRST, ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
     expect(unpromoted(stepped, PLAN, "h1")).toBe(
-      "harness h1 has not read a step and its repeat against the reference harness",
+      "harness h1 has no comparison and repeat that, read together, clear the level against the reference harness",
     );
     const again = [...stepped, ...compared("g-2", "h1", "step", { tally: [10, 0, 2] })];
     expect(unpromoted(again, PLAN, "h1")).toBeNull();
     // Another harness of the campaign rests on nothing.
-    expect(unpromoted(again, PLAN, "h9")).toContain("harness h9 has not read a step and its repeat");
+    expect(unpromoted(again, PLAN, "h9")).toContain(
+      "harness h9 has no comparison and repeat that, read together, clear the level",
+    );
     // A record of the setting after the step changes nothing: a campaign runs at one setting, and
     // until 2026-10-11 a step read before a second record was none under the campaign's.
     expect(unpromoted([...again, setting(10)], PLAN, "h1")).toBeNull();

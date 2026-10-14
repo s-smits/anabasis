@@ -7,6 +7,7 @@ import { short } from "../../../../src/builder/move.ts";
 import { digestText, STARTER_NAME, tallyText } from "./campaign-data.ts";
 import { AnswerIssues } from "./drill.tsx";
 import { time } from "./format.ts";
+import { useHeld } from "./held.ts";
 
 /*
  * The lineage strip (the brief of 11 October, section 6): every harness version in the order kept,
@@ -43,17 +44,17 @@ function selectedIndex(cards: readonly HarnessCard[], harness: string | null): n
 }
 
 /** The kept `agent/` files of the selected harness, each opening the inspector, and what the server
- *  could not read of them. */
+ *  could not read of them. The previous card's files stay, closed to the pointer, while the next
+ *  card's are read (`held.ts`). */
 function Files({ of, digest, navigation }: { of: Of; digest: string; navigation: Navigation }) {
   const files = useHarness(of, digest);
+  const { view, stale, slow } = useHeld(digest, files.current ? files.data : null);
   if (files.error !== null) return <span className="ana-harness-note">{files.error}</span>;
-  if (files.data === null || !files.current) {
-    return <span className="ana-harness-note">Reading its files</span>;
-  }
   return (
-    <>
-      <AnswerIssues answer={files.data} />
-      {files.data.files.map((file) => (
+    <div className="ana-harness-files" aria-busy={stale} inert={stale}>
+      {slow ? <span className="ana-harness-note">Reading its files</span> : null}
+      {view === null ? null : <AnswerIssues answer={view} />}
+      {view?.files.map((file) => (
         <button
           type="button"
           key={file.path}
@@ -63,7 +64,7 @@ function Files({ of, digest, navigation }: { of: Of; digest: string; navigation:
           {file.path}
         </button>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -152,9 +153,7 @@ function Detail({
               Compare with previous
             </Button>
           )}
-          <div className="ana-harness-files">
-            <Files of={of} digest={digest} navigation={navigation} />
-          </div>
+          <Files of={of} digest={digest} navigation={navigation} />
         </div>
       )}
     </div>

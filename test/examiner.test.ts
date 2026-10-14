@@ -843,8 +843,8 @@ describe("a session that writes tasks", () => {
     expect(s.sent.join("\n")).not.toContain(SOLVER);
   });
 
-  it("ends at its wall with no solve of the reference harness left running", async () => {
-    const s = seat("write", [call("try_task", { tasks: [instance(2)] }), finish, finish]);
+  it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {
+    const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
     const running = new Set<string>();
     // Each solve would pass long after the wall, unless the kill a comparison's solves take
     // stops it first; the launcher records its end either way.
@@ -877,6 +877,8 @@ describe("a session that writes tasks", () => {
       "killed",
     ]);
     expect(s.of("task.gate")).toMatchObject([{ outcome: "refused", reference: { valid: 0, solves: 0 } }]);
+    // The batch's second instance came after the wall: never proposed, so a later session takes it.
+    expect(s.of("task.proposed")).toHaveLength(1);
   });
 
   it("runs in its shell the engine a check names, from where it lies, and no other program of its tree", async () => {

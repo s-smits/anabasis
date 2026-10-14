@@ -7,7 +7,7 @@ import type { Navigation } from "../route.ts";
 import { AnswerIssues, DetailHead, enter } from "./drill.tsx";
 import { time } from "./format.ts";
 import { SolveTable } from "./solve-rows.tsx";
-import { countsOf, outcomeOf } from "./tasks-grid.tsx";
+import { countsOf, leftOutWords, outcomeOf } from "./tasks-grid.tsx";
 
 /*
  * One task version: what each comparison came to on it, its text where the tier shows it, and its
@@ -66,15 +66,18 @@ export function TaskDetailView({
         <span>proposed {time(row.proposedAt)}</span>
       </DetailHead>
       <AnswerIssues answer={detail} />
-      <Section title={`Scored in ${String(results.length)} of ${String(grid.columns.length)} comparisons`}>
+      <Section title={`In ${String(results.length)} of ${String(grid.columns.length)} comparisons`}>
         {results.length === 0 ? (
           <p className="ana-faint">No comparison has scored this task.</p>
         ) : (
           <ul className="ana-task-results">
             {results.map(({ column, cell }) => {
-              const { label, color } = outcomeOf(cell.outcome);
+              const shown =
+                "leftOut" in cell
+                  ? { label: leftOutWords(cell), color: null, counts: null }
+                  : { ...outcomeOf(cell.outcome), counts: countsOf(cell) };
               return (
-                <li key={column.id} title={label}>
+                <li key={column.id} title={shown.label}>
                   <button
                     type="button"
                     className="ana-row-select"
@@ -85,10 +88,12 @@ export function TaskDetailView({
                     {column.id}
                   </button>
                   <span className="ana-outcome">
-                    <span className="ana-swatch" style={{ background: color }} aria-hidden />
-                    {label}
+                    {shown.color === null ? null : (
+                      <span className="ana-swatch" style={{ background: shown.color }} aria-hidden />
+                    )}
+                    {shown.label}
                   </span>
-                  <small className="ana-num">{countsOf(cell)}</small>
+                  {shown.counts === null ? null : <small className="ana-num">{shown.counts}</small>}
                 </li>
               );
             })}

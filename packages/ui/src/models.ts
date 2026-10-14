@@ -584,6 +584,12 @@ export interface TaskCell {
   readonly fresh: Share;
 }
 
+/** A task a comparison fixed and its report left out of its tally and of its set-aside ones, by why
+ *  (`LeftOut`): disputed for good, short of its solves a side, or withdrawn while it ran. */
+export interface TaskLeftOut {
+  readonly leftOut: keyof LeftOut;
+}
+
 export interface TaskGrid extends Answer {
   /** The comparisons in the order of the main chart. */
   readonly columns: readonly Pick<
@@ -591,8 +597,8 @@ export interface TaskGrid extends Answer {
     "id" | "move" | "kind" | "reading" | "cut" | "old" | "fresh"
   >[];
   /** One a task version, in the order proposed; `cells` is aligned with `columns`, null where the
-   *  comparison did not score the task. */
-  readonly rows: readonly (TaskRow & { readonly cells: readonly (TaskCell | null)[] })[];
+   *  comparison did not fix the task. */
+  readonly rows: readonly (TaskRow & { readonly cells: readonly (TaskCell | TaskLeftOut | null)[] })[];
 }
 
 export interface TaskDetail extends Answer {

@@ -745,7 +745,8 @@
   color: var(--ana-text);
 }
 
-.ana-grid-cell.is-none > span {
+.ana-grid-cell.is-none > span,
+.ana-grid-cell.is-left-out > span {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
 }

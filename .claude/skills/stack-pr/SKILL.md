@@ -114,15 +114,18 @@ measure.
 
 ## 6. Run what CI runs
 
-`.github/workflows/ci.yml` has two jobs, because the isolation has two mechanisms and a suite
-passing on one platform says nothing of the other.
+`.github/workflows/ci.yml` runs on two platforms, because the isolation has two mechanisms and a
+suite passing on one platform says nothing of the other. The UI's gate has a macOS runner of its
+own, since with its browser tests and the suite one job passed its 45 minutes. Each step after the
+install runs whatever failed before it.
 
 | job | steps |
 | --- | --- |
-| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:gate`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run test` |
+| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:deps`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run test` |
+| Darwin UI (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:gate` |
 | Linux (Ubuntu 24.04 VM) | install `bubblewrap`, `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, `bun install --frozen-lockfile`, `bun run test` |
 
-`bun run gate` runs the Darwin job's steps in one command, cheapest first; `-- --static` runs the
+`bun run gate` runs the two Darwin jobs' steps in one command, cheapest first; `-- --static` runs the
 tests one import from what HEAD changed in place of the suite. Judge every step by its exit code,
 never by its last lines.
 

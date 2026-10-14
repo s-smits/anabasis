@@ -393,6 +393,8 @@ describe("the Builder running its campaign", () => {
           ...s.request,
           limits: { ...s.request.limits, wallSeconds: 0.05 },
           campaign: (bench) => ({
+            // An opening action on the host's time, as a led campaign's first Examiner session is.
+            start: async () => await bench.within(async () => ""),
             hook: () => "",
             tools: [
               tool({

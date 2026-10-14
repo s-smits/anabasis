@@ -102,7 +102,10 @@ export function SolveDetailView({
   navigation: Navigation;
 }) {
   const { solve } = detail;
-  const ruled = isRejection(solve) || (detail.ruling !== undefined && detail.ruling !== null);
+  // The Referee rules a rejection inside a comparison only, so a practice solve has no ruling to
+  // place, on either side: until 14 October its rejection said the exam side held one.
+  const ruled =
+    (detail.heldOut && isRejection(solve)) || (detail.ruling !== undefined && detail.ruling !== null);
   const facts = [
     ["Turns", solve.turns === null ? "open" : String(solve.turns)],
     ["Calls", String(solve.calls)],

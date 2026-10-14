@@ -1089,7 +1089,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     }
     const spent = heard(log.events, closed.map(fixture)).lines.filter((each) =>
       each.includes(
-        ": the reference harness answered it validly in every solve of two comparisons: no longer scored, unless it is among the third kept in the draw; ",
+        ": the reference harness answered it validly in every solve of two comparisons: no longer scored; ",
       ),
     );
     expect(spent).toHaveLength(2);
@@ -1132,7 +1132,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       ),
       line(
         "mixed",
-        `the reference harness answered it validly in every solve of two comparisons: no longer scored, unless it is among the third kept in the draw; ${VALID}; of its last 3 comparisons with the current reference harness, newest first, the reference answered it validly in every, none (a solve cut at a limit), every of its solves, the last closing it`,
+        `the reference harness answered it validly in every solve of two comparisons: no longer scored; ${VALID}; of its last 3 comparisons with the current reference harness, newest first, the reference answered it validly in every, none (a solve cut at a limit), every of its solves, the last closing it`,
       ),
     ]);
     // The history is of the reference's side alone: the same lines whatever h2 answered, and

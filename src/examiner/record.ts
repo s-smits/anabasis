@@ -87,8 +87,9 @@ const SAID: Readonly<Record<Outcome, string>> = {
   "earlier-reference":
     "the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none",
   disputed: "disputed: a rejection of an answer to it is not settled",
-  exhausted:
-    "the reference harness answered it validly in every solve of two comparisons: no longer scored, unless it is among the third kept in the draw",
+  // A task told so is one the draw leaves out (`outcomeOf`, `reports.ts`): until 14 October the
+  // line said "unless it is among the third kept in the draw", which no task told it can be.
+  exhausted: "the reference harness answered it validly in every solve of two comparisons: no longer scored",
 };
 /** The one fact beside the outcome that names no side. */
 const KNOWN = {

@@ -360,14 +360,22 @@ export async function session(
   const campaign = request.campaign?.(bench);
   const first = opening();
   const turns: AssistantMessage[] = [];
-  // What the session has used of its limits, as every tool result and every continuation says it.
-  // A session under a cap reads what its practice solves billed from the log.
-  const used = (): Used => ({
-    turns: turns.length,
+  // What the session has used of its limits, as every turn's tool results and every continuation
+  // say it. A session under a cap reads what its practice solves billed from the log. A campaign's
+  // session counts a turn as its message ends, before its tools run (below), so while they run its
+  // count holds the turn they belong to: until 14 October a led Builder was told the next turn.
+  const used = (during = false): Used => ({
+    turns: turns.length - (during && campaign !== undefined ? 1 : 0),
     seconds: ownSeconds(),
     practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
     practised: bench.opened !== null,
   });
+  // The calls of the turn whose tools run, to tools the session has. The line goes under the last
+  // of them, once a turn: until 14 October a turn of six calls read it six times. A call the turn
+  // does not name, which no turn should make, carries it all the same.
+  let calls: readonly string[] = [];
+  const footer = (id: string) =>
+    calls.at(-1) === id || !calls.includes(id) ? usedLine(used(true), limits) : "";
   const tools = [
     ...walled(bench),
     practiceTool(bench),
@@ -375,7 +383,7 @@ export async function session(
     openingTool(campaign === undefined ? first : opening, bench.said),
     finishTool(bench),
     ...(campaign?.tools ?? []),
-  ].map((each) => endingWith(each, () => usedLine(used(), limits)));
+  ].map((each) => endingWith(each, footer));
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
   const signal = AbortSignal.any([
@@ -434,6 +442,11 @@ export async function session(
         },
       },
       (event) => {
+        if (event.type === "message_end" && event.message.role === "assistant") {
+          calls = event.message.content.flatMap((part) =>
+            part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
+          );
+        }
         // Meter a campaign's model turn before its tool can spend on another seat.
         if (campaign !== undefined && event.type === "message_end" && event.message.role === "assistant") {
           turns.push(event.message);

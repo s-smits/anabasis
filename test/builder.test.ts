@@ -1055,19 +1055,25 @@ describe("a Builder session", () => {
   // sent: every one of their 365 turns ended in a tool call. So the facts ride on tool results.
   it("reads what it has used of its limits at the end of every tool result, and its goal again when a turn ends without a call", async () => {
     const stop = fauxAssistantMessage("I think that is enough.");
-    const s = await setup([edit, call("practice", { tasks: ["t-1"] }), stop, finish]);
+    // The same guide written twice in one turn, which changes nothing that was practised.
+    const guide = fauxToolCall(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: GUIDE });
+    const twice = fauxAssistantMessage([guide, { ...guide, id: `${guide.id}-again` }], toolUse);
+    const s = await setup([edit, call("practice", { tasks: ["t-1"] }), twice, stop, finish]);
     await session(s.request, s, s.walled);
     const lines = s.of(BUILD_CALL).map(({ text: told }) => (isString(told) ? told.split("\n").at(-1) : ""));
-    // Every result ends with the line: the turn counts up, the practice solves down, and until one
-    // has run the line says so. Fix row 1 of the 10 October reading: a session of 43 turns called
-    // none of the harness tools, and the only statement of where harness/ stood was the
-    // continuation, which a turn ending in a tool call never triggers.
+    // Every turn's last result ends with the line: the turn counts up, the practice solves down,
+    // and until one has run the line says so. Fix row 1 of the 10 October reading: a session of 43
+    // turns called none of the harness tools, and the only statement of where harness/ stood was
+    // the continuation, which a turn ending in a tool call never triggers. Until 14 October each
+    // result of a turn carried it.
     expect(lines).toEqual([
       expect.stringMatching(
         /^\[Session: turn 1 of 12, 0:0\d of 10:00 used, 3 practice solves left, no practice solve has run harness\/\]$/,
       ),
       expect.stringMatching(/^\[Session: turn 2 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
-      expect.stringMatching(/^\[Session: turn 4 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
+      expect.not.stringMatching(/^\[Session/),
+      expect.stringMatching(/^\[Session: turn 3 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
+      expect.stringMatching(/^\[Session: turn 5 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
     ]);
     // An error carries it as a result does.
     const refused = await setup([call("practice", { tasks: ["t-9"] }), finish]);
@@ -1079,13 +1085,13 @@ describe("a Builder session", () => {
       ),
     });
     // The turn that ended with no call is answered with the goal and the facts, and with no course.
-    const continued = parseJsonAs<{ messages: { role: string; content: string }[] }>(s.sent[3] ?? "{}");
+    const continued = parseJsonAs<{ messages: { role: string; content: string }[] }>(s.sent[4] ?? "{}");
     expect(continued.messages.at(-1)).toMatchObject({
       role: "user",
       content: [
         `${GOES_ON}, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is frozen and measured.`,
         "The goal, unchanged: Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.",
-        "This session so far: 3 of 12 turns and 0 of 10 minutes used, 2 practice solves left. harness/ is as your last practice solve ran it.",
+        "This session so far: 4 of 12 turns and 0 of 10 minutes used, 2 practice solves left. harness/ is as your last practice solve ran it.",
         "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
       ].join("\n\n"),
     });

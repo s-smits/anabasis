@@ -1120,6 +1120,9 @@ describe("a campaign's endings", () => {
     expect(status?.text).toContain(
       `Examiner session ${sessions.at(-1) ?? ""} crashed, and held out 0 tasks.`,
     );
+    // A led conversation counts its turn before the turn's tools run: until 14 October this, its
+    // first turn, was told as its second.
+    expect(status?.text).toContain("[Session: turn 1 of 300,");
   });
 
   it("goes on with a new conversation when run again after the Builder finished", async () => {

@@ -44,6 +44,9 @@
   gap: 4px;
 }
 
+/* A link to evidence is a target in a list of its kind, two pixels from the next: at its text's
+   own height it is under the 24 pixels WCAG 2.2 asks of a target (2.5.8), which axe found against
+   the harness strip's files and the inspector's list of them on 14 October. */
 .ana-evidence-link {
   background: none;
   border: 0;
@@ -51,6 +54,7 @@
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--ana-text-xs);
+  min-height: 24px;
   overflow-wrap: anywhere;
   padding: 2px 0;
   text-align: left;

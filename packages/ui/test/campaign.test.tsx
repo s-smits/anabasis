@@ -77,7 +77,7 @@ test("the main campaign renders its line, three readouts, the chart's key, every
   expect(html.replaceAll(/<[^>]*>/g, " ")).not.toMatch(/epoch|climb/i);
 });
 
-test("the counters say what the attempts under the reference risk and how many comparisons the budget holds", () => {
+test("the counters say what the attempts under the reference risk, what a promotion billed and how many comparisons are left", () => {
   const reading = readingOf(fixture.units);
   const { risk, runway } = reading.counters;
   const html = paneOf(reading);
@@ -87,8 +87,10 @@ test("the counters say what the attempts under the reference risk and how many c
   expect(html.includes("past the table&#x27;s")).toBe(false);
   const affords = Math.floor((runway?.left ?? 0) / (runway?.each ?? 1));
   expect(html).toContain(
-    `Comparisons the budget holds at the last one&#x27;s price <b class="ana-num">${String(affords)}</b>`,
+    `Comparisons left at the last one&#x27;s price <b class="ana-num">${String(affords)}</b>`,
   );
+  const each = reading.promotions.length === 0 ? null : reading.row.billed / reading.promotions.length;
+  expect(html.includes("Billed a promotion")).toBe(each !== null);
   // Past the hold, the counter says so; with no total to price against, it says nothing.
   const risky: CampaignReading = {
     ...reading,
@@ -96,7 +98,7 @@ test("the counters say what the attempts under the reference risk and how many c
   };
   const held = paneOf(risky);
   expect(held).toContain("over 2 attempts, past the table&#x27;s 25%");
-  expect(held.includes("Comparisons the budget holds")).toBe(false);
+  expect(held.includes("Comparisons left")).toBe(false);
 });
 
 test("the harness strip keeps every card closed in one row and shows the selected one's detail under it", () => {

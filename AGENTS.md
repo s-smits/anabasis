@@ -178,9 +178,10 @@ packet holds every rejection that set a task aside, and a blind sample of three 
 earned and three passes, since no seat reads an answer that passed.
 
 **4. Economy: what did each measured gain cost?** A significant step is not necessarily a useful
-one, and the budget is a practical limit that can end a campaign while the system still has room
-to improve. The closing report reads it from the log alone and adds no solve (`tools/d2/close.ts`,
-"Work and spend"): the dollars billed, what the Examiner billed a task it held out, its admission
+one. The budget is a bound the operator sets, and a campaign is read by how fast it climbs under
+it, not by what it leaves unspent (operator, 14 October). The closing report reads it from the log
+alone and adds no solve (`tools/d2/close.ts`, "Work and spend"): first the climb's velocity, the
+dollars and hours of the log a promotion, then the dollars billed, what the Examiner billed a task it held out, its admission
 solves included and a task held for the ladder counted as written, what comparisons billed a task
 they scored, what each ladder's climb cost a point the reference gained on it between that
 ladder's first reading and its last, and how many of the

@@ -275,6 +275,27 @@ describe("a campaign's reading", () => {
     expect(openSteps(campaignOf(c.events()).steps)).toEqual(["b-1"]);
   });
 
+  it("reads a led Builder as live while an Examiner session and a comparison run inside it", () => {
+    const c = campaign();
+    c.setUp();
+    c.record("campaign.opened", { led: true });
+    c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 0.25 } } });
+    c.solved("p1", HA, "fail");
+    c.record("exam.started", { session: "x-1" });
+    c.record("exam.turn", { session: "x-1", turn: 1, usage: { cost: { total: 0.5 } } });
+    c.record("exam.finished", { session: "x-1", ended: "finished", billed: 0.5, held: [] });
+    c.record("comparison.started", { session: "g-1" });
+    c.solved("s1", HA, "pass", "g-1");
+    c.record("build.turn", { session: "b-1", turn: 2, usage: { cost: { total: 0.25 } } });
+    // Until 14 October b-1 read as cut at x-1's start, its turns and dollars cut there with it.
+    const live = { id: "b-1", ended: null, cut: false, turns: 2, practiceSolves: 1, billed: 2 };
+    expect(steps(c, "builder")).toMatchObject([live]);
+    expect(openSteps(campaignOf(c.events()).steps)).toContain("b-1");
+    c.record("campaign.ended", { ending: "environment" });
+    expect(steps(c, "builder")).toMatchObject([{ ...live, cut: true }]);
+  });
+
   // buffer-main's g-1 had four solves in flight on 11 October, and nothing said how far it was.
   it("reads a comparison with no report as open, with its solves so far, and as cut once the campaign ended", () => {
     const c = campaign();

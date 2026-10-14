@@ -7,6 +7,7 @@ import { type Condition, conditionId, settingId } from "../src/kernel/condition.
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
   billedAll,
+  billedBetween,
   billedFor,
   comparedAs,
   lastReports,
@@ -243,6 +244,24 @@ describe("the stop rule", () => {
     const earlier = [...sessions, flat("b-1", "h2", { setting: "s1" }), flat("b-2", "h3", { setting: "s1" })];
     expect(stopRule([...earlier, flat("b-3", "h4", { setting: "s2" })])).toEqual(counted(3, 3));
     expect(stopRule([...earlier, flat("b-3", "h3", { setting: "s2" })])).toEqual(counted(2, 2));
+  });
+
+  // Found by review, 14 October: the pair read as its repeat alone, so a 3-0 that bought the
+  // repeat and a 3-1 that promotes with it read as no gain, and at patience 1 the table's `bound`
+  // row ended the campaign before its `twice` row could promote.
+  it("reads a pair whose last two promote together as a step, and counts each epoch apart", () => {
+    const one = event("campaign.opened", { ...three.data, patience: 1 });
+    const stage = (id: string, wins: number, losses: number) =>
+      flat(id, "h2", { ...tallied(wins, losses, 0), level: 0.1 });
+    const pair = [...sessions, stage("g-1", 3, 0), stage("g-2", 3, 1)];
+    expect(stopOf([one, ...pair])).toEqual({ checkpoints: 1, sinceStep: 0, stop: false });
+    // A repeat that loses as much as it wins promotes nothing, and counts as no gain.
+    const lost = [...sessions, stage("g-1", 3, 0), stage("g-2", 1, 1)];
+    expect(stopOf([one, ...lost])).toEqual({ checkpoints: 1, sinceStep: 1, stop: true });
+    // A promotion starts an epoch: what showed no gain before it does not count after it.
+    const toH2 = event("harness.promoted", { harness: "h2", from: "base", rests: [] });
+    expect(stopRule([...two, toH2])).toEqual(counted(2, 0));
+    expect(stopRule([...two, toH2, flat("b-3", "h4")])).toEqual(counted(3, 1));
   });
 
   it("reads room by the tasks informative for the reference, too-hard where nobody answered", () => {
@@ -1016,7 +1035,8 @@ describe("the billed dollars a cap counts", () => {
       turn("solve.turn", { solve: "s-b" }, 9),
       event("exam.started", { session: "x-1" }),
       turn("exam.turn", { session: "x-1" }, 0.2),
-      // An Examiner's repair of its check program: one killed after a turn, one that summed its own.
+      // A log of before the repair session was retired still bills it: one killed after a turn, one
+      // that summed its own.
       event("repair.started", { session: "r-1" }),
       turn("repair.turn", { session: "r-1" }, 0.3),
       event("repair.started", { session: "r-2" }),
@@ -1050,5 +1070,27 @@ describe("the billed dollars a cap counts", () => {
     expect(billedFor(log, "g-2")).toBe(0);
     // A live Builder's own turns count before its next tool can spend on another seat.
     expect(billedFor(log, "b-1")).toBe(0.75);
+  });
+
+  it("bill a stretch for what was metered inside it, a session open across either end included", () => {
+    const turn = (total: number) => event("build.turn", { session: "b-1", usage: { cost: { total } } });
+    // recode-151 (14 October): the Builder's conversation spans epochs and ends inside the last.
+    const log = [
+      event(BUILD_STARTED, { session: "b-1" }),
+      turn(5),
+      event("harness.promoted", { harness: "h-1" }),
+      turn(1),
+      ...paid("s-a", 2, "g-1"),
+      event("harness.promoted", { harness: "h-2" }),
+      turn(0.5),
+      event("build.finished", { session: "b-1", billed: 6.5 }),
+    ];
+    expect(billedBetween(log, 0, 2)).toBe(5);
+    expect(billedBetween(log, 2, 6)).toBe(3);
+    expect(billedBetween(log, 6)).toBe(0.5);
+    // A sum over the slice alone bills the last stretch the session's whole sum, and the middle
+    // none of its turns.
+    expect(billedAll(log.slice(6))).toBe(6.5);
+    expect(billedAll(log.slice(2, 6))).toBe(2);
   });
 });

@@ -41,11 +41,11 @@ These are v1's results (v0.4.0); v2 has not repeated them yet.
 
 ## Run it
 
-We use **Bun 1.4.2** (Stable) and support macOS or Linux. Linux also needs `bubblewrap`.
+We use **Bun 1.4.3** (Stable) and support macOS or Linux. Linux also needs `bubblewrap`.
 On Ubuntu 24.04 and later, `bubblewrap` also needs unprivileged user namespaces, which AppArmor restricts by default: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
 So first, if you haven’t already, please install Bun:
 ```sh
-curl -fsSL https://bun.com/install | bash -s "bun-v1.4.2"
+curl -fsSL https://bun.com/install | bash -s "bun-v1.4.3"
 ```
 This example uses Claude for all four model seats.
 
@@ -89,7 +89,7 @@ bun tools/d2/close.ts --name your-campaign --to ../my-harness --solve task-id
 - **Tasks.** A task is a task id the campaign holds. A released task is the one to name: a held-out task's answer then lies in the handover's log.
 - **Solve** runs the campaign's solver once, confined, from the folder the Harness was written to, under the campaign's checks, and prints how it ended. It is recorded in `handover/log.jsonl` beside the campaign's log, which no reading of the campaign counts. It is a local evaluation, not a capability claim.
 - **Checks.** The handover holds no check, hidden value or answer: the report names no task, so the folder can leave the exam side.
-- **Host.** Bun 1.4.2 and the wall a run uses: Seatbelt on macOS, `bubblewrap` on Linux. Without the wall a case is a typed non-result, never an unconfined run.
+- **Host.** Bun 1.4.3 and the wall a run uses: Seatbelt on macOS, `bubblewrap` on Linux. Without the wall a case is a typed non-result, never an unconfined run.
 - **Tools.** `.toolchain/` holds the tools the Builder installed, built for the operating system and architecture that installed them, and is copied in full, its links as links. The Harness is opened before the command returns, and where it does not open as the Harness the campaign kept, nothing is left in the folder.
 - **Code.** The handover runs this checkout's solve and verifier code over the handed-over Harness: a fresh solve, not a replay of the measured run.
 

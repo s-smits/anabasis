@@ -139,6 +139,16 @@ function rowText(row: ProbeRow): string {
   ].join("\n");
 }
 
+/** How much of the review's probe budget is spent. In two campaigns of 12 October every unclear
+ *  ruling, 8 of 8, came after the eighth probe, while no message had named the budget: the ninth
+ *  was refused unannounced. */
+function budgetLine(used: number): string {
+  const left = PROBE_BUDGET - used;
+  return left === 0
+    ? `  probe ${String(used)} of ${String(PROBE_BUDGET)}: none left, so record your ruling on the probes made`
+    : `  probe ${String(used)} of ${String(PROBE_BUDGET)}: ${plural(left, "probe")} left`;
+}
+
 /**
  * The answer with the one change made. Throws, in words for the model that sent it, a change that
  * is not one: both forms or neither, a value that is not JSON, a path the answer does not hold, a
@@ -187,8 +197,7 @@ export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows:
   return tool({
     name: "probe_check",
     label: "Probe the checks",
-    description:
-      "Run the task's checks over the answer under review and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a change that the public rules decide one way, so a check reading that field would have to decide it that way too, and read what the checks actually did. Send `value` to replace the field whole, or `find` and `replace` to rewrite one passage inside a text field, which is how one line of a source file is changed. No check moving is not by itself proof that nothing reads the field, since a check that reads it can decide the new value the same way. The path must already exist in the answer and the change must change it. Cite the probe numbers you relied on when you record your ruling.",
+    description: `Run the task's checks over the answer under review and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a change that the public rules decide one way, so a check reading that field would have to decide it that way too, and read what the checks actually did. Send \`value\` to replace the field whole, or \`find\` and \`replace\` to rewrite one passage inside a text field, which is how one line of a source file is changed. No check moving is not by itself proof that nothing reads the field, since a check that reads it can decide the new value the same way. The path must already exist in the answer and the change must change it. A review runs at most ${String(PROBE_BUDGET)} probes, and each result says how many are left, so make first the ones that would decide the ruling. Cite the probe numbers you relied on when you record your ruling.`,
     parameters: Type.Object({
       path: Type.String({
         description:
@@ -232,7 +241,7 @@ export function probeTool(verify: Verifier, task: Task, answer: JsonValue, rows:
         moved: movedChecks(before, after),
       };
       rows.push(row);
-      return text(rowText(row));
+      return text(`${rowText(row)}\n${budgetLine(rows.length)}`);
     },
   });
 }

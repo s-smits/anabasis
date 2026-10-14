@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { checkProgram, sweepRows } from "../tools/m0/stored-sweep.ts";
 
 type Turn =
@@ -73,5 +74,17 @@ describe("a stored sweep", () => {
       ["evaluator.ts", "brief.json", "reference/model.ts"].map((file) => existsSync(join(checks, file))),
     ).toEqual([true, true, true]);
     expect(["tasks.json", "controls.json"].some((file) => existsSync(join(checks, file)))).toBe(false);
+  });
+
+  it("leaves no check program where a copy of one was cut short", () => {
+    const bundle = join(root, "cut");
+    mkdirSync(join(bundle, "correctness-model"), { recursive: true });
+    writeFileSync(join(bundle, "correctness-model", "brief.json"), "{}");
+    // A FIFO stops the copy part of the way through, whoever runs the suite: a file of mode 0 does
+    // not stop root, which the Linux job and a container run as.
+    runTextSyncOrThrow(["mkfifo", join(bundle, "correctness-model", "zz-pipe.ts")]);
+    const to = join(root, "cut-checks");
+    expect(() => checkProgram(bundle, to)).toThrow();
+    expect(existsSync(to)).toBe(false);
   });
 });

@@ -16,7 +16,13 @@ import { countsOf, outcomeOf } from "./tasks-grid.tsx";
  * practice task's text crossed to the Builder already and is shown in either tier.
  */
 
-const STATE_TONES = { held: "info", released: "neutral", refused: "bad", disputed: "warn" } as const;
+const STATE_TONES = {
+  held: "info",
+  released: "neutral",
+  refused: "bad",
+  disputed: "warn",
+  ladder: "info",
+} as const;
 
 export function TaskDetailView({
   detail,

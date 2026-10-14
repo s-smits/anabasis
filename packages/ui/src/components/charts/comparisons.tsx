@@ -48,7 +48,7 @@ type Row = { readonly key: string } & Partial<Record<Series, number>>;
 interface Props {
   readonly bars: readonly ComparisonBar[];
   readonly promotions: readonly Promotion[];
-  readonly starter: string | null;
+  readonly names: Readonly<Record<string, string>>;
   /** A comparison chosen, by its move's place in the log. */
   readonly onOpen: (move: number) => void;
 }
@@ -96,9 +96,9 @@ function rowOf(slot: Slot): Row {
   return { key: slot.key, ...row };
 }
 
-function promotionWord(promotion: Promotion): string {
+function promotionWord(promotion: Promotion, names: Readonly<Record<string, string>>): string {
   if (promotion.toStarter) return "back to the starter";
-  const named = `promoted ${digestText(promotion.harness, null)}`;
+  const named = `promoted ${digestText(promotion.harness, names)}`;
   return promotion.despite === null ? named : `${named}, despite`;
 }
 
@@ -144,6 +144,7 @@ function sessionGlyphs(x: number, y: number, examiner: number, builder: number):
  */
 function promotionFlags(
   promotions: readonly Promotion[],
+  names: Readonly<Record<string, string>>,
   frame: {
     readonly at: (after: string, position: "start" | "end") => number;
     readonly first: string | undefined;
@@ -157,7 +158,7 @@ function promotionFlags(
     const after = promotion.afterComparison ?? frame.first;
     if (after === undefined) return [];
     const at = frame.at(after, promotion.afterComparison === null ? "start" : "end");
-    const word = promotionWord(promotion);
+    const word = promotionWord(promotion, names);
     const width = 12 + word.length * CHAR_PX;
     const side = at + width > frame.right ? -1 : 1;
     const [from, to] = side > 0 ? [at, at + width] : [at - width, at];
@@ -200,7 +201,15 @@ function promotionFlags(
 
 /** The marks drawn from the chart's scales: dividers, breaks, repeat brackets, sessions, open
  *  columns. Rendered inside the chart, where the scales are known. */
-function Marks({ slots, promotions }: { slots: readonly Slot[]; promotions: readonly Promotion[] }) {
+function Marks({
+  slots,
+  promotions,
+  names,
+}: {
+  slots: readonly Slot[];
+  promotions: readonly Promotion[];
+  names: Readonly<Record<string, string>>;
+}) {
   const x = useXAxisScale();
   const y = useYAxisScale();
   const plot = usePlotArea();
@@ -284,7 +293,7 @@ function Marks({ slots, promotions }: { slots: readonly Slot[]; promotions: read
     }
   }
   marks.push(
-    ...promotionFlags(promotions, {
+    ...promotionFlags(promotions, names, {
       at: (after, position) => x(after, { position }) ?? 0,
       first,
       top,
@@ -301,12 +310,12 @@ function SlotTooltip({
   active,
   payload,
   slots,
-  starter,
+  names,
 }: {
   active?: boolean;
   payload?: ReadonlyArray<{ payload?: Row }>;
   slots: ReadonlyMap<string, Slot>;
-  starter: string | null;
+  names: Readonly<Record<string, string>>;
 }) {
   const key = payload?.[0]?.payload?.key;
   const slot = key === undefined ? undefined : slots.get(key);
@@ -321,7 +330,7 @@ function SlotTooltip({
         {KIND_WORD[bar.kind] === null ? "" : `, ${KIND_WORD[bar.kind] ?? ""}`}
       </strong>
       <small>
-        {digestText(bar.fresh, starter)} against {digestText(bar.old, starter)}
+        {digestText(bar.fresh, names)} against {digestText(bar.old, names)}
         {bar.repeats === null ? "" : `, repeating ${bar.repeats}`}
       </small>
       {bar.outcomes === null ? (
@@ -356,7 +365,7 @@ function SlotTooltip({
 
 /** The comparisons chart, its legend and a table of the same counts for a screen reader and a
  *  keyboard, whose buttons open a comparison as its column does. */
-export const ComparisonsChart = memo(function ComparisonsChart({ bars, promotions, starter, onOpen }: Props) {
+export const ComparisonsChart = memo(function ComparisonsChart({ bars, promotions, names, onOpen }: Props) {
   const slots = useMemo(() => comparisonSlots(bars), [bars]);
   const byKey = useMemo(() => new Map(slots.map((slot) => [slot.key, slot])), [slots]);
   const rows = useMemo(() => slots.map(rowOf), [slots]);
@@ -434,7 +443,7 @@ export const ComparisonsChart = memo(function ComparisonsChart({ bars, promotion
               <ChartTooltip
                 cursor={{ fill: "var(--ana-border-soft)" }}
                 isAnimationActive={false}
-                content={<SlotTooltip slots={byKey} starter={starter} />}
+                content={<SlotTooltip slots={byKey} names={names} />}
               />
               {SERIES.map(({ key, color, quiet }) => (
                 <Bar
@@ -460,7 +469,7 @@ export const ComparisonsChart = memo(function ComparisonsChart({ bars, promotion
                 isAnimationActive={false}
                 className="ana-comparisons-bar"
               />
-              <Marks slots={slots} promotions={promotions} />
+              <Marks slots={slots} promotions={promotions} names={names} />
             </BarChart>
           </ChartContainer>
         </div>

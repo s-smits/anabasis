@@ -331,9 +331,20 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
   const level = count(last.level);
   // The least clean sweep that clears the report's level, by the report's own test.
   const sweep = level > 0 ? sweepOf(level) : undefined;
-  // No result with a loss clears on this many informative pairs, each won or lost by as many pairs:
-  // the reading rests on a sweep.
-  const fragile = flipP([...Array.from({ length: Math.max(0, informative - 1) }, () => 1), -1]) > level;
+  // The reading with its least win lost does not clear: it rests on a sweep. Read on the frontier's
+  // own margins where the report holds them; on a margin of one pair a task until 14 October, which
+  // said no result with a loss clears on eight tasks where buffer-149's margins let 7-1 clear 0.02.
+  const held = asRecord(last.frontier)?.differences;
+  const margins =
+    Array.isArray(held) && held.every(isNumber) && held.length > 0
+      ? held.filter((each) => each !== 0)
+      : Array.from({ length: informative }, () => 1);
+  const least = margins.reduce(
+    (low, each) => (each > 0 && each < low ? each : low),
+    Number.POSITIVE_INFINITY,
+  );
+  const fragile =
+    Number.isFinite(least) && flipP([...margins.toSpliced(margins.indexOf(least), 1), -least]) > level;
   const asked = last.tasks;
   const lacking = items(last.short).length;
   return [
@@ -359,7 +370,7 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
       ? [
           fired(
             "FEW INFORMATIVE PAIRS",
-            `${session}: ${share(informative, tasks)} tasks tell the harnesses apart; at level ${String(level)} the least sweep that clears is ${String(sweep ?? 0)}-0, and no result with a loss clears on ${plural(informative, "pair")}`,
+            `${session}: ${share(informative, tasks)} tasks tell the harnesses apart; at level ${String(level)} the least sweep that clears is ${String(sweep ?? 0)}-0, and the reading with its least win lost would not`,
           ),
         ]
       : []),

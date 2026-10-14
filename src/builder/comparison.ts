@@ -56,7 +56,12 @@ type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "che
 type Tested = ReturnType<typeof scored>;
 /** One of the two sets a comparison fixes at its start (`retained`, `Fixed`): the tasks that
  *  entered it, which are its denominator, those of them set aside, and its tally and test. */
-type Entered = Tested & { readonly tasks: readonly string[]; readonly aside: readonly string[] };
+/** `of` names the task of each difference; a report from before 14 October holds none. */
+type Entered = Tested & {
+  readonly tasks: readonly string[];
+  readonly aside: readonly string[];
+  readonly of?: readonly string[];
+};
 /**
  * How each harness did by itself over the tallied tasks: entry k counts the tasks on which k of its
  * counted solves gave a valid answer, so with two solves a side the three entries are the tasks
@@ -103,13 +108,16 @@ export interface Report {
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
    *  where it holds four or more of a task: how often two of its solves of a task
-   *  disagree (`flips`), its earlier solves against its later ones, the drift (`drift`), and the
-   *  objective's margin its own spread sets, which a later comparison reads by (`marginOf`,
-   *  `marginRead`), null where the objective measured no two valid answers of one task. */
+   *  disagree (`flips`), the least share of its untied tasks one half has to win for a reading of it
+   *  two-sided at the level to detect it four times in five (`detectable`), which says how much its
+   *  reading no step can show, and the objective's margin
+   *  its own spread sets, which a later comparison reads by (`marginOf`, `marginRead`), null where
+   *  the objective measured no two valid answers of one task. */
   readonly noise:
     | (Tested & {
         readonly flips: number | null;
-        readonly drift: Tally;
+        /** Absent in a report written before 14 October. */
+        readonly detectable?: number | null;
         readonly margin: ReturnType<typeof marginOf>;
       })
     | null;
@@ -141,8 +149,9 @@ export interface Report {
   readonly turns: Readonly<
     Record<string, { readonly old: number | null; readonly fresh: number | null }>
   > | null;
-  /** Where it reads a step, the three bars as the log stood (`worthOf`, the plan's W): its effect,
-   *  the reference's transfer and the epoch's cost. Reported, and gating nothing. */
+  /** Where it reads a step, the cost bar as the log stood (`worthOf`, the plan's W): the epoch's
+   *  attempts. Reported, and gating nothing. A report before 13 October holds an effect and a
+   *  transfer beside it, which nothing reads. */
   readonly worth: Worth | null;
   /** `unsettled` in the comparison's own report until a person answers its packet (`settle.ts`),
    *  which no promotion waits for (the operator, 12 October); then what the labels settled, in
@@ -343,7 +352,10 @@ function setsOf(
   const tallied = { frontier: part(false), retained: part(true) };
   const setOf = (set: keyof typeof tallied): Entered => {
     const within = (task: string) => kept.has(task) === (set === "retained");
-    return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]) };
+    // `of` names the task of each difference, so that a repeat on the same tasks counts each once
+    // (`readTwice`, 14 October).
+    const of = tallied[set].map(({ task }) => task);
+    return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]), of };
   };
   const ofFamily = (family: string, set: keyof typeof tallied) =>
     tally(tallied[set].filter(({ task }) => familyOf(task) === family));
@@ -372,9 +384,9 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const states = taskStates(all);
   // A task a person released or refused while the comparison ran is no held-out task any more. It
   // is left out and named, since a comparison that could not report would lose every solve it paid.
-  const held = new Set(taskSets(events).held);
+  const apart = new Set(taskSets(events).apart);
   const scorable = fixed.tasks.filter((task) => states.get(task) !== "disputed");
-  const live = scorable.filter((task) => held.has(task));
+  const live = scorable.filter((task) => apart.has(task));
   const open = new Set(
     rejections(events, fixed, labels).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
   );
@@ -391,13 +403,19 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const aside = live.filter((task) => open.has(task));
   const sets = setsOf(all, fixed, pairs, aside);
   const { frontier } = sets;
-  /** The reference against itself on halves of the test's own solves (`Sides`, `halves`). */
-  const itself = (halves: "mirrored" | "in-order") =>
-    kept(pairsOf(events, live, { ...sides, fresh: fixed.old, halves }, fixed.solves / 2).pairs);
+  /** The reference against itself on halves of the test's own solves (`Sides`, `halves`), over
+   *  the tallied tasks and no other: until 14 October it read every live task, so a task short on
+   *  the new side alone stood in the A/A and not in the tally, and its printed count was neither. */
+  const tallied = pairs.map(({ task }) => task);
+  const itself = () =>
+    kept(
+      pairsOf(events, tallied, { ...sides, fresh: fixed.old, halves: "mirrored" }, fixed.solves / 2).pairs,
+    );
   // The A/A (12 October, the plan's section 4b): where the reference's solves of a task are four
   // or more and even, which halves mirrored in time split two against two at least. At four a
   // side every comparison carries one.
-  const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself("mirrored") : null;
+  const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself() : null;
+  const aa = mirrored === null ? null : scored(mirrored);
   const valid = validOf(pairs, fixed.solves);
   // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
   const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
@@ -414,12 +432,13 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     valid,
     billed: { old: billedMean(pairs, "old"), fresh: billedMean(pairs, "fresh") },
     noise:
-      mirrored === null
+      mirrored === null || aa === null
         ? null
         : {
-            ...scored(mirrored),
+            ...aa,
             flips: flipsOf(mirrored),
-            drift: tally(itself("in-order")),
+            // Two-sided, as the control is read (`controlled`, `decide.ts`): each side at half the level.
+            detectable: detectable(aa.differences, fixed.level / 2),
             margin: marginOf(mirrored),
           },
     counted: pairs.length === first.pairs.length ? null : scored(first.pairs),
@@ -427,20 +446,11 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     aside,
     short: live.filter((task) => first.short.includes(task)),
     flagged: flaggedIn(events, pairs),
-    withdrawn: scorable.filter((task) => !held.has(task)),
+    withdrawn: scorable.filter((task) => !apart.has(task)),
     reading,
     turns: turnsOf(events, pairs),
-    // The three bars, read where a step is (the plan's W): printed, and gating nothing.
-    worth:
-      reading === "step"
-        ? worthOf(events, {
-            id: fixed.id,
-            fresh: fixed.fresh,
-            valid,
-            pairs,
-            objective: fixed.objective !== undefined,
-          })
-        : null,
+    // The cost bar, read where a step is (the plan's W): printed, and gating nothing.
+    worth: reading === "step" ? worthOf(events, { id: fixed.id, fresh: fixed.fresh }) : null,
     objective:
       fixed.objective === undefined ? null : { ...fixed.objective, decided: decidedByObjective(pairs) },
   };

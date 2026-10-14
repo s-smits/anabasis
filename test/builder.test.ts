@@ -11,6 +11,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { crashedRun } from "../src/builder/ground.ts";
 import { SAID, systemPrompt } from "../src/builder/prompt.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
 import {
@@ -198,6 +199,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     model: faux.getModel(),
     effort: "medium",
     limits: LIMITS,
+    solver: { model: "faux/faux-solver", effort: "medium" },
     solve: { ...LIMITS, wallSeconds: 480 },
     models: () => models,
     log: log,
@@ -337,9 +339,9 @@ describe("the Builder running its campaign", () => {
           bench = own;
           return {
             tools: [],
-            hook: () => {
+            hook: () => "The host ended the campaign.",
+            halts: () => {
               if (s.of(BUILD_CALL).length > 0) own.halt.abort();
-              return "The host ended the campaign.";
             },
           };
         },
@@ -351,6 +353,33 @@ describe("the Builder running its campaign", () => {
     expect(s.sent).toHaveLength(1);
     expect(built.ended).toBe("stopped");
     expect(s.of(BUILD_FINISHED)[0]?.crash).toBeNull();
+  });
+
+  // Plan item 6.4: each model request rendered the campaign's status twice, about 70 ms each at
+  // 1,486 events, to check for a halt, and discarded both.
+  it("checks for a halt before each model request without rendering the campaign's status", async () => {
+    const s = await setup([edit, edit, finish]);
+    const counted = { hook: 0, halts: 0 };
+    await session(
+      {
+        ...s.request,
+        campaign: () => ({
+          tools: [],
+          hook: () => {
+            counted.hook += 1;
+            return "Campaign facts.";
+          },
+          halts: () => {
+            counted.halts += 1;
+          },
+        }),
+      },
+      s,
+      s.walled,
+    );
+    // The status is rendered once, for the opening message; each of the three requests checks twice.
+    expect(s.sent).toHaveLength(3);
+    expect(counted).toEqual({ hook: 1, halts: 6 });
   });
 
   it("counts its wall on the Builder's own time, and cuts an action outside one", async () => {
@@ -451,9 +480,13 @@ describe("a Builder session", () => {
     );
     expect(s.sent[0]).toContain("t-2 (family fixture): not yet solved under the harness you start from.");
     expect(s.sent[0]).toContain("3 practice solves, 10 minutes and 12 turns");
+    // Who solves, and what each solve is held to, which the session's own limits are not.
+    expect(s.sent[0]).toContain(
+      "The solver your harness is measured with is faux/faux-solver at medium effort. Each of its solves, in practice and in a comparison, has 8 minutes and its model turns unlimited.",
+    );
     // What the log holds of the campaign so far: the fail on record, and no notes yet.
     expect(s.sent[0]).toContain(
-      `You start from harness ${s.digest.slice(0, 8)}. Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\\n- s-1, t-1, harness ${s.digest.slice(0, 8)}: fail (rejected); open.`,
+      `You start from harness ${s.digest.slice(0, 8)}, which no Builder session of this campaign left: the Starter Built Harness unless the operator named another. Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\\n- s-1, t-1, harness ${s.digest.slice(0, 8)}: fail (rejected); open.`,
     );
     // No session before this one left notes, so the message opens on the rules and holds no notes
     // block: v1's starters are in the home, and an untouched starter renders nothing.
@@ -935,6 +968,35 @@ describe("a Builder session", () => {
     expect(s.of("build.started")).toHaveLength(1);
   });
 
+  // Found in buffer-149, 13 October: b-1 crashed on a provider error with a harness it had
+  // practised three of three on, and b-2 started from the starter.
+  it("keeps the harness a crashed session last practised as a checkpoint, and no edit after it", async () => {
+    const failed = fauxAssistantMessage("", { stopReason: "error", errorMessage: "overloaded" });
+    const tried = await setup([edit, call("practice", { tasks: ["t-1"] }), failed]);
+    const kept = await session(tried.request, tried, tried.walled);
+    expect(kept).toMatchObject({ changed: true, ended: "crashed" });
+    expect(tried.of("build.checkpoint")).toEqual([{ session: "b-1", harness: kept.harness }]);
+    // The checkpointed crash moved the campaign, so the provider's crash rule does not count it.
+    expect(crashedRun(read(tried.request.log)).count).toBe(0);
+    // A crash after an edit no solve ran keeps the state the practice solve ran, not the edit,
+    // which may be half done.
+    const later = call(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: `${GUIDE}More.\n` });
+    const edited = await setup([edit, call("practice", { tasks: ["t-1"] }), later, failed]);
+    const ran = await session(edited.request, edited, edited.walled);
+    expect(ran).toMatchObject({ changed: true, ended: "crashed" });
+    expect(ran.harness).not.toBe(kept.harness);
+    expect(edited.of("build.checkpoint")).toEqual([{ session: "b-1", harness: kept.harness }]);
+    expect(crashedRun(read(edited.request.log)).count).toBe(0);
+    // A crash in a session that never practised leaves nothing: no state of it was run.
+    const unpractised = await setup([edit, failed]);
+    expect(await session(unpractised.request, unpractised, unpractised.walled)).toMatchObject({
+      changed: true,
+      ended: "crashed",
+    });
+    expect(unpractised.of("build.checkpoint")).toEqual([]);
+    expect(crashedRun(read(unpractised.request.log)).count).toBe(1);
+  });
+
   it("ends at finish though another call shares its turn", async () => {
     const both = fauxAssistantMessage(
       [
@@ -1029,21 +1091,27 @@ describe("a Builder session", () => {
   // Fix row F17. Until 2026-10-09 a Builder was told its limits once, at its opening, and between
   // turns only that it had not finished. In the seven sessions on record that message was never
   // sent: every one of their 365 turns ended in a tool call. So the facts ride on tool results.
-  it("reads what it has used of its limits at the end of every tool result, and its goal again when a turn ends without a call", async () => {
+  it("reads what it has used of its limits once a turn, under its first tool result, and its goal again when a turn ends without a call", async () => {
     const stop = fauxAssistantMessage("I think that is enough.");
-    const s = await setup([edit, call("practice", { tasks: ["t-1"] }), stop, finish]);
+    // The same guide written twice in one turn, which changes nothing that was practised.
+    const guide = fauxToolCall(WRITE_FILE, { path: "harness/agent/BUILT_AGENTS.md", content: GUIDE });
+    const twice = fauxAssistantMessage([guide, { ...guide, id: `${guide.id}-again` }], toolUse);
+    const s = await setup([edit, call("practice", { tasks: ["t-1"] }), twice, stop, finish]);
     await session(s.request, s, s.walled);
     const lines = s.of(BUILD_CALL).map(({ text: told }) => (isString(told) ? told.split("\n").at(-1) : ""));
-    // Every result ends with the line: the turn counts up, the practice solves down, and until one
-    // has run the line says so. Fix row 1 of the 10 October reading: a session of 43 turns called
-    // none of the harness tools, and the only statement of where harness/ stood was the
-    // continuation, which a turn ending in a tool call never triggers.
+    // Every turn's first result ends with the line: the turn counts up, the practice solves down,
+    // and until one has run the line says so. Fix row 1 of the 10 October reading: a session of 43
+    // turns called none of the harness tools, and the only statement of where harness/ stood was
+    // the continuation, which a turn ending in a tool call never triggers. Until 14 October each
+    // result of a turn carried it, and then the last, which a call pi refuses never reaches.
     expect(lines).toEqual([
       expect.stringMatching(
         /^\[Session: turn 1 of 12, 0:0\d of 10:00 used, 3 practice solves left, no practice solve has run harness\/\]$/,
       ),
       expect.stringMatching(/^\[Session: turn 2 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
-      expect.stringMatching(/^\[Session: turn 4 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
+      expect.stringMatching(/^\[Session: turn 3 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
+      expect.not.stringMatching(/^\[Session/),
+      expect.stringMatching(/^\[Session: turn 5 of 12, 0:0\d of 10:00 used, 2 practice solves left\]$/),
     ]);
     // An error carries it as a result does.
     const refused = await setup([call("practice", { tasks: ["t-9"] }), finish]);
@@ -1055,13 +1123,13 @@ describe("a Builder session", () => {
       ),
     });
     // The turn that ended with no call is answered with the goal and the facts, and with no course.
-    const continued = parseJsonAs<{ messages: { role: string; content: string }[] }>(s.sent[3] ?? "{}");
+    const continued = parseJsonAs<{ messages: { role: string; content: string }[] }>(s.sent[4] ?? "{}");
     expect(continued.messages.at(-1)).toMatchObject({
       role: "user",
       content: [
         `${GOES_ON}, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is frozen and measured.`,
-        "The goal, unchanged: Your harness is measured against a reference harness, by that solver and under the same limits, on tasks you are never shown.",
-        "This session so far: 3 of 12 turns and 0 of 10 minutes used, 2 practice solves left. harness/ is as your last practice solve ran it.",
+        "The goal, unchanged: Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.",
+        "This session so far: 4 of 12 turns and 0 of 10 minutes used, 2 practice solves left. harness/ is as your last practice solve ran it.",
         "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
       ].join("\n\n"),
     });
@@ -1118,20 +1186,28 @@ describe("what a Builder is shown of a solve", () => {
 // to read the same bytes.
 describe("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
-   *  reason, the hidden value of a held-out task and of a practice task, and which held-out task
-   *  the comparison's new harness won. */
+   *  reason, the hidden value of a held-out task and of a practice task, which held-out task the
+   *  comparison's new harness won, and whether a task is held for the ladder. */
   interface Kept {
     readonly check: string;
     readonly reason: string;
     readonly hidden: string;
     readonly won: "h1" | "h2";
+    readonly ladder: boolean;
   }
-  const ONE: Kept = { check: "check-one-7a1", reason: "reason-one-7a1", hidden: "hidden-one-7a1", won: "h1" };
+  const ONE: Kept = {
+    check: "check-one-7a1",
+    reason: "reason-one-7a1",
+    hidden: "hidden-one-7a1",
+    won: "h1",
+    ladder: false,
+  };
   const OTHER: Kept = {
     check: "check-two-c4e",
     reason: "reason-two-c4e",
     hidden: "hidden-two-c4e",
     won: "h2",
+    ladder: true,
   };
   const FRESH = "f".repeat(64);
 
@@ -1175,6 +1251,14 @@ describe("what crosses to the Builder", () => {
       };
       append(log, "task.proposed", { version, taskId: task.taskId, session: "x-1", task });
       append(log, "task.gate", { version, gate: 1, outcome: "passed" });
+    }
+    // The ladder is the exam side's too: a task held for it reaches no Builder message.
+    if (kept.ladder) {
+      const task = { taskId: "x-l1", family: "fixture", publicInput: { base: 9 }, hidden: kept.hidden };
+      append(log, "task.proposed", { version: "l1", taskId: task.taskId, session: "x-1", task });
+      append(log, "task.gate", { version: "l1", gate: 1, outcome: "ladder" });
+      append(log, "task.feasible", { version: "l1", session: "x-1" });
+      append(log, "task.state", { version: "l1", state: "ladder", session: "x-1" });
     }
     for (const version of ["h1", "h2"]) {
       for (const side of [s.digest, FRESH]) {
@@ -1272,7 +1356,7 @@ describe("what crosses to the Builder", () => {
     );
   }
 
-  it("is byte-identical whatever a hidden value, a check, a ruling or the task that was won is", async () => {
+  it("is byte-identical whatever a hidden value, a check, a ruling, the task that was won or the ladder is", async () => {
     const [one, other] = [await read_(ONE), await read_(OTHER)];
     // The session read what a Builder may: its tasks, the fail, the trace, the opening again, the
     // continuation, and the comparison as a tally.
@@ -1283,7 +1367,7 @@ describe("what crosses to the Builder", () => {
     expect(one).toContain("You have not called finish");
     expect(one).toContain("practice/t-1.json");
     for (const kept of [ONE, OTHER]) {
-      for (const canary of [kept.check, kept.reason, kept.hidden, "x-h1", "x-h2", "g-1-h"]) {
+      for (const canary of [kept.check, kept.reason, kept.hidden, "x-h1", "x-h2", "x-l1", "g-1-h"]) {
         expect(one).not.toContain(canary);
       }
     }
@@ -1510,5 +1594,9 @@ describe("the texts a Builder reads, by who makes its campaign's moves", () => {
     expect(systemPrompt(builder)).toContain(builder.closing);
     expect(systemPrompt(host)).toContain(host.closing);
     expect(systemPrompt(host)).not.toContain("compare");
+    // The led closing in five sentences at most, its patience counted in moves as the stop rule
+    // counts it: until 14 October it said comparisons, and a session that changed nothing counts.
+    expect(builder.closing.split(/(?<=\.) /).length).toBeLessThanOrEqual(5);
+    expect(builder.closing).toContain("as many moves in a row without a gain as its patience");
   });
 });

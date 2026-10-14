@@ -4,8 +4,8 @@ import { Callout } from "../components/layout.tsx";
 import { Badge, Button, NoSignal } from "../components/primitives.tsx";
 import type { Live } from "../live.ts";
 import type { Answer, CampaignReading, Tone } from "../models.ts";
-import { shortHash } from "../models.ts";
 import type { Navigation, RouteChange } from "../route.ts";
+import { digestText } from "./campaign-data.ts";
 import type { Ending as SolveEnding } from "../../../../src/kernel/solve.ts";
 
 /*
@@ -151,12 +151,7 @@ export function sideLabel(side: keyof typeof SIDE_LABELS): string {
   return SIDE_LABELS[side];
 }
 
-/** A harness as a reader knows it: the starter by name, any other by a short digest. */
-export function harnessLabel(
-  reading: Pick<CampaignReading, "starter"> | null,
-  digest: string | null,
-): string {
-  if (digest === null) return "none";
-  if (digest === reading?.starter) return "starter";
-  return shortHash(digest, 8);
+/** A harness as a reader knows it (`digestText`), or "none" where nothing is named. */
+export function harnessLabel(reading: Pick<CampaignReading, "names"> | null, digest: string | null): string {
+  return digest === null ? "none" : digestText(digest, reading?.names ?? {});
 }

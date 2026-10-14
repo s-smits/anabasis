@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import {
   admitComparison,
   admitSession,
+  Refused,
   refusals,
   type Supply,
   supplyOf,
@@ -457,6 +458,8 @@ describe("what the gate refuses, by its code", () => {
     expect(() => admitComparison(log, { ...ASKED, wanted: { ...WANTED, cap: null } })).toThrow(
       "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
     );
+    // Typed, so that a led Builder reads the admission's reason and no other error's (14 October).
+    expect(() => admitComparison(log, { ...ASKED, wanted: { ...WANTED, cap: null } })).toThrow(Refused);
     expect(() => admitSession(log, { ...SESSION, wanted: { cap: null } })).toThrow(
       "no --cap is named: a session is launched under a dollar cap, and no practice solve starts that a reserve for it would take past the cap",
     );

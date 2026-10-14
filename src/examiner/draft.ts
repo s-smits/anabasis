@@ -353,6 +353,5 @@ export function drafting(terms: {
     stands: "The draft stands: it is the campaign's exam.",
     finish: "End the session without an exam. Say in one or two sentences why none could be drafted.",
     reads: [],
-    handed: () => null,
   } as const;
 }

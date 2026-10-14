@@ -7,6 +7,7 @@ import type {
   ComparisonBar,
   ComparisonDetail,
   Outcome,
+  Sensitivity,
   SolveRow,
   Tally,
 } from "../models.ts";
@@ -14,7 +15,7 @@ import { shortHash } from "../models.ts";
 import type { Navigation } from "../route.ts";
 import { leftOutText } from "./campaign-data.ts";
 import { AnswerIssues, DetailHead, endingOf, enter, harnessLabel } from "./drill.tsx";
-import { duration, money, time } from "./format.ts";
+import { duration, money, percent, time } from "./format.ts";
 import { kindOf, standingOf } from "./moves-list.tsx";
 import { OUTCOMES } from "./outcome.ts";
 import { RulingsCell, rulingLabel } from "./solve-rows.tsx";
@@ -223,6 +224,62 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
   );
 }
 
+/** What the report says beside its test of what the test could see, as label and value: how much
+ *  a step has to be to show, what an attempt risks, and what the tally's counts hide. */
+function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
+  const { frontier, informative, overlap, billed, noise, families } = seen;
+  return [
+    ...(frontier === null
+      ? []
+      : ([
+          ["Untied on the frontier", plural(frontier.untied, "task")],
+          [
+            "A step one reading detects four times in five",
+            frontier.detectable === null
+              ? "none: too few untied tasks"
+              : `the new harness wins ${percent(frontier.detectable)} of them`,
+          ],
+          ["False promotion an attempt", percent(frontier.falseRate)],
+        ] as const)),
+    ...(families === null || frontier === null || frontier.untied === 0
+      ? []
+      : ([
+          [
+            "Families",
+            `the largest of ${String(families.count)} ${families.count === 1 ? "family" : "families"} holds ${String(families.largest)} of them`,
+          ],
+        ] as const)),
+    ...(informative === null
+      ? []
+      : ([
+          [
+            "Informative tasks",
+            `${String(informative.old)} for the reference, ${String(informative.fresh)} for the new`,
+          ],
+        ] as const)),
+    ["Tied with no valid answer", plural(seen.unsolved, "task")],
+    ["Flagged as malformed", plural(seen.flagged, "task")],
+    ...(seen.decided === null ? [] : ([["Decided by the objective", plural(seen.decided, "task")]] as const)),
+    ...(overlap === null
+      ? []
+      : ([[`Shared with ${overlap.with}`, `${plural(overlap.tasks, "task")} both scored`]] as const)),
+    ...(billed === null
+      ? []
+      : ([["Billed a solve", `${money(billed.old)} reference, ${money(billed.fresh)} new`]] as const)),
+    ...(noise === null
+      ? []
+      : ([
+          ["Reference flips between its solves", percent(noise.flips)],
+          [
+            "A/A step detected four times in five",
+            noise.detectable === null
+              ? "none: too few untied tasks"
+              : `one half wins ${percent(noise.detectable)}`,
+          ],
+        ] as const)),
+  ];
+}
+
 export function ComparisonDetailView({
   detail,
   reading,
@@ -269,6 +326,19 @@ export function ComparisonDetailView({
           <Readings detail={detail} reading={reading} />
         </Card>
       </div>
+      {detail.sensitivity === null ? null : (
+        <Card className="ana-detail-card">
+          <h3>What the test could see</h3>
+          <dl className="ana-facts">
+            {sensitivityFacts(detail.sensitivity).map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+      )}
       <Section
         title={`${named} (${String(tasks.length)}${chosen === null ? "" : ` of ${String(detail.tasks.length)}`})`}
         aside={chosen === null ? null : <Button onClick={() => setChosen(null)}>Show every task</Button>}

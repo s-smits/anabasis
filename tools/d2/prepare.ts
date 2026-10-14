@@ -14,6 +14,12 @@
  * stored answer has a say: until 2026-10-09 a pack's task entered a log through four gates, on a
  * stored cycle's answer and v1's controls for it (`tools/m1/admit-sweep.ts`, removed).
  *
+ * A stored answer does say whether a task has a valid answer on record. Each held-out task the
+ * stored sweep accepted an answer to is rechecked under today's checks, until one passes, and a
+ * pass is logged as `task.feasible`, as an author's answer is: such a task is never read as
+ * possibly infeasible (`poolOf`). A recheck that fails establishes nothing and is said nowhere.
+ * Until 14 October a pack's task had no answer on record until a solve of a comparison gave one.
+ *
  * Practice is what the Builder learns from, and a practice task is never scored. `--practice` is
  * the number of released tasks the campaign is brought to. What is missing is released from the
  * held-out tasks by the contract's draw, and no solve chooses which. One release takes at most
@@ -54,6 +60,7 @@ import { patienceOf, poolOf, releaseOrder } from "#src/kernel/reports.ts";
 import { SIZE, sizeLines } from "#src/kernel/size.ts";
 import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { awaitingLines, openCampaign, packNamed } from "./campaign.ts";
@@ -140,6 +147,25 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   }
 
   const packages = campaign.packages();
+  // Each held-out task an answer the stored sweep accepted is rechecked for, under today's checks.
+  const accepted = new Map<string, JsonValue[]>();
+  // An exam drafted from a prompt has no stored sweep behind it, and so no stored answer.
+  for (const row of root === undefined || sweep === undefined ? [] : sweepRows(root, sweep)) {
+    const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
+    if (answer !== undefined) accepted.set(row.taskId, [...(accepted.get(row.taskId) ?? []), answer]);
+  }
+  const proven = poolOf(read(log)).feasible;
+  for (const version of taskSets(read(log)).held) {
+    const taskId = packages.get(version)?.taskId ?? "";
+    if (proven.has(version) || !accepted.has(taskId)) continue;
+    if ((await confirmed(campaign, version, accepted)).passes) {
+      append(log, "task.feasible", { version, ...keyIfDefined("sweep", sweep) });
+      console.log(
+        `${taskId}: a stored accepted answer passes today's verifier, so a valid answer to it is on record`,
+      );
+    }
+  }
+
   const labels = [
     ...(values.keep ?? []).map((taskId) => ({ taskId, state: "held" })),
     ...(values.infeasible ?? []).map((taskId) => ({ taskId, state: "refused" })),
@@ -209,12 +235,6 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   if (named.length === 0) return 0;
 
   // Each named task against today's verifier, on the answers the stored sweep accepted for it.
-  const accepted = new Map<string, JsonValue[]>();
-  // An exam drafted from a prompt has no stored sweep behind it, and so no stored answer.
-  for (const row of root === undefined || sweep === undefined ? [] : sweepRows(root, sweep)) {
-    const answer = row.ending.outcome === "pass" ? storedAnswer(row) : undefined;
-    if (answer !== undefined) accepted.set(row.taskId, [...(accepted.get(row.taskId) ?? []), answer]);
-  }
   let open = 0;
   for (const version of named) {
     const { passes, line } = await confirmed(campaign, version, accepted);

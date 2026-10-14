@@ -31,10 +31,10 @@ import { unpromoted } from "#src/builder/decide.ts";
 import { openingOf, planOf } from "#src/builder/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { comparedAs, promoted } from "#src/kernel/reports.ts";
-import { existsSync } from "#src/meta/filesystem.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { namesOf } from "#src/builder/names.ts";
 import { campaignLog, keptAs, starter } from "./campaign.ts";
 import { COMPARISON_OPTIONS } from "./round.ts";
 
@@ -55,7 +55,10 @@ export async function promoteCommand(args: readonly string[]): Promise<number> {
   const events = read(log);
   const [kept, least] = [await keptAs(campaign, "--harness", harness), await starter(campaign)];
   const now = promoted(events) ?? least.digest;
-  const said = (digest: string) => (digest === least.digest ? "the starter" : digest);
+  // A harness by its letter (`namesOf`) beside its whole digest, which `--harness` takes.
+  const names = namesOf(events);
+  const said = (digest: string) =>
+    digest === least.digest ? "the starter" : `${names.get(digest) ?? "harness"} ${digest}`;
   if (kept.digest === now) {
     console.log(`${said(kept.digest)} is the campaign's reference harness already`);
     return 0;
@@ -94,8 +97,6 @@ export async function promoteCommand(args: readonly string[]): Promise<number> {
     harness: kept.digest,
     from: now,
     rests,
-    // Whether it installed programs, which a reading of them alone then owes (`owedReading`).
-    programs: existsSync(join(kept.dir, ".toolchain")),
     ...keyIfDefined("despite", why === null ? undefined : despite),
   });
   console.log(

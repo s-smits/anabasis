@@ -107,6 +107,7 @@ export interface Fixture {
     readonly b: string;
     readonly c: string;
     readonly d: string;
+    readonly e: string;
   };
   /** A held-out task waiting for a person's label, and the solves whose ruling stays hidden. */
   readonly awaiting: string;
@@ -160,6 +161,7 @@ const HARNESSES = {
   b: sha256("fixture harness b"),
   c: sha256("fixture harness c"),
   d: sha256("fixture harness d"),
+  e: sha256("fixture harness e"),
 };
 const UNITS = {
   starter: HARNESSES.starter,
@@ -441,11 +443,16 @@ function prepared(w: Writer, practice: readonly string[]): void {
 }
 
 /** A Builder session from `parent` that practises on `practice` and leaves `harness`, or is left
- *  open. */
+ *  open; a conversation's `checkpoint` is a harness it froze for a comparison on the way. */
 function built(
   w: Writer,
   session: string,
-  { parent, harness, practice }: { parent: string; harness: string | null; practice: readonly string[] },
+  {
+    parent,
+    harness,
+    practice,
+    checkpoint,
+  }: { parent: string; harness: string | null; practice: readonly string[]; checkpoint?: string },
   ends: readonly Ends[],
 ): string[] {
   w.record("build.started", { session, parent, tasks: practice.map(versionOf), model: SEAT.model });
@@ -463,6 +470,7 @@ function built(
       "written",
     ],
   ]);
+  if (checkpoint !== undefined) w.record("build.checkpoint", { session, harness: checkpoint });
   if (harness === null) return [];
   const made = ends.map((each, at) =>
     w.solve({ task: versionOf(practice[at % practice.length] ?? ""), harness, ends: each, heldOut: false }),
@@ -718,7 +726,7 @@ function firstPart(w: Writer) {
  *  comparison against it, and a Builder session open at the end. It returns the cut comparison's
  *  ruled rejection. */
 function secondPart(w: Writer): string {
-  const { starter, a, b, c, d } = HARNESSES;
+  const { starter, a, b, c, d, e } = HARNESSES;
   const practice = ["word-p1", "word-p2"];
   w.moveHost();
   built(w, "b-3", { parent: b, harness: c, practice }, ["pass", "pass"]);
@@ -781,7 +789,7 @@ function secondPart(w: Writer): string {
     rulings: { "word-20 old 0": "earned", "word-22 old 1": "earned" },
   });
   examined(w, "x-4", ["word-23"], []);
-  built(w, "b-5", { parent: b, harness: null, practice }, []);
+  built(w, "b-5", { parent: b, harness: null, practice, checkpoint: e }, []);
   return cut.get("word-17 old 0") ?? "";
 }
 

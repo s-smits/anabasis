@@ -54,6 +54,7 @@
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { plural } from "../meta/text.ts";
+import type { Limits } from "../kernel/condition.ts";
 import type { NetworkReach } from "../solve/command.ts";
 import { MEMORY_FILE, SCRATCH_DIR, SCRATCH_LIMITS, SCRATCHPAD_FILE } from "./memory.ts";
 
@@ -68,7 +69,8 @@ interface Listed {
 
 /** What a session is told of the sessions before it (`memory.ts`). */
 export interface Past {
-  /** The harness the session starts from, as the lists below name a harness. */
+  /** The harness the session starts from, as the lists below name a harness, where it came from
+   *  and how the last session ended, as a sentence (`startTold`, `past.ts`). */
   readonly start: string;
   /** Every failed practice solve of the campaign on this session's tasks, a line each. */
   readonly fails: readonly string[];
@@ -78,17 +80,26 @@ export interface Past {
   readonly memory: string;
 }
 
-/** The limits a session is told it runs under. */
+/** Who solves with a harness: the model as a condition names it, and its effort. */
+export interface Solver {
+  readonly model: string;
+  readonly effort: string;
+}
+
+/** The limits a session is told it runs under, and the solver and limits each of its harness's
+ *  solves is held to. */
 export interface Told {
   readonly wallSeconds: number;
   readonly turns: number;
   readonly practiceSolves: number;
+  readonly solver: Solver;
+  readonly solve: Pick<Limits, "wallSeconds" | "modelTurns">;
 }
 
 /** What a session's work is measured by: said in the system prompt, and again in every
  *  continuation, so that the goal is one sentence with one owner. */
 const GOAL =
-  "Your harness is measured against a reference harness, by that solver and under the same limits, on tasks you are never shown.";
+  "Your harness is measured against a reference harness on tasks you are never shown: the same solving model answers each task under each harness, under the same limits.";
 
 /** The texts a Builder reads that differ by who makes its campaign's moves. */
 export interface Said {
@@ -138,12 +149,12 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   },
   builder: {
     closing:
-      "read_opening returns the public opening facts for when this conversation no longer holds them. With the campaign tools you make the campaign's moves yourself; each campaign tool's result ends with the campaign's facts, what a comparison of the tasks held can read, and the move the host's table would make, which you may follow or not. The campaign ends at its budget, after as many comparisons in a row without a gain as its patience, or on its provider; a promotion ends nothing, and the campaign goes on against the promoted harness. finish ends this conversation and freezes harness/: it measures nothing, and the campaign waits for the operator.",
+      "read_opening returns the public opening facts when this conversation no longer holds them. You make the campaign's moves with the campaign tools, and each one's result ends with the campaign's facts and the move the host's table would make, which you may follow or not. The campaign ends at its budget, on its provider, or after as many moves in a row without a gain as its patience. A promotion ends nothing: the campaign goes on against the promoted harness. finish ends this conversation and freezes harness/, measuring nothing, and the campaign waits for the operator.",
     frozen: "frozen",
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
     finish:
-      "End this campaign's Builder conversation and freeze harness/. Say what changed and what remains unmeasured. A notice about an untried or broken harness can be acknowledged by calling finish again.",
+      "End this campaign's Builder conversation and freeze harness/. Say what changed and what remains unmeasured. A notice from finish can be acknowledged by calling finish again.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",
@@ -169,20 +180,20 @@ export interface Used {
   readonly seconds: number;
   /** The practice solves the session may still start (`practiceLeft`, `tools.ts`). */
   readonly practiceLeft: number;
-  /** Whether a practice solve of this session has run (`bench.opened`, `tools.ts`). */
-  readonly practised: boolean;
+  /** The harness the session's last practice solve ran, or null before one (`bench.opened`, `tools.ts`). */
+  readonly practised: string | null;
 }
 
-/** Where `harness/` stands against the session's practice: no solve has run in this session, the
- *  harness is as the last solve ran it, it has changed since, or it does not open. */
-export type Tried = "unpractised" | "tried" | "untried" | "broken";
-
-const TRIED: Readonly<Record<Tried, string>> = {
-  unpractised: "No practice solve has run in this session.",
-  tried: "harness/ is as your last practice solve ran it.",
-  untried: "harness/ has changed since your last practice solve, so no solve has run it as it stands.",
-  broken: "harness/ does not open as it stands: check_harness says why.",
-};
+/** Where `harness/` stands against the session's practice, as a continuation says it: no solve has
+ *  run in this session, the harness is as the last solve ran it, it has changed since, or it does
+ *  not open. `practised` is what the last solve ran (`bench.opened`), `harness` what it holds now. */
+function tried(practised: string | null, harness: string | Error): string {
+  if (practised === null) return "No practice solve has run in this session.";
+  if (harness instanceof Error) return "harness/ does not open as it stands: check_harness says why.";
+  return harness === practised
+    ? "harness/ is as your last practice solve ran it."
+    : "harness/ has changed since your last practice solve, so no solve has run it as it stands.";
+}
 
 /** What the Builder's shell is told about its wall, after pi's own description. The command wall
  *  is the solver's, and the facts are the ones a solver's prompt gives of it
@@ -216,7 +227,7 @@ export function systemPrompt(said: Said): string {
  * The practice fact is there because on 10 October a session of 43 turns spent 69% of its wall
  * measuring a tool chain through 40 shell calls, called `check_harness`, `preview_harness` and
  * `practice` not once, and left a tree whose own module spawns a program the tree does not hold;
- * the continuation (`TRIED`), which alone said where `harness/` stood, no turn of it triggered.
+ * the continuation (`tried`), which alone said where `harness/` stood, no turn of it triggered.
  * The line states the condition and no course: which fact matters is the Builder's.
  */
 export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">): string {
@@ -224,7 +235,7 @@ export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">
     const whole = Math.max(0, Math.floor(seconds));
     return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, "0")}`;
   };
-  return `[Session: turn ${String(used.turns + 1)} of ${String(limits.turns)}, ${clock(used.seconds)} of ${clock(limits.wallSeconds)} used, ${plural(used.practiceLeft, "practice solve")} left${used.practised ? "" : ", no practice solve has run harness/"}]`;
+  return `[Session: turn ${String(used.turns + 1)} of ${String(limits.turns)}, ${clock(used.seconds)} of ${clock(limits.wallSeconds)} used, ${plural(used.practiceLeft, "practice solve")} left${used.practised === null ? ", no practice solve has run harness/" : ""}]`;
 }
 
 /**
@@ -242,14 +253,14 @@ export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">
 export function continuation(
   used: Used,
   limits: Pick<Told, "wallSeconds" | "turns">,
-  tried: Tried,
+  harness: string | Error,
   said: Said,
 ): string {
   const minutes = (seconds: number) => String(Math.floor(seconds / 60));
   return [
     `You have not called finish, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is ${said.frozen}.`,
     `The goal, unchanged: ${GOAL}`,
-    `This session so far: ${String(used.turns)} of ${plural(limits.turns, "turn")} and ${minutes(used.seconds)} of ${plural(Number(minutes(limits.wallSeconds)), "minute")} used, ${plural(used.practiceLeft, "practice solve")} left. ${TRIED[tried]}`,
+    `This session so far: ${String(used.turns)} of ${plural(limits.turns, "turn")} and ${minutes(used.seconds)} of ${plural(Number(minutes(limits.wallSeconds)), "minute")} used, ${plural(used.practiceLeft, "practice solve")} left. ${tried(used.practised, harness)}`,
     "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
   ].join("\n\n");
 }
@@ -274,7 +285,7 @@ export function firstMessage(contract: Contract, tasks: readonly Listed[], told:
     `The solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     "The public resources every solve's home holds under public/resources/ are in resources.json.",
     `Practice tasks, each one's public part in practice/<task>.json:\n${listed.join("\n") || "(none)"}`,
-    `You start from harness ${past.start}.${
+    `${past.start}${
       past.fails.length === 0
         ? " No practice solve of these tasks has failed in this campaign so far."
         : ` Every failed practice solve of these tasks in this campaign so far, oldest first, with where it stands now; read_trace opens each:\n${past.fails.join("\n")}`
@@ -282,6 +293,11 @@ export function firstMessage(contract: Contract, tasks: readonly Listed[], told:
     ...(past.comparisons.length === 0
       ? []
       : [`Comparisons so far, on tasks you are not shown:\n${past.comparisons.join("\n")}`]),
+    // Who solves with the harness and what each solve is held to. Until 13 October a Builder was
+    // told neither: the solver as "a separate solving model", and a solve's limits only as the "of"
+    // in a practice result, while one campaign of that day ran a smaller solver under a Builder of
+    // the larger, and a guide written for one reads differently to the other.
+    `The solver your harness is measured with is ${told.solver.model} at ${told.solver.effort} effort. Each of its solves, in practice and in a comparison, has ${plural(Math.round(told.solve.wallSeconds / 60), "minute")} and ${told.solve.modelTurns === undefined ? "its model turns unlimited" : plural(told.solve.modelTurns, "model turn")}.`,
     HANDOVER,
     `This session has ${plural(told.practiceSolves, "practice solve")}, ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
   ].join("\n\n");

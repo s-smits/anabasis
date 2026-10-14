@@ -31,7 +31,7 @@ import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder as command } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
-import { settleCommand } from "../tools/d2/settle.ts";
+import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { scriptedSeats } from "../tools/runs/rehearse.ts";
 import { FORMAT, fixtureTasks, gradedOf, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
@@ -525,8 +525,8 @@ describe("a campaign run by its log", () => {
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:
-    // up to ten of its rejected answers, and it has none, since the reference answered nothing,
-    // and three of the seven answers that passed, the new harness's. The labels are recorded once a
+    // its rejected answers, and it has none, since the reference answered nothing, and three of
+    // the seven answers that passed, the new harness's. The labels are recorded once a
     // label stands on each, and once only.
     const pack = ["--root", root, "--sweep", "s", "--cycle", "c01", "--bundle", bundle, "--name", name];
     const folder = join(REPO, ".ana", "d2", name, "settle-g-1");
@@ -541,9 +541,11 @@ describe("a campaign run by its log", () => {
     rmSync(file);
     await settleCommand([...pack, "--session", "g-1"]);
     expect(Object.keys(packet().passes)).toEqual(drawn);
-    // Blind: a packet holds the rules and the answer, and names no harness and no ruling.
+    // Blind: a packet holds the whole public contract and the answer, and names no harness and no ruling.
     const opened = readFileSync(join(folder, `${drawn[0]}.json`), "utf8");
-    expect(opened).toContain('"rules"');
+    expect(Object.keys(parseJsonAs<{ contract: JsonObject }>(opened).contract)).toEqual(
+      expect.arrayContaining(["scope", "conventions", "rules", "answerFormat"]),
+    );
     expect(opened).not.toContain(first?.fresh ?? "");
     const [a = "", b = "", c = ""] = drawn;
     const answer = (labels: JsonObject) =>
@@ -596,6 +598,9 @@ describe("a campaign run by its log", () => {
       "a person read 3 in 1 comparison, drawn uniformly by each comparison's id: 2 sound, 1 wrong, 0 unclear",
     );
     expect(closing).toContain("settled 1 comparison, and 2 comparisons are unsettled");
+    // The chance of a false promotion over the whole campaign, not one epoch's alone (the plan's 7.6).
+    expect(closing).toContain("## The chance of a false promotion\n\n- Epoch 1:");
+    expect(closing).toContain("Over the campaign, a false promotion in any epoch at most");
     // It holds no link: a kept harness names its programs by one, into a tree beside it, and what
     // is handed over is the tree itself.
     const links = readdirSync(join(to, "harness"), { recursive: true }).filter((entry) =>
@@ -607,14 +612,26 @@ describe("a campaign run by its log", () => {
     );
     expect(readFileSync(join(to, "RULES.md"), "utf8")).toContain("- R1: The answer is the base times six.");
     const report = readFileSync(join(to, "REPORT.md"), "utf8");
-    // The step is named with the comparisons that read it and its last tally beside it.
+    // The step is named by its letter and digest's head (`namesOf`), with the comparisons that read
+    // it and its last tally beside it.
+    const letter = /harness ([A-Z]+) \(([0-9a-f]{8})\), set-up \(epoch 0\)/u.exec(report);
+    expect(letter?.[2]).toBe(handed.harness.slice(0, 8));
     expect(report).toContain(
-      `harness ${handed.harness.slice(0, 8)}, set-up (epoch 0), read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
+      `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
     );
-    // Its worth beside it, read against the three bars and gating nothing (the plan's W).
+    expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
+    // Its cost beside it, read against the bar and gating nothing (the plan's W), and no ladder.
     expect(report).toMatch(
-      /tied 0\. Its worth, read against the bars and gating nothing: effect \+\d+ points of valid share \(bar 25\): met; transfer of \w+: .* \(bar 15 points, at least 8 tasks\): unread; cost 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
+      /tied 0\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
     );
+    expect(report).toContain("## The ladder\n\nNo reading:");
+    // What each measured thing cost, the climb's velocity first, and how many comparisons that
+    // began bought a report.
+    expect(report).toMatch(/- The climb: \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
+    expect(report).toMatch(
+      /- Comparisons: \$\d+\.\d\d a task scored \(\d+\); 3 of the 3 comparisons that began reported\./,
+    );
+    expect(report).toContain("- The ladder: no reading, so no point is priced.");
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");
     expect(report).toContain("The campaign has not ended");
@@ -1047,5 +1064,30 @@ describe("a campaign run by its log", () => {
       "agent/BUILT_AGENTS.md links outside the harness",
     );
     expect(readdirSync(refused)).toEqual([]);
+  });
+});
+
+describe("a comparison's packet for a person", () => {
+  it("holds every rejection that set a task aside, and three earned rejections and three passes drawn by the comparison's id", () => {
+    const named = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, index) => `${prefix}-${String(index)}`);
+    // Ruled a check defect or unclear, or not ruled: each sets its task aside, so each is read.
+    const aside = named("aside", 12);
+    const [earned, passed] = [named("earned", 9), named("pass", 9)];
+    const packet = packetOf({ aside, others: earned }, passed, "g-1");
+    expect(packet.rejections.slice(0, 12)).toEqual(aside);
+    const sampled = packet.rejections.slice(12);
+    expect(sampled).toHaveLength(3);
+    expect(sampled.every((solve) => earned.includes(solve))).toBe(true);
+    expect(packet.passes).toHaveLength(3);
+    expect(packet.passes.every((solve) => passed.includes(solve))).toBe(true);
+    // The same comparison draws the same, whatever order its pools come in; another draws apart.
+    expect(packetOf({ aside, others: earned.toReversed() }, passed.toReversed(), "g-1")).toEqual(packet);
+    expect(packetOf({ aside, others: earned }, passed, "g-2")).not.toEqual(packet);
+    // Fewer than three of a side: all of it.
+    expect(packetOf({ aside: [], others: ["e"] }, ["p", "q"], "g-1")).toEqual({
+      rejections: ["e"],
+      passes: expect.arrayContaining(["p", "q"]),
+    });
   });
 });

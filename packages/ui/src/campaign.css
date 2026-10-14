@@ -277,6 +277,13 @@
   font-size: var(--ana-text-base);
 }
 
+.ana-harness-hash {
+  display: block;
+  color: var(--ana-faint);
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-xs);
+}
+
 .ana-harness-roles {
   display: flex;
   flex-wrap: wrap;

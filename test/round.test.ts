@@ -231,6 +231,7 @@ async function setup(responses: FauxResponseStep[], table: Table) {
     effort: "medium",
     limits: LIMITS,
     solve: { ...LIMITS, wallSeconds: 480 },
+    solver: { model: "faux/solver", effort: "high" },
     models: () => models,
     log,
     repoRoot: scratch,
@@ -374,6 +375,7 @@ describe("a round", () => {
           tasks: HELD,
           aside: [],
           differences: [4, 4, 4, 4],
+          of: HELD,
           detectable: 0.95,
           falseRate: 5 / 256,
         },
@@ -402,12 +404,10 @@ describe("a round", () => {
         reading: "step",
         // Until a person answers the comparison's packet, which no promotion waits for.
         settled: "unsettled",
-        // The bars, read and gating nothing (the plan's W): all of the valid share gained, no
-        // transfer under the starter, and this comparison the first attempt of set-up's epoch.
+        // The cost bar, read and gating nothing (the plan's W): this comparison the first attempt
+        // of set-up's epoch.
         worth: {
-          bars: { effect: 0.25, transfer: 0.15, cost: 3 },
-          effect: { gain: 1, objective: null, met: true },
-          transfer: null,
+          bars: { cost: 3 },
           cost: { attempts: 1, sessions: 1, dollars: expect.any(Number), met: true },
         },
       },
@@ -1449,8 +1449,6 @@ describe("a checkpoint with no session", () => {
       // two of its four solves of s1 that disagree are four of its six pairs.
       noise: { wins: 0, losses: 0, ties: 4, p: 1, flips: 1 / 6 },
     });
-    // Its earlier two against its later two are the drift, standing in every such comparison.
-    expect(report.noise?.drift).toEqual({ wins: 0, losses: 1, ties: 3 });
     // No solve was made for it: four a side on each of four tasks.
     expect(s.asked.filter(({ side }) => side === "old")).toHaveLength(16);
     expect(s.asked.filter(({ side }) => side === "starter")).toHaveLength(16);

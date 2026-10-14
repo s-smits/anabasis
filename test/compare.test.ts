@@ -335,6 +335,24 @@ describe("the step and its repeat", () => {
     expect(readTwice([report(margins), report([4, -16])], LEVEL, TRIGGER)).toBe(false);
   });
 
+  it("count a task both stages scored once, its differences summed, and old reports as they were", () => {
+    // buffer-149's repeat g-2 scored g-1's own tasks. Counted twice, five tasks won by four pairs
+    // twice read as ten signs (p 1/1024) and clear 0.02; counted once they are five signs of eight
+    // (p 1/32), which do not. On fresh tasks the same differences are ten tasks, and clear it.
+    const won = [4, 4, 4, 4, 4, 0, 0];
+    const named = (tasks: readonly string[]): JsonObject => {
+      const held = report(won);
+      return { ...held, frontier: { differences: [...won], of: [...tasks] } };
+    };
+    const first = ["a", "b", "c", "d", "e", "f", "g"];
+    expect(flipP(units(10, 0))).toBeLessThanOrEqual(0.02);
+    expect(flipP(units(5, 0))).toBeGreaterThan(0.02);
+    expect(readTwice([named(first), named(first)], 0.02, TRIGGER)).toBe(false);
+    expect(readTwice([named(first), named(["h", "i", "j", "k", "l", "m", "n"])], 0.02, TRIGGER)).toBe(true);
+    // A report from before 14 October names no task, and its differences stand alone.
+    expect(readTwice([report(won), report(won)], 0.02, TRIGGER)).toBe(true);
+  });
+
   it("read the step on the frontier and hold the retained tasks to no net loss, an empty retained set being unmeasured and never no loss", () => {
     const fixes = [16, 16, 16];
     const broke = [-16, -16, -16];
@@ -889,8 +907,6 @@ describe("the pairs a comparison reads from the log", () => {
     // The A/A is read as the A/B is: on halves mirrored in time, so that a drift across the
     // task's solves falls on both alike.
     expect(halves({ fresh: "old", halves: "mirrored" })).toMatchObject({ old: [P, P], fresh: [F, F] });
-    // Earlier against later is the drift, read apart: the first two started against the last two.
-    expect(halves({ fresh: "old", halves: "in-order" })).toMatchObject({ old: [P, F], fresh: [F, P] });
     // Beside it the new harness is paired with the reference's first mirrored half, which is the
     // half its own solves were mirrored around.
     expect(halves({ halves: "mirrored" })).toMatchObject({ old: [P, P], fresh: [P, F] });

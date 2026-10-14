@@ -18,7 +18,7 @@ import type { Ending } from "#src/kernel/solve.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { applicableTruthChecks, readBrief, type Task, type Verdict } from "#src/kernel/verify.ts";
 import { CONTROLS_FILE } from "#src/meta/bundle-layout.ts";
-import { cpSync, existsSync, readFileSync } from "#src/meta/filesystem.ts";
+import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -190,11 +190,16 @@ function endingOf(
 /**
  * A v1 bundle's check program, copied to `to` without its battery: the verifier hands a check its
  * whole program, and `tasks.json` and `controls.json` hold every task's hidden values and every
- * control. Returns `to`.
+ * control. Returns `to`. The copy is made beside it and renamed into place once whole: a campaign
+ * stages its checks where none are (`packOpened`, `campaign.ts`), and until 14 October a copy cut
+ * short left a folder there that every later run took for the whole program.
  */
 export function checkProgram(bundle: string, to: string): string {
   const filter = (path: string) => !BATTERY_FILES.has(basename(path));
-  cpSync(join(bundle, "correctness-model"), to, { recursive: true, filter });
+  const partial = `${to}.partial`;
+  rmSync(partial, { recursive: true, force: true });
+  cpSync(join(bundle, "correctness-model"), partial, { recursive: true, filter });
+  renameSync(partial, to);
   return to;
 }
 

@@ -196,7 +196,8 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
     return {
       cappedAt,
       exitCode: result.signalCode == null ? result.exitCode : null,
-      signal: result.signalCode ?? null,
+      // Bun 1.4.3 names a signal it knows and numbers one it does not.
+      signal: result.signalCode == null ? null : String(result.signalCode),
       stdout: result.stdout,
       stderr: result.stderr,
     };

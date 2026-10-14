@@ -102,7 +102,6 @@
  * Not run here: see `campaign.ts`.
  */
 import { decide } from "#src/builder/decide.ts";
-import { crashedRun } from "#src/builder/ground.ts";
 import { type Decided, decidedLine } from "#src/builder/move.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
@@ -145,7 +144,7 @@ import {
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { closeCommand } from "./close.ts";
-import { gated, HOST, waitOut } from "./host.ts";
+import { gated, HOST, waitCrashed, waitOut } from "./host.ts";
 import { prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { solved } from "./round.ts";
@@ -153,9 +152,10 @@ import { sessionCommand } from "./session.ts";
 import { recordedSetting, settingAsked } from "./setting.ts";
 
 const ENDED = "campaign.ended";
-/** The moves the host makes itself whoever leads the campaign: the exam's draft and reading, and
- *  the tasks set apart. */
-const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare"]);
+/** The moves the host makes itself whoever leads the campaign: the exam's draft and reading, the
+ *  tasks set apart, and the promotion the rule names (14 October; inside a conversation the compare
+ *  tool makes it, `promoteOwed`), which `--attended` leaves to the operator. */
+const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare", "promote"]);
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
  *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
@@ -178,7 +178,7 @@ async function goesOn(log: string, from: number, error: unknown, sleep: Seats["h
     .some(
       ({ kind, data }) => (kind === "build.finished" || kind === "exam.finished") && data.ended === "crashed",
     );
-  if (crashed) await waitOut(log, crashedRun(events).crash, sleep?.sleep);
+  if (crashed) await waitCrashed(log, sleep?.sleep);
   return crashed;
 }
 
@@ -252,11 +252,14 @@ async function make(
         ...flag("tasks", values["exam-tasks"] ?? examTasks(turn)),
         // The campaign's setting before one is recorded: the Examiner's budget, and `try_task`'s.
         ...sharedOf(turn).setting,
+        ...sharedOf(turn).reviewer,
         ...flag("proposals", values["exam-proposals"]),
         ...flag("minutes", values["exam-minutes"]),
         ...flag("turns", values["exam-turns"]),
       ],
       seats.examine,
+      // The campaign's own seat, so the tries wait on the load and share the reserve (14 October).
+      seats.examine === undefined ? turn.held : null,
     );
     return;
   }
@@ -400,28 +403,28 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
     session,
   });
   try {
-    // An Examiner session still writing beside the conversation is waited for (`examineTool`).
-    try {
-      await sessionCommand(
-        [
-          ...packOf(values),
-          ...setting,
-          "--session",
-          session,
-          ...(builder === null ? [] : ["--builder", builder.model, "--builder-effort", builder.effort]),
-          ...flag("minutes", values.minutes),
-          ...flag("turns", values.turns),
-          ...flag("practice-solves", values["practice-solves"]),
-          ...cap,
-          ...reviewer,
-          ...pastStop,
-        ],
-        context.held,
-        campaignTools(context),
-      );
-    } finally {
-      await context.examining?.done;
-    }
+    await sessionCommand(
+      [
+        ...packOf(values),
+        ...setting,
+        "--session",
+        session,
+        ...(builder === null ? [] : ["--builder", builder.model, "--builder-effort", builder.effort]),
+        ...flag("minutes", values.minutes),
+        ...flag("turns", values.turns),
+        ...flag("practice-solves", values["practice-solves"]),
+        ...cap,
+        ...reviewer,
+        ...pastStop,
+      ],
+      context.held,
+      // The campaign's first Examiner session, where the table names one, is the host's to start.
+      campaignTools(
+        context,
+        named.move === "examine" &&
+          !turn.events.some(({ kind, data }) => kind === MOVED && data.move === "examine"),
+      ),
+    );
   } catch (error) {
     // A provider's limit or a crashed conversation is waited out, and the campaign goes on;
     // anything else a conversation threw is the environment's ending, as for every move that began.
@@ -457,14 +460,15 @@ async function lead(context: CampaignContext, named: Decided): Promise<Decided |
   const { log, values, seats } = context;
   const left = await converse(context, named);
   if (left === null) {
-    await waitOut(log, crashedRun(read(log)).crash, seats.host?.sleep);
+    await waitCrashed(log, seats.host?.sleep);
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
-  // An environment's ending is on record already, and hands nothing over.
-  const whole = left.move === "end" && left.ending !== "environment";
-  if (whole) ended(log, read(log), left);
-  if (whole && values.handover !== undefined) {
+  // Every ending goes on record once (`ended`). Until 14 October an environment's was taken to be
+  // there already, and the crash rule's, read after the host halted a live Builder, never was.
+  if (left.move === "end") ended(log, read(log), left);
+  // An environment's ending hands nothing over.
+  if (left.move === "end" && left.ending !== "environment" && values.handover !== undefined) {
     await closeCommand([...packOf(values), "--to", values.handover]);
   }
   return left;
@@ -551,6 +555,8 @@ export async function harnessBuilder(
     const led =
       opening.led &&
       !SETUP.has(decided.move) &&
+      // The ladder's reading is the host's and no Builder's (`ladderOwed`, `decide.ts`).
+      !(decided.move === "compare" && decided.ladder === true) &&
       (decided.move !== "end" || (decided.ending === "no-room" && !talked));
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
@@ -606,7 +612,7 @@ export async function harnessBuilder(
     }
     last = decided.move;
     made += 1;
-    await waitOut(log, crashedRun(read(log)).crash, seats.host?.sleep);
+    await waitCrashed(log, seats.host?.sleep);
   }
 }
 

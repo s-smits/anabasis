@@ -15,7 +15,10 @@
  * Examiner sessions each and two by a comparison that threw (`waitOut`).
  */
 import { resetOf } from "#src/backends/claude.ts";
-import { append } from "#src/kernel/log.ts";
+import { CRASHES } from "#src/builder/decide.ts";
+import { crashedRun } from "#src/builder/ground.ts";
+import { affords, flying, inFlight } from "#src/builder/opening.ts";
+import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { type Seated, solved } from "./round.ts";
@@ -44,33 +47,45 @@ interface Gate {
 const RESET_MOST_MS = 6 * 3_600_000;
 /** After the named minute, so that the first call is not made in the minute the limit lifts. */
 const RESET_MARGIN_MS = 60_000;
+/** What the host waits after the first and the second session in a row the network failed: in
+ *  buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS lookup. */
+const NETWORK_WAITS_MS = [60_000, 300_000];
+/** The event every wait of the campaign's is on record as: a solve's at the load or the reserve, a
+ *  session's at a provider's reset or after the network failed one. */
+const WAITED = "campaign.waited";
+const NETWORK =
+  /\b(?:ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|ConnectionRefused|FailedToOpenSocket)\b/;
 
 /** This host, with half a minute between two looks at the load. */
 export const HOST: Host = { load: () => loadavg()[0] ?? 0, cores: availableParallelism(), waitMs: 30_000 };
 
 /**
- * `seated` with each solve held until the host's load is at or under its cores. A solve that
- * waited is said once as it waits, and recorded in `log` before it starts: the task, the harness,
- * the comparison it is for where one asks, the load it first read and how long it waited. `loaded`
- * (`--loaded` on the campaign command) seats the solves ungated, the operator's word that their
- * times will not be compared, and so are a rehearsal's scripts, whose times nobody compares,
- * unless a test stands in a host for them.
+ * `seated` with each solve held until the host's load is at or under its cores, and then until the
+ * campaign's budget holds a reserve for it beside the solves in flight, where any are (`affords`).
+ * A solve that waited on the load is said once as it waits, and recorded in `log` before it
+ * starts: the task, the harness, the comparison it is for where one asks, the load it first read
+ * and how long it waited. `loaded` (`--loaded` on the campaign command) skips the load, the
+ * operator's word that the solves' times will not be compared; a rehearsal's scripts, whose times
+ * nobody compares and which bill nothing, are seated ungated unless a test stands in a host. With
+ * none in flight a solve starts: each move's cap and the table's budget ending hold the total.
+ * Until 14 October a Builder's practice, a comparison and the Examiner's tries of a draft each
+ * held their own reserve, and none saw the others in flight.
  */
 export function gated(on: Gate, log: string): Seated {
   const { seated, loaded, host = seated === solved ? HOST : undefined } = on;
-  if (loaded || host === undefined) return seated;
+  if (host === undefined) return seated;
   return (campaign, given) => {
     const seats = seated(campaign, given);
     return {
       ...seats,
       solve: async (task, harness, kill, comparison) => {
         const [since, load] = [Date.now(), host.load()];
-        if (load > host.cores) {
+        if (!loaded && load > host.cores) {
           console.log(
             `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, or pass --loaded`,
           );
           for (let now = load; now > host.cores; now = host.load()) await Bun.sleep(host.waitMs);
-          append(log, "campaign.waited", {
+          append(log, WAITED, {
             task: task.taskId,
             harness: harness.digest,
             ...keyIfDefined("comparison", comparison),
@@ -79,7 +94,20 @@ export function gated(on: Gate, log: string): Seated {
             ms: Date.now() - since,
           });
         }
-        return seats.solve(task, harness, kill, comparison);
+        // A wait on the reserve is said once, and a killed run ends it (14 October): under a tight
+        // total every solve past the first waits its turn, so the log is not written for each.
+        let said = false;
+        while (inFlight(log) > 0 && !affords(log, 1)) {
+          if (kill?.aborted === true) break;
+          if (!said) {
+            console.log(
+              `a solve of ${task.taskId} waits for the campaign's reserve while others are in flight`,
+            );
+          }
+          said = true;
+          await Bun.sleep(host.waitMs);
+        }
+        return flying(log, () => seats.solve(task, harness, kill, comparison));
       },
     };
   };
@@ -105,7 +133,37 @@ export async function waitOut(
   console.log(
     `the provider's limit resets at ${reset.toISOString()}: the campaign waits for it, then goes on`,
   );
-  append(log, "campaign.waited", { for: "provider", until: reset.toISOString(), ms });
+  append(log, WAITED, { for: "provider", until: reset.toISOString(), ms });
   await sleep(ms);
   return true;
+}
+
+/**
+ * The wait after the sessions in a row that crashed (`crashedRun`), before the campaign starts the
+ * next: to the provider's named reset where the last crash names one (`waitOut`), and otherwise,
+ * where the network failed it, a minute after the first and five after the second, on record as
+ * `campaign.waited` `for: "network"`, which starts no count again. A third ends the campaign on its
+ * environment (`CRASHES`, `decide.ts`), and nothing is waited for before that ending. One wait a
+ * crash: the call comes after every move and every led action, and until 14 October each of them
+ * slept the same minute again until a session ended whole.
+ */
+export async function waitCrashed(
+  log: string,
+  sleep: (ms: number) => Promise<void> = Bun.sleep,
+): Promise<void> {
+  const events = read(log);
+  const { count, crash } = crashedRun(events);
+  if ((await waitOut(log, crash, sleep)) || crash === null || !NETWORK.test(crash) || count >= CRASHES) {
+    return;
+  }
+  const ended = events.findLastIndex(({ kind }) => kind === "exam.finished" || kind === "build.finished");
+  if (events.some(({ kind, data }, at) => at > ended && kind === WAITED && data.for === "network")) {
+    return;
+  }
+  const ms = NETWORK_WAITS_MS[Math.min(count, NETWORK_WAITS_MS.length) - 1] ?? 0;
+  console.log(
+    `the network failed the last session: the campaign waits ${String(ms / 60_000)} minutes, then goes on`,
+  );
+  append(log, WAITED, { for: "network", ms });
+  await sleep(ms);
 }

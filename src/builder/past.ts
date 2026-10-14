@@ -31,7 +31,8 @@
  *   "on all 5 comparisons so far", of which the log held one.
  */
 import { plural } from "../meta/text.ts";
-import type { Handover, PracticeFail } from "./handover.ts";
+import type { Campaign, Handover, PracticeFail } from "./handover.ts";
+import { short } from "./move.ts";
 
 /** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. The
  *  last two are readings a comparison made before 11 October, which an older log holds. */
@@ -44,13 +45,20 @@ const READ = new Map([
   ["starter-unread", "a step, not yet read against the starting harness of the campaign"],
 ]);
 
-/** A harness as a Builder is shown one: the head of its digest. */
-export const shortDigest = (digest: string): string => digest.slice(0, 8);
+/** How a Builder session ended, in a Builder's words (`endedBy`, `session.ts`). */
+const ENDED = new Map([
+  ["finished", "ended at its finish"],
+  ["wall", "ended at its time limit"],
+  ["turns", "ended at its turn limit"],
+  ["crashed", "crashed: its conversation was lost to a provider or host error"],
+  ["killed", "was killed"],
+  ["stopped", "was stopped as the campaign's run ended"],
+]);
 
 /** Where a fail stands, in a Builder's words. */
 function stands({ standing, under }: PracticeFail): string {
   if (standing === "open" || under === null) return "open";
-  const harness = `under harness ${shortDigest(under)}`;
+  const harness = `under harness ${short(under)}`;
   if (standing === "passed-once") return `open: passed once ${harness}`;
   return standing === "repaired" ? `repaired ${harness}` : `failing again ${harness}`;
 }
@@ -65,7 +73,7 @@ export function failsTold(fails: readonly PracticeFail[], tasks: ReadonlyMap<str
     const task = tasks.get(fail.task);
     if (task === undefined) return [];
     return [
-      `- ${fail.solve}, ${task}, harness ${shortDigest(fail.harness)}: fail${fail.kind === null ? "" : ` (${fail.kind})`}; ${stands(fail)}.`,
+      `- ${fail.solve}, ${task}, harness ${short(fail.harness)}: fail${fail.kind === null ? "" : ` (${fail.kind})`}; ${stands(fail)}.`,
     ];
   });
 }
@@ -85,7 +93,26 @@ export function comparisonsTold(steps: readonly Handover[]): string[] {
         ? ""
         : `, each solve held to ${plural(step.modelTurns, "turn")} of the solver's`;
     return [
-      `- Harness ${shortDigest(step.fresh)} against harness ${shortDigest(step.old)}, one comparison over ${plural(wins + losses + ties, "task")}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
+      `- Harness ${short(step.fresh)} against harness ${short(step.old)}, one comparison over ${plural(wins + losses + ties, "task")}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
     ];
   });
+}
+
+/**
+ * Where the harness session `id` starts from came from, and how the Builder session before it
+ * ended. Until 14 October a session was told the digest alone: buffer-149's b-2 started from the
+ * starter after b-1 crashed, and found out by listing harness/ that its guide was gone.
+ */
+export function startTold({ steps, reference }: Campaign, digest: string, id: string): string {
+  const builders = steps.flatMap((step) => (step.step === "builder" && step.id !== id ? [step] : []));
+  const left = builders.findLast(({ harness, changed }) => changed && harness === digest);
+  const named = digest === reference ? ", now the reference harness" : "";
+  const origin =
+    left === undefined
+      ? named ||
+        ", which no Builder session of this campaign left: the Starter Built Harness unless the operator named another"
+      : `, which session ${left.id} left${named}`;
+  const last = builders.at(-1);
+  const ended = last?.ended == null ? "has no ending on record" : (ENDED.get(last.ended) ?? last.ended);
+  return `You start from harness ${short(digest)}${origin}.${last === undefined ? "" : ` The last Builder session, ${last.id}, ${ended}.`}`;
 }

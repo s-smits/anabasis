@@ -9,6 +9,8 @@
  * the verdict its author labelled it with, whether a second run agrees, whether every check has
  * been seen both to refuse an answer and to let one pass, and whether every instrument a check
  * names is there to run.
+ * Since 14 October the opening's current faults and counts rest on fresh controls alone; stored
+ * verdicts are reported apart, without rerunning them, and cannot clear a current fault.
  *
  * Two readings ask what no control of the pack's does (`docs/plan.md`, the correctness model). The
  * do-nothing answer, the smallest the answer format allows, must be rejected on every task: Anchor
@@ -299,8 +301,8 @@ export function acceptance(
             `${id} could not run on an answer, so what it refuses and passes is not read: ${unrun.get(id) ?? ""}`,
           ]
         : [
-            ...(refused === 0 ? [`${id} has refused nothing: no control and no stored answer`] : []),
-            ...(passed === 0 ? [`${id} has let nothing pass: no control and no stored answer`] : []),
+            ...(refused === 0 ? [`${id} has refused nothing in this reading`] : []),
+            ...(passed === 0 ? [`${id} has let nothing pass in this reading`] : []),
             ...(refused > 0 && caught === 0 ? [`${id} has refused no reject control that names it`] : []),
           ]),
     ]),
@@ -308,7 +310,7 @@ export function acceptance(
       unrun.has(id)
         ? [`${id} could not be measured on a valid answer: ${unrun.get(id) ?? ""}`]
         : passed === 0
-          ? [`${id} has measured nothing: no accept control and no stored answer passed`]
+          ? [`${id} has measured nothing in this reading`]
           : [],
     ),
   ];
@@ -333,10 +335,12 @@ export async function readChecker(given: Read) {
   const idle = doNothingAnswer(given.contract.answerFormat);
   const unformed = answerFormatFault(given.contract, idle);
   const rejected = unformed === null ? await runDoNothing(verify, tasks, idle, width) : [];
-  const { checks, faults } = acceptance(brief, tasks, runs, given.stored, given.found);
+  const { checks, faults } = acceptance(brief, tasks, runs, [], given.found);
+  const { checks: historical } = acceptance(brief, tasks, [], given.stored, given.found);
   return {
     runs,
     checks,
+    historical,
     faults: [
       ...faults,
       ...(unformed === null

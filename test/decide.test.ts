@@ -871,7 +871,8 @@ describe("a hold on the move a row named", () => {
     expect(move(FIRST, left(0.5))).toMatchObject({ move: "compare" });
     // Before one has, the reference harness's solves of draft tasks price the first: until
     // 14 October nothing held it, and buffer-149's gate billed about $0.43 a solve.
-    const tried = { reference: { billed: 0.9, solves: 3 } };
+    // The price is a solve started: a gate whose third solve gave no reading billed it all the same.
+    const tried = { reference: { billed: 0.9, solves: 2 } };
     const gated = FIRST.map((each) =>
       each.kind === "task.gate" ? { ...each, data: { ...each.data, ...tried } } : each,
     );

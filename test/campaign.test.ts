@@ -568,11 +568,11 @@ describe("a campaign", () => {
         withdrawn: [],
       }).slice(0, 5);
     expect(lines(null)).toEqual([
-      "the reference against itself, on halves of its own solves mirrored in time (the A/A), over 8 tasks, 2 of them untied:",
-      "  tie share 75%: the share of tasks two equal harnesses tied here, which a comparison's own ties are read against",
+      "the reference against itself, on halves of its own solves mirrored in time (the A/A), over the 8 tallied tasks, 2 of them untied:",
+      "  tie share 75%: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties",
       "  flip rate 13%: how often two of its solves of one task disagree on validity",
       "  least detectable shift: none, too few of its tasks are untied for any shift between its halves to read as a step, so its reading no step shows little",
-      "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below, room and the test are read over the tallied ones",
+      "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below and room are read over the tallied ones, the test over the frontier among them",
     ]);
     expect(lines(0.9)[3]).toBe(
       "  least detectable shift: one reading of it, two-sided at the level, detects four times in five a half that wins 90% of its untied tasks",

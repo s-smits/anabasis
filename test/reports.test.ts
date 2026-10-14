@@ -7,6 +7,7 @@ import { type Condition, conditionId, settingId } from "../src/kernel/condition.
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
   billedAll,
+  billedBetween,
   billedFor,
   comparedAs,
   lastReports,
@@ -1069,5 +1070,27 @@ describe("the billed dollars a cap counts", () => {
     expect(billedFor(log, "g-2")).toBe(0);
     // A live Builder's own turns count before its next tool can spend on another seat.
     expect(billedFor(log, "b-1")).toBe(0.75);
+  });
+
+  it("bill a stretch for what was metered inside it, a session open across either end included", () => {
+    const turn = (total: number) => event("build.turn", { session: "b-1", usage: { cost: { total } } });
+    // recode-151 (14 October): the Builder's conversation spans epochs and ends inside the last.
+    const log = [
+      event(BUILD_STARTED, { session: "b-1" }),
+      turn(5),
+      event("harness.promoted", { harness: "h-1" }),
+      turn(1),
+      ...paid("s-a", 2, "g-1"),
+      event("harness.promoted", { harness: "h-2" }),
+      turn(0.5),
+      event("build.finished", { session: "b-1", billed: 6.5 }),
+    ];
+    expect(billedBetween(log, 0, 2)).toBe(5);
+    expect(billedBetween(log, 2, 6)).toBe(3);
+    expect(billedBetween(log, 6)).toBe(0.5);
+    // A sum over the slice alone bills the last stretch the session's whole sum, and the middle
+    // none of its turns.
+    expect(billedAll(log.slice(6))).toBe(6.5);
+    expect(billedAll(log.slice(2, 6))).toBe(2);
   });
 });

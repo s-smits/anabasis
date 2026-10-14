@@ -27,10 +27,11 @@
  */
 import { type Decided, decidedLine, type Ending } from "../../../../src/builder/move.ts";
 import { barsOf, regressionOf } from "../../../../src/builder/climb.ts";
+import { RISK } from "../../../../src/builder/decide.ts";
 import { openSteps } from "../../../../src/builder/handover.ts";
 import { reported } from "../../../../src/builder/comparison.ts";
 import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
-import { billedAll, patienceOf } from "../../../../src/kernel/reports.ts";
+import { billedAll, billedParts, patienceOf } from "../../../../src/kernel/reports.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
@@ -39,12 +40,13 @@ import { decidedOn } from "../../../../tools/runs/view.ts";
 import {
   type CampaignReading,
   type CampaignRow,
+  type Counters,
   type Issue,
   type NextMove,
   NO_PROJECT,
   type Tier,
 } from "../models.ts";
-import { campaignIn, type Log, once, openingIn, overviewIn, reportsIn, stopIn } from "./folds.ts";
+import { campaignIn, epochsIn, type Log, once, openingIn, overviewIn, reportsIn, stopIn } from "./folds.ts";
 import { harnessesIn, promotionsIn, spendIn } from "./lineage.ts";
 import { type Found, type Process, sourceOf } from "./logs.ts";
 import { barsIn, movesIn, starterIn } from "./moves.ts";
@@ -173,6 +175,25 @@ const solverIn = once((log) => {
   }
 });
 
+/** What the promotion attempts under the current reference risk together, as the table's hold
+ *  reads it (`risked`, `decide.ts`). */
+function riskIn(log: Log): Counters["risk"] {
+  const epoch = epochsIn(log).at(-1);
+  if (epoch === undefined) return null;
+  const { attempts, union, bound, pairs, errors, indicative } = epoch.falsePromotion;
+  return { attempts, union, bound, pairs, errors, indicative, hold: RISK };
+}
+
+/** What is left of the campaign's total, and what the last comparison the cap did not cut billed,
+ *  as the table's budget hold reads them (`unafforded`, `decide.ts`). */
+function runwayIn(log: Log): Counters["runway"] {
+  const budget = openingIn(log)?.budget?.dollars;
+  const last = reportsIn(log).findLast(({ data }) => data.capped !== true);
+  if (budget === undefined || last === undefined) return null;
+  const each = billedParts(log.events, last.session).comparison;
+  return { left: budget - billedAll(log.events), each, comparison: last.session };
+}
+
 /** Everything of the reading that the tier does not change. */
 const coreIn = once((log) => {
   const campaign = campaignIn(log);
@@ -201,6 +222,8 @@ const coreIn = once((log) => {
       controlSteps: bars.filter(
         ({ noise, level }) => noise !== null && readsStepEitherWay(noise.differences, level),
       ).length,
+      risk: riskIn(log),
+      runway: runwayIn(log),
     },
     regression: regressionOf(log.events),
   };

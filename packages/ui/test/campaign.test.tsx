@@ -72,6 +72,28 @@ test("the main campaign renders its line, three readouts, the chart's key, every
   expect(html.replaceAll(/<[^>]*>/g, " ")).not.toMatch(/epoch|climb/i);
 });
 
+test("the counters say what the attempts under the reference risk and how many comparisons the budget holds", () => {
+  const reading = readingOf(fixture.units);
+  const { risk, runway } = reading.counters;
+  const html = paneOf(reading);
+  expect(html).toContain(
+    `False promotion under this reference at most <b class="ana-num">${String(Math.round(100 * (risk?.union ?? 0) * 10) / 10)}%</b> over ${String(risk?.attempts)} attempts`,
+  );
+  expect(html.includes("past the table&#x27;s")).toBe(false);
+  const affords = Math.floor((runway?.left ?? 0) / (runway?.each ?? 1));
+  expect(html).toContain(
+    `Comparisons the budget holds at the last one&#x27;s price <b class="ana-num">${String(affords)}</b>`,
+  );
+  // Past the hold, the counter says so; with no total to price against, it says nothing.
+  const risky: CampaignReading = {
+    ...reading,
+    counters: { ...reading.counters, risk: risk === null ? null : { ...risk, union: 0.4 }, runway: null },
+  };
+  const held = paneOf(risky);
+  expect(held).toContain("over 2 attempts, past the table&#x27;s 25%");
+  expect(held.includes("Comparisons the budget holds")).toBe(false);
+});
+
 test("the harness strip keeps every card closed in one row and shows the selected one's detail under it", () => {
   const reading = readingOf(fixture.name);
   const html = paneOf(reading, `?harness=${fixture.harnesses.b}`);

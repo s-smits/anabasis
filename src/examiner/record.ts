@@ -64,7 +64,7 @@ import {
 import { solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
-import { isNumber } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
 import { plural } from "../meta/text.ts";
 
@@ -72,11 +72,23 @@ import { plural } from "../meta/text.ts";
  *  family that the same pass took, or null where no task stands in them. */
 interface Heard {
   readonly lines: string[];
+  /** The drafts a gate refused having read them, each with its reason (`refusedLines`). */
+  readonly refused: string[];
   readonly counts: string | null;
   /** The turns the reference harness's valid answers took, by family, or null where none is on
    *  record (`turnsOf`). */
   readonly turns: string | null;
 }
+
+/** The reference harness's solves of one draft task under `try_task`: the least the operator's
+ *  ruling of 12 October names. Every paper the overhaul's research read that kept tasks at a
+ *  frontier admitted them by a measurement of the target, none blind (one at four attempts and a
+ *  pass-rate band); its probe asks for three or more fresh solves at the campaign's budget, and a
+ *  task admitted at a pass rate strictly between 0 and 1. */
+export const TRIED = 3;
+/** Why a draft is not measured where the campaign's budget holds no reserve for its three solves. */
+export const UNAFFORDED =
+  "the campaign's budget holds no reserve for the reference harness's three solves of it beside the solves running, so it is not measured";
 
 /** How each outcome is said. */
 const SAID: Readonly<Record<Outcome, string>> = {
@@ -111,6 +123,15 @@ const COUNTS = {
 const TURNS =
   "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above, by family and fewest first. These are measurements and no target.";
 
+/** Whether a gate read its draft: one that measured fewer than the reference harness's `TRIED`
+ *  solves, cut by a limit or never begun for want of the reserve, refused a draft it did not read,
+ *  which may be proposed again and is solved afresh (14 October). A gate that read all three, or
+ *  refused the package on its shape, stands. */
+export function measuredGate(data: JsonObject): boolean {
+  const solves = asRecord(data.reference)?.solves;
+  return data.reason !== UNAFFORDED && !(isNumber(solves) && solves < TRIED);
+}
+
 /** One line a task among `tasks`, in their order: the task by id and family, its outcome, and for
  *  a held-out task whether a valid answer to it is on record; and, from the same pass, the counts
  *  by family (`counts`). A task the log refused is left out, since it is no task of the exam. One
@@ -129,6 +150,12 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
       return id === null ? [] : [[id, version] as const];
     }),
   );
+  // Each version's last gate.
+  const gates: ReadonlyMap<string, JsonObject> = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "task.gate" && isString(data.version) ? [[data.version, data]] : [],
+    ),
+  );
   const families = new Map<string, Standing[]>();
   const lines = tasks.flatMap(({ taskId, family }) => {
     const version = versions.get(taskId) ?? "";
@@ -145,10 +172,33 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     const said = outcome === undefined ? "not yet compared" : SAID[outcome];
     const history = historyLine(histories.get(version));
     return [
-      `${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}${history}`,
+      `${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}${admittedLine(gates.get(version))}${history}`,
     ];
   });
-  return { lines, counts: counts(families), turns: turnsOf(turns) };
+  return { lines, refused: refusedLines(events, gates), counts: counts(families), turns: turnsOf(turns) };
+}
+
+/** How many of the reference harness's solves at a held task's gate were valid, as one clause, or
+ *  nothing where the gate read no solves. Its own session was told it (`try_task`); until
+ *  14 October a later one was not, so a task held out on one valid solve in three read as one held
+ *  out on two. */
+function admittedLine(gate: JsonObject | undefined): string {
+  const reference = asRecord(gate?.reference);
+  if (gate?.outcome !== "passed" || reference?.solves !== TRIED || !isNumber(reference.valid)) return "";
+  return `; held out at its gate on ${String(reference.valid)} of the reference harness's ${String(TRIED)} solves valid`;
+}
+
+/** The drafts a gate refused having read them, with the gate's reason: until 14 October a later
+ *  session was told nothing of them, and could not tell a draft refused at none of three valid
+ *  solves from one never written. A draft whose gate read fewer solves may be proposed again, and
+ *  is left out (`measuredGate`). */
+function refusedLines(events: readonly LogEvent[], gates: ReadonlyMap<string, JsonObject>): string[] {
+  return proposalsOf(events).flatMap(({ version, task }) => {
+    const gate = gates.get(version);
+    return task !== null && gate?.outcome === "refused" && measuredGate(gate) && isString(gate.reason)
+      ? [`${task.taskId} (family ${task.family}): refused: ${gate.reason}`]
+      : [];
+  });
 }
 
 /** A task's last comparisons with the reference harness, newest first, as one clause after its

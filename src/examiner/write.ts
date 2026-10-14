@@ -39,20 +39,13 @@ import { LADDER, packageGate, type TaskPackage, taskSets, taskVersion } from "..
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
-import {
-  asRecord,
-  isNumber,
-  isRecord,
-  isString,
-  type JsonObject,
-  type JsonValue,
-} from "../meta/json-shape.ts";
+import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
-import { heard } from "./record.ts";
+import { heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
@@ -105,12 +98,6 @@ interface Desk {
 
 /** The most of an example one result shows. */
 const SHOWN_CHARS = 20_000;
-/** The reference harness's solves of one draft task under `try_task`: the least the operator's
- *  ruling of 12 October names. Every paper the overhaul's research read that kept tasks at a
- *  frontier admitted them by a measurement of the target, none blind (one at four attempts and a
- *  pass-rate band); its probe asks for three or more fresh solves at the campaign's budget, and a
- *  task admitted at a pass rate strictly between 0 and 1. */
-const TRIED = 3;
 /** The tool a task is held out by, as the Examiner is told it: on its package's shape, or on that
  *  and the reference harness's solves of it. */
 const GATES = {
@@ -131,9 +118,6 @@ const HIDDEN = Type.Unknown({ description: "What only the checks receive; null w
 const PLANTED =
   "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
-/** Why a draft is not measured where the campaign's budget holds no reserve for its three solves. */
-const UNAFFORDED =
-  "the campaign's budget holds no reserve for the reference harness's three solves of it beside the solves running, so it is not measured";
 /** What the Examiner is told of a task held for the ladder: the outcome, and nothing of a solve. */
 const LADDERED =
   "held for the ladder. This task will never be scored for promotion or released for practice.";
@@ -434,13 +418,6 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
  * and is gated then under the id it is given.
  */
 function gatedTasks(events: readonly LogEvent[]): Task[] {
-  // A gate that measured fewer than the reference harness's `TRIED` solves, cut by a limit or never
-  // begun for want of the reserve, refused a draft it did not read: such a draft may be proposed
-  // again, and is solved afresh (14 October). A gate that read all three stands.
-  const measuredGate = (data: JsonObject) => {
-    const solves = asRecord(data.reference)?.solves;
-    return data.reason !== UNAFFORDED && !(isNumber(solves) && solves < TRIED);
-  };
   const gates = new Set(
     events.flatMap(({ kind, data }) => (kind === "task.gate" && measuredGate(data) ? [data.version] : [])),
   );

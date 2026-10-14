@@ -1556,5 +1556,9 @@ describe("the texts a Builder reads, by who makes its campaign's moves", () => {
     expect(systemPrompt(builder)).toContain(builder.closing);
     expect(systemPrompt(host)).toContain(host.closing);
     expect(systemPrompt(host)).not.toContain("compare");
+    // The led closing in five sentences at most, its patience counted in moves as the stop rule
+    // counts it: until 14 October it said comparisons, and a session that changed nothing counts.
+    expect(builder.closing.split(/(?<=\.) /).length).toBeLessThanOrEqual(5);
+    expect(builder.closing).toContain("as many moves in a row without a gain as its patience");
   });
 });

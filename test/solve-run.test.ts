@@ -218,6 +218,14 @@ describe("an attempt's ending", () => {
       kind: "turns-ended",
     });
     expect(await ending({ turnsEnded: true, wallEnded: true }).ending).toMatchObject({ kind: "wall-ended" });
+    // A last allowed turn the provider failed is the provider's, and no loss of the solver's.
+    expect(await ending({ turnsEnded: true, turns: [stop("", "API Error: 529 overloaded")] }).ending).toEqual(
+      {
+        outcome: "non-result",
+        kind: "provider",
+        reason: "API Error: 529 overloaded",
+      },
+    );
     expect(await ending({ turnsEnded: true, submitted: { answer: "42" } }).ending).toEqual({
       outcome: "pass",
     });

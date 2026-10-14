@@ -235,7 +235,7 @@ describe("the whole-run investigation's reader", () => {
     );
     expect(detail("SCORED SET MOVED")).toBe("b-1: 2 of 4 tasks it began with are not in its tally");
     expect(detail("FEW INFORMATIVE PAIRS")).toBe(
-      "b-1: 2 of 2 tasks tell the harnesses apart; at level 0.1 the least sweep that clears is 4-0, and no result with a loss clears on 2 pairs",
+      "b-1: 2 of 2 tasks tell the harnesses apart; at level 0.1 the least sweep that clears is 4-0, and the reading with its least win lost would not",
     );
     expect(detail("CHAIN")).toBe("b-1 hp>hc no-step");
   });
@@ -443,6 +443,26 @@ describe("the whole-run investigation's reader", () => {
     expect(overview(events).triggers.some((trigger) => trigger.detail.includes("against the starter"))).toBe(
       false,
     );
+  });
+
+  it("reads a sweep as fragile on the frontier's own margins, not on one pair a task", () => {
+    // buffer-149 (14 October): 8-0 at level 0.02, where the margins let a 7-1 clear.
+    const fragile = (session: string, differences: number[]) => {
+      record(REPORTED, {
+        ...REPORT,
+        ...started(session, "hp", "hf"),
+        level: 0.02,
+        scored: { ...TESTED, wins: 8, losses: 0, ties: 0, p: 0.004, unsolved: 0 },
+        frontier: { differences },
+        versions: HELD,
+        reading: "step",
+      });
+      return overview(events).triggers.some(
+        (trigger) => trigger.name === "FEW INFORMATIVE PAIRS" && trigger.detail.startsWith(`${session}:`),
+      );
+    };
+    expect(fragile("g-8", [16, 16, 16, 16, 16, 16, 16, 1])).toBe(false);
+    expect(fragile("g-9", [1, 1, 1, 1, 1, 1, 1, 1])).toBe(true);
   });
 
   it("names a step no second comparison of the same two harnesses has repeated", () => {

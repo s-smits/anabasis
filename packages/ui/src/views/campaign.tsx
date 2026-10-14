@@ -9,7 +9,7 @@ import type { CampaignReading, Tone } from "../models.ts";
 import type { PaneProps } from "../route.ts";
 import { digestText, pText, tallyText } from "./campaign-data.ts";
 import { HarnessStrip } from "./campaign-harnesses.tsx";
-import { money, time } from "./format.ts";
+import { money, percent, time } from "./format.ts";
 
 /*
  * The Campaign pane, the main page (the brief of 11 October, section 6), top to bottom: the
@@ -216,9 +216,18 @@ function SetUp({ reading }: { reading: CampaignReading }) {
   );
 }
 
+/** What one attempt's false-promotion bound rests on, as `climb.ts` words it for the view. */
+function boundSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): string {
+  return risk.pairs === 0
+    ? `${percent(risk.bound)} an attempt by the rule's design, before two A/A controls, indicative`
+    : `${String(risk.errors)} of ${plural(risk.pairs, "pair")} of A/A controls promoted, at most ${percent(risk.bound)} an attempt${risk.indicative ? ", indicative" : ""}`;
+}
+
 function Counters({ reading }: { reading: CampaignReading }) {
-  const { withoutGain, patience, labels, controls, controlSteps } = reading.counters;
+  const { withoutGain, patience, labels, controls, controlSteps, risk, runway } = reading.counters;
   const { regression } = reading;
+  const affords =
+    runway === null || runway.each <= 0 ? null : Math.floor(Math.max(0, runway.left) / runway.each);
   return (
     <p className="ana-campaign-counters">
       <span>
@@ -235,6 +244,22 @@ function Counters({ reading }: { reading: CampaignReading }) {
         A/A controls <b className="ana-num">{controls}</b>
         {controls === 0 ? "" : `, ${String(controlSteps)} read a step`}
       </span>
+      {risk === null || risk.attempts === 0 ? null : (
+        <span
+          title={`${boundSource(risk)}; past ${percent(risk.hold)} the table holds the next attempt until an A/A has run`}
+        >
+          False promotion under this reference at most <b className="ana-num">{percent(risk.union)}</b> over{" "}
+          {plural(risk.attempts, "attempt")}
+          {risk.union > risk.hold ? `, past the table's ${percent(risk.hold)}` : ""}
+        </span>
+      )}
+      {runway === null || affords === null ? null : (
+        <span
+          title={`${money(runway.left)} left; comparison ${runway.comparison} billed ${money(runway.each)}, which the table prices the next one by`}
+        >
+          Comparisons the budget holds at the last one's price <b className="ana-num">{affords}</b>
+        </span>
+      )}
       {regression === null ? null : (
         <span title="A reading beside the test: it decides nothing">
           Regression check {short(regression.newest)} ({regression.comparisons[0]}) against{" "}

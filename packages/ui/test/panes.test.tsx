@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { reported } from "../../../src/builder/comparison.ts";
+import { read as readLog } from "../../../src/kernel/log.ts";
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
@@ -380,4 +382,39 @@ test("a comparison names the tasks its report left out under the split, and one 
     expect(open).toContain("1 rejection, withheld until its comparison reports");
     expect(open.includes(">earned<")).toBe(false);
   }
+});
+
+test("a comparison says beside its test what the test could see, read off its report, and one with no report says nothing of it", () => {
+  const events = readLog(fixture.log);
+  const render = (id: string) =>
+    renderToStaticMarkup(
+      <ComparisonDetailView
+        detail={comparisonIn(id, "default")}
+        reading={readingIn("default")}
+        navigation={navigationAt("?pane=moves")}
+      />,
+    );
+  // A repeat: its frontier, the tasks it shares with its first stage, and each side's cost a solve.
+  const repeat = comparisonIn("r-1", "default").sensitivity;
+  const report = reported(events, "r-1");
+  expect(repeat?.frontier).toEqual({
+    untied: (report?.frontier?.wins ?? 0) + (report?.frontier?.losses ?? 0),
+    detectable: report?.frontier?.detectable ?? null,
+    falseRate: report?.frontier?.falseRate ?? 0,
+  });
+  expect(repeat?.overlap).toEqual({ with: "b-1", tasks: report?.overlap?.tasks.length ?? 0 });
+  expect(repeat?.informative).toEqual(report?.valid?.informative ?? null);
+  const html = render("r-1");
+  expect(html).toContain("What the test could see");
+  expect(html).toContain(
+    `<dt>Shared with b-1</dt><dd>${String(repeat?.overlap?.tasks)} tasks both scored</dd>`,
+  );
+  expect(html).toContain("<dd>the new harness wins 95% of them</dd>");
+  // A control: the reference against itself, how often its solves disagree.
+  const control = comparisonIn("c-1", "default").sensitivity;
+  expect(control?.noise).toEqual({ flips: reported(events, "c-1")?.noise?.flips ?? null, detectable: null });
+  expect(render("c-1")).toContain("<dt>Reference flips between its solves</dt><dd>25%</dd>");
+  expect(render("b-1")).toContain("<dd>none: too few untied tasks</dd>");
+  expect(comparisonIn("b-4", "default").sensitivity).toBeNull();
+  expect(render("b-4").includes("What the test could see")).toBe(false);
 });

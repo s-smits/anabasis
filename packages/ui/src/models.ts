@@ -304,6 +304,22 @@ export interface Counters {
    *  whole-run reader's rule: either side winning is a false step. */
   readonly controls: number;
   readonly controlSteps: number;
+  /** What the promotion attempts under the current reference risk together (`falsePromotion`,
+   *  `epochsOf`), and the share past which the table holds the next attempt for an A/A (`RISK`).
+   *  Null only where the log holds no epoch. */
+  readonly risk: {
+    readonly attempts: number;
+    readonly union: number;
+    readonly bound: number;
+    readonly pairs: number;
+    readonly errors: number;
+    readonly indicative: boolean;
+    readonly hold: number;
+  } | null;
+  /** The dollars left of the campaign's total (`Plan.left`), and what the last comparison the cap
+   *  did not cut billed for its solves (`billedParts`), which the table prices the next one by
+   *  (`unafforded`). Null for a campaign with no total, or before a comparison has reported. */
+  readonly runway: { readonly left: number; readonly each: number; readonly comparison: string } | null;
 }
 
 /** The table's next move (`decide`), and its line as the view prints it (`decidedLine`). The
@@ -460,11 +476,44 @@ export interface ScoredTask {
   readonly fresh: readonly SolveRow[];
 }
 
+/** What a comparison's report says beside its test of what the test could see (`reported`). */
+export interface Sensitivity {
+  /** The step's own set: its untied tasks, the least share of them the new harness has to win for
+   *  one reading to detect a step four times in five, null where none would; and the chance that an
+   *  attempt at its margins promotes between equal harnesses (`falseRate`). Null in a report
+   *  written before the sets were read apart. */
+  readonly frontier: {
+    readonly untied: number;
+    readonly detectable: number | null;
+    readonly falseRate: number;
+  } | null;
+  /** The tallied tasks informative for each harness, which room is read by (`roomOf`); null in a
+   *  report written before 9 October. */
+  readonly informative: { readonly old: number; readonly fresh: number } | null;
+  /** The tied tasks no counted solve answered validly, the tallied tasks with a solve a solver
+   *  flagged, and the tallied tasks the objective decided (null where it fixed none). */
+  readonly unsolved: number;
+  readonly flagged: number;
+  readonly decided: number | null;
+  /** The comparison of the same two harnesses before this one, and the tasks both scored. */
+  readonly overlap: { readonly with: string; readonly tasks: number } | null;
+  /** The mean billed dollars of a counted solve under each harness. */
+  readonly billed: { readonly old: number | null; readonly fresh: number | null } | null;
+  /** The reference against itself: how often two of its solves of a task disagree, and the least
+   *  share of its untied tasks one half has to win to be detected four times in five. */
+  readonly noise: { readonly flips: number | null; readonly detectable: number | null } | null;
+  /** The families the frontier's untied tasks fall in, and how many of them the largest holds:
+   *  concentration, which a count of tasks hides. Null where the report holds no families. */
+  readonly families: { readonly count: number; readonly largest: number } | null;
+}
+
 export interface ComparisonDetail extends Answer {
   readonly kind: "comparison";
   readonly move: Move & { readonly step: "comparison" };
   readonly bar: ComparisonBar;
   readonly terms: ComparisonTerms;
+  /** Null before it reports, and for a report that compared nothing. */
+  readonly sensitivity: Sensitivity | null;
   readonly tasks: readonly ScoredTask[];
   /** The reader's triggers of the comparison lanes, shown collapsed. */
   readonly triggers: readonly Trigger[];

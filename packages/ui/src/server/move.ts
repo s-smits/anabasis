@@ -11,10 +11,10 @@
  * log (`Move.index`). An id is taken where it names exactly one move; one that names two is refused
  * with the places of both.
  */
-import { fixedIn, predicted, reported } from "../../../../src/builder/comparison.ts";
+import { fixedIn, predicted, type Report, reported } from "../../../../src/builder/comparison.ts";
 import { passed, type Ran } from "../../../../src/kernel/solves.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
-import type { Move, MoveDetail, Outcome, Query, ScoredTask, SolveRow, Tier } from "../models.ts";
+import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRow, Tier } from "../models.ts";
 import { Unanswerable, type Reading } from "./context.ts";
 import { type Log, overviewIn, practiceIn, proposalsIn, ranIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
@@ -114,6 +114,35 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
   return [...tallied, ...aside];
 }
 
+/** What a comparison's report says beside its test, read as counts and shares: no task is named.
+ *  Null for a report that compared nothing. */
+function sensitivityOf(report: Report): Sensitivity | null {
+  const { scored, frontier, valid, noise, families, overlap } = report;
+  if (scored === null) return null;
+  const untied = Object.values(families ?? {}).map(({ frontier: { wins, losses } }) => wins + losses);
+  return {
+    frontier:
+      frontier === null
+        ? null
+        : {
+            untied: frontier.wins + frontier.losses,
+            detectable: frontier.detectable,
+            falseRate: frontier.falseRate,
+          },
+    informative: valid?.informative ?? null,
+    unsolved: scored.unsolved,
+    flagged: report.flagged.length,
+    decided: report.objective?.decided ?? null,
+    overlap: overlap === null ? null : { with: overlap.with, tasks: overlap.tasks.length },
+    billed: report.billed,
+    noise: noise === null ? null : { flips: noise.flips, detectable: noise.detectable ?? null },
+    families:
+      families === null
+        ? null
+        : { count: untied.filter((each) => each > 0).length, largest: Math.max(0, ...untied) },
+  };
+}
+
 export function moveAnswer(reading: Reading, query: Query<"move">): MoveDetail {
   const { log, issues } = campaignAt(reading, query.key);
   const move = moveNamed(log, query.move);
@@ -147,6 +176,7 @@ export function moveAnswer(reading: Reading, query: Query<"move">): MoveDetail {
   const bar = barsIn(log).find((each) => each.id === move.id);
   if (bar === undefined) throw new Error(`comparison ${move.id} has no bar`);
   const fixed = fixedIn(log.events, move.id);
+  const report = reported(log.events, move.id);
   const named = `${move.id}: `;
   return {
     tier,
@@ -165,6 +195,7 @@ export function moveAnswer(reading: Reading, query: Query<"move">): MoveDetail {
       objective: fixed?.objective ?? null,
       prediction: predicted(log.events, move.id),
     },
+    sensitivity: report === null ? null : sensitivityOf(report),
     tasks: scoredTasks(log, move, tier),
     triggers: overviewIn(log).triggers.filter(
       (trigger) =>

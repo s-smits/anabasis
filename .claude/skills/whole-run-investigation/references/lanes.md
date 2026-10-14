@@ -820,8 +820,9 @@ written once more with `settled` saying what the labels did.
 packets or from the rulings, and whether a task disputed for a check's fault was taken to the
 checker's owner: a dispute removes a task and repairs nothing. The Referee's agreement with a
 person is unmeasured until its rulings are set against labels made before it read
-(`src/review/agreement.ts`), and it ruled all 64 stored rejections a true fail with no label to
-compare: count its earned rulings as a reviewer's, and those made without a probe as restating
+(`src/review/agreement.ts`); on the record of 9 October, which is not this run's, it ruled all 64
+rejections then stored a true fail with no label to compare. Count this run's rulings from its log,
+its earned rulings as a reviewer's, and those made without a probe as restating
 the check. Count the rulings that recur: the same check ruled a defect across sessions is a
 repair owed, and lane 6 reads whether one was made. Then read what each role was told. The
 Builder is told a task's record and a ruling's kind, and never a check's id or a

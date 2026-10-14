@@ -45,6 +45,9 @@ to none.
   one exception, where your lane names it, and it writes nothing.
 - Write your report early, as soon as you have its first two lines, and append as you go.
 - You are independent: open no other lane's prompt or report and no synthesis of this investigation.
+- Run the repository's commands (`bun tools/...`, `bun .claude/...`) from the checkout the campaign
+  row names, which has its dependencies installed, and name a log or a tree by its path: a
+  campaign's own tree may hold none, and on 14 October four lanes could not start a reader there.
 - Read source where the campaign's row says the code it last ran stands: the campaign's own tree
   when the row names it, and otherwise the checkout the row names. Where the row says the last
   condition ran under another host hash than both, every statement you make about source is about

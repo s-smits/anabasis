@@ -9,6 +9,7 @@ import { AnswerIssues, harnessLabel } from "./drill.tsx";
 import { FileInspector } from "./file-inspector.tsx";
 import { bytes, time } from "./format.ts";
 import { useHeld } from "./held.ts";
+import { useLate } from "./late.ts";
 import { plural } from "../../../../src/meta/text.ts";
 
 /*
@@ -175,18 +176,21 @@ export function DiffView({ diff }: { diff: HarnessDiff }) {
 /** One raw event. A page in the default tier knows the server refuses it, and does not ask. */
 function EventBody({ campaign, index, tier }: { campaign: string; index: number; tier: Tier }) {
   const live = useEvent(campaign, tier === "exam" ? index : null);
+  // The event before stays while the next is read, and a read is said only once it is late.
+  const late = useLate(tier === "exam" ? live : null);
   if (tier === "default" || live.refused === "exam-side") return <ExamSide what="a raw event's payload" />;
-  if (live.data === null || !live.current) {
-    return <p className="ana-faint">{live.error ?? "Reading the event."}</p>;
+  if (live.data === null || live.error !== null) {
+    return <p className="ana-faint">{live.error ?? (late ? "Reading the event." : "")}</p>;
   }
   return (
     <>
+      {late ? <p className="ana-faint">Reading the event.</p> : null}
       <div className="ana-record-meta">
         <span>{live.data.kind}</span>
         <time>{time(live.data.at)}</time>
       </div>
       <AnswerIssues answer={live.data} />
-      <RecordView key={index} value={live.data.data} defaultExpanded="all" />
+      <RecordView key={live.key} value={live.data.data} defaultExpanded="all" />
     </>
   );
 }

@@ -342,11 +342,11 @@ describe("a campaign run by its log", () => {
     };
     // Its comparisons began under the rule of one reading at a time, so the two-stage rule's
     // trigger is not defaulted for it: the operator names both terms once.
-    expect(harnessBuilder([...flags, "--moves", "0"], seats)).rejects.toThrow(
+    await expect(harnessBuilder([...flags, "--moves", "0"], seats)).rejects.toThrow(
       "name --level and --trigger once for it (the plan's are --level 0.02 --trigger 0.25)",
     );
     // Naming the trigger alone would pin the level to the start's, under the summed rule.
-    expect(harnessBuilder([...flags, "--trigger", "0.25", "--moves", "0"], seats)).rejects.toThrow(
+    await expect(harnessBuilder([...flags, "--trigger", "0.25", "--moves", "0"], seats)).rejects.toThrow(
       "name --level and --trigger once",
     );
     expect(of(name, OPENED)).toHaveLength(1);
@@ -556,7 +556,7 @@ describe("a campaign run by its log", () => {
     const answer = (labels: JsonObject) =>
       writeFileSync(file, JSON.stringify({ rejections: {}, passes: labels }));
     answer({ [a]: "sound", [b]: "wrng", [c]: "sound" });
-    expect(settleCommand([...pack, "--session", "g-1"])).rejects.toThrow(
+    await expect(settleCommand([...pack, "--session", "g-1"])).rejects.toThrow(
       "holds what is no label (sound, wrong, unclear) for 1 answer",
     );
     answer({ [a]: "sound", [b]: "", [c]: "sound" });
@@ -591,13 +591,13 @@ describe("a campaign run by its log", () => {
     // What the campaign hands over: the promoted harness as a folder that stands by itself, the
     // public rules, and the closing report. It is written outside the repository and once.
     const to = join(root, "handover");
-    expect(closeCommand([...pack, "--to", join(REPO, ".ana", "handover")])).rejects.toThrow(
+    await expect(closeCommand([...pack, "--to", join(REPO, ".ana", "handover")])).rejects.toThrow(
       "lies inside the repository",
     );
     const handed = await closeCommand([...pack, "--to", to]);
     expect(handed.to).toBe(to);
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: handed.harness }]);
-    expect(closeCommand([...pack, "--to", to])).rejects.toThrow("holds something already");
+    await expect(closeCommand([...pack, "--to", to])).rejects.toThrow("holds something already");
     const closing = readFileSync(join(to, "REPORT.md"), "utf8");
     expect(closing).toContain(
       "a person read 3 in 1 comparison, drawn uniformly by each comparison's id: 2 sound, 1 wrong, 0 unclear",
@@ -648,7 +648,7 @@ describe("a campaign run by its log", () => {
     // solve is recorded in a log of its own under the campaign, and the campaign's log is as it was.
     const before = read(join(REPO, ".ana", "d2", name, LOG_FILE)).length;
     const trial = join(root, "handover-solved");
-    expect(closeCommand([...pack, "--to", trial, "--solve", "no-such-task"])).rejects.toThrow(
+    await expect(closeCommand([...pack, "--to", trial, "--solve", "no-such-task"])).rejects.toThrow(
       "--solve no-such-task: the campaign holds no task by that id",
     );
     rmSync(trial, { recursive: true, force: true });
@@ -922,7 +922,7 @@ describe("a campaign run by its log", () => {
         }),
     };
     // With no prompt and no pack there is nothing to open, and nothing is written.
-    expect(harnessBuilder(["--name", name], seats)).rejects.toThrow("give the prompt it opens from");
+    await expect(harnessBuilder(["--name", name], seats)).rejects.toThrow("give the prompt it opens from");
     expect(await harnessBuilder([...flags, "--prompt", prompt, "--dry-run"], seats)).toMatchObject({
       move: "draft",
     });
@@ -1009,7 +1009,9 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).toMatchObject({
       terms: { practice: "2", solves: "1", "solve-minutes": "8", "practice-solves": "3" },
     });
-    expect(harnessBuilder(["--name", name, "--solve-minutes", "30", "--moves", "0"], seats)).rejects.toThrow(
+    await expect(
+      harnessBuilder(["--name", name, "--solve-minutes", "30", "--moves", "0"], seats),
+    ).rejects.toThrow(
       "--solve-minutes 30 names another setting than the campaign's, which was recorded as --solve-minutes 8",
     );
     expect(of(name, OPENED)).toHaveLength(2);

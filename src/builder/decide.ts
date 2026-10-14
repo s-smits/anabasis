@@ -411,6 +411,13 @@ function shortBy(ground: Ground): number {
   return Math.max(0, plan.wanted.target + practice - (dueOf(ground)?.fresh ?? supply.held));
 }
 
+/** The comparison whose repeat is due, and the held tasks its first stage did not score, as a led
+ *  Builder's campaign status says them; null where none is. */
+export function repeatDue(events: readonly LogEvent[], plan: Plan): { id: string; fresh: number } | null {
+  const due = dueOf(groundOf(events, plan));
+  return due === null ? null : { id: due.first.id, fresh: due.fresh };
+}
+
 /** The repeat the pair's last reading bought, where one is due, and how many held tasks its first
  *  stage did not score; null where none is: a control is never repeated, since the starter winning
  *  on new tasks is room by another name. */

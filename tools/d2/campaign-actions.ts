@@ -27,8 +27,16 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { Refused, supplyOf } from "#src/builder/admission.ts";
-import { decide, heldAfter, shortOf, unaffordedAsked, unpromoted } from "#src/builder/decide.ts";
-import { comparisonsOf } from "#src/builder/ground.ts";
+import {
+  CRASHES,
+  decide,
+  heldAfter,
+  repeatDue,
+  shortOf,
+  unaffordedAsked,
+  unpromoted,
+} from "#src/builder/decide.ts";
+import { comparisonsOf, crashedRun } from "#src/builder/ground.ts";
 import { campaignOf } from "#src/builder/handover.ts";
 import { type Decided, short } from "#src/builder/move.ts";
 import { type Opening } from "#src/builder/opening.ts";
@@ -38,7 +46,7 @@ import { type Bench, endingWith, snapshot } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { latestBuilt } from "#src/kernel/reports.ts";
+import { billedParts, latestBuilt, patienceOf, stopRule } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -586,13 +594,51 @@ function examinedLines(events: readonly LogEvent[], writing: string | undefined)
     const held = plural(started === -1 ? 0 : heldAfter(events, started), "task");
     return [
       begun === writing
-        ? `Examiner session ${begun} is writing beside this conversation and has held out ${held} so far; any other campaign action waits for it.`
+        ? `Examiner session ${begun} is writing beside this conversation, ${minutesFrom(events[started]?.at)}, and has held out ${held} so far; any other campaign action waits for it.`
         : `Examiner session ${begun} stopped with the run of the campaign that began it, and held out ${held}.`,
     ];
   }
   const said = EXAMINED.get(isString(ended.ended) ? ended.ended : "") ?? "ended at its limits";
   return [
     `Examiner session ${begun} ${said}, and held out ${plural(Array.isArray(ended.held) ? ended.held.length : 0, "task")}.`,
+  ];
+}
+
+/** Whole minutes from `from` to `to`, or to now, as a status says them. */
+function minutesFrom(from: string | undefined, to = new Date().toISOString()): string {
+  const minutes =
+    from === undefined ? 0 : Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 60_000));
+  return plural(minutes, "minute");
+}
+
+/**
+ * What the host has spent and counted, as a led Builder reads it where it acts or asks: the last
+ * comparison's minutes and dollars, a repeat that is due, the moves without a gain against the
+ * patience, and the sessions the provider failed in a row. Until 14 October a Builder bought a
+ * comparison of hours knowing of the last one its tally alone. None of it names a task (rule 3).
+ */
+function spentLines({ events, plan }: Turn): string[] {
+  const last = comparisonsOf(events).at(-1);
+  const due = repeatDue(events, plan);
+  const { sinceStep } = stopRule(events);
+  const { count } = crashedRun(events);
+  return [
+    ...(last === undefined
+      ? []
+      : [
+          `Comparison ${last.id} ${last.reported === null ? "has run" : "took"} ${minutesFrom(events[last.at]?.at, last.reported === null ? undefined : events[last.reported]?.at)} and billed ${billedParts(events, last.id).comparison.toFixed(2)} dollars.`,
+        ]),
+    ...(due === null
+      ? []
+      : [
+          `Comparison ${due.id} bought a repeat: ${plural(due.fresh, "held-out task")} it did not score, of ${String(plan.wanted.target)} the repeat scores.`,
+        ]),
+    `Moves without a gain since the last step: ${String(sinceStep)} of the patience's ${String(patienceOf(events))}.`,
+    ...(count === 0
+      ? []
+      : [
+          `Sessions the provider failed in a row: ${String(count)} of the ${String(CRASHES)} that end the campaign.`,
+        ]),
   ];
 }
 
@@ -651,6 +697,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
       ? "No comparison has a tally yet."
       : `${plural(tallies.length, "comparison")} with a tally; the last:\n${tallies.at(-1) ?? ""}`,
     ...examinedLines(turn.events, writing),
+    ...spentLines(turn),
     ...(writing === undefined
       ? [
           `Suggested action: ${toolOf(decided)}.`,

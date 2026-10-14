@@ -234,7 +234,8 @@
 }
 
 .ana-move-divider td > * + * {
-  margin-left: 10px;
+  /* With the space between the parts, 10px apart as before. */
+  margin-left: 6px;
 }
 
 .ana-move-divider time {

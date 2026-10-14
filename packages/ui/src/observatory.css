@@ -326,10 +326,14 @@ dd {
   max-height: none;
 }
 
+/* One column no wider than the window: the issue beneath names a path of the repository, which a
+   phone's width would otherwise stretch the column to, and the page with it. */
 .ana-empty-workspace {
   display: grid;
   gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
   margin: 20vh auto;
+  overflow-wrap: anywhere;
   max-width: 680px;
   padding: 24px;
 }

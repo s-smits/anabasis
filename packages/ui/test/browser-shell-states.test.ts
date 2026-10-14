@@ -12,6 +12,7 @@ import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
 import {
+  ACTION_MS,
   accessibilityViolations,
   DESKTOP,
   expectQuiet,
@@ -97,7 +98,11 @@ describe("a read in flight or failed", () => {
     await expect(page.getByText("Reading the campaigns")).toBeVisible();
     await expect(page.getByText("The list of campaigns is loading.")).toBeVisible();
     release();
-    await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();
+    // The campaign is read only once the list arrives, and at ten parallel files on 14 October that
+    // read took past the 5 s an assertion waits: the page is what is tested here, not the server's pace.
+    await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible({
+      timeout: ACTION_MS,
+    });
     await expect(page.getByText("Reading the campaigns")).toHaveCount(0);
     await context.close();
   });

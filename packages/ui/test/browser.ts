@@ -85,6 +85,10 @@ export interface FramesSeen {
 const PACKAGE = join(import.meta.dir, "..");
 const STARTED = /anabasis at (http:\/\/127\.0\.0\.1:\d+)\/\?token=([0-9a-f]+)/u;
 const START_MS = 20_000;
+/** How long one load, click or other action may wait. Playwright's own 30 s twice over is the test's
+ *  whole 60 s, so a page that never loaded under ten parallel files on 14 October timed the test out
+ *  and named no step; at 15 s the stuck step fails with its own message first. */
+export const ACTION_MS = 15_000;
 /** A desktop window, the width the operator reads the page at. */
 export const DESKTOP = { width: 1440, height: 1000 } as const;
 /** A phone held upright. */
@@ -184,6 +188,7 @@ export async function openPage(browser: Browser, url: string, viewing: Viewing =
     reducedMotion: viewing.reducedMotion ?? "no-preference",
     colorScheme: "dark",
   });
+  context.setDefaultTimeout(ACTION_MS);
   const page = await context.newPage();
   const problems: string[] = [];
   page.on("console", (message) => {

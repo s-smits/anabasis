@@ -582,6 +582,15 @@ button.ana-hash.is-revealed {
   width: 100%;
 }
 
+/* The previous campaign's pane while the next is read (shell.tsx): laid out as the page lays out
+   its own children, so nothing moves when it gives way, and inert, so nothing in it can be used. */
+.ana-pending {
+  cursor: progress;
+  display: grid;
+  gap: inherit;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .ana-eyebrow {
   color: var(--ana-dim);
   font-family: var(--font-editorial);

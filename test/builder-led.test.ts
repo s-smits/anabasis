@@ -504,6 +504,8 @@ describe("a campaign run by its live Builder", () => {
         CHANGE_GUIDE,
         ["compare", {}],
         ["compare", {}],
+        // On the harness it last promoted, the first finish is told the run ends there.
+        ["finish", { note: "Two harnesses are promoted and measured." }],
         ["finish", { note: "Two harnesses are promoted and measured." }],
       ]),
       // One task the session held is moved to the ladder, as the gate holds one there.
@@ -918,6 +920,8 @@ describe("a campaign tool where the table names more than the action", () => {
         ["compare", {}],
         ["examine", {}],
         ["compare", {}],
+        // On the harness it promoted, a finish is told the run ends there, and a second one ends it.
+        ["finish", { note: "The control was read." }],
         ["finish", { note: "The control was read." }],
       ]),
       examine: writer,
@@ -931,6 +935,12 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(control).toMatchObject({ fresh: first?.old, old: first?.fresh });
     expect(of(name, "build.checkpoint")).toHaveLength(1);
     expect(said(name, "compare")[2]).toContain("the starter harness was read against it");
+    // buffer-149, 14 October: its Builder finished on the harness just promoted, and the climb
+    // stopped at one step while the table named a move.
+    const [stopped, ended] = said(name, "finish");
+    expect(stopped).toContain("Not finished. harness/ is the harness last promoted,");
+    expect(ended).not.toContain("harness last promoted");
+    expect(of(name, FINISHED)).toMatchObject([{ ended: "finished" }]);
   });
 
   it("makes no second draw of a pair nothing changed in, and records no move for an action it refused", async () => {
@@ -985,6 +995,8 @@ describe("a campaign tool where the table names more than the action", () => {
               ["compare", {}],
               ["campaign_status", {}],
               ["read_opening", {}],
+              // On the harness it last promoted, the first finish is told the run ends there.
+              ["finish", { note: "Read twice." }],
               ["finish", { note: "Read twice." }],
             ]),
             solve: (task, harness, kill, comparison) =>

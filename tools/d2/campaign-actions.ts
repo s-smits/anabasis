@@ -46,7 +46,13 @@ import { type Bench, endingWith, snapshot } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedParts, latestBuilt, patienceOf, stopRule } from "#src/kernel/reports.ts";
+import {
+  billedParts,
+  latestBuilt,
+  patienceOf,
+  promoted as lastPromoted,
+  stopRule,
+} from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -776,7 +782,17 @@ export function campaignTools(
       },
       unmeasured: async (digest) => {
         const reference = (await keptAs(context.campaign, "--reference", PROMOTED)).digest;
-        if (digest === reference || readAgainst(read(context.log), digest, reference)) return null;
+        if (digest === reference) {
+          // On 14 October buffer-149's Builder finished on the harness just promoted, a third of
+          // its total spent, and the climb stopped at one step while the table named a move. One
+          // that never left the starter is told nothing: no run showed that finish.
+          const next = toolOf(actionTurn(context).decided);
+          if (next === "end" || lastPromoted(read(context.log)) !== digest) return null;
+          return next === "build"
+            ? "harness/ is the harness last promoted, and finish ends this run of the campaign with no step past it tried."
+            : `harness/ is the harness last promoted, and the table names ${next} as the next move; finish ends this run of the campaign there.`;
+        }
+        if (readAgainst(read(context.log), digest, reference)) return null;
         const writing = context.examining?.session;
         return `No comparison has read harness/ as it stands against the reference, and finish ends this run of the campaign with it unmeasured.${writing === undefined ? "" : ` Examiner session ${writing} is still writing tasks beside this conversation, and compare waits for it to end.`}`;
       },

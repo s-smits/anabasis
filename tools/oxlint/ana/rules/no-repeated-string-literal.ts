@@ -67,11 +67,20 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  * `test/run-triage.test.ts` spells one campaign directory 23 times, and when the fixture moved,
  * 23 lines had to move with it. Measured over the whole test corpus at a floor of 12, the rule
  * finds the files where the repetition is a fixture nobody named and nothing else.
+ *
+ * A suite's prose is not held to it at all. A string with whitespace in a test is a note no reader
+ * compares, such as a scripted Builder's `finish` note, or the sentence an assertion reads, and a
+ * constant hides from the case what it asserts. On 14 October the rule asked for a local constant
+ * for ten copies of "Nothing to add." in `test/builder-led.test.ts`, a note whose copies never need
+ * to agree. A directory or a file name has no whitespace, and stays counted.
  */
 const REPEAT_FLOOR = { source: 4, test: 10 };
 
 /** String length below which a repeat is a word — `"id"`, `"json"` — rather than a value. */
 const LENGTH_FLOOR = 6;
+
+/** Whitespace, which in a test file makes a string prose rather than a fixture's name. */
+const PROSE = /\s/u;
 
 /** One word of letters, digits and hyphens: how this tree spells a union member. */
 const BARE_TAG = /^[A-Za-z0-9][A-Za-z0-9-]*$/u;
@@ -142,6 +151,9 @@ export const noRepeatedStringLiteralRule = defineRule({
     /** The repeat count this file is held to, set once per file from its job. */
     let floor = REPEAT_FLOOR.source;
 
+    /** Whether this file is a test, whose prose is not counted (`REPEAT_FLOOR`). */
+    let suite = false;
+
     /** Whether a literal's position means the module system or a shape owns it, not the code. */
     function positional(node: ESTree.Node): boolean {
       const { parent } = node;
@@ -155,7 +167,8 @@ export const noRepeatedStringLiteralRule = defineRule({
     return {
       before: () => {
         spellings.clear();
-        floor = isTestFile(context.filename) ? REPEAT_FLOOR.test : REPEAT_FLOOR.source;
+        suite = isTestFile(context.filename);
+        floor = suite ? REPEAT_FLOOR.test : REPEAT_FLOOR.source;
         return true;
       },
 
@@ -167,6 +180,7 @@ export const noRepeatedStringLiteralRule = defineRule({
         if (raw === null || !raw.startsWith('"')) return;
         const value = raw.slice(1, -1);
         if (value.length < LENGTH_FLOOR || BARE_TAG.test(value) || positional(node)) return;
+        if (suite && PROSE.test(value)) return;
         // A flag, a media type or a system path is another owner's spelling, not this file's.
         if (ownedElsewhere(value)) return;
         const seen = spellings.get(value) ?? { nodes: [], lines: [], raw };
@@ -191,7 +205,7 @@ export const noRepeatedStringLiteralRule = defineRule({
           if (seen.lines.length < floor) continue;
           const first = seen.nodes[0];
           if (first === undefined) continue;
-          const name = isTestFile(context.filename) ? constantName(value, context.sourceCode.text) : null;
+          const name = suite ? constantName(value, context.sourceCode.text) : null;
           const anchor = afterImports;
           context.report({
             node: first,

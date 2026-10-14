@@ -1,6 +1,6 @@
 // One Examiner session of any mode on the faux provider, for the suites that hold `examine`
-// (`test/examiner.test.ts`, `test/draft.test.ts`, `test/repair.test.ts`): a scratch campaign with a
-// check program and a log, a request of the mode asked for, and what each mode puts.
+// (`test/examiner.test.ts`, `test/draft.test.ts`): a scratch campaign with a check program and a
+// log, a request of the mode asked for, and what each mode puts.
 import {
   createModels,
   fauxAssistantMessage,
@@ -9,17 +9,15 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import type { Draft } from "../../src/examiner/draft.ts";
-import type { Repair } from "../../src/examiner/repair.ts";
 import type { ExamRequest } from "../../src/examiner/session.ts";
 import type { Wall } from "../../src/examiner/shell.ts";
-import type { Control } from "../../src/kernel/acceptance.ts";
 import type { Condition } from "../../src/kernel/condition.ts";
 import type { Contract } from "../../src/kernel/contract.ts";
 import { type EventKind, read } from "../../src/kernel/log.ts";
 import { type TaskPackage, taskVersion } from "../../src/kernel/task.ts";
 import type { Task } from "../../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../../src/meta/filesystem.ts";
-import { isFunction, type JsonObject } from "../../src/meta/json-shape.ts";
+import { isFunction, isString, type JsonObject } from "../../src/meta/json-shape.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
 
@@ -28,12 +26,14 @@ export type Mode = ExamRequest["mode"];
 type Requests = { readonly [Each in Mode]: Extract<ExamRequest, { readonly mode: Each }> };
 
 const TOOL_USE = { stopReason: "toolUse" } as const;
-export const MODES = ["draft", "write", "repair"] as const;
+export const MODES = ["draft", "write"] as const;
 /** The log's word for each mode's events, and for what a session of it puts. */
-export const KIND = { draft: "draft", write: "exam", repair: "repair" } as const;
+export const KIND = { draft: "draft", write: "exam" } as const;
 export const NOTE = "Stacked two requirements.";
 /** The repository this suite runs in, which the wall closes to an Examiner's commands. */
 export const REPO = resolve(import.meta.dir, "..", "..");
+/** The line an Examiner session ends each turn's last tool result with (`sit`, `session.ts`). */
+export const USED = /\s*\nTurn \d+ of \d+; \d+ of \d+ minutes? used\.$/;
 export const WALL: Wall = { repoRoot: REPO, packRoots: [], diskBytes: 64 * 1024 ** 2 };
 export const CONTRACT: Contract = {
   answerFormat: {
@@ -59,27 +59,6 @@ export const EXAMPLE: Task = {
   publicInput: { base: 2 },
   hidden: { seed: 5 },
 };
-/** The campaign's tasks as a repair session is handed them. */
-export const TASKS: Task[] = [2, 3].map((base, index) => ({
-  taskId: `t-${String(index + 1)}`,
-  family: "fixture",
-  publicInput: { base },
-  hidden: { hiddenSeed: `seed-${String(base)}` },
-}));
-export const CONTROLS: Control[] = [
-  { taskId: "t-1", answer: { answer: "12", unit: "N" }, refusedBy: null },
-  { taskId: "t-1", answer: { answer: "13", unit: "N" }, refusedBy: "check-product" },
-];
-/** A repair of the one file the planted defect is in, the controls as they were. */
-export const MENDED: Repair = {
-  files: [
-    {
-      path: "evaluator.ts",
-      content: `export const checks = { "check-product": (r) => r.artifact.answer === String(r.publicTask.publicInput.base * 6) };\n`,
-    },
-  ],
-  controls: CONTROLS,
-};
 const BASES = [2, 3, 4];
 /** A sound draft: one rule, its check, three examples, an accept control each and one reject. */
 export const SOUND: Draft = {
@@ -97,7 +76,7 @@ export const SOUND: Draft = {
   reject: [{ task: 0, answer: { answer: "13" }, check: "check-product" }],
 };
 const LIMITS = { wallSeconds: 600, turns: 12, puts: 4 };
-const IDS = { draft: "d-1", write: "x-1", repair: "r-1" } as const;
+const IDS = { draft: "d-1", write: "x-1" } as const;
 const scratches: string[] = [];
 
 export const call = (name: string, args: JsonObject) =>
@@ -131,19 +110,8 @@ export const drafted = (draft: Draft) =>
     accept_controls: draft.accept.map((control) => ({ ...control })),
     reject_controls: draft.reject.map((control) => ({ ...control })),
   });
-/** A repair as `repair_check` takes it. */
-export const repaired = (repair: Repair) =>
-  call("repair_check", {
-    files: repair.files.map((file) => ({ ...file })),
-    accept_controls: repair.controls.flatMap(({ taskId, answer, refusedBy }) =>
-      refusedBy === null ? [{ task: taskId, answer }] : [],
-    ),
-    reject_controls: repair.controls.flatMap(({ taskId, answer, refusedBy }) =>
-      refusedBy === null ? [] : [{ task: taskId, answer, check: refusedBy }],
-    ),
-  });
-/** What a session of each mode puts once: a sound draft, one task, a repair of the planted defect. */
-export const PUT = { draft: drafted(SOUND), write: propose(7), repair: repaired(MENDED) } as const;
+/** What a session of each mode puts once: a sound draft, one task. */
+export const PUT = { draft: drafted(SOUND), write: propose(7) } as const;
 /** A solve's condition, as the launcher records one: the task version, the harness, the test side. */
 export const condition = (task: string, harness: string): Condition => ({
   contract: "c1",
@@ -252,26 +220,18 @@ export function seat<M extends Mode>(mode: M, responses: readonly FauxResponseSt
       verify: null,
       probe: null,
     },
-    repair: {
-      ...common,
-      mode: "repair",
-      successor: "fixture-r-1",
-      contract: CONTRACT,
-      program,
-      controls: CONTROLS,
-      tasks: TASKS,
-      reading: async () => [],
-    },
   } satisfies Requests;
   return {
     request: requests[mode],
     log,
     program,
     sent,
+    /** The events of `kind`. A call's result is read as its tool returned it, without the line
+     *  the session ends each turn's last result with, which a case of its own reads (`USED`). */
     of: (kind: EventKind) =>
       read(log)
         .filter((event) => event.kind === kind)
-        .map(({ data }) => data),
+        .map(({ data }) => (isString(data.text) ? { ...data, text: data.text.replace(USED, "") } : data)),
     /** The version of the task a writing session held out under `taskId` from `instance(base)`. */
     versionOf: (taskId: string, base: number) =>
       taskVersion(pack({ taskId, family: "fixture", publicInput: { base }, hidden: { seed: 1 } })),

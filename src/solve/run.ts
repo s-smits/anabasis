@@ -105,7 +105,7 @@ export interface SolveRequest {
 
 /** Whose trace a log holds: a solve's, a Builder's session, an Examiner's that writes tasks, or
  *  the one in which it drafts the exam. The word prefixes the event kinds (`draft.turn`). */
-type Traced = "solve" | "build" | "exam" | "draft" | "repair";
+type Traced = "solve" | "build" | "exam" | "draft";
 
 /** What a solve has used of its limits, as its tools are told to say it. */
 export interface Used {
@@ -391,8 +391,8 @@ export function failedTurn(turns: readonly AssistantMessage[]): string | null {
 }
 
 /** Every model turn and every tool call into the log, as they end: a solve's as `solve.turn` and
- *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.`, `exam.`, `draft.`
- *  or `repair.turn` and `.call` under `session`. */
+ *  `solve.call` under `solve`, a Builder's or an Examiner's session as `build.`, `exam.` or
+ *  `draft.turn` and `.call` under `session`. */
 export function traceSink(log: string, of: Traced, id: string, turn: () => number) {
   const named = of === "solve" ? { solve: id } : { session: id };
   const calls = new Map<string, { args: JsonValue; at: number }>();
@@ -462,8 +462,8 @@ function traceText(content: readonly { type: string; text?: string }[]): string 
 }
 
 /** The ending of what was played. A kill or a harness that moved voids it; otherwise an answer the
- *  host holds is judged whatever failed after it was submitted, as v1's close rule had it, and a
- *  flag the host holds ends it flagged. The
+ *  host holds is judged whatever failed after it was submitted, as v1's close rule had it, a flag
+ *  the host holds ends it flagged, and a last turn the provider failed is a non-result. The
  *  answer is checked against the contract's format by the host before any check reads it, then
  *  judged; a verdict is logged either way, with the answer, so that a fail can be read and regraded
  *  from the log alone. */
@@ -500,17 +500,20 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   if (played.crash !== null) return { outcome: "non-result", kind: "sandbox-crash", reason: played.crash };
   if (played.broken !== null) return { outcome: "fail", kind: "broken-harness", reason: played.broken };
   if (played.wallEnded) return { outcome: "fail", kind: "wall-ended" };
-  if (played.turnsEnded) return { outcome: "fail", kind: "turns-ended" };
   const last = played.turns.at(-1);
-  if (last !== undefined && (last.stopReason === "length" || isContextOverflow(last))) {
-    return { outcome: "fail", kind: "context-ended" };
-  }
-  if (last?.stopReason === "error") {
+  // A last turn the provider failed is the provider's, though it was the last the solve was
+  // allowed: until 14 October it was read as the solver's loss at its turns (`turns-ended`). A
+  // context the solver filled is its own, and comes as an error too.
+  if (last?.stopReason === "error" && !isContextOverflow(last)) {
     return {
       outcome: "non-result",
       kind: "provider",
       reason: last.errorMessage ?? "the provider failed the turn",
     };
+  }
+  if (played.turnsEnded) return { outcome: "fail", kind: "turns-ended" };
+  if (last !== undefined && (last.stopReason === "length" || isContextOverflow(last))) {
+    return { outcome: "fail", kind: "context-ended" };
   }
   return { outcome: "fail", kind: "no-answer" };
 }

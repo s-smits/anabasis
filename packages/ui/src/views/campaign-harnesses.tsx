@@ -1,9 +1,10 @@
 import { type KeyboardEvent, useEffect, useRef } from "react";
 import { Badge, Button, HashValue } from "../components/primitives.tsx";
 import { detailsOf, type Of, useHarness } from "../live.ts";
-import type { HarnessCard } from "../models.ts";
+import type { CampaignReading, HarnessCard } from "../models.ts";
 import type { Navigation, PaneProps } from "../route.ts";
-import { digestText, tallyText } from "./campaign-data.ts";
+import { short } from "../../../../src/builder/move.ts";
+import { digestText, STARTER_NAME, tallyText } from "./campaign-data.ts";
 import { AnswerIssues } from "./drill.tsx";
 import { time } from "./format.ts";
 
@@ -26,6 +27,7 @@ import { time } from "./format.ts";
 const KEYS = { ArrowLeft: -1, ArrowRight: 1 } as const;
 const STARTER = "starter";
 const PANEL_ID = "ana-harness-panel";
+type Names = CampaignReading["names"];
 
 /** How the route names a card. */
 const routeName = (card: HarnessCard): string => (card.starter ? STARTER : (card.digest ?? STARTER));
@@ -68,12 +70,12 @@ function Files({ of, digest, navigation }: { of: Of; digest: string; navigation:
 /** The selected card's detail, in the panel under the row. */
 function Detail({
   card,
-  starter,
+  names,
   of,
   navigation,
 }: {
   card: HarnessCard;
-  starter: string | null;
+  names: Names;
   of: Of;
   navigation: Navigation;
 }) {
@@ -99,7 +101,7 @@ function Detail({
         {card.starter ? null : (
           <div>
             <dt>Parent</dt>
-            <dd>{parent === null ? "none recorded" : digestText(parent, starter)}</dd>
+            <dd>{parent === null ? "none recorded" : digestText(parent, names)}</dd>
           </div>
         )}
         {card.at === null ? null : (
@@ -136,7 +138,7 @@ function Detail({
               </button>
               <span className="ana-num">{tallyText(each.tally)}</span>
               <span>{each.reading ?? "no reading"}</span>
-              <span className="ana-harness-against">against {digestText(each.against, starter)}</span>
+              <span className="ana-harness-against">against {digestText(each.against, names)}</span>
             </li>
           ))}
         </ul>
@@ -159,10 +161,12 @@ function Detail({
   );
 }
 
-/** One card's closed face: its name and roles, and the tally of the last comparison it was in. */
-function Face({ card, starter }: { card: HarnessCard; starter: string | null }) {
+/** One card's closed face: its name, the letter the log gives it with its digest's head beneath,
+ *  its roles, and the tally of the last comparison it was in. */
+function Face({ card, names }: { card: HarnessCard; names: Names }) {
   const last = card.comparedIn.at(-1);
-  const name = card.starter ? "Starter" : digestText(card.digest, starter);
+  const letter = card.digest === null ? undefined : names[card.digest];
+  const name = card.starter ? STARTER_NAME : (letter ?? short(card.digest ?? ""));
   const uncompared = card.starter ? "the first reference" : `kept ${time(card.at)}`;
   const roles = [
     card.reference ? (
@@ -180,13 +184,20 @@ function Face({ card, starter }: { card: HarnessCard; starter: string | null }) 
   ];
   return (
     <>
-      <span className={card.starter ? "ana-harness-name" : "ana-harness-name is-digest"}>{name}</span>
+      <span
+        className={letter === undefined && !card.starter ? "ana-harness-name is-digest" : "ana-harness-name"}
+      >
+        {name}
+        {card.digest === null || (letter === undefined && !card.starter) ? null : (
+          <span className="ana-harness-hash">{short(card.digest)}</span>
+        )}
+      </span>
       <span className="ana-harness-roles">{roles}</span>
       <span className="ana-harness-figure ana-num">
         {last === undefined ? "not compared" : `${tallyText(last.tally)} ${last.reading ?? ""}`}
       </span>
       <span className="ana-harness-caption">
-        {last === undefined ? uncompared : `in ${last.id}, against ${digestText(last.against, starter)}`}
+        {last === undefined ? uncompared : `in ${last.id}, against ${digestText(last.against, names)}`}
       </span>
     </>
   );
@@ -245,14 +256,14 @@ export function HarnessStrip({ reading, navigation }: PaneProps) {
                   navigation.push({ harness: routeName(card), file: null, diff: null, event: null })
                 }
               >
-                <Face card={card} starter={reading.starter} />
+                <Face card={card} names={reading.names} />
               </button>
             </li>
           );
         })}
       </ul>
       {chosen === undefined ? null : (
-        <Detail card={chosen} starter={reading.starter} of={detailsOf(reading)} navigation={navigation} />
+        <Detail card={chosen} names={reading.names} of={detailsOf(reading)} navigation={navigation} />
       )}
     </div>
   );

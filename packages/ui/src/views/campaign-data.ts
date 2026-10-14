@@ -12,6 +12,10 @@ import { OUTCOMES } from "./outcome.ts";
  * 11 October: they count a task once a comparison.
  */
 
+/** The Starter's letter, which it holds by role (`namesOf`), and its name on the page. */
+const STARTER_LETTER = "A";
+export const STARTER_NAME = "Starter A";
+
 /** One column of the comparisons chart: a comparison, or the break where the setting changes. */
 export type Slot =
   | {
@@ -95,7 +99,13 @@ export function shareOf(share: Share): number | null {
   return share.solves === 0 ? null : share.valid / share.solves;
 }
 
-/** A harness as the campaign's own lines name it: "starter", or its digest cut by `short`. */
-export function digestText(digest: string | null, starter: string | null): string {
-  return digest === null || digest === starter ? "starter" : short(digest);
+/** A harness as the view, the closing report and promote.ts name it (`calledBy`,
+ *  `src/builder/names.ts`): the Starter "Starter A", any other its letter with its digest's head,
+ *  "B (f94de8ab)", and a digest the log has not named its head alone. Null is the Starter before
+ *  any event names its digest. */
+export function digestText(digest: string | null, names: Readonly<Record<string, string>>): string {
+  if (digest === null) return STARTER_NAME;
+  const letter = names[digest];
+  if (letter === STARTER_LETTER) return STARTER_NAME;
+  return letter === undefined ? short(digest) : `${letter} (${short(digest)})`;
 }

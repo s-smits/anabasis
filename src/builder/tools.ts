@@ -80,7 +80,7 @@ import { installedPrograms, systemPrompt } from "../solve/prompt.ts";
 import { clockText, solverTools } from "../solve/run.ts";
 import { memoryOverCapNotice } from "./memory.ts";
 import { openingOf } from "./opening.ts";
-import { type Said, shellWalls, type Tried } from "./prompt.ts";
+import { type Said, shellWalls } from "./prompt.ts";
 import type { BuildRequest, PracticeTask } from "./session.ts";
 
 /** `harness/` frozen: a copy kept under its digest, what a solve would open it as, and the tools
@@ -130,8 +130,12 @@ export interface Bench {
   /** `finish`'s note; null until it is called. */
   note: string | null;
   /** What `finish` has told the Builder of the harness as it stood, each once (`standing`). */
-  readonly told: Set<"broken" | "untried">;
+  readonly told: Set<"broken" | "untried" | "unread">;
 }
+
+/** What a Builder that leads its campaign is told at `finish` where no comparison has read harness
+ *  `digest` against the reference, or null (`BuildRequest.campaign`). */
+type Unmeasured = (digest: string) => Promise<string | null>;
 
 /** What a submitted answer or a closing text shows of itself in a trace's head. */
 const HEAD_CHARS = 4_000;
@@ -344,8 +348,8 @@ export function usedText(events: readonly LogEvent[], solve: string): string {
   return ` It took ${clockText(end.seconds)} of ${clockText(limits.wallSeconds)} and ${plural(end.turns, "model turn")}${given}${counted}.`;
 }
 
-/** One practice solve and what the reviewers read of its fail. Throws only what the solve itself
- *  threw: a reviewer that fails is noted for the host and the solve stands. */
+/** One practice solve and what the Referee read of its fail. Throws only what the solve itself
+ *  threw: a Referee that fails is noted for the host and the solve stands. */
 async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: AbortSignal) {
   const { request } = bench;
   const { solve, ending } = await request.practise(task, kept.dir, kept.harness.digest, kill);
@@ -379,7 +383,7 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
  * The practice solves a session may still start: what is left of its own count, and no more than
  * its dollar cap holds a reserve for, where it runs under one (`BuildRequest.cap`). The dollars are
  * the log's, as a comparison's are (`billedFor`): the practice solves this session ran and their
- * reviewers, and its own live turns. In a live campaign, the current total includes every seat
+ * Referee, and its own live turns. In a live campaign, the current total includes every seat
  * and any budget change the operator left. The Builder is told a count and never a sum.
  */
 export function practiceLeft({ request, spent }: Bench, events: readonly LogEvent[]): number {
@@ -406,7 +410,7 @@ export function practiceTool(bench: Bench): AgentTool {
     name: "practice",
     label: "Practise",
     description:
-      'Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host\'s limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task\'s record under this harness and under the one you started from, the solve\'s id for read_trace and, for a fail, what the reviewers read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: "parent"` the tasks are solved under the harness you started from instead, and with `under: "reference"` under the reference harness, the one yours is compared with; each costs the same solves and shows what your change is measured against.',
+      'Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host\'s limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task\'s record under this harness and under the one you started from, the solve\'s id for read_trace and, for a fail, what the Referee read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: "parent"` the tasks are solved under the harness you started from instead, and with `under: "reference"` under the reference harness, the one yours is compared with; each costs the same solves and shows what your change is measured against.',
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -554,37 +558,43 @@ export function traceTool(bench: Bench): AgentTool {
  * went to the comparison was one no practice solve had run: the six solves were spent on earlier
  * versions, which is why `practice` says when the last one is gone. A session that never
  * practised chose so and is told nothing here. A second `finish` ends the session as it is.
+ *
+ * A Builder that leads its campaign is also told that no comparison has read the harness it would
+ * leave, since its finish ends the campaign's run: on 13 October buffer-151-haiku's Builder
+ * finished while an Examiner session wrote, and the campaign ended `finished` with no comparison.
+ * One that would finish on the harness last promoted is told the move the table names next, since on
+ * 14 October buffer-149's Builder finished on the harness just promoted and the climb stopped there.
  */
-async function standing(bench: Bench): Promise<string | null> {
+async function standing(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
   const { request, told } = bench;
   const again = "or call finish again to end the session as it is";
-  let digest: string;
-  try {
-    const { dir, harness } = await frozen(bench);
-    rmSync(dir, { recursive: true, force: true });
-    ({ digest } = harness);
-  } catch (error) {
+  const now = await harnessNow(bench);
+  if (!isString(now)) {
     if (told.has("broken")) return null;
     told.add("broken");
     const { unpractised, practised } = bench.said.broken;
-    return `${errorMessage(error)}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
+    return `${errorMessage(now)}. Left so, ${bench.opened === null ? unpractised : practised}. Mend it and call finish again, ${again}.`;
   }
   const left = practiceLeft(bench, read(request.log));
-  const tried = bench.opened === null || digest === bench.opened.harness.digest || digest === bench.parent;
-  if (tried || left <= 0 || told.has("untried")) return null;
-  told.add("untried");
-  return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.`;
+  const tried = bench.opened === null || now === bench.opened.harness.digest || now === bench.parent;
+  const untried = !tried && left > 0 && !told.has("untried");
+  const unread = told.has("unread") ? null : ((await unmeasured?.(now)) ?? null);
+  if (untried) told.add("untried");
+  if (unread !== null) told.add("unread");
+  if (untried) {
+    return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.${unread === null ? "" : ` ${unread}`}`;
+  }
+  return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
 }
 
-/** Where `harness/` stands against the session's practice, as a continuation says it (`Tried`). */
-export async function triedState(bench: Bench): Promise<Tried> {
-  if (bench.opened === null) return "unpractised";
+/** The digest of `harness/` as it stands, or why it does not open: frozen once, the copy removed. */
+export async function harnessNow(bench: Bench): Promise<string | Error> {
   try {
     const { dir, harness } = await frozen(bench);
     rmSync(dir, { recursive: true, force: true });
-    return harness.digest === bench.opened.harness.digest ? "tried" : "untried";
-  } catch {
-    return "broken";
+    return harness.digest;
+  } catch (error) {
+    return asError(error);
   }
 }
 
@@ -605,23 +615,30 @@ export function openingTool(opening: string | (() => string), said: Said): Agent
   });
 }
 
-/** A Builder's tool with a line of the host's as the last of whatever it returns, a result or an
- *  error: what the session has used of its limits (`usedLine`, `prompt.ts`). */
-export function endingWith(each: AgentTool, line: () => string): AgentTool {
+/** A Builder's tool with a line of the host's, given the call's id, as the last of whatever it
+ *  returns, a result or an error, where the line is not empty: what the session has used of its
+ *  limits (`usedLine`, `prompt.ts`). */
+export function endingWith(each: AgentTool, line: (id: string) => string): AgentTool {
   return {
     ...each,
     execute: async (...call) => {
       try {
         const result = await each.execute(...call);
-        return { ...result, content: [...result.content, { type: "text", text: line() }] };
+        const said = line(call[0]);
+        return said === ""
+          ? result
+          : { ...result, content: [...result.content, { type: "text", text: said }] };
       } catch (error) {
-        throw new Error(`${errorMessage(error)}\n\n${line()}`, { cause: error });
+        const said = line(call[0]);
+        throw new Error(said === "" ? errorMessage(error) : `${errorMessage(error)}\n\n${said}`, {
+          cause: error,
+        });
       }
     },
   };
 }
 
-export function finishTool(bench: Bench): AgentTool {
+export function finishTool(bench: Bench, unmeasured?: Unmeasured): AgentTool {
   return tool({
     name: "finish",
     label: "Finish",
@@ -633,7 +650,7 @@ export function finishTool(bench: Bench): AgentTool {
       // the call itself carries it, as v1's submit did (`src/gate/submit-tool.ts` at 3f93d06).
       const notes = memoryOverCapNotice(bench.home);
       if (notes !== null) throw new Error(`Not finished. ${notes} Then call finish again.`);
-      const stands = await standing(bench);
+      const stands = await standing(bench, unmeasured);
       if (stands !== null) throw new Error(`Not finished. ${stands}`);
       bench.note = args.note.trim();
       return { ...text("Finished."), terminate: true };

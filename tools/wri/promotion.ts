@@ -136,22 +136,31 @@ export function spentTo(log: Index, from: number, to: number): string {
     Date.parse(events[Math.max(from, to - 1)]?.at ?? ""),
   ];
   const hours = Number.isNaN(start) || Number.isNaN(end) ? 0 : (end - start) / 3_600_000;
-  // The whole log's index with its events cut to the stretch: an index of the slice alone would
-  // fold a release of a task proposed before it, and refuse it as never proposed.
-  const dollars = spendOf({ ...log, events: events.slice(from, to) }).reduce(
-    (sum, [, each]) => sum + each,
-    0,
-  );
+  // The whole log's index with its events cut to a prefix: an index of the slice alone would fold
+  // a release of a task proposed before it, and refuse it as never proposed. What was billed by
+  // `to` less what was by `from` (`billedBetween`): a sum over the slice billed a session open
+  // across its start at its whole sum where it ended.
+  const by = (upTo: number) =>
+    spendOf({ ...log, events: events.slice(0, upTo) }).reduce((sum, [, each]) => sum + each, 0);
+  const dollars = by(to) - by(from);
   return `${hours.toFixed(1)} h and $${dollars.toFixed(0)}`;
 }
 
 /** `PROMOTED` and `STARTER BARE`: the comparisons a promotion rests on, and what each measured. */
-function restTriggers(log: Index, { at, data }: Epoch): Trigger[] {
+function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
   const harness = text(data.harness);
+  const since = log.events.findLastIndex(({ kind }, index) => index < at && kind === "harness.promoted");
+  // The host's own move is written as it begins, before the promotion it makes (12 October); the
+  // Builder's `promote` writes its move once the promotion is on record, after it, and buffer-149's
+  // read "by the operator" (14 October). So a move naming the harness anywhere in the stretch
+  // between the promotions on either side of it is the table's.
   const byTable = log.events.some(
     ({ kind, data: move }, index) =>
-      // The move is written as it begins, before the promotion it makes (12 October).
-      index < at && kind === "campaign.move" && move.move === "promote" && move.harness === harness,
+      index > since &&
+      index < until &&
+      kind === "campaign.move" &&
+      move.move === "promote" &&
+      move.harness === harness,
   );
   const despite = items(asRecord(data.despite)?.faults ?? data.despite).length;
   const rests = items(data.rests).flatMap((rest) => {

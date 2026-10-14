@@ -17,8 +17,10 @@
  *                folder written to leave the host.
  *   RULES.md     the domain's public contract: its scope, conventions, rules and answer format.
  *   REPORT.md    the closing report: how the campaign ended, each promotion and the comparisons
- *                behind it, every comparison's tally and reading, what the Referee ruled and what
- *                a person's labels settled, and what was billed.
+ *                behind it, every comparison's tally and reading, the chance of a false promotion
+ *                over the whole campaign (`riskLines`), what the Referee ruled and what a person's
+ *                labels settled, and what was billed. It names each harness by its letter beside
+ *                its digest's head (`namesOf`, `src/builder/names.ts`).
  *
  * The report is a view of the log, written once, and nothing reads it back. It names no task and
  * holds no check, hidden value or answer, so the folder can leave the exam side: `--to` lies
@@ -34,18 +36,21 @@
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
-import { belowBar, promotionsWorth, worthLine } from "#src/builder/climb.ts";
+import { ladderLine, ladderOf, promotionsWorth, riskLines, worthLine } from "#src/builder/climb.ts";
 import { UNSETTLED } from "#src/builder/comparison.ts";
 import { campaignOf, type Handover } from "#src/builder/handover.ts";
+import { short } from "#src/builder/move.ts";
+import { type Called, calledBy, namesOf } from "#src/builder/names.ts";
 import { parentToolTree } from "#src/builder/tools.ts";
 import { openingOf } from "#src/builder/opening.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedAll, promoted } from "#src/kernel/reports.ts";
+import { comparisonsOf } from "#src/builder/ground.ts";
+import { billedAll, billedParts, promoted } from "#src/kernel/reports.ts";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -54,6 +59,7 @@ import { openHarness } from "#src/solve/harness.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
 import { recordedSetting } from "./setting.ts";
+import { ladderedBy } from "#src/kernel/task.ts";
 
 type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 type Compared = Extract<Handover, { step: "comparison" }>;
@@ -68,12 +74,11 @@ const OPTIONS = {
   solve: { type: "string" },
 } as const;
 
-const short = (digest: string): string => digest.slice(0, 8);
 const row = (cells: readonly string[]): string => `| ${cells.join(" | ")} |`;
 
-/** A comparison as one row: its two harnesses, the turns its solves were held to, its reading and
- *  tally, and each harness's valid solves. */
-function comparisonRow(step: Compared): string {
+/** A comparison as one row: its two harnesses as `called`, the turns its solves were held to, its
+ *  reading and tally, and each harness's valid solves. */
+function comparisonRow(step: Compared, called: Called): string {
   const share = (counts: readonly number[] | undefined) => {
     if (counts === undefined) return "";
     const valid = counts.reduce((sum, tasks, solves) => sum + tasks * solves, 0);
@@ -82,8 +87,8 @@ function comparisonRow(step: Compared): string {
   const { tally } = step;
   return row([
     step.id,
-    short(step.fresh),
-    short(step.old),
+    called(step.fresh),
+    called(step.old),
     step.modelTurns === null ? "not limited" : String(step.modelTurns),
     step.reading ?? "not reported",
     tally === null ? "" : `${String(tally.wins)}-${String(tally.losses)}-${String(tally.ties)}`,
@@ -101,7 +106,8 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   const opening = openingOf(events);
   const setting = recordedSetting(events);
   const reference = promoted(events);
-  const promotions = promotionLines(events, comparisons);
+  const called = calledBy(namesOf(events));
+  const promotions = promotionLines(events, comparisons, called);
   const ruled = comparisons.reduce(
     (sum, { rulings }) => ({
       earned: sum.earned + rulings.earned,
@@ -142,11 +148,11 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     ended === undefined
       ? `The campaign has not ended: the last event of its log is \`${events.at(-1)?.kind ?? "none"}\`.`
       : `The campaign ended on its ${isString(ended.ending) ? ended.ending : "?"}: ${isString(ended.why) ? ended.why : ""}.`,
-    `It hands over harness ${short(handed)}, in \`harness/\`: ${
+    `It hands over harness ${called(handed)}, in \`harness/\`: ${
       reference === null
         ? "the Starter Built Harness, since no step was promoted"
         : "the reference harness, promoted as below"
-    }.`,
+    }. A harness is named by a letter in the order the log first names it, the Starter A, with its digest's first eight characters beside it: a later letter is a later harness, not a better one.`,
     ...(isString(opening?.prompt)
       ? [`It opened from this prompt:\n\n> ${opening.prompt.replaceAll("\n", "\n> ")}`]
       : []),
@@ -155,6 +161,10 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       : `Its setting: ${setting.solver === null ? "the stored cycle's solver" : `${setting.solver.model} at ${setting.solver.effort}`}, ${String(setting.minutes)} minutes a solve, ${setting.modelTurns === null ? "the solver's turns not limited" : `${plural(setting.modelTurns, "turn")} of the solver's own`}.`,
     "## Promotions",
     promotions.join("\n") || "None.",
+    "## The ladder",
+    ladderOf(events)
+      .map((rung) => `- ${ladderLine(rung)}`)
+      .join("\n") || "No reading: the ladder holds no task, or no promotion has been read on it.",
     "## Every comparison",
     [
       row([
@@ -169,9 +179,11 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
         "billed $",
       ]),
       row(Array.from({ length: 9 }, () => "---")),
-      ...comparisons.map(comparisonRow),
+      ...comparisons.map((step) => comparisonRow(step, called)),
     ].join("\n"),
     "A reading is of one setting. Tallies under different limits, or against different harnesses, are not one series.",
+    "## The chance of a false promotion",
+    riskLines(events).join("\n"),
     "## What was audited, and what was not",
     [
       `- The exam: its checker ${supply.faults === null ? "was never read" : `was read, with ${plural(supply.faults, "fault")} in its last reading`}, and ${frozenChecker(events) === null ? "nobody froze it" : "the operator froze it"}.`,
@@ -182,14 +194,75 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
         : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and changes no tally.`,
     ].join("\n"),
     "## Work and spend",
-    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a budget of $${String(budget.dollars)}`}.`,
+    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}.`,
+    economyLines(events).join("\n"),
     "",
   ].join("\n\n");
 }
 
+/**
+ * What each measured thing cost, from the log alone: the Examiner's dollars a task it held out,
+ * its own turns and its admission solves together; a comparison's a task it scored; the ladder's
+ * a point the reference gained on it between its first reading and its last; and how many of the
+ * comparisons that began reported, since one cut before its report bought nothing it can show.
+ */
+function economyLines(events: readonly LogEvent[]): string[] {
+  const per = (dollars: number, count: number, what: string) =>
+    count > 0 ? `$${(dollars / count).toFixed(2)} a ${what} (${String(count)})` : `no ${what}`;
+  const exams = events.flatMap(({ kind, data }) =>
+    kind === "exam.finished" && isString(data.session) ? [{ session: data.session, data }] : [],
+  );
+  const examined = exams.reduce(
+    (sum, { session, data }) =>
+      sum + (isNumber(data.billed) ? data.billed : 0) + billedParts(events, session).comparison,
+    0,
+  );
+  // A task held for the ladder was paid for as one held out was, and is no less written.
+  const held = exams.reduce(
+    (sum, { session, data }) =>
+      sum + (Array.isArray(data.held) ? data.held.length : 0) + ladderedBy(events, session),
+    0,
+  );
+  const all = comparisonsOf(events);
+  const reported = all.filter(({ report }) => report !== null);
+  const compared = reported.reduce((sum, { id }) => sum + billedParts(events, id).comparison, 0);
+  const scored = reported.reduce((sum, { report }) => sum + (isNumber(report?.tasks) ? report.tasks : 0), 0);
+  const curve = ladderOf(events);
+  // Each ladder's price is read on its own curve: a point is one of its fixed set, and what was
+  // billed between its first reading and its last is every rung's since the reading before.
+  const ladders = [...new Set(curve.map(({ ladder }) => ladder))].map((id) => {
+    const first = curve.findIndex(({ ladder }) => ladder === id);
+    const last = curve.findLastIndex(({ ladder }) => ladder === id);
+    const [from, to] = [curve[first]?.reference_share, curve[last]?.reference_share];
+    const climbed = curve.slice(first + 1, last + 1).reduce((sum, rung) => sum + rung.dollars, 0);
+    if (first === last || from == null || to == null) {
+      return `- Ladder ${id}: fewer than two readings, so no point is priced.`;
+    }
+    const points = Math.round(100 * (to - from));
+    return `- Ladder ${id}: ${points > 0 ? per(climbed, points, "point the reference gained") : `no point gained over $${climbed.toFixed(2)}`} between its first reading and its last.`;
+  });
+  // The climb's velocity first: what a promotion cost in dollars and in hours of the log. The
+  // total is a bound, and the operator reads a campaign by how fast it climbs under it (14 October).
+  const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
+  const hours = (Date.parse(events.at(-1)?.at ?? "") - Date.parse(events[0]?.at ?? "")) / 3_600_000;
+  const spent = billedAll(events);
+  return [
+    promotions > 0
+      ? `- The climb: $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
+      : `- The climb: no promotion over $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
+    `- The Examiner: ${per(examined, held, "task held out or for the ladder")}.`,
+    `- Comparisons: ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
+    ...(ladders.length === 0 ? ["- The ladder: no reading, so no point is priced."] : ladders),
+  ];
+}
+
 /** A promotion a line: the comparisons that read its step, its last tally against the reference
  *  it was promoted over, and whether it is set-up (epoch 0) or a rung of the climb. */
-function promotionLines(events: readonly LogEvent[], comparisons: readonly Compared[]): string[] {
+function promotionLines(
+  events: readonly LogEvent[],
+  comparisons: readonly Compared[],
+  called: Called,
+): string[] {
   /** Where an imported harness came from, by its digest (`tools/d2/import.ts`). */
   const imported = new Map(
     events.flatMap(({ kind, data }) =>
@@ -204,9 +277,7 @@ function promotionLines(events: readonly LogEvent[], comparisons: readonly Compa
     // The first over the Starter is set-up, epoch 0, and the climb counts from it (`owedReading`).
     const nth = events.slice(0, index).filter((each) => each.kind === "harness.promoted").length;
     const worth = worths.get(data.harness);
-    // A promotion that misses the effect or the transfer bar stands, and is read as below it.
-    const below = worth === undefined ? [] : belowBar(worth);
-    const rung = `${nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`}${below.length === 0 ? "" : `, promoted below bar (${below.join(" and ")})`}`;
+    const rung = nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`;
     const from = imported.get(data.harness);
     const origin = from === undefined ? "" : `. Imported from ${from}, built by no session of this campaign`;
     const stepped = comparisons.filter((each) => each.fresh === data.harness && each.reading === "step");
@@ -219,7 +290,7 @@ function promotionLines(events: readonly LogEvent[], comparisons: readonly Compa
         ? ". No comparison of it tallied a task"
         : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}`;
     return [
-      `- ${at.slice(0, 10)}: harness ${short(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
+      `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
     ];
   });
 }

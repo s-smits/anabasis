@@ -18,18 +18,19 @@
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import {
-  belowBar,
   type Epoch,
   epochLine,
   epochsOf,
+  ladderLine,
+  ladderOf,
   promotionsWorth,
   regressionLine,
   regressionOf,
+  riskLines,
   worthLine,
   worthOf,
 } from "../src/builder/climb.ts";
 import { examine } from "../src/examiner/session.ts";
-import type { Paired } from "../src/kernel/compare.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
@@ -511,6 +512,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epochLine(epoch)).toContain(
       "2 promotion attempts under this reference, a false promotion among them at most 15%: 10% an attempt by design, before two A/A controls, indicative",
     );
+    // The closing report sums the epochs' bounds, here the one epoch's (the plan's 7.6).
+    expect(riskLines(log).slice(0, 2)).toEqual([
+      "- Epoch 1: 2 promotion attempts, a false promotion among them at most 15%: 10% an attempt by design, before two A/A controls, indicative.",
+      "Over the campaign, a false promotion in any epoch at most 15%: the sum of the epochs' bounds, capped at one, which assumes nothing of how the attempts depend on one another.",
+    ]);
   });
 
   it("reads one attempt's rate off pairs of A/A controls by the rule itself, with its errors, its denominator and a one-sided bound", () => {
@@ -534,15 +540,17 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epochLine(second)).toContain(
       "0 of 2 pairs of A/A controls promoted, at most 78% an attempt at 95%, indicative",
     );
+    // Over the campaign the two epochs' bounds sum past one, and the sum is capped there.
+    expect(riskLines(log)[2]).toStartWith("Over the campaign, a false promotion in any epoch at most 100%:");
     // Two controls that each read 2-0 promote as a step and its repeat: one error in one pair.
     const lucky = [started, attempt("g-1", "S", "h2", [1, 1]), attempt("g-2", "S", "h2", [1, 1])];
     expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, pairs: 1, bound: 1, union: 1 });
   });
 });
 
-describe("the bars a promotion is read against", () => {
-  /** A candidate's comparison against `old` that read a frontier, with the effect its report logged. */
-  const stepRead = (session: string, old: string, fresh: string, effect: JsonObject) =>
+describe("the bar a promotion is read against, and the ladder", () => {
+  /** A candidate's comparison against `old` that read a frontier. */
+  const stepRead = (session: string, old: string, fresh: string) =>
     event("comparison.reported", {
       session,
       reading: "step",
@@ -553,124 +561,105 @@ describe("the bars a promotion is read against", () => {
       setting: SETTING,
       versions: ["v1"],
       frontier: { differences: [2], falseRate: 0.01 },
-      valid: { old: [2, 0, 0], fresh: [0, 1, 1] },
-      worth: { effect },
     });
-  const later = Array.from({ length: 8 }, (_, at) => `w${String(at + 1)}`);
-  // The operator set the effect bar at half the valid share; the other two are the plan's.
+  /** The ladder read on `reference`: tasks by the starter's valid solves and by the reference's. */
+  const ladderRead = (session: string, reference: string, starter: number[], valid: number[]) =>
+    event("comparison.reported", {
+      session,
+      old: reference,
+      fresh: "S",
+      tasks: 4,
+      ladder: true,
+      valid: { old: valid, fresh: starter },
+    });
   const log = [
-    event("campaign.opened", { terms: { effect: "0.5" } }),
+    event("campaign.opened", { terms: { cost: "2" } }),
     event("comparison.started", { session: "g-1", old: "S", fresh: "ha", starter: "S" }),
     ...heldOut("v1"),
     event("build.finished", { session: "b-1", changed: true }),
-    // `ha` answers three of four over the starter's none: 75 points.
-    stepRead("g-1", "S", "ha", { gain: 0.75, objective: null, met: true }),
+    stepRead("g-1", "S", "ha"),
     event("harness.promoted", { harness: "ha", from: "S" }),
-    // Eight tasks written after its freeze, on which it answers a quarter: it fell 50 points.
-    ...later.flatMap((version) => [
-      ...heldOut(version),
-      ...solved("g-2", version, "ha", Array<boolean>(2).fill(version === "w1" || version === "w2")),
-    ]),
-    stepRead("g-2", "ha", "hb", { gain: 0.25, objective: null, met: false }),
+    // On four ladder tasks at two solves a side: the starter none, `ha` a quarter. The reading
+    // fixes the four as a ladder.
+    event("comparison.started", { session: "g-2", ladder: true, tasks: ["l1", "l2", "l3", "l4"] }),
+    ladderRead("g-2", "ha", [4, 0, 0], [2, 2, 0]),
+    event("build.finished", { session: "b-2", changed: true, billed: 5 }),
+    stepRead("g-3", "ha", "hb"),
     event("harness.promoted", { harness: "hb", from: "ha" }),
+    // The same ladder after a second promotion, with one task disputed since: three are scored,
+    // and the share is still of the four. A task held for the ladder since makes the next ladder.
+    event("comparison.started", { session: "g-4", ladder: true, frozen: "g-2", tasks: ["l1", "l2", "l3"] }),
+    ladderRead("g-4", "hb", [3, 0, 0], [0, 0, 3]),
+    event("comparison.started", { session: "g-5", ladder: true, tasks: ["l5", "l6"] }),
+    ladderRead("g-5", "hb", [2, 0, 0], [2, 0, 0]),
   ];
 
-  it("reads each promotion's effect, transfer and cost, and names the bars it falls below without refusing it", () => {
+  it("reads each promotion's cost against the operator's bar, gating nothing", () => {
     const worth = promotionsWorth(log);
-    const [ha, hb] = [worth.get("ha"), worth.get("hb")];
-    if (ha === undefined || hb === undefined) throw new Error("two promotions");
-    expect(ha).toEqual({
-      bars: { effect: 0.5, transfer: 0.15, cost: 3 },
-      effect: { gain: 0.75, objective: null, met: true },
-      transfer: { harness: "ha", tasks: 8, share: 0.25, was: 0.75, met: false },
+    expect(worth.get("ha")).toEqual({
+      bars: { cost: 2 },
       cost: { attempts: 1, sessions: 1, dollars: 0, met: true },
     });
-    // Its own epoch holds none of its tasks yet, so `hb`'s transfer is unread.
-    expect(hb).toMatchObject({
-      effect: { gain: 0.25, met: false },
-      transfer: { harness: "hb", tasks: 0, met: null },
-      cost: { attempts: 1, sessions: 0, dollars: 16, met: true },
-    });
-    expect([belowBar(ha), belowBar(hb)]).toEqual([["transfer"], ["effect"]]);
-    expect(worthLine(hb)).toBe(
-      "worth, read against the bars and gating nothing: effect +25 points of valid share (bar 50): below bar; transfer of hb: no share on 0 tasks written after its freeze, against 75% where it was promoted (bar 15 points, at least 8 tasks): unread; cost 1 promotion attempt this epoch (bar 3 after set-up): met, over 0 Builder sessions and 16.00 dollars billed",
+    expect(worthLine(worth.get("hb") ?? { bars: { cost: 2 }, cost: null })).toBe(
+      "cost, gating nothing: 1 promotion attempt this epoch (bar 2 after set-up): met, over 1 Builder session and 5.00 dollars billed",
     );
   });
 
-  /** One task's solves on each side, with the objective each valid answer measured, lower better. */
-  const pair = (task: string, old: boolean[], fresh: boolean[], measured?: [number[], number[]]): Paired => ({
-    task,
-    old,
-    fresh,
-    ...keyIfDefined(
-      "objective",
-      measured && { direction: "lower" as const, margin: 0.01, old: measured[0], fresh: measured[1] },
-    ),
-  });
-  const step = log.findIndex(({ data }) => data.session === "g-2");
-  const g2 = { id: "g-2", fresh: "hb", objective: false };
-
   it("reads a step as the log stood before its report, with its candidate as one attempt and a repeat as none", () => {
-    const pairs = [
-      pair("t1", [false, false], [true, false]),
-      pair("t2", [true, false], [true, false]),
-      pair("t3", [true, false], [true, true]),
-      pair("t4", [true, true], [true, true]),
-    ];
-    const asked = { ...g2, valid: { old: [1, 2, 1], fresh: [0, 2, 2] }, pairs };
-    // Read before the report is written and after, it says the same.
+    const step = log.findIndex(({ data }) => data.session === "g-3" && data.reading === "step");
+    const asked = { id: "g-3", fresh: "hb" };
     const before = worthOf(log.slice(0, step), asked);
     expect(worthOf(log.slice(0, step + 1), asked)).toEqual(before);
-    expect(before).toMatchObject({
-      effect: { gain: 0.25, objective: null, met: false },
-      transfer: { harness: "ha", tasks: 8, share: 0.25, was: 0.75, met: false },
-      cost: { attempts: 1, met: true },
-    });
-    // Its repeat is no attempt more.
-    expect(worthOf(log.slice(0, step + 1), { ...asked, id: "g-3" }).cost).toMatchObject({ attempts: 1 });
+    expect(before.cost).toMatchObject({ attempts: 1, met: true });
+    expect(worthOf(log.slice(0, step + 1), { ...asked, id: "g-5" }).cost).toMatchObject({ attempts: 1 });
   });
 
-  it("meets the effect bar by the objective on half the pairings of two valid answers, and never against an invalid one", () => {
-    // Ten points of valid share, and the objective won on three of the four pairings of two valid answers.
-    const pairs = [
-      pair(
-        "t1",
-        [true, true],
-        [true, true],
-        [
-          [5, 5],
-          [4, 6],
-        ],
-      ),
-      pair(
-        "t2",
-        [false, false],
-        [true, false],
-        [
-          [0, 0],
-          [1, 0],
-        ],
-      ),
-    ];
-    const valid = { old: [1, 0, 1], fresh: [0, 1, 1] };
-    const won = worthOf(log.slice(0, step), { ...g2, objective: true, valid, pairs });
-    expect(won.effect).toEqual({ gain: 0.25, objective: 0.5, met: true });
-    // The invalid answers' measures move nothing: the objective is read over the valid pairings only.
-    const lost = [
-      pair(
-        "t1",
-        [true, true],
-        [true, true],
-        [
-          [4, 4],
-          [5, 5],
-        ],
-      ),
-      ...pairs.slice(1),
-    ];
-    expect(worthOf(log.slice(0, step), { ...g2, objective: true, valid, pairs: lost }).effect).toMatchObject({
-      objective: 0,
-      met: false,
-    });
+  it("reads the ladder's curve: each reading's shares, the gain over the starter and what was billed since", () => {
+    const curve = ladderOf(log);
+    expect(curve).toEqual([
+      {
+        id: "g-2",
+        ladder: "g-2",
+        reference: "ha",
+        promotions: 1,
+        tasks: 4,
+        aside: 0,
+        reference_share: 0.25,
+        starter_share: 0,
+        gain: 25,
+        dollars: 0,
+      },
+      {
+        id: "g-4",
+        ladder: "g-2",
+        reference: "hb",
+        promotions: 2,
+        tasks: 4,
+        aside: 1,
+        reference_share: 0.75,
+        starter_share: 0,
+        gain: 75,
+        dollars: 5,
+      },
+      {
+        id: "g-5",
+        ladder: "g-5",
+        reference: "hb",
+        promotions: 2,
+        tasks: 2,
+        aside: 0,
+        reference_share: 0,
+        starter_share: 0,
+        gain: 0,
+        dollars: 0,
+      },
+    ]);
+    expect(curve.map(ladderLine)[1]).toBe(
+      "g-4 on ladder g-2: after 2 promotions, reference hb valid on 75% of 4 ladder tasks (1 set aside, unsolved on both sides), the starter on 0%, +75 points; $5.00 billed since the reading before",
+    );
+    // No ladder reading is a step, a control or an attempt of the climb's.
+    expect(epochsOf(log).map(({ comparisons }) => comparisons)).toEqual(
+      epochsOf(log.filter(({ data }) => data.ladder !== true)).map(({ comparisons }) => comparisons),
+    );
   });
 });

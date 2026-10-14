@@ -49,6 +49,9 @@ const SERVED = "claude/claude-opus-5-5";
 const RECORDED = `${NAME}-recorded`;
 /** A campaign opened and given a harness before it keeps any. */
 const FRESH = `${NAME}-fresh`;
+/** Campaigns whose checks pass, and reject, the stored sweep's accepted answer. */
+const PROVEN = `${NAME}-proven`;
+const UNPROVEN = `${NAME}-unproven`;
 const ASKED = { level: 0.02, trigger: 0.25, patience: PATIENCE };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
@@ -63,7 +66,7 @@ setDefaultTimeout(60_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  for (const name of [NAME, EARLIER, RECORDED, FRESH]) {
+  for (const name of [NAME, EARLIER, RECORDED, FRESH, PROVEN, UNPROVEN]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   }
 });
@@ -327,6 +330,12 @@ describe("a campaign", () => {
     expect(await keptAs(campaign, "--reference", digest)).toEqual(built);
     // The starter is named by its digest too, as any kept harness is.
     expect(await keptAs(campaign, "--parent", least.digest)).toEqual(least);
+    // The letter the view prints names the one digest the log gave it (`namesOf`): b-1's harness is
+    // B, the second the log names. A letter the log gave nothing is refused as any other name is.
+    expect(await keptAs(campaign, "--harness", "B")).toEqual(built);
+    await expect(keptAs(campaign, "--harness", "C")).rejects.toThrow(
+      "--harness C is no harness this campaign keeps",
+    );
     // A kept state that has changed is no longer the harness its name says, and is refused before
     // a solve is paid for under that name.
     writeFileSync(join(built.dir, "agent", "BUILT_AGENTS.md"), "Add first.\n");
@@ -543,6 +552,37 @@ describe("a campaign", () => {
     expect(
       reportLines({ valid, objective: null, frontier: { ...frontier, detectable: null }, noise: null }).at(0),
     ).toEndWith("detects four times in five no share of them");
+    // The p beside it is the test's, which weighs margins; where every untied task is won it is the
+    // count's alone (the plan's 7.5).
+    const two = { ...frontier, tasks: ["v1", "v2"], wins: 2, ties: 0, p: 0.25, differences: [4, 1] };
+    expect(reportLines({ valid, objective: null, frontier: two, noise: null }).at(2)).toBe(
+      "its p is 0.25: the test weighs each untied task by its margin in pair wins, and where every untied task is won p is one half to the power of their count whatever the margins: 2 won read 0.25",
+    );
+    // The A/A beside every reading that carries one: three readings of the noise, one a line, and
+    // what the tally drew, by what became of each task (the plan's 7.2 and 7.3).
+    const aa = { wins: 1, losses: 1, ties: 6, p: 0.75, differences: [1, -1, 0, 0, 0, 0, 0, 0], flips: 0.125 };
+    const lines = (detectable: number | null) =>
+      reportLines({
+        valid,
+        objective: null,
+        frontier: null,
+        noise: { ...aa, detectable, margin: null },
+        versions: ["v1", "v2", "v3", "v4", "v5", "v6"],
+        aside: ["v7"],
+        short: [],
+        disputed: ["v8"],
+        withdrawn: [],
+      }).slice(0, 5);
+    expect(lines(null)).toEqual([
+      "the reference against itself, on halves of its own solves mirrored in time (the A/A), over the 8 tallied tasks, 2 of them untied:",
+      "  tie share 75%: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties",
+      "  flip rate 13%: how often two of its solves of one task disagree on validity",
+      "  least detectable shift: none, too few of its tasks are untied for any shift between its halves to read as a step, so its reading no step shows little",
+      "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below and room are read over the tallied ones, the test over the frontier among them",
+    ]);
+    expect(lines(0.9)[3]).toBe(
+      "  least detectable shift: one reading of it, two-sided at the level, detects four times in five a half that wins 90% of its untied tasks",
+    );
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
     expect(
@@ -569,7 +609,7 @@ describe("a campaign", () => {
           p: 1,
           differences: [0, 0],
           flips: 0,
-          drift: { wins: 0, losses: 0, ties: 2 },
+          detectable: null,
           margin: { margin: 0.05, pairings: 8 },
         },
       }).slice(-2);
@@ -698,7 +738,8 @@ describe("a campaign", () => {
     // Asked without the operator's word, it says what the log holds and records nothing.
     const asked = promote("--harness", digest);
     expect(asked).toContain("the reference harness is the starter");
-    expect(asked).toContain(`no comparison on record measured ${digest}`);
+    // A harness the log has not named yet is said by its digest alone (`namesOf`).
+    expect(asked).toContain(`no comparison on record measured harness ${digest}`);
     expect(asked).toContain("nothing is recorded without --yes");
     expect(promotions()).toEqual([]);
     expect(promote("--harness", digest.slice(0, 8))).toContain("is no harness this campaign keeps");
@@ -706,7 +747,7 @@ describe("a campaign", () => {
     // limit, and a harness no comparison measured is refused the word alone.
     const refused = promote("--harness", digest, "--yes");
     expect(refused).toContain(
-      `the plan would not promote it now: harness ${digest.slice(0, 8)} has not read a step and its repeat against the reference harness`,
+      `the plan would not promote it now: harness ${digest.slice(0, 8)} has no comparison and repeat that, read together, clear the level against the reference harness`,
     );
     expect(refused).toContain("not promoted: a step is promoted once it was read again");
     expect(promotions()).toEqual([]);
@@ -716,11 +757,13 @@ describe("a campaign", () => {
     expect(promote("--harness", digest, "--yes", "--despite", despite)).toContain(
       "is the reference harness from here on",
     );
-    expect(promotions()).toEqual([
-      { harness: digest, from: least.digest, rests: [], programs: false, despite },
-    ]);
+    expect(promotions()).toEqual([{ harness: digest, from: least.digest, rests: [], despite }]);
     expect((await keptAs(campaign, "--reference", "promoted")).digest).toBe(digest);
-    expect(promote("--harness", digest, "--yes")).toContain("is the campaign's reference harness already");
+    // The promotion named it, and from then on it is said by its letter beside its digest; the
+    // suite's cases share one log, so which letter is theirs to say.
+    expect(promote("--harness", digest, "--yes")).toMatch(
+      new RegExp(`^[A-Z]+ ${digest} is the campaign's reference harness already`, "mu"),
+    );
     expect(promotions()).toHaveLength(1);
     // A round that names no --reference is made against it, where it was made against the starter.
     const against: string[] = [];
@@ -897,5 +940,46 @@ describe("a campaign", () => {
     expect(rest).toContain("the log holds no held-out task to score");
     expect(rest).not.toContain(refusal);
     expect(read(campaign.log).some(({ kind }) => kind === "campaign.setting")).toBe(false);
+  });
+  // Plan item 5.3 (14 October): a pack's stored accepted answer said nothing of a task's
+  // feasibility, so a task only a stored solve had answered could go to a person as infeasible.
+  it("logs a held-out task feasible where a stored accepted answer passes today's checks, and no other", async () => {
+    const work = join(root, "runs", "s", "c01", "t-1", "work");
+    mkdirSync(work, { recursive: true });
+    writeFileSync(join(work, "answer.json"), JSON.stringify({ answer: "12" }));
+    const preparedUnder = async (name: string, check: string) => {
+      const under = join(root, `bundle-${name}`);
+      cpSync(bundle, under, { recursive: true });
+      writeFileSync(
+        join(under, "correctness-model", "evaluator.ts"),
+        `export const checks = { "check-product": ${check} };\n`,
+      );
+      const args = { ...ARGS, bundle: under, name };
+      const flags = Object.entries({ ...args, practice: "0" }).flatMap(([flag, value]) => [
+        `--${flag}`,
+        value,
+      ]);
+      const said = () => {
+        const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/prepare.ts", ...flags], cwd: REPO });
+        return `${ran.stdout.toString()}${ran.stderr.toString()}`;
+      };
+      const campaign = await openCampaign(args);
+      const first = said();
+      return { first, again: said(), campaign };
+    };
+    const right = "(req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6)";
+    const passed = await preparedUnder(PROVEN, right);
+    const [version = ""] = TASKS.slice(0, 1).map((task) => taskVersion(passed.campaign.pack(task)));
+    expect(passed.first).toContain(
+      "t-1: a stored accepted answer passes today's verifier, so a valid answer to it is on record",
+    );
+    // Once on record it is not rechecked.
+    expect(passed.again).not.toContain("t-1:");
+    const feasible = read(passed.campaign.log).filter(({ kind }) => kind === "task.feasible");
+    expect(feasible.map(({ data }) => data)).toEqual([{ version, sweep: "s" }]);
+    // A recheck the checks reject establishes nothing, and says nothing.
+    const rejected = await preparedUnder(UNPROVEN, "() => false");
+    expect(rejected.first).not.toContain("t-1:");
+    expect(read(rejected.campaign.log).filter(({ kind }) => kind === "task.feasible")).toEqual([]);
   });
 });

@@ -53,6 +53,7 @@
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
+  type History,
   lastReports,
   type Outcome,
   poolOf,
@@ -63,7 +64,7 @@ import {
 import { solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
-import { isNumber } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
 import { plural } from "../meta/text.ts";
 
@@ -71,11 +72,23 @@ import { plural } from "../meta/text.ts";
  *  family that the same pass took, or null where no task stands in them. */
 interface Heard {
   readonly lines: string[];
+  /** The drafts a gate refused having read them, each with its reason (`refusedLines`). */
+  readonly refused: string[];
   readonly counts: string | null;
   /** The turns the reference harness's valid answers took, by family, or null where none is on
    *  record (`turnsOf`). */
   readonly turns: string | null;
 }
+
+/** The reference harness's solves of one draft task under `try_task`: the least the operator's
+ *  ruling of 12 October names. Every paper the overhaul's research read that kept tasks at a
+ *  frontier admitted them by a measurement of the target, none blind (one at four attempts and a
+ *  pass-rate band); its probe asks for three or more fresh solves at the campaign's budget, and a
+ *  task admitted at a pass rate strictly between 0 and 1. */
+export const TRIED = 3;
+/** Why a draft is not measured where the campaign's budget holds no reserve for its three solves. */
+export const UNAFFORDED =
+  "the campaign's budget holds no reserve for the reference harness's three solves of it beside the solves running, so it is not measured";
 
 /** How each outcome is said. */
 const SAID: Readonly<Record<Outcome, string>> = {
@@ -86,8 +99,9 @@ const SAID: Readonly<Record<Outcome, string>> = {
   "earlier-reference":
     "the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none",
   disputed: "disputed: a rejection of an answer to it is not settled",
-  exhausted:
-    "the reference harness answered it validly in every solve of two comparisons: no longer scored, unless it is among the third kept in the draw",
+  // A task told so is one the draw leaves out (`outcomeOf`, `reports.ts`): until 14 October the
+  // line said "unless it is among the third kept in the draw", which no task told it can be.
+  exhausted: "the reference harness answered it validly in every solve of two comparisons: no longer scored",
 };
 /** The one fact beside the outcome that names no side. */
 const KNOWN = {
@@ -98,6 +112,7 @@ const KNOWN = {
 const SETTLED = new Map([
   ["released", "in use as practice, and so never scored"],
   ["disputed", "disputed: a check was at fault on an answer to it"],
+  ["ladder", "held for the ladder, and so never scored for a promotion"],
 ]);
 /** What the counts say before their rows, and after them. */
 const COUNTS = {
@@ -108,13 +123,22 @@ const COUNTS = {
 const TURNS =
   "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above, by family and fewest first. These are measurements and no target.";
 
+/** Whether a gate read its draft: one that measured fewer than the reference harness's `TRIED`
+ *  solves, cut by a limit or never begun for want of the reserve, refused a draft it did not read,
+ *  which may be proposed again and is solved afresh (14 October). A gate that read all three, or
+ *  refused the package on its shape, stands. */
+export function measuredGate(data: JsonObject): boolean {
+  const solves = asRecord(data.reference)?.solves;
+  return data.reason !== UNAFFORDED && !(isNumber(solves) && solves < TRIED);
+}
+
 /** One line a task among `tasks`, in their order: the task by id and family, its outcome, and for
  *  a held-out task whether a valid answer to it is on record; and, from the same pass, the counts
  *  by family (`counts`). A task the log refused is left out, since it is no task of the exam. One
  *  the log does not hold, and one no comparison has scored, is not yet compared and in no count. */
 export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "taskId" | "family">[]): Heard {
   const states = taskStates(events);
-  const { outcomes, standings, feasible } = poolOf(events);
+  const { outcomes, standings, feasible, histories } = poolOf(events);
   const answers = referenceAnswers(events);
   const took = new Map(
     solvesIn(events).flatMap(({ id, end }) => (isNumber(end?.turns) ? [[id, end.turns] as const] : [])),
@@ -125,6 +149,12 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
       const id = task?.taskId ?? taskId;
       return id === null ? [] : [[id, version] as const];
     }),
+  );
+  // Each version's last gate.
+  const gates: ReadonlyMap<string, JsonObject> = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "task.gate" && isString(data.version) ? [[data.version, data]] : [],
+    ),
   );
   const families = new Map<string, Standing[]>();
   const lines = tasks.flatMap(({ taskId, family }) => {
@@ -140,9 +170,50 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     if (valid.length > 0) turns.set(family, [...(turns.get(family) ?? []), ...valid]);
     const outcome = outcomes.get(version);
     const said = outcome === undefined ? "not yet compared" : SAID[outcome];
-    return [`${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}`];
+    const history = historyLine(histories.get(version));
+    return [
+      `${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}${admittedLine(gates.get(version))}${history}`,
+    ];
   });
-  return { lines, counts: counts(families), turns: turnsOf(turns) };
+  return { lines, refused: refusedLines(events, gates), counts: counts(families), turns: turnsOf(turns) };
+}
+
+/** How many of the reference harness's solves at a held task's gate were valid, as one clause, or
+ *  nothing where the gate read no solves. Its own session was told it (`try_task`); until
+ *  14 October a later one was not, so a task held out on one valid solve in three read as one held
+ *  out on two. */
+function admittedLine(gate: JsonObject | undefined): string {
+  const reference = asRecord(gate?.reference);
+  if (gate?.outcome !== "passed" || reference?.solves !== TRIED || !isNumber(reference.valid)) return "";
+  return `; held out at its gate on ${String(reference.valid)} of the reference harness's ${String(TRIED)} solves valid`;
+}
+
+/** The drafts a gate refused having read them, with the gate's reason: until 14 October a later
+ *  session was told nothing of them, and could not tell a draft refused at none of three valid
+ *  solves from one never written. A draft whose gate read fewer solves may be proposed again, and
+ *  is left out (`measuredGate`). */
+function refusedLines(events: readonly LogEvent[], gates: ReadonlyMap<string, JsonObject>): string[] {
+  return proposalsOf(events).flatMap(({ version, task }) => {
+    const gate = gates.get(version);
+    return task !== null && gate?.outcome === "refused" && measuredGate(gate) && isString(gate.reason)
+      ? [`${task.taskId} (family ${task.family}): refused: ${gate.reason}`]
+      : [];
+  });
+}
+
+/** A task's last comparisons with the reference harness, newest first, as one clause after its
+ *  line, or nothing where it stood in fewer than two (`poolOf`, histories): each as every, some or
+ *  none of the reference's solves valid, a limit that cut a solve named apart, and how many of the
+ *  newest closed the task in a row. A fact of the record and no target: which of them is too easy
+ *  is the author's to judge. */
+function historyLine(history: History | undefined): string {
+  if (history === undefined || history.reads.length < 2) return "";
+  const reads = history.reads.map(({ valid, cut }) => `${valid}${cut ? " (a solve cut at a limit)" : ""}`);
+  const run =
+    history.closedRun === 0
+      ? ""
+      : `, the ${history.closedRun === 1 ? "last" : `last ${String(history.closedRun)} in a row`} closing it`;
+  return `; of its last ${plural(reads.length, "comparison")} with the current reference harness, newest first, the reference answered it validly in ${reads.join(", ")} of its solves${run}`;
 }
 
 /** The reference harness's valid answers to each task, by solve id, in the last comparison that

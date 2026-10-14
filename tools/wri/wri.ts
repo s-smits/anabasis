@@ -44,6 +44,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
+import { launchesOf } from "../runs/receipt.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
@@ -100,18 +101,32 @@ function hostOf(tree: string): string | undefined {
 /**
  * One line on where the code the campaign last ran under stands: this checkout, or the tree the
  * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
+ * The condition names that code by a digest of its content, which is no commit: two lanes of
+ * 14 October read one digest against a receipt's commit as two trees. So the line calls it a
+ * digest and names the commit the last launch's receipt holds (`launchesOf`) beside it.
  */
 function hostLine(log: string): string {
   const ran = read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition;
   const host = asRecord(ran)?.host;
   const last = isString(host) ? host : undefined;
   const here = hostOf(REPO) ?? "";
-  if (last === undefined) return `host code: no condition in the log; this checkout is ${here.slice(0, 8)}`;
-  if (last === here) return `host code: the last condition and this checkout are both ${here.slice(0, 8)}`;
+  const launch = launchesOf(log).at(-1);
+  const commit =
+    launch === undefined
+      ? "; no launch receipt beside the log"
+      : `; the last launch's receipt names commit ${launch.commit.slice(0, 8)}${launch.dirty ? ", from a dirty tree" : ""}`;
+  const said = (line: string) =>
+    `host-code digest (of src, vendor and package.json, not a commit): ${line}${commit}`;
+  if (last === undefined) return said(`no condition in the log; this checkout's is ${here.slice(0, 8)}`);
+  if (last === here) return said(`the last condition's and this checkout's are both ${here.slice(0, 8)}`);
   const tree = resolve(dirname(log), "..", "..", "..");
   return hostOf(tree) === last
-    ? `host code: the last condition ran under ${last.slice(0, 8)}, which the campaign's own tree \`${tree}\` holds as it stands, so read source there; this checkout is ${here.slice(0, 8)}`
-    : `host code: the last condition ran under ${last.slice(0, 8)} and this checkout is ${here.slice(0, 8)}, so every statement about source is about another tree`;
+    ? said(
+        `the last condition's is ${last.slice(0, 8)}, which the campaign's own tree \`${tree}\` holds as it stands, so read source there; this checkout's is ${here.slice(0, 8)}`,
+      )
+    : said(
+        `the last condition's is ${last.slice(0, 8)} and this checkout's is ${here.slice(0, 8)}, so every statement about source is about another tree`,
+      );
 }
 
 function overviewText(log: string): string {

@@ -30,8 +30,9 @@
  * repaired checker takes a campaign of its own.
  *
  * The stored verdicts are v1's, as `grades.tsv` holds them, and are not run again: `regrade.ts`
- * holds this verifier to them. The check program is the campaign's staged copy of the bundle's,
- * without its battery, and its tools are the bundle's.
+ * holds this verifier to them. Since 14 October their rows are reported apart and only fresh
+ * controls establish the opening's current faults. The check program is the campaign's staged copy
+ * of the bundle's, without its battery, and its tools are the bundle's.
  *
  * It needs the pack and its tool tree on disk, and the verifier's wall: Seatbelt on macOS, Bubblewrap
  * on Linux.
@@ -104,6 +105,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
   const {
     runs,
     checks,
+    historical,
     faults: seen,
     idle,
     unformed,
@@ -124,6 +126,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     controls: runs.length,
     stored: stored.length,
     rows: checks.map((row) => ({ ...row, missing: [...row.missing] })),
+    historicalRows: historical.map((row) => ({ ...row, missing: [...row.missing] })),
     doNothing:
       unformed === null
         ? {
@@ -141,11 +144,16 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
       `the do-nothing answer ${capturedJsonStringify(idle)}: rejected on ${String(rejected.length - doNothingFaults(rejected).length)} of ${plural(rejected.length, "task")}`,
     );
   }
-  console.log("check\tinstrument\tpassed\trefused\tcontrols refused of those naming it");
-  for (const row of checks) {
-    console.log(
-      `${row.id}\t${row.instrument}\t${String(row.passed)}\t${String(row.refused)}\t${String(row.caught)} of ${String(row.named)}`,
-    );
+  for (const [source, readings] of [
+    ["Fresh controls", checks],
+    ["Historical verdicts (not rerun)", historical],
+  ] as const) {
+    console.log(`${source}: check\tinstrument\tpassed\trefused\tcontrols refused of those naming it`);
+    for (const row of readings) {
+      console.log(
+        `${row.id}\t${row.instrument}\t${String(row.passed)}\t${String(row.refused)}\t${String(row.caught)} of ${String(row.named)}`,
+      );
+    }
   }
   for (const fault of faults) console.log(`fault: ${fault}`);
   console.log(faults.length === 0 ? "no fault" : `${String(faults.length)} faults`);

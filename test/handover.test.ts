@@ -3,7 +3,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { supplyOf } from "../src/builder/admission.ts";
 import { campaignOf, type Handover, openSteps } from "../src/builder/handover.ts";
-import { comparisonsTold, failsTold } from "../src/builder/past.ts";
+import { calledBy, namesOf } from "../src/builder/names.ts";
+import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
 import { mkdtempSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
@@ -275,6 +276,27 @@ describe("a campaign's reading", () => {
     expect(openSteps(campaignOf(c.events()).steps)).toEqual(["b-1"]);
   });
 
+  it("reads a led Builder as live while an Examiner session and a comparison run inside it", () => {
+    const c = campaign();
+    c.setUp();
+    c.record("campaign.opened", { led: true });
+    c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    c.record("build.turn", { session: "b-1", turn: 1, usage: { cost: { total: 0.25 } } });
+    c.solved("p1", HA, "fail");
+    c.record("exam.started", { session: "x-1" });
+    c.record("exam.turn", { session: "x-1", turn: 1, usage: { cost: { total: 0.5 } } });
+    c.record("exam.finished", { session: "x-1", ended: "finished", billed: 0.5, held: [] });
+    c.record("comparison.started", { session: "g-1" });
+    c.solved("s1", HA, "pass", "g-1");
+    c.record("build.turn", { session: "b-1", turn: 2, usage: { cost: { total: 0.25 } } });
+    // Until 14 October b-1 read as cut at x-1's start, its turns and dollars cut there with it.
+    const live = { id: "b-1", ended: null, cut: false, turns: 2, practiceSolves: 1, billed: 2 };
+    expect(steps(c, "builder")).toMatchObject([live]);
+    expect(openSteps(campaignOf(c.events()).steps)).toContain("b-1");
+    c.record("campaign.ended", { ending: "environment" });
+    expect(steps(c, "builder")).toMatchObject([{ ...live, cut: true }]);
+  });
+
   // buffer-main's g-1 had four solves in flight on 11 October, and nothing said how far it was.
   it("reads a comparison with no report as open, with its solves so far, and as cut once the campaign ended", () => {
     const c = campaign();
@@ -292,6 +314,21 @@ describe("a campaign's reading", () => {
     expect(openSteps(campaignOf(c.events()).steps)).toEqual([]);
     expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toContain(
       "no report yet, cut before it: 1 solve ended, 1 cut",
+    );
+  });
+
+  // A digest's head is an identity, not a name: the view names a harness by a letter beside it
+  // (the hardening plan's PR 8, 14 October), and a reader handed no names keeps the head alone.
+  it("names each harness of a comparison by its letter where the view is given the log's names", () => {
+    const c = campaign();
+    c.setUp();
+    c.compared("g-1", { old: STARTER, fresh: HA }, null);
+    const events = c.events();
+    expect(viewLines("truss", campaignOf(events), Date.now(), calledBy(namesOf(events)))[2]).toContain(
+      "comparison of B (aaaaaaaa) with A (00000000) on",
+    );
+    expect(viewLines("truss", campaignOf(events), Date.now())[2]).toContain(
+      "comparison of aaaaaaaa with 00000000 on",
     );
   });
 
@@ -418,6 +455,29 @@ describe("the Builder's filter over that reading", () => {
     const told = failsTold(campaignOf(c.events()).fails, TASKS);
     expect(told[0]).toContain("; failing again under harness 00000000.");
     expect(told[1]).toBe(`- ${again}, t-1, harness 00000000: fail (rejected); open.`);
+  });
+
+  // Found in buffer-149, 13 October: b-2 was told only a digest, and found by listing harness/
+  // that b-1's crash had left it the starter.
+  it("tells where the starting harness came from, and how the last Builder session ended", () => {
+    const c = campaign();
+    c.setUp();
+    const none = startTold(campaignOf(c.events()), STARTER, "b-1");
+    expect(none).toBe(
+      "You start from harness 00000000, which no Builder session of this campaign left: the Starter Built Harness unless the operator named another.",
+    );
+    c.built("b-1", STARTER, HA, []);
+    c.record("build.started", { session: "b-2", parent: HA, tasks: ["p1"] });
+    c.record("build.finished", { session: "b-2", ended: "crashed", harness: HB, changed: true });
+    expect(startTold(campaignOf(c.events()), HA, "b-3")).toBe(
+      "You start from harness aaaaaaaa, which session b-1 left. The last Builder session, b-2, crashed: its conversation was lost to a provider or host error.",
+    );
+    c.record("harness.promoted", { harness: HA, from: STARTER, rests: [] });
+    // The session's own start is not the last session before it.
+    c.record("build.started", { session: "b-3", parent: HA, tasks: ["p1"] });
+    expect(startTold(campaignOf(c.events()), HA, "b-3")).toContain(
+      "which session b-1 left, now the reference harness. The last Builder session, b-2, crashed",
+    );
   });
 
   it("tells each comparison as its tally and its reading, with no task and no other count", () => {

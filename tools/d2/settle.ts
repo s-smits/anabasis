@@ -12,16 +12,19 @@
  * person decides those. `--session` is the comparison's id: a round's session, or a checkpoint's
  * `--id`.
  *
- * Run once, it draws the packet: up to ten of the comparison's rejected answers, under any of its
- * harnesses and the ones ruled a true fail among them, and up to three of its answers that passed,
- * each drawn uniformly by the comparison's id, so the draw stands before any is read and comes back
- * the same whenever it is asked for. It writes `labels.json` under `.ana/d2/<name>/settle-<session>/`,
+ * Run once, it draws the packet. It holds every rejected answer under any of the comparison's
+ * harnesses that the Referee ruled a check defect or unclear, or did not rule: those are the rulings
+ * that set a task aside, and so can remove a task or change the comparison. Beside them it holds
+ * three of the rejections ruled earned and three of the answers that passed, a blind sample of each
+ * side, each drawn uniformly by the comparison's id, so the draw stands before any is read and comes
+ * back the same whenever it is asked for. It writes `labels.json` under `.ana/d2/<name>/settle-<session>/`,
  * one empty entry a drawn answer under `rejections` and under `passes`, and a packet each beside
- * it: the task with its hidden values, the public rules and the answer, and for a rejection the
- * checks that refused it. A packet holds no ruling and names no harness, so a label is made blind to
- * both. A ruling of earned is drawn like any other, though since 12 October it rests on a probe
- * that moved a check: a probe shows a difference, not which side is right, and in one audit 51 of
- * 77 such differences stayed undecidable (research 06).
+ * it: the task with its hidden values, the public contract whole (scope, conventions, rules, answer
+ * format and objective) and the answer, and for a rejection the checks that refused it. A packet
+ * holds no ruling and names no harness, so a label is made blind to both. A rejection ruled earned
+ * is only sampled, and since 12 October that ruling rests on a probe that moved a check: a probe
+ * shows a difference, not which side is right, and in one audit 51 of 77 such differences stayed
+ * undecidable (research 06).
  *
  * A person writes `earned`, `check-defect` or `unclear` into each rejection's entry, and `sound`,
  * `wrong` or `unclear` into each pass's. Run again with every entry filled, it settles
@@ -33,7 +36,8 @@
  * changes no tally and no reading: a wrong pass is a check's fault, for the check program's owner,
  * and the closing report names it. Once settled it prints, over every settled packet of the
  * campaign, the Referee's agreement with the labels, of each kind and over all three as PABAK
- * beside kappa, and each settled comparison's decision read again with its labels in place of the
+ * beside kappa, a line where a person labelled more than one in four `unclear` rulings earned
+ * (`unclearReport`), and each settled comparison's decision read again with its labels in place of the
  * verdicts they overturn (`swapped`); a decision that flips means its packet was too small to stand
  * on. Both are reports, and nothing reads them back. An entry that is neither empty nor a known label is refused by
  * name, so a mistyped label is not read as no label; an empty one is still to be read, and nothing
@@ -41,7 +45,7 @@
  * what it said, and with other labels it is refused. A packet with nothing in it settles at once.
  *
  * Until 12 October the command drew every rejection that set a task aside, and read the passes
- * apart. Until 11 October it read a Diagnoser's accounts of practice fails; the seat went
+ * apart; until 13 October it drew up to ten rejections, ruled earned or not, and three passes. Until 11 October it read a Diagnoser's accounts of practice fails; the seat went
  * (`docs/simplify.md`, E1), and a log of before keeps its `diagnosis.*` events.
  *
  * Where a task itself looks infeasible, say so with `prepare.ts --infeasible <task id> --note`,
@@ -74,7 +78,7 @@ import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { agreement, RULINGS } from "#src/review/agreement.ts";
+import { agreement, RULINGS, unclearReport } from "#src/review/agreement.ts";
 import { labelled } from "#src/review/rejections.ts";
 import { openCampaign, packNamed } from "./campaign.ts";
 import { type Campaign, reportLines } from "./round.ts";
@@ -87,20 +91,28 @@ const OPTIONS = {
   name: { type: "string" },
   session: { type: "string" },
 } as const;
-/** The most of each kind a packet draws: about ten minutes of a person's reading a comparison. */
-const PACKET = { rejections: 10, passes: 3 } as const;
+/** The most a packet draws of the rejections ruled earned, and of the answers that passed. */
+const SAMPLED = 3;
 
 /**
- * Draw comparison `session`'s packet into `dir`, a packet a drawn answer and `labels.json` with an
- * empty entry each, and say what was drawn. Each kind is drawn uniformly by the comparison's id
- * from what the comparison holds of it, so the same draw comes back whenever it is asked for.
+ * What comparison `session`'s packet holds: every rejection that set its task aside, and three
+ * rejections ruled earned and three passes, each drawn uniformly by the comparison's id from what
+ * the comparison holds of it, so the same draw comes back whenever it is asked for.
  */
+export function packetOf(
+  { aside, others }: ReturnType<typeof toLabel>,
+  passed: readonly string[],
+  session: string,
+) {
+  const of = (pool: readonly string[], kind: string) =>
+    draw(pool, Math.min(SAMPLED, pool.length), `${kind}:${session}`);
+  return { rejections: [...aside, ...of(others, "earned")], passes: of(passed, "passes") };
+}
+
+/** Draw comparison `session`'s packet into `dir`, a packet a drawn answer and `labels.json` with an
+ *  empty entry each, and say what was drawn (`packetOf`). */
 function drawPacket(campaign: Campaign, events: readonly LogEvent[], session: string, dir: string) {
-  const { aside, others } = toLabel(events, session);
-  const of = (pool: readonly string[], most: number, kind: string) =>
-    draw(pool, Math.min(most, pool.length), `${kind}:${session}`);
-  const rejections = of([...aside, ...others], PACKET.rejections, "rejections");
-  const passes = of(passesIn(events, session), PACKET.passes, "passes");
+  const { rejections, passes } = packetOf(toLabel(events, session), passesIn(events, session), session);
   if (rejections.length + passes.length === 0) return { rejections, passes };
   // The tasks an Examiner session wrote are in the log and in no pack.
   const tasks = [...writtenTasks(events), ...campaign.tasks];
@@ -111,7 +123,8 @@ function drawPacket(campaign: Campaign, events: readonly LogEvent[], session: st
     const packet = {
       solve,
       task: tasks.find((task) => task.taskId === verdict?.task) ?? null,
-      rules: campaign.contract.rules,
+      // The whole public contract (14 October): a label read on the rules alone misses a convention.
+      contract: campaign.contract,
       answer: verdict?.answer ?? null,
       // None where the answer passed.
       refusedBy: refusedBy(verdict),
@@ -152,8 +165,10 @@ function labelLines(events: readonly LogEvent[]): string[] {
   const measured = agreement(events, labels);
   const rate = (value: number | null) => (value === null ? "none" : value.toFixed(2));
   const each = RULINGS.map((kind) => `${kind} ${rate(measured.specific[kind])}`).join(", ");
+  const unclear = unclearReport(measured);
   return [
     `the Referee against ${plural(labels.size, "labelled rejection")}, ${String(measured.unruled.length)} of them unruled: agreement of each kind ${each}; over all three ${rate(measured.observed)}, PABAK ${rate(measured.pabak)} beside kappa ${rate(measured.kappa)}`,
+    ...(unclear === null ? [] : [unclear]),
     ...[...ids].flatMap((id) => {
       const again = swapped(events, id);
       if (again === null) return [];

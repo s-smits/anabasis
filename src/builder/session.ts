@@ -80,12 +80,21 @@ import { failedTurn, loopCompaction, type SolveRequest, solve, traceSink } from 
 import { mountDiskCap } from "../verify/disk-cap.ts";
 import { campaignOf } from "./handover.ts";
 import { builderMemoryBlock, keepMemory, lastKept, memoryOverCapNotice, seedMemory } from "./memory.ts";
-import { comparisonsTold, failsTold, shortDigest } from "./past.ts";
-import { continuation, firstMessage, SAID, systemPrompt, type Used, usedLine } from "./prompt.ts";
+import { comparisonsTold, failsTold, startTold } from "./past.ts";
+import {
+  continuation,
+  firstMessage,
+  SAID,
+  type Solver,
+  systemPrompt,
+  type Used,
+  usedLine,
+} from "./prompt.ts";
 import {
   type Bench,
   endingWith,
   finishTool,
+  harnessNow,
   HOME_TOOL_TREE,
   openingTool,
   parentToolTree,
@@ -95,7 +104,6 @@ import {
   type Snapshot,
   snapshot,
   traceTool,
-  triedState,
   walledTools,
 } from "./tools.ts";
 
@@ -145,6 +153,10 @@ export interface BuildRequest {
   /** What a practice solve is held to, which `preview_harness` shows a solver being told. The
    *  session's own wall, turns and command limits are `limits`. */
   readonly solve: Limits;
+  /** Who solves with the harness, in practice and in every comparison: the campaign's setting, as a
+   *  condition names the model. The opening tells it, since a guide that serves one solver well can
+   *  leave another short (`firstMessage`). */
+  readonly solver: Solver;
   /** The backends, built on the home the Builder's model process keeps its state in. */
   readonly models: (home: string) => Models;
   readonly log: string;
@@ -171,7 +183,22 @@ export interface BuildRequest {
   /** Aborts when the run is killed. */
   readonly kill?: AbortSignal;
   /** Campaign tools and advice, supplied by the host. The Builder remains the only build-side agent. */
-  readonly campaign?: (bench: Bench) => { readonly tools: AgentTool[]; readonly hook: () => string };
+  readonly campaign?: (bench: Bench) => {
+    readonly tools: AgentTool[];
+    readonly hook: () => string;
+    /** Halts the conversation where the campaign has ended, as `hook` does, and renders nothing:
+     *  before each model request, where a status would be discarded (plan item 6.4, 14 October). */
+    readonly halts?: () => void;
+    /** Settles once no action of the campaign's runs: an Examiner session writing beside the
+     *  conversation ends on record before the conversation does, however the conversation ended. */
+    readonly closing?: () => Promise<void>;
+    /** A move the host makes as the conversation opens, and what it said of it, which the opening
+     *  message carries, or nothing: the campaign's first Examiner session (14 October). */
+    readonly start?: () => Promise<string>;
+    /** What `finish` tells the Builder where no comparison has read harness `digest` against the
+     *  reference, or null (`standing`, `tools.ts`). */
+    readonly unmeasured?: (digest: string) => Promise<string | null>;
+  };
 }
 
 export interface Built {
@@ -319,9 +346,14 @@ export async function session(
         ...record(recorded, version, parent.digest),
       })),
       // The count it opens with is the one `practice` holds it to: its own, or its cap's where fewer.
-      { ...limits, practiceSolves: practiceLeft(bench, recorded) },
       {
-        start: shortDigest(parent.digest),
+        ...limits,
+        practiceSolves: practiceLeft(bench, recorded),
+        solver: request.solver,
+        solve: request.solve,
+      },
+      {
+        start: startTold(campaign, parent.digest, request.id),
         fails: failsTold(
           campaign.fails,
           new Map(bench.tasks.map(({ version, task }) => [version, task.taskId])),
@@ -334,22 +366,34 @@ export async function session(
   const campaign = request.campaign?.(bench);
   const first = opening();
   const turns: AssistantMessage[] = [];
-  // What the session has used of its limits, as every tool result and every continuation says it.
-  // A session under a cap reads what its practice solves billed from the log.
-  const used = (): Used => ({
-    turns: turns.length,
+  // What the session has used of its limits, as every turn's tool results and every continuation
+  // say it. A session under a cap reads what its practice solves billed from the log. A campaign's
+  // session counts a turn as its message ends, before its tools run (below), so while they run its
+  // count holds the turn they belong to: until 14 October a led Builder was told the next turn.
+  const used = (during = false): Used => ({
+    turns: turns.length - (during && campaign !== undefined ? 1 : 0),
     seconds: ownSeconds(),
     practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
-    practised: bench.opened !== null,
+    practised: bench.opened?.harness.digest ?? null,
   });
+  // The line goes under the first result of each turn, once a turn: until 14 October a turn of six
+  // calls read it six times, and then the last call carried it, which a call pi refuses before it
+  // runs (a tool the session lacks, arguments its schema refuses) never reaches, so such a turn
+  // read nothing of its limits. A result is a result whichever call made it.
+  let told = false;
+  const footer = () => {
+    if (told) return "";
+    told = true;
+    return usedLine(used(true), limits);
+  };
   const tools = [
     ...walled(bench),
     practiceTool(bench),
     traceTool(bench),
     openingTool(campaign === undefined ? first : opening, bench.said),
-    finishTool(bench),
+    finishTool(bench, campaign?.unmeasured),
     ...(campaign?.tools ?? []),
-  ].map((each) => endingWith(each, () => usedLine(used(), limits)));
+  ].map((each) => endingWith(each, footer));
   // Aborted when the loop returns, whatever returned it, so the model's own process is closed.
   const done = new AbortController();
   const signal = AbortSignal.any([
@@ -366,10 +410,11 @@ export async function session(
   const compact = loopCompaction(log, "build", request.id, stream, summaries);
   const trace = traceSink(log, "build", request.id, () => turns.length);
   let crash: string | null = null;
+  const started = (await campaign?.start?.()) ?? "";
   arm();
   try {
     await runAgentLoop(
-      [user([first, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"))],
+      [user([first, started, campaign?.hook() ?? ""].filter((part) => part !== "").join("\n\n"))],
       { messages: system === undefined ? [] : [system], tools },
       {
         model,
@@ -388,7 +433,7 @@ export async function session(
             ? [
                 user(
                   [
-                    continuation(used(), limits, await triedState(bench), bench.said),
+                    continuation(used(), limits, await harnessNow(bench), bench.said),
                     memoryOverCapNotice(dirs.home) ?? "",
                     campaign?.hook() ?? "",
                   ]
@@ -398,15 +443,16 @@ export async function session(
               ]
             : [],
         prepareRequest: async (context, kill) => {
-          campaign?.hook();
+          campaign?.halts?.();
           if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
           const update = await compact(context, kill);
-          campaign?.hook();
+          campaign?.halts?.();
           if (bench.halt.signal.aborted) throw new Error("The campaign has ended.");
           return update ?? undefined;
         },
       },
       (event) => {
+        if (event.type === "message_end" && event.message.role === "assistant") told = false;
         // Meter a campaign's model turn before its tool can spend on another seat.
         if (campaign !== undefined && event.type === "message_end" && event.message.role === "assistant") {
           turns.push(event.message);
@@ -424,6 +470,7 @@ export async function session(
     clearTimeout(timer);
     done.abort();
   }
+  await campaign?.closing?.();
   const cut = wall.signal.aborted || bench.halt.signal.aborted || request.kill?.aborted === true;
   crash ??= bench.fatal?.message ?? (cut ? null : failedTurn(turns));
   // Whatever ended the session, what `harness/` holds is frozen: a session cut at its wall still
@@ -437,6 +484,7 @@ export async function session(
   // never practised has no such state, and leaves none.
   let frozen: Snapshot | null;
   let broken: string | null = null;
+  const lastPractised = bench.opened?.harness.digest ?? null;
   try {
     frozen = await snapshot(bench);
   } catch (error) {
@@ -462,6 +510,15 @@ export async function session(
           turns: turns.length >= limits.turns,
         })
       : "crashed";
+  // A crashed session's harness is passed over (`latestBuilt`), as one it may have left half way
+  // through an edit. The state its own practice solve last ran on is no half-edit, and is kept as
+  // a checkpoint, whether or not edits followed it: on 13 October buffer-149's b-1 crashed on a
+  // provider error with a harness it had practised three of three on, and b-2 rebuilt it from
+  // b-1's notes for 25 turns. Until 14 October only a crash with no edit after that solve kept it,
+  // so one more line written before the crash lost every practised version of the session.
+  if (ended === "crashed" && changed && lastPractised !== null && lastPractised !== parent.digest) {
+    append(log, "build.checkpoint", { session: request.id, harness: lastPractised });
+  }
   const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);
   // Kept before the session is recorded as ended, so a session on record as ended has its notes.
   keepMemory(dirs.home, request.memory, request.id);

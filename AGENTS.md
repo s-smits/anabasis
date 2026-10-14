@@ -64,52 +64,81 @@ sign-flip test over the tasks reads a **step** or none.
                        THE LOG   one append-only file a campaign; every state is a view of it
 ```
 
-### The five success factors
+### The four reported factors
 
 Anabasis v2 is a training loop in which the thing trained is a harness and the loss is measured
 by running a fixed model. Read that way its success factors are the ones every learning system
 has: a training signal that carries information, a held-out set the learner cannot see, an
-evaluation no noisier than the effect it looks for, labels that are correct, and a result that
-transfers. Every session, pull request and run is judged against the five below, and a change
-that moves none of them says what it moves instead. Each is a question, how it is measured and
-its bar; the recorded values are the plan's (`docs/plan.md`, "Goal and the five factors"), and
-nowhere else.
+evaluation no noisier than the effect it looks for, labels that are correct, and a result worth
+what it cost. The first is a condition a comparison is admitted on, supply, and the other four are
+reported: climb, honesty, verdicts and economy. Every session, pull request and run is judged
+against them, and a change that moves none of them says what it moves instead. Each is a
+question, how it is measured and its bar; the recorded values are the plan's (`docs/plan.md`,
+"Goal and the four factors"), and nowhere else.
 
-**1. Supply: is there gradient?** A comparison registers a difference only on a task where one
-harness answers and the other does not. A task the reference solves in every attempt is a solved
-example, and one nobody has solved is an unlearnable one: neither carries signal, and a scored
-set made of them reads "no room" whatever the new harness is. The informative tasks lie between:
-the reference answers them sometimes, or never while another harness has. In most learning the
-data is fixed and the model moves; here the solver is fixed and the Examiner keeps the exam at
-its frontier, told one outcome a task and nothing else. Measured as the informative tasks in a
-comparison's scored set. Bar: at least four before each comparison starts. It binds first,
-because every other number is undefined without it.
+**Supply, the condition before the four: is there gradient?** A comparison registers a
+difference only on a task where one harness answers and the other does not. A task the reference
+solves in every attempt is a solved example, and one nobody has solved is an unlearnable one:
+neither carries signal, and a scored set made of them reads "no room" whatever the new harness
+is. The informative tasks lie between: the reference answers them sometimes, or never while
+another harness has. In most learning the data is fixed and the model moves; here the solver is
+fixed and the Examiner keeps the exam at its frontier, told one outcome a task and nothing else.
+Measured as the informative tasks in a comparison's scored set. Bar: at least four before each
+comparison starts. It is not reported as a factor: passing it says a comparison can show a
+difference, not that one was shown. It binds first, because every other number is undefined
+without it.
 
-**2. Climb: does the learner improve?** The one quantity the system exists to move is the
+**1. Climb: how much ability has accumulated?** The one quantity the system exists to move is the
 reference harness. A promotion, a harness that beats the reference on held-out tasks by more
-than chance allows, twice, on fresh solves, is one step of descent; a climb is several. Measured
-as promotions a campaign, with the pairs the starter loses in each epoch beside it, which rise as
-the reference improves. Milestone: twelve confirmed promotions in one real campaign, the starter
-losing more pairs epoch on epoch, then the same in a second domain. It is the operator's
-observation milestone and no rule of the system's: no prompt, table row or tool names a count of
-promotions, and the campaign keeps its own endings. The stop rule's patience marks a possible
-plateau, evidence that progress stalled and no proof that no step is left. A campaign ended
-before twelve by its budget, its environment or its Builder's `finish` reads "reached N
+than chance allows, twice, on fresh solves, is one step of descent; a climb is several. Each
+promotion is read against its predecessor on tasks that change with every comparison, so a
+chain of them has no fixed yardstick, and the **ladder** is that yardstick. A draft the
+reference answered in none of its three admission solves, where its author's own answer passes
+on it (`task.feasible`), is held for the ladder (`try_task`; gate outcome and task state
+`ladder`, `src/kernel/task.ts`): never scored for a promotion, never released for practice and
+never shown to a Builder, and its Examiner is told only that it was held. A ladder's tasks are
+fixed by its first reading (`laddersOf`, `src/kernel/reports.ts`), so every reading of it is on
+one set; tasks held for the ladder later wait, and the next promotion's reading fixes them as the
+next ladder, with a curve of its own. The Examiner may go on writing, and no earlier curve moves.
+After every promotion the host, never the Builder, reads the starter against the new reference on
+each ladder that still holds a task, and then on the tasks no ladder holds yet, on fresh solves
+(row `ladder`, section 7; `checkpoint.ts --ladder [--frozen <id>]`), a comparison marked `ladder:
+true` that no other row, the stop rule, the pool or the Builder's handover reads. A ladder task
+disputed after its ladder was fixed is not solved again and counts unsolved on both sides over the
+ladder's own denominator, and the curve prints how many were set aside. A witness proves the
+author's answer passes the check on the hidden values; it does not prove the public input is
+enough to derive it, so a ladder task no reference ever answers may be hard or underspecified,
+and the curve cannot tell which until a person reads it. Measured as promotions a campaign, and
+as one curve a ladder (`ladderOf`, `src/builder/climb.ts`): each side's valid share on the
+ladder's tasks and the reference's gain over the starter in points, printed in the closing report
+under "The ladder". A promotion valid
+on its own exam may leave the ladder where it was, and is recorded so; a small movement is read
+beside the solver's measured variation before it is called a gain. Milestone: twelve confirmed
+promotions in one real campaign, then the same in a second domain. It is the operator's
+observation milestone and no quota, promotion rule or stop: no prompt, table row or tool names a
+count of promotions, and the campaign keeps its own endings. The stop rule's patience marks a
+possible plateau, evidence that progress stalled and no proof that no step is left. A campaign
+ended before twelve by its budget, its environment or its Builder's `finish` reads "reached N
 promotions; further improvement unresolved", apart from one ended by its patience. Its
 false-promotion risk is reported across the whole campaign, over every comparison that could
 have promoted: the opening's bound over one patience's attempts restarts with each promotion,
-and so bounds no more than one window.
+and so bounds no more than one window. Proposed and awaiting the operator, and implemented
+nowhere in the source: a ladder of 12 to 24 tasks; an ability milestone of a reference that
+answers half of a ladder the starter answered none of; and a limit of two ladders a campaign, with
+the second opened once the reference passes 80% of the first. Until then a ladder is whatever
+tasks a promotion's reading finds held and fixes, of any size.
 
-**3. Honesty: what is the false-positive rate of the test?** A test at level 0.10 is designed to
+**2. Honesty: could the measured gains be chance or drift?** A test at level 0.10 is designed to
 crown a winner between two equal harnesses about one time in ten, and the design value is a claim
 until it is measured on the real solver, whose variance is unknown: the same harness fails a task
 once and passes it next time. The measurement is an A/A test, built as the test is: the
 reference's solves of a task split into two halves mirrored in time, tallied and tested as a
 comparison is (`src/builder/comparison.ts`). At four solves a side every comparison carries one, on
-the solves its test reads, two against two, and at fewer there is none. A step there is a false positive by construction. Its earlier solves against its later ones are kept apart as the drift, and how often
-two of its solves of a task disagree as the flip rate. Bar: no step in the ten controls after the
-six on record. Ten controls still bound the rate loosely. The same control gives the tie share, the
-floor a real comparison has to beat before its wins mean anything. A campaign makes many promotion
+the solves its test reads, two against two, and at fewer there is none. A step there is a false
+positive by construction. How often two of its solves of a task disagree is the flip rate. Bar:
+no step in the ten controls after the six on record. Ten controls still bound the rate loosely.
+The same control gives the tie share, the floor a real comparison has to beat before its wins
+mean anything. A campaign makes many promotion
 attempts under one reference, and the level misstates even one: an attempt is two readings, and
 at 0.10 the rule promotes equal harnesses 5.8% of the time on 24 untied tasks (`falseRate`,
 `src/kernel/compare.ts`). Every reading prints that rate at its own margins, and a campaign's
@@ -118,56 +147,59 @@ past 10% (`openingLines`, `src/kernel/size.ts`): at 24 tasks, 0.10 and a patienc
 34.8%, so such a campaign names a patience of one or a level of 0.02. The climb reads what the attempts risk together as they come, one attempt a candidate
 with the repeat it bought: one attempt's rate bounded off pairs of controls read by the promotion
 rule, at 95% one-sided and never none, or by design before two controls the rule's own rate at
-that attempt's margins, summed over the attempts (`falsePromotion`, `src/builder/climb.ts`).
+that attempt's margins, summed over the attempts (`falsePromotion`, `src/builder/climb.ts`). The
+starter read again on the ladder after each promotion is the third control: its share moving is
+drift in the solver, the provider or the host, not the harness.
 
-**Worth.** Three bars, terms of the opening the operator may set, read and printed and gating
-nothing (`worthOf`, `src/builder/climb.ts`; revised plan W). Effect: a step's valid share at least
-25 points over the reference's on the scored set, or, where the exam names an objective, the
-objective won on at least half the pairings of two valid answers with no more pairings lost than
-won on validity. Transfer: a promoted harness's valid share on at least 8 tasks written after its
-freeze, in the epoch it opens, within 15 points of its share where it was promoted. Cost: at most 3
-promotion attempts an epoch after set-up, with its Builder sessions and billed dollars beside. A
-step's report carries them, and the closing report reads a promotion that misses effect or
-transfer as `promoted below bar`.
+**3. Verdicts: are the labels correct?** Validity is decided by a check program nobody has audited
+against the field, and a check that rejects a right answer is label noise: in v1, 36 of 47
+rehearsal misses came from a faulty check or instrument. The Referee is the noise filter
+(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison, a
+Builder's practice or an Examiner admission probe, before the rejection counts, and never on a
+pass, a solve a limit cut or a crash; first the host replays the checks on the logged answer, and a verdict that does not repeat
+is a check defect ruled by the host. It reads the task with its hidden values, the public rules,
+the answer, the rejecting checks with the fields each reads, the check program's source, a valid
+answer for the task where one is on record, and a probe that changes one field and reruns the
+checks, at most eight a ruling; never the harness, the trace or anything the Builder wrote. It
+records one ruling (`referee.finding`): `earned` must name the rule broken and the field that
+breaks it, both cited by a rejecting check; `check-defect` must cite a probe that decided both
+sides on a field the check reads; `unclear` is what is left, and a ruling without its evidence is
+refused. `earned` counts as a loss; the other two set the task aside for both harnesses, so a
+broken check scores nobody. The Referee is a model and is measured by agreement with a person who
+labels the same rejections blind (`tools/d2/settle.ts`, `src/review/agreement.ts`): a
+three-by-three table of label against ruling, read as two rates, beside each kind's agreement and
+PABAK beside kappa, never kappa alone. Once a packet is settled, `settle.ts` prints them over
+every settled packet, and reads each settled comparison again with its labels in place of the
+verdicts they overturn (`swapped`): a decision that flips means its packet was too small. Both are
+reports, and so is the line it prints where a person labels more than one in four `unclear`
+rulings earned. Bar: read on no fewer than thirty labels, three in four of the rejections a person
+calls a check defect caught, and at most one in ten of those a person calls earned voided. A
+packet holds every rejection that set a task aside, and a blind sample of three rejections ruled
+earned and three passes, since no seat reads an answer that passed.
 
-**4. Verdicts: are the labels correct?** Validity is decided by a check program nobody has
-audited against the field, and a check that rejects a right answer is label noise: in v1, 36 of
-47 rehearsal misses came from a faulty check or instrument. The Referee is the noise filter
-(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison,
-before the rejection counts, and never on a pass, a solve a limit cut or a crash; first the host
-replays the checks on the logged answer, and a verdict that does not repeat is a check defect
-ruled by the host. It reads the task with its hidden values, the public rules, the answer, the
-rejecting checks with the fields each reads, the check program's source, a valid answer for the
-task where one is on record, and a probe that changes one field and reruns the checks; never the
-harness, the trace or anything the Builder wrote. It records one ruling (`referee.finding`):
-`earned` must name the rule broken and the field that breaks it, both cited by a rejecting check;
-`check-defect` must cite a probe that decided both sides on a field the check reads; `unclear` is
-what is left, and a ruling without its evidence is refused. `earned` counts as a loss; the other
-two set the task aside for both harnesses, so a broken check scores nobody. The Referee is a
-model and is measured by agreement with a person who labels the same rejections blind
-(`tools/d2/settle.ts`, `src/review/agreement.ts`): a three-by-three table of label against
-ruling, read as two rates, beside each kind's agreement and PABAK beside kappa, never kappa alone.
-Once a packet is settled, `settle.ts` prints them over every settled packet, and reads each settled
-comparison again with its labels in place of the verdicts they overturn (`swapped`): a decision
-that flips means its packet was too small. Both are reports. Bar: on at least ten labels a kind, three in four of the rejections a
-person calls a check defect caught, at most one in ten of those a person calls earned voided, and
-three passes a comparison read by a person, since no seat reads an answer that passed.
-
-**5. Worth: how large is the effect, does it transfer, and what did it cost?** A significant
-step is not necessarily a useful one. Three numbers from one report say what a promotion is
-worth: the effect size, the reference's share of valid answers on held-out tasks against the new
-harness's at the full limit; transfer, the same harness on tasks written after it was frozen,
-which is the only reading that separates learning the domain from learning the exam; and the
-cost, in dollars and Builder sessions, of a promotion. None has a bar. Setting the three is the
-operator's decision, and until it is made no promotion is called a result worth having.
+**4. Economy: what did each measured gain cost?** A significant step is not necessarily a useful
+one. The budget is a bound the operator sets, and a campaign is read by how fast it climbs under
+it, not by what it leaves unspent (operator, 14 October). The closing report reads it from the log
+alone and adds no solve (`tools/d2/close.ts`, "Work and spend"): first the climb's velocity, the
+dollars and hours of the log a promotion, then the dollars billed, what the Examiner billed a task it held out, its admission
+solves included and a task held for the ladder counted as written, what comparisons billed a task
+they scored, what each ladder's climb cost a point the reference gained on it between that
+ladder's first reading and its last, and how many of the
+comparisons that began reported, since one cut before its report bought nothing it can show. One
+bar, a term of the opening the operator may set, read and printed and gating nothing (`worthOf`,
+`src/builder/climb.ts`; revised plan W): at most 3 promotion attempts an epoch after set-up, with
+its Builder sessions and billed dollars beside it, which a step's report carries. The effect and
+transfer bars that stood beside it until 13 October are retired: each read a set that changed
+with every reading, and the ladder reads both on one fixed set.
 
 Left out on purpose: the wall between the two sides is a correctness property, tested in the
 suite as a byte-identical message under a changed hidden value, and is not optimised; the
 Builder's practice results are excluded by rule 1, since a learner's score on its own training
-set is the overfitting signal and not the metric; cost stands inside factor 5, since a cheap
-system that does not climb has no cost worth reporting. The five are ordered by where they bind:
-without supply there is no gradient, without climb no result, without honesty and verdicts no
-result that can be believed, and without worth none that can be used.
+set is the overfitting signal and not the metric; cost is read as economy, beside the climb it
+bought, since a cheap system that does not climb has no cost worth reporting. The four are
+ordered by where they bind, after supply, without which there is no gradient: without climb no
+result, without honesty and verdicts no result that can be believed, and without economy none
+whose price is known.
 
 ### Two sides and one wall
 
@@ -203,7 +235,7 @@ numbered otherwise. The design around the copied code is different.
 | --- | --- |
 | The Builder wrote the harness, the tasks and the checks | The Examiner writes tasks, the check program is fixed, and the Builder writes the harness only |
 | A harness was scored on its own Builder's test set, as a pass rate | Two harnesses are compared on held-out tasks, as wins against losses |
-| Every task carried an answer its author had found | No reference answers. A task is held out on the shape of its package and, where the host can have the reference harness solve it, only where some and not all of three fresh solves of it are valid (`try_task`); those solves are never scored |
+| Every task carried an answer its author had found | No reference answers. A task is held out on the shape of its package and, where the host can have the reference harness solve it, only where some and not all of three fresh solves of it are valid (`try_task`), or for the ladder where none is and its author's own answer passes on it; those solves are never scored |
 | A candidate passed a submit gate before it was measured | No gate on a harness. `check_harness` says whether it opens, and the comparison says whether it is better |
 | Difficulty was steered with a band, levels and staged test sizes | One fixed compute budget for both harnesses. No band and no levels |
 | A harness declared its own limits in `agent/config.yaml` | The host sets every limit, and that file is not read |
@@ -212,7 +244,7 @@ numbered otherwise. The design around the copied code is different.
 
 Words v1 used that have no meaning here: battery, band, witness, F2, census, submit gate,
 adoption, veto. Do not bring them back in new text. Three of v1's words have a v2 meaning of their
-own: a **climb** is factor 2 of section 1, an **epoch** is the stretch of a campaign under one
+own: a **climb** is factor 1 of section 1, an **epoch** is the stretch of a campaign under one
 reference harness (`src/builder/climb.ts`), and the **level** is the step test's (`--level`). Two
 survive with a narrow meaning: a **cycle** and a **sweep** name a stored v1 run that a campaign takes its pack from
 (`--sweep`, `--cycle`), and **bundle** names that pack's directory (`--bundle`).
@@ -248,7 +280,11 @@ Six consequences guide a change:
 2. **Give an author facts and no target.** v1 measured why: an author told a zone, a share or a
    count wrote towards it, and one told each answer's distance from its limit moved the limits. So
    the Examiner is told what was measured and no number to reach: each task's one outcome under
-   the reference harness and whether a valid answer to it is on record; the budget every solve is
+   the reference harness and whether a valid answer to it is on record, and for a task the
+   reference stood in two comparisons or more of, the same outcome of each of its last three,
+   newest first, with how many of the newest closed it in a row (since 13 October; `histories`,
+   `poolOf`), since the rule that exhausts a task counts two closed comparisons in any order and
+   one outcome could not tell a task answered once from one answered every time running; the budget every solve is
    held to (since 10 October: a task that tells two harnesses apart is one a better method answers
    within that budget and a worse one does not, which nobody can write without knowing it, and ten
    campaigns' tasks tied without it); the tasks counted by family, with the solves a side they
@@ -301,7 +337,7 @@ wall keeps from it.
 
 | Seat | Job | Reads | Never | Source |
 | --- | --- | --- | --- | --- |
-| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, those tasks counted by family, or in a total where a family holds one task (since 11 October), what the last session said at its `finish`, and the home that session left; after each proposal, how many of the campaign's drafts so far were held out, of those that came with a proof of their author's and of those that did not; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none, but how many of the reference harness's three solves of its own draft task were valid (`try_task`), and nothing else of those solves. It makes no solve of the exam's | `src/examiner/` |
+| **Examiner** (model) | Writes task instances against a fixed contract and check program. For a campaign that opens from a prompt it first drafts that exam: the rules with their sources, the answer format, one check a rule, examples and controls | The contract, the operator's brief, the budget every solve is held to, examples, one outcome for each task of the campaign and whether a valid answer to it is on record, and for a task the reference stood in two comparisons or more of the same outcome of each of its last three, newest first, with how many of the newest closed it in a row (since 13 October), those tasks counted by family, or in a total where a family holds one task (since 11 October), what the last session said at its `finish`, and the home that session left; how many of its gate's solves each held task passed on, and the drafts a gate refused after reading them, with its reason (since 14 October); after each proposal, how many of the campaign's drafts so far were held out, of those that came with a proof of their author's and of those that did not; the checks, through `try_answer`, on an instance with an answer of its own. When it drafts: the operator's prompt, what the host's reading found in each draft, and a walled home of its own, empty at its start | A target, a harness's name, the other harness's result on any one task, a count of a task's valid solves beyond every, some or none, but how many of the reference harness's three solves of a draft task were valid (`try_task`, and in later sessions), and nothing else of those solves. It makes no solve of the exam's | `src/examiner/` |
 | **Builder** (model) | Edits `harness/`, chooses campaign tools in the same conversation, and ends with a frozen harness version | The public rules and the objective, practice tasks, practice results with their measures and traces, each comparison's tally, its own notes | A held-out task or its trace, a check, a hidden value, which checks refused an answer | `src/builder/` |
 | **Solver** (model) | Answers one task: pi's coding agent with `read`, `bash`, `edit`, `write` and `submit` | The task's public part, the public rules, the harness's guide and programs, its limits and how much it has used | The checks and the hidden values | `src/solve/` |
 | **Verifier** (code) | Runs every applicable check on one answer, each in a fresh cell inside the OS wall | The answer, the task, the check program, the installed engines | n/a | `src/kernel/verify.ts`, `src/verify/` |
@@ -395,9 +431,12 @@ The host opens the exam and prepares the campaign first. Then `tools/d2/harness-
 one Builder conversation and one workspace open while its campaign tools run. An Examiner call
 runs a separate agent with its own view: it returns at once, the session writes beside the
 conversation, any other campaign action waits for it on the host's time, and the campaign's facts
-under each campaign tool's result say what it held out. A comparison returns the same
-aggregate tally and reading the Builder already receives. A promotion names only the harness the
-existing rule allows. The model cannot choose a checker, held-out task, solve limit or reference.
+under each campaign tool's result say what it held out. The conversation's end waits for it where
+the Builder finished or met its wall, and does not stop it; the host's halt, on the run's moves, an
+ending the table names or the operator's stop, and a kill of the run do, and it ends on record as
+killed. A comparison returns the same aggregate tally and reading the Builder already receives. A
+promotion names only the harness the existing rule allows. The model cannot choose a checker,
+held-out task, solve limit or reference.
 
 Where the table names more than the action, the tool does what the table names
 (`comparedOf`, `tools/d2/campaign-actions.ts`), and the status and the result say so as a fact:
@@ -411,7 +450,7 @@ Where the table names more than the action, the tool does what the table names
   Where the table names none, there is nothing to compare.
 - A harness a comparison has read against the reference, with nothing changed since, is not
   compared again unless the table names it: a second draw of one pair is a second chance at the
-  trigger (section 1, factor 3).
+  trigger (section 1, factor 2).
 - `promote` names the harness the rule names, which is not always the last one frozen (`twice`,
   `src/builder/decide.ts`).
 
@@ -464,9 +503,10 @@ When you build towards the Harness Builder, take v1's four lessons with it:
 2. One reading of the log, rendered once for each reader through its own filter. Until
    21 September v1's Builder received one test set through four readers, and they disagreed: 20
    of 25 in one paragraph and 0 of 5 in the next.
-3. The standing facts are restated where the agent reads, so a compaction needs no signal. Every
-   tool result of a Builder ends with the turn it is in, the session time used and the practice
-   solves left (`usedLine`, `src/builder/prompt.ts`); a turn that ends without a call is answered
+3. The standing facts are restated where the agent reads, so a compaction needs no signal. The
+   first tool result of each Builder turn ends with the turn it is in, the session time used and
+   the practice solves left (`usedLine`, `src/builder/prompt.ts`; once a turn since 14 October,
+   when a turn of six calls read it six times); a turn that ends without a call is answered
    with the goal and the same facts (`continuation`); and `read_opening` serves the opening
    message again. In the seven Builder sessions on record on 9 October every one of 365 turns
    ended in a tool call, so a message sent only between turns was never sent.
@@ -479,7 +519,7 @@ A campaign's record is one append-only JSONL file, `.ana/d2/<name>/log.jsonl`, o
 as truth.
 
 - An append is written and synced before it returns. A read refuses a torn or unknown line.
-- A task's state (`held`, `released`, `refused`, `disputed`) is a fold over the log
+- A task's state (`held`, `released`, `refused`, `disputed`, `ladder`) is a fold over the log
   (`src/kernel/task.ts`). So are the pairs of a comparison (`src/kernel/compare.ts`), the stop
   rule and the tasks waiting for a label (`src/kernel/reports.ts`), and the dollars billed.
 - A **condition** is everything that could change a solve's result, as one content-addressed
@@ -525,7 +565,7 @@ flags.
 | 4 | `bun tools/d2/round.ts ... --session b-1 --builder <model>` | A Builder session, then the comparison of the harness it left with the reference |
 | 4 | `bun tools/d2/session.ts ... --session b-2 --builder <model>` | A Builder session with no comparison after it, under a dollar cap of its own. The plan's checkpoint is several of these and then one comparison |
 | 4 | `bun tools/d2/checkpoint.ts ... --id g2` | One comparison of two harnesses the campaign keeps, with no Builder session |
-| 5 | `bun tools/d2/settle.ts ... --session b-1` | The comparison's packet: up to ten of its rejected answers and three of its answers that passed, drawn uniformly by its id, blind to ruling and harness. Answered, the person's labels and the report once more; a pass's label changes no reading. Until it is answered the report says `unsettled`, and no promotion waits for it |
+| 5 | `bun tools/d2/settle.ts ... --session b-1` | The comparison's packet: every rejected answer ruled a check defect or unclear, or not ruled, and three rejections ruled earned and three answers that passed, drawn uniformly by its id, blind to ruling and harness. Answered, the person's labels and the report once more; a pass's label changes no reading. Until it is answered the report says `unsettled`, and no promotion waits for it |
 | 6 | `bun tools/d2/promote.ts --name <name> --harness <digest> --yes` | The operator's word that a kept harness is the reference harness from there on (`harness.promoted`). Without `--yes` it says what the log holds of that harness and records nothing. A harness the rule would not promote takes `--despite "<why>"` |
 | 6 | `bun tools/d2/import.ts --name <name> --harness <dir> [--note "<why>"]` | The operator's word that a harness built elsewhere, another campaign's handover or one written by hand, is one this campaign keeps (`harness.imported`): it is kept under its digest as a session keeps one, and `--parent`, `--reference` and `promote.ts` then name it. It is no session, so `latest` is unmoved |
 | 7 | `bun tools/d2/close.ts ... --to <dir>` | Nothing. It writes what the campaign hands over, outside the repository: the reference harness as a directory that stands by itself, the public rules, and the closing report |
@@ -565,8 +605,10 @@ operator admits the checks by name, which is rule 10's word: the command run aga
 
 **Its budget is one total.** Each move's cap is what is left of `--budget` once every billed
 dollar in the log is taken off, and the campaign ends on its budget where less is left than one
-solve is held at (`--reserve`), or than the next comparison would bill by what the last one did
-(`unafforded`, `src/builder/decide.ts`): a comparison the cap cuts tallies nothing.
+solve is held at (`--reserve`), or than the next comparison would bill by what the last one did,
+or where the last Examiner session and the comparison that read its tasks billed more than half
+of what is left, before another session (`unafforded`, `src/builder/decide.ts`; until 13 October
+that second reading was the no-room row's alone): a comparison the cap cuts tallies nothing.
 
 **It ends in one of eight ways**, and the log's last event says which (`campaign.ended`):
 `budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment`, `operator`,
@@ -774,7 +816,9 @@ and promotes nothing, and the step and its repeat read together clear the level 
 since 12 October: 6 to 0, 8 to 1, 10 to 2, 12 to 3; at 0.10, 4 to 0, 6 to 1, 7 to 2, 9 to 3), the
 repeat having untied a task and won at least as many pairs as it lost, neither stage losing on
 its retained tasks, and their untied tasks not all in one family of two
-or more (`readTwice`). Every reading prints its untied count, the least share of them it detects
+or more (`readTwice`). A task both stages scored counts once, its differences summed: the null is
+the fixed-task one, each drawn task as likely won as lost on fresh solves, and a repeat on the same
+tasks adds solves to them and no task (14 October; buffer-149's g-2 scored g-1's eleven). Every reading prints its untied count, the least share of them it detects
 four times in five (`detectable`), and the chance an attempt at its margins promotes equal
 harnesses (`falseRate`). A reading under the trigger counts for the
 stop rule as a move that showed a gain. Both terms are recorded in the campaign's opening, so a
@@ -820,7 +864,7 @@ every solve, some or none were valid), which tasks entered each of its two sets,
 with the comparison of the same two harnesses before it. The reference read against itself on
 halves of its own solves mirrored in time stands beside every comparison of four solves a side; it
 should read no step, and its tie share is the noise every comparison has to exceed, its flip rate
-how often two solves of a task disagree, and its drift its earlier solves against its later ones. The epoch's first is its control: read
+how often two solves of a task disagree. The epoch's first is its control: read
 two-sided at the comparison's level, since which half is which is arbitrary, a step there either
 way ends the campaign on its control, as its two sides are not interchangeable, and no comparison
 against that reference reads anything until the operator leaves the cause on record
@@ -847,17 +891,20 @@ once against one reference and read by the last comparison of the two, where tha
 tallied a task and left room; or a whole session that left its harness as it was where a
 practice solve of it failed, since a session whose every practice solve passed had nothing to
 work on. A repeat, a control, a comparison that scored nothing or left no room do not count.
+A pair whose last two readings the promotion rule passes showed a gain, and only the moves since
+the last promotion count (14 October), so patience never ends a campaign that has earned one.
 The next comparison or session is then refused, unless the operator gives a reason to go on
 (`--past-stop`). A task with no valid answer in two comparisons goes to a person as possibly
-infeasible, unless a valid answer for it stands anywhere on record, a solve's or the one the
-host saw its author's answer pass on the task under its own id, before or after the proposal
-(`task.feasible`), or a limit cut its solves (`poolOf`). Promotion is the operator's
+infeasible, unless a valid answer for it stands anywhere on record, a solve's, the one the
+host saw its author's answer pass on the task under its own id, before or after the proposal, or
+a stored pack's answer that passes today's checks at `prepare` (`task.feasible`; the answer
+itself is kept nowhere), or a limit cut its solves (`poolOf`). Promotion is the operator's
 `promote.ts --yes`, which writes `harness.promoted`. A comparison that names no `--reference` is
 made against the harness last promoted, and one that names a digest is made against that harness
 and promotes nothing.
 
 **What follows a reading** is move 7's to say (`decide`, `src/builder/decide.ts`), and the view
-prints it as its last line. The table is ten rows, asked in order (`ROWS`); the first that names
+prints it as its last line. The table is eleven rows, asked in order (`ROWS`); the first that names
 a move chose it, and the decision carries the row's code:
 
 1. `stop`: a stop the operator left ends the campaign.
@@ -868,36 +915,45 @@ a move chose it, and the decision carries the row's code:
    they held out a task or changed a harness, section 6), the stop rule, the epoch's first A/A
    read as a step with no cause on record, a comparison stopped on its check defects or cut by
    its cap.
-4. `tasks`: the tasks are not set up. A pack's are taken in, practice is released, tasks are
+4. `ladder`: a promotion owes each ladder its reading while the ladder holds a task, and one
+   reading of the ladder tasks no ladder holds yet, which fixes them as the next: the starter
+   against the new reference, on fresh solves, a comparison marked `ladder: true` and, on a ladder
+   already fixed, `frozen` with the id of the reading that fixed it (`ladderOwed`). The host makes it and no Builder is told of it; no other row,
+   the stop rule or the pool reads it, and it is the climb's curve alone (section 1, factor 1).
+5. `tasks`: the tasks are not set up. A pack's are taken in, practice is released, tasks are
    written where the campaign has none or the operator asked for others, and before the first
    comparison up to a comparison's target and the practice the release still draws from them.
    Until 13 October it held a repeat's tasks as well, and two campaigns examined towards 48 tasks
    for 16 hours and never compared.
-5. `unfinished`: a comparison that began and has not reported goes on, and a reading that cleared
+6. `unfinished`: a comparison that began and has not reported goes on, and a reading that cleared
    the trigger, which is one draw, is repeated on fresh solves. The repeat draws the held-out
    tasks the first stage did not score first (`scoredSet`, `src/builder/round.ts`): where the
-   campaign holds fewer than the target of them, one Examiner session writes more first, and the
-   repeat then runs on what is held.
-6. `twice`: a step and its repeat, read together, name the harness to promote (`unpromoted` says
+   campaign holds fewer than the target of them, the Examiner writes more first, and `compare`
+   refuses the repeat until they are held (14 October: buffer-149's g-2 scored 8 of g-1's 9
+   frontier tasks again). An Examiner session that holds out none counts towards the patience.
+7. `twice`: a step and its repeat, read together, name the harness to promote (`unpromoted` says
    why another is not).
-7. `no-room`: the last comparison the reference was in left it nothing to gain, whichever side it
+8. `no-room`: the last comparison the reference was in left it nothing to gain, whichever side it
    took: no task informative for it, or none either harness answered. The Examiner writes tasks
    it fails; there is no shorter budget to fall back to. After a promotion that reading is the
    comparison the harness was promoted on; the row is the same at every epoch, and nothing in the
-   table or in any seat's prompt is a promotion's own.
-8. `short`: the gate would refuse the next comparison for want of tasks (`refusals`,
+   table but the ladder's reading, which no seat is told of, is a promotion's own.
+9. `short`: the gate would refuse the next comparison for want of tasks (`refusals`,
    `src/builder/admission.ts`), or the pair's last comparison tallied none: the Examiner writes
    tasks first, since a changed harness can only tie again on tasks the reference closed.
-9. `unread`: something no comparison has read is compared. A promoted harness's programs alone
-   against it, the starter once against each later epoch's reference, a harness whose sessions
-   have run, and the tasks held out since the last reading. Where no session has left a harness
+10. `unread`: something no comparison has read is compared. The starter once against each later
+   epoch's reference where the campaign holds no ladder task (with one, the ladder's reading takes
+   its place; until 13 October a promoted harness's programs alone were read against it too, and
+   `programs-of:` stays a checkpoint name for an audit by hand), a harness whose sessions have
+   run, and the tasks held out since the last reading. Where no session has left a harness
    but the reference, those tasks are read by a **control** before a Builder session is paid for:
    the starter compared with the reference on them, which says whether they leave it room.
-10. `build`: otherwise the Builder builds.
+11. `build`: otherwise the Builder builds.
 
 Four holds are asked of the move a row named (`HOLDS`), and a decision a hold changed carries the
 hold's code: `risk` (a comparison past a quarter's chance of a false promotion this epoch waits
-for an A/A or a cause) and `afford` (one that what is left would not hold is not begun) end the
+for an A/A or a cause) and `afford` (a comparison, or an Examiner session with the comparison
+that would read its tasks, that what is left would not see reported is not begun) end the
 campaign; `practice` releases practice before a Builder session; `unshown` sends for tasks where
 the last session changed nothing and was shown no failed practice solve.
 
@@ -1149,12 +1205,12 @@ plan's open row (`docs/plan.md`, "Tuning", the row "Network in a solve").
 
 ### Runtime and commands
 
-Bun 1.4.2 only, as `package.json` pins it, for every task including one-off inspection. No Node,
+Bun 1.4.3 only, as `package.json` pins it, for every task including one-off inspection. No Node,
 npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABITS.md`, 12.8).
 
 | Command | What it does |
 | --- | --- |
-| `bun run typecheck` | `tsc --noEmit` over `src`, `tools`, `vendor` and `test` |
+| `bun run typecheck` | `bun check`, Bun's port of the TypeScript 7 checker, over `src`, `tools`, `vendor` and `test` |
 | `bun run lint` | Oxlint, type-aware, with the two repository plugins and the not-slop ledger applied. `-- --strict` makes plugin findings fail the run |
 | `bun run format` / `format:check` | Biome writes, or checks |
 | `bun run test -- <paths...>` | The suite through its wrapper. Never bare `bun test` |
@@ -1248,6 +1304,13 @@ before it merged. What it comes to:
   posts each verdict as the status `ana/commit`. `--merge` also waits for `ci.yml` on the top's
   head, posts `ana/stack-gate` on every head, and merges bottom-up, each pull request based on
   `main` just before its merge and pinned to its gated head.
+- **A restack makes the stack one chain again** (restack, linearize, quench, drain): each pull
+  request that left the chain is replayed onto the head beneath it, based there and added to the
+  native stack. Resolve conflicts hunk by hunk, never by taking one side's file whole (on 14 October
+  that dropped #156's other hunks), and push each moved branch through the gate with a lease.
+- **The native stack.** A base alone leaves a pull request outside GitHub's stack ("can be
+  stacked"). `gh api repos/{owner}/{repo}/stacks` lists them; POST there makes one; append above its
+  top, bottom-up: `gh api -X POST repos/{owner}/{repo}/stacks/<n>/add -F 'pull_requests[]=<pr>'`.
 
 A commit's subject is one imperative sentence that states the finished change: "Refuse a
 comparison on a checker nobody has read". Its body says what was wrong and what happens instead,

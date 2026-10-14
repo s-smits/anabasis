@@ -54,13 +54,15 @@ interface Compared {
 type Reported = Compared & { readonly report: JsonObject; readonly reported: number };
 
 /** Every comparison of a log that began, in the order they began; one whose start is on record
- *  twice stands where it last began. */
+ *  twice stands where it last began. The ladder's readings are no comparison of the table's
+ *  (`ladderOwed`, `decide.ts`). */
 export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
   const reports = new Map(lastReports(events).map((report) => [report.session, report]));
   const begun = new Map<string, Compared>();
   for (const [at, { kind, data }] of events.entries()) {
     const { session, old, fresh } = data;
     if (kind !== "comparison.started" || !isString(session) || !isString(old) || !isString(fresh)) continue;
+    if (data.ladder === true) continue;
     const last = reports.get(session);
     begun.set(session, {
       id: session,
@@ -87,9 +89,14 @@ export function crashedRun(events: readonly LogEvent[]) {
   const since = events.findLastIndex(
     ({ kind, data }) => kind === "campaign.ended" || (kind === "campaign.waited" && data.for === "provider"),
   );
+  // A session the host stopped says nothing of the provider, and is passed over: until 14 October
+  // a Builder halted as a third crash ended the campaign read as whole, the count went back to
+  // nought, and the command exited with no ending on record.
   const sessions = events
     .slice(since + 1)
-    .filter(({ kind }) => kind === "exam.finished" || kind === "build.finished")
+    .filter(
+      ({ kind, data }) => (kind === "exam.finished" || kind === "build.finished") && data.ended !== "stopped",
+    )
     .toReversed();
   // A session moved the campaign whatever its ending where an Examiner's held a task out: one that
   // did and then lost a turn to the provider is `crashed` with its tasks held (`exam.finished.held`

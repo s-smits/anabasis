@@ -1,10 +1,13 @@
 // The server's readings of a real log: held to the folds they pass through, to `bun run runs view`,
 // and to the wall between the two tiers (the brief of 11 October, sections 7 and 8).
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { epochsOf } from "../../../src/builder/climb.ts";
 import { reported, toLabel } from "../../../src/builder/comparison.ts";
+import { RISK } from "../../../src/builder/decide.ts";
 import { campaignOf } from "../../../src/builder/handover.ts";
 import { pairings } from "../../../src/kernel/compare.ts";
 import { LOG_FILE, read } from "../../../src/kernel/log.ts";
+import { billedAll, billedParts, lastReports } from "../../../src/kernel/reports.ts";
 import {
   appendFileSync,
   cpSync,
@@ -203,12 +206,26 @@ describe("a campaign's reading", () => {
       [c, "r-3", false, true],
       [starter, "b-4", true, false],
     ]);
+    const { e } = fixture.harnesses;
     expect(reading.harnesses.map(({ digest, reference, latest }) => [digest, reference, latest])).toEqual([
       [starter, true, false],
       [a, false, false],
       [b, false, false],
       [c, false, false],
-      [d, false, true],
+      [d, false, false],
+      [e, false, true],
+    ]);
+    // The harness b-5's conversation froze for a comparison has a card of its own, from b-5's
+    // parent, and is the latest, as the campaign's fold reads it.
+    expect(reading.harnesses.at(-1)).toMatchObject({ session: "b-5", parent: b, broken: null });
+    // Each harness is named by the letter the log gives it, the Starter A by role.
+    expect([starter, a, b, c, d, e].map((digest) => reading.names[digest])).toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
     ]);
     // Each card's comparisons are the ones that measured it, each by its own move's place.
     for (const card of reading.harnesses) {
@@ -358,6 +375,39 @@ describe("what a comparison came to", () => {
     );
     expect(reading.counters.labels).toEqual({ tasks: reading.supply.awaiting, rejections: unsettled.length });
     expect([reading.counters.labels.tasks, reading.counters.labels.rejections]).toEqual([1, 2]);
+  });
+});
+
+describe("the risk and the runway beside the counters", () => {
+  test("carry the false-promotion bound of the attempts under the reference as the table's hold reads it", async () => {
+    const { answer: reading } = await ask("campaign", { key: KEY }, "default");
+    const risk = epochsOf(read(fixture.log)).at(-1)?.falsePromotion;
+    expect(reading.counters.risk).toEqual({
+      attempts: risk?.attempts ?? -1,
+      union: risk?.union ?? -1,
+      bound: risk?.bound ?? -1,
+      pairs: risk?.pairs ?? -1,
+      errors: risk?.errors ?? -1,
+      indicative: risk?.indicative ?? false,
+      hold: RISK,
+    });
+  });
+
+  test("price the next comparison by the last one the cap did not cut, against what is left of the total", async () => {
+    const { answer: reading } = await ask("campaign", { key: KEY }, "default");
+    const events = read(fixture.log);
+    const last = lastReports(events).findLast(({ data }) => data.capped !== true);
+    expect(reading.counters.runway).toEqual({
+      left: 40 - billedAll(events),
+      each: billedParts(events, last?.session ?? "").comparison,
+      comparison: last?.session ?? "",
+    });
+    const { answer: early } = await ask(
+      "campaign",
+      { key: `${KEY.split("/")[0] ?? ""}/${fixture.early}` },
+      "default",
+    );
+    expect(early.counters.runway).toBeNull();
   });
 });
 

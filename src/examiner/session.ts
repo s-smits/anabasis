@@ -1,13 +1,14 @@
 /**
- * The Examiner's one session, in its three modes: it drafts an exam (`draft.ts`), it writes tasks
- * (`write.ts`), or it repairs a check (`repair.ts`).
+ * The Examiner's one session, in its two modes: it drafts an exam (`draft.ts`), or it writes tasks
+ * (`write.ts`). Until 13 October a third mode repaired a check; no campaign opened one, and no seat
+ * repairs a check (`AGENTS.md` rule 2). A log of before keeps its `repair.*` events.
  *
  * A mode is what a session is told, the tools it works with and when its work is done (`Mode`);
  * everything else is one loop (`sit`): the id it claims, its start event, its wall, its `finish`,
  * its shell where it has one (`shell.ts`), the turns and calls in the log under the mode's kind,
  * and its end event with what it billed. A turn of its own the provider failed ends it crashed,
- * with what the provider said. Two modes put one whole thing to the host's reading until one
- * stands (`putting`): a draft and a repair. The third proposes many.
+ * with what the provider said. A drafting session puts one whole draft to the host's reading until
+ * one stands (`putting`); a writing session proposes many tasks.
  *
  * What the Examiner is never given, in any mode: a harness, a solver's trace or answer. Its
  * shell, where it has one, is a walled home of its own, closed to the repository.
@@ -31,18 +32,19 @@ import {
 import { type Static, type TSchema, Type } from "typebox";
 import { reportedCost } from "../backends/claude.ts";
 import { openingOf } from "../builder/opening.ts";
+import { endingWith } from "../builder/tools.ts";
 import { append, read } from "../kernel/log.ts";
 import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
 import { billedAll } from "../kernel/reports.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { text, tool } from "../solve/answer.ts";
 import { failedTurn, loopCompaction, traceSink } from "../solve/run.ts";
 import { hostScratch } from "../verify/wall-policy.ts";
 import { drafting } from "./draft.ts";
-import { type Repair, repairing } from "./repair.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
 import { writing } from "./write.ts";
 
@@ -57,7 +59,7 @@ interface Sitting {
     readonly wallSeconds: number;
     /** The model's turns, each reply one, with or without a tool call. */
     readonly turns: number;
-    /** What the session may put to the host: drafts, repairs, or instances to the gate. */
+    /** What the session may put to the host: drafts, or instances to the gate. */
     readonly puts: number;
   };
   /** The backends, built on the home the Examiner's model process keeps its state in. */
@@ -72,23 +74,20 @@ interface Sitting {
 /** What a session of each mode is handed beside who sits, as the mode's own file takes it. */
 type DraftTerms = { readonly mode: "draft" } & Omit<Parameters<typeof drafting>[0], keyof Sitting>;
 type WriteTerms = { readonly mode: "write" } & Omit<Parameters<typeof writing>[0], keyof Sitting>;
-type RepairTerms = { readonly mode: "repair" } & Omit<Parameters<typeof repairing>[0], keyof Sitting>;
 
 /** One Examiner session: who sits, and what its mode hands it. */
-export type ExamRequest = Sitting & (DraftTerms | WriteTerms | RepairTerms);
+export type ExamRequest = Sitting & (DraftTerms | WriteTerms);
 
 export interface Examined {
-  /** How the session ended: with a draft or a repair that stands, by `finish`, with the tasks the
-   *  host asked for, at a limit, or otherwise. */
+  /** How the session ended: with a draft that stands, by `finish`, with the tasks the host asked
+   *  for, at a limit, or otherwise. */
   readonly ended: (typeof ENDINGS)[number] | "stopped";
-  /** The drafts or repairs it put to the host, or the instances it put to the gate. */
+  /** The drafts it put to the host, or the instances it put to the gate. */
   readonly puts: number;
   /** The versions of the tasks it held out, in the order it proposed them; none but in writing. */
   readonly held: readonly string[];
   /** The versions of the instances the gate refused. */
   readonly refused: readonly string[];
-  /** The repair that stood; null in any other mode, and where none did. */
-  readonly repair: Repair | null;
 }
 
 /** A session of one mode as a caller may stand in for it: `examine`, or a script with no model. */
@@ -100,8 +99,8 @@ export type Session<M extends ExamRequest["mode"]> = (
 /** What a mode is: what a session of it is told, what it works with, and when its work is done.
  *  The loop reads nothing else of the mode (`sit`). */
 interface Mode {
-  /** The log's kind for the session's events: `exam.*`, `draft.*` or `repair.*`. */
-  readonly kind: "exam" | "draft" | "repair";
+  /** The log's kind for the session's events: `exam.*` or `draft.*`. */
+  readonly kind: "exam" | "draft";
   readonly system: string;
   readonly opening: string;
   /** What its start event holds beside the session, the model and the effort: its limits under
@@ -128,12 +127,13 @@ interface Mode {
   readonly result: () => Omit<Examined, "ended">;
   /** What is laid in the shell's home before the session, and what is kept of it after. */
   readonly enter: ((home: string) => void) | undefined;
-  readonly leave: ((home: string, ended: Examined["ended"]) => void) | undefined;
+  /** `running` is how many of its commands were running as the session ended. */
+  readonly leave: ((home: string, ended: Examined["ended"], running: number) => void) | undefined;
 }
 
 /** What one kind of session that puts a whole thing is told and puts (`putting`). */
 interface Put<Parameters extends TSchema, Thing> {
-  readonly kind: "draft" | "repair";
+  readonly kind: "draft";
   readonly system: string;
   /** Its opening message, before the sentence that tells its limits. */
   readonly opening: string;
@@ -155,8 +155,6 @@ interface Put<Parameters extends TSchema, Thing> {
   readonly home?: string;
   readonly checked?: string;
   readonly enter?: (home: string) => void;
-  /** The repair that stood, for the caller; null for a draft, which the log holds. */
-  readonly handed: () => Repair | null;
 }
 
 /** What `finish` leaves the loop: the note, and whether a first `finish` was declined. */
@@ -217,7 +215,7 @@ function putting<Parameters extends TSchema, Thing>({ limits }: Sitting, of: Put
     declined: null,
     done: () => (desk.stands ? "stands" : null),
     counted: () => ({ ...desk }),
-    result: () => ({ puts: desk.tries, held: [], refused: [], repair: of.handed() }),
+    result: () => ({ puts: desk.tries, held: [], refused: [] }),
     enter: of.enter,
     leave: undefined,
   };
@@ -289,7 +287,17 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     },
   });
   const shell = await examinerShell(walls?.shell, mode.enters, mode.home, mode.checked);
-  const tools = [...mode.tools, ...shell, finish];
+  // The model's turns so far, each pushed once its tool results are in (`finishTurn`).
+  const turns: AssistantMessage[] = [];
+  // The ids of the current turn's calls. The result of its last says what the session has used, once
+  // a turn: the limits were told at the opening alone, and on the six logs read on 14 October two of
+  // eleven sessions were cut at their wall while still proposing, one in a command of 207 s.
+  let calls: string[] = [];
+  const used = (call: string) =>
+    call === calls.at(-1)
+      ? `Turn ${String(turns.length + 1)} of ${String(limits.turns)}; ${String(Math.floor((performance.now() - began) / 60_000))} of ${plural(Math.round(limits.wallSeconds / 60), "minute")} used.`
+      : "";
+  const tools = [...[...mode.tools, ...shell].map((each) => endingWith(each, used)), finish];
   // The wall runs from the seat's start (`began`), so the mount, the wall's own probe and the
   // shell's network probe, awaited above, are inside the session's limit.
   const wall = new AbortController();
@@ -302,7 +310,6 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   const [done, spent] = [new AbortController(), new AbortController()];
   const kill = request.kill ? [request.kill] : [];
   const signal = AbortSignal.any([wall.signal, done.signal, spent.signal, ...kill]);
-  const turns: AssistantMessage[] = [];
   const summaries: Usage[] = [];
   const user = (content: string): AgentMessage => ({ role: "user", content, timestamp: Date.now() });
   const system = createInitialSystemMessage(mode.system, tools.map(toToolDeclaration));
@@ -312,6 +319,10 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
   // Claude Code keeps its session here, the checks and hidden values it wrote or read included.
   const state = hostScratch("claude-cli-examiner-");
   let crash: string | null = null;
+  // The commands running as the session ends: a crash in a model request leaves the home as its
+  // last command left it, and one in a command does not (`leave`).
+  let running = 0;
+  const trace = traceSink(log, kind, id, () => turns.length);
   try {
     const models = request.models(state);
     const stream: StreamFn = (asked, context, options) => models.streamSimple(asked, context, options);
@@ -332,7 +343,16 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
           over() ? [] : [user(`You have not called finish. ${mode.nudge}, or call finish.`)],
         prepareRequest: withinBudget(log, spent, loopCompaction(log, kind, id, stream, summaries)),
       },
-      traceSink(log, kind, id, () => turns.length),
+      (event) => {
+        if (event.type === "message_end" && event.message.role === "assistant") {
+          calls = event.message.content.flatMap((part) =>
+            part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
+          );
+        }
+        if (event.type === "tool_execution_start") running += 1;
+        if (event.type === "tool_execution_end") running -= 1;
+        trace(event);
+      },
       signal,
       stream,
     );
@@ -363,13 +383,14 @@ async function sit(request: Sitting, mode: Mode, walls: Walls | undefined): Prom
     note: said.note,
     ...mode.counted(),
     crash,
+    ...keyIfDefined("running", ended === "crashed" ? running : undefined),
     turns: turns.length,
     tokens: { ...tokens },
     ...dollars(freezePrices([model]), priceKey(model), tokens),
     reportedCost: await reportedCost(id, turns),
     seconds: (performance.now() - began) / 1000,
   });
-  if (home !== undefined) mode.leave?.(home, ended);
+  if (home !== undefined) mode.leave?.(home, ended, running);
   return { ended, ...mode.result() };
 }
 
@@ -388,8 +409,6 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
         return sit(request, putting(request, drafting(request)), walls);
       case "write":
         return sit(request, writing(request, pinned, wall?.keep), walls);
-      case "repair":
-        return sit(request, putting(request, repairing(request, pinned)), walls);
     }
   };
   if (wall === undefined) return await seated(undefined);

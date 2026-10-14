@@ -7,7 +7,10 @@
  * what `tools/d2/promote.ts` showed and recorded. Its divider stands after the last comparison that
  * began before it, in the chart's order (`barsIn`), so that a comparison cut before its report
  * stands on the side of the divider it ran on. A harness version is one a Builder session left
- * (`campaignOf`) or one the operator imported; its practice record is its practice solves
+ * (`campaignOf`), one its conversation froze for a comparison (`build.checkpoint`), or one the
+ * operator imported. Until 14 October the strip left the frozen ones out, so a harness compared
+ * twice and promoted inside one conversation had no card, and the cards' captions named it by a
+ * digest no card held; its practice record is its practice solves
  * (`practiceRan`); its comparisons are the bars it was the new harness of.
  */
 import { billedAll, comparedAs } from "../../../../src/kernel/reports.ts";
@@ -25,6 +28,8 @@ interface Kept {
   readonly at: string | null;
   readonly index: number;
   readonly imported: boolean;
+  /** Frozen by its session's conversation for a comparison, before the session ended. */
+  readonly frozen: boolean;
 }
 
 /** Every promotion, oldest first: a divider between the bars. */
@@ -52,10 +57,12 @@ export const promotionsIn = once((log): Promotion[] => {
 });
 
 /** The harnesses kept, in the order kept, each once. Derived: a Builder session's from its
- *  handover; an imported one from `harness.imported`, which no fold reads. */
+ *  handover; a frozen one from `build.checkpoint` and an imported one from `harness.imported`,
+ *  which no fold reads. */
 function keptIn(log: Log): Kept[] {
   const { events } = log;
-  const built = movesIn(log).flatMap((move): Kept[] =>
+  const sessions = movesIn(log).filter((move) => move.step === "builder");
+  const built = sessions.flatMap((move): Kept[] =>
     move.step === "builder" && move.changed && move.harness !== null
       ? [
           {
@@ -65,17 +72,25 @@ function keptIn(log: Log): Kept[] {
             at: move.endedAt,
             index: endOf(log, move),
             imported: false,
+            frozen: false,
           },
         ]
       : [],
   );
   const imported = events.flatMap(({ kind, data, at }, index): Kept[] =>
     kind === "harness.imported" && isString(data.harness)
-      ? [{ digest: data.harness, parent: null, session: null, at, index, imported: true }]
+      ? [{ digest: data.harness, parent: null, session: null, at, index, imported: true, frozen: false }]
       : [],
   );
+  const frozen = events.flatMap(({ kind, data, at }, index): Kept[] => {
+    if (kind !== "build.checkpoint" || !isString(data.harness) || !isString(data.session)) return [];
+    const parent = sessions.find((move) => move.id === data.session)?.parent ?? null;
+    return [
+      { digest: data.harness, parent, session: data.session, at, index, imported: false, frozen: true },
+    ];
+  });
   const first = new Map<string, Kept>();
-  for (const each of [...built, ...imported].toSorted((one, other) => one.index - other.index)) {
+  for (const each of [...built, ...frozen, ...imported].toSorted((one, other) => one.index - other.index)) {
     if (!first.has(each.digest)) first.set(each.digest, each);
   }
   return [...first.values()];
@@ -93,7 +108,10 @@ export const harnessesIn = once((log): HarnessCard[] => {
     const practised = ranIn(log).filter(
       (solve) => practice.has(solve.id) && solve.under.harness === digest && passed(solve) !== null,
     );
-    const broken = kept?.session == null ? undefined : builds.find((build) => build.session === kept.session);
+    const broken =
+      kept?.session == null || kept.frozen
+        ? undefined
+        : builds.find((build) => build.session === kept.session);
     return {
       digest,
       parent: kept?.parent ?? null,

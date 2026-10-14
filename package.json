@@ -8,12 +8,12 @@
     "#tools/*": "./tools/*",
     "#skills/*": "./.claude/skills/*"
   },
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.3",
   "engines": {
-    "bun": "1.4.2"
+    "bun": "1.4.3"
   },
   "scripts": {
-    "typecheck": "bun node_modules/typescript/bin/tsc --noEmit",
+    "typecheck": "bun check",
     "test": "bun tools/runtime/test-suite.ts",
     "lint": "bun tools/runtime/lint.ts",
     "simplify": "bun tools/oxlint/simplify-census.ts",
@@ -44,7 +44,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.13",
     "@oxlint/plugins": "1.83.0",
-    "@types/bun": "1.4.2",
+    "@types/bun": "1.4.3",
     "@types/cross-spawn": "^6.0.6",
     "oxlint": "1.83.0",
     "oxlint-tsgolint": "7.0.2001",

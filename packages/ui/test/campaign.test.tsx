@@ -51,6 +51,11 @@ test("the main campaign renders its line, three readouts, the chart's key, every
   expect(html).toContain("Builder session");
   expect(html).toContain("3 promotions, the last back to the starter");
   expect(html.match(/class="ana-harness-select"/g)?.length).toBe(reading.harnesses.length);
+  // Each card is named by the log's letter with its digest beneath, the starter as the Starter A.
+  const faces = html.match(/<span class="ana-harness-hash">/g)?.length;
+  expect(faces).toBe(reading.harnesses.length);
+  expect(html).toContain("Starter A");
+  expect(html).not.toMatch(/>starter</i);
   // The latest harness is selected where the route names none, and its detail stands under the row.
   expect(html.match(/aria-current="true"/g)?.length).toBe(1);
   expect(html).toContain("Compare with previous");
@@ -70,6 +75,30 @@ test("the main campaign renders its line, three readouts, the chart's key, every
   );
   // v1's two words name nothing a reader sees; the kept chart container's class name is markup.
   expect(html.replaceAll(/<[^>]*>/g, " ")).not.toMatch(/epoch|climb/i);
+});
+
+test("the counters say what the attempts under the reference risk, what a promotion billed and how many comparisons are left", () => {
+  const reading = readingOf(fixture.units);
+  const { risk, runway } = reading.counters;
+  const html = paneOf(reading);
+  expect(html).toContain(
+    `False promotion under this reference at most <b class="ana-num">${String(Math.round(100 * (risk?.union ?? 0) * 10) / 10)}%</b> over ${String(risk?.attempts)} attempts`,
+  );
+  expect(html.includes("past the table&#x27;s")).toBe(false);
+  const affords = Math.floor((runway?.left ?? 0) / (runway?.each ?? 1));
+  expect(html).toContain(
+    `Comparisons left at the last one&#x27;s price <b class="ana-num">${String(affords)}</b>`,
+  );
+  const each = reading.promotions.length === 0 ? null : reading.row.billed / reading.promotions.length;
+  expect(html.includes("Billed a promotion")).toBe(each !== null);
+  // Past the hold, the counter says so; with no total to price against, it says nothing.
+  const risky: CampaignReading = {
+    ...reading,
+    counters: { ...reading.counters, risk: risk === null ? null : { ...risk, union: 0.4 }, runway: null },
+  };
+  const held = paneOf(risky);
+  expect(held).toContain("over 2 attempts, past the table&#x27;s 25%");
+  expect(held.includes("Comparisons left")).toBe(false);
 });
 
 test("the harness strip keeps every card closed in one row and shows the selected one's detail under it", () => {
@@ -138,10 +167,10 @@ test("an attended campaign says so in its set-up, and that a promotion the table
 test("the set-up names the bars a promotion is read against, and the next move the row of the table that chose it", () => {
   const reading = readingOf(fixture.name);
   // No opening of the fixture sets a bar, so each stands at its default.
-  expect(reading.bars).toEqual({ effect: 0.25, transfer: 0.15, cost: 3 });
+  expect(reading.bars).toEqual({ cost: 3 });
   const html = paneOf(reading);
   expect(html).toContain("<dt>bars</dt>");
-  expect(html).toContain("effect 25 points · transfer within 15 points · cost 3 attempts, gating nothing");
+  expect(html).toContain("cost 3 attempts, gating nothing");
   const promote = {
     move: "promote",
     why: "a step read twice",

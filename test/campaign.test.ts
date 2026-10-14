@@ -49,6 +49,9 @@ const SERVED = "claude/claude-opus-5-5";
 const RECORDED = `${NAME}-recorded`;
 /** A campaign opened and given a harness before it keeps any. */
 const FRESH = `${NAME}-fresh`;
+/** Campaigns whose checks pass, and reject, the stored sweep's accepted answer. */
+const PROVEN = `${NAME}-proven`;
+const UNPROVEN = `${NAME}-unproven`;
 const ASKED = { level: 0.02, trigger: 0.25, patience: PATIENCE };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
@@ -63,7 +66,7 @@ setDefaultTimeout(60_000);
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  for (const name of [NAME, EARLIER, RECORDED, FRESH]) {
+  for (const name of [NAME, EARLIER, RECORDED, FRESH, PROVEN, UNPROVEN]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   }
 });
@@ -894,5 +897,46 @@ describe("a campaign", () => {
     expect(rest).toContain("the log holds no held-out task to score");
     expect(rest).not.toContain(refusal);
     expect(read(campaign.log).some(({ kind }) => kind === "campaign.setting")).toBe(false);
+  });
+  // Plan item 5.3 (14 October): a pack's stored accepted answer said nothing of a task's
+  // feasibility, so a task only a stored solve had answered could go to a person as infeasible.
+  it("logs a held-out task feasible where a stored accepted answer passes today's checks, and no other", async () => {
+    const work = join(root, "runs", "s", "c01", "t-1", "work");
+    mkdirSync(work, { recursive: true });
+    writeFileSync(join(work, "answer.json"), JSON.stringify({ answer: "12" }));
+    const preparedUnder = async (name: string, check: string) => {
+      const under = join(root, `bundle-${name}`);
+      cpSync(bundle, under, { recursive: true });
+      writeFileSync(
+        join(under, "correctness-model", "evaluator.ts"),
+        `export const checks = { "check-product": ${check} };\n`,
+      );
+      const args = { ...ARGS, bundle: under, name };
+      const flags = Object.entries({ ...args, practice: "0" }).flatMap(([flag, value]) => [
+        `--${flag}`,
+        value,
+      ]);
+      const said = () => {
+        const ran = Bun.spawnSync({ cmd: [capturedExecPath, "tools/d2/prepare.ts", ...flags], cwd: REPO });
+        return `${ran.stdout.toString()}${ran.stderr.toString()}`;
+      };
+      const campaign = await openCampaign(args);
+      const first = said();
+      return { first, again: said(), campaign };
+    };
+    const right = "(req) => req.artifact.answer === String(req.publicTask.publicInput.base * 6)";
+    const passed = await preparedUnder(PROVEN, right);
+    const [version = ""] = TASKS.slice(0, 1).map((task) => taskVersion(passed.campaign.pack(task)));
+    expect(passed.first).toContain(
+      "t-1: a stored accepted answer passes today's verifier, so a valid answer to it is on record",
+    );
+    // Once on record it is not rechecked.
+    expect(passed.again).not.toContain("t-1:");
+    const feasible = read(passed.campaign.log).filter(({ kind }) => kind === "task.feasible");
+    expect(feasible.map(({ data }) => data)).toEqual([{ version, sweep: "s" }]);
+    // A recheck the checks reject establishes nothing, and says nothing.
+    const rejected = await preparedUnder(UNPROVEN, "() => false");
+    expect(rejected.first).not.toContain("t-1:");
+    expect(read(rejected.campaign.log).filter(({ kind }) => kind === "task.feasible")).toEqual([]);
   });
 });

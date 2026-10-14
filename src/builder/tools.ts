@@ -562,6 +562,8 @@ export function traceTool(bench: Bench): AgentTool {
  * A Builder that leads its campaign is also told that no comparison has read the harness it would
  * leave, since its finish ends the campaign's run: on 13 October buffer-151-haiku's Builder
  * finished while an Examiner session wrote, and the campaign ended `finished` with no comparison.
+ * One that would finish on the harness last promoted is told the move the table names next, since on
+ * 14 October buffer-149's Builder finished on the harness just promoted and the climb stopped there.
  */
 async function standing(bench: Bench, unmeasured?: Unmeasured): Promise<string | null> {
   const { request, told } = bench;

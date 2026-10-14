@@ -154,7 +154,7 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
     finish:
-      "End this campaign's Builder conversation and freeze harness/. Say what changed and what remains unmeasured. A notice about an untried or broken harness can be acknowledged by calling finish again.",
+      "End this campaign's Builder conversation and freeze harness/. Say what changed and what remains unmeasured. A notice from finish can be acknowledged by calling finish again.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",

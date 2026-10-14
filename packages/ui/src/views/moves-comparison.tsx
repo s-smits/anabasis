@@ -46,7 +46,8 @@ function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
   return RULING_KINDS.map((kind) => `${String(rulings.kinds[kind])} ${rulingLabel(kind)}`).join(" · ");
 }
 
-/** A solve as a chip in a scored task's row: its ending in words, opened on a click. */
+/** A solve as a chip in a scored task's row: its ending in words, opened on a click. The ending
+ *  alone would give every chip of a table one of four names, so each is named for its solve too. */
 function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: string) => void }) {
   if (rows.length === 0) return <span className="ana-faint">no solve</span>;
   return (
@@ -59,6 +60,7 @@ function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: 
             type="button"
             className={`ana-solve-chip ana-solve-chip--${tone}`}
             data-row={row.id}
+            aria-label={`${label}, solve ${row.id}`}
             title={`Open solve ${row.id}`}
             onClick={() => onOpen(row.id)}
           >

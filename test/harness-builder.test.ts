@@ -541,9 +541,11 @@ describe("a campaign run by its log", () => {
     rmSync(file);
     await settleCommand([...pack, "--session", "g-1"]);
     expect(Object.keys(packet().passes)).toEqual(drawn);
-    // Blind: a packet holds the rules and the answer, and names no harness and no ruling.
+    // Blind: a packet holds the whole public contract and the answer, and names no harness and no ruling.
     const opened = readFileSync(join(folder, `${drawn[0]}.json`), "utf8");
-    expect(opened).toContain('"rules"');
+    expect(Object.keys(parseJsonAs<{ contract: JsonObject }>(opened).contract)).toEqual(
+      expect.arrayContaining(["scope", "conventions", "rules", "answerFormat"]),
+    );
     expect(opened).not.toContain(first?.fresh ?? "");
     const [a = "", b = "", c = ""] = drawn;
     const answer = (labels: JsonObject) =>

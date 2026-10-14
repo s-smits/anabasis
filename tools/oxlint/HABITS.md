@@ -224,6 +224,11 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   process lifetime beside `stageCommandIsolation` (`src/verify/solve-command-isolation.ts`).
   Signal through `killProcessGroup` or `terminateAndReapProcessGroupId`
   (`src/meta/subprocess.ts`). Tests are exempt.
+- `no-react-effect`: no `useEffect`, `useLayoutEffect` or `useInsertionEffect`, in a component
+  or a hook. Derive during render, reset with `key`, act in the handler, use a callback ref, hold
+  an external system as a store read through `useSyncExternalStore`, or act once as a keyed
+  component mounts through `useMountEffect`, whose file (`packages/ui/src/mount.ts`) is the one
+  owner. Tests are exempt.
 - `no-inline-slop-answer`: no disable comment for a plugin rule. Use the ledger.
 - `no-hand-spelled-git`, `no-hand-spelled-tree-root` [fix], `no-hand-read-argv`: see 12.8.
 

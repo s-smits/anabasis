@@ -387,7 +387,7 @@ export function ComparisonDetailView({
                     <td>
                       <SolveChips rows={task.fresh} onOpen={openSolve} />
                     </td>
-                    <td>
+                    <td className="ana-rulings-cell">
                       <RulingsCell
                         rows={[...task.old, ...task.fresh]}
                         tier={detail.tier}

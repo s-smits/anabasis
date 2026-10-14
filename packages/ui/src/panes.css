@@ -217,6 +217,12 @@
   white-space: nowrap;
 }
 
+/* A scored task's rulings, a sentence where they are withheld: the table squeezed the last column
+   to a word a line at a phone's width, and scrolls sideways instead. */
+.ana-rulings-cell {
+  min-width: 220px;
+}
+
 /* A promotion between two moves: the reference changes there. */
 .ana-table tr.ana-move-divider > td {
   background: rgb(255 255 255 / 2%);

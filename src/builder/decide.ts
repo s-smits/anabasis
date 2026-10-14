@@ -28,6 +28,7 @@ import { taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
+import { TRIED } from "../examiner/record.ts";
 import { plural } from "../meta/text.ts";
 import { epochsOf } from "./climb.ts";
 import { crashedRun, groundOf, type Plan } from "./ground.ts";
@@ -731,8 +732,8 @@ function risked({ events, reports }: Ground, named: Move): Move | null {
  * reported. An Examiner session is a round with the comparison that reads its tasks, and a step
  * read on them is bought again by its repeat: where the last session and that comparison billed
  * more than half of what is left, another round could not be read. Where no comparison has
- * reported, nothing says what one bills, and the move is made; one that began goes on under
- * whatever is left.
+ * reported, the first is priced by the reference harness's solves of draft tasks (`firstPriced`),
+ * and with none of those the move is made; one that began goes on under whatever is left.
  */
 function unafforded(ground: Ground, named: Move): Move | null {
   const { events, plan, reports } = ground;
@@ -771,15 +772,20 @@ function unafforded(ground: Ground, named: Move): Move | null {
 /** What a first comparison would bill, priced by the reference harness's solves of draft tasks
  *  (`try_task`): two harnesses, the tasks it would score, the solves a side. Until 14 October a
  *  campaign with no report was held to nothing, and buffer-149's gate billed about $0.43 a solve.
- *  Null where no draft was solved. */
+ *  A gate's `billed` is its `TRIED` solves', the non-results among them included, while its
+ *  `solves` counts the readings, so the price is a solve started and not a reading: over readings
+ *  alone a gate with a non-result priced the comparison high. Null where no draft was solved. */
 function firstPriced({ events, plan }: Ground): { dollars: number; said: string } | null {
   const tried = events.flatMap(({ kind, data }) => {
     const reference = asRecord(data.reference);
-    return kind === "task.gate" && isNumber(reference?.billed) && isNumber(reference.solves)
-      ? [{ billed: reference.billed, solves: reference.solves }]
+    return kind === "task.gate" &&
+      isNumber(reference?.billed) &&
+      isNumber(reference.solves) &&
+      reference.solves > 0
+      ? [{ billed: reference.billed }]
       : [];
   });
-  const solves = tried.reduce((sum, { solves: each }) => sum + each, 0);
+  const solves = tried.length * TRIED;
   if (solves === 0) return null;
   const each = tried.reduce((sum, { billed }) => sum + billed, 0) / solves;
   const scored = Math.min(plan.wanted.target, taskSets(events).held.length);

@@ -10,7 +10,11 @@ import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import { mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { waitCrashed, waitOut } from "../tools/d2/host.ts";
+import { gated, waitCrashed, waitOut } from "../tools/d2/host.ts";
+import type { Campaign, Seats } from "../tools/d2/round.ts";
+import type { Kept } from "../tools/d2/campaign.ts";
+import type { TaskPackage } from "../src/kernel/task.ts";
+import { EXAMPLE } from "./helpers/examiner-seat.ts";
 
 // 12 October, 12:09Z: 14:09 in Amsterdam.
 const NOW = new Date("2026-10-12T12:09:00Z");
@@ -82,6 +86,8 @@ describe("the wait after a session the network failed", () => {
       append(log, "exam.finished", { session, ended: "crashed", crash: said, held: [] });
     crash("x-1", "getaddrinfo ENOTFOUND api.example.test");
     await waitCrashed(log, sleep);
+    // Asked again before another session ends, as every later move asks: one wait a crash.
+    await waitCrashed(log, sleep);
     crash("x-2", "read ECONNRESET");
     await waitCrashed(log, sleep);
     // The third ends the campaign on its environment, and is not waited for.
@@ -89,11 +95,21 @@ describe("the wait after a session the network failed", () => {
     await waitCrashed(log, sleep);
     expect(slept).toEqual([60_000, 300_000]);
     expect(crashedRun(read(log)).count).toBe(3);
+    expect(
+      read(log).filter(({ kind, data }) => kind === "campaign.waited" && data.for === "network"),
+    ).toHaveLength(2);
+    // Linux's temporary DNS failure and a refused connection are the network's too.
+    for (const said of ["getaddrinfo EAI_AGAIN api.example.test", "ConnectionRefused: Unable to connect"]) {
+      const once = join(mkdtempSync(join(tmpdir(), "ana-host-network-")), "campaign.jsonl");
+      append(once, "exam.finished", { session: "x-1", ended: "crashed", crash: said, held: [] });
+      await waitCrashed(once, sleep);
+    }
+    expect(slept).toEqual([60_000, 300_000, 60_000, 60_000]);
     // A crash that is no network's and names no reset is not waited for.
     const other = join(mkdtempSync(join(tmpdir(), "ana-host-network-")), "campaign.jsonl");
     append(other, "exam.finished", { session: "x-1", ended: "crashed", crash: "exited 1", held: [] });
     await waitCrashed(other, sleep);
-    expect(slept).toHaveLength(2);
+    expect(slept).toHaveLength(4);
   });
 });
 
@@ -111,5 +127,41 @@ describe("the campaign's reserve", () => {
       expect(affords(log, 1)).toBe(true);
     });
     expect(affords(log, 2)).toBe(true);
+  });
+
+  it("holds a gated solve while another is in flight and the reserve is short, and a kill ends the wait", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), "ana-host-reserve-")), "campaign.jsonl");
+    append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
+    const ran: string[] = [];
+    const seat: Seats = {
+      builder: null,
+      setting: "s",
+      solve: async (task) => {
+        ran.push(task.taskId);
+        return { solve: "s-1", ending: { outcome: "pass" } };
+      },
+    };
+    const seated = gated(
+      { seated: () => seat, loaded: true, host: { load: () => 0, cores: 1, waitMs: 1 } },
+      log,
+    );
+    const task: TaskPackage = { ...EXAMPLE, ruleIds: [], checks: "" };
+    const harness: Kept = { dir: "", digest: "h1" };
+    const kill = new AbortController();
+    // SAFETY: the gate hands the campaign to the seat it wraps and reads nothing of it, and the
+    // seat above reads none of its arguments, so an empty one stands in.
+    const gate = seated({} as Campaign, { builder: undefined, reference: "h1" });
+    // One solve in flight leaves no reserve for a second, which waits until the kill: the solve
+    // then starts and ends on the kill as any solve does, and the wait wrote no event.
+    const since = Date.now();
+    await flying(log, async () => {
+      setTimeout(() => kill.abort(), 20);
+      await gate.solve(task, harness, kill.signal);
+    });
+    expect(Date.now() - since).toBeGreaterThanOrEqual(15);
+    expect(read(log).filter(({ kind }) => kind === "campaign.waited")).toHaveLength(0);
+    // With nothing in flight the solve starts at once.
+    await gate.solve(task, harness, kill.signal);
+    expect(ran).toEqual([EXAMPLE.taskId, EXAMPLE.taskId]);
   });
 });

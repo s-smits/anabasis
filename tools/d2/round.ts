@@ -125,7 +125,7 @@ interface SolverSeat {
 
 /** A round's two model seats: who solves, and who builds. A comparison with no session takes the
  *  first and never reads the second (`checkpoint.ts`). */
-interface Seats extends SolverSeat {
+export interface Seats extends SolverSeat {
   readonly builder: Pick<BuildRequest, "model" | "models"> | null;
 }
 
@@ -513,8 +513,8 @@ function aaLines(noise: NonNullable<Report["noise"]>): string[] {
   const tasks = noise.wins + noise.losses + noise.ties;
   const shift = noise.detectable ?? null;
   return [
-    `the reference against itself, on halves of its own solves mirrored in time (the A/A), over ${plural(tasks, "task")}, ${String(noise.wins + noise.losses)} of them untied:`,
-    `  tie share ${tasks === 0 ? "none" : percent(noise.ties / tasks)}: the share of tasks two equal harnesses tied here, which a comparison's own ties are read against`,
+    `the reference against itself, on halves of its own solves mirrored in time (the A/A), over the ${plural(tasks, "tallied task")}, ${String(noise.wins + noise.losses)} of them untied:`,
+    `  tie share ${tasks === 0 ? "none" : percent(noise.ties / tasks)}: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties`,
     `  flip rate ${noise.flips === null ? "none" : percent(noise.flips)}: how often two of its solves of one task disagree on validity`,
     `  least detectable shift: ${shift === null ? "none, too few of its tasks are untied for any shift between its halves to read as a step, so its reading no step shows little" : `one reading of it, two-sided at the level, detects four times in five a half that wins ${percent(shift)} of its untied tasks`}`,
   ];
@@ -533,16 +533,17 @@ function accounted({
   withdrawn = [],
 }: Partial<Pick<Report, Apart>>): string[] {
   if (versions === undefined) return [];
-  const out = [
+  // A task set aside is counted there and not again among the short: the two can overlap.
+  const out: readonly (readonly [readonly string[], string])[] = [
     [aside, "set aside on a rejection not ruled a true fail"],
-    [short, "short of their solves"],
+    [short.filter((task) => !aside.includes(task)), "short of their solves"],
     [disputed, "disputed"],
     [withdrawn, "withdrawn while it ran"],
-  ] as const;
+  ];
   const drew = new Set([...versions, ...aside, ...short, ...disputed, ...withdrawn]).size;
   const left = out.flatMap(([tasks, why]) => (tasks.length === 0 ? [] : [`${String(tasks.length)} ${why}`]));
   return [
-    `of the ${plural(drew, "task")} the comparison drew, ${String(versions.length)} ${versions.length === 1 ? "was" : "were"} tallied${left.length === 0 ? "" : ` and ${left.join(", ")}`}: the columns below, room and the test are read over the tallied ones`,
+    `of the ${plural(drew, "task")} the comparison drew, ${String(versions.length)} ${versions.length === 1 ? "was" : "were"} tallied${left.length === 0 ? "" : ` and ${left.join(", ")}`}: the columns below and room are read over the tallied ones, the test over the frontier among them`,
   ];
 }
 

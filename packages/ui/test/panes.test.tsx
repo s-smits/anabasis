@@ -294,6 +294,8 @@ test("a practice solve's trace is shown in the default tier", () => {
   expect(html).toContain("practice task");
   expect(html).toContain("Turn 1");
   expect(html.includes("trace of a held-out")).toBe(false);
+  // Its rejection is never ruled: the Referee rules inside a comparison only.
+  expect(html.includes("Referee's ruling")).toBe(false);
 });
 
 test("a held-out task's text and hidden values are on the exam side; a practice task's text is shown in either tier", () => {

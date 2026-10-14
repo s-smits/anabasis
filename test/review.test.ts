@@ -458,7 +458,7 @@ describe("the Referee's agreement with hand labels", () => {
     expect(measured.table["check-defect"]).toEqual({ earned: 1, "check-defect": 1, unclear: 0 });
     expect(measured.table.earned).toEqual({ earned: 1, "check-defect": 1, unclear: 1 });
     expect(measured).toMatchObject({ caught: 0.5, unruled: [] });
-    expect(measured.voided).toBeCloseTo(1 / 3);
+    expect(measured.voided).toBeCloseTo(2 / 3);
     // Of each kind and over all three: 2 of 5 read alike, and 10 of 25 would by chance alone
     // (three labels earned and two a defect, against two rulings each and one unclear), so kappa
     // reads no agreement at all where PABAK reads a little.
@@ -489,8 +489,9 @@ describe("the Referee's agreement with hand labels", () => {
       times.flatMap((n) => [...labels].map(([solve, label]) => [`${solve}${String(n)}`, label] as const)),
     );
     const measured = agreement(many, thirty);
-    expect(clears(measured, { caught: 0.5, voided: 0.4 })).toBe(true);
-    expect(clears(measured, { caught: 0.8, voided: 0.4 })).toBe(false);
+    expect(clears(measured, { caught: 0.5, voided: 0.7 })).toBe(true);
+    expect(clears(measured, { caught: 0.5, voided: 0.4 })).toBe(false);
+    expect(clears(measured, { caught: 0.8, voided: 0.7 })).toBe(false);
     expect(clears(measured, { caught: 0.5, voided: 0.1 })).toBe(false);
     // On twenty-nine labels no bar is read, however low it is set; so on the five alone.
     const fewer = new Map([...thirty].filter(([solve]) => solve !== "c0"));

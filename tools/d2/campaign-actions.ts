@@ -356,6 +356,7 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
         ...flag("tasks", tasks),
         // The campaign's setting before one is recorded: the Examiner's budget, and `try_task`'s.
         ...sharedOf(turn).setting,
+        ...sharedOf(turn).reviewer,
         ...flag("proposals", values["exam-proposals"]),
         ...flag("minutes", values["exam-minutes"]),
         ...flag("turns", values["exam-turns"]),

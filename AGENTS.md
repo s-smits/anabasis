@@ -154,9 +154,9 @@ drift in the solver, the provider or the host, not the harness.
 **3. Verdicts: are the labels correct?** Validity is decided by a check program nobody has audited
 against the field, and a check that rejects a right answer is label noise: in v1, 36 of 47
 rehearsal misses came from a faulty check or instrument. The Referee is the noise filter
-(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison or a
-Builder's practice, before the rejection counts, and never on a pass, a solve a limit cut or a
-crash; first the host replays the checks on the logged answer, and a verdict that does not repeat
+(`src/review/referee.ts`). It runs once for each answer a check rejects inside a comparison, a
+Builder's practice or an Examiner admission probe, before the rejection counts, and never on a
+pass, a solve a limit cut or a crash; first the host replays the checks on the logged answer, and a verdict that does not repeat
 is a check defect ruled by the host. It reads the task with its hidden values, the public rules,
 the answer, the rejecting checks with the fields each reads, the check program's source, a valid
 answer for the task where one is on record, and a probe that changes one field and reruns the

@@ -1,12 +1,16 @@
-# Typecheck, lint, format and the suite, on each pull request and on main.
+# Typecheck, lint, format, the UI's gate and the suite, on each pull request and on main.
 #
-# Two runners, because the OS isolation has two mechanisms and each is exercised only on its own
+# Two platforms, because the OS isolation has two mechanisms and each is exercised only on its own
 # platform: the Darwin job proves Seatbelt and the disk image a solve and a Builder session mount
 # there; the Linux job proves Bubblewrap. A whole suite passing on one says nothing of the other.
+# The UI's own gate runs beside them on a macOS runner of its own (`darwin-ui`).
 # The lint is strict: the two repository plugins' findings fail it, as they do a strict run by hand
 # (`bun run lint -- --strict`, `tools/oxlint/HABITS.md` 12.2). The Linux job also runs the climb
 # simulation, which the suite skips without `ANA_CLIMB`: the controller's guard in
 # `docs/simplify.md` section 9, a few minutes.
+# Every step after the install runs once the install has, whatever failed between, and the job
+# fails if any did: on 14 October a failed `ui:gate` skipped the typecheck, the lint, the format
+# check and the whole suite, so one run named one failure where it could have named all.
 name: ci
 on:
   pull_request:
@@ -29,13 +33,33 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
-      - run: bun install --frozen-lockfile
+      - id: install
+        run: bun install --frozen-lockfile
       # The UI's own lock and React types, without which the lint leaves packages/ui out.
-      - run: bun run ui:gate
+      - run: bun run ui:deps
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: bun run typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: bun run lint -- --strict
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: bun run format:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: bun run test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+
+  darwin-ui:
+    # The UI's own gate, with its browser tests, on a runner of its own: on 14 October its 235 tests
+    # took 9 to 23 minutes on a macOS runner of 3 cores, and the suite 23 to 35, so one job holding
+    # both passed its 45 minutes before the suite ended.
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run ui:gate
 
   linux:
     # A VM runner, not a container: Bubblewrap creates user and mount namespaces, which an ordinary
@@ -54,7 +78,9 @@ jobs:
         # Ubuntu 24.04 restricts them through AppArmor, and bwrap then fails with "setting up uid
         # map: Permission denied".
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - run: bun install --frozen-lockfile
+      - id: install
+        run: bun install --frozen-lockfile
       - run: bun run test
       - name: The climb simulation
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: ANA_CLIMB=1 bun run test -- test/climb.test.ts

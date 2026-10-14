@@ -1227,9 +1227,9 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run land -- <pull request>` | Proves every commit a landing would publish where it sits; `--sanitize` posts each verdict, `--merge` also merges ("The stack and pull requests") |
 | `bun tools/loc/source-policy.ts` | The size and unused-export policy. No package script, CI job or hook runs it (`tools/oxlint/HABITS.md`, 12.10) |
 
-The gate is what CI runs, and `bun run gate` runs it: CI's Darwin job in one command, cheapest
-step first. The strict lint fails on everything a plain one does, so it runs once. Run it before
-any delivery a push does not cover.
+The gate is what CI runs, and `bun run gate` runs it: CI's two Darwin jobs in one command,
+cheapest step first. The strict lint fails on everything a plain one does, so it runs once. Run
+it before any delivery a push does not cover.
 
 **Keep the hooks enabled.** `bun run hooks:install` sets them up once per clone; without it a
 commit goes unchecked and a push ungated, and nothing says so (`git config core.hooksPath` tells
@@ -1244,8 +1244,10 @@ Run one suite at a time; two overlapping suites each take about twice as long. W
 the owning test files only: `bun run test -- test/compare.test.ts`. The wrapper refuses a named
 path that does not exist, because Bun would treat it as a filter and silently run its neighbours.
 
-CI (`.github/workflows/ci.yml`) has two jobs. `darwin` on macOS 15 runs the UI's own gate,
-typecheck, lint, the format check and the suite. `linux` on an Ubuntu VM installs Bubblewrap and runs the suite. In a
+CI (`.github/workflows/ci.yml`) has three jobs. `darwin` on macOS 15 runs typecheck, lint, the
+format check and the suite; `darwin-ui`, on a macOS 15 runner of its own, runs the UI's own gate;
+`linux` on an Ubuntu VM installs Bubblewrap and runs the suite. Each step after the install runs
+whatever failed before it, so one run names every failure. In a
 container without user namespaces the tests that need the wall fail. Name those in the pull
 request as failures that are there without the change, and do not call the suite green.
 

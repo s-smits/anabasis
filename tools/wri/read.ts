@@ -55,6 +55,7 @@ import {
   text,
   type Trigger,
 } from "./folds.ts";
+import { safeguardTriggers } from "./climb.ts";
 import { promotionTriggers } from "./promotion.ts";
 import { costTriggers, hoursLine, wallTriggers } from "./time.ts";
 
@@ -751,6 +752,7 @@ export function overview(events: readonly LogEvent[]): Overview {
       ...programTriggers(log),
       ...reviewTriggers(log),
       ...promotionTriggers(log),
+      ...safeguardTriggers(log),
     ],
   };
 }

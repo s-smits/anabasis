@@ -76,8 +76,13 @@ Three things about the shell line:
 
 The command keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`):
 its flags, the commit and whether the tree had uncommitted changes, the load and cores it started
-under. The log holds the host's code by content and no commit, so the receipt is where the commit
-is on record, and `bun run runs zip` carries it at every level.
+under, and the Bun that ran it. The log holds the host's code by content and no commit, so the
+receipt is where the commit is on record, and `bun run runs zip` carries it at every level.
+
+Tag the commit once the run has started, `git tag run/<name>/<n> <commit> && git push origin
+run/<name>/<n>`, where `n` is the receipt's. A pull-request branch is rewritten, and on 14 October
+two launch commits were reachable from no ref the remote advertised; a tag keeps the commit an
+old comparison must be rerun at, and `run-source.ts` names it.
 
 ## Name the run and its project
 

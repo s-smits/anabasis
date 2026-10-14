@@ -1,10 +1,11 @@
 /**
  * The Builder's tools. It is a coding agent on a harness's files, so it has what a solver has: pi's
  * own `read`, `bash`, `edit` and `write` on the command wall (`src/solve/coding-tools.ts`), in one
- * working directory, its home. On top of them are the tools that are a Builder's alone. Three ask
- * the host about `harness/` as it stands and run on the same wall: `check_harness`,
- * `preview_harness` and `reset_harness`. Four are the host's: `practice`, `read_trace`,
- * `read_opening` and `finish`.
+ * working directory, its home. On top of them are the tools that are a Builder's alone. Two ask
+ * the host about `harness/` as it stands and run on the same wall: `check_harness` and
+ * `preview_harness`. Four are the host's: `practice`, `read_trace`, `read_opening` and `finish`.
+ * `reset_harness`, which put `harness/agent` back as the session found it, went on 15 October:
+ * no Builder on record had called it, 0 of 1,261 calls.
  *
  * v1's Builder had pi's file tools too, with `harness_inspect`, `harness_trial` and `harness_reset`
  * (`src/builder/tools.ts:75` at 7af7315). A Builder with the shell and one `write_file` alone
@@ -74,7 +75,7 @@ import { plural } from "../meta/text.ts";
 import { callList, callsOf, callText, closingOf, solveOf } from "../review/trace.ts";
 import { openDesk, text, tool } from "../solve/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../solve/coding-tools.ts";
-import { type CommandWall, type NetworkReach, networkReach, runWalled } from "../solve/command.ts";
+import { type CommandWall, type NetworkReach, networkReach } from "../solve/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
 import { installedPrograms, systemPrompt } from "../solve/prompt.ts";
 import { clockText, solverTools } from "../solve/run.ts";
@@ -747,45 +748,8 @@ function previewTool(bench: Bench, wall: CommandWall): AgentTool {
   });
 }
 
-/**
- * `harness/agent` put back as the session found it. The host stages the parent's own `agent/` into
- * the command's folder and a walled command puts it in place, so where it lands is the wall's to
- * decide. The installed programs are left: an engine takes minutes to build, and a session that
- * wants its tools file back does not want that again.
- */
-function resetTool(bench: Bench, wall: CommandWall): AgentTool {
-  return tool({
-    name: "reset_harness",
-    label: "Reset the harness",
-    description:
-      "Put harness/agent back as it was when this session started: the guide, the tool list and the tools file of the harness you started from. What harness/agent holds now is lost. Installed programs under harness/.toolchain stay as they are.",
-    parameters: Type.Object({}),
-    executionMode: "sequential",
-    execute: async (_id, _args, signal) => {
-      const output: Buffer[] = [];
-      const { exitCode } = await runWalled(
-        wall,
-        'rm -rf "$HOME/harness/agent" && mkdir -p "$HOME/harness" && cp -R agent "$HOME/harness/agent"',
-        {
-          onData: (data) => output.push(data),
-          signal,
-          stage: (into) =>
-            cpSync(join(bench.request.parent, "agent"), join(into, "agent"), {
-              recursive: true,
-              verbatimSymlinks: true,
-            }),
-        },
-      );
-      if (exitCode !== 0) {
-        throw new Error(`not reset: ${Buffer.concat(output).toString("utf8").slice(0, 2_000)}`);
-      }
-      return text("harness/agent is as this session found it.");
-    },
-  });
-}
-
 /** The tools that run on the command wall: pi's four, with what the Builder's shell is told of its
- *  wall, and the three that ask the host about `harness/`. Making them also gives a freeze its
+ *  wall, and the two that ask the host about `harness/`. Making them also gives a freeze its
  *  listing: every harness frozen from here on is asked for its tools under this wall. */
 export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): AgentTool[] {
   bench.lists = async (harness) => {
@@ -802,6 +766,5 @@ export function walledTools(bench: Bench, wall: CommandWall, network: NetworkRea
     ),
     checkTool(bench),
     previewTool(bench, wall),
-    resetTool(bench, wall),
   ];
 }

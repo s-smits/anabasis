@@ -65,7 +65,7 @@ describe("the source a campaign's launches ran", () => {
   const first = gitText(repo, "rev-parse", "HEAD");
   git("commit", "-q", "--allow-empty", "-m", "second");
   const second = gitText(repo, "rev-parse", "HEAD");
-  const receipt = (session: string, at: string, commit: string, dirty: boolean) =>
+  const receipt = (session: string, at: string, commit: string, dirty: boolean, bun?: string) =>
     writeFileSync(
       join(folder, `launch-${session}.json`),
       JSON.stringify({
@@ -77,6 +77,7 @@ describe("the source a campaign's launches ran", () => {
         dirty,
         load: 3.2,
         cores: 8,
+        bun,
       }),
     );
 
@@ -86,15 +87,15 @@ describe("the source a campaign's launches ran", () => {
   });
 
   it("says each launch's commit and what it holds, and nothing a receipt keeps private", () => {
-    receipt("g1", "2026-10-09T14:00:00.000Z", second, true);
+    receipt("g1", "2026-10-09T14:00:00.000Z", second, true, "1.4.3");
     receipt("b-1", "2026-10-09T13:00:00.000Z", first, false);
     writeFileSync(join(folder, "launch-b-1.out"), "");
     const lines = sourceTold(folder, repo, [second]);
     expect(lines).toStrictEqual([
-      `b-1  2026-10-09T13:00:00.000Z  ${first.slice(0, 9)}  clean  load 3.2 on 8 cores`,
+      `b-1  2026-10-09T13:00:00.000Z  ${first.slice(0, 9)}  clean  load 3.2 on 8 cores  bun unknown`,
       "  published on no remote branch",
       `  does not hold ${second.slice(0, 9)}`,
-      `g1  2026-10-09T14:00:00.000Z  ${second.slice(0, 9)}  with uncommitted changes  load 3.2 on 8 cores`,
+      `g1  2026-10-09T14:00:00.000Z  ${second.slice(0, 9)}  with uncommitted changes  load 3.2 on 8 cores  bun 1.4.3`,
       "  published on no remote branch",
       `  holds ${second.slice(0, 9)}`,
     ]);

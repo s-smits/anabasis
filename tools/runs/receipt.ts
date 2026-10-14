@@ -21,6 +21,8 @@ export interface Receipt {
   readonly dirty: boolean;
   readonly load: number;
   readonly cores: number;
+  /** The Bun that ran it, absent before 15 October: seats ran a global 1.4.2 under a pin of 1.4.3. */
+  readonly bun?: string;
 }
 
 /** Where the run of `session` keeps its receipt and its output, less the extension. */
@@ -40,10 +42,15 @@ export function launchesOf(log: string) {
       const session = /^launch-(.+)\.json$/.exec(file)?.[1];
       // A receipt is beside the log for a run, and none for a round started by hand.
       if (session === undefined || !existsSync(`${kept(log, session)}.json`)) return [];
-      const { at, commit, dirty, load, cores } = parseJsonAs<Receipt>(
-        readFileSync(`${kept(log, session)}.json`, "utf8"),
-      );
-      return [{ session, at, commit, dirty, load, cores }];
+      const {
+        at,
+        commit,
+        dirty,
+        load,
+        cores,
+        bun = "unknown",
+      } = parseJsonAs<Receipt>(readFileSync(`${kept(log, session)}.json`, "utf8"));
+      return [{ session, at, commit, dirty, load, cores, bun }];
     })
     .sort((a, b) => a.at.localeCompare(b.at));
 }

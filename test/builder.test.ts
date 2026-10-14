@@ -1509,8 +1509,6 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
         }),
         call("read", { path: "harness/agent/BUILT_AGENTS.md" }),
         call("preview_harness", {}),
-        // The session's own tools file and guide go back; what it installed stays.
-        call("reset_harness", {}),
         call("bash", { command: "cat harness/agent/BUILT_AGENTS.md; ls harness/.toolchain/bin" }),
         edit,
         finish,
@@ -1555,9 +1553,7 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     expect(calls[12]).toContain("The case has 8 minutes of solve time");
     expect(calls[12]).toContain("Programs this harness installed run by name: ");
     expect(calls[12]).toContain("- submit: Send answer.json from your working directory as your answer.");
-    expect(calls[13]).toContain("harness/agent is as this session found it.");
-    expect(calls[14]).toContain("greet");
-    expect(calls[14]).not.toContain("Always multiply");
+    expect(calls[13]).toContain("greet");
     expect(responses.join("\n")).not.toContain(CHECK);
     expect(built).toMatchObject({ changed: true, ended: "finished" });
     expect(readFileSync(join(built.dir ?? "", "agent", "BUILT_AGENTS.md"), "utf8")).toBe(GUIDE);

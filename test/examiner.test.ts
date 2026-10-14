@@ -1061,8 +1061,47 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(opening).not.toContain("too easy");
   });
 
+  it("says how many of its gate's three solves a held task passed on, and each draft the gate refused having read it", () => {
+    const log = logged();
+    const gated = (taskId: string, gate: JsonObject) => {
+      log.add("task.proposed", {
+        version: `v-${taskId}`,
+        taskId,
+        task: { ...fixture(taskId), publicInput: {}, hidden: null },
+      });
+      log.add("task.gate", { version: `v-${taskId}`, gate: 1, ...gate });
+      if (gate.outcome === "refused") log.add("task.state", { version: `v-${taskId}`, state: "refused" });
+    };
+    gated("once", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } });
+    gated("twice", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } });
+    gated("every", {
+      outcome: "refused",
+      reason: "answered in 3 of 3",
+      reference: { valid: 3, solves: 3, billed: 0 },
+    });
+    // A gate that read two solves may be proposed again, and is no refusal to be told of.
+    gated("cut", {
+      outcome: "refused",
+      reason: "not measured",
+      reference: { valid: 1, solves: 2, billed: 0 },
+    });
+    const told = heard(log.events, ["once", "twice"].map(fixture));
+    // Until 14 October a later session was told neither.
+    expect(told.lines).toEqual([
+      line(
+        "once",
+        `not yet compared; ${VALID}; held out at its gate on 1 of the reference harness's 3 solves valid`,
+      ),
+      line(
+        "twice",
+        `not yet compared; ${VALID}; held out at its gate on 2 of the reference harness's 3 solves valid`,
+      ),
+    ]);
+    expect(told.refused).toEqual([line("every", "refused: answered in 3 of 3")]);
+  });
+
   it("says nothing it cannot count: a task the log does not hold, one task alone, no task at all", () => {
-    const uncounted = { counts: null, turns: null };
+    const uncounted = { counts: null, turns: null, refused: [] };
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
     expect(heard([], [fixture("e-1")])).toEqual({
       lines: [line("e-1", `not yet compared; ${NONE}`)],
@@ -1240,7 +1279,12 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     log.solved("c-0", "b-2", "h4", [false, false]);
     log.reported("c-0", ["h3", "h4"], 2, ["b-2"]);
     const control = log.events.splice(from);
-    expect(heard(log.events.toSpliced(first, 0, ...control), tasks)).toEqual({ lines, counts, turns });
+    expect(heard(log.events.toSpliced(first, 0, ...control), tasks)).toEqual({
+      lines,
+      refused: [],
+      counts,
+      turns,
+    });
     // Neither the lines nor the counts name a harness.
     expect([...lines, counts, turns].join("\n")).not.toMatch(/\bh[1-5]\b/);
   });

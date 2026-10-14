@@ -458,7 +458,10 @@ describe("the Referee's agreement with hand labels", () => {
     expect(measured.table["check-defect"]).toEqual({ earned: 1, "check-defect": 1, unclear: 0 });
     expect(measured.table.earned).toEqual({ earned: 1, "check-defect": 1, unclear: 1 });
     expect(measured).toMatchObject({ caught: 0.5, unruled: [] });
+    // Of the three labelled earned, one ruled a check defect and one unclear: both set the task aside.
     expect(measured.voided).toBeCloseTo(2 / 3);
+    // A labelled check defect ruled unclear is caught: its task is set aside all the same.
+    expect(agreement(events, new Map([["e", "check-defect"]] as const)).caught).toBe(1);
     // Of each kind and over all three: 2 of 5 read alike, and 10 of 25 would by chance alone
     // (three labels earned and two a defect, against two rulings each and one unclear), so kappa
     // reads no agreement at all where PABAK reads a little.

@@ -8,8 +8,10 @@
  * the labelled fails, and this file only counts.
  *
  * Two rates carry the risk, and they pull apart. A check defect the Referee lets stand turns a broken
- * check into a scored task; an earned fail it voids removes a real limit from the count.
- * Since 14 October both check-defect and unclear rulings count as voiding a labelled earned fail.
+ * check into a scored task; an earned fail it voids removes a real limit from the count. A fail is
+ * voided by any ruling but `earned`, since `unclear` sets its task aside as `check-defect` does:
+ * until 14 October the rates counted `check-defect` alone, and a Referee that ruled every earned
+ * fail unclear read as voiding none of them.
  *
  * Beside them, since 12 October, the agreement of each kind and over all three (the overhaul plan's
  * M3, research 06): on kinds as uneven as these, most fails earned, Cohen's kappa can be low while
@@ -36,9 +38,11 @@ const UNCLEAR_EARNED = 1 / 4;
 
 /** The bar, frozen before the Referee reads a labelled fail. */
 interface Bar {
-  /** Of the fails a person labelled a check defect, the least share the Referee must void. */
+  /** Of the fails a person labelled a check defect, the least share the Referee must void: rule
+   *  other than earned, which sets the task aside. */
   readonly caught: number;
-  /** Of the fails a person labelled earned, the most the Referee may void. */
+  /** Of the fails a person labelled earned, the most the Referee may void, an unclear ruling among
+   *  them. */
   readonly voided: number;
 }
 
@@ -78,9 +82,10 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
   }
   const labelled = (kind: Ruling) => RULINGS.reduce((sum, ruling) => sum + table[kind][ruling], 0);
   const ruled = (kind: Ruling) => RULINGS.reduce((sum, label) => sum + table[label][kind], 0);
+  // Voided is every ruling but earned: an unclear one sets its task aside as a check defect does.
   const share = (label: Ruling) => {
     const total = labelled(label);
-    return total === 0 ? null : table[label]["check-defect"] / total;
+    return total === 0 ? null : (total - table[label].earned) / total;
   };
   const total = RULINGS.reduce((sum, kind) => sum + labelled(kind), 0);
   const alike = RULINGS.reduce((sum, kind) => sum + table[kind][kind], 0) / total;
@@ -89,10 +94,7 @@ export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<strin
     table,
     unruled,
     caught: share("check-defect"),
-    voided:
-      labelled("earned") === 0
-        ? null
-        : (table.earned["check-defect"] + table.earned.unclear) / labelled("earned"),
+    voided: share("earned"),
     unclearEarned: ruled("unclear") === 0 ? null : table.earned.unclear / ruled("unclear"),
     // SAFETY: built from RULINGS, so every Ruling key is present.
     specific: Object.fromEntries(

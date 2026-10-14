@@ -19,11 +19,12 @@
  * side, each drawn uniformly by the comparison's id, so the draw stands before any is read and comes
  * back the same whenever it is asked for. It writes `labels.json` under `.ana/d2/<name>/settle-<session>/`,
  * one empty entry a drawn answer under `rejections` and under `passes`, and a packet each beside
- * it: the task with its hidden values, the public rules and the answer, and for a rejection the
- * checks that refused it. A packet holds no ruling and names no harness, so a label is made blind to
- * both. A rejection ruled earned is only sampled, and since 12 October that ruling rests on a
- * probe that moved a check: a probe shows a difference, not which side is right, and in one audit 51 of
- * 77 such differences stayed undecidable (research 06).
+ * it: the task with its hidden values, the public contract whole (scope, conventions, rules, answer
+ * format and objective) and the answer, and for a rejection the checks that refused it. A packet
+ * holds no ruling and names no harness, so a label is made blind to both. A rejection ruled earned
+ * is only sampled, and since 12 October that ruling rests on a probe that moved a check: a probe
+ * shows a difference, not which side is right, and in one audit 51 of 77 such differences stayed
+ * undecidable (research 06).
  *
  * A person writes `earned`, `check-defect` or `unclear` into each rejection's entry, and `sound`,
  * `wrong` or `unclear` into each pass's. Run again with every entry filled, it settles
@@ -122,7 +123,8 @@ function drawPacket(campaign: Campaign, events: readonly LogEvent[], session: st
     const packet = {
       solve,
       task: tasks.find((task) => task.taskId === verdict?.task) ?? null,
-      rules: campaign.contract.rules,
+      // The whole public contract (14 October): a label read on the rules alone misses a convention.
+      contract: campaign.contract,
       answer: verdict?.answer ?? null,
       // None where the answer passed.
       refusedBy: refusedBy(verdict),

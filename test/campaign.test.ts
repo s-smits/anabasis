@@ -330,6 +330,12 @@ describe("a campaign", () => {
     expect(await keptAs(campaign, "--reference", digest)).toEqual(built);
     // The starter is named by its digest too, as any kept harness is.
     expect(await keptAs(campaign, "--parent", least.digest)).toEqual(least);
+    // The letter the view prints names the one digest the log gave it (`namesOf`): b-1's harness is
+    // B, the second the log names. A letter the log gave nothing is refused as any other name is.
+    expect(await keptAs(campaign, "--harness", "B")).toEqual(built);
+    await expect(keptAs(campaign, "--harness", "C")).rejects.toThrow(
+      "--harness C is no harness this campaign keeps",
+    );
     // A kept state that has changed is no longer the harness its name says, and is refused before
     // a solve is paid for under that name.
     writeFileSync(join(built.dir, "agent", "BUILT_AGENTS.md"), "Add first.\n");

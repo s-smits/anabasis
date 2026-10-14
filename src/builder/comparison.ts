@@ -403,9 +403,14 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const aside = live.filter((task) => open.has(task));
   const sets = setsOf(all, fixed, pairs, aside);
   const { frontier } = sets;
-  /** The reference against itself on halves of the test's own solves (`Sides`, `halves`). */
+  /** The reference against itself on halves of the test's own solves (`Sides`, `halves`), over
+   *  the tallied tasks and no other: until 14 October it read every live task, so a task short on
+   *  the new side alone stood in the A/A and not in the tally, and its printed count was neither. */
+  const tallied = pairs.map(({ task }) => task);
   const itself = () =>
-    kept(pairsOf(events, live, { ...sides, fresh: fixed.old, halves: "mirrored" }, fixed.solves / 2).pairs);
+    kept(
+      pairsOf(events, tallied, { ...sides, fresh: fixed.old, halves: "mirrored" }, fixed.solves / 2).pairs,
+    );
   // The A/A (12 October, the plan's section 4b): where the reference's solves of a task are four
   // or more and even, which halves mirrored in time split two against two at least. At four a
   // side every comparison carries one.

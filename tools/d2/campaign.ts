@@ -27,6 +27,7 @@
 import type { Api, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { backends, compactionMode } from "#src/backends/models.ts";
 import { type Practised, practised } from "#src/builder/session.ts";
+import { namesOf } from "#src/builder/names.ts";
 import { type Opening, openingOf } from "#src/builder/opening.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { departure } from "#src/kernel/acceptance.ts";
@@ -482,12 +483,15 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
   if (asked === "starter" || ((asked === "latest" || asked === PROMOTED) && built === null)) {
     return await starter(campaign);
   }
-  const digest = built ?? asked;
+  // A letter the view and the closing report print names one kept digest (`namesOf`); one that
+  // names two, as A can, falls through to the refusal with the digests there are (14 October).
+  const lettered = [...namesOf(events)].flatMap(([each, letter]) => (letter === asked ? [each] : []));
+  const digest = built ?? (lettered.length === 1 ? (lettered[0] ?? asked) : asked);
   const kept = existsSync(campaign.states) ? readdirSync(campaign.states).sort() : [];
   if (!kept.includes(digest)) {
     const begun = kept.filter((each) => digest !== "" && each.startsWith(digest));
     const named =
-      "It also takes starter, for the harness every campaign starts from, promoted, for the reference harness, and latest, for the last a session left";
+      "It also takes starter, for the harness every campaign starts from, promoted, for the reference harness, latest, for the last a session left, and a letter the view prints";
     throw new Error(
       kept.length === 0
         ? `${flag} ${asked} is no harness this campaign keeps: no session has kept one under ${campaign.states} yet. ${named}`

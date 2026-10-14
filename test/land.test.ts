@@ -7,6 +7,9 @@
  * says otherwise, or ANA_FAKE_CI_AFTER names a file only a dispatch creates. ANA_FAKE_CI_STATES
  * names a file whose lines answer successive run reads, the last repeating: `none` lists no run and
  * `down` fails as a 502 would. ANA_FAKE_REFUSED lists the pull requests GitHub will not merge.
+ * ANA_FAKE_STACK is the open native stack the top is in, as its number and its members, none by
+ * default. A stack's merge is asked for under the id ANA_FAKE_STACK_UUID and ends
+ * as ANA_FAKE_STACK_END says, `refused` refusing the asking, with ANA_FAKE_STACK_SHA as its commit.
  * Nothing here reaches GitHub, and nothing is pushed but to the fixture's own bare origin.
  */
 import {
@@ -49,6 +52,10 @@ elif [ -z "$ANA_FAKE_CI_AFTER" ] || [ -e "$ANA_FAKE_CI_AFTER" ]; then
   if [ -n "$ANA_FAKE_CI" ]; then printf '%s\n' "$ANA_FAKE_CI"; else printf 'completed\tsuccess\t1\thttps://ci/1\n'; fi
 fi ;;
 "workflow run"*) [ -z "$ANA_FAKE_CI_AFTER" ] || touch "$ANA_FAKE_CI_AFTER" ;;
+"api -X PUT"*"/merge-async"*) [ "$ANA_FAKE_STACK_END" != refused ] || { echo "gh: Stack is not mergeable (HTTP 422)" >&2; exit 1; }
+  printf 'pending\t%s\t\t\n' "$ANA_FAKE_STACK_UUID" ;;
+"api repos/{owner}/{repo}/pulls/"*"/merge-async/"*) printf '%s\t\t%s\t%s\n' "$ANA_FAKE_STACK_END" "$ANA_FAKE_STACK_SHA" "$ANA_FAKE_STACK_END" ;;
+"api repos/{owner}/{repo}/stacks"*) printf '%s\n' "$ANA_FAKE_STACK" ;;
 "api -X PUT"*) case " $ANA_FAKE_REFUSED " in *" $number "*) echo "gh: Pull Request is not mergeable (HTTP 405)" >&2; exit 1 ;; esac
   echo "merge$number" ;;
 "api -X"*) ;;
@@ -284,6 +291,77 @@ describe("bun run land", () => {
       "api repos/{owner}/{repo}/pulls/12 --jq .mergeable",
       `api -X PUT repos/{owner}/{repo}/pulls/12/merge -f merge_method=merge -f sha=${upper} --jq .sha`,
     ]);
+  });
+
+  const stackMerge = (end: string, more: Record<string, string> = {}) =>
+    runLand(["12", "--merge"], {
+      ANA_FAKE_STACK: "7 11,12,14",
+      ANA_FAKE_STACK_END: end,
+      ANA_FAKE_STACK_UUID: "u1",
+      ...more,
+    });
+  const askedStack =
+    "api -X PUT repos/{owner}/{repo}/pulls/12/merge-async -f merge_method=merge -f merge_action=direct_merge";
+
+  it("merges a landing GitHub holds as a stack whole, through the stack's merge, after the statuses", () => {
+    const result = stackMerge("merged", { ANA_FAKE_STACK_SHA: upper });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      `land: #11, #12 merged into main as stack 7, at ${short(upper)}: ${short(upper)}.`,
+    );
+    expect(statuses("ana/stack-gate")).toEqual([`success ${lowerDocs}`, `success ${upper}`]);
+    const calls = logLines(ghLog);
+    const asked = calls.findIndex((line) => line.startsWith(askedStack));
+    expect(calls.findLastIndex((line) => line.includes("context=ana/stack-gate"))).toBeLessThan(asked);
+    expect(calls.slice(asked + 1).map((line) => line.split(" --jq")[0])).toEqual([
+      "api repos/{owner}/{repo}/pulls/12/merge-async/u1",
+    ]);
+    expect(calls.some((line) => /pulls\/\d+\/merge -f/u.test(line) || line.includes("-X PATCH"))).toBe(false);
+  });
+
+  it("takes the status back from every head when GitHub refuses or fails a stack's merge, and says nothing merged", () => {
+    for (const [end, why] of [
+      ["failed", "its merge ended failed: failed"],
+      ["refused", "gh: Stack is not mergeable (HTTP 422)"],
+    ] as const) {
+      writeFileSync(ghLog, "");
+      const result = stackMerge(end);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`land: GitHub did not merge stack 7: ${why}`);
+      expect(result.stderr).toContain("land: nothing merged; #11, #12 are open.");
+      expect(statuses("ana/stack-gate")).toEqual([
+        `success ${lowerDocs}`,
+        `success ${upper}`,
+        `pending ${lowerDocs}`,
+        `pending ${upper}`,
+      ]);
+    }
+  });
+
+  it("leaves the statuses and says nothing merged nowhere when it cannot tell whether a stack merged", () => {
+    const unread = stackMerge("merged", { ANA_FAKE_STACK_UUID: "" });
+    expect(unread.status).toBe(1);
+    expect(unread.stderr).toContain(
+      "land: GitHub's merge of stack 7 named no merge to read back; the statuses stand.",
+    );
+    writeFileSync(ghLog, "");
+    const other = stackMerge("merged", { ANA_FAKE_STACK_SHA: lowerDocs });
+    expect(other.status).toBe(1);
+    expect(other.stderr).toContain(
+      `land: stack 7 merged into main as ${short(lowerDocs)}, whose tree is not the tree of ${short(upper)} that the gate read.`,
+    );
+    for (const result of [unread, other]) expect(result.stderr).not.toContain("nothing merged");
+    expect(statuses("ana/stack-gate")).toEqual([`success ${lowerDocs}`, `success ${upper}`]);
+  });
+
+  it("refuses a stack whose members are not the chain of bases, before any status is posted", () => {
+    const result = runLand(["12", "--merge"], { ANA_FAKE_STACK: "7 13,12" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "land: GitHub's stack 7 holds #13, #12, and the chain of bases up to #12 holds #11, #12. " +
+        "Make them agree, and land again. Nothing was merged.",
+    );
+    expect(statuses("ana/stack-gate")).toEqual([]);
   });
 
   it("takes the required status back from every head GitHub left open", () => {

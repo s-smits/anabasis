@@ -1333,7 +1333,9 @@ before it merged. What it comes to:
   publish over its own checkout, the top's head with the whole gate. `--sanitize` stops there and
   posts each verdict as the status `ana/commit`. `--merge` also waits for `ci.yml` on the top's
   head, posts `ana/stack-gate` on every head, and merges bottom-up, each pull request based on
-  `main` just before its merge and pinned to its gated head.
+  `main` just before its merge and pinned to its gated head. A landing GitHub holds as a native
+  stack merges whole through the stack's own merge, since GitHub refuses one member's merge
+  (14 October), and the merge commit's tree is held to the top's.
 - **A restack makes the stack one chain again** (restack, linearize, quench, drain): each pull
   request that left the chain is replayed onto the head beneath it, based there and added to the
   native stack. Resolve conflicts hunk by hunk, never by taking one side's file whole (on 14 October

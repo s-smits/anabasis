@@ -207,6 +207,8 @@ interface SessionFlags {
 
 /** The campaign's two reviewers, as a command seats them. */
 type Reviewers = ReturnType<Campaign["reviewers"]>;
+/** A report's tallied task versions and the lists of those it left out (`accounted`). */
+type Apart = "versions" | "aside" | "short" | "disputed" | "withdrawn";
 
 // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
 const effortNamed = (flag: string) => flag as ThinkingLevel;
@@ -427,7 +429,9 @@ export function capNamed(
 /**
  * A report in lines, printed with every reading: the frontier it was read on, with its untied tasks,
  * the least share of them one reading detects four times in five (`detectable`) and the rule's
- * false rate an attempt beside the level (`falseRate`); and `valid`,
+ * false rate an attempt beside the level (`falseRate`), and its p with what the test weighs; the
+ * reference against itself where the comparison carries it (`aaLines`); the tasks it drew, by what
+ * became of each (`accounted`); and `valid`,
  * each harness by itself, as the tasks by how many of their solves were valid, which is what the
  * plan's first gate reads of the starter, the reference harness of the first round (`docs/plan.md`,
  * G0); the objective's margin and what set it, and the one its A/A sets for the next comparison.
@@ -440,8 +444,9 @@ export function reportLines({
   noise,
   turns = null,
   worth = null,
+  ...apart
 }: Pick<Report, "valid" | "objective" | "frontier" | "noise"> &
-  Partial<Pick<Report, "turns" | "worth">>): string[] {
+  Partial<Pick<Report, "turns" | "worth" | Apart>>): string[] {
   if (valid === null) return [];
   // The turns of a valid answer, over the tasks both harnesses answered: reported, in no test.
   const both = Object.values(turns ?? {}).flatMap(({ old, fresh }) =>
@@ -456,13 +461,18 @@ export function reportLines({
       : from === null
         ? "the default: no A/A on record had measured two valid answers of one task"
         : `the 90th percentile of the reference's own spread over ${plural(from, "A/A pairing")}`;
+  const untied = frontier === null ? 0 : frontier.wins + frontier.losses;
   return [
     ...(frontier === null
       ? []
       : [
-          `the step is read on ${plural(frontier.tasks.length, "frontier task")}, ${String(frontier.wins + frontier.losses)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
+          `the step is read on ${plural(frontier.tasks.length, "frontier task")}, ${String(untied)} of them untied: one reading at the comparison's level detects four times in five ${share === null ? "no share of them" : `a harness that wins ${String(Math.round(100 * share))}% of them`}`,
           `an attempt at these margins, this reading and a repeat alike, promotes between equal harnesses ${String(Math.round(1000 * frontier.falseRate) / 10)}% of the time: the level is one reading's, and this the rule's`,
+          // The test weighs margins, but a sweep's p is its count's alone (the plan's 7.5).
+          `its p is ${rounded(frontier.p)}: the test weighs each untied task by its margin in pair wins${frontier.losses === 0 && untied > 0 ? `, and where every untied task is won p is one half to the power of their count whatever the margins: ${String(untied)} won read ${rounded(0.5 ** untied)}` : ""}`,
         ]),
+    ...(noise === null ? [] : aaLines(noise)),
+    ...accounted(apart),
     `each harness by itself, as how many tasks had ${valid.old.map((_, count) => String(count)).join(", ")} valid answers in ${String(valid.old.length - 1)} solves (a count of tasks a column, not a share):`,
     `  at its limits: reference ${valid.old.join("/")}, new ${valid.fresh.join("/")}`,
     ...(objective === null
@@ -481,6 +491,58 @@ export function reportLines({
           `this comparison's A/A sets the objective's margin at ${String(noise.margin.margin)}, over ${plural(noise.margin.pairings, "pairing")} of the reference's valid answers: the next comparison reads by it`,
         ]),
     ...(worth === null ? [] : [worthLine(worth)]),
+  ];
+}
+
+/** A share, to three places. */
+function rounded(share: number): string {
+  return String(Math.round(1000 * share) / 1000);
+}
+
+/** A share in whole percent. */
+function percent(share: number): string {
+  return `${String(Math.round(100 * share))}%`;
+}
+
+/**
+ * The reference against itself beside every reading that carries one (the plan's 7.2): its tie
+ * share, its flip rate and the least shift it detects, three readings of the noise with three
+ * meanings, each on a line of its own.
+ */
+function aaLines(noise: NonNullable<Report["noise"]>): string[] {
+  const tasks = noise.wins + noise.losses + noise.ties;
+  const shift = noise.detectable ?? null;
+  return [
+    `the reference against itself, on halves of its own solves mirrored in time (the A/A), over ${plural(tasks, "task")}, ${String(noise.wins + noise.losses)} of them untied:`,
+    `  tie share ${tasks === 0 ? "none" : percent(noise.ties / tasks)}: the share of tasks two equal harnesses tied here, which a comparison's own ties are read against`,
+    `  flip rate ${noise.flips === null ? "none" : percent(noise.flips)}: how often two of its solves of one task disagree on validity`,
+    `  least detectable shift: ${shift === null ? "none, too few of its tasks are untied for any shift between its halves to read as a step, so its reading no step shows little" : `one reading of it, two-sided at the level, detects four times in five a half that wins ${percent(shift)} of its untied tasks`}`,
+  ];
+}
+
+/**
+ * The tasks a comparison drew, by what became of them (the plan's 7.3): the tallied ones, which
+ * the columns, room and the test are read over, and each kind left out, so that no task left out
+ * swells the denominator or leaves the account. None for a report that names no versions.
+ */
+function accounted({
+  versions,
+  aside = [],
+  short = [],
+  disputed = [],
+  withdrawn = [],
+}: Partial<Pick<Report, Apart>>): string[] {
+  if (versions === undefined) return [];
+  const out = [
+    [aside, "set aside on a rejection not ruled a true fail"],
+    [short, "short of their solves"],
+    [disputed, "disputed"],
+    [withdrawn, "withdrawn while it ran"],
+  ] as const;
+  const drew = new Set([...versions, ...aside, ...short, ...disputed, ...withdrawn]).size;
+  const left = out.flatMap(([tasks, why]) => (tasks.length === 0 ? [] : [`${String(tasks.length)} ${why}`]));
+  return [
+    `of the ${plural(drew, "task")} the comparison drew, ${String(versions.length)} ${versions.length === 1 ? "was" : "were"} tallied${left.length === 0 ? "" : ` and ${left.join(", ")}`}: the columns below, room and the test are read over the tallied ones`,
   ];
 }
 

@@ -546,6 +546,37 @@ describe("a campaign", () => {
     expect(
       reportLines({ valid, objective: null, frontier: { ...frontier, detectable: null }, noise: null }).at(0),
     ).toEndWith("detects four times in five no share of them");
+    // The p beside it is the test's, which weighs margins; where every untied task is won it is the
+    // count's alone (the plan's 7.5).
+    const two = { ...frontier, tasks: ["v1", "v2"], wins: 2, ties: 0, p: 0.25, differences: [4, 1] };
+    expect(reportLines({ valid, objective: null, frontier: two, noise: null }).at(2)).toBe(
+      "its p is 0.25: the test weighs each untied task by its margin in pair wins, and where every untied task is won p is one half to the power of their count whatever the margins: 2 won read 0.25",
+    );
+    // The A/A beside every reading that carries one: three readings of the noise, one a line, and
+    // what the tally drew, by what became of each task (the plan's 7.2 and 7.3).
+    const aa = { wins: 1, losses: 1, ties: 6, p: 0.75, differences: [1, -1, 0, 0, 0, 0, 0, 0], flips: 0.125 };
+    const lines = (detectable: number | null) =>
+      reportLines({
+        valid,
+        objective: null,
+        frontier: null,
+        noise: { ...aa, detectable, margin: null },
+        versions: ["v1", "v2", "v3", "v4", "v5", "v6"],
+        aside: ["v7"],
+        short: [],
+        disputed: ["v8"],
+        withdrawn: [],
+      }).slice(0, 5);
+    expect(lines(null)).toEqual([
+      "the reference against itself, on halves of its own solves mirrored in time (the A/A), over 8 tasks, 2 of them untied:",
+      "  tie share 75%: the share of tasks two equal harnesses tied here, which a comparison's own ties are read against",
+      "  flip rate 13%: how often two of its solves of one task disagree on validity",
+      "  least detectable shift: none, too few of its tasks are untied for any shift between its halves to read as a step, so its reading no step shows little",
+      "of the 8 tasks the comparison drew, 6 were tallied and 1 set aside on a rejection not ruled a true fail, 1 disputed: the columns below, room and the test are read over the tallied ones",
+    ]);
+    expect(lines(0.9)[3]).toBe(
+      "  least detectable shift: one reading of it, two-sided at the level, detects four times in five a half that wins 90% of its untied tasks",
+    );
     expect(ROUND_OPTIONS).not.toHaveProperty("budget");
     // Where the comparison fixed an objective, how many tallied tasks it decided is said beside.
     expect(
@@ -572,6 +603,7 @@ describe("a campaign", () => {
           p: 1,
           differences: [0, 0],
           flips: 0,
+          detectable: null,
           margin: { margin: 0.05, pairings: 8 },
         },
       }).slice(-2);

@@ -5,6 +5,7 @@ import {
   DESKTOP,
   expectQuiet,
   launchBrowser,
+  nextPolls,
   type Opened,
   openPage,
   PHONE,
@@ -12,6 +13,7 @@ import {
   type Served,
   serveFixture,
   type Viewing,
+  withClock,
 } from "./browser.ts";
 import {
   arm,
@@ -607,13 +609,12 @@ describe("the Tasks pane between two readings", () => {
   test("changes nothing in the grid across two polls of unchanged data", async () => {
     const opened = await openTasks(served);
     const on = page(opened);
+    await withClock(on);
     await expect(grid(on)).toBeVisible();
     await watchMutations(grid(on));
-    for (let poll = 0; poll < 2; poll += 1) {
-      await on.waitForResponse((response) => response.url().includes("/api/campaign?"), { timeout: 12_000 });
-    }
+    await nextPolls(on, 2);
     expect(await mutationsOf(on)).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
-  }, 30_000);
+  });
 });

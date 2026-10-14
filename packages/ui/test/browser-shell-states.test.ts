@@ -17,12 +17,14 @@ import {
   DESKTOP,
   expectQuiet,
   launchBrowser,
+  nextPolls,
   type Opened,
   openPage,
   PHONE,
   type Served,
   serveDirectory,
   serveFixture,
+  withClock,
 } from "./browser.ts";
 
 let served: Served;
@@ -112,12 +114,16 @@ describe("a read in flight or failed", () => {
     await context.route("**/api/campaigns", (route) =>
       route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"the list broke"}' }),
     );
+    await context.clock.install();
     const page = await context.newPage();
     await page.goto(served.url(`campaign=${main}`));
     await expect(page.getByText("No campaigns read")).toBeVisible();
     await expect(page.getByText("the list broke")).toBeVisible();
     await context.unroute("**/api/campaigns");
-    await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible({ timeout: 15_000 });
+    await nextPolls(page, 1, "/api/campaigns");
+    await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible({
+      timeout: ACTION_MS,
+    });
     await expect(page.getByText("No campaigns read")).toHaveCount(0);
     await context.close();
   });
@@ -138,18 +144,21 @@ describe("a read in flight or failed", () => {
 
   test("keeps what it shows when a refresh fails, says so, and clears the word once one succeeds", async () => {
     const page = await openPage(browser, served.url(`campaign=${main}`));
+    await withClock(page.page);
     const title = page.page.getByRole("heading", { level: 1, name: "fixture" });
     await expect(title).toBeVisible();
     await page.page.route("**/api/campaign?*", (route) =>
       route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"the log broke"}' }),
     );
+    await nextPolls(page.page, 1);
     const failed = page.page.getByText("Refresh failed.");
-    await expect(failed).toBeVisible({ timeout: 15_000 });
+    await expect(failed).toBeVisible();
     await expect(page.page.getByText("the log broke")).toBeVisible();
     await expect(title).toBeVisible();
     await expect(page.page.getByRole("list", { name: /Harness versions/u })).toBeVisible();
     await page.page.unroute("**/api/campaign?*");
-    await expect(failed).toHaveCount(0, { timeout: 15_000 });
+    await nextPolls(page.page, 1);
+    await expect(failed).toHaveCount(0);
     await expect(title).toBeVisible();
     await close(page, ["HTTP 500", FAILED_LOAD]);
   });
@@ -340,6 +349,7 @@ describe("every pane", () => {
 describe("the poll", () => {
   test("shows an event appended to the log without a reload", async () => {
     const page = await openPage(browser, served.url(`campaign=${folder}/early&pane=log`));
+    await withClock(page.page);
     await expect(page.page.getByRole("heading", { level: 2, name: "Log" })).toBeVisible();
     const count = page.page.getByText(/^1–\d+ of \d+ events$/u);
     await expect(count).toBeVisible();
@@ -352,9 +362,10 @@ describe("the poll", () => {
       cores: 12,
       ms: 1_000,
     });
-    await expect(page.page.getByText(`1–${String(before + 1)} of ${String(before + 1)} events`)).toBeVisible({
-      timeout: 15_000,
-    });
+    await nextPolls(page.page, 1);
+    await expect(
+      page.page.getByText(`1–${String(before + 1)} of ${String(before + 1)} events`),
+    ).toBeVisible();
     await close(page);
   });
 });

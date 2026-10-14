@@ -4,12 +4,14 @@ import {
   accessibilityViolations,
   expectQuiet,
   launchBrowser,
+  nextPolls,
   type Opened,
   openPage,
   PHONE,
   routeParameters,
   type Served,
   serveFixture,
+  withClock,
 } from "./browser.ts";
 
 /*
@@ -494,6 +496,8 @@ describe("between two states", () => {
   test("two polls of a campaign that did not change redraw nothing", async () => {
     const opened = await openCampaign();
     const { page } = opened;
+    await withClock(page);
+    await expect(page.locator(".ana-campaign-chart svg.recharts-surface")).toBeVisible();
     const watched = [
       ".ana-campaign-chart svg.recharts-surface",
       ".ana-harness-lineage",
@@ -512,11 +516,7 @@ describe("between two states", () => {
       }
       window.anaChanged = changed;
     }, watched);
-    const polled = (url: URL) => url.pathname === "/api/campaign";
-    for (const _ of [1, 2]) {
-      const response = await page.waitForResponse((each) => polled(new URL(each.url())), { timeout: 12_000 });
-      expect(response.status()).toBe(200);
-    }
+    await nextPolls(page, 2);
     await page.evaluate(
       () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(null)))),
     );

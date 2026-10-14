@@ -96,6 +96,8 @@ const START_MS = 20_000;
  *  whole 60 s, so a page that never loaded under ten parallel files on 14 October timed the test out
  *  and named no step; at 15 s the stuck step fails with its own message first. */
 export const ACTION_MS = 15_000;
+/** How long the page waits after a read answers before it reads again (`POLL_MS`, `live.ts`). */
+const POLL_MS = 5_000;
 /** A desktop window, the width the operator reads the page at. */
 export const DESKTOP = { width: 1440, height: 1000 } as const;
 /** A phone held upright. */
@@ -224,6 +226,59 @@ export async function openPage(browser: Browser, url: string, viewing: Viewing =
   });
   await page.goto(url);
   return { page, context, problems };
+}
+
+/** The page loaded again on Playwright's clock, which runs as the real one until `nextPolls` moves
+ *  it on, and settled. Eight tests waited out the page's real poll period, about 110 of the suite's
+ *  seconds. The reload reads the campaign and each pane's parts afresh, and a test that began to
+ *  watch for changes before they had all arrived counted them as a poll's: on CI on 14 October the
+ *  harness strip's files drew twice inside "two polls of a campaign that did not change redraw
+ *  nothing". So the reload waits for the network to be idle, 500 ms with no read where the page
+ *  polls every 5 s, and then for the page to settle. A count of reads in flight, as the walker
+ *  keeps, stayed above zero here: a poll the reload cancelled was reported neither finished nor
+ *  failed. */
+export async function withClock(page: Page): Promise<void> {
+  await page.clock.install();
+  await page.reload({ waitUntil: "networkidle" });
+  await expect.poll(() => drawn(page), { timeout: ACTION_MS }).toBe("settled");
+}
+
+/** What the page shows two frames from now: "settled", or why not. */
+export function drawn(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    const main = document.querySelector("main");
+    if (main === null) return "no main";
+    if (document.querySelector("[aria-busy='true']") !== null) return "busy";
+    if (main.querySelector("h1, h2, table") === null) return `blank: ${main.innerText.slice(0, 80)}`;
+    if (document.body.innerText.includes("is loading.")) return "loading";
+    return "settled";
+  });
+}
+
+/**
+ * Brings the page's next `count` reads of its campaign, or of what `path` names, at once, on a page `withClock` loaded: the
+ * clock is moved on a poll period until a read answers. The next poll is set only once the last read
+ * has answered (`poll.ts`), so a move made while a read runs brings nothing, and the clock is moved
+ * again. A read of the campaign already shown starts no slow-read wait (`waited.ts`), so moving the
+ * clock past one changes nothing else on the page.
+ */
+export async function nextPolls(page: Page, count: number, path = "/api/campaign"): Promise<void> {
+  for (let read = 0; read < count; read += 1) {
+    let answered = false;
+    const answer = page
+      .waitForResponse((response) => new URL(response.url()).pathname === path)
+      .then(() => {
+        answered = true;
+      });
+    await expect
+      .poll(async () => {
+        if (!answered) await page.clock.fastForward(POLL_MS);
+        return answered;
+      })
+      .toBe(true);
+    await answer;
+  }
 }
 
 /** The page reported nothing wrong, less what a test expected (`allowed`, matched by substring). */

@@ -5,6 +5,7 @@ import {
   DESKTOP,
   expectQuiet,
   launchBrowser,
+  nextPolls,
   type Opened,
   openPage,
   PHONE,
@@ -12,6 +13,7 @@ import {
   type Served,
   serveFixture,
   type Viewing,
+  withClock,
 } from "./browser.ts";
 import {
   arm,
@@ -442,14 +444,11 @@ describe("the Log pane between two pages", () => {
   test("changes nothing in the table across two polls of unchanged data", async () => {
     const opened = await openLog(served);
     const { page } = opened;
+    await withClock(page);
     await watchMutations(page.locator(".ana-log"));
-    for (let poll = 0; poll < 2; poll += 1) {
-      await page.waitForResponse((response) => response.url().includes("/api/campaign?"), {
-        timeout: 12_000,
-      });
-    }
+    await nextPolls(page, 2);
     expect(await mutationsOf(page)).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
-  }, 30_000);
+  });
 });

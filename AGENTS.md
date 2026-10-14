@@ -1303,6 +1303,13 @@ before it merged. What it comes to:
   posts each verdict as the status `ana/commit`. `--merge` also waits for `ci.yml` on the top's
   head, posts `ana/stack-gate` on every head, and merges bottom-up, each pull request based on
   `main` just before its merge and pinned to its gated head.
+- **A restack makes the stack one chain again** (restack, linearize, quench, drain): each pull
+  request that left the chain is replayed onto the head beneath it, based there and added to the
+  native stack. Resolve conflicts hunk by hunk, never by taking one side's file whole (on 14 October
+  that dropped #156's other hunks), and push each moved branch through the gate with a lease.
+- **The native stack.** A base alone leaves a pull request outside GitHub's stack ("can be
+  stacked"). `gh api repos/{owner}/{repo}/stacks` lists them; POST there makes one; append above its
+  top, bottom-up: `gh api -X POST repos/{owner}/{repo}/stacks/<n>/add -F 'pull_requests[]=<pr>'`.
 
 A commit's subject is one imperative sentence that states the finished change: "Refuse a
 comparison on a checker nobody has read". Its body says what was wrong and what happens instead,

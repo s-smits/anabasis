@@ -11,12 +11,14 @@ import {
   expectQuiet,
   framesSeen,
   launchBrowser,
+  nextPolls,
   type Opened,
   openPage,
   routeParameters,
   type Served,
   sampleFrames,
   serveFixture,
+  withClock,
 } from "./browser.ts";
 
 /** When the option was clicked and when the placeholder was first painted, in the page's clock; and
@@ -48,8 +50,6 @@ let browser: Browser;
 let keys: Keys;
 /** Each fixture campaign's answer, by the path the page asks it at. */
 const answers = new Map<string, string>();
-
-const POLL_MS = 5_000;
 
 beforeAll(async () => {
   [served, browser] = await Promise.all([serveFixture(), launchBrowser()]);
@@ -114,19 +114,6 @@ async function answerAtOnce(page: Page): Promise<void> {
       ? route.continue()
       : route.fulfill({ status: 200, contentType: "application/json", body }));
   });
-}
-
-/** Resolves once the page has read the selected campaign `count` more times. */
-async function polls(page: Page, count: number): Promise<void> {
-  let seen = 0;
-  const counting = (response: { url: () => string }) => {
-    if (response.url().includes("/api/campaign?")) seen += 1;
-  };
-  page.on("response", counting);
-  // The next poll starts 5 s after the last read answered (`poll.ts`), and on a loaded host on
-  // 14 October one test saw a single read in 15 s: the bound leaves three periods over the count.
-  await expect.poll(() => seen, { timeout: (count + 3) * POLL_MS }).toBeGreaterThanOrEqual(count);
-  page.off("response", counting);
 }
 
 describe("a switch of project or campaign", () => {
@@ -246,9 +233,10 @@ describe("a poll that brings nothing new", () => {
   test("redraws nothing of the comparisons chart", async () => {
     const opened = await sampled(`campaign=${keys.fixture}`, "fixture");
     const { page } = opened;
-    await polls(page, 1);
+    await withClock(page);
+    await nextPolls(page, 1);
     const mutations = await observe(page, ".ana-comparisons-frame svg");
-    await polls(page, 2);
+    await nextPolls(page, 2);
     expect(await mutations()).toBe(0);
     expectQuiet(opened);
     await opened.context.close();
@@ -257,10 +245,11 @@ describe("a poll that brings nothing new", () => {
   test("redraws nothing of the moves table", async () => {
     const opened = await openPage(browser, served.url(`campaign=${keys.fixture}&pane=moves`));
     const { page } = opened;
+    await withClock(page);
     await expect(page.getByRole("table")).toBeVisible();
-    await polls(page, 1);
+    await nextPolls(page, 1);
     const mutations = await observe(page, "main table");
-    await polls(page, 2);
+    await nextPolls(page, 2);
     expect(await mutations()).toBe(0);
     expectQuiet(opened);
     await opened.context.close();

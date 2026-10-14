@@ -17,7 +17,7 @@
  */
 import type { Locator, Page, Request } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { ACTION_MS, accessibilityViolations, DESKTOP, type Opened, PHONE } from "./browser.ts";
+import { ACTION_MS, accessibilityViolations, DESKTOP, drawn, type Opened, PHONE } from "./browser.ts";
 import { MARKERS } from "./fixture-campaign.ts";
 
 /** What can be acted on: a native control or an element with an interactive role. */
@@ -146,19 +146,6 @@ async function settle(page: Page, pending: () => number): Promise<void> {
   await expect
     .poll(async () => (pending() > 0 ? "reading" : await drawn(page)), { timeout: ACTION_MS })
     .toBe("settled");
-}
-
-/** What the page shows two frames from now: "settled", or why not. */
-function drawn(page: Page): Promise<string> {
-  return page.evaluate(async () => {
-    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
-    const main = document.querySelector("main");
-    if (main === null) return "no main";
-    if (document.querySelector("[aria-busy='true']") !== null) return "busy";
-    if (main.querySelector("h1, h2, table") === null) return `blank: ${main.innerText.slice(0, 80)}`;
-    if (document.body.innerText.includes("is loading.")) return "loading";
-    return "settled";
-  });
 }
 
 /** What does not hold of the page now, each as a sentence; empty where all of it holds. */

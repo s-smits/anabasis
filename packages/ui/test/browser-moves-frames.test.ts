@@ -8,7 +8,16 @@
 import { afterAll, beforeAll, describe, test } from "bun:test";
 import { type Browser, expect, type Page } from "@playwright/test";
 import type { Move } from "../src/models.ts";
-import { expectQuiet, launchBrowser, type Opened, openPage, type Served, serveFixture } from "./browser.ts";
+import {
+  expectQuiet,
+  launchBrowser,
+  nextPolls,
+  type Opened,
+  openPage,
+  type Served,
+  serveFixture,
+  withClock,
+} from "./browser.ts";
 import { answersOver } from "./fixture-campaign.ts";
 
 /** What the watcher counted since it was armed: frames, frames with no evidence shown, frames whose
@@ -22,8 +31,6 @@ interface Frames {
 
 /** Where evidence stands in the pane: the list's table, a detail, or a quiet "nothing" line. */
 const EVIDENCE = "main table, main .ana-detail, main .ana-nosignal";
-/** Two polls of the campaign and a little over: the page polls every 5 s (`live.ts`). */
-const TWO_POLLS_MS = 30_000;
 const SLOW_MS = 1_500;
 
 let served: Served;
@@ -223,38 +230,32 @@ describe("the Moves pane between frames", () => {
     await opened.context.close();
   });
 
-  test(
-    "changes nothing in the list or an open detail across two polls of unchanged data",
-    async () => {
-      const opened = await openWatched(`${listQuery()}&move=${String(indexOf("b-1", "comparison"))}`);
-      const { page } = opened;
-      await expect(chipOf(page, "s-5-1")).toBeVisible();
-      await page.evaluate(() => {
-        const seen: string[] = [];
-        const observer = new MutationObserver((records) => {
-          for (const record of records) seen.push(`${record.type} ${record.target.nodeName}`);
-          document.documentElement.dataset.anaMutations = String(seen.length);
-        });
-        for (const watched of document.querySelectorAll("main table, main .ana-detail")) {
-          observer.observe(watched, {
-            subtree: true,
-            childList: true,
-            attributes: true,
-            characterData: true,
-          });
-        }
-        document.documentElement.dataset.anaMutations = "0";
+  test("changes nothing in the list or an open detail across two polls of unchanged data", async () => {
+    const opened = await openWatched(`${listQuery()}&move=${String(indexOf("b-1", "comparison"))}`);
+    const { page } = opened;
+    await withClock(page);
+    await expect(chipOf(page, "s-5-1")).toBeVisible();
+    await page.evaluate(() => {
+      const seen: string[] = [];
+      const observer = new MutationObserver((records) => {
+        for (const record of records) seen.push(`${record.type} ${record.target.nodeName}`);
+        document.documentElement.dataset.anaMutations = String(seen.length);
       });
-      const polled = (response: { url: () => string }) =>
-        new URL(response.url()).pathname === "/api/campaign";
-      await page.waitForResponse(polled);
-      await page.waitForResponse(polled);
-      expect(await page.evaluate(() => document.documentElement.dataset.anaMutations)).toBe("0");
-      expectQuiet(opened);
-      await opened.context.close();
-    },
-    TWO_POLLS_MS,
-  );
+      for (const watched of document.querySelectorAll("main table, main .ana-detail")) {
+        observer.observe(watched, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          characterData: true,
+        });
+      }
+      document.documentElement.dataset.anaMutations = "0";
+    });
+    await nextPolls(page, 2);
+    expect(await page.evaluate(() => document.documentElement.dataset.anaMutations)).toBe("0");
+    expectQuiet(opened);
+    await opened.context.close();
+  });
 
   test("keeps the list on screen while a slow move is read, and shows that it waits only later", async () => {
     const opened = await openWatched(listQuery());

@@ -17,6 +17,9 @@ import type { Ending as SolveEnding } from "../../../../src/kernel/solve.ts";
  * button is a way back too, and the page's own Back button goes back through the history where the
  * page itself made the entry, so that the two never disagree about where "back" is. A detail opened
  * from a link has no such entry, and its Back button names the list as a new one.
+ *
+ * A level waits for its answer with the one before it on screen (`late.ts`), and the list comes
+ * back in the frame the detail leaves; the history puts its scroll back.
  */
 
 /** A label and the tone it is drawn in. */
@@ -53,7 +56,8 @@ function leave(navigation: Navigation, change: RouteChange): void {
 
 /**
  * Focus as the list and its detail take turns: the detail when one opens, and the row it was
- * opened from when the list returns. Rows carry `data-row` with their key.
+ * opened from when the list returns. Rows carry `data-row` with their key. `selected` is what is
+ * shown, not what the route asks for, so that focus never lands on a level still being read.
  */
 export function useDrill(selected: string | null) {
   const list = useRef<HTMLDivElement>(null);

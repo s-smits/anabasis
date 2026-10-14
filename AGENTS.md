@@ -732,7 +732,7 @@ before) with a patience of 6 (`--patience`), trigger 0.25 (`--trigger`), an obje
 last A/A sets from the reference's own spread, 0.01 before one (`--margin` names another), a
 stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve (`--reserve`),
 `--parent latest`, `--reference promoted`, which is the harness last promoted and the starter
-until one is; a Builder session of 240 minutes, 300 turns and 24 practice solves; a solve of
+until one is; a Builder session of 24 hours (1,440 minutes) of its own time, 300 turns and 24 practice solves; a solve of
 120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
 names a number. An Examiner session ends when the Examiner calls `finish` a second time, or a
 first time once the host has the tasks it asked for: what the campaign is short of a comparison's

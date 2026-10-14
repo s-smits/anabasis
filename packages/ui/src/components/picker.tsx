@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
-import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type FocusEvent, memo, useId, useMemo, useRef, useState } from "react";
 
 /*
  * A picker that uses the page's shared styles.
@@ -12,6 +12,12 @@ import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
  * This is a listbox instead of a select: same keyboard contract (arrows move, Enter picks, Escape
  * closes, click outside closes), and the same one-way data flow, with the popup drawn in our own
  * styles. Groups carry an optional heading; a group with no heading renders its options flat.
+ *
+ * Focus stays on the trigger while the list is open, as a combobox's does: a press inside the list
+ * keeps it there, so focus leaving the picker is a press or a Tab outside it, and closes the list
+ * (`onBlur`). The active option scrolls into view as it is drawn active, through its ref. Until
+ * 14 October both were effects that ran a frame after the list had drawn, one of them a listener on
+ * the whole document for as long as the list was open.
  */
 
 interface PickerOption {
@@ -25,6 +31,16 @@ interface PickerGroup {
   key: string;
   label: string | null;
   options: readonly PickerOption[];
+}
+
+/** The active option, brought into view in the list as it becomes active. */
+function scrollNearest(option: HTMLButtonElement | null): void {
+  option?.scrollIntoView({ block: "nearest" });
+}
+
+/** A press inside the list keeps focus on the trigger, so the list stays open under it. */
+function keepFocus(event: React.MouseEvent): void {
+  event.preventDefault();
 }
 
 function PickerInner({
@@ -42,7 +58,6 @@ function PickerInner({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const id = useId();
 
@@ -55,26 +70,20 @@ function PickerInner({
   const current = flat.find((option) => option.value === value) ?? null;
   const empty = flat.length === 0;
 
-  useEffect(() => {
-    if (open) document.getElementById(`${id}-option-${active}`)?.scrollIntoView({ block: "nearest" });
-  }, [open, active, id]);
-
-  useEffect(() => {
-    if (!open) return;
-    const dismiss = (event: MouseEvent) => {
-      // A click outside the picker root closes it; a target that is not a node never matches.
-      const inside = event.target instanceof globalThis.Node && root.current?.contains(event.target);
-      if (root.current !== null && inside !== true) setOpen(false);
-    };
-    document.addEventListener("mousedown", dismiss);
-    return () => document.removeEventListener("mousedown", dismiss);
-  }, [open]);
-
   function commit(index: number) {
     const option = flat[index];
     if (option !== undefined) onChange(option.value);
     setOpen(false);
     trigger.current?.focus();
+  }
+
+  function onBlur(event: FocusEvent<HTMLDivElement>) {
+    // Focus that leaves for nothing or for something outside the picker closes the list.
+    if (
+      !(event.relatedTarget instanceof globalThis.Node && event.currentTarget.contains(event.relatedTarget))
+    ) {
+      setOpen(false);
+    }
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
@@ -115,7 +124,7 @@ function PickerInner({
   }
 
   return (
-    <div className={`ana-picker ${open ? "is-open" : ""}`} ref={root}>
+    <div className={`ana-picker ${open ? "is-open" : ""}`} onBlur={onBlur}>
       <span className="ana-picker-label" id={`${id}-label`}>
         {label}
       </span>
@@ -133,6 +142,8 @@ function PickerInner({
         onClick={() => {
           setActive(value === null ? 0 : (indexOf.get(value) ?? 0));
           setOpen(!open);
+          // Safari does not focus a button it clicks, and the list closes as focus leaves it.
+          trigger.current?.focus();
         }}
         onKeyDown={onKeyDown}
       >
@@ -143,7 +154,13 @@ function PickerInner({
         <ChevronDown />
       </button>
       {open ? (
-        <div className="ana-picker-panel" id={`${id}-listbox`} role="listbox" aria-labelledby={`${id}-label`}>
+        <div
+          className="ana-picker-panel"
+          id={`${id}-listbox`}
+          role="listbox"
+          aria-labelledby={`${id}-label`}
+          onMouseDown={keepFocus}
+        >
           {groups
             .filter((group) => group.options.length > 0)
             .map((group) => (
@@ -156,6 +173,7 @@ function PickerInner({
                       type="button"
                       role="option"
                       id={`${id}-option-${index}`}
+                      ref={index === active ? scrollNearest : undefined}
                       tabIndex={-1}
                       aria-selected={option.value === value}
                       key={option.value}

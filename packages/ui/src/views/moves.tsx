@@ -4,7 +4,7 @@ import { detailsOf, type Live, useMove, useSolve } from "../live.ts";
 import type { CampaignReading, MoveDetail } from "../models.ts";
 import type { Navigation, PaneProps } from "../route.ts";
 import { enter, Pending, useDrill } from "./drill.tsx";
-import { useLateFor } from "./late.ts";
+import { useWaited } from "../waited.ts";
 import { ComparisonDetailView } from "./moves-comparison.tsx";
 import { MovesList } from "./moves-list.tsx";
 import { SessionDetailView } from "./moves-session.tsx";
@@ -63,7 +63,7 @@ export function MovesPane({ reading, navigation }: PaneProps) {
   const solveLive = useSolve(of, solve);
   const asked = levelOf(move, solve);
   const arrived = asked === 0 || (asked === 1 ? moveLive.current : solveLive.current);
-  const late = useLateFor(arrived ? null : `${String(move)} ${solve ?? ""}`);
+  const late = useWaited(arrived ? null : `${String(move)} ${solve ?? ""}`);
   // The level shown last, kept as state adjusted during render: what stays while the next is read.
   const [before, setBefore] = useState<Level | null>(null);
   const kept = before === null || before >= asked ? asked : before;
@@ -114,6 +114,8 @@ export function MovesPane({ reading, navigation }: PaneProps) {
           />
         </div>
       )}
+      {outer.marker}
+      {inner.marker}
     </Section>
   );
 }

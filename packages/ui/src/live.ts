@@ -15,7 +15,7 @@
  * answer to another request than the one asked now, the previous selection's or the previous
  * campaign's, is no answer to it: `current` says so, and every caller shows it as pending.
  */
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   API_PREFIX,
   type AnswerOf,
@@ -56,6 +56,15 @@ export interface Of {
   readonly since: string | null;
 }
 
+/** What one hook asks for: a request's path, or null for none, with the token it is asked under, and
+ *  whether it is polled or read once for each `since`. */
+interface Asked {
+  readonly path: string | null;
+  readonly token: string | null;
+  readonly polled: boolean;
+  readonly since: string | null;
+}
+
 const POLL_MS = 5_000;
 const TIMEOUT_MS = 30_000;
 const REFUSALS: readonly Refusal[] = ["token", "host", "exam-side"];
@@ -74,6 +83,77 @@ class AnswerFailure extends Error {
   constructor(message: string, refused: Refusal | null) {
     super(message);
     this.refused = refused;
+  }
+}
+
+/**
+ * One hook's reads across every request it is asked, as a store React subscribes to
+ * (`useSyncExternalStore`). A subscription is one request: it reads, polls where asked, and ends
+ * with its request, so a new request is a new subscription, which React makes after the render
+ * that asked for it and before any other effect of that commit. What the store shows outlives a
+ * subscription: the last answer stays on screen while the next request is read (`current` says
+ * whose it is), and a refresh that brings the same text, or the same parts, keeps the same objects.
+ */
+class Reads<Answer> {
+  #state: Omit<Live<Answer>, "current"> = NOTHING_READ;
+  #text: string | null = null;
+  #data: Answer | null = null;
+
+  readonly snapshot = (): Omit<Live<Answer>, "current"> => this.#state;
+
+  /** The subscription that reads `asked`, for React to start after it renders the request. */
+  subscriber({ path, token, polled }: Asked): (notify: () => void) => () => void {
+    return (notify) => {
+      const show = (next: Omit<Live<Answer>, "current">): void => {
+        this.#state = next;
+        notify();
+      };
+      // A selection cleared clears its answer, as v1's inspector did: nothing is asked for.
+      if (path === null) {
+        this.#text = null;
+        this.#data = null;
+        if (this.#state !== NOTHING_READ) show(NOTHING_READ);
+        return () => undefined;
+      }
+      let active = true;
+      const abort = new AbortController();
+      const read = async (): Promise<void> => {
+        show({ ...this.#state, loading: true });
+        try {
+          const text = await answerText(path, token, abort.signal);
+          if (!active) return;
+          if (text === this.#text) {
+            show({ ...this.#state, key: path, loading: false, error: null, refused: null });
+            return;
+          }
+          this.#text = text;
+          // SAFETY: the server answers this endpoint with `Answer` (`server/api.ts` routes each
+          // endpoint to the handler typed by the same map), and a failed answer threw above.
+          const parsed = JSON.parse(text) as Answer;
+          const before = this.#data;
+          this.#data = before !== null && keptParts(before, parsed) ? before : parsed;
+          show({ data: this.#data, key: path, loading: false, error: null, refused: null });
+        } catch (caught) {
+          if (!active) return;
+          const refused = caught instanceof AnswerFailure ? caught.refused : null;
+          // `errorMessage` lives beside the process surface in `src/meta`, which a page cannot bundle.
+          const error = caught instanceof Error ? caught.message : String(caught);
+          show({ ...this.#state, loading: false, error, refused });
+        }
+      };
+      const stop = polled ? poll(read, POLL_MS) : null;
+      // `read` settles every failure itself; the catch is for a fault in this store.
+      if (stop === null) {
+        read().catch((error: unknown) =>
+          console.error("Read failed.", error instanceof Error ? error : String(error)),
+        );
+      }
+      return () => {
+        active = false;
+        stop?.();
+        abort.abort();
+      };
+    };
   }
 }
 
@@ -150,59 +230,15 @@ function useAnswer<Name extends Endpoint>(
 ): Live<AnswerOf<Name>> {
   const { token } = useRoute().route;
   const path = query === null ? null : requestPath(endpoint, query);
-  const [live, setLive] = useState<Omit<Live<AnswerOf<Name>>, "current">>(NOTHING_READ);
-  const lastText = useRef<string | null>(null);
-  const lastData = useRef<AnswerOf<Name> | null>(null);
+  const [reads] = useState(() => new Reads<AnswerOf<Name>>());
   const polled = refresh === "poll";
   const since = polled ? null : refresh.since;
-  useEffect(() => {
-    // A selection cleared clears its answer, as v1's inspector did: nothing is asked for.
-    if (path === null) {
-      lastText.current = null;
-      lastData.current = null;
-      setLive(NOTHING_READ);
-      return;
-    }
-    let active = true;
-    const abort = new AbortController();
-    const read = async (): Promise<void> => {
-      setLive((before) => ({ ...before, loading: true }));
-      try {
-        const text = await answerText(path, token, abort.signal);
-        if (!active) return;
-        if (text === lastText.current) {
-          setLive((before) => ({ ...before, key: path, loading: false, error: null, refused: null }));
-          return;
-        }
-        lastText.current = text;
-        // SAFETY: the server answers this endpoint with `AnswerOf<Name>` (`server/api.ts` routes each
-        // endpoint to the handler typed by the same map), and a failed answer threw above.
-        const parsed = JSON.parse(text) as AnswerOf<Name>;
-        const before = lastData.current;
-        const data = before !== null && keptParts(before, parsed) ? before : parsed;
-        lastData.current = data;
-        setLive({ data, key: path, loading: false, error: null, refused: null });
-      } catch (caught) {
-        if (!active) return;
-        const refused = caught instanceof AnswerFailure ? caught.refused : null;
-        // `errorMessage` lives beside the process surface in `src/meta`, which a page cannot bundle.
-        const error = caught instanceof Error ? caught.message : String(caught);
-        setLive((before) => ({ ...before, loading: false, error, refused }));
-      }
-    };
-    const stop = polled ? poll(read, POLL_MS) : null;
-    // `read` settles every failure itself; the catch is for a fault in this hook.
-    if (stop === null) {
-      read().catch((error: unknown) =>
-        console.error("Read failed.", error instanceof Error ? error : String(error)),
-      );
-    }
-    return () => {
-      active = false;
-      stop?.();
-      abort.abort();
-    };
-  }, [path, token, polled, since]);
+  const subscribe = useMemo(
+    () => reads.subscriber({ path, token, polled, since }),
+    [reads, path, token, polled, since],
+  );
+  // A page rendered to a string reads what the store holds, which is nothing read.
+  const live = useSyncExternalStore(subscribe, reads.snapshot, reads.snapshot);
   return { ...live, current: path !== null && live.key === path };
 }
 

@@ -24,6 +24,8 @@
     "recharts": "3.8.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
     "@types/bun": "1.4.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5"

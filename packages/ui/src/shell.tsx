@@ -1,4 +1,4 @@
-import { type ComponentType, memo, useEffect, useState } from "react";
+import { type ComponentType, memo, useState } from "react";
 import { AnabasisMark } from "./components/brand.tsx";
 import { Callout } from "./components/layout.tsx";
 import { Badge, NoSignal } from "./components/primitives.tsx";
@@ -6,11 +6,13 @@ import { ProjectSidebar } from "./components/project-sidebar.tsx";
 import type { Live } from "./live.ts";
 import type { CampaignList, CampaignReading, CampaignRow, Issue } from "./models.ts";
 import type { Navigation, Pane, PaneProps, Route } from "./route.ts";
+import { useSpelledAddress } from "./spelling.ts";
 import { CampaignPane } from "./views/campaign.tsx";
 import { Inspector } from "./views/inspector.tsx";
 import { LogPane } from "./views/log.tsx";
 import { MovesPane } from "./views/moves.tsx";
 import { TasksPane } from "./views/tasks.tsx";
+import { useWaited } from "./waited.ts";
 
 /*
  * The page around the panes: the sidebar with its two pickers and the four panes, the line that
@@ -113,19 +115,13 @@ function Page({
 }) {
   const fresh = reading.current ? reading.data : null;
   const [drawn, setDrawn] = useState<Drawn | null>(null);
-  useEffect(() => {
-    if (fresh !== null) setDrawn({ reading: fresh, navigation });
-  }, [fresh, navigation]);
+  // The last campaign drawn, kept in render as each fresh one arrives, so a switch has it to hold.
+  if (fresh !== null && (drawn?.reading !== fresh || drawn.navigation !== navigation)) {
+    setDrawn({ reading: fresh, navigation });
+  }
   const pending = fresh === null && reading.error === null;
   const keeping = pending && drawn !== null;
-  // Whether the previous campaign has stood for `PENDING_MS` while the next is read.
-  const [waited, setWaited] = useState(false);
-  useEffect(() => {
-    setWaited(false);
-    if (!keeping) return;
-    const timer = setTimeout(() => setWaited(true), PENDING_MS);
-    return () => clearTimeout(timer);
-  }, [keeping]);
+  const waited = useWaited({ holding: keeping, ms: PENDING_MS });
   if (campaigns.refused === "token" || campaigns.refused === "host") {
     return (
       <NoSignal title="The server refused this page" tone="bad">
@@ -165,19 +161,15 @@ export function Shell({
   reading: Live<CampaignReading>;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const { route, push, replace } = navigation;
+  const { route, push } = navigation;
   const selection = selectionOf(campaigns.data, route);
-  // The URL names what is shown: a selection it left out, or one the list no longer holds, is
-  // written back without a new history entry. A project read off the route's own campaign keeps
-  // that campaign, so a link to a move, a solve or a task in it keeps them (`changedRoute`).
-  // The project is written only while no campaign names it (`searchOf`). The same replacement
-  // writes the route in its one spelling, so a pane the page does not have, a move or an event that
-  // is no place in a log, or a parameter the route does not read leaves the address rather than
-  // stand in it beside what is shown (`navigate` changes nothing where the spelling already holds).
-  useEffect(() => {
-    if (campaigns.data === null) return;
-    replace({ project: selection.project, campaign: selection.campaign });
-  }, [campaigns.data, selection.project, selection.campaign, route, replace]);
+  // The address names what is shown, in its one spelling (`spelling.ts`).
+  useSpelledAddress({
+    listed: campaigns.data !== null,
+    project: selection.project,
+    campaign: selection.campaign,
+    navigation,
+  });
 
   if (campaigns.data?.campaigns.length === 0) {
     return (

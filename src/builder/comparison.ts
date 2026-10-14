@@ -108,11 +108,16 @@ export interface Report {
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A,
    *  where it holds four or more of a task: how often two of its solves of a task
-   *  disagree (`flips`), and the objective's margin its own spread sets, which a later comparison reads by (`marginOf`,
-   *  `marginRead`), null where the objective measured no two valid answers of one task. */
+   *  disagree (`flips`), the least share of its untied tasks one half has to win for a reading of it
+   *  two-sided at the level to detect it four times in five (`detectable`), which says how much its
+   *  reading no step can show, and the objective's margin
+   *  its own spread sets, which a later comparison reads by (`marginOf`, `marginRead`), null where
+   *  the objective measured no two valid answers of one task. */
   readonly noise:
     | (Tested & {
         readonly flips: number | null;
+        /** Absent in a report written before 14 October. */
+        readonly detectable?: number | null;
         readonly margin: ReturnType<typeof marginOf>;
       })
     | null;
@@ -405,6 +410,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   // or more and even, which halves mirrored in time split two against two at least. At four a
   // side every comparison carries one.
   const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself() : null;
+  const aa = mirrored === null ? null : scored(mirrored);
   const valid = validOf(pairs, fixed.solves);
   // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
   const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
@@ -421,11 +427,13 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     valid,
     billed: { old: billedMean(pairs, "old"), fresh: billedMean(pairs, "fresh") },
     noise:
-      mirrored === null
+      mirrored === null || aa === null
         ? null
         : {
-            ...scored(mirrored),
+            ...aa,
             flips: flipsOf(mirrored),
+            // Two-sided, as the control is read (`controlled`, `decide.ts`): each side at half the level.
+            detectable: detectable(aa.differences, fixed.level / 2),
             margin: marginOf(mirrored),
           },
     counted: pairs.length === first.pairs.length ? null : scored(first.pairs),

@@ -221,7 +221,9 @@ function critical(sizes: readonly number[], level: number): number {
 /**
  * The paired sign-flip test's p for the new harness: the chance, were each untied task as likely
  * won as lost by its margin, that the differences sum to at least what they do. No untied task is
- * no evidence, and reads 1.
+ * no evidence, and reads 1. The margins weigh a mixed result, and none where every untied task is
+ * won: then only the signing that wins them all reaches the sum, and p is one half to the power of
+ * their count, so two tasks won read 0.25 whether by one pair each or by four.
  */
 export function flipP(differences: readonly number[]): number {
   const sizes = sizesOf(differences);

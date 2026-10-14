@@ -739,6 +739,12 @@
   margin-top: 2px;
 }
 
+/* A scored cell is tinted by its outcome, and the dim grey of the counts fell under 4.5:1 on the
+   two lightest tints (set aside, and tied with the reference valid in every solve). */
+.ana-grid-cell:not(.is-none) small {
+  color: var(--ana-text);
+}
+
 .ana-grid-cell.is-none > span {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);

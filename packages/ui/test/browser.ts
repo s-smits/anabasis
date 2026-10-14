@@ -21,7 +21,14 @@
  * (`expectQuiet`), so a page that renders and throws behind it fails.
  */
 import { AxeBuilder } from "@axe-core/playwright";
-import { type Browser, type BrowserContext, chromium, expect, type Page } from "@playwright/test";
+import {
+  type Browser,
+  type BrowserContext,
+  type BrowserContextOptions,
+  chromium,
+  expect,
+  type Page,
+} from "@playwright/test";
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { interruptAndReapProcessGroup } from "../../../src/meta/subprocess.ts";
@@ -158,7 +165,11 @@ async function startLine(stdout: ReadableStream<Uint8Array>): Promise<[string, s
   throw new Error(`no start line within ${String(START_MS)} ms: ${text}`);
 }
 
-/** Chrome, headless.
+/** Chrome, headless unless `ANA_UI_HEADED=1` asks for its window, to watch a test click; then
+ *  `ANA_UI_SLOW_MS` slows each action by that many milliseconds. Headless is the same Chrome, its
+ *  engine, layout and frames, with no window drawn. A shown window takes the screen's focus on
+ *  macOS each time a test opens a page, so it is for watching one test; to see what a run did,
+ *  record it headless (`ANA_UI_VIDEO`, `openPage`).
  *
  *  The launch and the first context are each bounded at `START_MS`, inside Bun's 60 s for the hook.
  *  On 14 October, at loads of 15 to 54 on 12 cores, Chrome stalled at its start in 4 of the first
@@ -168,7 +179,11 @@ async function startLine(stdout: ReadableStream<Uint8Array>): Promise<[string, s
  *  the file's `beforeAll`, which the wrapper runs again on a crowded host. */
 export async function launchBrowser(): Promise<Browser> {
   const executable = Bun.env.ANA_UI_CHROME;
-  const options = { headless: true, timeout: START_MS };
+  const options = {
+    headless: Bun.env.ANA_UI_HEADED !== "1",
+    slowMo: Number(Bun.env.ANA_UI_SLOW_MS ?? "0"),
+    timeout: START_MS,
+  };
   const browser = await chromium.launch(
     executable === undefined ? { channel: "chrome", ...options } : { executablePath: executable, ...options },
   );
@@ -181,13 +196,18 @@ export async function launchBrowser(): Promise<Browser> {
 }
 
 /** A fresh context and page at `url`, recording what goes wrong. The page has loaded its first
- *  campaign reading, or its refusal, when this returns. */
+ *  campaign reading, or its refusal, when this returns. `ANA_UI_VIDEO=<dir>` records each page as
+ *  a video in that directory, written as its context closes. */
 export async function openPage(browser: Browser, url: string, viewing: Viewing = {}): Promise<Opened> {
-  const context = await browser.newContext({
-    viewport: { width: viewing.width ?? DESKTOP.width, height: viewing.height ?? DESKTOP.height },
+  const viewport = { width: viewing.width ?? DESKTOP.width, height: viewing.height ?? DESKTOP.height };
+  const options: BrowserContextOptions = {
+    viewport,
     reducedMotion: viewing.reducedMotion ?? "no-preference",
     colorScheme: "dark",
-  });
+  };
+  const videos = Bun.env.ANA_UI_VIDEO;
+  if (videos !== undefined) options.recordVideo = { dir: videos, size: viewport };
+  const context = await browser.newContext(options);
   context.setDefaultTimeout(ACTION_MS);
   const page = await context.newPage();
   const problems: string[] = [];

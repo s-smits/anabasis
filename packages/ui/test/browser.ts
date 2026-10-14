@@ -26,16 +26,21 @@ import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.
 import { tmpdir } from "../../../src/meta/os.ts";
 import { interruptAndReapProcessGroup } from "../../../src/meta/subprocess.ts";
 import { join } from "../../../src/meta/path.ts";
+import type { Tier } from "../src/models.ts";
 import { type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
 
-/** One server over the fixture: its origin and token, and how to stop it. */
-export interface Served {
+/** One server: its origin and token, and how to stop it. */
+export interface Server {
   readonly origin: string;
   readonly token: string;
-  readonly fixture: Fixture;
   /** The page's address for a query string without the token, `?` excluded; the token is added. */
   readonly url: (query?: string) => string;
   readonly stop: () => Promise<void>;
+}
+
+/** One server over the fixture, which it writes and removes. */
+export interface Served extends Server {
+  readonly fixture: Fixture;
 }
 
 /** A page and what the browser reported against it. */
@@ -86,23 +91,39 @@ export const DESKTOP = { width: 1440, height: 1000 } as const;
 export const PHONE = { width: 390, height: 844 } as const;
 
 /** The fixture written under a fresh directory, and `serve.ts` started on it. */
-export async function serveFixture(tier: "default" | "exam" = "default"): Promise<Served> {
+export async function serveFixture(tier: Tier = "default"): Promise<Served> {
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-ui-browser-")));
-  const fixture = writeFixtureCampaign(join(scratch, "repo"));
-  const child = Bun.spawn(
-    ["bun", "serve.ts", "--repo", fixture.root, ...(tier === "exam" ? ["--exam-side"] : [])],
-    { cwd: PACKAGE, env: { ...Bun.env, PORT: "0" }, stdout: "pipe", stderr: "pipe", detached: true },
-  );
+  try {
+    const fixture = writeFixtureCampaign(join(scratch, "repo"));
+    const server = await serveDirectory(fixture.root, tier);
+    const stop = async () => {
+      await server.stop();
+      rmSync(scratch, { recursive: true, force: true });
+    };
+    return { ...server, fixture, stop };
+  } catch (error) {
+    rmSync(scratch, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+/** `serve.ts` started on the campaigns under `root`, which the caller owns and removes. */
+export async function serveDirectory(root: string, tier: Tier = "default"): Promise<Server> {
+  const child = Bun.spawn(["bun", "serve.ts", "--repo", root, ...(tier === "exam" ? ["--exam-side"] : [])], {
+    cwd: PACKAGE,
+    env: { ...Bun.env, PORT: "0" },
+    stdout: "pipe",
+    stderr: "pipe",
+    detached: true,
+  });
   const stop = async () => {
     await interruptAndReapProcessGroup(child, 2_000);
-    rmSync(scratch, { recursive: true, force: true });
   };
   try {
     const [origin, token] = await startLine(child.stdout);
     return {
       origin,
       token,
-      fixture,
       url: (query = "") => `${origin}/?${query === "" ? "" : `${query}&`}token=${token}`,
       stop,
     };

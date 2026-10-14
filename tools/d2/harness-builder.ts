@@ -22,8 +22,8 @@
  * one live Builder conversation makes the moves through its campaign tools: an Examiner session,
  * a release, a comparison, a promotion (`campaign-actions.ts`). The table's move is its advice,
  * and every condition above stays the host's at each action. A conversation that ends at its own
- * limits is followed by another on the Builder's notes; one the Builder ends with `finish` ends
- * this run of the command (`finished`), and run again the campaign goes on with a new one. A lack
+ * limits is followed by another on the Builder's notes, and so is one the Builder ends with
+ * `finish`, until three in a row have made no campaign move (`finished`). A lack
  * of room is advice to ask the Examiner while a conversation lives, and the campaign's ending
  * once one has ended with the table still naming it. Without the term the command makes every
  * move itself, a Builder session among them, as it did before 13 October, and nothing a Builder
@@ -78,7 +78,8 @@
  *
  * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
  * on tasks that could not be made to leave room, on its environment, on the operator's word, on
- * its control (`decide.ts`) or, led by its Builder, on the Builder's `finish`, and its log's last event says which (`campaign.ended`). With
+ * its control (`decide.ts`) or, led by its Builder, once three of its conversations in a row made
+ * no campaign move (`idleOf`), and its log's last event says which (`campaign.ended`). With
  * `--handover <dir>` it then writes what it hands over there: the reference harness as a directory
  * that stands by itself, the public rules and the closing report (`close.ts`, row F51). A move that
  * threw after it had begun is the environment's ending, and run again the command goes on from the
@@ -129,6 +130,8 @@ import {
   examTasks,
   flag,
   flagsOf,
+  IDLE,
+  idleOf,
   MOVED,
   nextId,
   opened,
@@ -159,6 +162,19 @@ const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
  *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
+
+/**
+ * Whether the table names a move that measures what a conversation left and asks no Builder for
+ * anything: a repeat and the tasks it waits for, a promotion, the ladder's reading. Until
+ * 14 October a Builder's `finish` ended the campaign whatever was owed: buffer-159-opus's Builder
+ * finished a minute after a 9-0-1 step bought a repeat, and the campaign ended as its Examiner
+ * session settled two and a half hours later, the repeat never run.
+ */
+function hostOwed(decided: Decided): boolean {
+  if (decided.move === "promote") return true;
+  if (decided.move === "compare") return decided.repeats !== undefined || decided.ladder === true;
+  return decided.move === "examine" && decided.repeats !== undefined;
+}
 
 /**
  * Whether the campaign goes on from a move that threw, which began where the log held `from`
@@ -440,15 +456,20 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
     append(log, ENDED, { ending: "environment", why, move });
     return { move: "end", ending: "environment", code: "failed", why };
   }
-  if (how === "finished") {
-    return {
-      move: "end",
-      ending: "finished",
-      code: "finished",
-      why: `the Builder ended its campaign conversation ${session}`,
-    };
+  // A conversation that ends whole, by finish or at its limits, is followed by another on the
+  // Builder's notes until IDLE in a row have made no campaign move (`idleOf`). Until 14 October every
+  // finish ended the campaign: five of five led campaigns ended so, with $22 to $122 of $300 spent,
+  // and the two that promoted finished within seconds of the promotion.
+  const idle = how === "finished" || how === "wall" || how === "turns" ? idleOf(after) : 0;
+  const table = decide(after, turnOf(context).plan);
+  // A measurement the conversations bought is the host's to make first (`hostOwed`), which moves
+  // the campaign, and an ending the table names stands, as it would at the next move.
+  if (idle < IDLE || hostOwed(table)) {
+    return how === "finished" || (AGAIN.has(how) && context.used < context.maxMoves) ? null : table;
   }
-  return AGAIN.has(how) && context.used < context.maxMoves ? null : decide(after, turnOf(context).plan);
+  if (table.move === "end") return table;
+  const why = `${String(idle)} Builder conversations in a row made no campaign move, the last ${session}`;
+  return { move: "end", ending: "finished", code: "finished", why };
 }
 
 /**
@@ -551,13 +572,12 @@ export async function harnessBuilder(
       for (const line of openingLines({ ...plan.wanted, patience: opening.patience })) console.log(line);
     }
     const decided = decide(events, plan);
-    // Led by its Builder, every move past set-up is the conversation's, and so is a lack of room
-    // until one conversation of this run has ended on it.
+    // Led by its Builder, every move but set-up and a measurement owed (`hostOwed`) is the
+    // conversation's, and so is a lack of room until one conversation of this run has ended on it.
     const led =
       opening.led &&
       !SETUP.has(decided.move) &&
-      // The ladder's reading is the host's and no Builder's (`ladderOwed`, `decide.ts`).
-      !(decided.move === "compare" && decided.ladder === true) &&
+      !hostOwed(decided) &&
       (decided.move !== "end" || (decided.ending === "no-room" && !talked));
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,

@@ -51,8 +51,11 @@ asks. `--sessions` now shapes comparison advice only. `--minutes` covers the who
 conversation, including its nested tools: a wall that falls inside a comparison or an Examiner
 session is read where that action ends, and a conversation that ends at its limits is followed by
 a new one on the Builder's notes, so the command goes on to a typed ending. `finish` ends the
-conversation and this run of the command; it does not compare or promote the harness, and the
-same command run again goes on with a new conversation.
+conversation. The host then makes the repeat, the tasks it waits for, the promotion or the ladder's
+reading the table still names, and opens another conversation on the Builder's notes. Three
+conversations in a row that make no campaign move, however each ended, end the campaign
+`finished`. The host compares no harness the Builder left unread, and the same command run again
+goes on with a new conversation.
 
 Three things about the shell line:
 

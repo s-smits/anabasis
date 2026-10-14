@@ -19,9 +19,19 @@ import {
   serveFixture,
 } from "./browser.ts";
 
+/** When the option was clicked and when the placeholder was first painted, in the page's clock; and
+ *  whether the campaign held meanwhile was the previous one, inert and busy. */
+interface Timeline {
+  clickedAt: number | null;
+  placeholderAt: number | null;
+  keptTitle: boolean;
+  busy: boolean;
+}
+
 declare global {
   interface Window {
     anaMutations?: { mutations: number };
+    anaTimeline?: Timeline;
   }
 }
 
@@ -137,18 +147,49 @@ describe("a switch of project or campaign", () => {
       await Bun.sleep(1_500);
       await route.continue();
     });
-    const pending = page.locator(".ana-pending");
-    const placeholder = page.getByText("Reading the campaign", { exact: true });
+    // Read in the page at each change of its document, since a loaded host can take longer than the
+    // wait between two assertions made from here, and can paint a frame later than Playwright reads
+    // the document: a loop on animation frames once missed the placeholder Playwright then found.
+    await page.evaluate(() => {
+      const timeline: Timeline = { clickedAt: null, placeholderAt: null, keptTitle: false, busy: false };
+      window.anaTimeline = timeline;
+      // The wait starts no earlier than the last click, the option's, so the placeholder's distance
+      // from it is at least the wait, whatever a loaded host does between.
+      document.addEventListener(
+        "click",
+        () => {
+          timeline.clickedAt = performance.now();
+        },
+        { capture: true },
+      );
+      const watcher = new MutationObserver(() => {
+        const pending = document.querySelector(".ana-pending");
+        if (pending !== null) {
+          timeline.keptTitle ||= pending.querySelector("h1")?.textContent === "fixture";
+          timeline.busy ||= pending.hasAttribute("inert") && pending.getAttribute("aria-busy") === "true";
+        }
+        if (document.querySelector("main")?.textContent?.includes("Reading the campaign") === true) {
+          timeline.placeholderAt ??= performance.now();
+          watcher.disconnect();
+        }
+      });
+      watcher.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        characterData: true,
+      });
+    });
     await pick(page, "Project", "unit-conversion");
-    const switched = Date.now();
-    await expect(pending).toHaveAttribute("inert", "");
-    await expect(pending).toHaveAttribute("aria-busy", "true");
-    await expect(pending.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();
-    await expect(placeholder).toHaveCount(0);
-    await expect(placeholder).toBeVisible();
-    expect(Date.now() - switched).toBeGreaterThanOrEqual(300);
+    await expect(page.getByText("Reading the campaign", { exact: true })).toBeVisible();
+    const timeline = await page.evaluate(() => window.anaTimeline);
+    expect(timeline?.keptTitle).toBe(true);
+    expect(timeline?.busy).toBe(true);
+    expect(
+      (timeline?.placeholderAt ?? 0) - (timeline?.clickedAt ?? Number.POSITIVE_INFINITY),
+    ).toBeGreaterThanOrEqual(390);
     await expect(page.getByRole("heading", { level: 1, name: "units" })).toBeVisible();
-    await expect(pending).toHaveCount(0);
+    await expect(page.locator(".ana-pending")).toHaveCount(0);
     expectQuiet(opened);
     await opened.context.close();
   });

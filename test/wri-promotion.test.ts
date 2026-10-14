@@ -97,7 +97,7 @@ function campaign() {
 }
 
 /** The campaign up to its promotion, with the table's move after it when `byTable`. */
-function promoted(byTable: boolean) {
+function promoted(byTable: boolean, after = false) {
   const run = campaign();
   const { put, solve, compare } = run;
   put("campaign.opened", { budget: 300, terms: { level: "0.1", trigger: "0.25" } });
@@ -120,7 +120,8 @@ function promoted(byTable: boolean) {
     budgets: [{ turns: 4, wins: 2, losses: 0, ties: 2, p: 0.5 }],
   })();
   // The campaign's move is written as it begins, before the promotion it makes (12 October).
-  if (byTable) put("campaign.move", { move: "promote", why: "read a step twice", harness: "hn" });
+  const move = () => put("campaign.move", { move: "promote", why: "read a step twice", harness: "hn" });
+  if (byTable && !after) move();
   put("harness.promoted", {
     harness: "hn",
     from: "hbase",
@@ -129,6 +130,8 @@ function promoted(byTable: boolean) {
       { comparison: "g-2", against: "hbase", reading: "step" },
     ],
   });
+  // The Builder's `promote` writes its move once the promotion is on record.
+  if (byTable && after) move();
   return run;
 }
 
@@ -144,6 +147,10 @@ describe("lane 31: a promotion and the climb after it", () => {
     expect(read("PROMOTED")).toEqual([
       "hn from hbase at event 34, 0.0 h and $0 after the opening, by the table; opened with level 0.1, trigger 0.25; rests on g-1 4-0-0 p 0.063 at level 0.1, untied 4 of 4, against the reference's own 1 of 4 (1-0-3 p 1.000); g-2 4-0-0 p 0.063 at level 0.1, untied 4 of 4, against the reference's own 1 of 4 (1-0-3 p 1.000); by budget turns 4 2-0-2 p 0.500",
     ]);
+  });
+
+  it("reads a promotion the Builder's tool made, whose move follows it, as the table's", () => {
+    expect(triggered(promoted(true, true).log)("PROMOTED")[0]).toContain(", by the table;");
   });
 
   it("gives a rest comparison's load over the solves it measured, not the non-results it reran", () => {

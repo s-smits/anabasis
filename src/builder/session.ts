@@ -511,10 +511,12 @@ export async function session(
         })
       : "crashed";
   // A crashed session's harness is passed over (`latestBuilt`), as one it may have left half way
-  // through an edit. One its own practice solve last ran on is no half-edit, and is kept as a
-  // checkpoint: on 13 October buffer-149's b-1 crashed on a provider error with a harness it had
-  // practised three of three on, and b-2 rebuilt it from b-1's notes for 25 turns.
-  if (ended === "crashed" && changed && frozen?.harness.digest === lastPractised) {
+  // through an edit. The state its own practice solve last ran on is no half-edit, and is kept as
+  // a checkpoint, whether or not edits followed it: on 13 October buffer-149's b-1 crashed on a
+  // provider error with a harness it had practised three of three on, and b-2 rebuilt it from
+  // b-1's notes for 25 turns. Until 14 October only a crash with no edit after that solve kept it,
+  // so one more line written before the crash lost every practised version of the session.
+  if (ended === "crashed" && changed && lastPractised !== null && lastPractised !== parent.digest) {
     append(log, "build.checkpoint", { session: request.id, harness: lastPractised });
   }
   const tokens = tokensOf([...turns.map((turn) => turn.usage), ...summaries]);

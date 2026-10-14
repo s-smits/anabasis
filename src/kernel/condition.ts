@@ -5,9 +5,9 @@
  * The host sets every field; the Builder sets none. The model, its effort and every limit are the
  * host's, and nothing a harness declares about them is read.
  */
-import { asRecord, isNumber, type JsonValue, type OpenRecord } from "../meta/json-shape.ts";
+import { asRecord, isNumber, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { hashJsonValue, requireJsonValue, sameJsonValue } from "../meta/stable-json.ts";
+import { hashJsonValue, requireJsonValue } from "../meta/stable-json.ts";
 import { append, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
 
@@ -137,12 +137,6 @@ export function settingId(setting: Setting): string {
     host,
     side,
   });
-}
-
-/** The fields two conditions differ in, by name: what a comparison of their solves compares. */
-export function fieldsApart(a: Condition, b: Condition): string[] {
-  const other: OpenRecord = { ...b };
-  return Object.entries(a).flatMap(([field, value]) => (sameJsonValue(value, other[field]) ? [] : [field]));
 }
 
 /**

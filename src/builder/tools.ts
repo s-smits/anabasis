@@ -605,17 +605,24 @@ export function openingTool(opening: string | (() => string), said: Said): Agent
   });
 }
 
-/** A Builder's tool with a line of the host's as the last of whatever it returns, a result or an
- *  error: what the session has used of its limits (`usedLine`, `prompt.ts`). */
-export function endingWith(each: AgentTool, line: () => string): AgentTool {
+/** A Builder's tool with a line of the host's, given the call's id, as the last of whatever it
+ *  returns, a result or an error, where the line is not empty: what the session has used of its
+ *  limits (`usedLine`, `prompt.ts`). */
+export function endingWith(each: AgentTool, line: (id: string) => string): AgentTool {
   return {
     ...each,
     execute: async (...call) => {
       try {
         const result = await each.execute(...call);
-        return { ...result, content: [...result.content, { type: "text", text: line() }] };
+        const said = line(call[0]);
+        return said === ""
+          ? result
+          : { ...result, content: [...result.content, { type: "text", text: said }] };
       } catch (error) {
-        throw new Error(`${errorMessage(error)}\n\n${line()}`, { cause: error });
+        const said = line(call[0]);
+        throw new Error(said === "" ? errorMessage(error) : `${errorMessage(error)}\n\n${said}`, {
+          cause: error,
+        });
       }
     },
   };

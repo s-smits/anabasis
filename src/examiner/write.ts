@@ -283,6 +283,10 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
     if (before === "earlier") return "An instance an earlier session wrote was not taken again.";
     if (spent()) return "An instance was not taken: this session can propose no further task.";
     if (supplied(desk)) return `An instance was not taken. ${SUPPLIED}`;
+    // A batch is gated one instance at a time, so the wall can fire between two of them. Until
+    // 14 October the next was still proposed and its three solves started on the spent signal, to
+    // be killed at once: recode-151's x-1 ended with two batches of three solves killed.
+    if (stop.aborted) return "An instance was not taken: the session has ended.";
     desk.seen.set(content, "now");
     desk.proposed += 1;
     return await gated(

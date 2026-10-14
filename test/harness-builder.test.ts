@@ -625,7 +625,9 @@ describe("a campaign run by its log", () => {
       /tied 0\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
     );
     expect(report).toContain("## The ladder\n\nNo reading:");
-    // What each measured thing cost, and how many comparisons that began bought a report.
+    // What each measured thing cost, the climb's velocity first, and how many comparisons that
+    // began bought a report.
+    expect(report).toMatch(/- The climb: \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
     expect(report).toMatch(
       /- Comparisons: \$\d+\.\d\d a task scored \(\d+\); 3 of the 3 comparisons that began reported\./,
     );

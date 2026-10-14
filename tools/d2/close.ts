@@ -194,7 +194,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
         : `- Answers that passed: a person read ${String(passes.read)} in ${plural(passes.comparisons, "comparison")}, drawn uniformly by each comparison's id: ${String(passes.sound)} sound, ${String(passes.wrong)} wrong, ${String(passes.unclear)} unclear. A wrong pass is a check's fault, and changes no tally.`,
     ].join("\n"),
     "## Work and spend",
-    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a budget of $${String(budget.dollars)}`}.`,
+    `${plural(sessions, "Builder session")}, ${plural(steps.filter((step) => step.step === "examiner").length, "Examiner session")} and ${plural(comparisons.length, "comparison")}. Billed $${billedAll(events).toFixed(2)}${budget === null ? "" : ` of a total of $${String(budget.dollars)}`}.`,
     economyLines(events).join("\n"),
     "",
   ].join("\n\n");
@@ -241,7 +241,15 @@ function economyLines(events: readonly LogEvent[]): string[] {
     const points = Math.round(100 * (to - from));
     return `- Ladder ${id}: ${points > 0 ? per(climbed, points, "point the reference gained") : `no point gained over $${climbed.toFixed(2)}`} between its first reading and its last.`;
   });
+  // The climb's velocity first: what a promotion cost in dollars and in hours of the log. The
+  // total is a bound, and the operator reads a campaign by how fast it climbs under it (14 October).
+  const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
+  const hours = (Date.parse(events.at(-1)?.at ?? "") - Date.parse(events[0]?.at ?? "")) / 3_600_000;
+  const spent = billedAll(events);
   return [
+    promotions > 0
+      ? `- The climb: $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
+      : `- The climb: no promotion over $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
     `- The Examiner: ${per(examined, held, "task held out or for the ladder")}.`,
     `- Comparisons: ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
     ...(ladders.length === 0 ? ["- The ladder: no reading, so no point is priced."] : ladders),

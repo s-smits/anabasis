@@ -225,7 +225,7 @@ function boundSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): st
 
 function Counters({ reading }: { reading: CampaignReading }) {
   const { withoutGain, patience, labels, controls, controlSteps, risk, runway } = reading.counters;
-  const { regression } = reading;
+  const { regression, promotions, row } = reading;
   const affords =
     runway === null || runway.each <= 0 ? null : Math.floor(Math.max(0, runway.left) / runway.each);
   return (
@@ -253,11 +253,16 @@ function Counters({ reading }: { reading: CampaignReading }) {
           {risk.union > risk.hold ? `, past the table's ${percent(risk.hold)}` : ""}
         </span>
       )}
+      {promotions.length === 0 ? null : (
+        <span title="Everything billed so far over the promotions made: how fast the reference moves for its price">
+          Billed a promotion <b className="ana-num">{money(row.billed / promotions.length)}</b>
+        </span>
+      )}
       {runway === null || affords === null ? null : (
         <span
           title={`${money(runway.left)} left; comparison ${runway.comparison} billed ${money(runway.each)}, which the table prices the next one by`}
         >
-          Comparisons the budget holds at the last one's price <b className="ana-num">{affords}</b>
+          Comparisons left at the last one's price <b className="ana-num">{affords}</b>
         </span>
       )}
       {regression === null ? null : (

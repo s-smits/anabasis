@@ -48,6 +48,7 @@ import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedParts, latestBuilt, patienceOf, stopRule } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
+import { solvesIn } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { mkdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -606,6 +607,16 @@ function examinedLines(events: readonly LogEvent[], writing: string | undefined)
 }
 
 /** Whole minutes from `from` to `to`, or to now, as a status says them. */
+/** Where the log last holds the start or end of a solve of comparison `id`, or the comparison's
+ *  start where none has. */
+function lastSolveOf(events: readonly LogEvent[], id: string): number {
+  const own = solvesIn(events).filter(({ start }) => start.comparison === id);
+  const at = Math.max(-1, ...own.map(({ started, finished }) => finished ?? started));
+  return at === -1
+    ? events.findIndex(({ kind, data }) => kind === "comparison.started" && data.session === id)
+    : at;
+}
+
 function minutesFrom(from: string | undefined, to = new Date().toISOString()): string {
   const minutes =
     from === undefined ? 0 : Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 60_000));
@@ -627,7 +638,9 @@ function spentLines({ events, plan }: Turn): string[] {
     ...(last === undefined
       ? []
       : [
-          `Comparison ${last.id} ${last.reported === null ? "has run" : "took"} ${minutesFrom(events[last.at]?.at, last.reported === null ? undefined : events[last.reported]?.at)} and billed ${billedParts(events, last.id).comparison.toFixed(2)} dollars.`,
+          // One not reported is read to its last solve's event, not to now: a led Builder sees one only
+          // after a kill, and the time since would count the downtime (14 October).
+          `Comparison ${last.id} ${last.reported === null ? "has run" : "took"} ${minutesFrom(events[last.at]?.at, events[last.reported ?? lastSolveOf(events, last.id)]?.at)} and billed ${billedParts(events, last.id).comparison.toFixed(2)} dollars.`,
         ]),
     ...(due === null
       ? []

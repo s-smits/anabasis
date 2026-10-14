@@ -373,12 +373,16 @@ export async function session(
     practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
     practised: bench.opened !== null,
   });
-  // The calls of the turn whose tools run, to tools the session has. The line goes under the last
-  // of them, once a turn: until 14 October a turn of six calls read it six times. A call the turn
-  // does not name, which no turn should make, carries it all the same.
-  let calls: readonly string[] = [];
-  const footer = (id: string) =>
-    calls.at(-1) === id || !calls.includes(id) ? usedLine(used(true), limits) : "";
+  // The line goes under the first result of each turn, once a turn: until 14 October a turn of six
+  // calls read it six times, and then the last call carried it, which a call pi refuses before it
+  // runs (a tool the session lacks, arguments its schema refuses) never reaches, so such a turn
+  // read nothing of its limits. A result is a result whichever call made it.
+  let told = false;
+  const footer = () => {
+    if (told) return "";
+    told = true;
+    return usedLine(used(true), limits);
+  };
   const tools = [
     ...walled(bench),
     practiceTool(bench),
@@ -445,11 +449,7 @@ export async function session(
         },
       },
       (event) => {
-        if (event.type === "message_end" && event.message.role === "assistant") {
-          calls = event.message.content.flatMap((part) =>
-            part.type === "toolCall" && tools.some(({ name }) => name === part.name) ? [part.id] : [],
-          );
-        }
+        if (event.type === "message_end" && event.message.role === "assistant") told = false;
         // Meter a campaign's model turn before its tool can spend on another seat.
         if (campaign !== undefined && event.type === "message_end" && event.message.role === "assistant") {
           turns.push(event.message);

@@ -502,9 +502,10 @@ When you build towards the Harness Builder, take v1's four lessons with it:
 2. One reading of the log, rendered once for each reader through its own filter. Until
    21 September v1's Builder received one test set through four readers, and they disagreed: 20
    of 25 in one paragraph and 0 of 5 in the next.
-3. The standing facts are restated where the agent reads, so a compaction needs no signal. Every
-   tool result of a Builder ends with the turn it is in, the session time used and the practice
-   solves left (`usedLine`, `src/builder/prompt.ts`); a turn that ends without a call is answered
+3. The standing facts are restated where the agent reads, so a compaction needs no signal. The
+   first tool result of each Builder turn ends with the turn it is in, the session time used and
+   the practice solves left (`usedLine`, `src/builder/prompt.ts`; once a turn since 14 October,
+   when a turn of six calls read it six times); a turn that ends without a call is answered
    with the goal and the same facts (`continuation`); and `read_opening` serves the opening
    message again. In the seven Builder sessions on record on 9 October every one of 365 turns
    ended in a tool call, so a message sent only between turns was never sent.
@@ -893,9 +894,10 @@ A pair whose last two readings the promotion rule passes showed a gain, and only
 the last promotion count (14 October), so patience never ends a campaign that has earned one.
 The next comparison or session is then refused, unless the operator gives a reason to go on
 (`--past-stop`). A task with no valid answer in two comparisons goes to a person as possibly
-infeasible, unless a valid answer for it stands anywhere on record, a solve's or the one the
-host saw its author's answer pass on the task under its own id, before or after the proposal
-(`task.feasible`), or a limit cut its solves (`poolOf`). Promotion is the operator's
+infeasible, unless a valid answer for it stands anywhere on record, a solve's, the one the
+host saw its author's answer pass on the task under its own id, before or after the proposal, or
+a stored pack's answer that passes today's checks at `prepare` (`task.feasible`; the answer
+itself is kept nowhere), or a limit cut its solves (`poolOf`). Promotion is the operator's
 `promote.ts --yes`, which writes `harness.promoted`. A comparison that names no `--reference` is
 made against the harness last promoted, and one that names a digest is made against that harness
 and promotes nothing.

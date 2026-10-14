@@ -808,6 +808,14 @@ describe("a campaign tool where the table names more than the action", () => {
     // comparison of the tasks held can read.
     expect(said(name, "compare")[0]).toContain("Suggested action: compare.");
     expect(said(name, "compare")[0]).toContain("compare repeats harness");
+    // Beside it, what the host spent and counts: until 14 October the last tally alone.
+    expect(said(name, "compare")[0]).toMatch(
+      /Comparison g-1 took \d+ minutes? and billed \d+\.\d\d dollars\./,
+    );
+    expect(said(name, "compare")[0]).toContain("Comparison g-1 bought a repeat: ");
+    expect(said(name, "compare")[0]).toContain(
+      "Moves without a gain since the last step: 0 of the patience's ",
+    );
     // What a move records: the comparison's id and flags, when it began and the host's load then,
     // which the page and the investigation read, and the harness a promotion named.
     const moves = of(name, MOVED);
@@ -951,10 +959,15 @@ describe("a campaign tool where the table names more than the action", () => {
       }));
       expect(facts.length).toBeGreaterThan(4);
       for (const { campaign, count } of facts) expect(count).toBe(campaign ? 1 : 0);
-      return of(name, CALLED)
-        .map(({ tool, text }) => `${isString(tool) ? tool : ""}: ${isString(text) ? text : ""}`)
-        .join("\n")
-        .replaceAll(/\d+:\d\d of/gu, "0:00 of");
+      return (
+        of(name, CALLED)
+          .map(({ tool, text }) => `${isString(tool) ? tool : ""}: ${isString(text) ? text : ""}`)
+          .join("\n")
+          .replaceAll(/\d+:\d\d of/gu, "0:00 of")
+          // A comparison's minutes are the host's clock: on 14 October CI read one campaign's g-1 at
+          // 0 minutes and the other's at 1, the same tally under a busier host.
+          .replaceAll(/took \d+ minutes?/gu, "took 0 minutes")
+      );
     };
     // The two campaigns tie other tasks in each comparison, and the tallies are the same. Until
     // 12 October the status counted the tasks waiting for a label and the exhausted ones, and two

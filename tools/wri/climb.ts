@@ -87,7 +87,9 @@ function rowOf({ name, events }: Campaign): string[] {
   );
   const after = epoch === undefined ? [] : log.compared.filter(({ at }) => at > epoch.at);
   const move = log.of("campaign.move").at(-1);
-  const ended = log.of("campaign.ended").length > 0;
+  // Run again, a campaign goes on past an ending (since 14 October): it ended where its last ending
+  // came after its last move. Until 15 October any ending read so, and two live campaigns did.
+  const ended = events.findLast(({ kind }) => kind === "campaign.move" || kind === "campaign.ended")?.kind;
   return [
     name,
     // The host code of the last condition the campaign recorded.
@@ -106,7 +108,7 @@ function rowOf({ name, events }: Campaign): string[] {
           .map(({ session, last }) => `${session} ${testSaid(last.scored)} ${text(last.reading)}`)
           .join("; ") || "none",
     spentTo(log, 0, events.length),
-    ended ? "ended" : `${text(move?.move)} ${text(move?.session)}`.trim() || "opening",
+    ended === "campaign.ended" ? "ended" : `${text(move?.move)} ${text(move?.session)}`.trim() || "opening",
   ];
 }
 

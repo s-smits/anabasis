@@ -276,6 +276,14 @@ describe("lane 31 across campaigns", () => {
     expect(table[2]).toContain("| level 0.1, trigger 0.25 | hn at 20:01Z |");
     expect(table[2]).toContain("g-1 4-0-0 p 0.063, 4/4, 1/4; g-2 4-0-0 p 0.063, 4/4, 1/4 | g-1 13%; g-2 25%");
     expect(table[3]).toContain("| building | none | default | none yet | - | none reported |");
+    // A campaign that ended and was run again reads as going on, at its last move.
+    const again = campaign();
+    again.put("campaign.opened", { budget: 300, terms: {} });
+    again.put("campaign.ended", { ending: "finished" });
+    again.put("campaign.move", { move: "examine", session: "x-1" });
+    expect(climbTable([{ name: "again", events: again.log }])).toContain("| examine x-1 |");
+    again.put("campaign.ended", { ending: "budget" });
+    expect(climbTable([{ name: "again", events: again.log }])).toContain("| ended |");
   });
 
   it("names a solve that ran what another campaign's session left, with its side and every path", () => {

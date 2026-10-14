@@ -526,8 +526,8 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     const { solve, ending } = solved;
     const why = unanswered(log, id, solved);
     // Whatever the solve wrote first: on 13 October a weekly limit ended 14 solves of one task in
-    // three minutes, four of them after some output, and the task read short. The campaign waits a
-    // near reset out, and ends on its environment at a far one (`waitOut`, `tools/d2/host.ts`).
+    // three minutes, four of them after some output, and the task read short. The campaign waits the
+    // reset out (`waitOut`, `tools/d2/host.ts`).
     if (
       ending.outcome === "non-result" &&
       ending.kind === "provider" &&

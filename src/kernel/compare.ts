@@ -436,17 +436,24 @@ function measures(pair: Paired, side: "old" | "fresh"): number[] {
 
 /**
  * Whether a task tells something of the harness on `side` (the overhaul plan's one definition of
- * informative, section 4b): valid on some of its solves and not all, as `try_task` admits a draft
- * at 0 < passes < k, or valid on all with two of its own measures apart by more than the
- * objective's margin, so that a better answer is there to find. A task it fails in every solve, or
- * answers alike in every solve, leaves it nothing to gain on.
+ * informative, section 4b, and the one `try_task` admits a draft by): valid on some of its solves
+ * and not all; valid on all with two of its own measures apart by more than the objective's
+ * margin, so that a better answer is there to find; or valid on none where the task is among
+ * `feasible`, the versions a valid answer is on record for (`poolOf`, `reports.ts`): another
+ * harness's, a reference solve's at the gate, or its author's. A task it answers alike in every
+ * solve leaves it nothing to gain on, and so does one it fails in every solve that nobody has
+ * answered. Until 15 October a task the reference failed in every solve was never informative, so
+ * once a promoted harness passed every scored solve (buffer-149's 68 of 68 in two comparisons,
+ * recode-151's 56 of 56, buffer-159-opus's 38 of 40) its room was only the tasks it answered some
+ * of the time, and the gate held out only such drafts.
  */
-export function informative(pair: Paired, side: "old" | "fresh"): boolean {
+export function informative(pair: Paired, side: "old" | "fresh", feasible: ReadonlySet<string>): boolean {
   const valid = pair[side].filter(Boolean).length;
-  if (valid > 0 && valid < pair[side].length) return true;
+  if (valid === 0) return feasible.has(pair.task);
+  if (valid < pair[side].length) return true;
   const own = measures(pair, side);
   const margin = pair.objective?.margin ?? Number.POSITIVE_INFINITY;
-  return valid > 0 && own.some((one, at) => own.slice(at + 1).some((other) => apart(one, other) > margin));
+  return own.some((one, at) => own.slice(at + 1).some((other) => apart(one, other) > margin));
 }
 
 /**

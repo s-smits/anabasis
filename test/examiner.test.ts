@@ -713,33 +713,65 @@ describe("a session that writes tasks", () => {
     expect(examined.held).toEqual([s.versionOf("x-1-003", 2)]);
   });
 
-  it("holds for the ladder a task the reference harness answered in none of its solves, where its author's answer passes on it", async () => {
-    // Bases 4 and 7 are answered in none of three solves; 4 alone has its author's answer, and 5,
-    // answered in every solve, has one too.
+  it("holds out a task the reference harness answered in none of its solves where its author's answer passes on it, the first of every three for the ladder", async () => {
+    // Bases 4, 8, 9, 7 and 10 are answered in none of three solves; 7 alone has no author's answer,
+    // and 5, answered in every solve, has one. Until 15 October every proved one went to the ladder.
     const s = seat("write", [
       tried(4),
+      tried(8),
+      tried(9),
       tried(5),
-      call("try_task", { tasks: [4, 7, 5].map(instance) }),
+      tried(10),
+      call("try_task", { tasks: [4, 8, 9, 7, 5, 10].map(instance) }),
       finish,
       finish,
     ]);
     const probe = async (task: TaskPackage) =>
       Number(asRecord(task.publicInput)?.base) === 5 ? PASS : REJECTED;
-    const examined = await examine({ ...s.request, verify, limits: { ...s.request.limits, puts: 3 }, probe });
-    const [ladder, unwitnessed, solved] = [
-      s.versionOf("x-1-001", 4),
-      s.versionOf("x-1-002", 7),
-      s.versionOf("x-1-003", 5),
+    const examined = await examine({ ...s.request, verify, limits: { ...s.request.limits, puts: 6 }, probe });
+    const versionAt = (nth: number, base: number) => s.versionOf(`x-1-00${String(nth)}`, base);
+    const [first, second, third, unwitnessed, solved, fourth] = [
+      versionAt(1, 4),
+      versionAt(2, 8),
+      versionAt(3, 9),
+      versionAt(4, 7),
+      versionAt(5, 5),
+      versionAt(6, 10),
     ];
-    expect(examined).toMatchObject({ held: [], refused: [unwitnessed, solved] });
+    // The first proved draft the reference never answered is the ladder's, the next two are held
+    // out, and the fourth is the ladder's again: a count over the log's gates, so the ladder has a
+    // task once any such draft does. One without a proof, and one answered every time, are refused.
+    expect(examined).toMatchObject({ held: [second, third], refused: [unwitnessed, solved] });
     const sets = taskSets(read(s.log));
-    expect(sets.ladder).toEqual([ladder]);
-    expect(sets.held).toEqual([]);
-    expect(s.of("task.gate").map(({ outcome }) => outcome)).toEqual(["ladder", "refused", "refused"]);
-    expect(s.of("task.feasible")).toEqual([{ version: ladder, session: "x-1" }]);
-    expect(poolOf(read(s.log)).scorable).toEqual([]);
-    expect(s.of(CALLED)[2]?.text).toStartWith(
-      "x-1-001: held for the ladder. This task will never be scored for promotion or released for practice.\nx-1-002: refused: ",
+    expect(sets.ladder).toEqual([first, fourth]);
+    expect(sets.held).toEqual([second, third]);
+    const gates = s.of("task.gate");
+    expect(gates.map(({ outcome }) => outcome)).toEqual([
+      "ladder",
+      "passed",
+      "passed",
+      "refused",
+      "refused",
+      "ladder",
+    ]);
+    expect(gates.map(({ reference }) => asRecord(reference)?.valid)).toEqual([0, 0, 0, 0, 3, 0]);
+    // Each proved one is on record as feasible, by the author's answer checked under its own id.
+    expect(s.of("task.feasible")).toEqual(
+      [first, second, third, fourth].map((version) => ({ version, session: "x-1" })),
+    );
+    expect(poolOf(read(s.log)).scorable).toEqual([second, third]);
+    // The Examiner hears the count of a held task's valid solves, as of any other, and of the
+    // ladder's only that it was held; the refusals say the rule.
+    expect(s.of(CALLED)[5]?.text).toBe(
+      [
+        "x-1-001: held for the ladder. This task will never be scored for promotion or released for practice.",
+        "x-1-002: held out; the reference harness answered it validly in 0 of 3 solves.",
+        "x-1-003: held out; the reference harness answered it validly in 0 of 3 solves.",
+        "x-1-004: refused: the reference harness answered it validly in 0 of 3 solves, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it",
+        "x-1-005: refused: the reference harness answered it validly in 3 of 3 solves, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it",
+        "x-1-006: held for the ladder. This task will never be scored for promotion or released for practice.",
+        "So far in this campaign, drafts with a proof were held 2 of 5, and drafts without one 0 of 1.",
+      ].join("\n"),
     );
   });
 
@@ -809,8 +841,8 @@ describe("a session that writes tasks", () => {
       [
         `x-1-001: held out; ${counted(1)}.`,
         `x-1-002: held out; ${counted(2)}.`,
-        `x-1-003: refused: ${counted(0)}, and a task is held out only where it answers some and not all`,
-        `x-1-004: refused: ${counted(3)}, and a task is held out only where it answers some and not all`,
+        `x-1-003: refused: ${counted(0)}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`,
+        `x-1-004: refused: ${counted(3)}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`,
         "x-1-005: refused: 1 of the reference harness's 3 solves of it ended in no reading, so it is not measured",
         "So far in this campaign, drafts with a proof were held 0 of 0, and drafts without one 2 of 5.",
       ].join("\n"),
@@ -833,11 +865,16 @@ describe("a session that writes tasks", () => {
     // and the ladder there as the tool's result says it; the objective's rule is said once.
     const once = (part: string) => (s.sent[0] ?? "").split(part).length - 1;
     expect(once("## The gate")).toBe(1);
-    expect(once("held out where some of those solves gave a valid answer and not all")).toBe(1);
+    expect(
+      once(
+        "held out where some of those solves gave a valid answer and not all, or where none did and an answer of yours passed try_answer on the same instance",
+      ),
+    ).toBe(1);
+    expect(once("the first of every three in the campaign is held for the ladder instead")).toBe(1);
     expect(once("as the system prompt's section on the gate says")).toBe(1);
-    expect(once("held for the ladder: a fixed set apart from the exam, never scored for a promotion")).toBe(
-      1,
-    );
+    expect(
+      once("held for the ladder instead: a fixed set apart from the exam, never scored for a promotion"),
+    ).toBe(1);
     expect(once("declares an objective")).toBe(1);
     expect(once("Without an objective")).toBe(0);
     expect(s.sent.join("\n")).not.toContain(SOLVER);

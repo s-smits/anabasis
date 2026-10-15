@@ -80,8 +80,9 @@ question, how it is measured and its bar; the recorded values are the plan's (`d
 difference only on a task where one harness answers and the other does not. A task the reference
 solves in every attempt is a solved example, and one nobody has solved is an unlearnable one:
 neither carries signal, and a scored set made of them reads "no room" whatever the new harness
-is. The informative tasks lie between: the reference answers them sometimes, or never while
-another harness has. In most learning the data is fixed and the model moves; here the solver is
+is. The informative tasks lie between: the reference answers them sometimes, or never while a
+valid answer to them is on record, another harness's or their author's. In most learning the data
+is fixed and the model moves; here the solver is
 fixed and the Examiner keeps the exam at its frontier, told one outcome a task and nothing else.
 Measured as the informative tasks in a comparison's scored set. Bar: at least four before each
 comparison starts. It is not reported as a factor: passing it says a comparison can show a
@@ -92,11 +93,16 @@ without it.
 reference harness. A promotion, a harness that beats the reference on held-out tasks by more
 than chance allows, twice, on fresh solves, is one step of descent; a climb is several. Each
 promotion is read against its predecessor on tasks that change with every comparison, so a
-chain of them has no fixed yardstick, and the **ladder** is that yardstick. A draft the
-reference answered in none of its three admission solves, where its author's own answer passes
-on it (`task.feasible`), is held for the ladder (`try_task`; gate outcome and task state
-`ladder`, `src/kernel/task.ts`): never scored for a promotion, never released for practice and
-never shown to a Builder, and its Examiner is told only that it was held. A ladder's tasks are
+chain of them has no fixed yardstick, and the **ladder** is that yardstick. Of the drafts the
+reference answered in none of their three admission solves, where their author's own answer
+passes on them (`task.feasible`), the first of every three in the log is held for the ladder
+(`try_task`; gate outcome and task state `ladder`, `src/kernel/task.ts`): never scored for a
+promotion, never released for practice and never shown to a Builder, and its Examiner is told
+only that it was held. The other two are held out as any task is, since a task the reference
+never answers while a valid answer to it is on record is the room a promotion leaves; until
+15 October every such draft went to the ladder, 31 of 120 in the five campaigns of 14 October,
+and a promoted harness that answered every scored solve was left the drafts it answered some of
+the time. A ladder's tasks are
 fixed by its first reading (`laddersOf`, `src/kernel/reports.ts`), so every reading of it is on
 one set; tasks held for the ladder later wait, and the next promotion's reading fixes them as the
 next ladder, with a curve of its own. The Examiner may go on writing, and no earlier curve moves.
@@ -235,7 +241,7 @@ numbered otherwise. The design around the copied code is different.
 | --- | --- |
 | The Builder wrote the harness, the tasks and the checks | The Examiner writes tasks, the check program is fixed, and the Builder writes the harness only |
 | A harness was scored on its own Builder's test set, as a pass rate | Two harnesses are compared on held-out tasks, as wins against losses |
-| Every task carried an answer its author had found | No reference answers. A task is held out on the shape of its package and, where the host can have the reference harness solve it, only where some and not all of three fresh solves of it are valid (`try_task`), or for the ladder where none is and its author's own answer passes on it; those solves are never scored |
+| Every task carried an answer its author had found | No reference answers. A task is held out on the shape of its package and, where the host can have the reference harness solve it, only where some and not all of three fresh solves of it are valid (`try_task`), or where none is and its author's own answer passes on it, the first of every three such drafts held for the ladder instead; those solves are never scored |
 | A candidate passed a submit gate before it was measured | No gate on a harness. `check_harness` says whether it opens, and the comparison says whether it is better |
 | Difficulty was steered with a band, levels and staged test sizes | One fixed compute budget for both harnesses. No band and no levels |
 | A harness declared its own limits in `agent/config.yaml` | The host sets every limit, and that file is not read |
@@ -893,11 +899,13 @@ in flight would pass the cap.
 
 **Room.** A comparison's report says what room a harness has to gain in (`roomOf`,
 `src/kernel/reports.ts`): room where a task was informative for the reference harness, valid on
-some of its solves and not all, or two of its valid answers apart by the objective past the margin
-(`informative`, `src/kernel/compare.ts`, the one definition `try_task` admits a draft by too); too
-hard where neither harness gave a valid answer; and none otherwise, a task the reference fails in
-every solve among them (since 12 October; shares of valid solves before). The two ways to room are
-the tasks and the objective.
+some of its solves and not all, two of its valid answers apart by the objective past the margin, or
+valid on none where a valid answer to it is on record, another harness's or its author's
+(`informative`, `src/kernel/compare.ts`, the one definition `try_task` admits a draft by too; the
+last since 15 October); too hard where neither harness gave a valid answer and none is on record;
+and none otherwise, a task the reference fails in every solve that nobody has answered among them
+(since 12 October; shares of valid solves before). The two ways to room are the tasks and the
+objective.
 
 **After the test.** A comparison that wrote its report is finished: run again, it returns that
 report. The stop rule is as many moves in a row that could have shown a gain and showed none as

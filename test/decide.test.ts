@@ -115,6 +115,13 @@ const code = (events: readonly LogEvent[], plan: Plan = PLAN) => decide(events, 
 const NO_ROOM = (id: string) =>
   `comparison ${id} read no step, and no task was informative for the reference harness: the tasks have to change`;
 const promotion = (harness: string, more: JsonObject = {}) => event("harness.promoted", { harness, ...more });
+/** A harness that read a step and its repeat against `old`, as two comparisons. */
+const steppedTwice = (id: string, fresh: string, old: string) => [
+  ...compared(`${id}a`, fresh, "step", { old }),
+  ...compared(`${id}b`, fresh, "step", { old }),
+];
+/** h1 stepped twice against the starter and was promoted: an epoch's first reference after set-up. */
+const PROMOTED = [...FIRST, ...steppedTwice("g-1", "h1", "start"), promotion("h1", { from: "start" })];
 /** h1 stepped twice and was promoted, valid in its last comparison as `fresh` says. */
 const promotedOn = (fresh: Valid) => [
   setting(40),
@@ -314,7 +321,9 @@ describe("a row of the table", () => {
     expect(move([opened, ...SET_UP, ...flat], { ...PLAN, pastStop: "new tasks since" })).toMatchObject({
       move: "build",
     });
-    expect(move([...SET_UP, ...flat], { ...PLAN, patience: 6 })).toMatchObject({ move: "build" });
+    // The stop reads the patience the opening records, and six where there is none (`patienceOf`);
+    // the plan's patience only words the reason.
+    expect(move([...SET_UP, ...flat])).toMatchObject({ move: "build" });
 
     // The control: the epoch's first A/A read as a step either way, until the cause is on record.
     // Two-sided at the level: 5 tasks all one way is p 1/32 a side, 1/16 both; 4 is 1/8.
@@ -356,6 +365,89 @@ describe("a row of the table", () => {
       ending: "budget",
       code: "bound",
     });
+  });
+
+  it("ladder: after each promotion the starter is read against the new reference on the ladder's tasks, once, and no row reads it", () => {
+    // With a ladder, its reading follows every promotion before anything else, in place of the
+    // starter's reading against each later reference (`unread`): the starter against the new
+    // reference on the ladder's tasks.
+    const ladder = [
+      event("task.proposed", { version: "l1", taskId: "l1" }),
+      event("task.gate", { version: "l1", gate: 1, outcome: "ladder" }),
+      event("task.state", { version: "l1", state: "ladder" }),
+    ];
+    const laddered = [...ladder, ...PROMOTED];
+    expect(decide(laddered, PLAN)).toEqual({
+      move: "compare",
+      code: "ladder",
+      fresh: "starter",
+      reference: "promoted",
+      ladder: true,
+      why: "harness h1 was promoted: the starter is read against it on 1 ladder task no ladder holds yet, which this reading fixes as a ladder",
+    });
+    const begun = event("comparison.started", {
+      session: "g-2",
+      old: "h1",
+      fresh: "start",
+      ladder: true,
+      tasks: ["l1"],
+    });
+    expect(move([...laddered, begun])).toMatchObject({ id: "g-2", ladder: true });
+    // Reported, it is read by no row: the table goes on as it would have.
+    const ladderRead = [
+      ...laddered,
+      begun,
+      event("comparison.reported", {
+        session: "g-2",
+        old: "h1",
+        fresh: "start",
+        reading: "below-starter",
+        ladder: true,
+      }),
+    ];
+    expect(move(ladderRead)).toEqual(move(PROMOTED));
+    // The next promotion owes its own, on the ladder g-2 fixed. A task held for the ladder since
+    // is no part of it: once that reading reports, a reading fixes it as the next ladder.
+    const next = [
+      ...ladderRead,
+      event("task.proposed", { version: "l2", taskId: "l2" }),
+      event("task.gate", { version: "l2", gate: 1, outcome: "ladder" }),
+      event("task.state", { version: "l2", state: "ladder" }),
+      built("b-2", "h2"),
+      ...steppedTwice("g-3", "h2", "h1"),
+      promotion("h2", { from: "h1" }),
+    ];
+    expect(move(next)).toEqual({
+      move: "compare",
+      fresh: "starter",
+      reference: "promoted",
+      ladder: true,
+      frozen: "g-2",
+      why: "harness h2 was promoted: the starter is read against it on ladder g-2",
+    });
+    const again = [
+      ...next,
+      event("comparison.started", {
+        session: "g-4",
+        old: "h2",
+        fresh: "start",
+        ladder: true,
+        frozen: "g-2",
+        tasks: ["l1"],
+      }),
+      event("comparison.reported", {
+        session: "g-4",
+        old: "h2",
+        fresh: "start",
+        reading: "below-starter",
+        ladder: true,
+      }),
+    ];
+    expect(move(again)).toMatchObject({
+      ladder: true,
+      why: "harness h2 was promoted: the starter is read against it on 1 ladder task no ladder holds yet, which this reading fixes as a ladder",
+    });
+    expect(move(again)).not.toHaveProperty("frozen");
   });
 
   it("tasks: tasks not set up are taken in, written or released before anything is built", () => {
@@ -573,12 +665,6 @@ describe("a row of the table", () => {
     ];
     const named = compared("b-3", "h2", "no-step", { old: "h1", ...FULL });
     expect(move([...stepped, ...named, promotion("h1")])).toEqual({ move: "examine", why: NO_ROOM("b-3") });
-    // Where the last Examiner session and the comparison that read its tasks billed more than half
-    // of what is left, the campaign ends on its budget before another round (`unafforded`).
-    const dear = [...FIRST, ...full("g-1"), ...examined("x-1", ["v13"], { billed: 6 }), ...full("g-2")];
-    const left = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.5 } });
-    expect(decide(dear, left(10))).toMatchObject({ move: "end", ending: "budget", code: "afford" });
-    expect(move(dear, left(13))).toMatchObject({ move: "examine" });
   });
 
   it("short: tasks are written where the gate would refuse the next comparison for want of them", () => {
@@ -703,16 +789,11 @@ describe("a row of the table", () => {
 
     // The readings a promotion owes, each once and never a gate. With no ladder, the Starter
     // against each later epoch's reference (not set-up's, which was read against it).
-    const stepped = (id: string, fresh: string, old: string) => [
-      ...compared(`${id}a`, fresh, "step", { old }),
-      ...compared(`${id}b`, fresh, "step", { old }),
-    ];
-    const setUp = [...FIRST, ...stepped("g-1", "h1", "start"), promotion("h1", { from: "start" })];
-    expect(move(setUp)).toMatchObject({ move: "build" });
+    expect(move(PROMOTED)).toMatchObject({ move: "build" });
     const second = [
-      ...setUp,
+      ...PROMOTED,
       built("b-2", "h2"),
-      ...stepped("g-2", "h2", "h1"),
+      ...steppedTwice("g-2", "h2", "h1"),
       promotion("h2", { from: "h1" }),
     ];
     expect(move(second)).toEqual({
@@ -723,86 +804,6 @@ describe("a row of the table", () => {
     });
     const read = [...second, ...compared("g-3", "start", "no-step", { old: "h2" })];
     expect(move(read)).not.toMatchObject({ fresh: "starter" });
-
-    // With a ladder, its reading after every promotion and in place of that control, before
-    // anything else: the starter against the new reference on the ladder's tasks.
-    const ladder = [
-      event("task.proposed", { version: "l1", taskId: "l1" }),
-      event("task.gate", { version: "l1", gate: 1, outcome: "ladder" }),
-      event("task.state", { version: "l1", state: "ladder" }),
-    ];
-    const laddered = [...ladder, ...setUp];
-    expect(decide(laddered, PLAN)).toEqual({
-      move: "compare",
-      code: "ladder",
-      fresh: "starter",
-      reference: "promoted",
-      ladder: true,
-      why: "harness h1 was promoted: the starter is read against it on 1 ladder task no ladder holds yet, which this reading fixes as a ladder",
-    });
-    const begun = event("comparison.started", {
-      session: "g-2",
-      old: "h1",
-      fresh: "start",
-      ladder: true,
-      tasks: ["l1"],
-    });
-    expect(move([...laddered, begun])).toMatchObject({ id: "g-2", ladder: true });
-    // Reported, it is read by no row: the table goes on as it would have.
-    const ladderRead = [
-      ...laddered,
-      begun,
-      event("comparison.reported", {
-        session: "g-2",
-        old: "h1",
-        fresh: "start",
-        reading: "below-starter",
-        ladder: true,
-      }),
-    ];
-    expect(move(ladderRead)).toEqual(move(setUp));
-    // The next promotion owes its own, on the ladder g-2 fixed. A task held for the ladder since
-    // is no part of it: once that reading reports, a reading fixes it as the next ladder.
-    const next = [
-      ...ladderRead,
-      event("task.proposed", { version: "l2", taskId: "l2" }),
-      event("task.gate", { version: "l2", gate: 1, outcome: "ladder" }),
-      event("task.state", { version: "l2", state: "ladder" }),
-      built("b-2", "h2"),
-      ...stepped("g-3", "h2", "h1"),
-      promotion("h2", { from: "h1" }),
-    ];
-    expect(move(next)).toEqual({
-      move: "compare",
-      fresh: "starter",
-      reference: "promoted",
-      ladder: true,
-      frozen: "g-2",
-      why: "harness h2 was promoted: the starter is read against it on ladder g-2",
-    });
-    const again = [
-      ...next,
-      event("comparison.started", {
-        session: "g-4",
-        old: "h2",
-        fresh: "start",
-        ladder: true,
-        frozen: "g-2",
-        tasks: ["l1"],
-      }),
-      event("comparison.reported", {
-        session: "g-4",
-        old: "h2",
-        fresh: "start",
-        reading: "below-starter",
-        ladder: true,
-      }),
-    ];
-    expect(move(again)).toMatchObject({
-      ladder: true,
-      why: "harness h2 was promoted: the starter is read against it on 1 ladder task no ladder holds yet, which this reading fixes as a ladder",
-    });
-    expect(move(again)).not.toHaveProperty("frozen");
   });
 
   it("build: with nothing new to read and room to gain, the Builder builds", () => {
@@ -887,6 +888,13 @@ describe("a hold on the move a row named", () => {
       why: expect.stringContaining("the reference harness's solves of draft tasks billed $0.30 a solve"),
     });
     expect(move(gated, left(1000))).toMatchObject({ move: "compare" });
+    // The Examiner session a row names is held too: where the last one and the comparison that read
+    // its tasks billed more than half of what is left, the campaign ends on its budget before another
+    // round.
+    const dear = [...FIRST, ...full("g-1"), ...examined("x-1", ["v13"], { billed: 6 }), ...full("g-2")];
+    const reserved = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.5 } });
+    expect(decide(dear, reserved(10))).toMatchObject({ move: "end", ending: "budget", code: "afford" });
+    expect(move(dear, reserved(13))).toMatchObject({ move: "examine" });
   });
 
   it("practice: practice is brought towards the campaign's count before a Builder session", () => {

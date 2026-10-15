@@ -134,6 +134,18 @@ describe("the harness a Builder goes on from", () => {
     // A session cut at its wall is a whole session.
     expect(latestBuilt([built("b-1", "h2", { ended: "wall" })])).toBe("h2");
   });
+
+  it("remembers a live Builder's frozen checkpoint before its session finishes", () => {
+    const log = [
+      built("b-0", "before"),
+      event(BUILD_STARTED, { session: "b-1" }),
+      event("build.checkpoint", { session: "b-1", harness: "current" }),
+    ];
+    expect(latestBuilt(log)).toBe("current");
+    expect(latestBuilt([...log, event("build.finished", { session: "b-1", ended: "crashed" })])).toBe(
+      "current",
+    );
+  });
 });
 
 describe("the reference harness of a campaign", () => {
@@ -1003,18 +1015,6 @@ describe("the billed dollars a cap counts", () => {
     log.push(event("build.finished", { session: "b-1", billed: 3 }));
     expect(billedFor(log, "b-1")).toBe(7);
     expect(billedAll(log)).toBe(7);
-  });
-
-  it("remembers a live Builder's frozen checkpoint before its session finishes", () => {
-    const log = [
-      event("build.finished", { session: "b-0", harness: "before", changed: true, ended: "finished" }),
-      event(BUILD_STARTED, { session: "b-1" }),
-      event("build.checkpoint", { session: "b-1", harness: "current" }),
-    ];
-    expect(latestBuilt(log)).toBe("current");
-    expect(latestBuilt([...log, event("build.finished", { session: "b-1", ended: "crashed" })])).toBe(
-      "current",
-    );
   });
 
   it("bills a session or a solve the run was killed in by its turns, and a finished one by its sum alone", () => {

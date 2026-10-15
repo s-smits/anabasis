@@ -107,8 +107,6 @@ SOFTWARE.
   departures.
 - `test/pi-truncate.test.ts` copies pi-mono's `packages/agent/test/harness/truncate.test.ts` at
   086c32e74, run against the truncate.ts in `vendor/pi-coding-agent/`.
-- `test/pi-file-mutation-queue.test.ts` copies `packages/coding-agent/test/file-mutation-queue.test.ts`
-  of pi coding-agent v1.0.0 (a13d35a).
 
 ```text
 MIT License

@@ -438,10 +438,10 @@ async function comparedOf(
       refused: `The repeat of comparison ${decided.repeats} waits for ${plural(shortOf(events, plan), "more held-out task")} its first stage did not score: call examine first.`,
     };
   }
-  if (decided.move === "compare" && decided.repeats !== undefined && latest !== null) {
+  if (decided.move === "compare" && decided.repeats !== undefined) {
     return {
-      move: { ...decided, fresh: latest },
-      note: `This comparison repeated harness ${short(latest)} as comparison ${decided.repeats} froze it: changes made to harness/ since are not in it.`,
+      move: decided,
+      note: `This comparison repeated harness ${short(decided.fresh)} as comparison ${decided.repeats} froze it: changes made to harness/ since are not in it.`,
     };
   }
   let working: string;
@@ -662,7 +662,7 @@ function spentLines({ events, plan }: Turn): string[] {
 
 /** What the action the table names would do, as the status says it under the suggestion: for a
  *  comparison or more tasks, what a comparison of the tasks held can read. */
-function namedLine(decided: Decided, latest: string | null, size: string): string {
+function namedLine(decided: Decided, size: string): string {
   if (decided.move === "build") return "Edit and practise the harness.";
   if (decided.move === "promote") return `promote makes harness ${short(decided.harness)} the reference.`;
   if (decided.move === "examine") {
@@ -675,8 +675,8 @@ function namedLine(decided: Decided, latest: string | null, size: string): strin
   if (decided.id !== undefined) {
     return `compare goes on with comparison ${decided.id}, which began and has not reported.`;
   }
-  if (decided.repeats !== undefined && latest !== null) {
-    return `compare repeats harness ${short(latest)} as comparison ${decided.repeats} froze it: changes made to harness/ since are not in it.`;
+  if (decided.repeats !== undefined) {
+    return `compare repeats harness ${short(decided.fresh)} as comparison ${decided.repeats} froze it: changes made to harness/ since are not in it.`;
   }
   return decided.fresh === "starter"
     ? "While harness/ is the reference harness, compare reads the starter against it on the tasks held out since."
@@ -738,7 +738,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
           `Suggested action: ${toolOf(decided)}.`,
           noRoom
             ? "The tasks read so far leave the reference nothing to gain: none it fails in some solve, or none either harness answers. examine asks the Examiner for others."
-            : namedLine(decided, latestBuilt(turn.events), sizeLine(turn)),
+            : namedLine(decided, sizeLine(turn)),
         ]
       : []),
   ].join("\n");

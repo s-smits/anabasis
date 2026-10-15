@@ -289,8 +289,8 @@ Six consequences guide a change:
    the reference harness and whether a valid answer to it is on record, and for a task the
    reference stood in two comparisons or more of, the same outcome of each of its last three,
    newest first, with how many of the newest closed it in a row (since 13 October; `histories`,
-   `poolOf`), since the rule that exhausts a task counts two closed comparisons in any order and
-   one outcome could not tell a task answered once from one answered every time running; the budget every solve is
+   `poolOf`), since one outcome could not tell a task answered once from one answered every time
+   running; the budget every solve is
    held to (since 10 October: a task that tells two harnesses apart is one a better method answers
    within that budget and a worse one does not, which nobody can write without knowing it, and ten
    campaigns' tasks tied without it); the tasks counted by family, with the solves a side they
@@ -624,7 +624,9 @@ made no campaign move, the last ended by `finish` or at its limits). A lack of r
 request other tasks while a conversation lives, and the campaign's ending once that conversation
 has ended at its limits. A Builder's `finish` ends its conversation. Between conversations the host
 makes what the table names that asks no Builder for anything, a campaign move like any other: any
-comparison, the tasks a repeat waits for, a promotion (`hostOwed`, `tools/d2/harness-builder.ts`).
+comparison, the tasks a repeat waits for, a promotion, and the tasks a want of room names once
+three conversations in a row made no move (`hostOwed`, `tools/d2/harness-builder.ts`; 15 October,
+when main0_5_1's three did not ask for them after its promotion).
 A comparison that began under other code is refused there by its own terms, and the campaign ends
 on its environment, to be run at that code until it reports. Then another
 conversation follows on the Builder's notes, as after one that ended at its limits, until three in
@@ -784,8 +786,10 @@ terms, and one asked for again on other terms is refused. The scored tasks are `
 held-out ones, the newest epoch's first, within an epoch the ones held out since the last
 comparison began before the others, and each drawn by the contract's hash, less two kinds the
 draw leaves out: a task with no valid answer after two comparisons, until a person labels it
-(`poolOf`), and one the reference harness answered in every solve of two comparisons, on
-whichever side it stood, which can only tie again or be lost (`poolOf`); a task the objective
+(`poolOf`), and one the reference harness answered in every solve of the last comparison it
+stood in of it, on whichever side, which can only tie again or be lost (`poolOf`; two closed
+comparisons in any order until 15 October, when a promoted harness had stood once in nearly
+every task it was promoted on); a task the objective
 told two valid answers apart on is not closed, since the next harness can still win it. A third of
 the closed ones stays in by a hash of its own, so that a harness that breaks what the reference
 answers still shows its losses. The Examiner is told such a task is exhausted, in those words. The
@@ -953,7 +957,9 @@ a move chose it, and the decision carries the row's code:
    for 16 hours and never compared.
 6. `unfinished`: a comparison that began and has not reported goes on, and a reading that cleared
    the trigger, which is one draw, is repeated on fresh solves, once a candidate: a repeat that
-   clears the trigger and not the level with its first stage buys no third reading (15 October). The repeat draws the held-out
+   clears the trigger and not the level with its first stage buys no third reading (15 October). The reading is the reference's
+   last of any harness, and its repeat is of the harness it froze: until 15 October a later checkpoint hid it, and
+   recode-pr169-sonnet's g-1 lost its repeat. The repeat draws the held-out
    tasks the first stage did not score first (`scoredSet`, `src/builder/round.ts`): where the
    campaign holds fewer than the target of them, the Examiner writes more first, and `compare`
    refuses the repeat until they are held (14 October: buffer-149's g-2 scored 8 of g-1's 9

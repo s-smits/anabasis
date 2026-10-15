@@ -345,7 +345,7 @@ describe("a row of the table", () => {
       });
     }
     for (const apart of [[2, 2, 2, 2], [2, -2, 0, 0], []]) {
-      expect(move(epoch(apart))).toMatchObject({ move: "compare", fresh: "latest" });
+      expect(move(epoch(apart))).toMatchObject({ move: "compare", fresh: "h1", repeats: "g-1" });
     }
     const cause = event("campaign.word", { word: "cause", why: "the host was loaded while g-1 ran" });
     expect(move([...epoch([2, 2, 2, 2, 2]), cause])).toEqual(move(epoch([2, -2, 0, 0])));
@@ -523,13 +523,20 @@ describe("a row of the table", () => {
     const stepped = [...FIRST, ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
     const again = {
       move: "compare",
-      fresh: "latest",
+      fresh: "h1",
       reference: "promoted",
       why: "comparison g-1 cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together",
-      // The repeat names the reading it repeats, so that its harness is the one that reading froze.
+      // The repeat names the reading it repeats, and the harness that reading froze.
       repeats: "g-1",
     } as const;
     expect(decide(stepped, PLAN)).toEqual({ ...again, code: "unfinished" });
+    // A session that leaves another harness takes nothing from it: until 15 October the repeat
+    // followed the latest harness's reading, and recode-pr169-sonnet's g-1 lost its repeat once b-3
+    // left another.
+    expect(move([...stepped, built("b-2", "h2")])).toEqual(again);
+    expect(move([...stepped, built("b-2", "h2"), ...compared("g-2", "h2", "no-step")])).toMatchObject({
+      move: "build",
+    });
     // A 4-3 clears no trigger; a 6-2 (p 0.14) buys the repeat, whatever its word.
     const tally = (wins: number, losses: number) =>
       compared("g-1", "h1", "no-step", { tally: [wins, losses, 12 - wins - losses] });
@@ -566,9 +573,10 @@ describe("a row of the table", () => {
     const epoch = [...FIRST, promotion("h1"), setting(null), built("b-2", "h2")];
     const unread = compared("g-1", "h2", "starter-unread", { old: "h1", tally: [8, 0, 4] });
     expect(move([...epoch, ...unread])).not.toMatchObject({ reference: "starter" });
-    expect(move([...epoch, ...compared("g-1", "h2", "step", { old: "h1", tally: [8, 0, 4] })])).toEqual(
-      again,
-    );
+    expect(move([...epoch, ...compared("g-1", "h2", "step", { old: "h1", tally: [8, 0, 4] })])).toEqual({
+      ...again,
+      fresh: "h2",
+    });
   });
 
   it("twice: a harness that read a step and its repeat is promoted", () => {
@@ -612,8 +620,9 @@ describe("a row of the table", () => {
       move: "build",
       why: "comparison b-2 read no step with room to gain: harness h2 did not help",
     });
-    // One step is one draw, whatever came after it.
-    expect(move([...stepped, ...later])).toMatchObject({ move: "build" });
+    // One step is one draw, whatever came after it, and its repeat is owed while no later harness
+    // has been read against the reference.
+    expect(move([...stepped, ...later])).toMatchObject({ move: "compare", fresh: "h1", repeats: "g-1" });
   });
 
   it("no-room: the tasks change where the reference's last reading left it nothing to gain", () => {

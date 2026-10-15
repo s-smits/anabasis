@@ -482,7 +482,9 @@ describe("a campaign run by its log", () => {
       { move: "promote", harness: first?.fresh },
       { move: "examine", session: "x-1" },
     ]);
-    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 3 }]);
+    // The promoted harness answered every task of g-1 and g-2, and one comparison closes a task
+    // (15 October), so the Examiner is asked for what that leaves short and stops once it has it.
+    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 2, ended: "supplied" }]);
     // The tasks written are read by a control before a Builder session is paid for: the starter
     // against the promoted harness. Until 10 October the Builder built here, three times, on
     // practice the promoted harness passed (t-4, t-9, t-10).
@@ -494,14 +496,14 @@ describe("a campaign run by its log", () => {
       old: first?.fresh,
     });
     // The script answers nothing under the reference nor the starter, so the control reads the
-    // three new tasks as beyond both; the four pack tasks drawn beside them the promoted harness
+    // two new tasks as beyond both; the five pack tasks drawn beside them the promoted harness
     // answered in g-1, so a valid answer to each is on record and the reference failing them now
     // is room (`informative`, 15 October; until then no task it failed in every solve was). The
     // table releases the tasks it failed for practice before a Builder session is paid for.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-3",
       reading: "no-step",
-      valid: { old: [7, 0], fresh: [7, 0], informative: { old: 4, fresh: 4 } },
+      valid: { old: [7, 0], fresh: [7, 0], informative: { old: 5, fresh: 5 } },
     });
     expect(after).toMatchObject({ move: "prepare", code: "practice" });
     expect(after.why).toContain("comparison g-3 read room in the tasks held out since the last release");

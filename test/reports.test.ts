@@ -880,15 +880,14 @@ describe("the tasks the reference harness exhausted", () => {
   ];
   const start = [read, ...closed.flatMap(heldOut)];
 
-  it("are the ones the reference answered in every solve of two comparisons, but for a third the contract's hash keeps as the retained set", () => {
-    const once = compared(start, "b-1", "h2", SETTING);
-    expect(poolOf(once).exhausted).toEqual([]);
-    expect(poolOf(once).retained).toEqual([]);
+  it("are the ones the reference answered in every solve of one comparison, but for a third the contract's hash keeps as the retained set", () => {
+    expect(poolOf(start).exhausted).toEqual([]);
     // All four: `open` too, which the new harness failed once and the reference never did, since
     // a changed harness can only tie or lose it. Until 10 October both sides had to answer a
-    // task, and a simulated climb drew closed tasks into its set three comparisons running.
-    const twice = compared(once, "b-2", "h3", SETTING);
-    const { exhausted, retained, scorable, outcomes } = poolOf(twice);
+    // task, and a simulated climb drew closed tasks into its set three comparisons running. Until
+    // 15 October it took two comparisons, and a promoted harness had stood in one.
+    const once = compared(start, "b-1", "h2", SETTING);
+    const { exhausted, retained, scorable, outcomes } = poolOf(once);
     expect(sorted([...exhausted, ...retained])).toEqual(closed);
     expect(retained).toHaveLength(2);
     expect(scorable).toEqual(closed.filter((task) => retained.includes(task)));
@@ -900,9 +899,20 @@ describe("the tasks the reference harness exhausted", () => {
     // A report under another setting id counts with the rest: the id names the host's code too,
     // and a campaign runs at one setting. Until 2026-10-11 the count started again there, and a
     // tree moved to a new commit drew every closed task again. A released task is no held-out one.
-    expect(poolOf(compared(twice, "b-3", "h4", "other")).exhausted).toEqual(exhausted);
-    const released = [...twice, event("task.state", { version: exhausted[0] ?? "", state: "released" })];
+    expect(poolOf(compared(once, "b-3", "h4", "other")).exhausted).toEqual(exhausted);
+    const released = [...once, event("task.state", { version: exhausted[0] ?? "", state: "released" })];
     expect(poolOf(released).exhausted).not.toContain(exhausted[0]);
+    // Its last reading decides: one that leaves `e1` open opens it again, and in four campaigns'
+    // logs 3 of 34 rechecks did. One where a limit cut a solve of the reference's says neither.
+    const reread = (valid: readonly (boolean | string)[]) => [
+      ...once,
+      ...solved("b-4", "e1", "h1", valid),
+      ...solved("b-4", "e1", "h5", [P, P]),
+      reported("b-4", "no-step", "h5", { ...terms, fresh: "h5", setting: SETTING, versions: ["e1"] }),
+    ];
+    const spent = (log: readonly LogEvent[]) => [...poolOf(log).exhausted, ...poolOf(log).retained];
+    expect(spent(reread([F, P]))).not.toContain("e1");
+    expect(spent(reread(["wall-ended", P]))).toContain("e1");
   });
 
   it("spares a task the objective told two valid answers apart on: the next harness can still win it", () => {

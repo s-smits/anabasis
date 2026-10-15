@@ -1199,7 +1199,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     log.solved("b-1", "one", "h2", [false, false]);
     log.reported("b-1", ["h1", "h2"], 2, ["one"]);
     expect(heard(log.events, [fixture("one")]).counts).toBeNull();
-    // A task the reference answered in every solve of two comparisons is no longer scored, but for
+    // A task the reference answered in every solve of its last comparison is no longer scored, but for
     // the third of such tasks the draw keeps; the line speaks of the reference's solves alone.
     const closed = ["p", "q", "r"];
     log.hold(...closed);
@@ -1212,7 +1212,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     }
     const spent = heard(log.events, closed.map(fixture)).lines.filter((each) =>
       each.includes(
-        ": the reference harness answered it validly in every solve of two comparisons: no longer scored; ",
+        ": the reference harness answered it validly in every solve of its last comparison: no longer scored; ",
       ),
     );
     expect(spent).toHaveLength(2);
@@ -1225,7 +1225,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     log.hold(...tasks.map(({ taskId }) => taskId));
     // `run`: the reference h1 answered it in every solve of four comparisons running; `mixed`: in
     // every solve of b-1, in no solve of b-2 with one cut at its wall, and in every solve of b-3,
-    // so it is exhausted on two closed comparisons that are not in a row; `once`: one comparison,
+    // so it is exhausted on its first closed comparison; `once`: one comparison,
     // which is its outcome and no history. `run` is among the third the draw keeps.
     for (const comparison of ["b-1", "b-2", "b-3", "b-4"]) {
       log.solved(comparison, "run", "h1", [true, true]);
@@ -1255,7 +1255,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       ),
       line(
         "mixed",
-        `the reference harness answered it validly in every solve of two comparisons: no longer scored; ${VALID}; of its last 3 comparisons with the current reference harness, newest first, the reference answered it validly in every, none (a solve cut at a limit), every of its solves, the last closing it`,
+        `the reference harness answered it validly in every solve of its last comparison: no longer scored; ${VALID}; of its last 3 comparisons with the current reference harness, newest first, the reference answered it validly in every, none (a solve cut at a limit), every of its solves, the last closing it`,
       ),
     ]);
     // The history is of the reference's side alone: the same lines whatever h2 answered, and
@@ -1332,8 +1332,9 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         "beam",
         "the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none",
       ),
-      // b-1 stood in c-1 and c-3 against the reference, so its line carries both, newest first.
-      `${said("b-1", "slab", "the reference harness answered it validly in every solve of the last comparison")}; of its last 2 comparisons with the current reference harness, newest first, the reference answered it validly in every, none of its solves, the last closing it`,
+      // b-1 stood in c-1 and c-3 against the reference, so its line carries both, newest first;
+      // c-3 closed it, which retires it.
+      `${said("b-1", "slab", "the reference harness answered it validly in every solve of its last comparison: no longer scored")}; of its last 2 comparisons with the current reference harness, newest first, the reference answered it validly in every, none of its solves, the last closing it`,
       said(
         "b-2",
         "slab",

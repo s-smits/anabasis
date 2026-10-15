@@ -40,6 +40,7 @@ const MOVED = "campaign.move";
 const CALLED = "build.call";
 const FINISHED = "build.finished";
 const REPORTED = "comparison.reported";
+const EXAMINED = "exam.finished";
 const TASKS = fixtureTasks(7);
 const GRADED = [
   ...gradedOf(TASKS),
@@ -143,6 +144,11 @@ const writer: NonNullable<Seats["examine"]> = (request) =>
       ],
     ]),
   });
+
+/** An Examiner that holds out nothing: where the reference is left no room, three conversations
+ *  in a row without a move have the host ask for tasks (15 October), and none come. */
+const unwritten: NonNullable<Seats["examine"]> = (request) =>
+  examine({ ...request, ...scripted([FINISH_IDLE, FINISH_IDLE]) });
 
 describe("a campaign run by its live Builder", () => {
   it("lets the Builder ask the Examiner, and keeps the handover filtered", async () => {
@@ -252,7 +258,7 @@ describe("a campaign run by its live Builder", () => {
       ["build", "led", "b-4"],
     ]);
     expect(said(name, "examine")).toEqual([]);
-    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1" }]);
+    expect(of(name, EXAMINED)).toMatchObject([{ session: "x-1" }]);
   });
 
   it("lets the Builder practise while the Examiner writes, refuses a second session, and ends the Examiner's first", async () => {
@@ -298,9 +304,9 @@ describe("a campaign run by its live Builder", () => {
     );
     const at = (kind: string) => kinds.indexOf(kind);
     expect(at("exam.started")).toBeLessThan(at(`${CALLED}:practice`));
-    expect(at(`${CALLED}:practice`)).toBeLessThan(at("exam.finished"));
-    expect(at("exam.finished")).toBeLessThan(at(FINISHED));
-    expect(of(name, "exam.finished")).not.toMatchObject([{ ended: "killed" }]);
+    expect(at(`${CALLED}:practice`)).toBeLessThan(at(EXAMINED));
+    expect(at(EXAMINED)).toBeLessThan(at(FINISHED));
+    expect(of(name, EXAMINED)).not.toMatchObject([{ ended: "killed" }]);
     const [first, second] = said(name, "examine");
     expect(first).toContain("Examiner session x-1 is writing");
     expect(second).toContain("Examiner session x-1 is still writing.");
@@ -388,9 +394,9 @@ describe("a campaign run by its live Builder", () => {
         }),
     };
     expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "operator" });
-    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", ended: "killed" }]);
+    expect(of(name, EXAMINED)).toMatchObject([{ session: "x-1", ended: "killed" }]);
     const kinds = read(join(REPO, ".ana", "d2", name, LOG_FILE)).map(({ kind }) => kind);
-    expect(kinds.indexOf("exam.finished")).toBeLessThan(kinds.indexOf(FINISHED));
+    expect(kinds.indexOf(EXAMINED)).toBeLessThan(kinds.indexOf(FINISHED));
   });
 
   it("honours a task word during the conversation before allowing another action", async () => {
@@ -516,20 +522,27 @@ describe("a campaign run by its live Builder", () => {
         ["examine", {}],
         CHANGE_GUIDE,
         ["compare", {}],
+        // The repeat waits for one task the Examiner writes first.
+        ["examine", {}],
         ["compare", {}],
         // On the harness it last promoted, the first finish is told the run ends there.
         ["finish", { note: "Two harnesses are promoted and measured." }],
         ["finish", { note: "Two harnesses are promoted and measured." }],
       ]),
-      // One task the session held is moved to the ladder, as the gate holds one there.
+      // One task the first session held is moved to the ladder, as the gate holds one there. The
+      // second writes what the second step's repeat is short of, since one comparison closes a task
+      // (15 October); the third, the host's once three conversations after the second promotion
+      // made no move, holds none.
       examine: async (request) => {
+        const earlier = of(name, EXAMINED).length;
+        if (earlier > 1) return unwritten(request);
         const examined = await examine({
           ...request,
           ...scripted([
             [
               "propose_tasks",
               {
-                tasks: Array.from({ length: 7 }, (_, n) => ({
+                tasks: Array.from({ length: 8 }, (_, n) => ({
                   family: "fixture",
                   public_input: { base: 2, rehearsal_copy: { of: "t-1", n } },
                   hidden: null,
@@ -538,7 +551,9 @@ describe("a campaign run by its live Builder", () => {
             ],
           ]),
         });
-        append(request.log, "task.state", { version: examined.held.at(-1) ?? "", state: "ladder" });
+        if (earlier === 0) {
+          append(request.log, "task.state", { version: examined.held.at(-1) ?? "", state: "ladder" });
+        }
         return examined;
       },
     };
@@ -566,7 +581,10 @@ describe("a campaign run by its live Builder", () => {
       ],
       seats,
     );
-    expect(ending).toMatchObject({ move: "end", ending: "finished" });
+    // Three conversations after the second promotion make no move, and the host asks for the
+    // tasks they were advised (15 October); a session that holds none ends the campaign at its
+    // patience of one.
+    expect(ending).toMatchObject({ move: "end", ending: "no-room" });
     expect(of(name, MOVED).map(({ move }) => move)).toEqual([
       "accept",
       "prepare",
@@ -577,12 +595,14 @@ describe("a campaign run by its live Builder", () => {
       "examine",
       "compare",
       "compare",
+      "examine",
       "compare",
       "promote",
       "compare",
       "build",
       "build",
       "build",
+      "examine",
     ]);
     // The ladder's readings are the host's: once the ladder holds a task, the starter against the
     // reference before the Builder's next action, and again after the next promotion. The
@@ -610,7 +630,7 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, "harness.promoted")).toHaveLength(2);
     expect(of(name, "build.started")).toHaveLength(4);
     expect(of(name, FINISHED)).toHaveLength(4);
-    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished", latest: second?.fresh }]);
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "no-room", latest: second?.fresh }]);
     expect(strayed).toEqual([]);
     const campaignCalls = of(name, CALLED).filter(({ tool }) =>
       ["compare", "promote"].includes(isString(tool) ? tool : ""),
@@ -633,6 +653,7 @@ describe("a campaign run by its live Builder", () => {
     const note = { note: "Finished after the step." };
     const seats: Seats = {
       seated: builderScript(base, [CHANGE_GUIDE, ["compare", {}], ["finish", note], ["finish", note]]),
+      examine: unwritten,
     };
     const ending = await harnessBuilder(
       [
@@ -654,7 +675,10 @@ describe("a campaign run by its live Builder", () => {
       ],
       seats,
     );
-    expect(ending).toMatchObject({ move: "end", ending: "finished" });
+    // The promoted harness closed every task it was read on, and one comparison closes a task
+    // (15 October): the campaign is short, the next conversation opens on an Examiner session,
+    // and one that holds out nothing is the patience's one reading without room.
+    expect(ending).toMatchObject({ move: "end", ending: "no-room" });
     expect(of(name, MOVED).map(({ move }) => move)).toEqual([
       "accept",
       "prepare",
@@ -663,21 +687,18 @@ describe("a campaign run by its live Builder", () => {
       "compare",
       "promote",
       "build",
-      "build",
-      "build",
+      "examine",
     ]);
     const [first, repeat] = of(name, REPORTED);
     expect(first).toMatchObject({ reading: "step" });
     expect(of(name, FINISHED)).toMatchObject([
       { ended: "finished", harness: first?.fresh },
       { ended: "finished", harness: first?.fresh },
-      { ended: "finished", harness: first?.fresh },
-      { ended: "finished", harness: first?.fresh },
     ]);
     expect(repeat).toMatchObject({ old: first?.old, fresh: first?.fresh });
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
-    expect(of(name, "build.started")).toHaveLength(4);
-    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }]);
+    expect(of(name, "build.started")).toHaveLength(2);
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "no-room" }]);
     expect(strayed).toEqual([]);
   });
 
@@ -853,6 +874,7 @@ describe("a campaign run by its live Builder", () => {
           ["finish", { note: "The failed answers need a person's blind label." }],
         ],
       ),
+      examine: unwritten,
     };
     await harnessBuilder([...args, "--sessions", "1", "--target", "5"], seats);
     expect(await settleCommand([...pack, "--session", "g-1"])).toBe(0);
@@ -911,8 +933,13 @@ describe("a campaign tool where the table names more than the action", () => {
         ["finish", { note: "The step was read twice." }],
         ["finish", { note: "The step was read twice." }],
       ]),
+      examine: unwritten,
     };
-    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
+    // The promoted harness closed the tasks it was read on (15 October): the next conversation opens
+    // on an Examiner session, and one that holds out nothing spends a patience of one.
+    expect(await harnessBuilder([...seeded(name), ...FLAGS, "--patience", "1"], seats)).toMatchObject({
+      ending: "no-room",
+    });
     const [first, repeat] = of(name, REPORTED);
     // Until 12 October the second comparison froze harness/ again: the edit was measured in the
     // repeat's place, the step was never read twice, and the promotion was refused.
@@ -968,8 +995,14 @@ describe("a campaign tool where the table names more than the action", () => {
         ["promote", {}],
         ["finish", { note: "The earlier harness was owed its promotion." }],
       ]),
+      examine: writer,
     };
-    expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
+    // After the second promotion the reference has no room, and the table asks for tasks where
+    // the campaign used to end `finished` (main0_5_1, 15 October).
+    expect(await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "10"], seats)).toMatchObject({
+      move: "examine",
+      code: "no-room",
+    });
     const [first, , later] = of(name, REPORTED);
     expect(later?.fresh).not.toBe(first?.fresh);
     // Until 12 October the tool named the last harness frozen, which the rule refused every time;
@@ -1189,20 +1222,25 @@ describe("a campaign's endings", () => {
         IDLE,
         IDLE,
       ]),
+      examine: unwritten,
     };
-    // Until 12 October the command returned the table's next move there and wrote no ending.
-    expect(await harnessBuilder([...seeded(name), ...FLAGS, "--turns", "3"], seats)).toMatchObject({
-      move: "end",
-      ending: "finished",
-    });
+    // Until 12 October the command returned the table's next move there and wrote no ending. g-1
+    // closes every task it read (15 October), so b-2 opens on the campaign's first Examiner
+    // session, and three conversations after it the host asks for tasks again: two sessions that
+    // hold out none spend a patience of two.
+    expect(
+      await harnessBuilder([...seeded(name), ...FLAGS, "--turns", "3", "--patience", "2"], seats),
+    ).toMatchObject({ move: "end", ending: "no-room" });
     expect(of(name, FINISHED).map(({ session, ended }) => [session, ended])).toEqual([
       ["b-1", "turns"],
       ["b-2", "finished"],
       ["b-3", "finished"],
       ["b-4", "finished"],
+      ["b-5", "finished"],
     ]);
     expect(of(name, REPORTED)).toMatchObject([{ fresh: of(name, FINISHED)[0]?.harness }]);
-    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }]);
+    expect(of(name, EXAMINED)).toMatchObject([{ held: [] }, { held: [] }]);
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "no-room" }]);
     // Three conversations in a row that end at their limits with no campaign move end it too, and
     // the third is told of the two before it. Until 14 October only the budget ended such a run.
     // The host compares what the first left before the second opens, which is a campaign move.
@@ -1214,15 +1252,24 @@ describe("a campaign's endings", () => {
         [status, CHANGE_AGAIN, CHANGE_GUIDE],
         [status, CHANGE_AGAIN, CHANGE_GUIDE],
         [status, CHANGE_AGAIN, CHANGE_GUIDE],
+        [status, CHANGE_AGAIN, CHANGE_GUIDE],
       ]),
+      examine: unwritten,
     };
-    expect(await harnessBuilder([...seeded(editing), ...FLAGS, "--turns", "3"], edits)).toMatchObject({
-      move: "end",
-      ending: "finished",
-    });
-    expect(of(editing, FINISHED).map(({ ended }) => ended)).toEqual(["turns", "turns", "turns", "turns"]);
+    // The Examiner session b-2 opens on is a move: the count starts after it.
+    expect(
+      await harnessBuilder([...seeded(editing), ...FLAGS, "--turns", "3", "--patience", "2"], edits),
+    ).toMatchObject({ move: "end", ending: "no-room" });
+    expect(of(editing, FINISHED).map(({ ended }) => ended)).toEqual([
+      "turns",
+      "turns",
+      "turns",
+      "turns",
+      "turns",
+    ]);
     expect(of(editing, REPORTED)).toMatchObject([{ fresh: of(editing, FINISHED)[0]?.harness }]);
     expect(said(editing, "campaign_status")).toEqual([
+      expect.not.stringContaining("made no campaign move"),
       expect.not.stringContaining("made no campaign move"),
       expect.stringContaining("The conversation before this one made no campaign move."),
       expect.stringContaining("The 2 conversations before this one made no campaign move."),
@@ -1303,7 +1350,7 @@ describe("a campaign's endings", () => {
     });
     // Until 14 October the halted Builder read as a whole session, the crash count went back to
     // nought, and the command returned with no ending on record.
-    expect(of(name, "exam.finished").map(({ ended }) => ended)).toEqual(["crashed", "crashed", "crashed"]);
+    expect(of(name, EXAMINED).map(({ ended }) => ended)).toEqual(["crashed", "crashed", "crashed"]);
     expect(of(name, FINISHED).map(({ ended }) => ended)).toEqual(["stopped"]);
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment" }]);
     // Three in a row stand up to the ending, which starts the count again for a run by its name.
@@ -1332,7 +1379,7 @@ describe("a campaign's endings", () => {
       examine: (request) => examine({ ...request, ...scripted([]) }),
     };
     await harnessBuilder([...seeded(name), "--target", "8", "--practice", "3"], seats);
-    const sessions = of(name, "exam.finished").map(({ session }) => (isString(session) ? session : ""));
+    const sessions = of(name, EXAMINED).map(({ session }) => (isString(session) ? session : ""));
     const status = of(name, CALLED).findLast(({ tool }) => tool === "campaign_status");
     // Until 14 October a new conversation was told only of Examiner sessions it had begun itself.
     expect(status?.text).toContain(
@@ -1352,22 +1399,25 @@ describe("a campaign's endings", () => {
         IDLE,
         IDLE,
         IDLE,
+        IDLE,
         [CHANGE_GUIDE, ["compare", {}], ["finish", { note: "Measured now." }]],
-        IDLE,
-        IDLE,
-        IDLE,
       ]),
+      examine: unwritten,
     };
-    const args = [...seeded(name), ...FLAGS];
+    // The campaign's first Examiner session opens with b-2 and is a move, so three conversations
+    // after it end the first run.
+    const args = [...seeded(name), ...FLAGS, "--patience", "2"];
     expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "finished" });
     expect(of(name, "comparison.started")).toEqual([]);
     // Until 12 October a campaign its Builder had finished started nothing again, whatever was left.
     // Run again, the count of conversations without a move starts afresh: the first one's idle
-    // finish does not end the run.
-    expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "finished" });
-    expect(of(name, "build.started")).toHaveLength(8);
+    // finish does not end the run. g-1 leaves the reference no room, and with the first run's
+    // Examiner session, which held out none, that is two readings in a row without room: the
+    // patience of two is spent (15 October).
+    expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "no-room" });
+    expect(of(name, "build.started")).toHaveLength(6);
     expect(of(name, REPORTED)).toHaveLength(1);
-    expect(of(name, "campaign.ended")).toHaveLength(2);
+    expect(of(name, "campaign.ended")).toMatchObject([{ ending: "finished" }, { ending: "no-room" }]);
   });
 
   it("ends on an exam whose checks wait for the operator's word, and prints the command that gives it with the pack's flags", async () => {

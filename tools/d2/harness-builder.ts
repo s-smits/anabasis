@@ -173,11 +173,16 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
  * buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no comparison read). The
  * host makes a comparison that began under other code as its first move, and its terms refuse it
  * with the campaign's environment ending (`begin`, `src/builder/round.ts`), where the Builder's
- * tool was refused it again and again (main0_5_1, three times at 8e0371c58).
+ * tool was refused it again and again (main0_5_1, three times at 8e0371c58). Tasks for want of
+ * room are owed once IDLE conversations in a row made no campaign move: main0_5_1 ended
+ * `finished` on 15 October after its promotion left the reference no room, b-5, b-6 and b-7 each
+ * reading that an Examiner session was advised and finishing without asking for one. A session
+ * that holds out nothing counts towards the table's own ending for want of room (`roomless`).
  */
-function hostOwed(decided: Decided): boolean {
+function hostOwed(decided: Decided, events: readonly LogEvent[]): boolean {
   if (decided.move === "promote" || decided.move === "compare") return true;
-  return decided.move === "examine" && decided.repeats !== undefined;
+  if (decided.move !== "examine") return false;
+  return decided.repeats !== undefined || (decided.code === "no-room" && idleOf(events) >= IDLE);
 }
 
 /**
@@ -465,9 +470,9 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
   // and the two that promoted finished within seconds of the promotion.
   const idle = how === "finished" || how === "wall" || how === "turns" ? idleOf(after) : 0;
   const table = decide(after, turnOf(context).plan);
-  // A measurement the conversations bought is the host's to make first (`hostOwed`), which moves
-  // the campaign, and an ending the table names stands, as it would at the next move.
-  if (idle < IDLE || hostOwed(table)) {
+  // A measurement the conversations bought, and tasks none of them asked for, are the host's to
+  // make first (`hostOwed`), which moves the campaign, and an ending the table names stands.
+  if (idle < IDLE || hostOwed(table, after)) {
     return how === "finished" || (AGAIN.has(how) && context.used < context.maxMoves) ? null : table;
   }
   if (table.move === "end") return table;
@@ -575,12 +580,12 @@ export async function harnessBuilder(
       for (const line of openingLines({ ...plan.wanted, patience: opening.patience })) console.log(line);
     }
     const decided = decide(events, plan);
-    // Led by its Builder, every move but set-up and a measurement owed (`hostOwed`) is the
+    // Led by its Builder, every move but set-up and what the host owes (`hostOwed`) is the
     // conversation's, and so is a lack of room until one conversation of this run has ended on it.
     const led =
       opening.led &&
       !SETUP.has(decided.move) &&
-      !hostOwed(decided) &&
+      !hostOwed(decided, events) &&
       (decided.move !== "end" || (decided.ending === "no-room" && !talked));
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,

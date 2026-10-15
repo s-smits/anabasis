@@ -14,9 +14,9 @@
  * `MARKERS`, so that a test can show that no default-tier answer holds any of them.
  *
  * The main campaign, `fixture`, holds every case a pane draws: an opening from a prompt, an exam
- * drafted and frozen, four Examiner sessions, five rounds (a Builder session and the comparison
+ * drafted and frozen, four Examiner sessions, four rounds (a Builder session and the comparison
  * after it under one id, as `tools/d2/round.ts` runs them) and a Builder session open at the end,
- * practice solves, nine comparisons of which two repeat an earlier one and one is a control with an
+ * practice solves, eight comparisons of which two repeat an earlier one and one is a control with an
  * A/A reading beside it, a change of setting between two comparisons, a promotion by the rule, one
  * made with `--despite` and a return to the starter, a comparison cut before its report with a
  * ruled rejection, rejections ruled earned, a check defect and unclear, one comparison settled by a

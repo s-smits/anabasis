@@ -14,14 +14,7 @@ import { Type } from "typebox";
 import { crashedRun } from "../src/builder/ground.ts";
 import { SAID, systemPrompt } from "../src/builder/prompt.ts";
 import { type BuildRequest, build, type PracticeTask, session } from "../src/builder/session.ts";
-import {
-  type Bench,
-  endingText,
-  HOME_TOOL_TREE,
-  practiceLeft,
-  record,
-  usedText,
-} from "../src/builder/tools.ts";
+import { type Bench, HOME_TOOL_TREE, practiceLeft, record } from "../src/builder/tools.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
@@ -133,7 +126,8 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     side: "test",
   });
   let solves = 0;
-  /** A solve as the runner logs one: its condition, a call, a verdict naming the check, its ending. */
+  /** A solve as the runner logs one: its condition, a call, a verdict naming the check where the
+   *  verifier read an answer, its ending. */
   const solved = (version: string, harness: string, ending: Ending) => {
     solves += 1;
     const solve = `s-${String(solves)}`;
@@ -151,7 +145,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
       text: `margin of ${solve}`,
     });
     record_("solve.turn", { solve, turn: 1, stopReason: "stop", text: "Submitted." });
-    if (ending.outcome !== "pass") {
+    if (ending.outcome === "non-result" || (ending.outcome === "fail" && ending.kind === "rejected")) {
       record_("verdict", { solve, answer: { answer: "41" }, kind: "fail", blocking: [check] });
     }
     record_("solve.finished", { solve, ending });
@@ -250,6 +244,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
 describe("the Builder running its campaign", () => {
   it("holds practice to the current campaign total, including other seats and budget changes", async () => {
     const s = await setup([finish]);
+    const left: number[] = [];
     await session(
       {
         ...s.request,
@@ -257,17 +252,19 @@ describe("the Builder running its campaign", () => {
         campaign: (bench) => {
           append(s.request.log, "exam.finished", { session: "x-1", billed: 10 });
           append(s.request.log, "campaign.opened", { budget: { dollars: 12, reserve: 1 } });
-          expect(practiceLeft(bench, read(s.request.log))).toBe(2);
+          left.push(practiceLeft(bench, read(s.request.log)));
           append(s.request.log, "campaign.opened", { budget: { dollars: 0, reserve: 1 } });
-          expect(practiceLeft(bench, read(s.request.log))).toBe(0);
+          left.push(practiceLeft(bench, read(s.request.log)));
           append(s.request.log, "campaign.opened", { budget: { dollars: 12, reserve: 1 } });
-          expect(practiceLeft(bench, read(s.request.log))).toBe(2);
+          left.push(practiceLeft(bench, read(s.request.log)));
           return { tools: [], hook: () => "Campaign spending is refreshed." };
         },
       },
       s,
       s.walled,
     );
+    // Read after the session returns, so a session that never asks its campaign fails here.
+    expect(left).toEqual([2, 0, 2]);
   });
 
   it("keeps its conversation and edits across a nested Examiner call, and refreshes practice", async () => {
@@ -1193,15 +1190,19 @@ describe("a Builder session", () => {
 });
 
 describe("what a Builder is shown of a solve", () => {
-  it("is an ending's outcome and kind, and a reason only where the harness itself broke", () => {
-    expect(endingText({ outcome: "pass" })).toBe("pass");
-    expect(endingText({ outcome: "fail", kind: "wall-ended" })).toBe("fail (wall-ended)");
-    expect(endingText({ outcome: "fail", kind: "broken-harness", reason: "no tools" })).toBe(
-      "fail (broken harness: no tools)",
+  // A non-result's reason, which can name a check, is held back in "takes a task out of practice
+  // when its own check could not run"; a pass and a rejection are read in the practice result above.
+  it("is an ending's outcome and kind, and a reason only where the harness itself broke", async () => {
+    const s = await setup(
+      [call("practice", { tasks: ["t-1", "t-2"] }), finish],
+      [
+        { outcome: "fail", kind: "broken-harness", reason: "no tools" },
+        { outcome: "flagged", reason: "the span table is empty" },
+      ],
     );
-    expect(endingText({ outcome: "non-result", kind: "check", reason: `${CHECK}: threw` })).toBe(
-      "no result (check)",
-    );
+    await session(s.request, s, s.walled);
+    expect(s.sent[1]).toContain("t-1: fail (broken harness: no tools). Solve s-3.");
+    expect(s.sent[1]).toContain("t-2: flagged (the solver judged the task malformed). Solve s-4.");
   });
 });
 
@@ -1411,55 +1412,50 @@ describe("what crosses to the Builder", () => {
 });
 
 describe("what a practice solve used", () => {
-  it("is its time of its limit and the model's turns, and nothing for a solve the log has no end of", async () => {
-    const s = await setup([finish]);
-    const condition: Condition = {
-      contract: "c1",
-      harness: s.digest,
-      task: "v1",
-      model: "faux/faux-solver",
-      effort: "medium",
-      prices: { "faux/faux-solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-      runtime: {},
-      compaction: "off",
-      solverTools: s.digest,
-      verifierTools: "t1",
-      sandbox: "p1",
-      limits: { ...LIMITS, wallSeconds: 480 },
-      host: "h1",
-      side: "test",
-    };
-    append(s.request.log, "solve.started", {
-      solve: "s-used",
-      condition: recordCondition(s.request.log, condition),
-      limits: condition.limits,
-    });
-    expect(usedText(read(s.request.log), "s-used")).toBe("");
-    append(s.request.log, "solve.finished", {
-      solve: "s-used",
-      ending: { outcome: "pass" },
-      turns: 14,
-      seconds: 222.4,
-    });
-    expect(usedText(read(s.request.log), "s-used")).toBe(" It took 3:42 of 8:00 and 14 model turns.");
-    expect(usedText(read(s.request.log), "s-none")).toBe("");
-    // A live solve's end carries its tokens, and the Builder is told what the solve read and wrote:
-    // the one measure of what a tool or a program costs a solve that it can act on.
-    append(s.request.log, "solve.started", {
-      solve: "s-counted",
-      condition: recordCondition(s.request.log, condition),
-      limits: { ...condition.limits, modelTurns: 10 },
-    });
-    append(s.request.log, "solve.finished", {
-      solve: "s-counted",
-      ending: { outcome: "pass" },
-      turns: 2,
-      seconds: 4.7,
-      tokens: { input: 4, cacheRead: 4105, cacheWrite: 4285, cacheWrite1h: 0, output: 131 },
-    });
-    expect(usedText(read(s.request.log), "s-counted")).toBe(
-      " It took 0:04 of 8:00 and 2 model turns of 10, and read 8394 tokens and wrote 131.",
+  it("is its time of its limit, the model's turns and the tokens it read and wrote, and nothing where the log holds no limits", async () => {
+    const s = await setup([call("practice", { tasks: ["t-1", "t-2", "t-1"] }), finish]);
+    const limits = { ...LIMITS, wallSeconds: 480 };
+    // As a live runner logs them: the limits on the start, the usage on the end. A live solve's end
+    // carries its tokens, the one measure of what a tool or a program costs a solve that a Builder
+    // can act on. The third start holds no limits.
+    const used = [
+      {
+        started: { limits: { ...limits, modelTurns: 10 } },
+        finished: {
+          turns: 2,
+          seconds: 4.7,
+          tokens: { input: 4, cacheRead: 4105, cacheWrite: 4285, cacheWrite1h: 0, output: 131 },
+        },
+      },
+      { started: { limits }, finished: { turns: 14, seconds: 222.4 } },
+      { started: {}, finished: { turns: 3, seconds: 60 } },
+    ];
+    let n = 0;
+    await session(
+      {
+        ...s.request,
+        practise: async (task, _dir, harness) => {
+          const { started, finished } = used[n] ?? { started: {}, finished: {} };
+          n += 1;
+          const solve = `s-used-${String(n)}`;
+          const condition = recordCondition(s.request.log, s.condition(task.version, harness));
+          append(s.request.log, "solve.started", { solve, condition, task: "t", ...started });
+          append(s.request.log, "solve.finished", { solve, ending: { outcome: "pass" }, ...finished });
+          return { solve, ending: { outcome: "pass" } };
+        },
+      },
+      s,
+      s.walled,
     );
+    // What the provider is sent is the context as JSON, where a line's end is escaped.
+    const line = (said: string) => JSON.stringify(`${said}\n`).slice(1, -1);
+    expect(s.sent[1]).toContain(
+      line(
+        "t-1: pass. Solve s-used-1. It took 0:04 of 8:00 and 2 model turns of 10, and read 8394 tokens and wrote 131.",
+      ),
+    );
+    expect(s.sent[1]).toContain(line("t-2: pass. Solve s-used-2. It took 3:42 of 8:00 and 14 model turns."));
+    expect(s.sent[1]).toContain(line("t-1: pass. Solve s-used-3."));
   });
 });
 

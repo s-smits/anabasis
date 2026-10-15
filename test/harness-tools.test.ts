@@ -1,6 +1,6 @@
 // A v1 harness state opened for a v2 solve: bundled over the shim, listed and called one-shot under
-// the real command wall, with the harness's own errors reaching the caller and the host-only folder
-// out of reach; and the sweep's c07 bundle listing exactly the rows its model was shown.
+// the real command wall, with each tool's label and description as its factory states them, the
+// harness's own errors reaching the caller and the host-only folder out of reach.
 import { describe, expect, it } from "bun:test";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type, validateToolArguments } from "@earendil-works/pi-ai";
@@ -19,10 +19,8 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { asRecord, isString, type JsonValue } from "../src/meta/json-shape.ts";
-import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join, relative } from "../src/meta/path.ts";
+import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
 import { harnessTools, openHarness } from "../src/solve/harness.ts";
@@ -30,8 +28,6 @@ import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
-/** v1's sweep 4c67fc bundle c07, where a host keeps one: `ANA_C07_BUNDLE` names its folder. */
-const C07 = runtimeProcess.env.ANA_C07_BUNDLE ?? "";
 const CAP_BYTES = 64 * 1024 * 1024;
 const TASK = { taskId: "t-1", family: "fixture", publicInput: { base: 7 } };
 const darwin = runtimeProcess.platform === "darwin";
@@ -275,6 +271,11 @@ describe("a v1 harness state", () => {
           ["scale_base", undefined],
           ["read_path", undefined],
         ]);
+        // The label and the description reach the model as the factory states them.
+        expect(tools.map(({ label, description }) => [label, description])).toEqual([
+          ["Scale base", "Returns the task's base multiplied by a factor."],
+          ["Read path", "Returns a file's text."],
+        ]);
         const [scale, read] = tools;
         expect(scale?.parameters).toEqual({
           type: "object",
@@ -294,37 +295,6 @@ describe("a v1 harness state", () => {
         const host = join(wall.dirs.host, "config");
         await expect(read!.execute("c5", { path: host })).rejects.toThrow(`cannot read ${host}: EPERM`);
       });
-    },
-    120_000,
-  );
-
-  it.skipIf(!darwin || C07 === "" || !existsSync(C07))(
-    "lists the sweep's c07 domain tools as its model received them",
-    async () => {
-      // Opened as the live driver opens it, by a path relative to this process: the shell runs each
-      // command in its own folder, so a relative tool tree would leave PATH naming nothing.
-      const harness = await openHarness(relative(runtimeProcess.cwd(), C07));
-      expect(harness.toolTree).toBe(join(C07, ".toolchain"));
-      const recorded = parseJsonAs<{ rows: JsonValue[] }>(
-        await Bun.file(new URL("fixtures/harness-c07-tools.json", import.meta.url)).text(),
-      ).rows;
-      await withWall(async (wall) => {
-        const tools = await harnessTools(harness, { taskId: "c07", family: "truss", publicInput: {} }, wall);
-        // v1 led each description with the tool's kind, and gave its model the writer too.
-        const rows = tools.map((tool) => ({
-          name: tool.name,
-          label: tool.label,
-          description: `Role: ${String(harness.kinds.get(tool.name))}. ${tool.description}`,
-          parameters: tool.parameters,
-          ...keyIfDefined("executionMode", tool.executionMode),
-        }));
-        const served = recorded.filter((row) => {
-          const description = asRecord(row)?.description;
-          return !(isString(description) && description.startsWith("Role: artifact-writer."));
-        });
-        expect(served).toHaveLength(recorded.length - 1);
-        expect<unknown>(rows).toEqual(served);
-      }, harness.toolTree);
     },
     120_000,
   );

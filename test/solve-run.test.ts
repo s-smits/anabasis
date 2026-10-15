@@ -352,6 +352,15 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(sent[0]).not.toContain("<project_context>");
   }, 120_000);
 
+  it.concurrent("ends no-answer at one prompt, with no nudge", async () => {
+    const { request, sent, finished } = setup([fauxAssistantMessage("I am done.")], {
+      limits: { ...LIMITS, turns: 1 },
+    });
+    expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
+    expect(finished()[0]?.data).toMatchObject({ turns: 1, prompts: 1 });
+    expect(sent).toHaveLength(1);
+  }, 120_000);
+
   it.concurrent("nudges a model that stops, up to the host's prompts whatever the harness asks", async () => {
     // The cap counts prompts, as v1's maxTurns did: the opening one and one nudge here, each
     // answered by a turn that calls a tool and then stops without submitting.
@@ -463,11 +472,6 @@ describe.skipIf(!darwin)("a solve end to end", () => {
     expect(cut?.text).toMatch(
       /^began\n\n\nCommand timed out after 3\d seconds\n\nThe command was cut because the solve's time is nearly up, so that its result reaches you while you can still act on it\.\n\n\[Solve time used: 0:3\d of 0:40\]$/,
     );
-  }, 120_000);
-
-  it.concurrent("ends no-answer when the model stops without submitting", async () => {
-    const { request } = setup([fauxAssistantMessage("I am done.")], { limits: { ...LIMITS, turns: 1 } });
-    expect(await solve(request, noWait)).toEqual({ outcome: "fail", kind: "no-answer" });
   }, 120_000);
 
   it.concurrent("reruns a failed provider turn three times, then reports it as the provider's non-result", async () => {

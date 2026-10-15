@@ -407,10 +407,15 @@ describe("the simplify ownership catchers", () => {
     await pins("no-repeated-string-literal", SUITE, 1, "test/fixture.test.ts");
   });
 
-  it("says nothing about the same suite in source, where four is already too many", async () => {
+  it("reports the same suite in source, where four is already too many", async () => {
+    // Both functions, each on its first spelling: the lines the fixture marks for the test tree.
+    const first = SUITE.split("\n").flatMap((line, index) =>
+      /\/\/ (REPORT|ADMITTED)/.test(line) ? [index + 1] : [],
+    );
+    expect(first).toHaveLength(2);
     expect(
       await reportedLines("ana", "no-repeated-string-literal", SUITE, "src/run/fixture.ts"),
-    ).toHaveLength(2);
+    ).toStrictEqual(first);
   });
 
   it("counts no prose in a suite, where a note or an asserted sentence is no fixture's name", async () => {

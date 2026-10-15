@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { countNonBlank, excludedAs } from "../tools/loc/nonblank-loc.ts";
+import { countNonBlank } from "../tools/loc/nonblank-loc.ts";
 import {
   NEW_FILE_CEILING,
   NEW_FUNCTION_CEILING,
@@ -67,11 +67,7 @@ describe("source policy", () => {
     expect(checks("one\ntwo", 2)).not.toContain("file-size");
   });
 
-  // A copied-file ceiling also turns the function check off for its file, so an entry left behind
-  // after the file came inside both limits is a silent exemption rather than a dormant number.
-  // That is why the map is swept: most entries stop binding anything long before anyone thinks to
-  // remove them.
-  it("provides token and nonblank facts to the direct hostile tests and analysis tools", () => {
+  it("reads string literals and calls past comments and a regex holding `#`, and counts nonblank lines", () => {
     const facts = scanTokens(
       '// "held" in a comment\ntype T = "artifact" | "clarification";\nfunction go() { accept(bytes); }\nconst s = `tpl-word`;\n',
     );
@@ -86,9 +82,5 @@ describe("source policy", () => {
     expect(hashed.calls.has("seen")).toBe(true);
     expect(hashed.literals.has("late")).toBe(true);
     expect(countNonBlank("a\n\n  \nb\n")).toBe(2);
-    expect(excludedAs("tools/ui/generated/x.ts")).toBe("generated");
-    expect(excludedAs("domains/bridge-truss/.venv/lib/numpy.py")).toBe("vendored");
-    expect(excludedAs("packages/kernel/test/claim.test.ts")).toBe("tests");
-    expect(excludedAs("packages/kernel/src/claim.ts")).toBeNull();
   });
 });

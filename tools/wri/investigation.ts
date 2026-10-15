@@ -47,7 +47,7 @@ interface PromptParts {
 
 const CAMPAIGN_HEADING = "Campaign under review";
 const RULES_HEADING = "Hard rules";
-export const VERDICTS = ["finding", "no finding", "could not read"] as const;
+const VERDICTS = ["finding", "no finding", "could not read"] as const;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
 
 /** A lane's file stem: `07` for lane 7. */

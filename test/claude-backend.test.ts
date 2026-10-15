@@ -16,7 +16,6 @@ import {
 import {
   CLAUDE_COMPACTED,
   type ClaudeCompaction,
-  claudeEffort,
   claudeProvider,
   REPORTED_COST,
   reportedCost,
@@ -412,14 +411,32 @@ describe("the Claude backend", () => {
     expect(refused.errorMessage).toContain("holds this conversation");
   });
 
-  it("asks for v1's effort: the model's own map, then the bridge's table", () => {
+  it("asks for v1's effort: the model's own map, then the bridge's table", async () => {
     const opus = sweep.getModels().find((entry) => entry.id === "claude-opus-5");
     if (opus === undefined) throw new Error("pi's Anthropic catalog has no claude-opus-5");
-    expect(claudeEffort(opus, "xhigh")).toBe("xhigh");
-    expect(claudeEffort(recorded, "xhigh")).toBe("max");
-    expect(claudeEffort(recorded, "max")).toBeUndefined();
-    expect(claudeEffort(opus, "medium")).toBe("medium");
-    expect(claudeEffort(opus, "minimal")).toBe("low");
-    expect(claudeEffort(opus, undefined)).toBeUndefined();
+    const context = normalizeContext({
+      systemPrompt: "You are a solver.",
+      messages: [opening],
+      tools: [read],
+    });
+    let launches = 0;
+    /** The effort Claude Code is launched with for one turn of `model` at `reasoning`. */
+    const asked = async (model: Model<Api>, reasoning?: ThinkingLevel) => {
+      replay(TEXT);
+      launches += 1;
+      const options = {
+        ...solveOptions(),
+        sessionId: `effort-${String(launches)}`,
+        ...keyIfDefined("reasoning", reasoning),
+      };
+      await sweep.streamSimple(model, context, options).result();
+      return flag(launched(), "--effort");
+    };
+    expect(await asked(opus, "xhigh")).toBe("xhigh");
+    expect(await asked(recorded, "xhigh")).toBe("max");
+    expect(await asked(recorded, "max")).toBeUndefined();
+    expect(await asked(opus, "medium")).toBe("medium");
+    expect(await asked(opus, "minimal")).toBe("low");
+    expect(await asked(opus)).toBeUndefined();
   });
 });

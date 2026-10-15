@@ -18,13 +18,7 @@ import { asRecord, isNumber, type JsonObject, type JsonValue } from "../src/meta
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { agreement, clears, unclearReport } from "../src/review/agreement.ts";
-import {
-  editedPassage,
-  PROBE_BUDGET,
-  type ProbeRow,
-  probeTool,
-  withReplacedField,
-} from "../src/review/probe.ts";
+import { type ProbeRow, probeTool } from "../src/review/probe.ts";
 import type { Reader } from "../src/review/reader.ts";
 import { referee } from "../src/review/referee.ts";
 
@@ -108,12 +102,20 @@ function setup(responses: ReturnType<typeof fauxAssistantMessage>[]) {
 }
 
 describe("the probe", () => {
-  it("replaces one existing leaf of a copy, and refuses a path the answer lacks", () => {
-    expect(withReplacedField(ANSWER, "$.members[0].area", 4)).toEqual({ span: 12, members: [{ area: 4 }] });
+  it("replaces one existing leaf of a copy, and refuses a path the answer lacks", async () => {
+    const handed: JsonValue[] = [];
+    const seen = async (task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
+      handed.push(answer ?? null);
+      return verify(task, answer);
+    };
+    const tool = probeTool(seen, TASK, ANSWER, []);
+    const probe = (path: string) => tool.execute("id", { path, value: "4" });
+    await probe("$.members[0].area");
+    expect(handed).toEqual([ANSWER, { span: 12, members: [{ area: 4 }] }]);
     expect(ANSWER.members[0]?.area).toBe(3);
-    expect(withReplacedField(ANSWER, "$.members[1].area", 4)).toBeNull();
-    expect(withReplacedField(ANSWER, "$.depth", 4)).toBeNull();
-    expect(withReplacedField(ANSWER, "span", 4)).toBeNull();
+    for (const path of ["$.members[1].area", "$.depth", "span"]) {
+      await expect(probe(path)).rejects.toThrow(`${path} is not an existing field of the answer`);
+    }
   });
 
   it("says which checks moved, and refuses what is not a one-field change", async () => {
@@ -124,27 +126,30 @@ describe("the probe", () => {
     expect(moved.content).toEqual([
       expect.objectContaining({ text: expect.stringContaining("1 check moved: span") }),
     ]);
-    expect(JSON.stringify(moved.content)).toContain(
-      `probe 1 of ${String(PROBE_BUDGET)}: ${String(PROBE_BUDGET - 1)} probes left`,
-    );
-    expect(tool.description).toContain(`at most ${String(PROBE_BUDGET)} probes`);
+    // Eight, as the Referee is told: on 12 October 8 of 8 unclear rulings came after the eighth probe.
+    expect(JSON.stringify(moved.content)).toContain("probe 1 of 8: 7 probes left");
+    expect(tool.description).toContain("at most 8 probes");
     await probe("$.members[0].area", "5");
     expect(rows.map((row) => row.moved)).toEqual([["span"], []]);
     await expect(probe(SPAN, "ten")).rejects.toThrow("value must be JSON text");
     await expect(probe("$.depth", "1")).rejects.toThrow("$.depth is not an existing field");
     await expect(probe(SPAN, "12")).rejects.toThrow("already carries that value");
     await expect(probe(SPAN, JSON.stringify("x".repeat(4_000)))).rejects.toThrow("at most 4000 characters");
-    while (rows.length < PROBE_BUDGET - 1) await probe(SPAN, String(rows.length));
+    while (rows.length < 7) await probe(SPAN, String(rows.length));
     const last = await probe(SPAN, "99");
     expect(JSON.stringify(last.content)).toContain("none left, so record your ruling");
-    await expect(probe(SPAN, "1")).rejects.toThrow(`at most ${String(PROBE_BUDGET)} probes`);
+    await expect(probe(SPAN, "1")).rejects.toThrow("at most 8 probes");
   });
 
   it("rewrites one passage inside a text field, where the thing in dispute is one line of a file", async () => {
     // A stand-in that refuses valid code: it rejects any call of `min`, which the rules allow.
     const source = { files: { "main.cpp": "int a = min(x, 3);\nint b = max(x, 3);\n" } };
-    const standIn = async (_task: Task, answer: JsonValue | undefined): Promise<Verdict> =>
-      JSON.stringify(answer).includes("min(") ? { kind: "fail", blocking: ["compiles"] } : { kind: "pass" };
+    const handed: string[] = [];
+    const standIn = async (_task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
+      const given = JSON.stringify(answer);
+      handed.push(given);
+      return given.includes("min(") ? { kind: "fail", blocking: ["compiles"] } : { kind: "pass" };
+    };
     const rows: ProbeRow[] = [];
     const tool = probeTool(standIn, TASK, source, rows);
     const path = "$.files['main.cpp']";
@@ -155,10 +160,11 @@ describe("the probe", () => {
       }),
     ]);
     expect(rows[0]).toMatchObject({ value: null, edit: { find: "min(x, 3)" }, moved: ["compiles"] });
-    expect(editedPassage(source, path, { find: "min", replace: "MIN" })).toContain("int a = MIN(x, 3);");
-    // `(x, 3)` names two passages, so editing either would be a guess; and a dollar sign is text.
-    expect(editedPassage(source, path, { find: "(x, 3)", replace: "()" })).toBeNull();
-    expect(editedPassage(source, path, { find: "max", replace: "$&$1" })).toContain("int b = $&$1(x, 3);");
+    expect(handed.at(-1)).toContain("int a = (x < 3 ? x : 3);");
+    // A dollar sign in `replace` is text, and `(x, 3)` names two passages, so editing either would
+    // be a guess.
+    await tool.execute("id", { path, find: "max", replace: "$&$1" });
+    expect(handed.at(-1)).toContain("int b = $&$1(x, 3);");
     await expect(tool.execute("id", { path, find: "(x, 3)", replace: "" })).rejects.toThrow(
       "is not a text field holding `find` exactly once",
     );
@@ -225,6 +231,27 @@ describe("the Referee", () => {
     failed(s.record);
     expect((await referee(s.reader, fail(s))).ruling).toBe("unclear");
     expect(s.sent[2]).toContain("span reads $.span, and no cited probe changed that");
+  });
+
+  it("refuses a ruling on a probe whose changed side reached no verdict, and a check-defect on a check that did not refuse", async () => {
+    // A check that threw on the changed answer refuses nothing there, which reads as moved off its
+    // refusal: the probe decided nothing, and no ruling may rest on it.
+    const threw = async (task: Task, answer: JsonValue | undefined): Promise<Verdict> =>
+      asRecord(answer)?.span === 11 ? { kind: "non-result", reason: "span: threw" } : verify(task, answer);
+    const s = setup([
+      fauxAssistantMessage(fauxToolCall("probe_check", { path: SPAN, value: "11" }), toolUse),
+      ruling({ ruling: "check-defect", check: "span", reason: "The check moved.", probes: [1] }),
+      ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "12 m is over 10.", probes: [1] }),
+      ruling({ ruling: "check-defect", check: "depth", reason: "The depth check is wrong.", probes: [1] }),
+      ruling({ ruling: "unclear", reason: "The probe decided nothing.", probes: [1] }),
+    ]);
+    failed(s.record);
+    expect((await referee(s.reader, { ...fail(s), verify: threw })).ruling).toBe("unclear");
+    expect(s.sent[2]).toContain("cites at least one probe whose two sides both reached a verdict");
+    expect(s.sent[3]).toContain(
+      "an earned ruling cites a probe that changed $.span and moved a check that cites R1 off its refusal",
+    );
+    expect(s.sent[4]).toContain("a check-defect names one of the refusing checks: span");
   });
 
   it("replays the checks once, and the first probe reuses that run", async () => {

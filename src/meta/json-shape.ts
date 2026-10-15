@@ -159,9 +159,7 @@ export function isFunction(value: unknown): value is Callable {
 }
 
 /** Classify the outer value by JSON-like kind; this does not validate nested values or finiteness. */
-export function jsonKind(
-  value: unknown,
-): "null" | "array" | "object" | "boolean" | "number" | "string" | null {
+function jsonKind(value: unknown): "null" | "array" | "object" | "boolean" | "number" | "string" | null {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
   if (isRecord(value)) return "object";

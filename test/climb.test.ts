@@ -422,7 +422,7 @@ describe("the regression reading beside a comparison", () => {
     });
     if (found === null) throw new Error("no reading");
     expect(regressionLine(found)).toContain("1 lost, 1 tied. A reading beside the test");
-    // One comparison, or two of the same candidate, reads nothing.
+    // One comparison reads nothing; a second of the same candidate is read against the one before.
     expect(
       regressionOf(
         log.slice(

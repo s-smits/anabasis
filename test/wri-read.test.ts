@@ -637,7 +637,7 @@ describe("the reader of a round compared with another harness than its session s
   });
 
   it("reads no CPU figure off a solve: a log of 9 October holds one, and no trigger starts from it", () => {
-    expect(seen.triggers.some((trigger) => trigger.name.includes("CPU"))).toBe(false);
+    expect(triggers.some((trigger) => trigger.name.includes("CPU"))).toBe(false);
   });
 
   it("names an Examiner session that started and never finished", () => {

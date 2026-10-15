@@ -33,8 +33,8 @@
  * that home is refused, with how to write it instead. A compiled program is not read for it: a path
  * built into one is as often a build's record as the place it runs from.
  *
- * `practice` is where the Referee meets the Builder. A fail goes to it; a fail it rules a check
- * defect does not count and its task leaves the session. What comes back names the ending and the
+ * `practice` is where the Referee meets the Builder. A rejected answer goes to it, as in a
+ * comparison; one it rules a check defect does not count and its task leaves the session. What comes back names the ending and the
  * task's record, and never a check, a verdict's detail or the Referee's reasons. A practice solve
  * that could not be run at all, the verifier failing to decide for one, ends the session: its
  * error can name a check, so it is kept for the host and the Builder is told only that the session
@@ -359,7 +359,10 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
     bench.faulty.add(task.version);
     lines.push("The task's own check could not run on this answer: the task leaves this session's practice.");
   }
-  if (ending.outcome === "fail" && ending.kind !== "broken-harness" && request.referee !== undefined) {
+  // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave no
+  // answer, is not valid with no ruling (`src/builder/round.ts`). Until 15 October each went to the
+  // Referee and was logged earned, unread: seven of them in three campaigns.
+  if (ending.outcome === "fail" && ending.kind === "rejected" && request.referee !== undefined) {
     try {
       const finding = await request.referee(solve, task, kill);
       if (finding.ruling === "check-defect") {

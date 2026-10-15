@@ -364,7 +364,7 @@ describe("a campaign run by its log", () => {
     });
   });
 
-  it("compares a step again, waits under --attended to promote it, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
+  it("compares a step again, waits under --hitl to promote it, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-climb`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores seven:
@@ -418,9 +418,9 @@ describe("a campaign run by its log", () => {
       waitMs: 1,
       sleep: Bun.sleep,
     };
-    // Set-up, one session, the comparison and its repeat: under `--attended` the promotion is then
+    // Set-up, one session, the comparison and its repeat: under `--hitl` the promotion is then
     // the operator's.
-    const waits = await harnessBuilder([...flags, "--attended"], { ...seats, host });
+    const waits = await harnessBuilder([...flags, "--hitl"], { ...seats, host });
     expect(waits).toMatchObject({ move: "promote" });
     // The wait is on record, with the load it read, before the solve that waited began; the solves
     // beside it read a quiet host and waited for nothing.
@@ -474,7 +474,7 @@ describe("a campaign run by its log", () => {
 
     // Given the word back, the harness is promoted. No budget leaves the promoted harness
     // failing half its solves, so the tasks have to change: an Examiner session.
-    const next = await harnessBuilder([...flags, "--no-attended", "--moves", "2"], seats);
+    const next = await harnessBuilder([...flags, "--no-hitl", "--moves", "2"], seats);
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
     expect(of(name, "comparison.reported").map(({ settled }) => settled)).toEqual(["unsettled", "unsettled"]);
@@ -845,7 +845,7 @@ describe("a campaign run by its log", () => {
     );
     expect(strayed).toEqual([]);
   });
-  it("opens from a prompt: drafts its exam, waits for the operator's word on its checks, and reaches a comparison with no file written by hand", async () => {
+  it("opens from a prompt: drafts its exam, waits under --hitl for the operator's word on its checks, takes its launch as that word without it, and reaches a comparison with no file written by hand", async () => {
     const name = `${STEM}-prompt`;
     names.push(name);
     const folder = join(REPO, ".ana", "d2", name);
@@ -928,8 +928,9 @@ describe("a campaign run by its log", () => {
     expect(of(fresh, OPENED)).toMatchObject([{ prompt, project: PROJECT }]);
 
     // The Examiner drafts, the host reads each draft without a model, and the second stands. Its
-    // one check is its author's own computation, so the campaign waits for the operator's word.
-    const waits = await harnessBuilder([...flags, "--prompt", prompt], seats);
+    // one check is its author's own computation, so under `--hitl` the campaign waits for the
+    // operator's word.
+    const waits = await harnessBuilder([...flags, "--prompt", prompt, "--hitl"], seats);
     expect(waits).toMatchObject({ move: "end", ending: "exam" });
     expect(of(name, OPENED)).toMatchObject([
       {
@@ -952,12 +953,14 @@ describe("a campaign run by its log", () => {
       ["accept", null],
     ]);
 
-    // With that word, by its name alone: the exam is read again, its tasks are set apart, a
-    // Builder builds, and the two harnesses are compared on the tasks the draft gave. Every move
-    // runs by the terms the campaign was opened with, which this command does not name: the
-    // second campaign from a prompt, continued so, ran each by its default (2026-10-09).
-    const next = await harnessBuilder(["--name", name, "--admit", "check-product", "--moves", "4"], seats);
-    expect(of(name, OPENED)).toHaveLength(1);
+    // Out of the loop the launch is that word, by the campaign's name alone: the exam is read again
+    // with the draft's checks admitted, its tasks are set apart, a Builder builds, and the two
+    // harnesses are compared on the tasks the draft gave. Every move runs by the terms the
+    // campaign was opened with, which this command does not name: the second campaign from a
+    // prompt, continued so, ran each by its default (2026-10-09).
+    const next = await harnessBuilder(["--name", name, "--no-hitl", "--moves", "4"], seats);
+    expect(of(name, OPENED)).toHaveLength(2);
+    expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     // The Builder session recorded the setting, with the scored tasks the campaign opened with:
     // t-2 (10 October) opened with --target 6 and its first session recorded the default 12.
     expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 6 }]);
@@ -992,7 +995,7 @@ describe("a campaign run by its log", () => {
     ).rejects.toThrow(
       "--solve-minutes 30 names another setting than the campaign's, which was recorded as --solve-minutes 8",
     );
-    expect(of(name, OPENED)).toHaveLength(2);
+    expect(of(name, OPENED)).toHaveLength(3);
   });
 
   it("opens a campaign under the project its first command names, keeps it, and refuses another", async () => {

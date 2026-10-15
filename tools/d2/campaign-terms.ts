@@ -95,7 +95,7 @@ const OPTIONS = {
   handover: { type: "string" },
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
-  attended: { type: "boolean" },
+  hitl: { type: "boolean" },
   "builder-led": { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
@@ -196,7 +196,7 @@ export function opened(
     sessions: values.sessions === undefined ? (was?.sessions ?? DEFAULTS.sessions) : Number(values.sessions),
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
-    attended: values.attended ?? was?.attended ?? false,
+    attended: values.hitl ?? was?.attended ?? false,
     // A campaign that opens now is led by its Builder; one on record runs as its record says, and
     // a record from before the term says the host makes every move.
     led: values["builder-led"] ?? was?.led ?? was === null,
@@ -427,11 +427,6 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
   };
 }
 
-/** The checks `--admit` names, which is the operator's word for each. */
-export function admitsOf(values: Values): string[] {
-  return (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()]));
-}
-
 /** One turn of a campaign as its log stands now: the plan the table is asked with, from the
  *  campaign's terms and what is left of its total. */
 export function turnOf(source: {
@@ -459,7 +454,8 @@ export function turnOf(source: {
         trigger: Number(values.trigger ?? COMPARISON_OPTIONS.trigger.default),
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],
-        admits: admitsOf(values),
+        // The checks `--admit` names, which is the operator's word for each.
+        admits: (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()])),
         practice: values.practice === undefined ? PRACTICE : Number(values.practice),
       },
       opening,

@@ -522,7 +522,7 @@ const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
  * command makes it between conversations (`SETUP`, `harness-builder.ts`). Until 14 October a led
  * campaign promoted only where its Builder called `promote`: buffer-149's g-2 cleared the rule, and
  * the promotion waited on the Builder's next call. It is the host's own move, on record with the
- * table's code; `--attended` leaves it to the operator, and `--moves` bounds it as any move.
+ * table's code; `--hitl` leaves it to the operator, and `--moves` bounds it as any move.
  */
 async function promoteOwed(context: CampaignContext, bench: Bench): Promise<string[]> {
   const { decided } = actionTurn(context);
@@ -553,10 +553,10 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
     if (context.opening.attended) {
       if (decided.move === "promote") {
         console.log(
-          `under --attended a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${candidate} --yes, or run this command with --no-attended`,
+          `under --hitl a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${candidate} --yes, or run this command with --no-hitl`,
         );
       }
-      return { refused: "Promotion awaits the operator under --attended." };
+      return { refused: "Promotion awaits the operator under --hitl." };
     }
     // The rule's own reason, before anything is on record: until 14 October a fixed sentence.
     const why = unpromoted(turn.events, turn.plan, candidate);

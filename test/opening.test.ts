@@ -42,6 +42,18 @@ describe("what a campaign runs by", () => {
       prompted: true,
       admits: ["check-a"],
     });
+    // Its launch admits every check its draft holds, once each, and under `--hitl` only the
+    // operator's `--admit` does (16 October).
+    const drafted = event("exam.drafted", {
+      session: "d-1",
+      draft: { checks: [{ id: "check-a" }, { id: "check-b" }] },
+    });
+    expect(planOf([prompted, drafted], { ...ASKED, admits: ["check-a"] }).admits).toEqual([
+      "check-a",
+      "check-b",
+    ]);
+    const inLoop = event("campaign.opened", { ...asked, attended: true });
+    expect(planOf([inLoop, drafted], ASKED).admits).toEqual([]);
     expect(planOf([opened, billed(31.5), billed(8.5)], ASKED)).toEqual({
       sessions: 2,
       patience: 6,

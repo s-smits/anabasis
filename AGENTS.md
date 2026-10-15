@@ -402,10 +402,12 @@ campaign tool, which code admits or refuses (section 4).
 Two of the seven are given once, for every campaign: the campaign command freezes an exam whose
 reading holds no fault, and promotes the harness the rule names, without waiting. A campaign runs
 unattended to a typed ending, as a goal runs until it is met (operator, 12 October, deciding
-`docs/plan.md` row F29). `--attended` takes both back to the operator's word for one campaign,
-which keeps it until `--no-attended`.
-Admitting a check that has a fault, and going on past the stop rule, still take the word each time
-(`--admit`, `--past-stop`).
+`docs/plan.md` row F29). Its launch is also the word that admits every check of an exam it
+drafted, each its author's own computation (operator, 16 October; `planOf`,
+`src/builder/opening.ts`). `--hitl`, the operator in the loop, takes all three back to the
+operator's word for one campaign, which keeps it until `--no-hitl`.
+Admitting any other check that has a fault, and going on past the stop rule, still take the word
+each time (`--admit`, `--past-stop`).
 
 The operator types nothing into a Builder session. Every message a Builder reads is built by the
 host from the contract, the practice tasks, the practice results and the tallies.
@@ -492,7 +494,7 @@ followed, in the same run of the command, by a new one with the existing notes a
 its fallback, and so is a process restart.
 
 This changes the earlier two-layer design by the operator's instruction of 12 October, and it is
-a term of the campaign, kept by its opening as `--attended` is: `--builder-led`, on for a campaign
+a term of the campaign, kept by its opening as `--hitl` is: `--builder-led`, on for a campaign
 that opens now. With `--no-builder-led` the host makes every move the table names, a Builder
 session among them, as before the change, and a campaign on record without the term runs so. The
 two differ in three places and no others: the branch of the campaign command that opens the
@@ -583,7 +585,7 @@ The last row opens the exam and then runs the Builder with campaign tools (secti
 Builder chooses its moves, and `decide` supplies filtered advice. `--moves N` bounds campaign
 actions; `--dry-run` prints the table's advice and makes none. A campaign freezes an exam
 whose reading holds no fault and promotes the harness the rule names without waiting (section 3).
-Under `--attended` it runs only once every fault of its checks is admitted, and it reports a step
+Under `--hitl` it runs only once every fault of its checks is admitted, and it reports a step
 read twice without promoting it, waiting there for `promote.ts`.
 
 `bun run runs launch` starts it (the skill `run-management`): niced, in a process group of its
@@ -604,11 +606,11 @@ fault in it: its shape, a source on every rule, one check a rule, every control 
 checks twice, and the smallest answer the format allows refused on every example
 (`draftReading`, `tools/d2/exam.ts`). What the reading cannot say is whether a rule is the
 field's and its source real. Every check of a drafted exam is its author's own computation,
-since nothing installs an engine of the field for a campaign, so its acceptance reading holds
-one fault a check and the campaign ends on its exam there, once: the log holds `campaign.ended`
-with the ending `exam`, and the command prints the `--admit` line to run. It goes on when the
-operator admits the checks by name, which is rule 10's word: the command run again with
-`--admit <checks>` reads the exam again and goes past that ending.
+since nothing installs an engine of the field for a campaign, so its acceptance reading would
+hold one fault a check. The launch is the operator's word for each, rule 10's word: the exam is
+read with every check of the draft admitted, and frozen where nothing else is at fault. Until
+16 October the campaign ended on its exam there, once, and went on when the command was run
+again with `--admit <checks>`; under `--hitl` it still does.
 
 **Its budget is one total.** Each move's cap is what is left of `--budget` once every billed
 dollar in the log is taken off, and the campaign ends on its budget where less is left than one
@@ -1057,7 +1059,8 @@ Cite a rule by its number in a pull request or a review.
     system writes or edits one. A check whose author's own computation decides it is listed as a
     fault until the operator admits it by name (`--admit`), which is meant for plain arithmetic on
     the answer. The reading names each check's instrument by the tools it runs, or `author`, so an
-    exam no engine decides, as every drafted one, waits for the operator's word on each check.
+    exam no engine decides, as every drafted one, stands on the operator's word on each check: a
+    launch without `--hitl` gives it for every check of the draft (16 October).
 
 11. **The host owns every limit.** A harness, a prompt or a file that asks for a longer wall, more
     turns or more disk changes nothing.
@@ -1122,8 +1125,8 @@ makes it false:
   comparison's packet (`settle.ts`);
 - a repairer for the check program, and an engine behind a drafted one: the Examiner drafts an
   exam for a campaign that opens from a prompt (section 6), no seat repairs a check, and every
-  check of a drafted exam is its author's own computation, which waits for the operator's
-  `--admit`;
+  check of a drafted exam is its author's own computation, which the launch admits unless
+  `--hitl`;
 - one Builder conversation across a restart of the command, or past a conversation's own limits:
   a new one opens on the notes (section 4).
 

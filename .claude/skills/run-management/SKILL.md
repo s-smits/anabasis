@@ -73,9 +73,10 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
 What a campaign runs by is recorded once (`campaign.opened`), so the command run again by the
 campaign's name alone goes on with the same terms, and one that names another term records it
 again. A flag that names another setting than the record is refused with both
-(`tools/d2/setting.ts`). A campaign runs unattended: it freezes an exam whose reading holds no
-fault and promotes the harness the rule names without waiting. `--attended` makes both wait for
-the operator's word, until `--no-attended`; add it only when the operator asks. `--minutes`
+(`tools/d2/setting.ts`). A campaign runs unattended: it admits a drafted exam's checks, freezes
+an exam whose reading holds no fault and promotes the harness the rule names without waiting.
+`--hitl` makes all three wait for the operator's word, until `--no-hitl`; add it only when the
+operator asks. `--minutes`
 covers the whole conversation; one that ends at its limits or by `finish` is followed by a new one
 on the Builder's notes, after the host makes what the table still owes, and three in a row that
 make no campaign move end the campaign `finished`.

@@ -254,7 +254,7 @@ bun tools/d2/harness-builder.ts <the pack's flags> --name <name> --budget <dolla
 ```
 
 It spends, so it takes the operator's word as a launch does. It runs unattended, and
-`--attended` is the operator's to add. Where the pass disagrees with the table, say so with the counts: the table is
+`--hitl` is the operator's to add. Where the pass disagrees with the table, say so with the counts: the table is
 a default over the log, and what it cannot read is yours to bring. The moves it never names are
 the system's own: change one flag and run again; fix the one owner the evidence names; delete a
 mechanism nothing reads; investigate one consequential ambiguity.

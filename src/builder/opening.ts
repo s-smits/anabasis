@@ -27,6 +27,7 @@ import { type LogEvent, read } from "../kernel/log.ts";
 import { billedAll, type Cap, patienceOf } from "../kernel/reports.ts";
 import { SIZE } from "../kernel/size.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { draftOf } from "../examiner/draft.ts";
 import type { Plan } from "./ground.ts";
 
 /** Who sits in a seat: a model and its effort. */
@@ -49,9 +50,10 @@ export interface Opening {
    *  campaign bears in a row before it ends (`--patience`; `PATIENCE`). */
   readonly patience: number;
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
-  /** Whether the freeze and a promotion wait for the operator's word (`--attended`). It is kept
-   *  here and not read off the running command's flag alone, so that a reopen that does not name
-   *  the flag still waits; `--no-attended` gives it back. */
+  /** Whether the operator is in the loop (`--hitl`): the freeze, a drafted exam's checks and a
+   *  promotion then wait for the operator's word. It is kept here and not read off the running
+   *  command's flag alone, so that a reopen that does not name the flag still waits; `--no-hitl`
+   *  gives it back. The record keeps the key it had as `--attended`, before 16 October. */
   readonly attended: boolean;
   /** Whether the Builder makes the campaign's moves after set-up, in one live conversation with
    *  the campaign's tools (`--builder-led`, `tools/d2/harness-builder.ts`), or the host makes
@@ -200,7 +202,15 @@ export function planOf(
         : { dollars: opening.budget.dollars - billedAll(events), reserve: opening.budget.reserve },
     prompted: opening?.prompt != null,
     pastStop: beside.pastStop ?? null,
-    admits: beside.admits ?? [],
+    // Every check of a drafted exam is its author's own computation (rule 10), and a launch without
+    // `--hitl` is the operator's word for each of them (the operator, 16 October): until then a
+    // campaign from a prompt ended on its exam once, and waited for `--admit` by hand.
+    admits: [
+      ...new Set([
+        ...(beside.admits ?? []),
+        ...(opening?.attended === true ? [] : (draftOf(events)?.checks.map(({ id }) => id) ?? [])),
+      ]),
+    ],
     practice: beside.practice ?? null,
   };
 }

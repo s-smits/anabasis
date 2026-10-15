@@ -4,7 +4,7 @@
  *   bun tools/d2/harness-builder.ts --root ../anabasis-cycles-4c67fc --sweep veryhard-hb-4c67fc --cycle c01 \
  *     --bundle ../anabasis-cycles-4c67fc/fixture/round4-veryhard-workspace --name truss \
  *     --budget 400 --builder claude/claude-opus-5-5 --examiner claude/claude-opus-5-5 \
- *     --reviewer claude/claude-opus-5-5 --solve-model-turns 40 [--moves 1] [--dry-run] [--attended]
+ *     --reviewer claude/claude-opus-5-5 --solve-model-turns 40 [--moves 1] [--dry-run] [--hitl]
  *
  *   bun tools/d2/harness-builder.ts --name queues --prompt "<the domain, in the operator's words>" \
  *     --solver claude/claude-sonnet-5-5 --budget 60 --builder ... --examiner ... --reviewer ...
@@ -33,15 +33,15 @@
  * **A campaign opens over a stored pack, which four flags name, or from a prompt** (row F53).
  * The prompt and who solves are then part of what it runs by, its first move is the Examiner's
  * draft of the exam, and from there every command opens the campaign by its name alone, over the
- * exam its log holds. Every check of a drafted exam is its author's own computation, so the
- * exam's reading holds a fault a check and the campaign ends on its exam once: it goes on when
- * the operator admits them by name, with `--admit` on this command.
+ * exam its log holds. Every check of a drafted exam is its author's own computation, and the
+ * launch is the operator's word for each (16 October): the exam is read with the draft's checks
+ * admitted, and frozen where nothing else is at fault. Under `--hitl` they wait for `--admit`.
  *
  * What it runs each move as:
  *
  *   draft the exam      tools/d1b/draft.ts, under `d-N`, for a campaign that opened from a prompt
- *   read the exam       tools/c/accept.ts, with the checks `--admit` names, which is the operator's
- *                       word for each, and with `--freeze` unless `--attended`
+ *   read the exam       tools/c/accept.ts, with the checks admitted (`planOf`, `opening.ts`), and
+ *                       with `--freeze` unless `--hitl`
  *   set the tasks apart tools/d2/prepare.ts
  *   an Examiner session tools/d1b/examine.ts, under the next free id `x-N`
  *   a Builder session   tools/d2/session.ts, under `b-N`
@@ -67,10 +67,10 @@
  * at, the campaign ends on its budget. **What it risks** is said as it opens, and an opening whose
  * false promotion over its patience may pass 10% is refused (`openingLines`, `src/kernel/size.ts`).
  *
- * **A campaign runs unattended** (row F29; the operator, 12 October): it freezes an exam whose
- * reading holds no fault and promotes a step read twice and not lost at the full limit. Under
- * `--attended`, kept by the opening until `--no-attended`, both wait for the operator's word and a
- * promotion stops the command. Going on past the stop rule takes `--past-stop "<why>"` either way.
+ * **A campaign runs unattended** (row F29; the operator, 12 and 16 October): it admits a drafted
+ * exam's checks, freezes an exam whose reading holds no fault and promotes a step read twice and
+ * not lost at the full limit. Under `--hitl`, the operator in the loop, kept by the opening until
+ * `--no-hitl`, all three wait for the operator's word and a promotion stops the command. Going on past the stop rule takes `--past-stop "<why>"` either way.
  *
  * **A word the operator leaves** (`word.ts`, row F50) is read at each move's boundary: a stop
  * ends the campaign there, other tasks are written first, and another total is what the campaign
@@ -124,7 +124,6 @@ import { standing } from "../runs/registry.ts";
 import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
 import { type CampaignContext, campaignTools } from "./campaign-actions.ts";
 import {
-  admitsOf,
   comparisonOf,
   DEFAULTS,
   examTasks,
@@ -156,7 +155,7 @@ import { recordedSetting, settingAsked } from "./setting.ts";
 const ENDED = "campaign.ended";
 /** The moves the host makes itself whoever leads the campaign: the exam's draft and reading, the
  *  tasks set apart, and the promotion the rule names (14 October; inside a conversation the compare
- *  tool makes it, `promoteOwed`), which `--attended` leaves to the operator. */
+ *  tool makes it, `promoteOwed`), which `--hitl` leaves to the operator. */
 const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare", "promote"]);
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
  *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */
@@ -218,8 +217,13 @@ async function make(
   const pack = packOf(values);
   const { builder, examiner } = opening.seats;
   if (decided.move === "accept") {
-    begin(keyIfDefined("admitted", values.admit === undefined ? undefined : admitsOf(values)));
-    await acceptCommand([...pack, ...flag("admit", values.admit), ...(opening.attended ? [] : ["--freeze"])]);
+    const admits = turn.plan.admits.length === 0 ? undefined : turn.plan.admits;
+    begin(keyIfDefined("admitted", admits && [...admits]));
+    await acceptCommand([
+      ...pack,
+      ...flag("admit", admits?.join(",")),
+      ...(opening.attended ? [] : ["--freeze"]),
+    ]);
     return;
   }
   if (decided.move === "prepare") {
@@ -312,8 +316,8 @@ async function make(
  * What an operator reads where a campaign ends on its exam: the faults of the checker's last
  * reading, where this run did not just print them, and the command that admits the checks which
  * stand on the operator's word alone. An exam drafted from a prompt always holds such checks,
- * since no engine of the field is installed for it, so a campaign from a prompt waits here once,
- * for that word. A reading made in this run printed its faults a line each as it was made
+ * since no engine of the field is installed for it, so a campaign from a prompt under `--hitl`
+ * waits here once, for that word. A reading made in this run printed its faults a line each as it was made
  * (`accept.ts`), and until 10 October they were printed here a second time; a run that ends on a
  * reading an earlier run made is the one that has them to print.
  */
@@ -614,7 +618,7 @@ export async function harnessBuilder(
     if (values["dry-run"] || made >= most) return decided;
     if (decided.move === "promote" && opening.attended) {
       console.log(
-        `under --attended a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${decided.harness} --yes, or run this command with --no-attended`,
+        `under --hitl a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${decided.harness} --yes, or run this command with --no-hitl`,
       );
       return decided;
     }

@@ -182,6 +182,9 @@ describe("the comparisons chart", () => {
     for (const id of COLUMNS) {
       await table.locator(`tr[data-comparison="${id}"] button`).press("Enter");
       await expect(page).toHaveURL(/pane=moves/u);
+      await expect(
+        page.getByRole("heading", { level: 2, name: new RegExp(`^${id} Comparison`, "u") }),
+      ).toBeVisible();
       moves.set(id, routeParameters(page).move ?? "");
       await page.goBack();
       await expect(page).not.toHaveURL(/pane=moves/u);
@@ -248,18 +251,23 @@ describe("the comparisons chart", () => {
       "b-4",
       "g-9",
     ]);
-    await expect(rows.filter({ hasText: "b-4" })).toContainText("cut before a report");
-    const sums = await rows.evaluateAll((each) => {
-      const totals = [0, 0, 0, 0, 0, 0];
-      for (const row of each) {
-        const cells = [...row.querySelectorAll("td")];
-        if (cells.length < 7) continue;
-        for (const [at, cell] of cells.slice(0, 6).entries()) {
-          totals[at] = (totals[at] ?? 0) + Number(cell.textContent);
-        }
-      }
-      return totals;
-    });
+    // Each row's six counts and its reading word, as the fixture's comparisons tallied them.
+    const cells = await rows.evaluateAll((each) =>
+      each.map((row) => [...row.querySelectorAll("td")].map((cell) => cell.textContent)),
+    );
+    expect(cells).toEqual([
+      ["3", "0", "1", "1", "1", "0", "no-step"],
+      ["4", "0", "1", "0", "1", "0", "step"],
+      ["1", "1", "0", "0", "0", "1", "no-step"],
+      ["1", "1", "2", "1", "0", "0", "no-step"],
+      ["3", "1", "1", "0", "0", "1", "no-step"],
+      ["2", "1", "2", "0", "1", "0", "no-step"],
+      ["cut before a report", "none"],
+      ["3", "1", "1", "0", "1", "0", "no-step"],
+    ]);
+    const sums = OUTCOME_LABELS.map((_, at) =>
+      cells.reduce((sum, row) => sum + (row.length > 2 ? Number(row[at]) : 0), 0),
+    );
     expect(sums).toEqual([17, 5, 8, 2, 4, 2]);
     const legend = page.getByRole("list", { name: "Outcomes, tasks over every comparison" });
     for (const [at, label] of OUTCOME_LABELS.entries()) {
@@ -396,6 +404,8 @@ describe("the other campaigns", () => {
     await expect(readout(page, "Reference harness").value).toHaveText("Starter");
     await expect(readout(page, "Reference harness").detail).toHaveText("no promotion yet");
     await expect(readout(page, "Last reading").value).toHaveText("None");
+    await expect(readout(page, "Last reading").detail).toHaveText("no comparison has reported");
+    await expect(page.getByRole("heading", { name: "Valid share" })).toHaveCount(0);
     await expect(page.locator(".ana-campaign-counters")).toContainText("A/A controls 0");
     await page.locator(".ana-disclosure > summary").click();
     await expect(page.locator(".ana-disclosure-body")).toContainText(

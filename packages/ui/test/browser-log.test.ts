@@ -27,7 +27,7 @@ import {
 import { answersOver, MARKERS } from "./fixture-campaign.ts";
 
 /*
- * The Log pane in Chrome over the fixture's 1,494 events: the reader's disclosure, the Kind and
+ * The Log pane in Chrome over the fixture's 1,495 events: the reader's disclosure, the Kind and
  * Session filters the server applies before it pages, the paging and its counter, an event opened
  * in the inspector on either tier, the columns under their heads, and what the page paints while a
  * page or an event is read: the page before, never a placeholder in its place (14 October).
@@ -330,9 +330,11 @@ describe("the Log pane", () => {
   test("scrolls the table inside its card on a phone, never the page", async () => {
     const opened = await openLog(served, "", PHONE);
     const { page } = opened;
+    await expect(row(page, 0)).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    await expect(row(page, 0)).toBeVisible();
+    const card = page.locator(".ana-log .ana-table-wrap");
+    expect(await card.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     expectQuiet(opened);
     await opened.context.close();
   });

@@ -15,8 +15,10 @@
 import { EXAMINE } from "#src/builder/admission.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { gitText, worktrees } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { basename, join } from "#src/meta/path.ts";
+import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 
 export interface Run {
@@ -77,10 +79,7 @@ function writesCampaign(args: readonly string[]): boolean {
 
 /** Every run log in the repository's worktrees. */
 export function runs(): Run[] {
-  const porcelain = runTextSyncOrThrow(["git", "worktree", "list", "--porcelain"]);
-  const trees = porcelain
-    .split("\n")
-    .flatMap((line) => (line.startsWith("worktree ") ? [line.slice(9)] : []));
+  const trees = worktrees(runtimeProcess.cwd());
   const listed = (dir: string) => (existsSync(dir) ? readdirSync(dir) : []);
   return trees.flatMap((tree) => [
     ...listed(join(tree, ".ana", "d2")).flatMap((name) => {
@@ -124,8 +123,7 @@ export function logEvents(path: string): LogEvent[] {
 
 /** Where a worktree stands: its commit, and whether it holds a change no commit names. */
 export function standing(tree: string) {
-  const git = (...args: string[]) => runTextSyncOrThrow(["git", "-C", tree, ...args]).trim();
-  return { commit: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain") !== "" };
+  return { commit: gitText(tree, "rev-parse", "HEAD"), dirty: gitText(tree, "status", "--porcelain") !== "" };
 }
 
 /** Every process that may write a run's log, with the worktree it runs in. */

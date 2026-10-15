@@ -63,9 +63,8 @@ import { tmpdir } from "#src/meta/os.ts";
 import { plural } from "#src/meta/text.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
+import { worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { hostTool } from "#src/meta/host-tool.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import type { Reader } from "#src/review/reader.ts";
 import { referee } from "#src/review/referee.ts";
@@ -173,11 +172,9 @@ const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-cor
  * gone is left out, since a denied root has to exist for the wall to mount over it.
  */
 export function worktreesOf(repo: string): string[] {
-  const listed = runTextSyncOrThrow([hostTool("git"), "-C", repo, "worktree", "list", "--porcelain"]);
   const own = resolve(repo);
-  return listed
-    .split("\n")
-    .flatMap((line) => (line.startsWith("worktree ") ? [resolve(line.slice("worktree ".length))] : []))
+  return worktrees(repo)
+    .map((tree) => resolve(tree))
     .filter((tree) => tree !== own && existsSync(tree));
 }
 

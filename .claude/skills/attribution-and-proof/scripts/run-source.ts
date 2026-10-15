@@ -11,7 +11,7 @@
  * holds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { gitMaybe, gitText } from "#skills/main/git.ts";
+import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { receipts } from "#tools/runs/receipt.ts";
 

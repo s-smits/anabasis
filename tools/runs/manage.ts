@@ -35,6 +35,7 @@
 import { lastReports, unfinished } from "#src/kernel/reports.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
+import { gitText } from "#src/meta/git.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -130,9 +131,8 @@ async function start(run: Run, flags: readonly string[], login: string | undefin
   }
   const { commit, dirty } = standing(run.tree);
   if (dirty) throw new Error(`${run.tree} holds a change no commit names: a run's commit states its source`);
-  const git = (...args: string[]) => runTextSyncOrThrow(["git", "-C", run.tree, ...args]).trim();
-  const target = at === undefined ? commit : git("rev-parse", "--verify", `${at}^{commit}`);
-  if (git("branch", "-r", "--contains", target) === "") {
+  const target = at === undefined ? commit : gitText(run.tree, "rev-parse", "--verify", `${at}^{commit}`);
+  if (gitText(run.tree, "branch", "-r", "--contains", target) === "") {
     throw new Error(`${target.slice(0, 9)} is on no remote branch`);
   }
   if (target !== commit) {
@@ -142,7 +142,7 @@ async function start(run: Run, flags: readonly string[], login: string | undefin
         `comparison ${open.join(", ")} began and has not reported: it goes on at ${commit.slice(0, 9)}`,
       );
     }
-    git("checkout", "-q", "--detach", target);
+    gitText(run.tree, "checkout", "-q", "--detach", target);
   }
   runTextSyncOrThrow(["nice", "-n", "10", capturedExecPath, "install", "--frozen-lockfile"], {
     cwd: run.tree,

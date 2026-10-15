@@ -116,7 +116,7 @@ const HEAD_SHARE = 2 / 3;
 /** Where each end of a cut may stop: after a line break, or after any whitespace. */
 const WHOLE_UNITS = { head: [/^([\s\S]*\n)/, /^([\s\S]*\s)/], tail: [/\n([\s\S]*)$/, /\s([\s\S]*)$/] };
 
-/** The host's lines at the head of a notes file: the markers `carryMemoryForward` writes to say
+/** The host's lines at the head of a notes file: the markers `keepMemory` writes to say
  *  where an inherited file came from and which helper files crossed beside it. A cut that dropped
  *  a carry marker would leave a predecessor's notes reading as this session's own, so the cut
  *  keeps them whole ahead of its head share. Every one of them describes the session that wrote
@@ -257,7 +257,7 @@ export function memoryOverCapNotice(workspace: string): string | null {
  * session marker says where they came from, which is already the history a reader needs, so the
  * block adds no further identity field.
  *
- * The size limit is applied on the read as well as on the carry. `carryMemoryForward` bounds what
+ * The size limit is applied on the read as well as on the carry. `keepMemory` bounds what
  * it stores, but the Builder can grow MEMORY.md afterwards through ordinary file edits, so a read
  * that trusted the stored size would put an unbounded file into a prompt. Both paths use the same
  * rule, keep both ends and mark what went, rather than choosing separate limits or cutting
@@ -353,17 +353,20 @@ function carryScratchHelpers(prior: string, next: string): ScratchCarry {
 }
 
 /**
- * A session's notes carried out of `prior`, the home it worked in, into `next`, a folder that holds
- * what the session after it opens on; `from` names the session in the markers. Every session opens
- * in a new home, so this is the ordinary way one hands its notes to the next. Harness identity is
- * untouched: the notes sit outside `harness/`.
+ * Keep what session `from` left in `prior`, the home it worked in, for the session after it: carried
+ * into the folder the campaign's `root` holds for `from`, one folder a session, made only where the
+ * session left a note or a helper, and named in the markers. Every session opens in a new home, so
+ * this is the ordinary way one hands its notes to the next. Harness identity is untouched: the notes
+ * sit outside `harness/`. v2's own: v1's successor workspace stood under the campaign's root, where
+ * the carry could write into it.
  *
  * Both files cross, because SCRATCHPAD.md holds the open questions and next steps written for
  * exactly this next session. Each opens on a marker naming where it came from, so an inherited
  * line is never read as this session's own. Only an authored file crosses, only into a slot the
  * successor has not written, and never fatally.
  */
-export function carryMemoryForward(prior: string, next: string, from: string): void {
+export function keepMemory(prior: string, root: string, from: string): void {
+  const next = join(root, from);
   let helpers: ScratchCarry = { carried: [], left: [] };
   try {
     helpers = carryScratchHelpers(prior, next);
@@ -393,18 +396,9 @@ export function carryMemoryForward(prior: string, next: string, from: string): v
 }
 
 /**
- * Keep what session `id` left in `home` for the session after it, under the campaign's `root`: one
- * folder a session, made only where the session left a note or a helper. v2's own: v1's successor
- * workspace stood under the campaign's root, where the carry could write into it.
- */
-export function keepMemory(home: string, root: string, id: string): void {
-  carryMemoryForward(home, join(root, id), id);
-}
-
-/**
  * Seed a new home with its notes: what the folder kept for session `from` holds, where a session
  * left any, and the starters for what is then still missing. The kept folder is the host's own
- * writing (`carryMemoryForward`), plain files and directories, so it is copied as it stands.
+ * writing (`keepMemory`), plain files and directories, so it is copied as it stands.
  */
 export function seedMemory(home: string, root: string, from: string | null): void {
   const kept = from === null ? null : join(root, from);

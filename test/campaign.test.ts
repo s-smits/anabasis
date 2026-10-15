@@ -709,13 +709,12 @@ describe("a campaign", () => {
     expect(settled.stderr.toString()).toContain(
       'holds what is no label (earned, check-defect, unclear) for 1 answer: s-1: "earnd"',
     );
-    // No number would draw no task, and a negative one all but the last.
-    for (const target of ["twelve", "-1", "0", "2.5"]) {
-      const ran = run("tools/d2/checkpoint.ts", "--id", "z-6", "--cap", "40", `--target=${target}`);
-      expect(ran.stderr.toString()).toContain(
-        `--target ${target}: the tasks to score are a whole number of at least one`,
-      );
-    }
+    // The command hands its --target to the one owner, which refuses every value that is no count
+    // (`targetNamed`, `test/setting.test.ts`): zero would draw no task.
+    const ran = run("tools/d2/checkpoint.ts", "--id", "z-6", "--cap", "40", "--target=0");
+    expect(ran.stderr.toString()).toContain(
+      "--target 0: the tasks to score are a whole number of at least one",
+    );
     expect(read(campaign.log).some(({ data }) => data.session === "z-6")).toBe(false);
   });
 

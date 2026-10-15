@@ -553,8 +553,8 @@ function tallyReports(
  * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
  * and a refused task is no held-out task.
  *
- * **Exhausted** are the tasks the reference harness answered validly in every solve of
- * `UNSOLVED_RUN` or more comparisons, on whichever side it stood, but for a third of them, and
+ * **Exhausted** are the tasks the reference harness answered validly in every solve of the last
+ * comparison it stood in of them, on whichever side, but for a third of them, and
  * they are left out of the scored set (`scoredSet`). The fold is read again against whatever harness is the
  * reference at the time, so a promotion re-derives it at once: the comparisons the promoted
  * harness won before its promotion count. Such a task can only tie again at that budget or be
@@ -571,7 +571,11 @@ function tallyReports(
  * reference answers still shows its losses: left out whole, the set would hold no task the new
  * harness could lose. The Examiner is told a task is exhausted, as that task's outcome
  * (`outcomes`); in the counts by family it stands where its last comparison's tally puts it
- * (`standings`).
+ * (`standings`). Since 15 October the reference's last reading of a task decides, where two closed
+ * comparisons had: a promotion's repeat draws fresh tasks, so a promoted harness had stood once in
+ * the tasks it was promoted on, closed 50 of 51 in four campaigns' logs, and the next comparisons
+ * tied on them. A later reading that leaves a task open opens it again, as 3 of 34 rechecks did,
+ * and one where a limit cut a solve of the reference's says neither (rule 7).
  *
  * **Feasible** are the task versions a valid answer is on record for: a solve's, under any harness
  * and at any limits, an author's answer the host saw pass on the task under its own id
@@ -611,8 +615,7 @@ function tallyReports(
  * **Histories** hold, for each task the reference stood in two comparisons or more of, the same
  * reading of the reference's side for each of its last `HISTORY` such comparisons, newest first,
  * with whether a limit cut one of the reference's own solves there, and how many of the newest closed it in a row
- * (`History`). An outcome is one comparison's, and the rule that exhausts a task counts two closed
- * comparisons in any order (`spent`): told the last alone, an author could not tell a task the
+ * (`History`). An outcome is one comparison's: told the last alone, an author could not tell a task the
  * reference answered once from one it answers every time running, nor which of the tasks it
  * answers is the older. Three readings are a short run, and the sentence rule 6 asks for stands
  * beside them in the author's prompt. The words are the outcome's own, every, some or none, and
@@ -624,7 +627,10 @@ export function poolOf(events: readonly LogEvent[]) {
   const awaiting = placed(records, ({ feasible, keptAt, tallied }) =>
     runOf(tallied.filter(({ index, cut }) => !feasible && index >= keptAt && !cut)),
   );
-  const spent = placed(records, ({ tallied }) => runOf(tallied.filter(({ closed }) => closed)));
+  const spent = placed(records, ({ tallied }) => {
+    const last = tallied.findLast(({ reference, referenceCut }) => reference !== null && !referenceCut);
+    return last?.closed === true ? last.order : undefined;
+  });
   const contract = events.find(({ kind }) => kind === "checker.read")?.data.contract;
   const kept = new Set(
     draw(spent, Math.ceil(spent.length / 3), `${isString(contract) ? contract : ""}:kept`),

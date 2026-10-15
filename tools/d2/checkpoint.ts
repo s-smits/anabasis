@@ -179,7 +179,6 @@ export async function checkpointCommand(
     : admitComparison(campaign.log, {
         id,
         reference: values.reference,
-        fresh: fresh.digest,
         wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
         seats: seated === solved ? "paid" : "scripted",
         own,

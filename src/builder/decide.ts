@@ -96,7 +96,7 @@ const SHORT = ["no-held", "held-short", "untied-short"] as const;
 
 const end = (ending: Ending, why: string): Move => ({ move: "end", ending, why });
 /** A comparison of the latest harness, or of the starter as a control, with the reference one. */
-const compare = (why: string, fresh: "latest" | "starter" = "latest", repeats?: string): Move => ({
+const compare = (why: string, fresh = "latest", repeats?: string): Move => ({
   move: "compare",
   fresh,
   reference: "promoted",
@@ -419,17 +419,21 @@ export function repeatDue(events: readonly LogEvent[], plan: Plan): { id: string
   return due === null ? null : { id: due.first.id, fresh: due.fresh };
 }
 
-/** The repeat the pair's last reading bought, where one is due, and how many held tasks its first
- *  stage did not score; null where none is: a control is never repeated, since the starter winning
- *  on new tasks is room by another name. A candidate buys one repeat: a step and the repeat it
- *  bought are one attempt (`falsePromotion`, `src/builder/climb.ts`), and until 15 October a repeat
- *  that cleared the trigger and not the level bought a third reading, which no bound counted. */
+/** The repeat the last reading of a harness against the reference bought, where one is due, and
+ *  how many held tasks its first stage did not score; null where none is: a control is never
+ *  repeated, since the starter winning on new tasks is room by another name. A candidate buys one
+ *  repeat: a step and the repeat it bought are one attempt (`falsePromotion`,
+ *  `src/builder/climb.ts`), and until 15 October a repeat that cleared the trigger and not the
+ *  level bought a third reading, which no bound counted. The reading is the last of any harness, not
+ *  the latest's alone: until 15 October a later checkpoint hid it, and recode-pr169-sonnet's g-1
+ *  step lost its repeat once b-3 left another harness, after two Examiner sessions had written
+ *  towards it. */
 function dueOf(ground: Ground) {
-  const { events, read, plan, reports } = ground;
+  const { events, plan, reports, reference, starter } = ground;
   const { trigger } = plan.wanted;
+  const read = reports.findLast(({ fresh, old }) => old === reference && fresh !== starter);
   if (
-    read === null ||
-    read.control ||
+    read === undefined ||
     !triggered(read.report, trigger) ||
     reports.some(
       ({ id, fresh, old, report }) =>
@@ -474,7 +478,7 @@ function unfinished(ground: Ground): Move | null {
   }
   return compare(
     `comparison ${first.id} cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together`,
-    "latest",
+    first.fresh,
     first.id,
   );
 }
@@ -719,7 +723,7 @@ function buildsOn(ground: Ground): string {
  * gate's, since its remedy is itself a comparison by hand (`tools/d2/checkpoint.ts`).
  */
 function risked({ events, reports }: Ground, named: Move): Move | null {
-  if (named.move !== "compare" || named.id !== undefined || named.fresh !== "latest") return null;
+  if (named.move !== "compare" || named.id !== undefined || named.fresh === "starter") return null;
   const risk = epochsOf(events).at(-1)?.falsePromotion;
   const last = reports.at(-1);
   if (risk === undefined || last === undefined || risk.union <= RISK) return null;

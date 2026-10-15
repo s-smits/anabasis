@@ -155,7 +155,9 @@ describe("the campaign's line and readouts", () => {
     await expect(body).toBeHidden();
     await summary.click();
     await expect(details).toHaveAttribute("open", "");
-    await expect(body).toContainText("21 held out · 2 released for practice · 1 wait for a label");
+    await expect(body).toContainText(
+      "19 held out · 2 released for practice · 1 wait for a label · 2 exhausted",
+    );
     await expect(body).toContainText("checker read, 0 faults, frozen");
     await expect(body.getByText("faux/solver-1 at high")).toBeVisible();
     await expect(body.getByText("the host: it makes each move the table names")).toBeVisible();

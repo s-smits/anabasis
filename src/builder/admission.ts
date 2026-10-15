@@ -56,12 +56,12 @@ import {
 } from "../kernel/reports.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
-import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isString } from "../meta/json-shape.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
   /** The held-out tasks that may be scored, those that wait for a person's label and are left
-   *  out, those the reference harness answered in every solve of two comparisons and are left
+   *  out, those the reference harness answered in every solve of their last comparison and are left
    *  out (`poolOf`), and the tasks released for practice. */
   readonly held: number;
   readonly awaiting: number;
@@ -119,9 +119,6 @@ interface Starting {
   readonly id: string;
   /** The harness it is made against, as `--reference` names it. */
   readonly reference: string;
-  /** The harness it reads, by digest, where the command knows it (`--new`): the untied share is
-   *  then taken from the last comparison of these two and from no other pair's. */
-  readonly fresh?: string | undefined;
   readonly wanted: Wanted;
   readonly seats: Seats;
   /** The refusals the comparison makes of its own terms (`refuseTerms`, `round.ts`), which throw.
@@ -154,31 +151,26 @@ const said = (rows: readonly (readonly [boolean, string])[]) =>
  * A log's supply for a comparison made against the harness `reference` names: `starter`,
  * `promoted` for the campaign's reference harness, `latest`, or a digest. The untied share is the
  * last tallied comparison's that read that harness: until 12 October any comparison's at all, and a
- * later control of two other harnesses read every task untied (the stack review). `fresh`, a
- * digest, is the harness the comparison reads where the command knows it: the share is then the
- * last comparison's of these two, since a tie share is of a pair. On 10 October a control of a
- * promoted harness's programs against the starter tied 7 of 8 tasks, 6 of them answered by
- * neither, and the next command, the whole harness against those programs, was refused on that
- * share, which said nothing of a harness that answers every task.
+ * later control of two other harnesses read every task untied (the stack review). A task counts
+ * as tied only where that harness closed it, which is its own and no pair's: until 15 October a
+ * command that named the harness it reads took the last comparison of that pair alone, a pair
+ * never compared had no share and was admitted whole, and recode-151's g-3 and g-4 scored one
+ * task the reference had not closed between them, for $5.57 and 2.19 hours.
  */
-export function supplyOf(events: readonly LogEvent[], reference = "promoted", fresh?: string): Supply {
+export function supplyOf(events: readonly LogEvent[], reference = "promoted"): Supply {
   // The tasks that may be scored, and those left out as `scoredSet` leaves them out: the ones
-  // waiting for a person's label, and the ones the reference closed in two comparisons.
+  // waiting for a person's label, and the ones the reference closed in their last comparison.
   const { scorable, awaiting, exhausted } = poolOf(events);
   const reports = lastReports(events);
   const kept = reference === "promoted" ? (referenceOf(events) ?? "starter") : reference;
   const starter = reports.findLast(({ data }) => isString(data.starter))?.data.starter;
   const against = kept === "latest" ? latestBuilt(events) : kept === "starter" ? starter : kept;
-  const ofPair = ({ old, fresh: other }: JsonObject) =>
-    fresh === undefined
-      ? old === against || other === against
-      : (old === against && other === fresh) || (old === fresh && other === against);
   const last = reports.findLast(
     ({ data }) =>
       Array.isArray(data.versions) &&
       data.versions.length > 0 &&
       asRecord(data.scored) !== null &&
-      ofPair(data),
+      (data.old === against || data.fresh === against),
   );
   // Over the tasks it tallied that may still be scored: until 12 October over all it tallied, and
   // once the reference's twice-closed tasks were retired, a pool of four with two to win read a
@@ -320,7 +312,7 @@ function admission(supply: Supply, wanted: Wanted): Admission {
         ],
         [
           supply.exhausted > 0,
-          `${String(supply.exhausted)} held-out task(s) were answered by the reference harness in every solve of two comparisons, with no objective telling two valid answers apart, and are not scored: they can only tie again or be lost`,
+          `${String(supply.exhausted)} held-out task(s) were answered by the reference harness in every solve of their last comparison, with no objective telling two valid answers apart, and are not scored: they can only tie again or be lost`,
         ],
         [wanted.builds && supply.released === 0, UNRELEASED],
         faulty(supply),
@@ -383,7 +375,7 @@ function entered(
   log: string,
   start: { readonly id: string; readonly kind: Parameters<typeof begun>[2]; readonly own?: () => void },
   pastStop: string | undefined,
-  decide: (supply: (reference?: string, fresh?: string) => Supply) => Admission & { readonly supply: Supply },
+  decide: (supply: (reference?: string) => Supply) => Admission & { readonly supply: Supply },
 ): string[] {
   const events = read(log);
   const { id, kind, own } = start;
@@ -410,13 +402,13 @@ export class Refused extends Error {}
  * its id admits no comparison. A rehearsal is admitted unasked, and its own terms still hold it.
  */
 export function admitComparison(log: string, starting: Starting): string[] {
-  const { id, reference, fresh, wanted, seats, own } = starting;
+  const { id, reference, wanted, seats, own } = starting;
   if (seats === "scripted") {
     if (!begun(read(log), id, STARTED)) own();
     return [];
   }
   return entered(log, { id, kind: STARTED, own }, wanted.pastStop, (supplied) => {
-    const supply = supplied(reference, fresh);
+    const supply = supplied(reference);
     return { supply, ...admission(supply, wanted) };
   });
 }

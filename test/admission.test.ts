@@ -161,7 +161,8 @@ describe("what a log holds for the next comparison", () => {
   });
 
   it("takes the untied share from the last comparison that tallied a task, whatever setting id it carries", () => {
-    // Six of the eight tasks closed by the reference in the last one: two to win.
+    // Six of the eight tasks closed by the reference in the last one, and four of the six retired
+    // (`poolOf`): two to win of the four that may still be scored.
     const log = [
       ...EIGHT.flatMap(heldOut),
       ...roundLogged(
@@ -183,20 +184,21 @@ describe("what a log holds for the next comparison", () => {
         setting: here.setting,
       }),
     ];
-    expect(supplyOf(log).untied).toBe(0.25);
+    expect(supplyOf(log).untied).toBe(0.5);
     // A setting id names the host's code too, and a campaign runs at one setting: solves under
     // another id, as after a tree moved to a new commit, leave the share where it was. Until
     // 2026-10-11 they read no share, and the next comparison counted every task.
     const moved = [...log, ...longer.events];
-    expect(supplyOf(moved).untied).toBe(0.25);
-    // A comparison under the other id is the last one, and its share is the one read.
+    expect(supplyOf(moved).untied).toBe(0.5);
+    // A comparison under the other id is the last one, and its share is the one read: the six it
+    // found open again count, and of its two closed tasks one retired and one is kept (`poolOf`).
     const again = roundLogged(
       "b-5",
       ["h0", "h3"],
       eight((place) => (place < 6 ? "FF PP" : "PP PP")),
       { turns: 48 },
     );
-    expect(supplyOf([...moved, ...again]).untied).toBe(0.75);
+    expect(supplyOf([...moved, ...again]).untied).toBeCloseTo(6 / 7, 10);
   });
 
   it("counts the tasks the harness to be compared with left to win, whatever the last comparison untied", () => {
@@ -230,39 +232,38 @@ describe("what a log holds for the next comparison", () => {
     // The campaign's reference harness is the starter until one is promoted, and that one after.
     expect(supplyOf(stepped, "promoted").untied).toBe(0.875);
     const promotion = event("harness.promoted", { harness: "h1", from: "h0", rests: [] });
-    expect(supplyOf([...stepped, promotion], "promoted").untied).toBe(0.25);
-    expect(supplyOf([...stepped, promotion]).untied).toBe(0.25);
+    expect(supplyOf([...stepped, promotion], "promoted").untied).toBe(0.5);
+    expect(supplyOf([...stepped, promotion]).untied).toBe(0.5);
   });
 
-  it("takes the share from the last comparison of the pair, where the command names the harness it reads", () => {
-    // t-4 (10 October): the control of the promoted harness's programs against the starter tied
-    // 7 of 8, 6 answered by neither, and the whole harness against those programs was refused on
-    // that share.
+  it("takes the share from the reference's last comparison, whatever harness it reads", () => {
+    // recode-151 (15 October): g-3 and g-4 each read a harness no comparison had set beside the
+    // reference, were admitted on a share of every task, and read nothing for $5.57 over 2.19 h.
     const control = roundLogged(
       "c-1",
       ["h0", "p1"],
       eight((place) => ["PP PP", "PP PF"][place] ?? "FF FF"),
     );
     const log = [...EIGHT.flatMap(heldOut), ...control];
-    // The same pair again: the reference closed two tasks, and six may be won, the ones nobody
-    // answered among them.
-    expect(supplyOf(log, "p1", "h0").untied).toBeCloseTo(7 / 8, 10);
-    expect(supplyOf(log, "h0", "p1").untied).toBeCloseTo(6 / 8, 10);
-    // Another harness against those programs: no comparison of that pair, so no share.
-    expect(supplyOf(log, "p1", "h1").untied).toBeNull();
-    // With no harness named, the last comparison stands, as before.
-    expect(supplyOf(log, "p1").untied).toBeCloseTo(7 / 8, 10);
+    // Either side of it: the reference closed two tasks and one of them retired (`poolOf`), and six
+    // may be won of the seven left, the ones nobody answered among them.
+    expect(supplyOf(log, "p1").untied).toBeCloseTo(6 / 7, 10);
+    expect(supplyOf(log, "h0").untied).toBeCloseTo(6 / 7, 10);
     const pair = roundLogged(
       "c-2",
       ["p1", "h1"],
       eight((place) => ["PP PP", "PF PP"][place] ?? "FF PP"),
     );
+    // Its last comparison is the reference's share, whatever the harness a command reads beside it:
+    // until 15 October one never set beside it had none, and every task counted.
+    expect(supplyOf([...log, ...pair], "p1").untied).toBeCloseTo(6 / 7, 10);
+    expect(supplyOf([...log, ...pair], "h1").untied).toBe(0);
     const later = roundLogged(
       "c-3",
       ["h0", "p1"],
       eight(() => "FF FF"),
     );
-    expect(supplyOf([...log, ...pair, ...later], "p1", "h1").untied).toBeCloseTo(7 / 8, 10);
+    expect(supplyOf([...log, ...pair, ...later], "p1").untied).toBe(1);
   });
 
   it("reads no comparison the reference stood on neither side of, where no harness is named beside it", () => {
@@ -284,7 +285,7 @@ describe("what a log holds for the next comparison", () => {
       eight((place) => (place === 7 ? "FF PF" : "FF FF")),
     );
     for (const events of [log, [...log, ...control]]) {
-      expect(supplyOf(events).untied).toBe(1 / 8);
+      expect(supplyOf(events).untied).toBe(1 / 4);
       expect(codes(supplyOf(events), { target: 8 })).toEqual(["untied-short", "unread"]);
     }
   });
@@ -360,7 +361,7 @@ describe("what a log holds for the next comparison", () => {
         objective: { direction: "lower", margin: 0.01 },
       }),
     ];
-    expect(supplyOf(log).untied).toBe(1 / 8);
+    expect(supplyOf(log).untied).toBe(1 / 4);
   });
 });
 
@@ -497,7 +498,7 @@ describe("what a start's reader is told", () => {
     );
     const frozen = event("contract.frozen", { contract: "c", checks: "k" });
     expect(told([faulty, frozen]).join("\n")).not.toContain("fault");
-    // The tasks left out of the scored set are said: the ones the reference closed twice.
+    // The tasks left out of the scored set are said: the ones the reference closed.
     const twice = { a: "PP PP", b: "PP PP", c: "PP PP", d: "PP PP", e: "PF PP", f: "PF PP" };
     const retired = logOf([
       READ,
@@ -506,7 +507,7 @@ describe("what a start's reader is told", () => {
       ...roundLogged("g-2", ["h0", "h2"], twice),
     ]);
     expect(admitComparison(retired, { ...ASKED, id: "g-3", wanted: { ...WANTED, target: 4 } })).toContain(
-      "2 held-out task(s) were answered by the reference harness in every solve of two comparisons, with no objective telling two valid answers apart, and are not scored: they can only tie again or be lost",
+      "2 held-out task(s) were answered by the reference harness in every solve of their last comparison, with no objective telling two valid answers apart, and are not scored: they can only tie again or be lost",
     );
     // A session with no comparison after it scores nothing, and is told what it may practise on.
     const released = [READ, ...heldOut("p1"), event("task.state", { version: "p1", state: "released" })];

@@ -101,7 +101,8 @@ const SAID: Readonly<Record<Outcome, string>> = {
   disputed: "disputed: a rejection of an answer to it is not settled",
   // A task told so is one the draw leaves out (`outcomeOf`, `reports.ts`): until 14 October the
   // line said "unless it is among the third kept in the draw", which no task told it can be.
-  exhausted: "the reference harness answered it validly in every solve of two comparisons: no longer scored",
+  exhausted:
+    "the reference harness answered it validly in every solve of its last comparison: no longer scored",
 };
 /** The one fact beside the outcome that names no side. */
 const KNOWN = {

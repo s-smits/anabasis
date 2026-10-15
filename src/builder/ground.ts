@@ -78,7 +78,7 @@ export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
 
 /** The Builder and Examiner sessions in a row, up to the log's end and since the campaign last
  *  ended, that the provider failed before they held out a task or changed a harness, with what
- *  the last crash said. Such a session held out no task and left no harness because its provider
+ *  the last session's crash said where it crashed. Such a session held out no task and left no harness because its provider
  *  refused it, not because the domain gave it nothing: on 11 October six Examiner sessions of one
  *  campaign crashed in a row on a provider's session limit, and the campaign ended `no-room`
  *  where the account was out. The table ends such a campaign on its environment after `CRASHES`
@@ -111,8 +111,14 @@ export function crashedRun(events: readonly LogEvent[]) {
     (data.changed === true && (data.ended !== "crashed" || kept.has(data.session)));
   const whole = sessions.findIndex(({ data }) => data.ended !== "crashed" || moved(data));
   const count = whole === -1 ? sessions.length : whole;
-  const crash = sessions[0]?.data.crash;
-  return { count, crash: count > 0 && isString(crash) ? crash : null };
+  // What the last session's crash said, counted or not: a Builder checkpointed before the
+  // provider's limit moved the campaign, and the limit is still the next session's. Until
+  // 15 October it was not waited for, and recode-pr169-sonnet's b-2 opened into it and crashed.
+  const [last] = sessions;
+  return {
+    count,
+    crash: last?.data.ended === "crashed" && isString(last.data.crash) ? last.data.crash : null,
+  };
 }
 
 /**

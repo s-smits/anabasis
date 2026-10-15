@@ -2,6 +2,7 @@
 // scored. It is recorded once in the log, a command that names nothing runs under the record, and
 // a command that names another is refused until the operator says the campaign's setting changes.
 import { afterAll, describe, expect, it } from "bun:test";
+import { compactionMode } from "../src/backends/models.ts";
 import { type LogEvent, read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -19,6 +20,7 @@ import {
   settingNamed,
   targetNamed,
 } from "../tools/d2/setting.ts";
+import { modelNamed, sweepOptions } from "../tools/m0/stored-sweep.ts";
 
 /** The setting of a campaign no command has named anything for: 24 tasks to score since
  *  12 October (`SIZE`), 12 before. */
@@ -211,6 +213,41 @@ describe("a campaign's setting, recorded once", () => {
     expect(() => recordedSetting([counted(60)])).toThrow(
       "the campaign's setting was recorded with 60 prompts a solve, and this source gives every solve 24: no tally on record speaks for it",
     );
+  });
+
+  // 13 October: Claude Code serves claude-haiku-5-5 a 200K context, under the sweep's 300K window.
+  it("keeps the window a solver compacts at beside the solver, and names it in a refusal", () => {
+    const root = mkdtempSync(join(tmpdir(), "ana-setting-"));
+    afterAll(() => rmSync(root, { recursive: true, force: true }));
+    const log = join(root, "log.jsonl");
+    const haiku = { solver: "claude/claude-haiku-5-5", "solver-effort": "high", "solver-window": "200000" };
+    keepSetting(log, settingAsked(haiku, null));
+    const kept = recordedSetting(read(log));
+    expect(kept?.solver).toEqual({ model: "claude/claude-haiku-5-5", effort: "high", window: 200_000 });
+    expect(settingAsked({}, kept).named.solver).toEqual({
+      model: "claude/claude-haiku-5-5",
+      effort: "high",
+      window: 200_000,
+    });
+    expect(() => settingAsked({ "solver-window": "150000" }, kept)).toThrow(
+      "--solver claude/claude-haiku-5-5 --solver-effort high --solver-window 150000 names another setting than the campaign's, which was recorded as --solver claude/claude-haiku-5-5 --solver-effort high --solver-window 200000",
+    );
+    // A record without a window is the sweep's window, as every record before it was.
+    expect(settingAsked({}, SHORT).named.solver).toEqual({
+      model: "anthropic/claude-sonnet-5-5",
+      effort: "low",
+    });
+    expect(() => settingNamed({ ...haiku, "solver-window": "2e5.5" })).toThrow(
+      "--solver-window 2e5.5: a solver's compaction window is a whole number of tokens",
+    );
+  });
+
+  it("is the window a Claude solve's condition pins, which the sweep's would not hold for Haiku", () => {
+    const haiku = modelNamed("claude/claude-haiku-5-5");
+    expect(() => compactionMode(haiku, sweepOptions())).toThrow(
+      "Claude Code serves claude-haiku-5-5 a 200000-token context, so a 300000-token compaction window would be clamped",
+    );
+    expect(compactionMode(haiku, sweepOptions(undefined, 200_000))).toBe("autoCompactWindow=200000");
   });
 });
 

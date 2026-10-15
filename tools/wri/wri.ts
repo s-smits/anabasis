@@ -19,9 +19,10 @@
  * - `start` writes that as `overview.md`, and the shared instructions with the campaign's row filled
  *   in and two sections left for the primary to write. `--with` names peer campaigns' logs, which a
  *   lane that reads peers (lane 31) is given read the same way, at `lanes` time, and never reviews.
- * - `lanes` builds one prompt per lane and `launch.md`. With no `--lanes` it opens the lanes a
- *   trigger started and the standing ones; an isolated lane is built only when named. A prompt
- *   built before is kept, and `launch.md` lists every prompt that stands, each once.
+ * - `lanes` builds one prompt per lane, and `launch.json`, one session for each lane it built, in
+ *   the manifest codex-luna-swarm's launcher reads. With no `--lanes` it opens the lanes a trigger
+ *   started and the standing ones; an isolated lane is built only when named. A prompt built before
+ *   is kept and launched again by nobody: `launch.json` holds only what this call built.
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
  *   every report is there and valid.
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
@@ -32,7 +33,9 @@
  *   (`exams/<digest>/`, `tools/d2/exam.ts`). On 10 October t-10's lane 1 was given `<campaign>/checks`
  *   for a drafted exam and stopped on ENOENT.
  *
- * No verb starts a solve, a session or a round, and none appends to a log.
+ * A log is named by its path or, since 15 October, by its campaign's whole name in any of the
+ * repository's worktrees (`runNamed`), as `--with` names peers. No verb starts a solve, a session
+ * or a round, and none appends to a log.
  */
 import { read } from "#src/kernel/log.ts";
 import { openVerifier, spelled } from "#src/kernel/verify.ts";
@@ -44,10 +47,11 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
-import { launchesOf } from "../runs/receipt.ts";
+import { receipts } from "../runs/receipt.ts";
+import { runNamed } from "../runs/registry.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
-import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
+import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import { climbTable, crossings } from "./climb.ts";
 import {
   blankSections,
@@ -86,10 +90,13 @@ const { values, positionals } = parseArgs({
   },
 });
 
+/** A log by its path, or a campaign's by the campaign's whole name. */
+const logOf = (named: string) => (existsSync(named) ? named : runNamed(named).path);
+
 function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
   const value = values[name];
   if (value === undefined) throw new Error(`name --${name}`);
-  return value;
+  return name === "log" ? logOf(value) : value;
 }
 
 /** The host's code as a condition names it (`codeOf`), for a tree that holds it. */
@@ -103,14 +110,14 @@ function hostOf(tree: string): string | undefined {
  * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
  * The condition names that code by a digest of its content, which is no commit: two lanes of
  * 14 October read one digest against a receipt's commit as two trees. So the line calls it a
- * digest and names the commit the last launch's receipt holds (`launchesOf`) beside it.
+ * digest and names the commit the last launch's receipt holds (`receipts`) beside it.
  */
 function hostLine(log: string): string {
   const ran = read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition;
   const host = asRecord(ran)?.host;
   const last = isString(host) ? host : undefined;
   const here = hostOf(REPO) ?? "";
-  const launch = launchesOf(log).at(-1);
+  const launch = receipts(log).at(-1);
   const commit =
     launch === undefined
       ? "; no launch receipt beside the log"
@@ -136,7 +143,9 @@ function overviewText(log: string): string {
 function start(): number {
   const [log, out] = [resolve(needed("log")), resolve(needed("out"))];
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
-  const peers = (values.with?.split(",") ?? []).filter((each) => each !== "").map((each) => resolve(each));
+  const peers = (values.with?.split(",") ?? [])
+    .filter((each) => each !== "")
+    .map((each) => resolve(logOf(each)));
   const absent = peers.filter((peer) => !existsSync(peer));
   if (absent.length > 0) throw new Error(`--with names no log at ${absent.join(", ")}`);
   mkdirSync(join(out, "lanes"), { recursive: true });
@@ -199,16 +208,6 @@ function climbText(log: string, peers: readonly string[]): string {
 const promptPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-prompt.md`);
 const reportPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-report.md`);
 
-/** One session's entry in `launch.md`. */
-function launchEntry(out: string, lane: Lane): string {
-  return [
-    `## Lane ${String(lane.number)}: ${lane.title}${lane.isolated ? " (alone)" : ""}`,
-    `Prompt: \`${promptPath(out, lane.number)}\``,
-    `Report: \`${reportPath(out, lane.number)}\``,
-    `One line to hand the session: Read \`${promptPath(out, lane.number)}\` and do exactly what it says.`,
-  ].join("\n\n");
-}
-
 function lanes(): number {
   const { out, log, shared, seen, peers } = opened();
   const peerOverviews = peersText(log, peers);
@@ -224,18 +223,28 @@ function lanes(): number {
   const asked = [...open, ...isolated];
   const kept = asked.filter((lane) => existsSync(promptPath(out, lane.number)));
   const built = asked.filter((lane) => !kept.includes(lane));
-  for (const lane of built) {
-    const report = reportPath(out, lane.number);
+  // Each lane built is one session of `launch.json`, its one line and the report it writes itself,
+  // and nothing kept is in it, so its count is the spend (SKILL.md, step 3) and no session is started
+  // twice against one prompt. Until 15 October each launch turned a Markdown list into this by hand.
+  const sessions = built.map((lane) => {
+    const [prompt, report] = [promptPath(out, lane.number), reportPath(out, lane.number)];
     writeFileSync(
-      promptPath(out, lane.number),
+      prompt,
       `${lanePrompt({ lane, shared, overview: seen, catalogue, owners, report, peers: peerOverviews })}\n`,
     );
+    return {
+      name: `lane_${stem(lane.number)}`,
+      task: `Read \`${prompt}\` and do exactly what it says.`,
+      ownedPaths: [report],
+    };
+  });
+  const launch = join(out, "launch.json");
+  if (sessions.length > 0) {
+    writeFileSync(
+      launch,
+      `${JSON.stringify({ workdir: REPO, sandbox: "workspace-write", sessions }, null, 2)}\n`,
+    );
   }
-  // The launch list is written whole from the prompts that stand, so a second build cannot list a
-  // session twice, and its count stays the spend (SKILL.md, step 3).
-  const listed = lanesOf(catalogue).filter((lane) => existsSync(promptPath(out, lane.number)));
-  const launch = join(out, "launch.md");
-  writeFileSync(launch, `# Launch\n\n${listed.map((lane) => launchEntry(out, lane)).join("\n\n")}\n`);
   console.log(`${plural(built.length, "lane")} built: ${built.map((lane) => lane.number).join(", ")}`);
   for (const lane of kept) console.log(`lane ${String(lane.number)}: built before, kept`);
   for (const lane of waiting) {
@@ -244,7 +253,7 @@ function lanes(): number {
     );
   }
   console.log(
-    `one session per entry of ${launch}, ${String(listed.length)} in all; launch only those built now`,
+    built.length === 0 ? "nothing to launch" : `${launch}: ${plural(built.length, "session")} to launch`,
   );
   return 0;
 }
@@ -319,7 +328,7 @@ async function main(): Promise<number> {
   }
   if (verb === "grade") return grade();
   if (verb === "climb") {
-    const peers = (values.with?.split(",") ?? []).filter((each) => each !== "");
+    const peers = (values.with?.split(",") ?? []).filter((each) => each !== "").map(logOf);
     console.log(climbText(needed("log"), peers));
     return 0;
   }

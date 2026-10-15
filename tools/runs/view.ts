@@ -33,7 +33,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
-import { logEvents, runs } from "./pulse.ts";
+import { logEvents, runs } from "./registry.ts";
 
 /** The flags the table is asked with: the campaign command's, with the same names. */
 const VIEW_OPTIONS = {

@@ -117,11 +117,11 @@ function loggedVerdict(events: readonly LogEvent[], solve: string): LoggedVerdic
   return { answer: data.answer, blocking, fault: isString(data.fault) ? data.fault : null };
 }
 
-/** The host's own ruling, or null when the fail needs a reading. No answer at a check leaves no
- *  check to doubt, and an answer outside the contract's format broke the contract before any check
- *  ran. `replay` is the checks run again on the logged answer: where it moves a check's verdict,
- *  that check does not repeat, and where it reaches none there is nothing to read against. */
-function hostRuling(verdict: LoggedVerdict | null, replay: Verdict | null): RefereeFinding | null {
+/** The host's own ruling, or null when the fail needs a reading. An answer outside the contract's
+ *  format broke the contract before any check ran. `replay` is the checks run again on the logged
+ *  answer: where it moves a check's verdict, that check does not repeat, and where it reaches none
+ *  there is nothing to read against. */
+function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFinding | null {
   const ruled = (ruling: Ruling, check: string | null, reason: string): RefereeFinding => ({
     ruling,
     check,
@@ -130,7 +130,6 @@ function hostRuling(verdict: LoggedVerdict | null, replay: Verdict | null): Refe
     reason,
     probes: [],
   });
-  if (verdict === null) return ruled("earned", null, "no answer reached a check");
   if (verdict.fault !== null) {
     return ruled("earned", null, `the answer does not follow the contract's format: ${verdict.fault}`);
   }
@@ -319,11 +318,21 @@ function rulingTool(
  *  the reader rules the rest; one that never rules leaves the fail unclear. The reader's first
  *  probe reuses the replay as its original side, so a reading costs no second run of the checks.
  *  The accepted answer is the last the log holds for the task's id, which is how a verdict names
- *  its task. */
+ *  its task.
+ *
+ *  A solve with no answer on record is refused before anything is written: a ruling is a reading
+ *  of a rejected answer, and the Referee is asked of no other solve (`src/builder/round.ts`,
+ *  `src/builder/tools.ts`, `tools/d1b/examine.ts`). Until 15 October such a solve was ruled
+ *  `earned` with "no answer reached a check", a finding with no evidence behind it: ten
+ *  `turns-ended` practice solves in five campaigns read so, through a caller that sent every
+ *  fail. */
 export async function referee(reader: Reader, fail: RefereeCase): Promise<RefereeFinding> {
   const events = read(fail.log);
   const verdict = loggedVerdict(events, fail.solve);
-  const replay = verdict?.fault === null ? await fail.verify(fail.task, verdict.answer) : null;
+  if (verdict === null) {
+    throw new Error(`solve ${fail.solve} has no answer on record: the Referee rules a rejected answer alone`);
+  }
+  const replay = verdict.fault === null ? await fail.verify(fail.task, verdict.answer) : null;
   const host = hostRuling(verdict, replay);
   const rows: ProbeRow[] = [];
   const found: RefereeFinding[] = [];
@@ -331,9 +340,8 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
     ({ kind, data }) => kind === "verdict" && data.task === fail.task.taskId && data.kind === "pass",
   )?.data.answer;
   const meter =
-    verdict === null || host !== null
-      ? null
-      : await readOnce(reader, SYSTEM_PROMPT, packet(fail, verdict, accepted), [
+    host === null
+      ? await readOnce(reader, SYSTEM_PROMPT, packet(fail, verdict, accepted), [
           readProgramTool(fail.checks),
           probeTool(
             async (task, answer) =>
@@ -355,7 +363,8 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
             rows,
             found,
           ),
-        ]);
+        ])
+      : null;
   const finding = host ??
     found.at(-1) ?? {
       ruling: isString(meter?.error) && meter.walled === false ? null : "unclear",

@@ -129,8 +129,8 @@ export interface Said {
  * stands (`session.ts`), and its practice is held to the campaign's total (`practiceLeft`,
  * `tools.ts`). A led Builder is told each fact once, where it is owned: what its tools do in their
  * descriptions, and here what a tool result ends with and what ends the campaign. A promotion ends
- * nothing: the operator's milestone of twelve is no rule (`AGENTS.md`, "Climb"), and `finish` is
- * the one ending a model chooses.
+ * nothing: the operator's milestone of twelve is no rule (`AGENTS.md`, "Climb"), and `finish` ends
+ * the campaign only after three conversations in a row made no campaign move (`harness-builder.ts`).
  */
 export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   host: {
@@ -149,12 +149,12 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   },
   builder: {
     closing:
-      "read_opening returns the public opening facts when this conversation no longer holds them. You make the campaign's moves with the campaign tools, and each one's result ends with the campaign's facts and the move the host's table would make, which you may follow or not. The campaign ends at its budget, on its provider, or after as many moves in a row without a gain as its patience. A promotion ends nothing: the campaign goes on against the promoted harness. finish ends this conversation and freezes harness/, measuring nothing, and the campaign waits for the operator.",
+      "read_opening returns the public opening facts when this conversation no longer holds them. You lead the campaign with its tools, and each one's result ends with the campaign's facts and the move the host's table would make, which you may follow or not. A promotion ends nothing: the promoted harness becomes the reference, the next step is measured against it, and the climb goes on for as many steps as you find. The campaign ends at its budget, on its provider, or after as many moves in a row without a gain as its patience. finish ends this conversation and freezes harness/, measuring nothing; another conversation follows on your notes, and the campaign ends once three in a row have made no campaign move.",
     frozen: "frozen",
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
     finish:
-      "End this campaign's Builder conversation and freeze harness/. Say what changed and what remains unmeasured. A notice from finish can be acknowledged by calling finish again.",
+      "End this conversation and freeze harness/. Say what changed, what remains unmeasured and what you would try next; the next conversation starts from your notes. A notice from finish can be acknowledged by calling finish again.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",
@@ -211,7 +211,7 @@ export function systemPrompt(said: Said): string {
     "Answers are judged by checks that neither you nor the solver is shown; what they enforce is the public rules. A program or a tool may run the field's own compiler or simulator on the solver's candidate, test the candidate against a public rule and say what it does not meet: the solver would write such a test itself, and every solve of either harness runs under the same limits, so a search costs the turns and the time it takes. One limit stands. No program, tool or guide line returns a finished answer for a task, or for a case the solver names: the solver finds the answer, with what the harness gives it to compute, test and correct one. Nor does any one of them both propose a candidate and judge it: a part that searches hands its candidates back, so that the solver is what carries one from a search to a test. Output the solver can submit unchanged is a finished answer however it was reached, and a part that both produced a candidate and reported it as meeting the rules has returned one. A part that tests a candidate the solver wrote may report nothing unmet.",
     "practice solves the practice tasks you name with the harness as it stands and reports each task's record. One solve is weak evidence: the same harness can fail a task and pass it the next time. Read the record, not the last result, and decide before you practise which tasks a change should move. What you change after your last practice solve is measured untried. A harness is measured in two tiers: a valid answer first, and between two valid answers the objective, where the exam names one, better by more than the reference's own spread; the turns an answer took are reported and decide nothing. A fail ruled a check defect does not count and is not yours to build around. The trace is the record of what the solve did, which read_trace pages.",
     "You work in your home directory with read, bash, edit and write. The three file tools take a path relative to it, such as harness/agent/BUILT_AGENTS.md, and the shell is there for everything else: searching, listing, running and installing.",
-    "check_harness opens the harness as a solve would and lists what a solver gets from each part. Run it before you practise, since a harness that does not open fails every task. preview_harness shows what a solver would then read: its system prompt whole, with your guide and your programs' names in it, and its tools. reset_harness puts harness/agent back as this session found it. A practice solve takes as long as a solve, and every reply of yours is one turn, with or without a tool call. " +
+    "check_harness opens the harness as a solve would and lists what a solver gets from each part. Run it before you practise, since a harness that does not open fails every task. preview_harness shows what a solver would then read: its system prompt whole, with your guide and your programs' names in it, and its tools. A practice solve takes as long as a solve, and every reply of yours is one turn, with or without a tool call. " +
       said.closing +
       " The session also ends at its limits, and what harness/ holds then is what is frozen.",
   ].join("\n");

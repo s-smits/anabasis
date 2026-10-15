@@ -267,18 +267,15 @@ describe("the Referee", () => {
     expect(s.calls()).toBe(0);
   });
 
-  it("rules earned with no reading when no answer reached a check", async () => {
+  it("refuses a solve with no answer on record, writing nothing, and rules an answer outside the format earned unread", async () => {
     const s = setup([]);
-    expect(await referee(s.reader, fail(s))).toEqual({
-      ruling: "earned",
-      check: null,
-      rule: null,
-      field: null,
-      reason: "no answer reached a check",
-      probes: [],
-    });
+    // Until 15 October a solve with no verdict was ruled earned, "no answer reached a check": a
+    // finding with nothing behind it, which ten no-answer practice solves were given.
+    await expect(referee(s.reader, fail(s))).rejects.toThrow(
+      "solve s-1 has no answer on record: the Referee rules a rejected answer alone",
+    );
     expect(s.calls()).toBe(0);
-    expect(read(s.log).map((event) => event.kind)).toEqual([FINDING]);
+    expect(read(s.log)).toEqual([]);
     // An answer outside the contract's format broke the contract before any check ran.
     s.record("verdict", {
       solve: "s-1",

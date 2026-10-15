@@ -39,7 +39,7 @@ from prose, and it will guess. For a run, one command says each launch's commit,
 was clean and which remote branches hold it:
 
 ```sh
-bun .claude/skills/attribution-and-proof/scripts/run-source.ts <campaign folder>
+bun run runs source <name>
 ```
 
 For any other commit the document cites, `git branch -r --contains <sha>`. When a run's commit

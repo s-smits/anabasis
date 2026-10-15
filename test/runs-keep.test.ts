@@ -1,0 +1,78 @@
+// Keeping a campaign going: the turn a keeper takes, and the login it moves the run to.
+import { describe, expect, it } from "bun:test";
+import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
+import { turnOf } from "../tools/runs/keep.ts";
+import { allowedLogins, type Reading, room } from "../tools/runs/logins.ts";
+
+const NOW = Date.parse("2026-10-15T12:00:00.000Z");
+const HOUR = 3_600_000;
+
+const event = (kind: EventKind, data: JsonObject): LogEvent => ({
+  at: "2026-10-15T12:00:00.000Z",
+  kind,
+  data,
+});
+const waited = (hours: number, reason = "provider") =>
+  event("campaign.waited", { for: reason, until: new Date(NOW + hours * HOUR).toISOString() });
+
+describe("the turn a keeper takes", () => {
+  it("moves a live run off a provider wait longer than its bound, and watches it otherwise", () => {
+    expect(turnOf([waited(2)], "open", NOW, HOUR)).toBe("move");
+    // A wait of the bound exactly is waited out where the run is.
+    expect(turnOf([waited(1)], "open", NOW, HOUR)).toBe("watch");
+    expect(turnOf([waited(5, "load")], "open", NOW, HOUR)).toBe("watch");
+    expect(turnOf([waited(5), event("build.started", { session: "b-1" })], "open", NOW, HOUR)).toBe("watch");
+    expect(turnOf([], "open", NOW, HOUR)).toBe("watch");
+  });
+
+  it("goes on with a run that died or ended on its environment, and leaves one that ended on its own terms", () => {
+    expect(turnOf([event("build.started", { session: "b-1" })], "closed", NOW, HOUR)).toBe("continue");
+    expect(turnOf([event("campaign.ended", { ending: "environment" })], "closed", NOW, HOUR)).toBe(
+      "continue",
+    );
+    for (const ending of ["budget", "stop", "operator", "finished", "no-room"]) {
+      expect(turnOf([event("campaign.ended", { ending })], "closed", NOW, HOUR)).toBe("done");
+    }
+  });
+});
+
+const read = (login: string, week: number, five = 10, status = "allowed", reset = 1): Reading => ({
+  login,
+  plain: false,
+  via: "ratelimit-headers",
+  fiveHour: { pct: five, resetsAt: null, status },
+  sevenDay: { pct: week, resetsAt: new Date(NOW + reset * HOUR).toISOString(), status },
+  notes: [],
+});
+
+describe("the login a run moves to", () => {
+  it("takes the allowed logins with room, the week that resets soonest first", () => {
+    const readings = [
+      read("2", 40, 10, "allowed", 30),
+      read("3", 50, 10, "allowed_warning", 5),
+      read("4", 10),
+    ];
+    expect(room(readings, ["2", "3", "4"], new Set())).toEqual(["4", "3", "2"]);
+    expect(room(readings, ["2", "3"], new Set())).toEqual(["3", "2"]);
+    expect(room(readings, ["2", "3", "4"], new Set(["4"]))).toEqual(["3", "2"]);
+  });
+
+  it("leaves a login whose week is nearly spent, whose five hours are, that is refused, or that could not be read", () => {
+    const readings: Reading[] = [
+      read("1", 90),
+      read("2", 20, 100),
+      read("3", 20, 10, "rejected"),
+      { login: "4", plain: false, error: "unauthorized" },
+    ];
+    expect(room(readings, ["1", "2", "3", "4"], new Set())).toEqual([]);
+  });
+
+  it("allows the logins ANA_LOGINS names, or else every login the environment holds", () => {
+    const key = "CLAUDE_CODE_OAUTH_TOKEN";
+    const env = { [key]: "a", [`${key}10`]: "x", [`${key}3`]: "c", [`${key}2`]: "b" };
+    expect(allowedLogins(env)).toEqual(["2", "3", "10"]);
+    expect(allowedLogins({ ...env, ANA_LOGINS: " 3, 4 ," })).toEqual(["3", "4"]);
+    expect(allowedLogins({ ...env, ANA_LOGINS: "" })).toEqual(["2", "3", "10"]);
+  });
+});

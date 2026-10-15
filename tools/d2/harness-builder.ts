@@ -22,8 +22,8 @@
  * one live Builder conversation makes the moves through its campaign tools: an Examiner session,
  * a release, a comparison, a promotion (`campaign-actions.ts`). The table's move is its advice,
  * and every condition above stays the host's at each action. A conversation that ends at its own
- * limits is followed by another on the Builder's notes; one the Builder ends with `finish` ends
- * this run of the command (`finished`), and run again the campaign goes on with a new one. A lack
+ * limits is followed by another on the Builder's notes, and so is one the Builder ends with
+ * `finish`, until three in a row have made no campaign move (`finished`). A lack
  * of room is advice to ask the Examiner while a conversation lives, and the campaign's ending
  * once one has ended with the table still naming it. Without the term the command makes every
  * move itself, a Builder session among them, as it did before 13 October, and nothing a Builder
@@ -78,7 +78,8 @@
  *
  * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
  * on tasks that could not be made to leave room, on its environment, on the operator's word, on
- * its control (`decide.ts`) or, led by its Builder, on the Builder's `finish`, and its log's last event says which (`campaign.ended`). With
+ * its control (`decide.ts`) or, led by its Builder, once three of its conversations in a row made
+ * no campaign move (`idleOf`), and its log's last event says which (`campaign.ended`). With
  * `--handover <dir>` it then writes what it hands over there: the reference harness as a directory
  * that stands by itself, the public rules and the closing report (`close.ts`, row F51). A move that
  * threw after it had begun is the environment's ending, and run again the command goes on from the
@@ -118,8 +119,8 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
-import { standing } from "../runs/pulse.ts";
-import { launchesOf, writeReceipt } from "../runs/receipt.ts";
+import { nextRun, writeReceipt } from "../runs/receipt.ts";
+import { standing } from "../runs/registry.ts";
 import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
 import { type CampaignContext, campaignTools } from "./campaign-actions.ts";
 import {
@@ -129,6 +130,8 @@ import {
   examTasks,
   flag,
   flagsOf,
+  IDLE,
+  idleOf,
   MOVED,
   nextId,
   opened,
@@ -137,7 +140,6 @@ import {
   SCRIPTED,
   type Seats,
   sharedOf,
-  startOf,
   type Turn,
   turnOf,
   type Values,
@@ -161,6 +163,24 @@ const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
 /**
+ * Whether the table names a move that measures what a conversation left and asks no Builder for
+ * anything: any comparison, the tasks a repeat waits for, a promotion. Until 14 October a
+ * Builder's `finish` ended the campaign whatever was owed: buffer-159-opus's Builder finished a
+ * minute after a 9-0-1 step bought a repeat, and the campaign ended as its Examiner session
+ * settled two and a half hours later, the repeat never run. Until 15 October an ordinary
+ * comparison was the Builder's alone, so three conversations that each changed the harness and
+ * finished ended the campaign with the table naming its comparison (truss-151-m1 b-1,
+ * buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no comparison read). The
+ * host makes a comparison that began under other code as its first move, and its terms refuse it
+ * with the campaign's environment ending (`begin`, `src/builder/round.ts`), where the Builder's
+ * tool was refused it again and again (main0_5_1, three times at 8e0371c58).
+ */
+function hostOwed(decided: Decided): boolean {
+  if (decided.move === "promote" || decided.move === "compare") return true;
+  return decided.move === "examine" && decided.repeats !== undefined;
+}
+
+/**
  * Whether the campaign goes on from a move that threw, which began where the log held `from`
  * events: a provider's limit with a reset is waited out, and so is a session on record as
  * crashed. A Builder's session that crashed is refused where it is read back (`spent`,
@@ -170,15 +190,15 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
  * crashed session is, which the campaign goes on from and the table's crash rule bounds
  * (`crashedRun`).
  */
-async function goesOn(log: string, from: number, error: unknown, sleep: Seats["host"]): Promise<boolean> {
-  if (await waitOut(log, errorMessage(error), sleep?.sleep)) return true;
+async function goesOn(log: string, from: number, error: unknown, host: Seats["host"]): Promise<boolean> {
+  if (await waitOut(log, error, host)) return true;
   const events = read(log);
   const crashed = events
     .slice(from)
     .some(
       ({ kind, data }) => (kind === "build.finished" || kind === "exam.finished") && data.ended === "crashed",
     );
-  if (crashed) await waitCrashed(log, sleep?.sleep);
+  if (crashed) await waitCrashed(log, host);
   return crashed;
 }
 
@@ -325,8 +345,7 @@ function examLines(
  */
 function keepReceipt(log: string, args: readonly string[]): void {
   mkdirSync(dirname(log), { recursive: true });
-  const runs = launchesOf(log).filter(({ session }) => session.startsWith("run-")).length;
-  writeReceipt(log, `run-${String(runs + 1)}`, {
+  writeReceipt(log, nextRun(log), {
     at: new Date().toISOString(),
     pid: runtimeProcess.pid,
     flags: [...args],
@@ -334,6 +353,8 @@ function keepReceipt(log: string, args: readonly string[]): void {
     ...standing(REPO),
     load: HOST.load(),
     cores: HOST.cores,
+    bun: runtimeProcess.versions.bun,
+    ...keyIfDefined("login", runtimeProcess.env.ANA_LOGIN),
   });
 }
 
@@ -366,13 +387,12 @@ function ended(log: string, events: readonly LogEvent[], decided: Extract<Decide
 /** What writes a move's event as it begins (the overhaul plan's P9): the move, the code of the row that chose
  *  it, its reason and start, and what `make` names it by, so a move that throws is on record with
  *  the reason it was made for. Until 12 October it was written when the move ended. */
-function beginning(log: string, decided: Exclude<Decided, { move: "end" }>, started: JsonObject) {
+function beginning(log: string, decided: Exclude<Decided, { move: "end" }>) {
   return (named: JsonObject) =>
     append(log, MOVED, {
       move: decided.move,
       code: decided.code,
       why: decided.why,
-      ...started,
       ...named,
       ...keyIfDefined(
         "answers",
@@ -399,7 +419,6 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
     move: "build",
     code: "led",
     why: `the Builder's campaign conversation, where the table named ${named.move === "end" ? named.ending : named.move}`,
-    ...startOf("build", seats),
     session,
   });
   try {
@@ -440,15 +459,20 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
     append(log, ENDED, { ending: "environment", why, move });
     return { move: "end", ending: "environment", code: "failed", why };
   }
-  if (how === "finished") {
-    return {
-      move: "end",
-      ending: "finished",
-      code: "finished",
-      why: `the Builder ended its campaign conversation ${session}`,
-    };
+  // A conversation that ends whole, by finish or at its limits, is followed by another on the
+  // Builder's notes until IDLE in a row have made no campaign move (`idleOf`). Until 14 October every
+  // finish ended the campaign: five of five led campaigns ended so, with $22 to $122 of $300 spent,
+  // and the two that promoted finished within seconds of the promotion.
+  const idle = how === "finished" || how === "wall" || how === "turns" ? idleOf(after) : 0;
+  const table = decide(after, turnOf(context).plan);
+  // A measurement the conversations bought is the host's to make first (`hostOwed`), which moves
+  // the campaign, and an ending the table names stands, as it would at the next move.
+  if (idle < IDLE || hostOwed(table)) {
+    return how === "finished" || (AGAIN.has(how) && context.used < context.maxMoves) ? null : table;
   }
-  return AGAIN.has(how) && context.used < context.maxMoves ? null : decide(after, turnOf(context).plan);
+  if (table.move === "end") return table;
+  const why = `${String(idle)} Builder conversations in a row made no campaign move, the last ${session}`;
+  return { move: "end", ending: "finished", code: "finished", why };
 }
 
 /**
@@ -460,7 +484,7 @@ async function lead(context: CampaignContext, named: Decided): Promise<Decided |
   const { log, values, seats } = context;
   const left = await converse(context, named);
   if (left === null) {
-    await waitCrashed(log, seats.host?.sleep);
+    await waitCrashed(log, seats.host);
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
@@ -494,6 +518,7 @@ function settingHeld(log: string, given: Values): void {
     {
       solver: given.solver,
       "solver-effort": given["solver-effort"],
+      "solver-window": given["solver-window"],
       "solve-minutes": given["solve-minutes"],
       "solve-model-turns": given["solve-model-turns"],
       tasks: recorded.tasks?.join(","),
@@ -550,13 +575,12 @@ export async function harnessBuilder(
       for (const line of openingLines({ ...plan.wanted, patience: opening.patience })) console.log(line);
     }
     const decided = decide(events, plan);
-    // Led by its Builder, every move past set-up is the conversation's, and so is a lack of room
-    // until one conversation of this run has ended on it.
+    // Led by its Builder, every move but set-up and a measurement owed (`hostOwed`) is the
+    // conversation's, and so is a lack of room until one conversation of this run has ended on it.
     const led =
       opening.led &&
       !SETUP.has(decided.move) &&
-      // The ladder's reading is the host's and no Builder's (`ladderOwed`, `decide.ts`).
-      !(decided.move === "compare" && decided.ladder === true) &&
+      !hostOwed(decided) &&
       (decided.move !== "end" || (decided.ending === "no-room" && !talked));
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
@@ -589,7 +613,7 @@ export async function harnessBuilder(
       );
       return decided;
     }
-    const begin = beginning(log, decided, startOf(decided.move, seats));
+    const begin = beginning(log, decided);
     try {
       await make(decided, turn, begin);
     } catch (error) {
@@ -612,7 +636,7 @@ export async function harnessBuilder(
     }
     last = decided.move;
     made += 1;
-    await waitCrashed(log, seats.host?.sleep);
+    await waitCrashed(log, seats.host);
   }
 }
 

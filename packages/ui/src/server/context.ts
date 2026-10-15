@@ -4,7 +4,7 @@
  */
 import type { AnswerOf, Endpoint, Query, Tier } from "../models.ts";
 
-/** Where the campaigns are found: every worktree of the repository (`runs`, `tools/runs/pulse.ts`),
+/** Where the campaigns are found: every worktree of the repository (`runs`, `tools/runs/registry.ts`),
  *  or one plain directory that holds `.ana/d2/<name>/log.jsonl`, a fixture's or another checkout's
  *  (`serve.ts --repo <dir>`). */
 export type Trees = "worktrees" | "directory";

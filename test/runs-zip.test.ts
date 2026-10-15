@@ -14,7 +14,7 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
-import type { Run } from "../tools/runs/pulse.ts";
+import type { Run } from "../tools/runs/registry.ts";
 import { fit, type Level, zip } from "../tools/runs/zip.ts";
 
 const DIGEST = "ab".repeat(32);

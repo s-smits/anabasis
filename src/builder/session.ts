@@ -302,7 +302,10 @@ export async function session(
   let aside = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const ownSeconds = () => (performance.now() - began - aside) / 1000;
+  // One timer at a time: until 14 October the opening's `within` armed one that the session's own
+  // arming overwrote, and it cut main0_5_1's Builder four hours on, a comparison in flight.
   const arm = () => {
+    clearTimeout(timer);
     if (done.signal.aborted) return;
     timer = setTimeout(() => wall.abort(), (limits.wallSeconds - ownSeconds()) * 1000);
   };

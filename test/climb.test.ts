@@ -68,6 +68,9 @@ const RAISE = 2;
  *  informative for it as room asks (`informative`, `roomOf`) and as `try_task` admits a draft;
  *  and harder ones, some past any harness so far. */
 const ABOVE = [1, 1, 2, 2, 3, 4];
+/** A led Builder's finish in a conversation after its first, said twice where finish first gives
+ *  a notice. */
+const IDLE: readonly [string, JsonObject] = ["finish", { note: "Nothing further." }];
 /** How many times each harness has solved each task, by task and harness folder: a harness
  *  answers a task one past its strength on every other solve. */
 const tried = new Map<string, number>();
@@ -216,7 +219,7 @@ describe("the climb", () => {
       const seats: Seats = {
         seated: (campaign) => ({
           // Led by its Builder, one scripted Builder keeps its conversation while it edits, compares
-          // and promotes.
+          // and promotes, and the conversations after it make no campaign move.
           // Run by the host, a Builder session raises the strength of the harness it starts from by two, and
           // finishes. The seat is made for every command, a comparison's too, so the strength is
           // read from the log: the sessions that began before this one.
@@ -234,25 +237,27 @@ describe("the climb", () => {
                   ["finish", { note: `Strength ${String(strength)}.` }],
                 ]);
               })()
-            : scriptedModel([
-                ...Array.from({ length: 3 }, (_, epoch) => {
-                  const strength = STARTER_STRENGTH + (epoch + 1) * RAISE;
-                  return [
-                    ["examine", {}],
-                    ["release_practice", {}],
-                    [
-                      "bash",
-                      {
-                        command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
-                      },
-                    ],
-                    ["compare", {}],
-                    ["compare", {}],
-                    ["promote", {}],
-                  ] satisfies readonly (readonly [string, JsonObject])[];
-                }).flat(),
-                ["finish", { note: "Three scripted improvements in one conversation." }],
-              ]),
+            : read(campaign.log).some(({ kind }) => kind === "build.started")
+              ? scriptedModel([IDLE, IDLE])
+              : scriptedModel([
+                  ...Array.from({ length: 3 }, (_, epoch) => {
+                    const strength = STARTER_STRENGTH + (epoch + 1) * RAISE;
+                    return [
+                      ["examine", {}],
+                      ["release_practice", {}],
+                      [
+                        "bash",
+                        {
+                          command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
+                        },
+                      ],
+                      ["compare", {}],
+                      ["compare", {}],
+                      ["promote", {}],
+                    ] satisfies readonly (readonly [string, JsonObject])[];
+                  }).flat(),
+                  ["finish", { note: "Three scripted improvements in one conversation." }],
+                ]),
           setting: campaign.setting({ ...campaign.test, ...scriptedModel([]) }),
           // A solve passes where the task's base is at most the harness's strength, and one past it
           // on every other solve: since 12 October a task the reference fails in every solve, or
@@ -340,10 +345,13 @@ describe("the climb", () => {
       // The highest base held out in an epoch: what the test knows of difficulty.
       const hardest = (epoch: Epoch) =>
         Math.max(0, ...epoch.tasks.map((version) => baseOf.get(version) ?? 0));
+      // Led by its Builder, the first conversation made every improvement, and none after it
+      // changed a harness. Until 14 October a finish ended the campaign there.
+      const later = of("build.finished").slice(1);
+      if (!HOSTED) expect(later.map(({ changed }) => changed)).not.toContain(true);
       // Two promotions at least, each on tasks harder than the last epoch's: the second epoch's
       // tasks reach higher bases, the starter answers fewer of them, and the promoted harness of
       // each epoch is stronger than the one before.
-      if (!HOSTED) expect(of("build.started")).toHaveLength(1);
       expect(promotions.length).toBeGreaterThanOrEqual(2);
       expect(epochs.length).toBeGreaterThanOrEqual(3);
       // An epoch may hold out no task: since 12 October the first holds a repeat's draw as well, and

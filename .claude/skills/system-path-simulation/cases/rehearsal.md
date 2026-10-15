@@ -125,7 +125,7 @@ bun run runs rehearse ... --session r-2 --reference <the report's fresh digest>
 
 Start the rehearsal in the background, `kill -9` it part-way, and run the same command again. A kill
 after `build.finished` goes on from the log. A kill inside the Builder session spends the session's
-id, as a stop does (launch-run).
+id, as a stop does (run-management).
 
 A kill leaves the capped root of each solve it fell in mounted. `bun run runs stop sim-<what>` names
 them, and with `--yes` releases them. The same command while the rehearsal runs is the stop a paid

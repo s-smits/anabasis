@@ -12,11 +12,12 @@
  * practised on. Or its package is refused at the gate, and it never was one. Each task version's
  * state is a view over the log.
  *
- * A draft the reference harness answered in none of its gate's solves, with an answer of its
- * author's that passes on it, is held for the ladder instead (`gated`, `src/examiner/write.ts`):
- * its gate's outcome is `ladder` and it is in the ladder state from then on, a fixed set the
- * starter and each promoted reference solve after a promotion (`owedReading`), never scored for a
- * promotion and never released for practice.
+ * Of the drafts the reference harness answered in none of their gate's solves, with an answer of
+ * their author's that passes on them, the first of every three is held for the ladder instead
+ * (`gated`, `src/examiner/write.ts`): its gate's outcome is `ladder` and it is in the ladder state
+ * from then on, a fixed set the starter and each promoted reference solve after a promotion
+ * (`owedReading`), never scored for a promotion and never released for practice. The other two are
+ * held out as any task is (15 October).
  *
  * The shape is the only gate (`docs/plan.md`, Phase 2, and `docs/v1.md` for what v1 measured):
  *

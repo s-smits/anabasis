@@ -200,6 +200,11 @@ export const TRIGGERS = {
   "STARTER BARE": 31,
   "AFTER THE PROMOTION": 31,
   "SHARED TEMPORARY FOLDER": 31,
+  "SAFEGUARD-1 ENDED WITH A MOVE NAMED": 25,
+  "SAFEGUARD-2 WALL DURING A HOST ACTION": 27,
+  "SAFEGUARD-3 SAME MOVE ASKED AGAIN": 25,
+  "SAFEGUARD-4 CONVERSATIONS WITHOUT PROGRESS": 25,
+  "SAFEGUARD-7 LIMITS MOVED": 20,
 } as const;
 
 export const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");

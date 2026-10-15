@@ -2,7 +2,7 @@
 
 A real model in one seat, from a recorded position. Use it when the question is what a model does,
 and a script would only say what you told it to. It spends money, so it needs the operator's word
-to spend, and a size said before it starts (launch-run's sizing: solves times dollars and minutes).
+to spend, and a size said before it starts (run-management's sizing: solves times dollars and minutes).
 
 As of 2026-10-08 no live seat has been run from a seed. What follows is what a seed makes possible
 by construction, since a seed is a campaign's folder and every command takes `--name`. Treat the
@@ -21,11 +21,10 @@ The second row rests on a round keeping no state of its own: run again under a s
 Builder finished, it compares from the log and does not build again. The kept harness is
 in the seed's `states/`.
 
-Start each as launch-run starts a campaign: niced, in a process group of its own, with the key in
-Bun's `--env-file`. Each command asks its own admission before its first event and refuses the
-seed as it would the campaign; a seed that is refused is a finding before a dollar is spent. Until
-11 October `bun run runs launch` stood in front of each and kept a receipt; a command started by
-hand keeps none, so note the commit the seed ran at beside the seed.
+Start each as `bun run runs launch` starts a campaign: niced, in a process group of its own, with
+the key in Bun's `--env-file`. Each command asks its own admission before its first event and refuses the
+seed as it would the campaign; a seed that is refused is a finding before a dollar is spent. A command started
+by hand keeps no receipt, so note the commit the seed ran at beside the seed.
 
 ## Smaller than a solve
 
@@ -60,4 +59,4 @@ solve runs. The solve's folders are under the system temp folder's `ana-built-ba
 
 Nothing. A seed's solves are never copied into the campaign they came from: they ran from a cut
 log, under a session the campaign never held. When a live seat shows the real campaign should take
-a step, the step is taken on the real campaign through launch-run, and paid for there.
+a step, the step is taken on the real campaign through run-management, and paid for there.

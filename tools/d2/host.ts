@@ -1,18 +1,25 @@
 /**
- * The host a campaign's solves start into, and the gate each solve waits at.
+ * What a campaign waits for, each through one host (`Host`), so that a test stands in a host whose
+ * sleeps it counts.
  *
- * A solve's wall counts the clock, so what starts into a loaded host reaches walls an idle one
- * would not, and slows every run beside it: on 9 October one harness answered the same seven tasks
- * in a median of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). Until
- * 11 October the launcher refused such a launch once; from then until 12 October the campaign
- * command waited before a move that solves, so a comparison of hours that began on a quiet host
- * ran on whatever came after (finding 17). The gate is now at each solve's start, and each wait is
- * on record (`campaign.waited`), so a reader can tell the solver's time from the host's.
+ * - **The load, before a solve.** A solve's wall counts the clock, so a solve started into a loaded
+ *   host reaches walls an idle one would not: on 9 October one harness answered the same seven tasks
+ *   in a median of 105 s under a load of 31 and of 40 s under a load of 6 (`docs/transfer.md`). A
+ *   solve starts once the one-minute load is at or under the cores, or after `LOOKS` looks: on 15
+ *   October, three campaigns on a host of 8 cores held one of them 104 and 107 minutes. Until 12
+ *   October the gate was at a move's start, and a comparison of hours ran on whatever came after.
+ *   `--loaded` is the operator's word that the solves' times will not be compared.
+ * - **The reserve, beside the solves in flight.** A solve waits while others fly and the budget
+ *   holds no reserve for it (`affords`); until 14 October each kind of solve held its own.
+ * - **A provider's named reset.** A usage limit that names when it lifts is slept out, not a crash:
+ *   on 12 October one login's limit, an hour and forty minutes from its reset, ended five campaigns
+ *   on two hosts at once (`waitOut`).
+ * - **A network that failed a session**, a minute after the first crash and five after the second:
+ *   in buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS
+ *   lookup (`waitCrashed`).
  *
- * The provider is waited for the same way. A usage limit whose message names when it resets is a
- * wait, not a crash: on 12 October one account's limit, naming a reset an hour and forty minutes
- * on, ended five campaigns on two hosts at once, three by the crash rule after three one-turn
- * Examiner sessions each and two by a comparison that threw (`waitOut`).
+ * Every wait but the reserve's is on record as `campaign.waited`, so a reader tells the solver's
+ * time from the host's, and a provider's starts the crash rule's count again (`crashedRun`).
  */
 import { resetOf } from "#src/backends/claude.ts";
 import { CRASHES } from "#src/builder/decide.ts";
@@ -21,58 +28,50 @@ import { affords, flying, inFlight } from "#src/builder/opening.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import { type Seated, solved } from "./round.ts";
 
-/** A host as a solve's start reads it: its one-minute load, its cores, and how long the gate
- *  waits before it looks again. */
+/** A host as the waits read it: its one-minute load, its cores, how long a look waits, and how it
+ *  sleeps. */
 export interface Host {
   readonly load: () => number;
   readonly cores: number;
   readonly waitMs: number;
-  /** How the campaign sleeps out a provider's named reset (`waitOut`); `Bun.sleep` unless a test
-   *  stands in. */
-  readonly sleep?: (ms: number) => Promise<void>;
+  readonly sleep: (ms: number) => Promise<void>;
 }
 
-/** What the gate is put on: who solves, the host a test stands in where it does, and whether the
- *  operator said `--loaded`. */
+/** What the gate is put on: who solves, the host where a test stands one in, and `--loaded`. */
 interface Gate {
   readonly seated: Seated;
   readonly host?: Host | undefined;
   readonly loaded: boolean;
 }
 
-/** The longest wait for a provider's named reset: a session window's, five hours, and some. A reset
- *  further on (a week's limit) is no wait, and the campaign ends on its environment as before. */
-const RESET_MOST_MS = 6 * 3_600_000;
-/** After the named minute, so that the first call is not made in the minute the limit lifts. */
+/** This host, looking at its load every half minute. */
+export const HOST: Host = {
+  load: () => loadavg()[0] ?? 0,
+  cores: availableParallelism(),
+  waitMs: 30_000,
+  sleep: Bun.sleep,
+};
+
+/** The looks at the load before a solve starts all the same: half an hour on `HOST`. */
+const LOOKS = 60;
+/** Past the named minute, so that the first call is not made in the minute the limit lifts. */
 const RESET_MARGIN_MS = 60_000;
-/** What the host waits after the first and the second session in a row the network failed: in
- *  buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS lookup. */
 const NETWORK_WAITS_MS = [60_000, 300_000];
-/** The event every wait of the campaign's is on record as: a solve's at the load or the reserve, a
- *  session's at a provider's reset or after the network failed one. */
-const WAITED = "campaign.waited";
 const NETWORK =
   /\b(?:ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|ConnectionRefused|FailedToOpenSocket)\b/;
-
-/** This host, with half a minute between two looks at the load. */
-export const HOST: Host = { load: () => loadavg()[0] ?? 0, cores: availableParallelism(), waitMs: 30_000 };
+const WAITED = "campaign.waited";
 
 /**
- * `seated` with each solve held until the host's load is at or under its cores, and then until the
- * campaign's budget holds a reserve for it beside the solves in flight, where any are (`affords`).
- * A solve that waited on the load is said once as it waits, and recorded in `log` before it
- * starts: the task, the harness, the comparison it is for where one asks, the load it first read
- * and how long it waited. `loaded` (`--loaded` on the campaign command) skips the load, the
- * operator's word that the solves' times will not be compared; a rehearsal's scripts, whose times
- * nobody compares and which bill nothing, are seated ungated unless a test stands in a host. With
- * none in flight a solve starts: each move's cap and the table's budget ending hold the total.
- * Until 14 October a Builder's practice, a comparison and the Examiner's tries of a draft each
- * held their own reserve, and none saw the others in flight.
+ * `seated` with each solve held at the load and then at the reserve. A rehearsal's scripts, whose
+ * times nobody compares and which bill nothing, are seated ungated unless a test stands in a host.
  */
-export function gated(on: Gate, log: string): Seated {
-  const { seated, loaded, host = seated === solved ? HOST : undefined } = on;
+export function gated(
+  { seated, loaded, host = seated === solved ? HOST : undefined }: Gate,
+  log: string,
+): Seated {
   if (host === undefined) return seated;
   return (campaign, given) => {
     const seats = seated(campaign, given);
@@ -82,9 +81,13 @@ export function gated(on: Gate, log: string): Seated {
         const [since, load] = [Date.now(), host.load()];
         if (!loaded && load > host.cores) {
           console.log(
-            `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, or pass --loaded`,
+            `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, at most half an hour, or pass --loaded`,
           );
-          for (let now = load; now > host.cores; now = host.load()) await Bun.sleep(host.waitMs);
+          let looks = 0;
+          do {
+            await host.sleep(host.waitMs);
+            looks += 1;
+          } while (looks < LOOKS && host.load() > host.cores);
           append(log, WAITED, {
             task: task.taskId,
             harness: harness.digest,
@@ -94,18 +97,15 @@ export function gated(on: Gate, log: string): Seated {
             ms: Date.now() - since,
           });
         }
-        // A wait on the reserve is said once, and a killed run ends it (14 October): under a tight
-        // total every solve past the first waits its turn, so the log is not written for each.
-        let said = false;
+        // Said once, not on record: under a tight total every solve past the first waits its turn.
+        if (inFlight(log) > 0 && !affords(log, 1)) {
+          console.log(
+            `a solve of ${task.taskId} waits for the campaign's reserve while others are in flight`,
+          );
+        }
         while (inFlight(log) > 0 && !affords(log, 1)) {
           if (kill?.aborted === true) break;
-          if (!said) {
-            console.log(
-              `a solve of ${task.taskId} waits for the campaign's reserve while others are in flight`,
-            );
-          }
-          said = true;
-          await Bun.sleep(host.waitMs);
+          await host.sleep(host.waitMs);
         }
         return flying(log, () => seats.solve(task, harness, kill, comparison));
       },
@@ -114,56 +114,47 @@ export function gated(on: Gate, log: string): Seated {
 }
 
 /**
- * Whether the campaign waited out the provider limit `said` names: where its reset is named and at
- * most `RESET_MOST_MS` on, the wait is recorded in `log` (`campaign.waited`, `for: "provider"`),
- * said once, and slept to a minute past the reset. The crash rule counts no session before it
- * (`crashedRun`), so the campaign goes on where it stood, unattended as it was. The campaign asks
- * after a move that threw, with what it threw, and after each move, with what the last session the
- * crash rule counts said.
+ * Whether the campaign waited out the provider limit `said` names, a throw or a crash's words:
+ * where its reset is still ahead, the wait is on record (`for: "provider"`) and slept to a minute
+ * past it, however far on. Until 15 October a week's reset was the environment's ending, and
+ * nothing reran buffer-159-opus for 7 h 10 min on 14 October; a long wait is the operator's, or a
+ * keeper's (`tools/runs/keep.ts`), to move to another login.
  */
 export async function waitOut(
   log: string,
-  said: string | null,
-  sleep: (ms: number) => Promise<void> = Bun.sleep,
+  said: unknown,
+  host: Host = HOST,
   now = new Date(),
 ): Promise<boolean> {
-  const reset = said === null ? null : resetOf(said, now);
-  const ms = reset === null ? Number.NaN : reset.getTime() - now.getTime() + RESET_MARGIN_MS;
-  if (!(ms > 0 && ms <= RESET_MOST_MS + RESET_MARGIN_MS) || reset === null) return false;
+  const reset = resetOf(errorMessage(said), now);
+  const ms = reset === null ? 0 : reset.getTime() - now.getTime() + RESET_MARGIN_MS;
+  if (reset === null || ms <= 0) return false;
   console.log(
     `the provider's limit resets at ${reset.toISOString()}: the campaign waits for it, then goes on`,
   );
   append(log, WAITED, { for: "provider", until: reset.toISOString(), ms });
-  await sleep(ms);
+  await host.sleep(ms);
   return true;
 }
 
 /**
- * The wait after the sessions in a row that crashed (`crashedRun`), before the campaign starts the
- * next: to the provider's named reset where the last crash names one (`waitOut`), and otherwise,
- * where the network failed it, a minute after the first and five after the second, on record as
- * `campaign.waited` `for: "network"`, which starts no count again. A third ends the campaign on its
- * environment (`CRASHES`, `decide.ts`), and nothing is waited for before that ending. One wait a
- * crash: the call comes after every move and every led action, and until 14 October each of them
- * slept the same minute again until a session ended whole.
+ * The wait after the sessions in a row that crashed (`crashedRun`): to the provider's reset where
+ * the last crash names one, counted or not, and otherwise, where the network failed it, one wait a
+ * crash on record as `for: "network"`. The third ends the campaign on its environment (`CRASHES`,
+ * `decide.ts`) and is not waited for. This is asked after every move, and until 14 October each
+ * asking slept the same minute again until a session ended whole.
  */
-export async function waitCrashed(
-  log: string,
-  sleep: (ms: number) => Promise<void> = Bun.sleep,
-): Promise<void> {
+export async function waitCrashed(log: string, host: Host = HOST): Promise<void> {
   const events = read(log);
   const { count, crash } = crashedRun(events);
-  if ((await waitOut(log, crash, sleep)) || crash === null || !NETWORK.test(crash) || count >= CRASHES) {
-    return;
-  }
+  if ((await waitOut(log, crash, host)) || crash === null || !NETWORK.test(crash)) return;
+  if (count === 0 || count >= CRASHES) return;
   const ended = events.findLastIndex(({ kind }) => kind === "exam.finished" || kind === "build.finished");
-  if (events.some(({ kind, data }, at) => at > ended && kind === WAITED && data.for === "network")) {
-    return;
-  }
+  if (events.slice(ended + 1).some(({ kind, data }) => kind === WAITED && data.for === "network")) return;
   const ms = NETWORK_WAITS_MS[Math.min(count, NETWORK_WAITS_MS.length) - 1] ?? 0;
   console.log(
     `the network failed the last session: the campaign waits ${String(ms / 60_000)} minutes, then goes on`,
   );
   append(log, WAITED, { for: "network", ms });
-  await sleep(ms);
+  await host.sleep(ms);
 }

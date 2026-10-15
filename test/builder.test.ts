@@ -393,6 +393,8 @@ describe("the Builder running its campaign", () => {
           ...s.request,
           limits: { ...s.request.limits, wallSeconds: 0.05 },
           campaign: (bench) => ({
+            // An opening action on the host's time, as a led campaign's first Examiner session is.
+            start: async () => await bench.within(async () => ""),
             hook: () => "",
             tools: [
               tool({
@@ -657,6 +659,30 @@ describe("a Builder session", () => {
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 1, disputed: ["v2"], changed: false });
     expect(built).toMatchObject({ changed: false, dir: null, harness: s.digest });
     expect(s.of("harness.version")).toEqual([]);
+  });
+
+  it("asks the Referee of a rejected practice answer only, never of a solve its limits ended", async () => {
+    const s = await setup(
+      [call("practice", { tasks: ["t-1", "t-2"] }), finish],
+      [
+        { outcome: "fail", kind: "turns-ended" },
+        { outcome: "fail", kind: "no-answer" },
+      ],
+    );
+    const asked: string[] = [];
+    await session(
+      {
+        ...s.request,
+        referee: async (solve) => {
+          asked.push(solve);
+          return { ruling: "earned", check: CHECK, rule: null, field: null, reason: REASON, probes: [] };
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(asked).toEqual([]);
+    expect(s.of("referee.finding")).toEqual([]);
   });
 
   it("opens with the practice solves its dollar cap holds a reserve for, where those are fewer", async () => {
@@ -1507,8 +1533,6 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
         }),
         call("read", { path: "harness/agent/BUILT_AGENTS.md" }),
         call("preview_harness", {}),
-        // The session's own tools file and guide go back; what it installed stays.
-        call("reset_harness", {}),
         call("bash", { command: "cat harness/agent/BUILT_AGENTS.md; ls harness/.toolchain/bin" }),
         edit,
         finish,
@@ -1553,9 +1577,7 @@ describe.skipIf(runtimeProcess.platform !== "darwin")("a Builder session under t
     expect(calls[12]).toContain("The case has 8 minutes of solve time");
     expect(calls[12]).toContain("Programs this harness installed run by name: ");
     expect(calls[12]).toContain("- submit: Send answer.json from your working directory as your answer.");
-    expect(calls[13]).toContain("harness/agent is as this session found it.");
-    expect(calls[14]).toContain("greet");
-    expect(calls[14]).not.toContain("Always multiply");
+    expect(calls[13]).toContain("greet");
     expect(responses.join("\n")).not.toContain(CHECK);
     expect(built).toMatchObject({ changed: true, ended: "finished" });
     expect(readFileSync(join(built.dir ?? "", "agent", "BUILT_AGENTS.md"), "utf8")).toBe(GUIDE);

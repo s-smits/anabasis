@@ -63,7 +63,6 @@
     "ana/no-hand-rolled-sleep": "error",
     "ana/no-hand-read-argv": "error",
     "ana/no-hand-spelled-git": "error",
-    "ana/no-hand-spelled-tree-root": "error",
     "ana/no-inline-block-reducer": "error",
     "ana/no-inline-schema-literal": "error",
     "ana/no-react-effect": "error",

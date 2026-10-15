@@ -322,6 +322,7 @@ describe("a campaign run by its log", () => {
   });
 
   it("holds a campaign whose comparisons ran at a level its opening never named to that level, and not to the tree's default", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
     // Until 10 October the level was read at each comparison from the tree's default, so a
     // campaign opened on a tree at 0.10 and run on from one at 0.20 changed its test (#175).
     const name = `${STEM}-level`;
@@ -364,6 +365,7 @@ describe("a campaign run by its log", () => {
   });
 
   it("compares a step again, waits under --attended to promote it, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-climb`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores seven:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
@@ -560,10 +562,6 @@ describe("a campaign run by its log", () => {
     });
     expect(of(name, "comparison.reported").filter(({ session }) => session === "g-1")).toHaveLength(2);
 
-    // Until 2026-10-11 a person read a Diagnoser's accounts the same way (`--diagnoses`); the seat
-    // went, and the flag with it (`docs/simplify.md`, E1).
-    await expect(settleCommand([...pack, "--diagnoses", "5"])).rejects.toThrow("--diagnoses");
-
     // What the campaign hands over: the promoted harness as a folder that stands by itself, the
     // public rules, and the closing report. It is written outside the repository and once.
     const to = join(root, "handover");
@@ -642,6 +640,7 @@ describe("a campaign run by its log", () => {
   });
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-word`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores six:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
@@ -789,6 +788,7 @@ describe("a campaign run by its log", () => {
   });
 
   it("has the tasks changed where the reference left no room, and ends once the Examiner's patience is spent", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-budget`;
     const flags = [
       ...seeded(name),
@@ -808,8 +808,6 @@ describe("a campaign run by its log", () => {
     const strayed: string[] = [];
     // Every harness answers every task, in two of the model's turns: no room at eight. The
     // Examiner holds out nothing, twice, which is the campaign's patience (`spent`, `decide.ts`).
-    // Until 11 October the campaign then walked a ladder of shorter budgets (`--ladder`), three
-    // more moves here.
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, strayed),
       examine: (request) =>
@@ -844,10 +842,6 @@ describe("a campaign run by its log", () => {
       "--solve-model-turns 5 names another setting than the campaign's, which was recorded as --solve-model-turns 8",
     );
     expect(strayed).toEqual([]);
-    // `--ladder` is no flag of the campaign's since 11 October.
-    await expect(harnessBuilder([...flags, "--ladder", "4,1", "--moves", "0"], seats)).rejects.toThrow(
-      "--ladder",
-    );
   });
   it("opens from a prompt: drafts its exam, waits for the operator's word on its checks, and reaches a comparison with no file written by hand", async () => {
     const name = `${STEM}-prompt`;

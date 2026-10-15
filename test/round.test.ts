@@ -894,9 +894,8 @@ describe("a round", () => {
       });
       expect(taskStates(read(earned.s.log)).get("s1")).toBe("held");
 
-      // A packet draws up to ten rejections: a task set aside on one it did not draw stays out of
-      // this comparison, as one labelled unclear does. Until 12 October every such rejection had to
-      // carry a label. A pass's label is recorded and moves no tally.
+      // A task set aside on a rejection no label reaches stays out of this comparison, as one
+      // labelled unclear does. A pass's label is recorded and moves no tally.
       const partial = await ruledOn();
       const [one = ""] = partial.asked.aside;
       const [valid = ""] = passesIn(read(partial.s.log), "b-1");

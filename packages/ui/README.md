@@ -31,6 +31,15 @@ bun packages/ui/test/fixture-campaign.ts /tmp/ana-fixture
 cd packages/ui && bun serve.ts --repo /tmp/ana-fixture
 ```
 
+The browser tests (`test/browser-*.test.ts`) start `serve.ts` on that fixture and drive the
+installed Google Chrome through Playwright, with Playwright's own assertions under `bun:test`;
+`ANA_UI_CHROME=<path>` names another Chromium. They run with the rest of `packages/ui/test`:
+
+```sh
+bun run test -- packages/ui/test/browser-shell.test.ts   # one file
+bun run test -- packages/ui/test                          # every UI test
+```
+
 `bun run ui:build` builds the page alone into `packages/ui/dist`: it carries no campaign data.
 `bun run ui:gate` installs the locked UI dependencies, typechecks and builds the page, and runs
 `packages/ui/test`; CI's macOS job runs it before the lint.

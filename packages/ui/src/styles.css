@@ -582,6 +582,15 @@ button.ana-hash.is-revealed {
   width: 100%;
 }
 
+/* The previous campaign's pane while the next is read (shell.tsx): laid out as the page lays out
+   its own children, so nothing moves when it gives way, and inert, so nothing in it can be used. */
+.ana-pending {
+  cursor: progress;
+  display: grid;
+  gap: inherit;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .ana-eyebrow {
   color: var(--ana-dim);
   font-family: var(--font-editorial);
@@ -971,18 +980,26 @@ button.ana-hash.is-revealed {
     display: grid;
   }
 
+  /* One column a pane: five columns once held a fifth item, and left "Campaign" too narrow a
+     cell, so its label ran into the next. */
   .ana-sidebar-nav {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0;
   }
 
   .ana-sidebar .ana-nav-item,
   .ana-sidebar.is-collapsed .ana-nav-item {
+    align-items: center;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    min-width: 0;
     padding: 10px 2px;
+  }
+
+  .ana-sidebar .ana-nav-label {
+    max-width: 100%;
   }
 
   .ana-sidebar.is-collapsed .ana-nav-label {

@@ -41,12 +41,13 @@ const tallyWords = ({ wins, losses, ties }: Tally): string =>
 /** A comparison's rulings in words: by kind, or how many were ruled while one is withheld. */
 function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
   if (rulings.withheld) {
-    return `${plural(rulings.ruled, "rejection")} ruled; the kinds are withheld while a ruling is`;
+    return `${plural(rulings.ruled, "rejection")} ruled; the kinds stay hidden while any ruling is withheld`;
   }
   return RULING_KINDS.map((kind) => `${String(rulings.kinds[kind])} ${rulingLabel(kind)}`).join(" · ");
 }
 
-/** A solve as a chip in a scored task's row: its ending in words, opened on a click. */
+/** A solve as a chip in a scored task's row: its ending in words, opened on a click. The ending
+ *  alone would give every chip of a table one of four names, so each is named for its solve too. */
 function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: string) => void }) {
   if (rows.length === 0) return <span className="ana-faint">no solve</span>;
   return (
@@ -59,6 +60,7 @@ function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: 
             type="button"
             className={`ana-solve-chip ana-solve-chip--${tone}`}
             data-row={row.id}
+            aria-label={`${label}, solve ${row.id}`}
             title={`Open solve ${row.id}`}
             onClick={() => onOpen(row.id)}
           >
@@ -385,7 +387,7 @@ export function ComparisonDetailView({
                     <td>
                       <SolveChips rows={task.fresh} onOpen={openSolve} />
                     </td>
-                    <td>
+                    <td className="ana-rulings-cell">
                       <RulingsCell
                         rows={[...task.old, ...task.fresh]}
                         tier={detail.tier}

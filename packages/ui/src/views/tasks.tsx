@@ -1,8 +1,8 @@
 import { Section } from "../components/layout.tsx";
 import { detailsOf, useTask, useTasks } from "../live.ts";
-import type { CampaignReading, TaskGrid } from "../models.ts";
-import type { Navigation, PaneProps } from "../route.ts";
+import type { PaneProps } from "../route.ts";
 import { enter, Pending, useDrill } from "./drill.tsx";
+import { useLate } from "./late.ts";
 import { SolveView } from "./solve.tsx";
 import { TaskDetailView } from "./tasks-detail.tsx";
 import { TaskGridView } from "./tasks-grid.tsx";
@@ -12,30 +12,21 @@ import { TaskGridView } from "./tasks-grid.tsx";
  * (`tasks-grid.tsx`); a task opens its detail in place through the route's `task`
  * (`tasks-detail.tsx`), and a solve in it through the route's `solve` (`solve.tsx`), each level
  * hiding the one above it as the Moves pane's do.
+ *
+ * The grid stays on screen until the task opened from it is read, and is marked as reading only
+ * once that read is late (`late.ts`): until 14 October the grid gave way at once to a "Reading the
+ * task" placeholder for the frames the server took to answer.
  */
-
-/** The task the route names, read and shown. */
-function TaskView({
-  reading,
-  navigation,
-  grid,
-}: {
-  reading: CampaignReading;
-  navigation: Navigation;
-  grid: TaskGrid;
-}) {
-  const { task } = navigation.route;
-  const live = useTask(detailsOf(reading), task);
-  if (live.data === null || !live.current) {
-    return <Pending live={live} what="the task" />;
-  }
-  return <TaskDetailView detail={live.data} grid={grid} reading={reading} navigation={navigation} />;
-}
 
 export function TasksPane({ reading, navigation }: PaneProps) {
   const { task, solve } = navigation.route;
   const grid = useTasks(detailsOf(reading));
-  const outer = useDrill(task ?? (solve === null ? null : `solve:${solve}`));
+  const detail = useTask(detailsOf(reading), task);
+  // The task shown: the one asked for once its detail is read, or once its read failed, which the
+  // detail says. Until then the grid stays.
+  const shown = task !== null && (detail.current || detail.error !== null) ? task : null;
+  const late = useLate(task === null ? null : detail);
+  const outer = useDrill(shown ?? (solve === null ? null : `solve:${solve}`));
   const inner = useDrill(solve);
   if (grid.data === null || !grid.current) {
     return (
@@ -46,10 +37,18 @@ export function TasksPane({ reading, navigation }: PaneProps) {
   }
   return (
     <Section title="Tasks">
-      <div ref={outer.list} hidden={task !== null || solve !== null}>
+      <div
+        ref={outer.list}
+        hidden={shown !== null || solve !== null}
+        className={late ? "is-reading" : undefined}
+        aria-busy={late}
+      >
+        <p role="status" className="ana-sr-only">
+          {late ? "Reading the task." : ""}
+        </p>
         <TaskGridView grid={grid.data} onOpen={(version) => enter(navigation, { task: version })} />
       </div>
-      {task === null ? null : (
+      {shown === null ? null : (
         <div
           ref={outer.detail}
           className="ana-drill"
@@ -58,7 +57,16 @@ export function TasksPane({ reading, navigation }: PaneProps) {
           hidden={solve !== null}
         >
           <div ref={inner.list}>
-            <TaskView reading={reading} navigation={navigation} grid={grid.data} />
+            {detail.data === null || !detail.current ? (
+              <Pending live={detail} what="the task" />
+            ) : (
+              <TaskDetailView
+                detail={detail.data}
+                grid={grid.data}
+                reading={reading}
+                navigation={navigation}
+              />
+            )}
           </div>
         </div>
       )}
@@ -72,6 +80,8 @@ export function TasksPane({ reading, navigation }: PaneProps) {
           />
         </div>
       )}
+      {outer.marker}
+      {inner.marker}
     </Section>
   );
 }

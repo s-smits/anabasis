@@ -1,5 +1,5 @@
 import { ArrowLeft } from "lucide-react";
-import { type ReactNode, useLayoutEffect, useRef } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import { Callout } from "../components/layout.tsx";
 import { Badge, Button, NoSignal } from "../components/primitives.tsx";
 import type { Live } from "../live.ts";
@@ -17,6 +17,9 @@ import type { Ending as SolveEnding } from "../../../../src/kernel/solve.ts";
  * button is a way back too, and the page's own Back button goes back through the history where the
  * page itself made the entry, so that the two never disagree about where "back" is. A detail opened
  * from a link has no such entry, and its Back button names the list as a new one.
+ *
+ * A level waits for its answer with the one before it on screen (`late.ts`), and the list comes
+ * back in the frame the detail leaves; the history puts its scroll back.
  */
 
 /** A label and the tone it is drawn in. */
@@ -53,25 +56,44 @@ function leave(navigation: Navigation, change: RouteChange): void {
 
 /**
  * Focus as the list and its detail take turns: the detail when one opens, and the row it was
- * opened from when the list returns. Rows carry `data-row` with their key.
+ * opened from when the list returns. Rows carry `data-row` with their key. `selected` is what is
+ * shown, not what the route asks for, so that focus never lands on a level still being read.
+ *
+ * The turn is a route's, a click's or the browser's back button's alike, so no handler owns it:
+ * `marker`, rendered after the list and the detail, is keyed by the turn, and its ref moves focus as
+ * it attaches, in the commit and before the frame is painted. Until 14 October a layout effect did
+ * this, run after every render that changed `selected`.
  */
 export function useDrill(selected: string | null) {
   const list = useRef<HTMLDivElement>(null);
   const detail = useRef<HTMLDivElement>(null);
-  const last = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    if (selected !== null) {
-      last.current = selected;
-      detail.current?.focus({ preventScroll: true });
-      window.scrollTo({ top: 0, behavior: "instant" });
-      return;
-    }
-    const origin = last.current;
-    if (origin === null) return;
-    const row = list.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(origin)}"]`);
-    row?.focus();
-  }, [selected]);
-  return { list, detail };
+  // The detail opened last, kept as the render finds it: the row the list returns to.
+  const [last, setLast] = useState<string | null>(selected);
+  if (selected !== null && selected !== last) setLast(selected);
+  const turn = useCallback(
+    (marker: HTMLSpanElement | null) => {
+      if (marker === null) return;
+      if (selected !== null) {
+        detail.current?.focus({ preventScroll: true });
+        window.scrollTo({ top: 0, behavior: "instant" });
+        return;
+      }
+      if (last === null) return;
+      list.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(last)}"]`)?.focus();
+    },
+    [selected, last],
+  );
+  const key = selected === null ? `list ${last ?? ""}` : `detail ${selected}`;
+  // Wrapped, so that two drills of one pane never set two markers of one key side by side.
+  return {
+    list,
+    detail,
+    marker: (
+      <span hidden>
+        <span key={key} ref={turn} />
+      </span>
+    ),
+  };
 }
 
 /** The head of a detail: the way back, the title with what it is, its badges, and one line. */

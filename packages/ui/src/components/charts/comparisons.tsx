@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useMemo } from "react";
+import { memo, type MouseEvent, type ReactNode, useMemo } from "react";
 import {
   Bar,
   BarChart,
@@ -60,10 +60,11 @@ const FEW_SLOT_PX = 96;
 const BAR_PX = 48;
 /** The y axis's width and the plot's margins beside the columns. */
 const AXIS_PX = 36;
-const MARGIN = { top: 50, right: 20, bottom: 4, left: 0 } as const;
+const MARGIN = { top: 54, right: 20, bottom: 4, left: 0 } as const;
 const KIND_WORD = { candidate: null, repeat: "repeat", control: "control" } as const;
-/** Rows above the plot: promotions on the first two, setting breaks on the third. */
-const PROMOTION_ROW = 42;
+/** Rows above the plot: promotions on the first two, setting breaks on the third, each a label's
+ *  height below the one above, so that the second promotion row does not touch a setting's label. */
+const PROMOTION_ROW = 46;
 const FLAG_ROWS = [0, 1] as const;
 const FLAG_ROW_PX = 14;
 const SETTING_ROW = 10;
@@ -74,6 +75,32 @@ const BETWEEN_DROP = 48;
 const DIM = "var(--ana-dim)";
 const TEXT = "var(--ana-text)";
 const FAINT = "var(--ana-faint)";
+
+/** A promotion's divider, where it stands and how wide its label runs. */
+interface Flag {
+  readonly at: number;
+  readonly width: number;
+}
+
+/** Where a flag's label goes: its row above the plot, and the side of its divider. */
+interface Place {
+  readonly row: number;
+  readonly side: 1 | -1;
+}
+
+/** A placed label's extent, with its divider's x and row. */
+interface Span {
+  readonly at: number;
+  readonly row: number;
+  readonly from: number;
+  readonly to: number;
+}
+
+/** The clear space kept between two labels, and around a divider that passes a label. */
+const LABEL_GAP = 6;
+const DIVIDER_GAP = 3;
+/** How many placements the search tries before it settles for the best it has. */
+const SEARCH_NODES = 4096;
 
 /** Every outcome twice, a candidate's and a control's, in the stacking order of `OUTCOMES`. */
 const SERIES: readonly { readonly key: Series; readonly color: string; readonly quiet: boolean }[] =
@@ -136,12 +163,80 @@ function sessionGlyphs(x: number, y: number, examiner: number, builder: number):
   return parts;
 }
 
+function spanOf(flag: Flag, place: Place): Span {
+  const [from, to] = place.side > 0 ? [flag.at, flag.at + flag.width] : [flag.at - flag.width, flag.at];
+  return { at: flag.at, row: place.row, from, to };
+}
+
+/** Whether a divider at `x` runs through a label. Two dividers at one x pass nothing of each other's. */
+function through(x: number, span: Span): boolean {
+  return Math.abs(x - span.at) > 1 && x > span.from - DIVIDER_GAP && x < span.to + DIVIDER_GAP;
+}
+
+/** What a label costs beside those already placed: a row down or the other side of its divider a
+ *  little, a label past the chart's edge more, and a label that another label or a divider crosses
+ *  most. A divider runs down from its own row, so it crosses labels on its row and the rows below. */
+function costOf(span: Span, rank: number, placed: readonly Span[], right: number): number {
+  const crossings = placed.filter(
+    (other) =>
+      (other.row === span.row && other.from < span.to + LABEL_GAP && span.from < other.to + LABEL_GAP) ||
+      (other.row <= span.row && through(other.at, span)) ||
+      (span.row <= other.row && through(span.at, other)),
+  ).length;
+  return rank + (span.from < 0 || span.to > right ? 100 : 0) + crossings * 1000;
+}
+
 /**
- * A promotion's divider and its flag, each after the last comparison that began before it. A
- * divider near the right edge carries its flag and label on its left, and a label that would cross
- * one already placed drops to the next row, so that two promotions a comparison apart, a promotion
- * despite the rule and a return to the starter for one, stay legible.
+ * Each promotion's label placed on one of the two rows, on either side of its divider, so that no
+ * label crosses another or another's divider where any placement allows it. On 14 October the
+ * fixture's promotion despite the rule and the return to the starter one comparison later stood on
+ * two rows that each checked only its own, and the first divider ran through the second label. The
+ * search is exhaustive over the few promotions a campaign makes, bounded for many, and starts from
+ * the placement that takes each label's cheapest place in turn.
  */
+function placeFlags(flags: readonly Flag[], right: number): Place[] {
+  const choices = (flag: Flag): Place[] => {
+    const side = flag.at + flag.width > right ? -1 : 1;
+    return FLAG_ROWS.flatMap((row) => [
+      { row, side },
+      { row, side: side > 0 ? -1 : 1 },
+    ]);
+  };
+  const greedy: Place[] = [];
+  const spans: Span[] = [];
+  let best = 0;
+  for (const flag of flags) {
+    const scored = choices(flag).map((place, rank) => {
+      const span = spanOf(flag, place);
+      return { place, span, cost: costOf(span, rank, spans, right) };
+    });
+    const cheapest = scored.reduce((least, each) => (each.cost < least.cost ? each : least));
+    greedy.push(cheapest.place);
+    spans.push(cheapest.span);
+    best += cheapest.cost;
+  }
+  let chosen = greedy;
+  let nodes = 0;
+  const walk = (index: number, placed: readonly Span[], places: readonly Place[], cost: number): void => {
+    if (cost >= best || nodes > SEARCH_NODES) return;
+    nodes += 1;
+    const flag = flags[index];
+    if (flag === undefined) {
+      best = cost;
+      chosen = [...places];
+      return;
+    }
+    for (const [rank, place] of choices(flag).entries()) {
+      const span = spanOf(flag, place);
+      walk(index + 1, [...placed, span], [...places, place], cost + costOf(span, rank, placed, right));
+    }
+  };
+  walk(0, [], [], 0);
+  return chosen;
+}
+
+/** A promotion's divider and its flag, each after the last comparison that began before it, its
+ *  label placed by `placeFlags`. */
 function promotionFlags(
   promotions: readonly Promotion[],
   names: Readonly<Record<string, string>>,
@@ -153,22 +248,18 @@ function promotionFlags(
     readonly right: number;
   },
 ): ReactNode[] {
-  const placed: { readonly row: number; readonly from: number; readonly to: number }[] = [];
-  return promotions.flatMap((promotion) => {
+  const drawn = promotions.flatMap((promotion) => {
     const after = promotion.afterComparison ?? frame.first;
     if (after === undefined) return [];
-    const at = frame.at(after, promotion.afterComparison === null ? "start" : "end");
     const word = promotionWord(promotion, names);
-    const width = 12 + word.length * CHAR_PX;
-    const side = at + width > frame.right ? -1 : 1;
-    const [from, to] = side > 0 ? [at, at + width] : [at - width, at];
-    const row =
-      FLAG_ROWS.find(
-        (each) => !placed.some((other) => other.row === each && other.from < to && from < other.to),
-      ) ?? 0;
-    placed.push({ row, from, to });
+    const at = frame.at(after, promotion.afterComparison === null ? "start" : "end");
+    return [{ promotion, word, at, width: 12 + word.length * CHAR_PX }];
+  });
+  const places = placeFlags(drawn, frame.right);
+  return drawn.map(({ promotion, word, at }, index) => {
+    const { row, side } = places[index] ?? { row: 0, side: 1 };
     const flagTop = frame.top - PROMOTION_ROW + row * FLAG_ROW_PX;
-    return [
+    return (
       <g key={`promotion-${String(promotion.index)}`}>
         <title>{promotion.despite ?? word}</title>
         <line
@@ -194,8 +285,8 @@ function promotionFlags(
         >
           {word}
         </text>
-      </g>,
-    ];
+      </g>
+    );
   });
 }
 
@@ -386,8 +477,14 @@ export const ComparisonsChart = memo(function ComparisonsChart({ bars, promotion
     // A step is the one reading worth finding at a glance, so its column is named in full ink.
     const step = slot.bar.reading === "step";
     const word = [KIND_WORD[slot.bar.kind], step ? "step" : null].filter((part) => part !== null).join(", ");
+    // The chart under the label opens the column its tooltip last pointed at, which after a keyboard
+    // or a hover elsewhere is another; the label's click is the label's alone.
+    const openLabel = (event: MouseEvent) => {
+      event.stopPropagation();
+      onOpen(slot.bar.move);
+    };
     return (
-      <g className="ana-comparisons-tick" onClick={() => onOpen(slot.bar.move)}>
+      <g className="ana-comparisons-tick" onClick={openLabel}>
         <text
           x={Number(x)}
           y={Number(y) + 12}

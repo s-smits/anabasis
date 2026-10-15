@@ -7,6 +7,10 @@ import { time } from "./format.ts";
  * One page of the log, one line an event: its place, its time, its kind, and the session or solve it
  * belongs to. The server pages it and applies the filters before paging (`LOG_PAGE_SIZE`), as v1's
  * evidence list did, so a long log is never sent whole. An event opens in the inspector.
+ *
+ * The page shown may be the one before the page asked for, while that one is read: the paging
+ * steps from the offset asked for, so that two quick clicks on Next go two pages on, and the table
+ * says it is reading once the read is late.
  */
 
 export const ALL = "all";
@@ -19,13 +23,20 @@ export interface LogFilters {
 
 export function LogList({
   page,
+  offset,
+  reading,
   filters,
   onFilters,
   onOffset,
   selected,
   onOpen,
 }: {
+  /** The page shown, which may be the last one read while `offset` is read. */
   page: LogPage;
+  /** The offset asked for. */
+  offset: number;
+  /** Whether the page asked for has been read for long enough to say so. */
+  reading: boolean;
   filters: LogFilters;
   onFilters: (filters: LogFilters) => void;
   onOffset: (offset: number) => void;
@@ -59,7 +70,7 @@ export function LogList({
       {page.events.length === 0 ? (
         <NoSignal title="No matching event">Change the filters or clear them.</NoSignal>
       ) : (
-        <div className="ana-dense ana-log">
+        <div className={`ana-dense ana-log${reading ? " is-reading" : ""}`} aria-busy={reading}>
           <DataTable>
             <thead>
               <tr>
@@ -84,7 +95,11 @@ export function LogList({
                       #{event.index}
                     </button>
                   </td>
-                  <td className="ana-num">{time(event.at)}</td>
+                  {/* Left under its head, in tabular figures: aligned right in the widest column, a
+                      time stood against the kind beside it, far from its head (14 October). */}
+                  <td>
+                    <span className="ana-num">{time(event.at)}</span>
+                  </td>
                   <td className="ana-mono">{event.kind}</td>
                   <td className="ana-mono">{event.session ?? ""}</td>
                   <td className="ana-mono">{event.solve ?? ""}</td>
@@ -95,17 +110,18 @@ export function LogList({
         </div>
       )}
       <div className="ana-file-pagination">
-        <span>
+        <span role="status">
           {page.matching === 0 ? "0" : `${String(page.offset + 1)}–${String(last)}`} of {page.matching}{" "}
           {page.matching === 1 ? "event" : "events"}
+          {reading ? " · reading" : ""}
         </span>
-        <Button
-          disabled={page.offset === 0}
-          onClick={() => onOffset(Math.max(0, page.offset - LOG_PAGE_SIZE))}
-        >
+        <Button disabled={offset === 0} onClick={() => onOffset(Math.max(0, offset - LOG_PAGE_SIZE))}>
           Previous
         </Button>
-        <Button disabled={!page.hasMore} onClick={() => onOffset(page.offset + LOG_PAGE_SIZE)}>
+        <Button
+          disabled={offset + LOG_PAGE_SIZE >= page.matching}
+          onClick={() => onOffset(offset + LOG_PAGE_SIZE)}
+        >
           Next
         </Button>
       </div>

@@ -5,10 +5,10 @@
  *   bun run gate                 install, the UI's own gate, format, typecheck, strict lint, the suite
  *   bun run gate -- --static     the same, with the suite replaced by the tests near what HEAD changed
  *
- * The steps are `ci.yml`'s Darwin job, cheapest first, so a format slip fails in a second rather
- * than after the linter. The strict lint fails on everything a plain one does, so it runs once.
- * Every step fails in one spelling, `gate: step <name> failed (exit <n>)`, which the pre-push hook
- * and `bun run land` repeat without knowing each tool's wording.
+ * The steps are `ci.yml`'s two Darwin jobs, cheapest first, so a format slip fails in a second
+ * rather than after the linter. The strict lint fails on everything a plain one does, so it runs
+ * once. Every step fails in one spelling, `gate: step <name> failed (exit <n>)`, which the pre-push
+ * hook and `bun run land` repeat without knowing each tool's wording.
  *
  * `--static` is what each commit below the one that gets the whole gate receives: v1's rule of 24
  * September 2026 that every published commit passes alone, because a session reading the history

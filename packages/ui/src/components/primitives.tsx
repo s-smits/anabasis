@@ -1,8 +1,11 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import type { Tone } from "../models.ts";
 import { shortHash } from "../models.ts";
 import { hasText } from "../../../../src/meta/text.ts";
+
+/** How long a copied hash says so before it shows the hash again. */
+const COPIED_MS = 1_400;
 
 export function Badge({
   tone = "neutral",
@@ -44,11 +47,13 @@ export function HashValue({
   absent?: string;
 }) {
   const [state, setState] = useState<"idle" | "copied" | "revealed">("idle");
-  useEffect(() => {
-    if (state !== "copied") return;
-    const timer = setTimeout(() => setState("idle"), 1400);
-    return () => clearTimeout(timer);
-  }, [state]);
+  // The copy that says "copied" sets the time it says so for; a second copy within it restarts it.
+  const shown = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const copied = () => {
+    clearTimeout(shown.current);
+    setState("copied");
+    shown.current = setTimeout(() => setState("idle"), COPIED_MS);
+  };
   if (!hasText(value)) return <code className="ana-code">{absent}</code>;
   const short = shortHash(value, length);
   if (short === value) return <code className="ana-code">{value}</code>;
@@ -66,10 +71,9 @@ export function HashValue({
           setState((current) => (current === "revealed" ? "idle" : "revealed"));
           return;
         }
-        void clipboard.writeText(value).then(
-          () => setState("copied"),
-          () => setState((current) => (current === "revealed" ? "idle" : "revealed")),
-        );
+        void clipboard
+          .writeText(value)
+          .then(copied, () => setState((current) => (current === "revealed" ? "idle" : "revealed")));
       }}
     >
       {state === "copied" ? "copied" : state === "revealed" ? value : short}

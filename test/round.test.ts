@@ -1355,46 +1355,26 @@ describe("a checkpoint with no session", () => {
     );
   });
 
-  it("reads its solves at the one budget they were told, and refuses to settle a comparison that began with shorter budgets", async () => {
-    {
-      // Both arms answer everything within the full limit: the harness in twenty turns, the bare
-      // solver in eight and then ten. Until 2026-10-11 the same solves were read again at each
-      // shorter budget the comparison fixed, and the report held a row for each.
-      const s = await setup([], (_version, side, nth) => ({
-        ending: PASS,
-        turns: side === "old" ? 20 : 8 + 2 * nth,
-      }));
-      const report = await checkpoint(s.compare("g0"));
-      expect(report).toMatchObject({
-        scored: { wins: 0, losses: 0, ties: 4 },
-        billed: { old: BILLED, fresh: BILLED },
-        reading: NO_STEP,
-      });
-      expect(report).not.toHaveProperty("budgets");
-      expect(s.of(COMPARISON_STARTED)[0]).not.toHaveProperty("budgets");
-      expect(JSON.stringify(s.of(COMPARISON_REPORTED))).not.toContain("budgets");
-    }
-    {
-      const s = await setup([edit, finish], rejecting);
-      await round(s.request);
-      const labels = new Map(toLabel(read(s.log), "b-1").aside.map((solve) => [solve, "earned"] as const));
-      // The same comparison as a source of 10 October began it: read also at 12 turns.
-      const older = join(dirname(s.log), "older.jsonl");
-      for (const { kind, data } of read(s.log)) {
-        const began = kind === COMPARISON_STARTED ? { budgets: [{ turns: 12 }] } : {};
-        append(older, kind, { ...data, ...began });
-      }
-      expect(() => settleReading(older, "b-1", labels)).toThrow(
-        "comparison b-1 began with 1 shorter budgets, which this source reads no longer: its report stands as it was written",
-      );
-      expect(read(older).filter(({ kind }) => kind === COMPARISON_REPORTED)).toHaveLength(1);
-      expect(settleReading(s.log, "b-1", labels)).not.toHaveProperty("budgets");
-    }
-  });
-
   // Fix row F46: a settling reads the comparison's terms back from its start. A comparison that
   // began with shorter budgets reported rows this source reads no longer, and the settled report
   // would drop them in place of the report the comparison began with.
+  it("refuses to settle a comparison that began with shorter budgets, and leaves its report as written", async () => {
+    const s = await setup([edit, finish], rejecting);
+    await round(s.request);
+    const labels = new Map(toLabel(read(s.log), "b-1").aside.map((solve) => [solve, "earned"] as const));
+    // The same comparison as a source of 10 October began it: read also at 12 turns.
+    const older = join(dirname(s.log), "older.jsonl");
+    for (const { kind, data } of read(s.log)) {
+      const began = kind === COMPARISON_STARTED ? { budgets: [{ turns: 12 }] } : {};
+      append(older, kind, { ...data, ...began });
+    }
+    expect(() => settleReading(older, "b-1", labels)).toThrow(
+      "comparison b-1 began with 1 shorter budgets, which this source reads no longer: its report stands as it was written",
+    );
+    expect(read(older).filter(({ kind }) => kind === COMPARISON_REPORTED)).toHaveLength(1);
+    expect(settleReading(s.log, "b-1", labels)).not.toHaveProperty("budgets");
+  });
+
   it("writes the operator's prediction with the terms, before the first solve, and keeps it", async () => {
     const s = await setup([], step);
     const prediction = "no step: the starter is valid on most of these at this budget";

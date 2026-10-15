@@ -7,7 +7,11 @@
  * 11 October the launcher refused such a launch once; from then until 12 October the campaign
  * command waited before a move that solves, so a comparison of hours that began on a quiet host
  * ran on whatever came after (finding 17). The gate is now at each solve's start, and each wait is
- * on record (`campaign.waited`), so a reader can tell the solver's time from the host's.
+ * on record (`campaign.waited`), so a reader can tell the solver's time from the host's. A wait
+ * lasts at most `LOOKS` looks: on 15 October, with three campaigns on m1-air's 8 cores, a
+ * comparison's solves of one of them waited 104 and 107 minutes while the other two kept the load
+ * up, and 23 of some 750 waits on record passed half an hour. The solves of a task run together
+ * and both harnesses' solves share the load a capped wait starts into.
  *
  * The provider is waited for the same way. A usage limit whose message names when it resets is a
  * wait, not a crash: on 12 October one account's limit, naming a reset an hour and forty minutes
@@ -42,6 +46,8 @@ interface Gate {
   readonly loaded: boolean;
 }
 
+/** How often the gate looks at the load before a solve starts all the same: half an hour on `HOST`. */
+const LOOKS = 60;
 /** After the named minute, so that the first call is not made in the minute the limit lifts. */
 const RESET_MARGIN_MS = 60_000;
 /** What the host waits after the first and the second session in a row the network failed: in
@@ -57,7 +63,8 @@ const NETWORK =
 export const HOST: Host = { load: () => loadavg()[0] ?? 0, cores: availableParallelism(), waitMs: 30_000 };
 
 /**
- * `seated` with each solve held until the host's load is at or under its cores, and then until the
+ * `seated` with each solve held until the host's load is at or under its cores, or `LOOKS` looks
+ * on, and then until the
  * campaign's budget holds a reserve for it beside the solves in flight, where any are (`affords`).
  * A solve that waited on the load is said once as it waits, and recorded in `log` before it
  * starts: the task, the harness, the comparison it is for where one asks, the load it first read
@@ -79,9 +86,11 @@ export function gated(on: Gate, log: string): Seated {
         const [since, load] = [Date.now(), host.load()];
         if (!loaded && load > host.cores) {
           console.log(
-            `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, or pass --loaded`,
+            `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, at most half an hour, or pass --loaded`,
           );
-          for (let now = load; now > host.cores; now = host.load()) await Bun.sleep(host.waitMs);
+          for (let now = load, look = 0; now > host.cores && look < LOOKS; now = host.load(), look += 1) {
+            await Bun.sleep(host.waitMs);
+          }
           append(log, WAITED, {
             task: task.taskId,
             harness: harness.digest,

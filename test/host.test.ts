@@ -200,4 +200,31 @@ describe("the campaign's reserve", () => {
     await gate.solve(task, harness, kill.signal);
     expect(ran).toEqual([EXAMPLE.taskId, EXAMPLE.taskId]);
   });
+
+  it("starts a solve after its last look where the load never falls, with the wait on record", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), "ana-host-looks-")), "campaign.jsonl");
+    let looks = 0;
+    const seat: Seats = {
+      builder: null,
+      setting: "s",
+      solve: async () => ({ solve: "s-1", ending: { outcome: "pass" } }),
+    };
+    const load = () => {
+      looks += 1;
+      return 99;
+    };
+    const seated = gated({ seated: () => seat, loaded: false, host: { load, cores: 4, waitMs: 1 } }, log);
+    // SAFETY: as above, the gate and the seat read nothing of the campaign.
+    const gate = seated({} as Campaign, { builder: undefined, reference: "h1" });
+    const task: TaskPackage = { ...EXAMPLE, ruleIds: [], checks: "" };
+    // On 15 October one campaign's solves waited 107 minutes while two others kept m1-air loaded.
+    const ended = await gate.solve(task, { dir: "", digest: "h1" }, undefined);
+    expect(ended).toMatchObject({ ending: { outcome: "pass" } });
+    expect(looks).toBe(61);
+    expect(read(log).filter(({ kind }) => kind === "campaign.waited")).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ task: EXAMPLE.taskId, load: 99, cores: 4 }),
+      }),
+    ]);
+  });
 });

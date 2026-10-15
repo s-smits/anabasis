@@ -1,15 +1,18 @@
 /**
  * Other machines that hold worktrees of this repository, reached over ssh: `on <host> <verb ...>`
- * runs any verb of `bun run runs` there, and `hosts` says each one's load and its runs' status.
+ * runs any verb of `bun run runs` there, and `hosts` says each one's runs' status, which `status`
+ * adds below this machine's own wherever a host is listed.
  *
  *   bun run runs on <host> <verb> [args ...]
- *   bun run runs hosts
+ *   bun run runs hosts [--all]
  *
  * The hosts are `ANA_HOSTS` in the environment, a JSON list, loaded as the credentials are by Bun's
  * `--env-file` from a file git ignores, so no machine is named in the repository. Each names the
  * host, its ssh destination, the worktree the verb runs in, the Bun there, and the env files there
  * that Bun loads (a path on that machine, never copied). The remote command runs under a login
- * shell, so a campaign it starts finds the tools a login there has.
+ * shell, so a campaign it starts finds the tools a login there has, and with `ANA_HOSTS` empty,
+ * which Bun keeps over an env file's: a verb run on another host reaches no further one, so two
+ * machines that list each other do not ask each other's status in a loop.
  */
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
@@ -24,14 +27,14 @@ export interface Host {
   readonly envFiles?: readonly string[];
 }
 
-const hostsOf = (): readonly Host[] => parseJsonAs<Host[]>(runtimeProcess.env.ANA_HOSTS ?? "[]");
+export const hostsOf = (): readonly Host[] => parseJsonAs<Host[]>(runtimeProcess.env.ANA_HOSTS ?? "[]");
 
 const quoted = (word: string) => `'${word.replaceAll("'", `'\\''`)}'`;
 
 /** The verb `args` on `host`, run to its end with its output here; its exit code. */
 async function onHost(host: Host, args: readonly string[]): Promise<number> {
   const env = (host.envFiles ?? []).map((file) => ` --env-file=${file}`).join("");
-  const command = `cd ${host.tree} && ${host.bun}${env} tools/runs/cli.ts ${args.map(quoted).join(" ")}`;
+  const command = `cd ${host.tree} && ANA_HOSTS='[]' ${host.bun}${env} tools/runs/cli.ts ${args.map(quoted).join(" ")}`;
   const child = capturedSpawn(
     ["ssh", "-o", "ConnectTimeout=10", host.ssh, `exec "$SHELL" -lc ${quoted(command)}`],
     {
@@ -58,13 +61,13 @@ export async function on(args: readonly string[]): Promise<void> {
   runtimeProcess.exitCode = await onHost(hostNamed(name), verb);
 }
 
-/** `bun run runs hosts`. */
-export async function hosts(): Promise<void> {
+/** `bun run runs hosts`: `status`, with its `args`, on each host. */
+export async function hosts(args: readonly string[]): Promise<void> {
   const all = hostsOf();
   if (all.length === 0) console.log("no host: ANA_HOSTS names none in this environment");
   for (const host of all) {
     console.log(`── ${host.name}`);
-    const code = await onHost(host, ["status"]);
+    const code = await onHost(host, ["status", ...args]);
     if (code !== 0) console.log(`  ${host.name} answered with exit ${String(code)}`);
   }
 }

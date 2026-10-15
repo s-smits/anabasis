@@ -24,9 +24,9 @@ one two worktrees hold.
 | `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, and sets the source aside | `manage.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
-| `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, promotions and ending | `pulse.ts` |
+| `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, promotions and ending; then each host `ANA_HOSTS` lists | `pulse.ts` |
 | `logins [N ...] [--json]` | each login's five-hour and weekly use, and when the pool runs out | `logins.ts` |
-| `on <host> <verb ...>`, `hosts` | any verb on another host over ssh; `status` on each host | `hosts.ts` |
+| `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone | `hosts.ts` |
 | `pulse [<name>] [--once]` | what each run gained since the last look | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |
 | `source <name> [--holds <c>]...` | each run's commit, its tree, where the commit is published, whether it holds a fix | `receipt.ts` |
@@ -61,9 +61,10 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
-  hosts, a JSON list of `{name, ssh, tree, bun, envFiles}`. Keep both in a second env file beside
-  the credentials, ignored by git as `.env.*` is, and pass it with a second `--env-file`: the code
-  is the same for every operator, and no login or host of one is in the repository.
+  hosts, a JSON list of `{name, ssh, tree, bun, envFiles}`. Copy `.env.runs.example` to
+  `.env.runs`, which git ignores as it does every `.env.*` but the example, fill in your own, and
+  pass it with a second `--env-file`: the code is the same for every operator, and no login or
+  host of one is in the repository.
 - **One or two campaigns at a time on one host.** A solve's wall counts the clock. The command
   waits before each solve until the one-minute load is at or under the cores, or half an hour on,
   and says so once; `--loaded` starts it all the same, the operator's word that its times will not
@@ -172,10 +173,10 @@ code it then runs.
 ## Logins and other hosts
 
 ```sh
-bun --env-file=<file> --env-file=<hosts file> run runs logins [N ...] [--json]
-bun --env-file=<file> --env-file=<hosts file> run runs status [--all]
-bun --env-file=<file> --env-file=<hosts file> run runs on <host> status
-bun --env-file=<file> --env-file=<hosts file> run runs hosts
+bun --env-file=<file> --env-file=.env.runs run runs logins [N ...] [--json]
+bun --env-file=<file> --env-file=.env.runs run runs status [--all]
+bun --env-file=<file> --env-file=.env.runs run runs on <host> status
+bun --env-file=<file> --env-file=.env.runs run runs hosts [--all]
 ```
 
 `logins` reads each login's five-hour and weekly window from the provider's usage endpoint, or
@@ -183,9 +184,12 @@ from the rate-limit headers of a one-token request where that is refused, and ke
 hour in `.ana/logins-history.jsonl` of the main worktree, from which it forecasts when the pool
 runs out at the week's pace and at the last 14 hours'. A login has room for a move when its week
 is under 90% and allowed, and its five hours under 100% (`room`), which is what `keep` reads.
-`status` hides seeds and runs quiet for a day unless `--all`. `on` runs any verb in a host's
-worktree under a login shell there, with that host's env files; `hosts` is `status` on each.
-None of these reads `.ana/` content beyond events and counts.
+`status` hides seeds and runs quiet for a day unless `--all`, and below this machine's rows shows
+each host `ANA_HOSTS` lists, so one command on any machine whose `.env.runs` lists the others
+shows every run. `on` runs any verb in a host's worktree under a login shell there, with that
+host's env files and `ANA_HOSTS` empty, which Bun keeps over an env file's: a verb run on another
+host reaches no further one, and two machines that list each other do not loop. `hosts` is the
+other hosts' `status` alone. None of these reads `.ana/` content beyond events and counts.
 
 ## What is refused, and where
 

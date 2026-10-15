@@ -11,6 +11,7 @@
  * open run, is said when it starts and when it ends.
  */
 import { type EventKind, type LogEvent } from "#src/kernel/log.ts";
+import { billedAll } from "#src/kernel/reports.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
 import {
   existsSync,
@@ -27,6 +28,7 @@ import { basename, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
+import { hosts, hostsOf } from "./hosts.ts";
 import { receipts } from "./receipt.ts";
 import { logEvents, openComparisons, processes, type Run, runs, writers } from "./registry.ts";
 
@@ -66,17 +68,6 @@ const count = (log: readonly LogEvent[], kind: EventKind) =>
   log.filter((event) => event.kind === kind).length;
 /** A string or number field as written, and "?" for a field the event does not hold. */
 const word = (value: unknown) => (isString(value) || isNumber(value) ? String(value) : "?");
-
-/** The dollars a turn or a compaction metered, by the usage its event records. */
-function metered({ kind, data }: LogEvent): number {
-  const usages = kind.endsWith(".turn") ? [data.usage] : kind.endsWith(".compacted") ? data.usages : [];
-  let sum = 0;
-  for (const usage of Array.isArray(usages) ? usages : []) {
-    const total = asRecord(asRecord(usage)?.cost)?.total;
-    if (isNumber(total)) sum += total;
-  }
-  return sum;
-}
 
 /** How long a session or a solve took, and what it billed, as its `.finished` event says. */
 const cost = (data: JsonObject) =>
@@ -173,7 +164,7 @@ function status(run: Run, log: readonly LogEvent[], solves: readonly Solve[], op
     // A seed's counts and dollars are its source's up to the cut, and a script's after it.
     `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, running, open)}`,
     `solves ${said.join(", ") || "none"}`,
-    dollars(log.reduce((sum, event) => sum + metered(event), 0)),
+    dollars(billedAll(log)),
     last === undefined ? "no events" : `${minutes(now - Date.parse(last.at))} since the last event`,
   ].join(" · ");
 }
@@ -271,8 +262,11 @@ export async function watch(args: readonly string[]): Promise<void> {
   }
 }
 
-/** `bun run runs status`: one row a run, open or written in the last day, or every one with `--all`. */
-export function runsStatus(args: readonly string[]): void {
+/**
+ * `bun run runs status`: one row a run, open or written in the last day, or every one with `--all`;
+ * then the same on each host `ANA_HOSTS` lists (`hosts.ts`), so one command shows every machine's.
+ */
+export async function runsStatus(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: { all: { type: "boolean", default: false } } });
   const running = processes();
   const now = Date.now();
@@ -302,4 +296,5 @@ export function runsStatus(args: readonly string[]): void {
     );
   }
   console.log(`${plural(promoted, "promotion")} over the runs shown`);
+  if (hostsOf().length > 0) await hosts(args);
 }

@@ -19,9 +19,10 @@
  * - `start` writes that as `overview.md`, and the shared instructions with the campaign's row filled
  *   in and two sections left for the primary to write. `--with` names peer campaigns' logs, which a
  *   lane that reads peers (lane 31) is given read the same way, at `lanes` time, and never reviews.
- * - `lanes` builds one prompt per lane and `launch.md`. With no `--lanes` it opens the lanes a
- *   trigger started and the standing ones; an isolated lane is built only when named. A prompt
- *   built before is kept, and `launch.md` lists every prompt that stands, each once.
+ * - `lanes` builds one prompt per lane, and `launch.json`, one session for each lane it built, in
+ *   the manifest codex-luna-swarm's launcher reads. With no `--lanes` it opens the lanes a trigger
+ *   started and the standing ones; an isolated lane is built only when named. A prompt built before
+ *   is kept and launched again by nobody: `launch.json` holds only what this call built.
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
  *   every report is there and valid.
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
@@ -50,7 +51,7 @@ import { receipts } from "../runs/receipt.ts";
 import { runNamed } from "../runs/registry.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
-import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
+import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import { climbTable, crossings } from "./climb.ts";
 import {
   blankSections,
@@ -207,16 +208,6 @@ function climbText(log: string, peers: readonly string[]): string {
 const promptPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-prompt.md`);
 const reportPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-report.md`);
 
-/** One session's entry in `launch.md`. */
-function launchEntry(out: string, lane: Lane): string {
-  return [
-    `## Lane ${String(lane.number)}: ${lane.title}${lane.isolated ? " (alone)" : ""}`,
-    `Prompt: \`${promptPath(out, lane.number)}\``,
-    `Report: \`${reportPath(out, lane.number)}\``,
-    `One line to hand the session: Read \`${promptPath(out, lane.number)}\` and do exactly what it says.`,
-  ].join("\n\n");
-}
-
 function lanes(): number {
   const { out, log, shared, seen, peers } = opened();
   const peerOverviews = peersText(log, peers);
@@ -232,18 +223,28 @@ function lanes(): number {
   const asked = [...open, ...isolated];
   const kept = asked.filter((lane) => existsSync(promptPath(out, lane.number)));
   const built = asked.filter((lane) => !kept.includes(lane));
-  for (const lane of built) {
-    const report = reportPath(out, lane.number);
+  // Each lane built is one session of `launch.json`, its one line and the report it writes itself,
+  // and nothing kept is in it, so its count is the spend (SKILL.md, step 3) and no session is started
+  // twice against one prompt. Until 15 October each launch turned a Markdown list into this by hand.
+  const sessions = built.map((lane) => {
+    const [prompt, report] = [promptPath(out, lane.number), reportPath(out, lane.number)];
     writeFileSync(
-      promptPath(out, lane.number),
+      prompt,
       `${lanePrompt({ lane, shared, overview: seen, catalogue, owners, report, peers: peerOverviews })}\n`,
     );
+    return {
+      name: `lane_${stem(lane.number)}`,
+      task: `Read \`${prompt}\` and do exactly what it says.`,
+      ownedPaths: [report],
+    };
+  });
+  const launch = join(out, "launch.json");
+  if (sessions.length > 0) {
+    writeFileSync(
+      launch,
+      `${JSON.stringify({ workdir: REPO, sandbox: "workspace-write", sessions }, null, 2)}\n`,
+    );
   }
-  // The launch list is written whole from the prompts that stand, so a second build cannot list a
-  // session twice, and its count stays the spend (SKILL.md, step 3).
-  const listed = lanesOf(catalogue).filter((lane) => existsSync(promptPath(out, lane.number)));
-  const launch = join(out, "launch.md");
-  writeFileSync(launch, `# Launch\n\n${listed.map((lane) => launchEntry(out, lane)).join("\n\n")}\n`);
   console.log(`${plural(built.length, "lane")} built: ${built.map((lane) => lane.number).join(", ")}`);
   for (const lane of kept) console.log(`lane ${String(lane.number)}: built before, kept`);
   for (const lane of waiting) {
@@ -252,7 +253,7 @@ function lanes(): number {
     );
   }
   console.log(
-    `one session per entry of ${launch}, ${String(listed.length)} in all; launch only those built now`,
+    built.length === 0 ? "nothing to launch" : `${launch}: ${plural(built.length, "session")} to launch`,
   );
   return 0;
 }

@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { type Condition, conditionId } from "../src/kernel/condition.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
@@ -191,25 +192,34 @@ describe("the lanes verb", () => {
     Object.fromEntries(
       readdirSync(join(out, "lanes")).map((name) => [name, readFileSync(join(out, "lanes", name), "utf8")]),
     );
-  const launch = () => readFileSync(join(out, "launch.md"), "utf8");
-  const entries = () => launch().match(/^## Lane \d+:/gm) ?? [];
+  const sessions = () =>
+    parseJsonAs<{ sessions: { name: string; task: string; ownedPaths: string[] }[] }>(
+      readFileSync(join(out, "launch.json"), "utf8"),
+    ).sessions;
 
-  it("keeps a prompt built before, lists each session once, and adds a lane named later", () => {
+  it("keeps a prompt built before, and launches only the lanes each call built", () => {
     mkdirSync(join(out, "lanes"), { recursive: true });
     writeFileSync(join(out, "investigation.json"), JSON.stringify({ log }));
     writeFileSync(join(out, "shared-instructions.md"), shared);
     lanesVerb();
-    const [built, listed, count] = [prompts(), launch(), entries().length];
+    const [built, first] = [prompts(), sessions()];
+    expect(first).toHaveLength(Object.keys(built).length);
+    expect(first.map(({ name }) => name)).toContain("lane_04");
     expect(Object.keys(built)).toContain("04-prompt.md");
     expect(Object.keys(built)).not.toContain("05-prompt.md");
     // The primary rewrites the orientation after the first sessions wrote against the first prompts.
     writeFileSync(join(out, "shared-instructions.md"), shared.replace("Why the step.", "Another question."));
-    expect(lanesVerb()).toContain("lane 4: built before, kept");
+    expect(lanesVerb()).toContain("nothing to launch");
     expect(prompts()).toEqual(built);
-    expect(launch()).toBe(listed);
-    expect(lanesVerb("--lanes", "4-5")).toContain("1 lane built: 5");
-    expect(entries()).toHaveLength(count + 1);
-    expect(entries().filter((entry) => entry === "## Lane 5:")).toHaveLength(1);
+    expect(sessions()).toEqual(first);
+    expect(lanesVerb("--lanes", "4-5")).toContain("lane 4: built before, kept");
+    expect(sessions()).toEqual([
+      {
+        name: "lane_05",
+        task: expect.stringContaining("05-prompt.md"),
+        ownedPaths: [join(out, "lanes", "05-report.md")],
+      },
+    ]);
     expect(prompts()["04-prompt.md"]).toBe(built["04-prompt.md"]);
   });
 });

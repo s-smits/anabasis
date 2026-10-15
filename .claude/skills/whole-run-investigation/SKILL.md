@@ -49,15 +49,15 @@ holds.
    operator's question, and the moved variable with its prior state.
    *Check:* no `##` section is blank, and the hard rules are still there.
 3. **Build the lanes.** `wri.ts lanes --out <dir>` writes one prompt per lane under `<dir>/lanes/`
-   and one entry per session in `<dir>/launch.md`. With no `--lanes` it opens every lane a trigger
-   started and the four standing lanes. It builds no isolated lane: it names the ones whose trigger
-   fired, and each waits on another lane's report. A prompt built before is kept, never rebuilt
-   under a report written against it, and `launch.md` lists every prompt that stands, once each, so
-   a second run changes neither.
-   *Check:* exit 0, and count the entries: that is the spend.
-4. **Launch.** Start one session per `launch.md` entry, all in one message, on the model the
-   operator chose, handing each its one line and nothing else. Codex sessions start through
-   [codex-luna-swarm](../codex-luna-swarm/SKILL.md), one manifest row an entry.
+   and `<dir>/launch.json`, one session for each lane it built. With no `--lanes` it opens every
+   lane a trigger started and the four standing lanes. It builds no isolated lane: it names the
+   ones whose trigger fired, and each waits on another lane's report. A prompt built before is
+   kept, never rebuilt under a report written against it, and is in no later `launch.json`.
+   *Check:* exit 0, and count the sessions: that is the spend.
+4. **Launch.** `launch.json` is a [codex-luna-swarm](../codex-luna-swarm/SKILL.md) manifest:
+   `luna-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...` on the model the
+   operator chose. A Claude session is handed its row's `task`, one line, and nothing else; start
+   them all in one message.
    *Check:* read the model each transcript recorded before using its report.
 5. **Collect.** `wri.ts collect --out <dir>` holds every expected report to its shape and writes
    `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 11, 15 and 18, then
@@ -78,7 +78,7 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | --- | --- | --- |
 | — | `read --log <log>` | nothing: the rows, the triggers and the host line, printed |
 | 1 | `start --log <log> --out <dir>` | `overview.md`, `shared-instructions.md`, `investigation.json` |
-| 3 | `lanes --out <dir> [--lanes 1-4,7]` | `lanes/NN-prompt.md`, `launch.md` |
+| 3 | `lanes --out <dir> [--lanes 1-4,7]` | `lanes/NN-prompt.md`, `launch.json` |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 5 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line. `--bundle` names a stored pack; a campaign that drafted its exam names none |

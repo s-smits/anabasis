@@ -148,11 +148,11 @@ A retry leaves `launch.json` and every completed result as they were, appends th
 
 ## Lanes of a whole-run investigation
 
-[whole-run-investigation](../whole-run-investigation/SKILL.md) step 4 starts one session per entry
-of `<dir>/launch.md`. On Codex that is one manifest row an entry: `task` is the entry's one line,
-`workdir` the checkout the investigation reads, `sandbox` `workspace-write` and `ownedPaths` the
-lane's report path, which the lane writes itself. A lane that runs alone (5 and 19) is a launch of
-its own, after the reports it waits on. Then `wri.ts collect` reads the reports as from any seat.
+[whole-run-investigation](../whole-run-investigation/SKILL.md) step 3 writes the manifest,
+`<dir>/launch.json`: one `workspace-write` session a lane built, owning the report it writes, in the
+checkout the investigation reads. Launch it as it stands. A lane that runs alone (5 and 19) is
+built, and launched, on its own after the reports it waits on. Then `wri.ts collect` reads the
+reports as from any seat.
 
 ## Not carried from v1
 

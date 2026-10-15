@@ -60,7 +60,20 @@ describe("how long a command may run", () => {
     expect([7200, 480, 300, 60].map(reserveSeconds)).toEqual([60, 60, 37, 7]);
     // Early in a solve a command has its own limits, as on a wall with no clock.
     expect(heldSeconds(undefined, ...at(7200, 100))).toEqual({ asked: 300, seconds: 300, nearEnd: false });
-    expect(heldSeconds(900, { limits })).toEqual({ asked: 900, seconds: 900, nearEnd: false });
+    // A named timeout, floored and at least a second, only raises the default, up to the maximum.
+    const named: [number | undefined, number, number][] = [
+      [undefined, 300, 300],
+      [120, 120, 300],
+      [0, 1, 300],
+      [-5, 1, 300],
+      [450.9, 450, 450],
+      [900, 900, 900],
+      [880, 880, 880],
+      [5000, 5000, 900],
+    ];
+    for (const [timeout, asked, seconds] of named) {
+      expect(heldSeconds(timeout, { limits })).toEqual({ asked, seconds, nearEnd: false });
+    }
     expect(heldSeconds(900, { limits, clock: { started: null, seconds: 480 } })).toEqual({
       asked: 900,
       seconds: 900,

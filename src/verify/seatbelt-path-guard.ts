@@ -52,13 +52,6 @@ export function sbRule(verb: string, form: "subpath" | "literal", paths: readonl
  *  available. */
 const MOVE_OPS = ["file-write-unlink", "file-write-create"] as const;
 
-/** Every directory a rename could relocate a protected root through. `/` is dropped: it is not
- *  renameable and naming it would deny the root inode itself. */
-export function guardedAncestors(protectedRoots: readonly string[]): string[] {
-  const ancestors = protectedRoots.flatMap((root) => ancestorDirectories(root));
-  return [...new Set(ancestors)].filter((path) => path !== "/").sort();
-}
-
 /**
  * Deny rules that keep `protectedRoots` reachable only at the paths the read denies name. Sorted
  * and de-duplicated because these lines are part of the hashed profile: two runs with the same
@@ -67,7 +60,11 @@ export function guardedAncestors(protectedRoots: readonly string[]): string[] {
 export function moveBlockingRules(protectedRoots: readonly string[]): string[] {
   const roots = [...new Set(protectedRoots)].sort();
   if (roots.length === 0) return [];
-  const ancestors = guardedAncestors(roots);
+  // Every directory a rename could relocate a protected root through. `/` is dropped: it is not
+  // renameable and naming it would deny the root inode itself.
+  const ancestors = [...new Set(roots.flatMap((root) => ancestorDirectories(root)))]
+    .filter((path) => path !== "/")
+    .sort();
   return MOVE_OPS.flatMap((op) => [
     `(deny ${op}`,
     ...roots.map((path) => `  (subpath ${capturedJsonStringify(path)})`),

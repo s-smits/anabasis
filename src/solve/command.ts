@@ -112,7 +112,7 @@ export interface SolveClock {
 interface WalledOptions {
   readonly onData: (data: Buffer) => void;
   readonly signal?: AbortSignal | undefined;
-  /** Seconds asked for, held to the limits by `shellSeconds`; pi's backend throws
+  /** Seconds asked for, held to the limits by `heldSeconds`; pi's backend throws
    *  `timeout:<seconds>` when the command runs past what it was given. */
   readonly timeout?: number | undefined;
   /** Writes what the command brings into `into`, a fresh folder under the seat's `kept`, before it
@@ -121,13 +121,6 @@ interface WalledOptions {
 }
 
 const SHELL = createLocalBashOperations({ shellPath: "/bin/sh" });
-
-/** The wall one command runs under: `asked` is what was named, floored and at least 1 s, and a
- *  named value only raises the default, up to the maximum, as v1's Built shell held it. */
-export function shellSeconds(timeout: number | undefined, limits: ShellLimits) {
-  const asked = Math.max(1, Math.floor(timeout ?? limits.shellDefaultSeconds));
-  return { asked, seconds: Math.min(Math.max(asked, limits.shellDefaultSeconds), limits.shellMaxSeconds) };
-}
 
 /** How long before a solve's end its commands are cut, so that a result still reaches the solver:
  *  a minute, and an eighth of a solve shorter than eight. */
@@ -142,8 +135,10 @@ export function usedSeconds(clock: SolveClock | undefined, now = performance.now
 }
 
 /**
- * How long a command that starts now may run: the condition's limits (`shellSeconds`), and no
- * longer than the solve has left before its reserve. `nearEnd` says the solve's end set it.
+ * How long a command that starts now may run: the condition's limits, and no longer than the solve
+ * has left before its reserve. `nearEnd` says the solve's end set it. Under the limits, `asked` is
+ * what was named, floored and at least 1 s, and a named value only raises the default, up to the
+ * maximum, as v1's Built shell held it.
  *
  * A command held to its own limits alone took the solve with it when the solve's wall fell inside
  * it: at a five-minute wall 12 of 46 Starter solves ended at it, 11 of them inside a command, with
@@ -157,14 +152,15 @@ export function heldSeconds(
   timeout: number | undefined,
   { limits, clock }: Pick<CommandWall, "limits" | "clock">,
   now = performance.now(),
-): { asked: number; seconds: number; nearEnd: boolean } {
-  const held = shellSeconds(timeout, limits);
+) {
+  const asked = Math.max(1, Math.floor(timeout ?? limits.shellDefaultSeconds));
+  const seconds = Math.min(Math.max(asked, limits.shellDefaultSeconds), limits.shellMaxSeconds);
   const used = usedSeconds(clock, now);
-  if (clock === undefined || used === null) return { ...held, nearEnd: false };
+  if (clock === undefined || used === null) return { asked, seconds, nearEnd: false };
   const left = Math.floor(clock.seconds - used - reserveSeconds(clock.seconds));
-  return left > 0 && left < held.seconds
-    ? { asked: held.asked, seconds: left, nearEnd: true }
-    : { ...held, nearEnd: false };
+  return left > 0 && left < seconds
+    ? { asked, seconds: left, nearEnd: true }
+    : { asked, seconds, nearEnd: false };
 }
 
 /** The directories of solve `id`, named, not yet made: the runner mounts the cap at `root`. */

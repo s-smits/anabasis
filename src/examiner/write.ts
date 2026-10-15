@@ -39,7 +39,7 @@ import { LADDER, packageGate, type TaskPackage, taskSets, taskVersion } from "..
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
-import { asRecord, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -177,10 +177,13 @@ function tried(verdict: Verdict): string {
 
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
  *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
- *  is held out where some of them and not all gave a valid answer, or none where its author's answer
- *  passes on it (`gated`), and a solve that ended in no reading leaves it unmeasured, as does a
- *  rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`): until 15 October
- *  the refusal said only the first, and 15 of 16 such refusals on record were the second. The
+ *  is held out where the solves that gave a reading hold a valid answer and a fail, or no valid
+ *  answer where its author's answer passes on it (`gated`). A solve that ended in no reading, or in
+ *  a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no reading,
+ *  and leaves the draft unmeasured only where the readings left do not decide it: every one valid
+ *  short of `TRIED`, or none. Until 15 October any such solve refused the draft unmeasured: 29 of
+ *  the 174 drafts of four campaigns, 20 of them on readings that already held both a pass and a
+ *  fail, or only fails beside a passing proof (main0_5_1 14, buffer-pr169-opus 5). The
  *  Examiner hears the counts; no answer and no trace of a solve reaches it. The session bounds them: `stop` is the session's own signal, which its wall, its end
  *  and a killed run abort, and it is the kill a comparison's solves take (`probe`), so a wall that
  *  fires mid-try leaves no solve running and the task refused unmeasured. */
@@ -197,15 +200,20 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, stop)));
   const solves = endings.filter(({ outcome }) => outcome !== "non-result").length;
   const valid = endings.filter(({ outcome }) => outcome === "pass").length;
-  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves`;
-  const unmeasured = `${String(TRIED - solves)} of the reference harness's ${String(TRIED)} solves of it ended in no reading or in a rejection the Referee did not rule earned, so it is not measured`;
+  const unread =
+    solves < TRIED
+      ? `, ${String(TRIED - solves)} of them ending in no reading or in a rejection the Referee did not rule earned`
+      : "";
+  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${unread}`;
+  const unmeasured = `${counted}, so it is not measured`;
   const roomless = `${counted}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`;
-  const some = valid > 0 && valid < TRIED;
+  const unsolved = solves > 0 && valid === 0;
+  const some = valid > 0 && valid < solves;
   return {
-    reason: solves < TRIED ? unmeasured : some ? null : roomless,
+    reason: some ? null : unsolved || solves === TRIED ? roomless : unmeasured,
     said: `; ${counted}`,
     reference: { valid, solves, billed: billedFor(read(log), id) - before },
-    unsolved: solves === TRIED && valid === 0,
+    unsolved,
   };
 }
 
@@ -218,7 +226,8 @@ function provedUnsolved(events: readonly LogEvent[]): number {
       kind === GATE &&
       (data.outcome === "passed" || data.outcome === LADDER) &&
       reference?.valid === 0 &&
-      reference.solves === TRIED
+      isNumber(reference.solves) &&
+      reference.solves > 0
     );
   }).length;
 }

@@ -794,8 +794,9 @@ describe("a session that writes tasks", () => {
 
   it("holds a task out by try_task at some valid solves of the reference harness and not all, and tells the counts alone", async () => {
     // Each base's three solves by the reference harness, seeded: valid in one, two, none and all of
-    // them, and one that ends in no reading. A solver's flag that the task is malformed is a solve
-    // that answered nothing validly, as in every tally.
+    // them; one whose third ends in no reading while the two read already hold a pass and a fail, and
+    // one whose two read are both valid, which the third could not leave room or not. A solver's flag
+    // that the task is malformed is a solve that answered nothing validly, as in every tally.
     const seeded = new Map<number, readonly Ending[]>([
       [2, [PASS, REJECTED, REJECTED]],
       [3, [PASS, PASS, REJECTED]],
@@ -809,8 +810,9 @@ describe("a session that writes tasks", () => {
           { outcome: "non-result", kind: "provider", reason: "overloaded" },
         ],
       ],
+      [7, [PASS, PASS, { outcome: "non-result", kind: "provider", reason: "overloaded" }]],
     ]);
-    const s = seat("write", [call("try_task", { tasks: [2, 3, 4, 5, 6].map(instance) }), finish, finish]);
+    const s = seat("write", [call("try_task", { tasks: [2, 3, 4, 5, 6, 7].map(instance) }), finish, finish]);
     const asked: string[] = [];
     // The launcher's record of each solve, as a comparison's solve writes it, with the answer the
     // Examiner must never be shown, and its price.
@@ -827,14 +829,15 @@ describe("a session that writes tasks", () => {
       append(s.log, "solve.finished", { solve, ending, billed: 0.5 });
       return ending;
     };
-    const examined = await examine({ ...s.request, limits: { ...s.request.limits, puts: 5 }, probe });
-    const versions = [2, 3, 4, 5, 6].map((base, nth) => s.versionOf(`x-1-00${String(nth + 1)}`, base));
+    const examined = await examine({ ...s.request, limits: { ...s.request.limits, puts: 6 }, probe });
+    const versions = [2, 3, 4, 5, 6, 7].map((base, nth) => s.versionOf(`x-1-00${String(nth + 1)}`, base));
+    const held = versions.filter((_version, nth) => [0, 1, 4].includes(nth));
     expect(examined).toMatchObject({
       ended: "finished",
-      held: versions.slice(0, 2),
-      refused: versions.slice(2),
+      held,
+      refused: versions.filter((_version, nth) => ![0, 1, 4].includes(nth)),
     });
-    expect(taskSets(read(s.log)).held).toEqual(versions.slice(0, 2));
+    expect(taskSets(read(s.log)).held).toEqual(held);
     const counted = (valid: number) =>
       `the reference harness answered it validly in ${String(valid)} of 3 solves`;
     expect(s.of(CALLED)[0]?.text).toBe(
@@ -843,17 +846,18 @@ describe("a session that writes tasks", () => {
         `x-1-002: held out; ${counted(2)}.`,
         `x-1-003: refused: ${counted(0)}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`,
         `x-1-004: refused: ${counted(3)}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`,
-        "x-1-005: refused: 1 of the reference harness's 3 solves of it ended in no reading or in a rejection the Referee did not rule earned, so it is not measured",
-        "So far in this campaign, drafts with a proof were held 0 of 0, and drafts without one 2 of 5.",
+        `x-1-005: held out; ${counted(1)}, 1 of them ending in no reading or in a rejection the Referee did not rule earned.`,
+        `x-1-006: refused: ${counted(2)}, 1 of them ending in no reading or in a rejection the Referee did not rule earned, so it is not measured`,
+        "So far in this campaign, drafts with a proof were held 0 of 0, and drafts without one 3 of 6.",
       ].join("\n"),
     );
     // Its cost a task, on the gate's event; the solves are the session's, named by it, and no
     // comparison's: a comparison counts the solves whose start names it (`pairsOf`).
     expect(s.of("task.gate").map(({ reference }) => reference)).toEqual(
-      [1, 2, 0, 3, 1].map((valid, nth) => ({ valid, solves: nth === 4 ? 2 : 3, billed: 1.5 })),
+      [1, 2, 0, 3, 1, 2].map((valid, nth) => ({ valid, solves: nth >= 4 ? 2 : 3, billed: 1.5 })),
     );
-    expect(solvesIn(read(s.log)).map(({ start }) => start.comparison)).toEqual(Array(15).fill("x-1"));
-    expect(billedParts(read(s.log), "x-1")).toEqual({ session: 0, comparison: 7.5 });
+    expect(solvesIn(read(s.log)).map(({ start }) => start.comparison)).toEqual(Array(18).fill("x-1"));
+    expect(billedParts(read(s.log), "x-1")).toEqual({ session: 0, comparison: 9 });
     // None is part of a task's answers or a tally; a valid one is a witness, so its task is
     // feasible and nothing more.
     expect(ranUnder(read(s.log))).toEqual([]);
@@ -1153,13 +1157,15 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       reason: "answered in 3 of 3",
       reference: { valid: 3, solves: 3, billed: 0 },
     });
-    // A gate that read two solves may be proposed again, and is no refusal to be told of.
+    // A gate refused on two readings may be proposed again, and is no refusal to be told of; one
+    // that held its draft on two readings is told with the solve that gave none.
     gated("cut", {
       outcome: "refused",
       reason: "not measured",
-      reference: { valid: 1, solves: 2, billed: 0 },
+      reference: { valid: 2, solves: 2, billed: 0 },
     });
-    const told = heard(log.events, ["once", "twice"].map(fixture));
+    gated("short", { outcome: "passed", reference: { valid: 1, solves: 2, billed: 0 } });
+    const told = heard(log.events, ["once", "twice", "short"].map(fixture));
     // Until 14 October a later session was told neither.
     expect(told.lines).toEqual([
       line(
@@ -1169,6 +1175,10 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       line(
         "twice",
         `not yet compared; ${VALID}; held out at its gate on 2 of the reference harness's 3 solves valid`,
+      ),
+      line(
+        "short",
+        `not yet compared; ${VALID}; held out at its gate on 1 of the reference harness's 3 solves valid, 1 of them giving no reading`,
       ),
     ]);
     expect(told.refused).toEqual([line("every", "refused: answered in 3 of 3")]);

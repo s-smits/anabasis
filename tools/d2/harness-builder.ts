@@ -119,8 +119,8 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { draftCommand } from "../d1b/draft.ts";
 import { examineCommand } from "../d1b/examine.ts";
-import { standing } from "../runs/pulse.ts";
-import { launchesOf, writeReceipt } from "../runs/receipt.ts";
+import { nextRun, writeReceipt } from "../runs/receipt.ts";
+import { standing } from "../runs/registry.ts";
 import { campaignLog, openCampaign, packNamed, REPO } from "./campaign.ts";
 import { type CampaignContext, campaignTools } from "./campaign-actions.ts";
 import {
@@ -346,8 +346,7 @@ function examLines(
  */
 function keepReceipt(log: string, args: readonly string[]): void {
   mkdirSync(dirname(log), { recursive: true });
-  const runs = launchesOf(log).filter(({ session }) => session.startsWith("run-")).length;
-  writeReceipt(log, `run-${String(runs + 1)}`, {
+  writeReceipt(log, nextRun(log), {
     at: new Date().toISOString(),
     pid: runtimeProcess.pid,
     flags: [...args],

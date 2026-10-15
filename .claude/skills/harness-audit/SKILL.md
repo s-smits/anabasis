@@ -65,7 +65,7 @@ command that compares one makes it.
   folder it wrote, with the campaign's solver and checks, in a log of its own (`handover/log.jsonl`)
   that no reading counts. Name a released task. It is a solve: the operator's word.
 - **Two harnesses on the same tasks.** `bun tools/d2/checkpoint.ts` with `--reference` and `--new`,
-  through [launch-run](../launch-run/SKILL.md). `programs-of:<harness>` on either side separates the
+  through [run-management](../run-management/SKILL.md). `programs-of:<harness>` on either side separates the
   installed programs from the guide and the tools.
 - **Not a question of your own.** v1's harness-query wrapped a written question into a recorded
   task's shape, and on 14 August a question about firmware passed 2 of 2 with an answer that was the

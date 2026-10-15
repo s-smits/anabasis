@@ -146,7 +146,7 @@ A prediction written after the first solve started is a description. Say so; do 
 
 ## 4. Launch
 
-[launch-run](../launch-run/SKILL.md) owns the command and its refusals. This loop adds what
+[run-management](../run-management/SKILL.md) owns the command and its refusals. This loop adds what
 decides whether the run can answer the question at all.
 
 - **The worktree is the condition.** A run executes the source of the worktree it started in,
@@ -202,7 +202,7 @@ bun tools/wri/wri.ts read --log <log>          # the rows, the triggers, the hos
 
 The report holds the reading at the budget the solves were told, the tally over tasks, each
 harness by itself, and the reference against itself at four solves a side.
-[launch-run](../launch-run/SKILL.md) says what each line is.
+[run-management](../run-management/SKILL.md) says what each line is.
 
 Evidence precedence:
 
@@ -280,7 +280,7 @@ and the next command. Name no account and no credential path in anything that is
 | choose | one link, one owner, one falsifier | stack-pr when the change is source, with simplify over its diff |
 | prove | a dry run of the campaign command | system-path-simulation: a replay for a reader, a rehearsal for a campaign |
 | predict | `--predict`, before the first solve | further rows in the local notes |
-| launch | launch-run, under the load rule | a checkpoint when two harnesses are meant as arms |
+| launch | run-management, under the load rule | a checkpoint when two harnesses are meant as arms |
 | read | the report, the reader, every prediction resolved | attribution-and-proof before a claim; whole-run-investigation when a reading is in doubt |
 | decide | lifted, held or unreached; one move | harness-audit before the operator promotes or hands over; oracle-handover when the question is one the repository's own evidence cannot settle |
 

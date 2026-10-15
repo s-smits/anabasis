@@ -13,19 +13,19 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitText } from "#skills/main/git.ts";
 import { join, resolve } from "#src/meta/path.ts";
-import { launchesOf } from "#tools/runs/receipt.ts";
+import { receipts } from "#tools/runs/receipt.ts";
 
 const SHOWN = 3;
 
 /** The lines said of campaign `folder`, read against repository `repo`. */
 export function told(folder: string, repo: string, fixes: readonly string[]): string[] {
-  const launches = launchesOf(join(folder, "log.jsonl"));
+  const launches = receipts(join(folder, "log.jsonl"));
   if (launches.length === 0) {
     return ["no launch receipt: every round here was started by hand, and its commit is on no record"];
   }
   return launches.flatMap((launch) => {
     // The remote branches and the tags that hold the commit: where an outside reader can open it,
-    // and a tag `run/<name>/<n>` (launch-run) keeps it after its branch is rewritten. None for a
+    // and a tag `run/<name>/<n>` (run-management) keeps it after its branch is rewritten. None for a
     // commit never pushed, and for one this repository does not hold.
     const branches = (
       gitMaybe(
@@ -44,7 +44,7 @@ export function told(folder: string, repo: string, fixes: readonly string[]): st
     const published =
       branches.length === 0 ? "on no remote branch" : `on ${branches.slice(0, SHOWN).join(", ")}${more}`;
     return [
-      `${launch.session}  ${launch.at}  ${launch.commit.slice(0, 9)}  ${launch.dirty ? "with uncommitted changes" : "clean"}  load ${launch.load.toFixed(1)} on ${String(launch.cores)} cores  bun ${launch.bun}`,
+      `${launch.session}  ${launch.at}  ${launch.commit.slice(0, 9)}  ${launch.dirty ? "with uncommitted changes" : "clean"}  load ${launch.load.toFixed(1)} on ${String(launch.cores)} cores  bun ${launch.bun ?? "unknown"}`,
       `  published ${published}`,
       // Whether the commit holds the fix among its ancestors: false for a fix it does not hold and
       // for either commit unknown here, which is why a restacked fix is asked for by its replayed

@@ -18,7 +18,8 @@ removed with the machinery they read. [from-v1.md](references/from-v1.md) accoun
 Lane 31 was added after the first live promotion (10 October) and reads a promotion and the climb
 after it, beside peer campaigns where they are named.
 
-Six narrower questions need no lanes. Start there when one of them is the whole question.
+Six narrower questions need no lanes. Start there when one of them is the whole question. Every
+`wri.ts` verb takes a `<log>` as its path or as the campaign's whole name, as `bun run runs` does.
 
 | question | command |
 | --- | --- |

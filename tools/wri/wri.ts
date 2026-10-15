@@ -32,7 +32,9 @@
  *   (`exams/<digest>/`, `tools/d2/exam.ts`). On 10 October t-10's lane 1 was given `<campaign>/checks`
  *   for a drafted exam and stopped on ENOENT.
  *
- * No verb starts a solve, a session or a round, and none appends to a log.
+ * A log is named by its path or, since 15 October, by its campaign's whole name in any of the
+ * repository's worktrees (`runNamed`), as `--with` names peers. No verb starts a solve, a session
+ * or a round, and none appends to a log.
  */
 import { read } from "#src/kernel/log.ts";
 import { openVerifier, spelled } from "#src/kernel/verify.ts";
@@ -44,7 +46,8 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
-import { launchesOf } from "../runs/receipt.ts";
+import { receipts } from "../runs/receipt.ts";
+import { runNamed } from "../runs/registry.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
@@ -86,10 +89,13 @@ const { values, positionals } = parseArgs({
   },
 });
 
+/** A log by its path, or a campaign's by the campaign's whole name. */
+const logOf = (named: string) => (existsSync(named) ? named : runNamed(named).path);
+
 function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
   const value = values[name];
   if (value === undefined) throw new Error(`name --${name}`);
-  return value;
+  return name === "log" ? logOf(value) : value;
 }
 
 /** The host's code as a condition names it (`codeOf`), for a tree that holds it. */
@@ -103,14 +109,14 @@ function hostOf(tree: string): string | undefined {
  * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
  * The condition names that code by a digest of its content, which is no commit: two lanes of
  * 14 October read one digest against a receipt's commit as two trees. So the line calls it a
- * digest and names the commit the last launch's receipt holds (`launchesOf`) beside it.
+ * digest and names the commit the last launch's receipt holds (`receipts`) beside it.
  */
 function hostLine(log: string): string {
   const ran = read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition;
   const host = asRecord(ran)?.host;
   const last = isString(host) ? host : undefined;
   const here = hostOf(REPO) ?? "";
-  const launch = launchesOf(log).at(-1);
+  const launch = receipts(log).at(-1);
   const commit =
     launch === undefined
       ? "; no launch receipt beside the log"
@@ -136,7 +142,9 @@ function overviewText(log: string): string {
 function start(): number {
   const [log, out] = [resolve(needed("log")), resolve(needed("out"))];
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
-  const peers = (values.with?.split(",") ?? []).filter((each) => each !== "").map((each) => resolve(each));
+  const peers = (values.with?.split(",") ?? [])
+    .filter((each) => each !== "")
+    .map((each) => resolve(logOf(each)));
   const absent = peers.filter((peer) => !existsSync(peer));
   if (absent.length > 0) throw new Error(`--with names no log at ${absent.join(", ")}`);
   mkdirSync(join(out, "lanes"), { recursive: true });
@@ -319,7 +327,7 @@ async function main(): Promise<number> {
   }
   if (verb === "grade") return grade();
   if (verb === "climb") {
-    const peers = (values.with?.split(",") ?? []).filter((each) => each !== "");
+    const peers = (values.with?.split(",") ?? []).filter((each) => each !== "").map(logOf);
     console.log(climbText(needed("log"), peers));
     return 0;
   }

@@ -1,0 +1,160 @@
+/**
+ * Which run a name is and which process writes it: what every verb of `bun run runs` and the
+ * operator's page (`packages/ui`) ask before they read or act on a log.
+ *
+ * A run is a log in one of the repository's worktrees: a campaign's `.ana/d2/<name>/log.jsonl`, or
+ * a live solve's `.ana/live/<name>.jsonl`. It is open while a process that writes it runs in that
+ * worktree, and a name is a campaign's whole name: two campaigns have run under one name in two
+ * worktrees (13 October), so a verb that acts on one refuses a name that is two (`runNamed`).
+ *
+ * Until 15 October this was the head of `pulse.ts`, and each verb that acted on one run matched
+ * names its own way: `stop` by every tree's campaign of the name, `view` by this worktree's, and
+ * `zip` and the pulse by what a name holds, which is a reader's convenience and no way to choose a
+ * run to stop.
+ */
+import { EXAMINE } from "#src/builder/admission.ts";
+import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
+import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
+import { basename, join } from "#src/meta/path.ts";
+import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+
+export interface Run {
+  readonly name: string;
+  readonly tree: string;
+  readonly path: string;
+  /** The event that says the run is done: a campaign's comparison reports, a live solve finishes. */
+  readonly end: "comparison.reported" | "solve.finished";
+  /** A copy of another campaign, made to rehearse on (`seed.ts`). */
+  readonly seed?: boolean;
+}
+
+/** A process that may write a log: its id, the worktree it runs in and its arguments. */
+export interface Running {
+  readonly pid: number;
+  readonly cwd: string;
+  readonly args: readonly string[];
+}
+
+/** The command a whole campaign runs as, which runs each of its moves in its own process. */
+export const BUILDER = "tools/d2/harness-builder.ts";
+/** The command the session that drafts an exam runs as. It holds a capped root as an Examiner
+ *  session does since 11 October, and run by itself it was read as closed while it ran: a stop
+ *  would have released its root and left it running, its next command outside the cap. */
+export const DRAFT = "tools/d1b/draft.ts";
+/** The file beside a log that says its campaign is a seed, and of what. */
+export const SEED_FILE = "seed.json";
+/** The commands that write a campaign's log by hand, each naming it with `--name`: a round, an
+ *  Examiner session (read as closed while it ran, the first time one did: exam-1, 2026-10-08), a
+ *  checkpoint and a Builder session alone. */
+const BY_HAND = ["tools/d2/round.ts", EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
+/** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
+const CLI = "tools/runs/cli.ts";
+const LIVE = "tools/m0/live-solve.ts";
+const CAMPAIGN_END = "comparison.reported";
+
+const runsAs = (args: readonly string[], tools: readonly string[]) =>
+  args.some((arg) => tools.some((tool) => arg.endsWith(tool)));
+
+/**
+ * Whether a process writes a campaign's log: the campaign command, a command run by hand, or a
+ * rehearsal (`rehearse.ts`), a round on a seed run as a verb of this CLI. A stop releases what a
+ * run nobody writes left mounted, so a writer missed here would lose its roots: unlisted, two
+ * campaign commands read as closed, `runs stop` answered "none of these is running" and counted a
+ * live session's root as left behind (2026-10-10).
+ *
+ * Any other verb of this CLI is none, whatever its command line carries: on 10 October a launch of
+ * a round into the tree that held its log was refused as "already being written here" by the one
+ * process that matched, the launcher itself.
+ */
+function writesCampaign(args: readonly string[]): boolean {
+  if (runsAs(args, [CLI])) return args.includes("rehearse");
+  // The package script `bun run runs <verb>`, which holds no log open whatever the verb: a
+  // rehearsal's log is written by the CLI process it starts.
+  if (args[1] === "run" && args[2] === "runs") return false;
+  return runsAs(args, [BUILDER, ...BY_HAND]);
+}
+
+/** Every run log in the repository's worktrees. */
+export function runs(): Run[] {
+  const porcelain = runTextSyncOrThrow(["git", "worktree", "list", "--porcelain"]);
+  const trees = porcelain
+    .split("\n")
+    .flatMap((line) => (line.startsWith("worktree ") ? [line.slice(9)] : []));
+  const listed = (dir: string) => (existsSync(dir) ? readdirSync(dir) : []);
+  return trees.flatMap((tree) => [
+    ...listed(join(tree, ".ana", "d2")).flatMap((name) => {
+      const path = join(tree, ".ana", "d2", name, LOG_FILE);
+      if (!existsSync(path)) return [];
+      const seed = existsSync(join(tree, ".ana", "d2", name, SEED_FILE));
+      return [{ name, tree, path, end: CAMPAIGN_END, seed } satisfies Run];
+    }),
+    ...listed(join(tree, ".ana", "live"))
+      .filter((file) => file.endsWith(".jsonl"))
+      .map((file) => ({
+        name: basename(file, ".jsonl"),
+        tree,
+        path: join(tree, ".ana", "live", file),
+        end: "solve.finished" as const,
+      })),
+  ]);
+}
+
+/** The one campaign named `name`, whole, among `among`: refused where none is and where two
+ *  worktrees hold one. */
+export function runNamed(name: string, among: readonly Run[] = runs()): Run {
+  const found = among.filter((run) => run.name === name && run.end === CAMPAIGN_END);
+  const [only, other] = found;
+  if (only === undefined) throw new Error(`no campaign log is named ${name} in this repository's worktrees`);
+  if (other !== undefined) {
+    throw new Error(`${name} names a campaign in ${found.map(({ tree }) => tree).join(" and in ")}`);
+  }
+  return only;
+}
+
+/** The whole lines of a log an append may be writing to: a torn last line is an append in flight. */
+export function logEvents(path: string): LogEvent[] {
+  const text = readFileSync(path, "utf8");
+  return text
+    .slice(0, text.lastIndexOf("\n") + 1)
+    .split("\n")
+    .slice(0, -1)
+    .map((line) => parseJsonAs<LogEvent>(line));
+}
+
+/** Where a worktree stands: its commit, and whether it holds a change no commit names. */
+export function standing(tree: string) {
+  const git = (...args: string[]) => runTextSyncOrThrow(["git", "-C", tree, ...args]).trim();
+  return { commit: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain") !== "" };
+}
+
+/** Every process that may write a run's log, with the worktree it runs in. */
+export function processes(): Running[] {
+  const table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n");
+  const found = table.flatMap((row) => {
+    const [pid = "", ...args] = row.trim().split(/\s+/);
+    return writesCampaign(args) || runsAs(args, [LIVE]) ? [{ pid, args }] : [];
+  });
+  if (found.length === 0) return [];
+  // lsof exits 1 when a process left between the two reads, so its answer is read as given.
+  const cwds = new Map<string, string>();
+  let pid = "";
+  const listing = runSync(["lsof", "-a", "-d", "cwd", "-Fpn", "-p", found.map((row) => row.pid).join(",")]);
+  for (const line of decodeOutput(listing.stdout).split("\n")) {
+    if (line.startsWith("p")) pid = line.slice(1);
+    if (line.startsWith("n")) cwds.set(pid, line.slice(1));
+  }
+  return found.map(({ pid: id, args }) => ({ pid: Number(id), cwd: cwds.get(id) ?? "", args }));
+}
+
+/** The processes in `running` that write `run`'s log: a campaign's by its name, a live solve's by
+ *  the task and cycle its name begins with. */
+export function writers(run: Run, running: readonly Running[]): Running[] {
+  const flag = (args: readonly string[], name: string) => args[args.indexOf(name) + 1];
+  const writes = (args: readonly string[]) =>
+    run.end === CAMPAIGN_END
+      ? writesCampaign(args) && flag(args, "--name") === run.name
+      : runsAs(args, [LIVE]) &&
+        run.name.startsWith(`${String(flag(args, "--task"))}-${String(flag(args, "--cycle"))}-`);
+  return running.filter(({ cwd, args }) => cwd === run.tree && writes(args));
+}

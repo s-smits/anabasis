@@ -242,7 +242,7 @@ async function handIn(wall: CommandWall, kept: string, signal?: AbortSignal): Pr
  * error, not from output text a command could print. An abort reaches pi as `aborted` and gains
  * nothing. A Builder's shell is this one, on its own session's wall (`src/builder/tools.ts`).
  */
-export function bashTool(wall: CommandWall): SolverTool {
+function bashTool(wall: CommandWall): SolverTool {
   const { limits } = wall;
   const { home } = wall.dirs;
   const kept = join(wall.dirs.kept, "long-output");

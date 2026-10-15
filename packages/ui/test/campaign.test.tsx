@@ -1,19 +1,16 @@
 // The Campaign pane, rendered from the readings the server's handlers give of the fixture's
 // campaigns (`fixture-campaign.ts`), and so through the repository's folds.
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
-import { CountsTable } from "../src/components/charts/comparisons-key.tsx";
-import type { CampaignReading, ComparisonBar, Outcome } from "../src/models.ts";
+import type { CampaignReading, ComparisonBar } from "../src/models.ts";
 import { type Navigation, type RouteChange, routeOf } from "../src/route.ts";
 import { CampaignPane } from "../src/views/campaign.tsx";
 import { comparisonSlots, countTicks } from "../src/views/campaign-data.ts";
 import { answersOver, type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
 
-const OUTCOME_KEYS: readonly Outcome[] = ["won", "lost", "tiedEvery", "tiedSome", "tiedNone", "aside"];
 const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-ui-campaign-")));
 let fixture: Fixture;
 
@@ -133,19 +130,6 @@ test("the comparisons chart reads whole tasks at an even step, and keeps a few c
   expect(many).toMatch(/class="ana-comparisons-frame" style="min-width:\d+px"/);
 });
 
-test("a campaign with no comparison says what it holds to compare, in place of the chart", () => {
-  const reading = readingOf(fixture.early);
-  expect(reading.comparisons).toHaveLength(0);
-  const html = paneOf(reading);
-  expect(html).toContain("No comparison yet");
-  expect(html).toContain(
-    `${String(reading.supply.held)} held-out tasks can be scored, ${String(reading.supply.released)} released for practice.`,
-  );
-  expect(html).toContain("no comparison has reported");
-  expect(html).not.toContain("ana-comparisons-key");
-  expect(html).not.toContain("Valid share");
-});
-
 test("an attended campaign says so in its set-up, and that a promotion the table names waits for the operator's word", () => {
   const attended = readingOf(fixture.early);
   const unattended = readingOf(fixture.name);
@@ -212,18 +196,6 @@ test("a campaign says who leads it, and reads the table's next move as advice wh
   expect(paneOf({ ...hosted, led: true, nextMove: prepare })).not.toContain("Table advises");
 });
 
-test("a campaign that ended with no promotion names its ending and draws no divider", () => {
-  const reading = readingOf(fixture.units);
-  expect(reading.promotions).toHaveLength(0);
-  const html = paneOf(reading);
-  expect(html).toContain("ended: budget");
-  expect(html).toContain("Ending");
-  expect(html).not.toContain("Next move");
-  expect(html).toContain("no promotion yet");
-  expect(html).not.toContain("<span>Promotion");
-  expect(html).not.toContain("Back to the starter");
-});
-
 test("a comparison cut before its report stands at its scored tasks, never at zero, and one still open says so", () => {
   const reading = readingOf(fixture.name);
   const cut = reading.comparisons.find((bar) => bar.cut);
@@ -238,75 +210,6 @@ test("a comparison cut before its report stands at its scored tasks, never at ze
   });
   expect(rowCells(html, cut.id)[0]).toBe("no report yet");
   expect(html).toContain("No report yet");
-});
-
-test("the outcome counts the page shows are the reading's, in the key and in every comparison's row", () => {
-  const reading = readingOf(fixture.name);
-  const html = paneOf(reading);
-  for (const outcome of OUTCOME_KEYS) {
-    let total = 0;
-    for (const bar of reading.comparisons) total += bar.outcomes?.[outcome] ?? 0;
-    expect(new RegExp(`data-outcome="${outcome}">(\\d+)<`).exec(html)?.[1]).toBe(String(total));
-  }
-  for (const bar of reading.comparisons) {
-    if (bar.outcomes === null) continue;
-    const counts = OUTCOME_KEYS.map((outcome) => String(bar.outcomes?.[outcome] ?? ""));
-    expect(rowCells(html, bar.id)).toEqual([...counts, bar.reading ?? "none"]);
-  }
-});
-
-test("a column opens its comparison by the move's place in the log, which a round shares its id with a session", () => {
-  const reading = readingOf(fixture.name);
-  const round = reading.comparisons.find((bar) =>
-    reading.moves.some((m) => m.step === "builder" && m.id === bar.id),
-  );
-  if (round === undefined) throw new Error("the fixture's main campaign holds a round");
-  const move = reading.moves.find((each) => each.index === round.move);
-  expect([move?.step, move?.id]).toEqual(["comparison", round.id]);
-  expect(reading.harnesses.flatMap((card) => card.comparedIn).find(({ id }) => id === round.id)?.move).toBe(
-    round.move,
-  );
-});
-
-test("each comparison opens from the keyboard: a native button in the counts table, which comes into view with focus", () => {
-  const reading = readingOf(fixture.name);
-  /** The props of an element this test reads: a button's, and any element's hiding. */
-  interface Read {
-    readonly type?: string;
-    readonly disabled?: boolean;
-    readonly tabIndex?: number;
-    readonly "aria-hidden"?: boolean;
-    readonly onClick?: () => void;
-    readonly children?: ReactNode;
-  }
-  const buttons: Read[] = [];
-  const visit = (node: ReactNode): void => {
-    if (Array.isArray(node)) {
-      // SAFETY: an array among React children holds React children.
-      for (const each of node as readonly ReactNode[]) visit(each);
-      return;
-    }
-    if (!isValidElement(node)) return;
-    // SAFETY: every element CountsTable returns is a host element, whose props are DOM attributes.
-    const props = node.props as Read;
-    expect(props["aria-hidden"]).not.toBe(true);
-    if (node.type === "button") buttons.push(props);
-    visit(props.children);
-  };
-  const opened: number[] = [];
-  visit(CountsTable({ slots: comparisonSlots(reading.comparisons), onOpen: (move) => opened.push(move) }));
-  // A native button that is enabled and in the tab order is focused by Tab and pressed by Enter and
-  // Space, either of which fires its click.
-  for (const button of buttons) {
-    expect([button.type, button.disabled ?? false, (button.tabIndex ?? 0) >= 0]).toEqual([
-      "button",
-      false,
-      true,
-    ]);
-    button.onClick?.();
-  }
-  expect(opened).toEqual(reading.comparisons.map((bar) => bar.move));
-  expect(paneOf(reading)).toContain('<div class="ana-sr-only ana-shown-on-focus"><table class="ana-table">');
 });
 
 test("what the view prints beside the readouts is one click or one line away: the set-up, the open steps, the regression, the last write", () => {

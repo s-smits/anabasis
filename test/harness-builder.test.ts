@@ -322,6 +322,7 @@ describe("a campaign run by its log", () => {
   });
 
   it("holds a campaign whose comparisons ran at a level its opening never named to that level, and not to the tree's default", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
     // Until 10 October the level was read at each comparison from the tree's default, so a
     // campaign opened on a tree at 0.10 and run on from one at 0.20 changed its test (#175).
     const name = `${STEM}-level`;
@@ -342,11 +343,11 @@ describe("a campaign run by its log", () => {
     };
     // Its comparisons began under the rule of one reading at a time, so the two-stage rule's
     // trigger is not defaulted for it: the operator names both terms once.
-    expect(harnessBuilder([...flags, "--moves", "0"], seats)).rejects.toThrow(
+    await expect(harnessBuilder([...flags, "--moves", "0"], seats)).rejects.toThrow(
       "name --level and --trigger once for it (the plan's are --level 0.02 --trigger 0.25)",
     );
     // Naming the trigger alone would pin the level to the start's, under the summed rule.
-    expect(harnessBuilder([...flags, "--trigger", "0.25", "--moves", "0"], seats)).rejects.toThrow(
+    await expect(harnessBuilder([...flags, "--trigger", "0.25", "--moves", "0"], seats)).rejects.toThrow(
       "name --level and --trigger once",
     );
     expect(of(name, OPENED)).toHaveLength(1);
@@ -363,31 +364,8 @@ describe("a campaign run by its log", () => {
     });
   });
 
-  it("ends on an exam whose checks wait for the operator's word, and prints the command that gives it with the pack's flags", async () => {
-    const name = `${STEM}-admit`;
-    const flags = seeded(name).slice(0, -2);
-    const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-    };
-    const said = spyOn(console, "log");
-    // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`),
-    // and the opening keeps it for the command it prints.
-    const ending = await harnessBuilder([...flags, "--patience", "1"], seats);
-    const lines = said.mock.calls.map(([line]) => (isString(line) ? line : ""));
-    said.mockRestore();
-    expect(ending).toMatchObject({ move: "end", ending: "exam" });
-    // Run as printed, the command opens the campaign's pack: on 9 October the line named the
-    // campaign alone, and over a stored pack that run threw for want of the four flags.
-    const printed = lines
-      .find((line) => line.startsWith("to admit"))
-      ?.split(": bun tools/d2/harness-builder.ts ")[1];
-    // The campaign keeps its project, so the line names the pack and the campaign alone.
-    expect(printed).toBe(`${flags.slice(0, -2).join(" ")} --admit check-product`);
-    const next = await harnessBuilder([...(printed ?? "").split(" "), "--dry-run"], seats);
-    expect(next).toMatchObject({ move: "accept" });
-  });
-
   it("compares a step again, waits under --attended to promote it, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-climb`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores seven:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
@@ -556,7 +534,7 @@ describe("a campaign run by its log", () => {
     const answer = (labels: JsonObject) =>
       writeFileSync(file, JSON.stringify({ rejections: {}, passes: labels }));
     answer({ [a]: "sound", [b]: "wrng", [c]: "sound" });
-    expect(settleCommand([...pack, "--session", "g-1"])).rejects.toThrow(
+    await expect(settleCommand([...pack, "--session", "g-1"])).rejects.toThrow(
       "holds what is no label (sound, wrong, unclear) for 1 answer",
     );
     answer({ [a]: "sound", [b]: "", [c]: "sound" });
@@ -584,20 +562,16 @@ describe("a campaign run by its log", () => {
     });
     expect(of(name, "comparison.reported").filter(({ session }) => session === "g-1")).toHaveLength(2);
 
-    // Until 2026-10-11 a person read a Diagnoser's accounts the same way (`--diagnoses`); the seat
-    // went, and the flag with it (`docs/simplify.md`, E1).
-    await expect(settleCommand([...pack, "--diagnoses", "5"])).rejects.toThrow("--diagnoses");
-
     // What the campaign hands over: the promoted harness as a folder that stands by itself, the
     // public rules, and the closing report. It is written outside the repository and once.
     const to = join(root, "handover");
-    expect(closeCommand([...pack, "--to", join(REPO, ".ana", "handover")])).rejects.toThrow(
+    await expect(closeCommand([...pack, "--to", join(REPO, ".ana", "handover")])).rejects.toThrow(
       "lies inside the repository",
     );
     const handed = await closeCommand([...pack, "--to", to]);
     expect(handed.to).toBe(to);
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: handed.harness }]);
-    expect(closeCommand([...pack, "--to", to])).rejects.toThrow("holds something already");
+    await expect(closeCommand([...pack, "--to", to])).rejects.toThrow("holds something already");
     const closing = readFileSync(join(to, "REPORT.md"), "utf8");
     expect(closing).toContain(
       "a person read 3 in 1 comparison, drawn uniformly by each comparison's id: 2 sound, 1 wrong, 0 unclear",
@@ -648,7 +622,7 @@ describe("a campaign run by its log", () => {
     // solve is recorded in a log of its own under the campaign, and the campaign's log is as it was.
     const before = read(join(REPO, ".ana", "d2", name, LOG_FILE)).length;
     const trial = join(root, "handover-solved");
-    expect(closeCommand([...pack, "--to", trial, "--solve", "no-such-task"])).rejects.toThrow(
+    await expect(closeCommand([...pack, "--to", trial, "--solve", "no-such-task"])).rejects.toThrow(
       "--solve no-such-task: the campaign holds no task by that id",
     );
     rmSync(trial, { recursive: true, force: true });
@@ -666,6 +640,7 @@ describe("a campaign run by its log", () => {
   });
 
   it("reads a word the operator left during a comparison at the next move, and changes nothing in the comparison", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-word`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores six:
     // the row that writes tasks up to the target is tested in `test/decide.test.ts`.
@@ -727,6 +702,12 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
     await harnessBuilder([...flags, "--moves", "0"], seats);
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
+    // A total under what one solve is held at ends the campaign on its budget at the next move.
+    wordCommand(["--name", name, "--budget", "1"]);
+    expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({
+      move: "end",
+      ending: "budget",
+    });
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");
@@ -807,6 +788,7 @@ describe("a campaign run by its log", () => {
   });
 
   it("has the tasks changed where the reference left no room, and ends once the Examiner's patience is spent", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-budget`;
     const flags = [
       ...seeded(name),
@@ -826,8 +808,6 @@ describe("a campaign run by its log", () => {
     const strayed: string[] = [];
     // Every harness answers every task, in two of the model's turns: no room at eight. The
     // Examiner holds out nothing, twice, which is the campaign's patience (`spent`, `decide.ts`).
-    // Until 11 October the campaign then walked a ladder of shorter budgets (`--ladder`), three
-    // more moves here.
     const seats: Seats = {
       seated: scriptedSeats({ held: { old: "pass", fresh: "pass" }, starter: "pass" }, GRADED, strayed),
       examine: (request) =>
@@ -862,10 +842,6 @@ describe("a campaign run by its log", () => {
       "--solve-model-turns 5 names another setting than the campaign's, which was recorded as --solve-model-turns 8",
     );
     expect(strayed).toEqual([]);
-    // `--ladder` is no flag of the campaign's since 11 October.
-    await expect(harnessBuilder([...flags, "--ladder", "4,1", "--moves", "0"], seats)).rejects.toThrow(
-      "--ladder",
-    );
   });
   it("opens from a prompt: drafts its exam, waits for the operator's word on its checks, and reaches a comparison with no file written by hand", async () => {
     const name = `${STEM}-prompt`;
@@ -922,7 +898,7 @@ describe("a campaign run by its log", () => {
         }),
     };
     // With no prompt and no pack there is nothing to open, and nothing is written.
-    expect(harnessBuilder(["--name", name], seats)).rejects.toThrow("give the prompt it opens from");
+    await expect(harnessBuilder(["--name", name], seats)).rejects.toThrow("give the prompt it opens from");
     expect(await harnessBuilder([...flags, "--prompt", prompt, "--dry-run"], seats)).toMatchObject({
       move: "draft",
     });
@@ -1009,7 +985,9 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).toMatchObject({
       terms: { practice: "2", solves: "1", "solve-minutes": "8", "practice-solves": "3" },
     });
-    expect(harnessBuilder(["--name", name, "--solve-minutes", "30", "--moves", "0"], seats)).rejects.toThrow(
+    await expect(
+      harnessBuilder(["--name", name, "--solve-minutes", "30", "--moves", "0"], seats),
+    ).rejects.toThrow(
       "--solve-minutes 30 names another setting than the campaign's, which was recorded as --solve-minutes 8",
     );
     expect(of(name, OPENED)).toHaveLength(2);

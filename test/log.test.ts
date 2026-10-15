@@ -50,10 +50,10 @@ describe("the log", () => {
     appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"solve.retried","data":{}}\n');
     expect(() => read(path)).toThrow(`${path}:1 is not a log event`);
     // A kind no command writes since 12 October, when a packet's pass labels went into the settled
-    // report: a log that holds one is set aside, not read around.
+    // report, still reads: a log is evidence (AGENTS.md, section 5).
     const before = fresh();
     appendFileSync(before, '{"at":"2026-10-11T00:00:00.000Z","kind":"pass.labelled","data":{}}\n');
-    expect(() => read(before)).toThrow(`${before}:1 is not a log event`);
+    expect(read(before).map(({ kind }) => kind)).toEqual(["pass.labelled"]);
   });
 
   it("appends nothing after a torn last line, whatever the event", () => {

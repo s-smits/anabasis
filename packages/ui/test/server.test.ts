@@ -169,10 +169,22 @@ describe("the router", () => {
     }
   });
 
-  test("refuses a move named by an id two moves share, naming both places, and a place no move starts at", async () => {
+  test("opens a move by its place, refuses one named by an id two moves share, naming both places, and a place no move starts at", async () => {
+    const { moves } = answersOver(fixture.root, "default").campaign(fixture.key);
+    const place = (step: string): string =>
+      String(moves.find((move) => move.step === step && move.id === "b-1")?.index ?? "none");
+    for (const [step, kind] of [
+      ["builder", "session"],
+      ["comparison", "comparison"],
+    ] as const) {
+      const opened = get(pathOf("move", { key: fixture.key, move: place(step) }));
+      expect(parseJsonAs<AnswerOf<"move">>(await opened.text()).kind).toBe(kind);
+    }
     const refused = get(pathOf("move", { key: fixture.key, move: "b-1" }));
     expect(refused.status).toBe(400);
-    expect(parseJsonAs<ApiError>(await refused.text()).error).toContain("b-1 names 2 moves");
+    expect(parseJsonAs<ApiError>(await refused.text()).error).toContain(
+      `b-1 names 2 moves, the builder at ${place("builder")} and the comparison at ${place("comparison")}`,
+    );
     expect(get(pathOf("move", { key: fixture.key, move: "1" })).status).toBe(404);
   });
 });

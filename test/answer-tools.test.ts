@@ -107,12 +107,13 @@ describe("submit", () => {
   });
 
   it("reads the file's bytes as a command's output and names no part of them in the command", async () => {
-    const { home, commands, submit, answer } = solving();
+    const { desk, commands, submit, answer } = solving();
     answer('{"span": 4, "note": "$(touch ran); `id`"}');
-    await submit();
-    expect(commands).toEqual([
-      `[ -f '${home}/answer.json' ] || exit 44; head -c 1048577 '${home}/answer.json'`,
-    ]);
+    // The answer is taken whole, and no command the host ran spelled any part of it.
+    expect(await submit()).toEqual({ text: "Submitted.", terminate: true });
+    expect(desk.submitted).toEqual({ span: 4, note: "$(touch ran); `id`" });
+    expect(commands).not.toHaveLength(0);
+    expect(commands.filter((command) => command.includes("touch") || command.includes("`id`"))).toEqual([]);
   });
 
   it("ends the task flagged where the solver says it is malformed, and reads no file", async () => {

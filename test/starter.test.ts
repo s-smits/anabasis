@@ -14,7 +14,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { bashTool, CODING_TOOLS, selectedCodingTools } from "../src/solve/coding-tools.ts";
+import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/solve/coding-tools.ts";
 import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
 import { harnessTools, openHarness } from "../src/solve/harness.ts";
 import { installedPrograms } from "../src/solve/prompt.ts";
@@ -212,7 +212,8 @@ describe("the account of a harness a Builder is handed", () => {
         const said = (result: { content: { type: string; text?: string }[] }) =>
           result.content.map((part) => part.text ?? "").join("");
         // The program by its name, from the solver's working directory, on the solver's own file.
-        const shell = bashTool(wall);
+        const [shell] = codingTools(wall, ["bash"]);
+        if (shell === undefined) throw new Error("the coding tools serve bash");
         const run = (command: string) =>
           // SAFETY: the shell's declared arguments are a command and an optional timeout.
           shell.execute("call", { command }, undefined, undefined, undefined as never);

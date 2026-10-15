@@ -234,6 +234,13 @@ describe("a campaign's reading", () => {
       );
       expect(card.comparedIn.map(({ id, move }) => [id, move])).toEqual(measured);
     }
+    // Each comparison opens by its own move's place, which a round shares its id with a Builder session.
+    expect(
+      reading.comparisons.map((bar) => {
+        const move = reading.moves.find((each) => each.index === bar.move);
+        return [move?.step, move?.id];
+      }),
+    ).toEqual(reading.comparisons.map(({ id }) => ["comparison", id]));
     const kinds = reading.comparisons.flatMap(({ rulings }) => (rulings.withheld ? [] : [rulings.kinds]));
     expect([kinds.some((each) => each["check-defect"] > 0), kinds.length > 0]).toEqual([true, true]);
     expect(reading.open).toEqual(["b-5"]);
@@ -452,9 +459,16 @@ describe("the wall between the tiers", () => {
     for (const id of fixture.withheld) {
       for (const tier of ["default", "exam"] as const) {
         const { answer } = await ask("solve", { key: KEY, id }, tier);
-        expect({ id, tier, ruling: "ruling" in answer, row: "ruling" in answer.solve }).toEqual({
+        expect({
           id,
           tier,
+          withheld: answer.withheld,
+          ruling: "ruling" in answer,
+          row: "ruling" in answer.solve,
+        }).toEqual({
+          id,
+          tier,
+          withheld: "label",
           ruling: false,
           row: false,
         });

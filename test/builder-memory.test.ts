@@ -20,7 +20,6 @@
 import { describe, expect, it } from "bun:test";
 import {
   builderMemoryBlock,
-  carryMemoryForward,
   keepMemory,
   lastKept,
   MEMORY_CAP_BYTES,
@@ -408,13 +407,13 @@ describe("the handover between sessions", () => {
     writeFileSync(join(own, MEMORY_FILE), "# Builder memory\n\nthis session's own text\n");
     writeFileSync(join(own, SCRATCHPAD_FILE), "# Scratchpad\n\n- mine\n");
     // A carry made again writes into no slot that is written: the successor's notes outrank its parent's.
-    carryMemoryForward(first.home, own, first.key);
+    keepMemory(first.home, root, "own");
     expect(readFileSync(join(own, MEMORY_FILE), "utf8")).not.toContain("carried forward");
     expect(readFileSync(join(own, SCRATCHPAD_FILE), "utf8")).toContain("mine");
     // A predecessor that is gone leaves the successor without notes, and without a throw.
     rmSync(first.home, { recursive: true, force: true });
     const orphan = join(root, "orphan");
-    expect(() => carryMemoryForward(first.home, orphan, first.key)).not.toThrow();
+    expect(() => keepMemory(first.home, root, "orphan")).not.toThrow();
     expect(existsSync(orphan)).toBe(false);
   });
 });

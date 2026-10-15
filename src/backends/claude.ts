@@ -408,7 +408,7 @@ function open(
  * The effort v1 asked Claude Code for at `level`: the model's own map, then the
  * table; none, so the CLI's default, where neither names one.
  */
-export function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): EffortLevel | undefined {
+function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): EffortLevel | undefined {
   if (level === undefined) return undefined;
   // SAFETY: a catalog map spells its levels in the effort set Claude Code takes, as v1 relied on.
   return (model.thinkingLevelMap?.[level] as EffortLevel | null | undefined) ?? EFFORTS[level];

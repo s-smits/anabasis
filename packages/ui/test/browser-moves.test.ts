@@ -101,6 +101,8 @@ describe("the list of moves", () => {
     expect([rows[at - 1]?.slice(0, 3), rows[at + 1]?.slice(0, 3)]).toEqual(["r-1", "x-2"]);
     expect(rows.some((row) => row.startsWith("Returned the reference to the starter on c-1 "))).toBe(true);
     expect(rows.some((row) => / to reference on .+ despite the rule /u.test(row))).toBe(true);
+    // The pane speaks of promotions, never of epochs or a climb: not in a row, a filter or a placeholder.
+    expect(await page.locator("main").innerHTML()).not.toMatch(/epoch|climb/u);
     await expectAccessible(page);
     expectQuiet(opened);
     await opened.context.close();
@@ -126,6 +128,7 @@ describe("the list of moves", () => {
     expect(cells[5]).toMatch(/^Sep 2[89], \d\d:\d\d:\d\d [AP]M$/u);
     const open = await rowOf(page, indexOf("b-5", "builder")).locator("xpath=ancestor::tr").innerText();
     expect(open).toContain("open");
+    expect(open).toContain("2 turns so far");
     expect(open).toContain("no end");
     expectQuiet(opened);
     await opened.context.close();
@@ -300,6 +303,7 @@ describe("each kind of move", () => {
     await expect(page.getByRole("button", { name: "agent/BUILT_AGENTS.md" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Practice solves (2)" })).toBeVisible();
     await expect(page.getByRole("button", { name: "s-1-1" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "s-2-1" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Turns and calls · 3 turns" })).toBeVisible();
     await expectAccessible(page);
     await page.getByRole("button", { name: "s-1-1" }).click();

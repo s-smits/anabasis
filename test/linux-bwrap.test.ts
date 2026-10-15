@@ -1,6 +1,5 @@
 import {
   chmodSync,
-  existsSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -10,12 +9,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import {
-  bwrapOpenReadArgs,
-  classifyBwrapRefusal,
-  linuxBwrapSupport,
-  nodeRuntimeReadRoots,
-} from "../src/verify/linux-bwrap.ts";
+import { bwrapOpenReadArgs, linuxBwrapSupport, nodeRuntimeReadRoots } from "../src/verify/linux-bwrap.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 
 const dirs: string[] = [];
@@ -98,32 +92,29 @@ describe("bubblewrap refusal classification", () => {
   // statement of which package was too old or what to install. The isolation must still fail closed —
   // the flag is what stops a confined child nesting its own user namespace — so the fix is the
   // remedy text, not a weaker baseline.
-  it("names the unsupported option and the required bubblewrap", () => {
-    const reason = classifyBwrapRefusal("bwrap: Unknown option --disable-userns\n");
-    expect(reason).toContain("--disable-userns");
-    expect(reason).toContain("0.8.0");
-  });
+  /** Why a fake bwrap whose canary prints `stderr` and fails is refused. */
+  const refusal = (name: string, stderr: string, version = "") => {
+    const answers =
+      version === "" ? "" : `[ "$1" = --version ] && { echo "bubblewrap ${version}"; exit 0; }\n`;
+    const bwrap = fakeBwrap(name, `#!/bin/sh\n${answers}printf '%s' '${stderr}' >&2\nexit 1\n`);
+    return linuxBwrapSupport({ platform: "linux", bwrapPath: bwrap, outerSandboxed: false }).reason;
+  };
 
-  it("reports the installed version when the binary can state one", () => {
-    const reason = classifyBwrapRefusal("bwrap: Unknown option --disable-userns\n", "/usr/bin/bwrap");
-    // Only asserted when this host actually has bwrap: the version variant is a remedy detail, and a
-    // host without the binary must still get the option name rather than a thrown error.
-    if (existsSync("/usr/bin/bwrap")) expect(reason).toMatch(/installed bubblewrap \d/);
-    expect(reason).toContain("--disable-userns");
-  });
-
-  it("keeps the user-namespace remedy for a kernel refusal", () => {
-    const reason = classifyBwrapRefusal("bwrap: No permissions to create a new namespace\n");
-    expect(reason).toContain("user namespace");
-    expect(reason).not.toContain("--disable-userns");
-  });
-
-  it("carries one capped stderr line for any other refusal", () => {
-    const reason = classifyBwrapRefusal(
-      "bwrap: Can't mount proc on /newroot/proc: Operation not permitted\n",
+  it("names the unsupported option, the required bubblewrap and the one installed", () => {
+    expect(refusal("old", "bwrap: Unknown option --disable-userns\n", "0.6.1")).toBe(
+      "this bubblewrap does not support --disable-userns (installed bubblewrap 0.6.1) — the OS isolation needs bubblewrap 0.8.0 or newer; upgrade the bubblewrap package",
     );
-    expect(reason).toContain("Can't mount proc");
-    expect(classifyBwrapRefusal(`\nbwrap: ${"y".repeat(300)}\nsecond line\n`)).toBe(
+    // A binary that cannot state its version still gets the option named.
+    expect(refusal("mute", "bwrap: Unknown option --disable-userns\n")).toStartWith(
+      "this bubblewrap does not support --disable-userns — ",
+    );
+  });
+
+  it("keeps the user-namespace remedy for a kernel refusal, and carries one capped line for any other", () => {
+    expect(refusal("kernel", "bwrap: No permissions to create a new namespace\n")).toBe(
+      "bubblewrap could not create an unprivileged user namespace — the kernel may have user namespaces disabled",
+    );
+    expect(refusal("long", `\nbwrap: ${"y".repeat(300)}\nsecond line\n`)).toBe(
       `bubblewrap refused its baseline policy: bwrap: ${"y".repeat(193)} […107 bytes omitted]`,
     );
   });

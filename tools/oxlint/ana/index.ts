@@ -3,7 +3,6 @@ import { eslintCompatPlugin } from "@oxlint/plugins";
 import { unprovenUnknownParameterRule } from "./rules/unproven-unknown-parameter.ts";
 import { noUnknownUnionRule } from "./rules/no-unknown-union.ts";
 import { requireCapturedJsonRuntimeRule } from "./rules/require-captured-json-runtime.ts";
-import { noHandSpelledTreeRootRule } from "./rules/no-hand-spelled-tree-root.ts";
 import { noHandReadArgvRule } from "./rules/no-hand-read-argv.ts";
 import { noHandSpelledGitRule } from "./rules/no-hand-spelled-git.ts";
 import { requireMetaRuntimeImportRule } from "./rules/require-meta-runtime-import.ts";
@@ -80,7 +79,6 @@ const anaPlugin = eslintCompatPlugin({
     "unproven-unknown-parameter": unprovenUnknownParameterRule,
     "no-unknown-union": noUnknownUnionRule,
     "require-captured-json-runtime": requireCapturedJsonRuntimeRule,
-    "no-hand-spelled-tree-root": noHandSpelledTreeRootRule,
     "no-hand-read-argv": noHandReadArgvRule,
     "no-hand-spelled-git": noHandSpelledGitRule,
     "require-meta-runtime-import": requireMetaRuntimeImportRule,

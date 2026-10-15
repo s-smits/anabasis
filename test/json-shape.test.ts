@@ -20,7 +20,7 @@
 
 import { describe, expect, it } from "bun:test";
 import type { JsonObject as PiJsonObject, JsonValue as PiJsonValue } from "@earendil-works/pi-ai";
-import { type JsonValue, asRecord, jsonKind } from "../src/meta/json-shape.ts";
+import { type JsonValue, asRecord, typeName } from "../src/meta/json-shape.ts";
 
 /** What the bridge reads a tool call's arguments off. The Anthropic SDK declares `input` as
  *  `unknown`, which is why a guard has to stand at this seam at all. */
@@ -38,6 +38,6 @@ describe("the JSON shape this repository names and the one pi names", () => {
   it("lets a value pi produced be read as one of ours", () => {
     const fromPi: PiJsonValue = { list: [1, "two", null], flag: false };
     const ours: JsonValue = fromPi;
-    expect(jsonKind(ours)).toBe("object");
+    expect(typeName(ours)).toBe("object");
   });
 });

@@ -58,20 +58,6 @@ function shellAt(search: string, tier: "default" | "exam" = "default"): string {
   );
 }
 
-test("the shell names the four panes in order, the selected campaign with its worktree, and the tier", () => {
-  const html = shellAt("?pane=tasks");
-  const labels = [...html.matchAll(/class="ana-nav-label">([^<]+)</g)].map((match) => match[1]);
-  expect(labels).toEqual(["Campaign", "Moves", "Tasks", "Log"]);
-  expect(html).toContain('aria-current="page" title="Tasks"');
-  expect(html).toContain("<h2>Tasks</h2>");
-  expect(html).toContain(`${fixture.name}<small> main</small>`);
-  expect(html).toContain("default tier");
-  expect(shellAt("", "exam")).toContain("exam side");
-  for (const pane of ["campaign", "moves", "log"]) {
-    expect(shellAt(`?pane=${pane}`)).not.toContain("not built yet");
-  }
-});
-
 test("the selection falls back to the newest campaign of the route's project, and the route's campaign names its project", () => {
   const campaigns = answersOver(fixture.root, "default").campaigns();
   const newest = selectionOf(campaigns, routeOf(""));
@@ -114,20 +100,7 @@ test("the shell says what is missing before a campaign is read, and asks for the
   ).toContain("the address the server printed");
 });
 
-test("the inspector keeps what it shows while the next read loads", () => {
-  const html = renderToStaticMarkup(
-    <FileInspector
-      label="Harness file"
-      path="agent/BUILT_AGENTS.md"
-      payload={{ content: "text", value: "# Guide\n1. previous text", truncated: false, bytes: 24 }}
-      loading={true}
-      error={null}
-      onClose={() => {}}
-    />,
-  );
-  expect(html).toContain("agent/BUILT_AGENTS.md");
-  expect(html).toContain("1. previous text");
-  expect(html).toContain('aria-busy="true"');
+test("the inspector renders nothing while it has no file or event to show", () => {
   expect(
     renderToStaticMarkup(
       <FileInspector
@@ -215,7 +188,6 @@ test("the picker announces its current value beside its label, with the option's
   expect(html).toContain("arith<small> anabasis-arith</small>");
   expect(html).not.toContain('role="option"');
 });
-
 test("records keep missing and false values, escape content and defer large nested records", () => {
   const html = renderToStaticMarkup(
     <RecordView

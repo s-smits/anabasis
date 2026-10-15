@@ -43,7 +43,7 @@ what it found was mended there. Each item below says what stands, what is correc
 of the plan is taken, deferred or declined, with the reason. The order of Part II is kept.
 
 **Taken as written:** F3, F4, F9, F6 (the comment), W1, A1 to A4, B1, B2, C1, D1, E1, E3, R1,
-T1, T3, T4, and the edges of section 11 but `campaign-root.ts`. Each is one pull request on the
+T1, T3, T4, and the edges of section 11. Each is one pull request on the
 top, in the order of section 10, with the guard of section 9.
 
 **Already done, otherwise than proposed:**
@@ -409,7 +409,7 @@ follow below, whole.
 | T3 | done | PR #209 |
 | T4 | done | PR #213 |
 | T5 | operator's | |
-| Small edges (section 11) | done | PRs #191 and #212, but `src/meta/campaign-root.ts`, which goes with T5 |
+| Small edges (section 11) | done | PRs #191 and #212; `src/meta/campaign-root.ts` and its lint rule on 15 October |
 
 ---
 
@@ -586,7 +586,8 @@ operator's home or in another seat's root.
 
 ## 11. Small edges
 
-Done at PRs #191 and #212, but `src/meta/campaign-root.ts`, which goes with T5. The table is in
+Done at PRs #191 and #212, and `src/meta/campaign-root.ts` with the lint rule that kept it on 15
+October: the trees it named were v1's, and v2 writes neither. The table is in
 `docs/plan-history.md`.
 
 ## 12. Risks

@@ -147,7 +147,7 @@ export const HOME_TOOL_TREE = `harness/${TOOL_TREE_DIR}`;
 
 /** An ending as the Builder is shown it: the outcome and its kind. A non-result's reason can name a
  *  check, so only a broken harness's reason, which is the harness's own, is shown. */
-export function endingText(ending: Ending): string {
+function endingText(ending: Ending): string {
   if (ending.outcome === "pass") return "pass";
   if (ending.outcome === "non-result") return `no result (${ending.kind})`;
   if (ending.outcome === "flagged") return "flagged (the solver judged the task malformed)";
@@ -332,7 +332,7 @@ export async function snapshot(bench: Bench): Promise<Snapshot> {
  *  a tool or a program costs a solve that the Builder can act on: on 10 October a promoted
  *  harness's solve read 8,600 to 13,200 tokens over two turns in three campaigns, nearly all of it
  *  the prompt read twice. */
-export function usedText(events: readonly LogEvent[], solve: string): string {
+function usedText(events: readonly LogEvent[], solve: string): string {
   const { start, end } = solvesIn(events).find(({ id }) => id === solve) ?? {};
   const limits = limitsIn(start?.limits);
   if (!isNumber(end?.seconds) || !isNumber(end.turns) || limits === null) return "";

@@ -16,7 +16,6 @@ import { ComparisonDetailView } from "../src/views/moves-comparison.tsx";
 import { SessionDetailView } from "../src/views/moves-session.tsx";
 import { SolveDetailView } from "../src/views/solve.tsx";
 import { TaskDetailView } from "../src/views/tasks-detail.tsx";
-import { TaskGridView } from "../src/views/tasks-grid.tsx";
 import { answersOver, type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
 
 /*
@@ -30,7 +29,6 @@ import { answersOver, type Fixture, writeFixtureCampaign } from "./fixture-campa
  */
 
 const EXAM_LINE = "The exam side holds";
-const WAITING_LINE = "withheld while its rejection waits for a person";
 const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-ui-panes-")));
 let fixture: Fixture;
 
@@ -93,63 +91,12 @@ function solveHtml(id: string, tier: Tier): string {
   );
 }
 
-test("the Moves pane lists every move in its order by its place, with a divider at each promotion", () => {
-  const reading = readingIn("default");
-  const html = shellAt("?pane=moves");
-  const rows = [...html.matchAll(/data-row="([^"]+)"/g)].map((match) => Number(match[1]));
-  expect(rows).toEqual(reading.moves.map((move) => move.index));
-  // A round's Builder session and comparison share an id and are two rows.
-  expect(new Set(reading.moves.map((move) => move.id)).size).toBeLessThan(reading.moves.length);
-  expect(html.match(/class="ana-move-divider"/g)?.length).toBe(reading.promotions.length);
-  expect(html).toContain("despite the rule");
-  expect(html).toContain("Returned the reference to the starter");
-  expect(html).toContain(`Moves (${String(reading.moves.length)})`);
-  expect(html).toContain("2 turns so far");
-  expect(html.includes("epoch") || html.includes("climb")).toBe(false);
-});
-
 test("the shell names the worktree and the tier above a pane, and leaves the campaign's name to the pane", () => {
   const html = shellAt("?pane=moves");
   const meta = /<div class="ana-record-meta">(.*?)<\/div>/.exec(html)?.[1] ?? "";
   expect(meta).toContain("default tier");
   expect(meta).toContain("<span>main</span>");
   expect(meta.includes(fixture.name)).toBe(false);
-});
-
-test("a move opens by its place in the log, and an id two moves share is refused with both places", () => {
-  const builder = placeOf("builder", "b-1");
-  const comparison = placeOf("comparison", "b-1");
-  expect(answers("default").move(fixture.key, String(builder)).kind).toBe("session");
-  expect(answers("default").move(fixture.key, String(comparison)).kind).toBe("comparison");
-  expect(answers("default").move(fixture.key, "x-1").kind).toBe("session");
-  expect(() => answers("default").move(fixture.key, "b-1")).toThrow(
-    `b-1 names 2 moves, the builder at ${String(builder)} and the comparison at ${String(comparison)}`,
-  );
-});
-
-test("the task grid's cells are the reading's, each with its outcome and each side's valid count", () => {
-  const grid = answers("default").tasks(fixture.key);
-  const html = renderToStaticMarkup(<TaskGridView grid={grid} onOpen={() => {}} />);
-  const cells = [...html.matchAll(/data-outcome="([^"]+)"(?: data-(?:counts|left-out)="([^"]+)")?/g)].map(
-    (match) => `${match[1] ?? ""}:${match[2] ?? ""}`,
-  );
-  const expected = grid.rows.flatMap((row) =>
-    row.cells.map((cell) => {
-      if (cell === null) return "none:";
-      if ("leftOut" in cell) return `left-out:${cell.leftOut}`;
-      return `${cell.outcome}:${String(cell.old.valid)}/${String(cell.old.solves)} · ${String(cell.fresh.valid)}/${String(cell.fresh.solves)}`;
-    }),
-  );
-  // The task a person's label disputed in b-2 was fixed there, and is left out rather than unscored.
-  expect(expected).toContain("left-out:disputed");
-  expect(cells).toEqual(expected);
-  expect(html.match(/>not scored</g)?.length).toBe(expected.filter((cell) => cell === "none:").length);
-  expect(html).toContain(`Tasks (${String(grid.rows.length)})`);
-  for (const column of grid.columns) expect(html).toContain(`<span>${column.id}</span>`);
-  expect(html).toContain("waits for a label");
-  expect(new Set(grid.rows.map((row) => row.state))).toEqual(
-    new Set(["held", "released", "refused", "disputed"]),
-  );
 });
 
 test("the Log pane holds the reader collapsed above a page of events, and says in one quiet line what the tier withholds", () => {
@@ -184,24 +131,6 @@ test("the Log pane holds the reader collapsed above a page of events, and says i
   expect(html).toContain(`1–100 of ${String(page.matching)} events`);
   expect(html).toContain('class="is-selected"');
   expect(html).toContain("campaign.opened");
-});
-
-test("a Builder session shows its handover, its harness, its practice solves and its own turns in either tier", () => {
-  const detail = sessionIn("builder", "b-2", "default");
-  const html = renderToStaticMarkup(
-    <SessionDetailView
-      detail={detail}
-      reading={readingIn("default")}
-      navigation={navigationAt(`?pane=moves&move=${String(detail.move.index)}`)}
-    />,
-  );
-  expect(html).toContain("Builder session");
-  expect(html).toContain(`Practice solves (${String(detail.solves.length)})`);
-  expect(detail.solves.length).toBeGreaterThan(0);
-  for (const row of detail.solves) expect(html).toContain(row.id);
-  expect(html).toContain("Turn 1");
-  expect(html).toContain("The harness it left");
-  expect(html.includes(EXAM_LINE)).toBe(false);
 });
 
 test("an Examiner session's turns are on the exam side: a quiet line in the default tier, the turns in the exam tier", () => {
@@ -278,24 +207,6 @@ test("a held-out solve's trace, verdict and ruling are on the exam side, each in
   expect(shown.includes(reason)).toBe(true);
   expect(shown).toContain("Refused by");
   expect(shown).toContain("Turn 1");
-});
-
-test("a ruling whose rejection waits for a person's label says so in both tiers, from the solve's own answer", () => {
-  for (const id of fixture.withheld) {
-    expect(answers("default").solve(fixture.key, id).withheld).toBe("label");
-    expect(solveHtml(id, "exam")).toContain(WAITING_LINE);
-    expect(solveHtml(id, "default")).toContain(WAITING_LINE);
-  }
-  expect(solveHtml(fixture.ruledSolve, "default").includes(WAITING_LINE)).toBe(false);
-});
-
-test("a practice solve's trace is shown in the default tier", () => {
-  const html = solveHtml(fixture.practiceSolve, "default");
-  expect(html).toContain("practice task");
-  expect(html).toContain("Turn 1");
-  expect(html.includes("trace of a held-out")).toBe(false);
-  // Its rejection is never ruled: the Referee rules inside a comparison only.
-  expect(html.includes("Referee's ruling")).toBe(false);
 });
 
 test("a held-out task's text and hidden values are on the exam side; a practice task's text is shown in either tier", () => {

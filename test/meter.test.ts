@@ -44,10 +44,14 @@ describe("the meter", () => {
   });
 
   it("freezes the list price, so a later catalog change moves nothing", () => {
-    const prices = freezePrices([{ ...opus, cost: { ...rates } }]);
-    expect(Object.isFrozen(prices)).toBe(true);
+    const listed = { ...opus, cost: { ...rates } };
+    const prices = freezePrices([listed]);
+    listed.cost.input = 99;
     expect(prices["claude/claude-opus-5"]).toEqual(rates);
+    expect(Object.isFrozen(prices)).toBe(true);
     expect(Object.isFrozen(prices["claude/claude-opus-5"])).toBe(true);
+    // The catalog is pi's, read by every other model call: it stays as pi gave it.
+    expect(Object.isFrozen(listed.cost)).toBe(false);
   });
 
   it("refuses an unpriced model, and a model the table does not hold", () => {

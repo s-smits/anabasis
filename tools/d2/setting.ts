@@ -136,7 +136,7 @@ export const SETTING_OPTIONS = {
 /** The setting of a campaign nothing has named: the stored sweep's limits, spelled out so that the
  *  source says them, and a test holds them to `LIMITS`. The solver is the stored cycle's own, the
  *  model's turns are not limited, and the scored set is `SIZE.tasks` tasks by the draw. */
-export const SETTING_DEFAULTS = {
+const SETTING_DEFAULTS = {
   "solver-effort": "high",
   "solve-minutes": "120",
 } as const;

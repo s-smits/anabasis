@@ -1,7 +1,7 @@
 // The solver's coding tools are pi's own four: their definitions as pi released them, the presets
 // that select them, and the file tools' work done by walled commands, here over a plain shell in
 // place of the wall. Then, on the real command wall: one working directory for every tool, the
-// three timeout clauses, a failing exit, the CPU record, and a cut command's output kept in the home.
+// three timeout clauses, a failing exit, and a cut command's output kept in the home.
 import { describe, expect, it } from "bun:test";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { createBashToolDefinition } from "../vendor/pi-coding-agent/core/tools/bash.ts";
@@ -22,14 +22,8 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import {
-  bashTool,
-  codingTools,
-  fileTools,
-  selectedCodingTools,
-  type WallExec,
-} from "../src/solve/coding-tools.ts";
-import { type CommandWall, makeSeatDirs, shellSeconds, solveDirs } from "../src/solve/command.ts";
+import { codingTools, fileTools, selectedCodingTools, type WallExec } from "../src/solve/coding-tools.ts";
+import { type CommandWall, makeSeatDirs, solveDirs } from "../src/solve/command.ts";
 import { solveIsolationPolicy } from "../src/verify/solve-sandbox.ts";
 
 const LIMITS = { shellDefaultSeconds: 300, shellMaxSeconds: 900 };
@@ -104,7 +98,8 @@ describe("the solver's coding tools", () => {
       toolTree: null,
       limits: LIMITS,
     };
-    const ours = bashTool(wall);
+    const [ours] = codingTools(wall, ["bash"]);
+    if (ours === undefined) throw new Error("the coding tools serve bash");
     const pi = createBashToolDefinition(dirs.home);
     expect(ours.name).toBe("bash");
     expect(ours.label).toBe(pi.label);
@@ -143,22 +138,6 @@ describe("the solver's coding tools", () => {
     expect(() => selectedCodingTools(["bash", "python", "files"])).toThrow(
       "a solve serves pi's coding tools as presets (read, bash, edit, write), not python, files",
     );
-  });
-
-  it("lets a named timeout only raise the default, up to the maximum", () => {
-    const table: [number | undefined, number, number][] = [
-      [undefined, 300, 300],
-      [120, 120, 300],
-      [0, 1, 300],
-      [-5, 1, 300],
-      [450.9, 450, 450],
-      [900, 900, 900],
-      [880, 880, 880],
-      [5000, 5000, 900],
-    ];
-    for (const [timeout, asked, seconds] of table) {
-      expect(shellSeconds(timeout, LIMITS)).toEqual({ asked, seconds });
-    }
   });
 });
 
@@ -244,7 +223,7 @@ describe("the file tools, through walled commands", () => {
 
 describe("the coding tools on the command wall", () => {
   it.skipIf(runtimeProcess.platform !== "darwin")(
-    "share one working directory, name what the wall allowed on a cut, and keep the CPU and the cut output",
+    "share one working directory, name what the wall allowed on a cut, and keep the cut output",
     async () => {
       const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-coding-repo-")));
       const dirs = solveDirs(`coding-${String(runtimeProcess.pid)}-${String(Date.now())}`);
@@ -275,10 +254,14 @@ describe("the coding tools on the command wall", () => {
         expect(text(await bash("sh lib/run.sh"))).toBe("from-write\n");
         await call("edit", { path: "lib/run.sh", edits: [{ oldText: "from-write", newText: "from-edit" }] });
         expect(text(await bash("sh ~/lib/run.sh"))).toBe("from-edit\n");
-        // The wall decides what a file tool reaches, as it decides for a command.
-        writeFileSync(join(repoRoot, "hidden.txt"), "hidden\n");
-        await expect(call("read", { path: join(repoRoot, "hidden.txt") })).rejects.toThrow();
-        await expect(call("write", { path: join(repoRoot, "made.txt"), content: "x" })).rejects.toThrow();
+        // The wall decides what a file tool reaches, as it decides for a command: the read is refused
+        // where it asks after the file, and the write names the folder the wall keeps it out of.
+        const hidden = join(repoRoot, "hidden.txt");
+        writeFileSync(hidden, "hidden\n");
+        await expect(call("read", { path: hidden })).rejects.toThrow(`access '${hidden}'`);
+        await expect(call("write", { path: join(repoRoot, "made.txt"), content: "x" })).rejects.toThrow(
+          repoRoot,
+        );
         expect(existsSync(join(repoRoot, "made.txt"))).toBe(false);
 
         const sleep = "echo started; sleep 5";

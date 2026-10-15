@@ -32,7 +32,7 @@ import {
 } from "../src/solve/command.ts";
 import { mountDiskCap } from "../src/verify/disk-cap.ts";
 import { LINUX_BWRAP_ID } from "../src/verify/linux-bwrap.ts";
-import { guardedAncestors, moveBlockingRules } from "../src/verify/seatbelt-path-guard.ts";
+import { moveBlockingRules } from "../src/verify/seatbelt-path-guard.ts";
 import { commandIsolationPolicy } from "../src/verify/solve-command-isolation.ts";
 import { userTempRules } from "../src/verify/wall-policy.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
@@ -352,10 +352,14 @@ describe("the rename guard", () => {
     const repoRoot = workRepo();
     const base = solveIsolationPolicy({ repoRoot });
     if ("unsupported" in base) throw new Error(`this host cannot run the isolation: ${base.unsupported}`);
-    const ancestors = guardedAncestors(base.deniedReadRoots);
-    expect(ancestors).toContain(dirname(repoRoot));
-    expect(ancestors).toContain(dirname(homedir()));
-    expect(ancestors).not.toContain("/");
+    const rules = moveBlockingRules(base.deniedReadRoots);
+    const literal = (path: string) => `  (literal ${JSON.stringify(path)})`;
+    expect(rules).toContain(literal(dirname(repoRoot)));
+    expect(rules).toContain(literal(dirname(homedir())));
+    expect(rules).not.toContain(literal("/"));
+    // Both halves of the rename: the source is unlinked and the destination is created.
+    expect(rules).toContain("(deny file-write-unlink");
+    expect(rules).toContain("(deny file-write-create");
     if (onDarwin) {
       const scratch = join(tmpdir(), "ana-solve-sandbox-scratch");
       const { profile } = commandIsolationPolicy(base, {
@@ -364,10 +368,8 @@ describe("the rename guard", () => {
         home: join(scratch, "home"),
         temp: join(scratch, "tmp"),
       });
-      // Both halves of the rename: the source is unlinked and the destination is created.
-      expect(profile).toContain("(deny file-write-unlink");
-      expect(profile).toContain("(deny file-write-create");
-      for (const ancestor of ancestors) expect(profile).toContain(`(literal ${JSON.stringify(ancestor)})`);
+      // The block whole, in its order: an ancestor's literal line alone also stands in a read rule.
+      expect(profile).toContain(rules.join("\n"));
       // Upstream tags every rule with a per-session random suffix for its log stream.
       expect(profile).not.toContain("with message");
     }
@@ -384,8 +386,16 @@ describe("the rename guard", () => {
     await inSeat(repoRoot, [], async (_wall, run) => {
       const moved = join(outer, "moved");
       const output = await run(
-        `mv ${join(outer, "parent")} ${moved} 2>&1; cat ${join(moved, "repo", "canary.txt")} 2>&1; true`,
+        `echo started; ls ${outer} 2>&1; mv ${join(outer, "parent")} ${moved} 2>&1; cat ${join(moved, "repo", "canary.txt")} 2>&1; true`,
       );
+      // The command ran: a launch that refused everything would also leave the canary unread.
+      expect(output).toStartWith("started\n");
+      if (onDarwin) {
+        // The parent is in sight, and the rename guard, not a missing path, refuses its rename. On
+        // Linux the folder lies in the hidden temporary directory, so the command cannot see it.
+        expect(output.split("\n")).toContain("parent");
+        expect(output).toMatch(/^mv: .*Operation not permitted$/m);
+      }
       expect(output).not.toContain("RENAMED-CANARY");
       expect(existsSync(join(repoRoot, "canary.txt"))).toBe(true);
       expect(existsSync(moved)).toBe(false);
@@ -394,6 +404,5 @@ describe("the rename guard", () => {
 
   it("emits nothing when there is nothing to protect, rather than a rule matching everything", () => {
     expect(moveBlockingRules([])).toStrictEqual([]);
-    expect(guardedAncestors([])).toStrictEqual([]);
   });
 });

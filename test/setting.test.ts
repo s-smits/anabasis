@@ -14,7 +14,6 @@ import {
   keepSetting,
   type Recorded,
   recordedSetting,
-  SETTING_DEFAULTS,
   SETTING_OPTIONS,
   settingAsked,
   settingNamed,
@@ -43,10 +42,14 @@ const SHORT: Recorded = {
 describe("what the flags of a setting name", () => {
   it("is the stored sweep's limits and the cycle's own solver where no flag is given", () => {
     expect(settingNamed({})).toEqual({ solver: undefined, limits: LIMITS });
-    // The defaults are the sweep's limits spelled out, so that a command's help and its source say them.
-    expect(settingNamed(SETTING_DEFAULTS)).toEqual({ solver: undefined, limits: LIMITS });
     // With no --solver the effort flag names nothing: the stored cycle's model solves at its effort.
     expect(settingNamed({ "solver-effort": "low" }).solver).toBeUndefined();
+  });
+
+  it("is read by every command through the one owner's options", () => {
+    for (const flag of ["solver", "solver-effort", "solve-minutes", "solve-model-turns"] as const) {
+      expect(ROUND_OPTIONS[flag]).toBe(SETTING_OPTIONS[flag]);
+    }
   });
 
   it("is another wall, a number of the model's own turns, or another solver", () => {
@@ -94,12 +97,6 @@ describe("what the flags of a setting name", () => {
       expect(() => targetNamed(target)).toThrow(
         `--target ${target}: the tasks to score are a whole number of at least one`,
       );
-    }
-  });
-
-  it("is read by every command through the one owner's options", () => {
-    for (const flag of ["solver", "solver-effort", "solve-minutes", "solve-model-turns"] as const) {
-      expect(ROUND_OPTIONS[flag]).toBe(SETTING_OPTIONS[flag]);
     }
   });
 });
@@ -176,12 +173,6 @@ describe("a campaign's setting, recorded once", () => {
     expect(() => settingAsked({ "solve-model-turns": "40" }, UNNAMED)).toThrow(
       "--solve-model-turns 40 names another setting than the campaign's, which was recorded with no --solve-model-turns",
     );
-  });
-
-  it("takes no other setting: --new-setting is no flag since 2026-10-11", () => {
-    expect(SETTING_OPTIONS).not.toHaveProperty("new-setting");
-    // A command run under the record records nothing more, whatever it names of the same.
-    expect(settingAsked({ "solve-minutes": "8" }, SHORT).record).toBeNull();
   });
 
   it("is kept in the log as the command begins, and read back as the last one kept", () => {

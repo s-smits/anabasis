@@ -1,8 +1,9 @@
 /**
  * What the page paints while it changes what it shows: a switch of project or campaign, a slow read
- * of the next campaign, a pane switch, and a poll that brings nothing new. The operator's recording
- * of 14 October showed a switch of project painting "Reading the campaign" over the whole page for
- * four frames; the frame sampler (`sampleFrames`) counts such frames where they are painted.
+ * of the next campaign and a pane switch. What a poll that brings nothing new redraws is each pane's
+ * own suite's to say. The operator's recording of 14 October showed a switch of project painting
+ * "Reading the campaign" over the whole page for four frames; the frame sampler (`sampleFrames`)
+ * counts such frames where they are painted.
  */
 import { afterAll, beforeAll, describe, test } from "bun:test";
 import { type Browser, expect, type Page } from "@playwright/test";
@@ -11,14 +12,12 @@ import {
   expectQuiet,
   framesSeen,
   launchBrowser,
-  nextPolls,
   type Opened,
   openPage,
   routeParameters,
   type Served,
   sampleFrames,
   serveFixture,
-  withClock,
 } from "./browser.ts";
 
 /** When the option was clicked and when the placeholder was first painted, in the page's clock; and
@@ -32,7 +31,6 @@ interface Timeline {
 
 declare global {
   interface Window {
-    anaMutations?: { mutations: number };
     anaTimeline?: Timeline;
   }
 }
@@ -84,20 +82,6 @@ async function sampled(query: string, title: string): Promise<Opened> {
 async function pick(page: Page, picker: "Project" | "Campaign", option: string): Promise<void> {
   await page.getByRole("combobox", { name: new RegExp(`^${picker}`, "u") }).click();
   await page.getByRole("option", { name: new RegExp(`^${option}`, "u") }).click();
-}
-
-/** The number of DOM mutations under the first match of `selector`, counted from now. */
-async function observe(page: Page, selector: string): Promise<() => Promise<number>> {
-  await page.evaluate((watched) => {
-    const target = document.querySelector(watched);
-    if (target === null) throw new Error(`nothing matches ${watched}`);
-    const counted = { mutations: 0 };
-    window.anaMutations = counted;
-    new MutationObserver((records) => {
-      counted.mutations += records.length;
-    }).observe(target, { subtree: true, childList: true, attributes: true, characterData: true });
-  }, selector);
-  return () => page.evaluate(() => window.anaMutations?.mutations ?? -1);
 }
 
 /**
@@ -224,33 +208,6 @@ describe("a switch of project or campaign", () => {
     release();
     await expect(page.getByRole("heading", { level: 1, name: "early" })).toBeVisible();
     expect(routeParameters(page)).toEqual({ campaign: keys.early });
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-});
-
-describe("a poll that brings nothing new", () => {
-  test("redraws nothing of the comparisons chart", async () => {
-    const opened = await sampled(`campaign=${keys.fixture}`, "fixture");
-    const { page } = opened;
-    await withClock(page);
-    await nextPolls(page, 1);
-    const mutations = await observe(page, ".ana-comparisons-frame svg");
-    await nextPolls(page, 2);
-    expect(await mutations()).toBe(0);
-    expectQuiet(opened);
-    await opened.context.close();
-  });
-
-  test("redraws nothing of the moves table", async () => {
-    const opened = await openPage(browser, served.url(`campaign=${keys.fixture}&pane=moves`));
-    const { page } = opened;
-    await withClock(page);
-    await expect(page.getByRole("table")).toBeVisible();
-    await nextPolls(page, 1);
-    const mutations = await observe(page, "main table");
-    await nextPolls(page, 2);
-    expect(await mutations()).toBe(0);
     expectQuiet(opened);
     await opened.context.close();
   });

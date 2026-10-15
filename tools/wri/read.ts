@@ -1,6 +1,6 @@
 /**
  * The deterministic read of one campaign's log for a whole-run investigation: six rows of
- * identities the primary reviewer settles, and the triggers that say which of the thirty lanes of
+ * identities the primary reviewer settles, and the triggers that say which of the thirty-one lanes of
  * `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
  *
  * v1's readers walked a campaign folder of some forty record kinds: claims, promotions, epochs,
@@ -16,8 +16,8 @@
  * The folds of the log, the catalogue of triggers and the lanes of the exam side (1 to 12) are
  * `folds.ts` since 10 October, when this file was over the size policy's ceiling. This file keeps
  * the lanes of the harness, the comparison, the solve and the review (13 to 30), the rows and the
- * overview; the lanes that read the clock (26 and 28) and row A's hours are `time.ts`, split from
- * here on the same day for the same ceiling.
+ * overview. The climb's lane (31) is `promotion.ts`. The lanes that read the clock (26 and 28) and
+ * row A's hours are `time.ts`, split from here on the same day for the same ceiling.
  */
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/builder/handover.ts";
 import { flipP, pairings, readsStepEitherWay, sweepOf } from "#src/kernel/compare.ts";

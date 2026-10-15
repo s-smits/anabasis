@@ -203,7 +203,9 @@ describe("the whole-run investigation's reader", () => {
     expect(lines).toContain("4 tasks held out, for a comparison to score; 1 released for practice");
     // A role the log holds no event of is no row: the Diagnoser's seat went on 11 October.
     expect(lines).toContain("billed dollars: solver 9.00, builder 2.00, referee 0.00");
-    expect(lines).toContain("b-1: hp > hc, ended finished, 0 practice solves, reading b-1 no-step");
+    // b-1's end record holds no practice count, as a killed session's holds none, so its one practice
+    // solve is read from the log (15 October).
+    expect(lines).toContain("b-1: hp > hc, ended finished, 1 practice solve, reading b-1 no-step");
   });
 
   it("gives every trigger the lane its table names", () => {

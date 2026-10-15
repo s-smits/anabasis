@@ -1,11 +1,11 @@
 # Which rules fix, and which only report
 
 Fifty-six rules are registered: thirty-nine `ana` and seventeen `anti-slop`, every one of them
-`error`. **Fifteen carry a fixer. Forty-one report and leave the repair to the author.**
+`error`. **Fourteen carry a fixer. Forty-two report and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, which ones sit right on the edge and are
-refused on purpose, and why the count stops at fifteen rather than climbing to twenty. Each rule's
+refused on purpose, and why the count stops at fourteen rather than climbing to twenty. Each rule's
 own doc comment carries its reason in one sentence; this file is the argument they share, so the
 next rule author does not re-derive it and does not ship the fixer that makes the ruleset
 unenforceable.
@@ -39,14 +39,13 @@ All four, not three.
    and silences the rule. Compliance with the letter of it, none of the benefit, and no second
    chance.
 
-## The fifteen that fix
+## The fourteen that fix
 
 | rule | the edit | why it is a fact |
 | --- | --- | --- |
 | `declarations-before-the-first-function` | moves type, interface and const declarations above the first function | order, not content; the declaration text is untouched |
 | `no-argument-already-carried` | drops the parameter, the argument at every call and rewrites the body's reads | three edits, one shape; scope analysis decides the body half, and six conditions withdraw it |
 | `no-hand-rolled-error-render` | routes a caught value through `errorMessage` / `asError` | those two own the decision already |
-| `no-hand-spelled-tree-root` | replaces a joined path literal with the owner's call | `campaignRoot()` is the single owner; the literal is the bug |
 | `no-renaming-temporary` | substitutes the expression at the one read | a const read once and only renaming is the expression |
 | `no-repeated-string-literal` | names the repeat once, **in test files only** | see below — the source half is deliberately refused |
 | `prefer-condition-over-boolean-returns` | returns the condition | `if (c) return true; return false` is `return c` |
@@ -140,7 +139,7 @@ the same guessed interval, and the rule would have stopped asking about it. Two 
 reach into other files, and are filed under the one their own sentence makes the object of the
 repair.
 
-## Why it stops at fifteen
+## Why it stops at fourteen
 
 Two rules moved across on 2026-09-20, and both refusals had named an obstacle that measurement
 removed rather than a decision. `require-meta-runtime-import` said a fixer "would produce an import
@@ -159,6 +158,8 @@ It moved from `ana` to `anti-slop` the same evening, because nothing in it was t
 reads the nearest manifest's `imports` as every resolver does, and the trees an exported bundle
 copies without them are named in `.oxlintrc.json` as its `relativeOnly` option, which the `ana`
 fixers that write imports read too.
+`no-hand-spelled-tree-root` left on 15 October with the owner it pointed at: the `campaigns/` and
+`domains/` trees it kept to `src/meta/campaign-root.ts` were v1's, and v2 writes neither.
 
 **The count of rules is the wrong denominator.** The largest sweep in the set had a fixer and the
 second largest deliberately did not. `declarations-before-the-first-function` moved 965
@@ -340,16 +341,16 @@ settles on rather than from a status any of its six checks can set.
 Pushing the count to twenty means shipping fixers from the bridge list, and each one silences its
 rule while leaving the repair undone. A ruleset where a third of the findings are closed by a
 fixer that wrote the median answer is not a stricter ruleset — it is a ruleset that stopped being
-enforceable, because a clean lint no longer means what it says. **Fifteen is the honest ceiling
+enforceable, because a clean lint no longer means what it says. **Fourteen is the honest ceiling
 under the four conditions, not a target that was missed.**
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call. That is what these forty-one are for.
+what is wrong and makes the call. That is what these forty-two are for.
 
 ## A fixer's finding has no answer
 
 A report-only finding a reader judges wrong is answered once in `tools/oxlint/not-slop.tsv`, with
-a reason, and every reader of the findings drops it. A finding from one of the fifteen cannot be:
+a reason, and every reader of the findings drops it. A finding from one of the fourteen cannot be:
 `bun run not-slop` refuses the row, and so does `bun run lint` when it reads one. The ledger stops
 a report, not a fix — `--fix` rewrites the site whatever a row says — so a wrong report from a
 fixer is a defect in the rule and is repaired in the rule. That is condition 1 read from the other

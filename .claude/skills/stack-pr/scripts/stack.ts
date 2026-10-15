@@ -10,15 +10,8 @@
  * this moment and the stack moves, so run it again before a branch, a pull request and a push.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
-import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-
-export interface Pull {
-  readonly number: number;
-  readonly headRefName: string;
-  readonly baseRefName: string;
-  readonly headRefOid: string;
-}
+import { runtimeProcess } from "#src/meta/process.ts";
+import { openPulls, type Pull } from "#tools/runtime/land.ts";
 
 /** The stack: the longest chain of open pull requests, bottom first, and the pull requests on no
  *  such chain. A chain starts on a base that is no open pull request's head, which is `main` or a
@@ -74,18 +67,7 @@ if (import.meta.main) {
   await runCommand(
     { name: "stack", usage: "stack.ts [--branch <branch>]", options: { branch: "text" } },
     (args: CommandArgs) => {
-      const listed = runTextSyncOrThrow([
-        "gh",
-        "pr",
-        "list",
-        "--state",
-        "open",
-        "--limit",
-        "200",
-        "--json",
-        "number,headRefName,baseRefName,headRefOid",
-      ]);
-      console.log(told(parseJsonAs<Pull[]>(listed), args.value("branch")).join("\n"));
+      console.log(told(openPulls(runtimeProcess.cwd()), args.value("branch")).join("\n"));
     },
   );
 }

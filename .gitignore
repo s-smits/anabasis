@@ -4,6 +4,8 @@ node_modules
 .DS_Store
 .env
 .env.*
+!.env.example
+!.env.runs.example
 .accounts/
 __pycache__/
 # A test fixture's scratch inside the checkout, at any depth (v1's tests named theirs this way).

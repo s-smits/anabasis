@@ -32,7 +32,7 @@ import {
 import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports } from "../kernel/reports.ts";
+import { lastReports, poolOf } from "../kernel/reports.ts";
 import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -249,8 +249,10 @@ function asReported(events: readonly LogEvent[], id: string): LogEvent[] {
   return own === -1 ? [...events] : events.slice(0, own + 1);
 }
 
-/** Each harness by itself over `pairs`: the tasks by how many of its solves were valid. */
-function validOf(pairs: readonly Paired[], solves: number): Valid {
+/** Each harness by itself over `pairs`: the tasks by how many of its solves were valid, and those
+ *  informative for it (`informative`), a task it never answered among them where a valid answer to
+ *  it is on record (`feasible`, `poolOf`). */
+function validOf(pairs: readonly Paired[], solves: number, feasible: ReadonlySet<string>): Valid {
   const census = (side: "old" | "fresh") => {
     const tasks = Array.from({ length: solves + 1 }, () => 0);
     for (const pair of pairs) {
@@ -259,7 +261,7 @@ function validOf(pairs: readonly Paired[], solves: number): Valid {
     }
     return tasks;
   };
-  const told = (side: "old" | "fresh") => pairs.filter((pair) => informative(pair, side)).length;
+  const told = (side: "old" | "fresh") => pairs.filter((pair) => informative(pair, side, feasible)).length;
   return {
     old: census("old"),
     fresh: census("fresh"),
@@ -416,7 +418,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   // side every comparison carries one.
   const mirrored = fixed.solves >= 4 && fixed.solves % 2 === 0 ? itself() : null;
   const aa = mirrored === null ? null : scored(mirrored);
-  const valid = validOf(pairs, fixed.solves);
+  const valid = validOf(pairs, fixed.solves, poolOf(events).feasible);
   // The step is read off the sets as a report holds them, which is how it is read again (`stepOf`).
   const reading = pairs.length === 0 ? ("not-scored" as const) : stepOf(asRecord(sets) ?? {}, fixed.level);
   return {

@@ -148,8 +148,10 @@ export function usedSeconds(clock: SolveClock | undefined, now = performance.now
  * A command held to its own limits alone took the solve with it when the solve's wall fell inside
  * it: at a five-minute wall 12 of 46 Starter solves ended at it, 11 of them inside a command, with
  * nothing sent. So a command returns while there is time to act on it. One started inside
- * the reserve, or with under five seconds before it, is left to its own limits: the solver is told
- * the time used with every result, and what it starts then is its own to judge.
+ * the reserve is left to its own limits: the solver is told the time used with every result, and
+ * what it starts then is its own to judge. Until 15 October one started under five seconds before
+ * the reserve kept its own limits too, while the solver is told such a command is cut (lane 14 of
+ * main0_5_1's investigation).
  */
 export function heldSeconds(
   timeout: number | undefined,
@@ -160,7 +162,7 @@ export function heldSeconds(
   const used = usedSeconds(clock, now);
   if (clock === undefined || used === null) return { ...held, nearEnd: false };
   const left = Math.floor(clock.seconds - used - reserveSeconds(clock.seconds));
-  return left >= 5 && left < held.seconds
+  return left > 0 && left < held.seconds
     ? { asked: held.asked, seconds: left, nearEnd: true }
     : { ...held, nearEnd: false };
 }

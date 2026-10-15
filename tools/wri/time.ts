@@ -20,6 +20,7 @@ import { asRecord, isNumber, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import {
+  type Compared,
   fired,
   type Index,
   measured,
@@ -27,6 +28,7 @@ import {
   type Solve,
   share,
   spendOf,
+  strings,
   tally,
   text,
   type Trigger,
@@ -84,6 +86,14 @@ const atALimit = (solve: Solve) =>
   (solve.wallSeconds > 0 && solve.seconds > solve.wallSeconds * WALL_BOUND_SHARE);
 const limitOf = (solve: Solve) => (AT_A_LIMIT.has(solve.kind) ? solve.kind : solve.limit) ?? "wall share";
 
+/** A comparison's solves of the tasks it tallied. A task set aside, short or withdrawn stands in no
+ *  pair, and read with them main0_5_1's g-1 had 5 of 20 misses at a limit and a 52.3% wall share,
+ *  where its tallied solves held 4 of 16 and 54.2% (lane 26, 15 October). */
+const tallied = ({ own, scoring }: Compared) => {
+  const versions = new Set(strings(own.versions));
+  return scoring.filter((solve) => versions.has(solve.version));
+};
+
 /** The misses at a limit by comparison and side: recode on 10 October ended 41 of its 58 scored
  *  misses on turns, and a read of the wall alone saw none. A miss at a limit says the budget was
  *  short and nothing of the task, so a side whose misses are all there was cut and not beaten. */
@@ -95,8 +105,9 @@ function limitTriggers(log: Index): Trigger[] {
     const bound = told.length === 0 ? "" : `; turns ${told.toSorted((a, b) => a - b).join(", ")}`;
     return { at: at.length, of: `(${tally(countBy(at, limitOf))}${bound})` };
   };
-  const compared = log.compared.flatMap(({ session, own, scoring }) => {
-    const missed = misses(scoring);
+  const compared = log.compared.flatMap((each) => {
+    const { session, own } = each;
+    const missed = misses(tallied(each));
     const side = (harness: JsonValue | undefined) => {
       const mine = missed.filter((solve) => solve.harness === harness);
       return share(mine.filter(atALimit).length, mine.length);
@@ -130,7 +141,7 @@ function limitTriggers(log: Index): Trigger[] {
 /** Lane 26: the misses at a limit, and over the solves each comparison measured, not the non-results
  *  it reran, the share of the wall each harness used and the host's load when they started. */
 export function wallTriggers(log: Index): Trigger[] {
-  const results = log.compared.map((each) => ({ ...each, scoring: each.scoring.filter(measured) }));
+  const results = log.compared.map((each) => ({ ...each, scoring: tallied(each).filter(measured) }));
   const wallShares = results.flatMap(({ session, own, scoring }) => {
     // The median share of its wall a harness's solves used, or null for none under a wall. v1 read
     // this share as the measure that moves on every battery and leads a fail (lane 26).

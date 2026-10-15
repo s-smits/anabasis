@@ -307,6 +307,7 @@ Each runtime surface has one owner. Import from it; add a missing member beside 
 | The process | `process.ts` | `runtimeProcess` in place of `process`, `parseArgs`, `capturedSpawn` |
 | Subprocesses | `subprocess.ts` | `runSync`, `runTextSyncOrThrow`, `killProcessGroup`, `terminateAndReapProcessGroupId` |
 | Host binaries | `host-tool.ts` | `hostTool("git")` |
+| Git | `git.ts` | `gitOutput`, `gitText`, `gitMaybe`, `worktrees` |
 | JSON in and out | `json-runtime.ts` | `capturedJsonParse`, `parseJsonAs<T>`, `capturedJsonStringify`, `capturedStructuredClone` |
 | JSON types and predicates | `json-shape.ts` | `JsonValue`, `JsonObject`, `OpenRecord`, `isString`, `isNumber`, `isBoolean`, `isRecord`, `asRecord`, `isFunction` |
 | Canonical JSON and hashes | `stable-json.ts`, `digest.ts` | `stableJson`, `canonicalJson`, `sameJsonValue`, `hashJsonValue`, `compareCodeUnits`; `sha256`, `sha256OfFile` |
@@ -322,7 +323,7 @@ tree (a fifth, `no-hand-read-controller-evidence`, named a v1 run's `opening.jso
 | Rule | It names | Here |
 | --- | --- | --- |
 | `no-hand-read-argv` | `.claude/skills/main/cli.ts` | Present. A skill script declares a `runCommand` spec, or passes its arguments to `parseOrDie` or `parseCommandOrDie`. The commands under `tools/` are outside the rule and parse with `parseArgs` from `#src/meta/process.ts` |
-| `no-hand-spelled-git` | `.claude/skills/main/git.ts` for skills (`gitOutput`, `gitText`, `gitMaybe`); for `src`, no owner yet, and the message says that one belongs in `src/meta` beside `host-tool.ts` | Present. `src` spawns no git on 10 October, and the first site that does writes the owner there and adds it to the rule's `src` scope. `tools/` and tests are outside the rule |
+| `no-hand-spelled-git` | `src/meta/git.ts` (`gitOutput`, `gitText`, `gitMaybe`), from skills, `src`, `tools/runs` and `tools/d2` | Present. Until 15 October the owner was `.claude/skills/main/git.ts`, which production cannot import, and `tools/runs` and `tools/d2` spelled git at five sites. The landing and gate commands of `tools/runtime`, and tests, are outside the rule: they read exit codes and feed input |
 | `no-hand-spelled-tree-root` | `campaignRoot()` and `campaignDir()` for `campaigns/`, `defaultProductDir()` for `domains/` | `src/meta/campaign-root.ts` is present, and v2 keeps a campaign under `.ana/d2/<name>` (`tools/d2/campaign.ts`) |
 | `no-lifetime-outside-owner` | `stageCommandIsolation` (`src/verify/solve-command-isolation.ts`), `killProcessGroup` and `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`) | Present. The owner and its reader are the two files the rule exempts |
 

@@ -1,10 +1,11 @@
 /**
  * The Builder's tools. It is a coding agent on a harness's files, so it has what a solver has: pi's
  * own `read`, `bash`, `edit` and `write` on the command wall (`src/solve/coding-tools.ts`), in one
- * working directory, its home. On top of them are the tools that are a Builder's alone. Three ask
- * the host about `harness/` as it stands and run on the same wall: `check_harness`,
- * `preview_harness` and `reset_harness`. Four are the host's: `practice`, `read_trace`,
- * `read_opening` and `finish`.
+ * working directory, its home. On top of them are the tools that are a Builder's alone. Two ask
+ * the host about `harness/` as it stands and run on the same wall: `check_harness` and
+ * `preview_harness`. Four are the host's: `practice`, `read_trace`, `read_opening` and `finish`.
+ * `reset_harness`, which put `harness/agent` back as the session found it, went on 15 October:
+ * no Builder on record had called it, 0 of 1,261 calls.
  *
  * v1's Builder had pi's file tools too, with `harness_inspect`, `harness_trial` and `harness_reset`
  * (`src/builder/tools.ts:75` at 7af7315). A Builder with the shell and one `write_file` alone
@@ -32,8 +33,8 @@
  * that home is refused, with how to write it instead. A compiled program is not read for it: a path
  * built into one is as often a build's record as the place it runs from.
  *
- * `practice` is where the Referee meets the Builder. A fail goes to it; a fail it rules a check
- * defect does not count and its task leaves the session. What comes back names the ending and the
+ * `practice` is where the Referee meets the Builder. A rejected answer goes to it, as in a
+ * comparison; one it rules a check defect does not count and its task leaves the session. What comes back names the ending and the
  * task's record, and never a check, a verdict's detail or the Referee's reasons. A practice solve
  * that could not be run at all, the verifier failing to decide for one, ends the session: its
  * error can name a check, so it is kept for the host and the Builder is told only that the session
@@ -74,7 +75,7 @@ import { plural } from "../meta/text.ts";
 import { callList, callsOf, callText, closingOf, solveOf } from "../review/trace.ts";
 import { openDesk, text, tool } from "../solve/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../solve/coding-tools.ts";
-import { type CommandWall, type NetworkReach, networkReach, runWalled } from "../solve/command.ts";
+import { type CommandWall, type NetworkReach, networkReach } from "../solve/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../solve/harness.ts";
 import { installedPrograms, systemPrompt } from "../solve/prompt.ts";
 import { clockText, solverTools } from "../solve/run.ts";
@@ -358,7 +359,10 @@ async function practise(bench: Bench, task: PracticeTask, kept: Snapshot, kill: 
     bench.faulty.add(task.version);
     lines.push("The task's own check could not run on this answer: the task leaves this session's practice.");
   }
-  if (ending.outcome === "fail" && ending.kind !== "broken-harness" && request.referee !== undefined) {
+  // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave no
+  // answer, is not valid with no ruling (`src/builder/round.ts`). Until 15 October each went to the
+  // Referee and was logged earned, unread: seven of them in three campaigns.
+  if (ending.outcome === "fail" && ending.kind === "rejected" && request.referee !== undefined) {
     try {
       const finding = await request.referee(solve, task, kill);
       if (finding.ruling === "check-defect") {
@@ -560,8 +564,8 @@ export function traceTool(bench: Bench): AgentTool {
  * practised chose so and is told nothing here. A second `finish` ends the session as it is.
  *
  * A Builder that leads its campaign is also told that no comparison has read the harness it would
- * leave, since its finish ends the campaign's run: on 13 October buffer-151-haiku's Builder
- * finished while an Examiner session wrote, and the campaign ended `finished` with no comparison.
+ * leave: on 13 October buffer-151-haiku's Builder finished while an Examiner session wrote, and the
+ * campaign ended `finished` with no comparison.
  * One that would finish on the harness last promoted is told the move the table names next, since on
  * 14 October buffer-149's Builder finished on the harness just promoted and the climb stopped there.
  */
@@ -747,45 +751,8 @@ function previewTool(bench: Bench, wall: CommandWall): AgentTool {
   });
 }
 
-/**
- * `harness/agent` put back as the session found it. The host stages the parent's own `agent/` into
- * the command's folder and a walled command puts it in place, so where it lands is the wall's to
- * decide. The installed programs are left: an engine takes minutes to build, and a session that
- * wants its tools file back does not want that again.
- */
-function resetTool(bench: Bench, wall: CommandWall): AgentTool {
-  return tool({
-    name: "reset_harness",
-    label: "Reset the harness",
-    description:
-      "Put harness/agent back as it was when this session started: the guide, the tool list and the tools file of the harness you started from. What harness/agent holds now is lost. Installed programs under harness/.toolchain stay as they are.",
-    parameters: Type.Object({}),
-    executionMode: "sequential",
-    execute: async (_id, _args, signal) => {
-      const output: Buffer[] = [];
-      const { exitCode } = await runWalled(
-        wall,
-        'rm -rf "$HOME/harness/agent" && mkdir -p "$HOME/harness" && cp -R agent "$HOME/harness/agent"',
-        {
-          onData: (data) => output.push(data),
-          signal,
-          stage: (into) =>
-            cpSync(join(bench.request.parent, "agent"), join(into, "agent"), {
-              recursive: true,
-              verbatimSymlinks: true,
-            }),
-        },
-      );
-      if (exitCode !== 0) {
-        throw new Error(`not reset: ${Buffer.concat(output).toString("utf8").slice(0, 2_000)}`);
-      }
-      return text("harness/agent is as this session found it.");
-    },
-  });
-}
-
 /** The tools that run on the command wall: pi's four, with what the Builder's shell is told of its
- *  wall, and the three that ask the host about `harness/`. Making them also gives a freeze its
+ *  wall, and the two that ask the host about `harness/`. Making them also gives a freeze its
  *  listing: every harness frozen from here on is asked for its tools under this wall. */
 export function walledTools(bench: Bench, wall: CommandWall, network: NetworkReach): AgentTool[] {
   bench.lists = async (harness) => {
@@ -802,6 +769,5 @@ export function walledTools(bench: Bench, wall: CommandWall, network: NetworkRea
     ),
     checkTool(bench),
     previewTool(bench, wall),
-    resetTool(bench, wall),
   ];
 }

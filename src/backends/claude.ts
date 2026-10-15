@@ -199,6 +199,9 @@ export const SWEEP_COMPACT_WINDOW = 300_000;
  */
 const WINDOW_BOUNDS = [100_000, 1_000_000] as const;
 
+/** The months as a provider spells a dated reset, by their first three letters. */
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
 export interface ClaudeOptions {
   /** The Claude Code binary the query runs, as `claudeExecutable()` resolved it on the host. */
   readonly executable: string;
@@ -675,9 +678,11 @@ function emptyUsage(): Usage {
 }
 
 /**
- * When the provider limit `said` names its reset, as the next such instant after `now`, or null
- * where it names none or is no limit. Two spellings: a clock time after "reset", with am or pm and the zone in
- * parentheses where given ("resets 3:50pm (Europe/Amsterdam)"; the host's zone where none is), and a
+ * When the provider limit `said` names its reset, as the next such instant after `now`, or on the
+ * date it names, or null where it names none or is no limit. Two spellings: a clock time after
+ * "reset", with a date before it, am or pm and the zone in parentheses where given ("resets 3:50pm
+ * (Europe/Amsterdam)", "resets Oct 15 at 9pm (Europe/Amsterdam)"; the host's zone where none is;
+ * until 15 October a date read as the hour 15, host-local), and a
  * message ending in the instant's Unix seconds ("limit reached|1760276400"), which this backend
  * adds to a turn the provider refused on a limit it reported with its reset (`readMessages`).
  */
@@ -687,13 +692,14 @@ export function resetOf(said: string, now: Date): Date | null {
   const unix = /limit reached\|(\d{10})\b/i.exec(said)?.[1];
   if (unix !== undefined) return new Date(Number(unix) * 1000);
   const clock =
-    /\breset[s]?\b\D{0,24}?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:\(([A-Za-z_]+(?:\/[A-Za-z_+-]+)+)\))?/i.exec(
+    /\breset[s]?\b\D{0,24}?(?:\b([a-z]{3})[a-z]*\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:\(([A-Za-z_]+(?:\/[A-Za-z_+-]+)+)\))?/i.exec(
       said,
     );
   if (clock === null) return null;
-  const [, h = "", m = "0", half, zone] = clock;
+  const [, named, date, h = "", m = "0", half, zone] = clock;
   const hour = half === undefined ? Number(h) : (Number(h) % 12) + (half.toLowerCase() === "pm" ? 12 : 0);
-  if (hour > 23 || Number(m) > 59) return null;
+  const dated = named === undefined ? undefined : MONTHS.indexOf(named.toLowerCase());
+  if (dated === -1 || hour > 23 || Number(m) > 59) return null;
   try {
     const wall = new Intl.DateTimeFormat("en-US", {
       ...keyIfDefined("timeZone", zone),
@@ -708,8 +714,9 @@ export function resetOf(said: string, now: Date): Date | null {
     const [year, month, day] = [part("year"), part("month") - 1, part("day")];
     const offset =
       Date.UTC(year, month, day, part("hour"), part("minute")) - Math.floor(now.getTime() / 60_000) * 60_000;
-    const at = Date.UTC(year, month, day, hour, Number(m)) - offset;
-    return new Date(at > now.getTime() ? at : at + 86_400_000);
+    const at =
+      Date.UTC(year, dated ?? month, dated === undefined ? day : Number(date), hour, Number(m)) - offset;
+    return new Date(at > now.getTime() || dated !== undefined ? at : at + 86_400_000);
   } catch {
     // A zone the host does not know names no instant it can wait for.
     return null;

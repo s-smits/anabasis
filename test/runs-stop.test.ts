@@ -1,6 +1,7 @@
 // A stop ends the run's own process and what it started, and no sibling, and releases what the
 // run's unfinished solves and sessions left on the host.
 import { describe, expect, it } from "bun:test";
+import { append } from "../src/kernel/log.ts";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { basename, dirname, join } from "../src/meta/path.ts";
@@ -10,7 +11,6 @@ import {
   runTextSyncOrThrow,
   terminateAndReapProcessGroupId,
 } from "../src/meta/subprocess.ts";
-import { append } from "../src/kernel/log.ts";
 import { seedCampaign } from "../tools/runs/seed.ts";
 import { family, leftOpen } from "../tools/runs/stop.ts";
 
@@ -42,12 +42,15 @@ describe("a stop", () => {
       append(path, "exam.started", { session: "x-2" });
       // A session that drafts an exam has one too since 11 October.
       append(path, "draft.started", { session: "d-1" });
-      const left = (run: Parameters<typeof leftOpen>[0]) => leftOpen(run).map((dirs) => basename(dirs.root));
+      const left = (run: Parameters<typeof leftOpen>[0]) =>
+        leftOpen(run)
+          .map((dirs) => basename(dirs.root))
+          .toSorted();
       expect(left({ path })).toEqual([
-        "solve-s-2",
         "solve-build-r1-b-2",
-        "solve-exam-r1-x-2",
         "solve-exam-r1-d-1",
+        "solve-exam-r1-x-2",
+        "solve-s-2",
       ]);
       // A seed of that run where it stands. The solve and the session the run has open are still
       // the run's, and may be live: a stop of the seed names only what the seed started.
@@ -56,22 +59,22 @@ describe("a stop", () => {
       expect(left({ path: copy, seed: true })).toEqual([]);
       append(copy, "solve.started", { solve: "s-3" });
       append(copy, "build.started", { session: "b-2" });
-      expect(left({ path: copy, seed: true })).toEqual(["solve-s-3", "solve-build-sim-r1-b-2"]);
+      expect(left({ path: copy, seed: true })).toEqual(["solve-build-sim-r1-b-2", "solve-s-3"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  // The campaign command is started as the launcher started a round until 11 October: niced, in a
-  // process group of its own, with its output in two files (the skill `launch-run`).
+  // The campaign command is started niced, in a process group of its own, with its output in two
+  // files (`bun run runs launch`).
   it("ends a process started in a group of its own and its children, through the group", async () => {
     const root = mkdtempSync(join(tmpdir(), "ana-runs-stop-test-"));
     try {
       const child = capturedSpawn({
         cmd: ["sh", "-c", "echo up; sleep 60 & sleep 60"],
         stdin: "ignore",
-        stdout: Bun.file(join(root, "launch-b-1.out")),
-        stderr: Bun.file(join(root, "launch-b-1.err")),
+        stdout: Bun.file(join(root, "launch-run-1.out")),
+        stderr: Bun.file(join(root, "launch-run-1.err")),
         detached: true,
       });
       await Bun.sleep(300);
@@ -84,8 +87,8 @@ describe("a stop", () => {
           .split("\n")
           .map((row) => row.trim().split(/\s+/).map(Number)),
       ).toContainEqual([child.pid, child.pid]);
-      expect(await Bun.file(join(root, "launch-b-1.out")).text()).toBe("up\n");
-      expect(existsSync(join(root, "launch-b-1.err"))).toBe(true);
+      expect(await Bun.file(join(root, "launch-run-1.out")).text()).toBe("up\n");
+      expect(existsSync(join(root, "launch-run-1.err"))).toBe(true);
       for (const pid of pids) expect(await terminateAndReapProcessGroupId(pid)).toBe(true);
       expect(pids.some((pid) => processGroupExists(pid))).toBe(false);
     } finally {

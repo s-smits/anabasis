@@ -1,6 +1,6 @@
 ---
 name: system-path-simulation
-description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it, before a paid round is asked to: one fact from a log or a dry run, a walk of one value across the layers a change touches, a replay of every recorded log through this tree's readers, a whole round rehearsed on a seeded copy of a campaign with a script in each model seat (`bun run runs seed`, `bun run runs rehearse`), or one live seat from a seed. Use when the operator asks whether a change will work in the real system, to simulate or rehearse a round, to stand again in a position a past run stood in, what a campaign of a given size can read, or what a kill or a stop leaves behind. Not for reading a finished run (whole-run-investigation) or starting a paid one (launch-run)."
+description: "Test an uncertain Anabasis v2 path at the smallest real layer that can decide it, before a paid round is asked to: one fact from a log or a dry run, a walk of one value across the layers a change touches, a replay of every recorded log through this tree's readers, a whole round rehearsed on a seeded copy of a campaign with a script in each model seat (`bun run runs seed`, `bun run runs rehearse`), or one live seat from a seed. Use when the operator asks whether a change will work in the real system, to simulate or rehearse a round, to stand again in a position a past run stood in, what a campaign of a given size can read, or what a kill or a stop leaves behind. Not for reading a finished run (whole-run-investigation) or starting a paid one (run-management)."
 ---
 
 # System path simulation
@@ -25,7 +25,7 @@ It is v1's skill rebuilt for that fact. What v1 needed and v2 does not is at the
 | Log replay | whether this tree still reads what real runs wrote | seconds for every log | [log-replay](cases/log-replay.md) |
 | Rehearsal | whether a round's commands join, and what a position of this size can read | about 25 s a round, no model | [rehearsal](cases/rehearsal.md) |
 | Live seat | what a real model does from a recorded position | a session's or a solve's dollars | [live-seat](cases/live-seat.md) |
-| The real run | everything a script cannot say | hours, tens of dollars | launch-run, then `bun run runs pulse` |
+| The real run | everything a script cannot say | hours, tens of dollars | run-management, then `bun run runs pulse` |
 
 A cheaper case that answers the question cancels every dearer one. Say which case you stopped at,
 and why the next was not needed.

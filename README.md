@@ -69,6 +69,7 @@ bun tools/d2/harness-builder.ts \
 `--project` is required when the campaign opens; run the command again with the same `--name` to continue that campaign, or use `--prompt-file` for a longer prompt. `bun run runs view <name>` prints the campaign as its log reads.
 Builder, Examiner, Referee (`--reviewer`) and solver can each use Claude, Codex or OpenRouter, with their own model and effort.
 For Claude, `CLAUDE_CODE_OAUTH_TOKEN` (process environment or `.env`; `claude setup-token` prints one) serves all four seats at once.
+`.env.example` lists every credential a seat reads; copy it to `.env`, which git ignores. `.env.runs.example` holds what your own machines add for `bun run runs`: the logins a run may take and the other hosts whose runs `runs status` shows.
 
 ## Take the Harness along
 

@@ -80,8 +80,9 @@ question, how it is measured and its bar; the recorded values are the plan's (`d
 difference only on a task where one harness answers and the other does not. A task the reference
 solves in every attempt is a solved example, and one nobody has solved is an unlearnable one:
 neither carries signal, and a scored set made of them reads "no room" whatever the new harness
-is. The informative tasks lie between: the reference answers them sometimes, or never while
-another harness has. In most learning the data is fixed and the model moves; here the solver is
+is. The informative tasks lie between: the reference answers them sometimes, or never while a
+valid answer to them is on record, another harness's or their author's. In most learning the data
+is fixed and the model moves; here the solver is
 fixed and the Examiner keeps the exam at its frontier, told one outcome a task and nothing else.
 Measured as the informative tasks in a comparison's scored set. Bar: at least four before each
 comparison starts. It is not reported as a factor: passing it says a comparison can show a
@@ -92,11 +93,16 @@ without it.
 reference harness. A promotion, a harness that beats the reference on held-out tasks by more
 than chance allows, twice, on fresh solves, is one step of descent; a climb is several. Each
 promotion is read against its predecessor on tasks that change with every comparison, so a
-chain of them has no fixed yardstick, and the **ladder** is that yardstick. A draft the
-reference answered in none of its three admission solves, where its author's own answer passes
-on it (`task.feasible`), is held for the ladder (`try_task`; gate outcome and task state
-`ladder`, `src/kernel/task.ts`): never scored for a promotion, never released for practice and
-never shown to a Builder, and its Examiner is told only that it was held. A ladder's tasks are
+chain of them has no fixed yardstick, and the **ladder** is that yardstick. Of the drafts the
+reference answered in none of their three admission solves, where their author's own answer
+passes on them (`task.feasible`), the first of every three in the log is held for the ladder
+(`try_task`; gate outcome and task state `ladder`, `src/kernel/task.ts`): never scored for a
+promotion, never released for practice and never shown to a Builder, and its Examiner is told
+only that it was held. The other two are held out as any task is, since a task the reference
+never answers while a valid answer to it is on record is the room a promotion leaves; until
+15 October every such draft went to the ladder, 31 of 120 in the five campaigns of 14 October,
+and a promoted harness that answered every scored solve was left the drafts it answered some of
+the time. A ladder's tasks are
 fixed by its first reading (`laddersOf`, `src/kernel/reports.ts`), so every reading of it is on
 one set; tasks held for the ladder later wait, and the next promotion's reading fixes them as the
 next ladder, with a curve of its own. The Examiner may go on writing, and no earlier curve moves.
@@ -235,7 +241,7 @@ numbered otherwise. The design around the copied code is different.
 | --- | --- |
 | The Builder wrote the harness, the tasks and the checks | The Examiner writes tasks, the check program is fixed, and the Builder writes the harness only |
 | A harness was scored on its own Builder's test set, as a pass rate | Two harnesses are compared on held-out tasks, as wins against losses |
-| Every task carried an answer its author had found | No reference answers. A task is held out on the shape of its package and, where the host can have the reference harness solve it, only where some and not all of three fresh solves of it are valid (`try_task`), or for the ladder where none is and its author's own answer passes on it; those solves are never scored |
+| Every task carried an answer its author had found | No reference answers. A task is held out on the shape of its package and, where the host can have the reference harness solve it, only where some and not all of three fresh solves of it are valid (`try_task`), or where none is and its author's own answer passes on it, the first of every three such drafts held for the ladder instead; those solves are never scored |
 | A candidate passed a submit gate before it was measured | No gate on a harness. `check_harness` says whether it opens, and the comparison says whether it is better |
 | Difficulty was steered with a band, levels and staged test sizes | One fixed compute budget for both harnesses. No band and no levels |
 | A harness declared its own limits in `agent/config.yaml` | The host sets every limit, and that file is not read |
@@ -358,7 +364,7 @@ The tools of each model seat, as its source names them:
   `draft_exam`, `bash`, `read`, `write`, `finish`, the shell the same kind of walled home
   (`src/examiner/shell.ts`), and nothing in it enters the exam but through `draft_exam`.
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
-  `check_harness`, `preview_harness`, `reset_harness`, `finish`. In the campaign command it also
+  `check_harness`, `preview_harness`, `finish`. In the campaign command it also
   has `examine`, `release_practice`, `compare`, `promote` and `campaign_status`.
 - Solver: `read`, `bash`, `edit`, `write`, `submit`. Its answer is the file `answer.json`;
   `submit` with `malformed` is its word that the task is malformed in place of one.
@@ -580,14 +586,15 @@ whose reading holds no fault and promotes the harness the rule names without wai
 Under `--attended` it runs only once every fault of its checks is admitted, and it reports a step
 read twice without promoting it, waiting there for `promote.ts`.
 
-The skill `launch-run` says how it is started: niced, in a process group of its own, with its
-output in two files and the key in Bun's own `--env-file`. Each solve waits for the host: a
+`bun run runs launch` starts it (the skill `run-management`): niced, in a process group of its
+own, with its output in two files and the key in Bun's own `--env-file`; `continue` and `pause`
+run one again from its log and stop one at a clean point. Each solve waits for the host: a
 solve of a Builder session or a comparison starts once the one-minute load is at or under the
-cores, says so as it waits, and the wait is on record (`campaign.waited`, `tools/d2/host.ts`);
-`--loaded` starts them all the same. Until 12 October the wait was at a move's start, and a
+cores, or after half an hour, says so as it waits, and the wait is on record (`campaign.waited`,
+`tools/d2/host.ts`); `--loaded` starts them all the same. Until 12 October the wait was at a move's start, and a
 comparison of hours ran on whatever load came after it. Each run of
 the command keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`):
-its flags, the commit, whether the tree was dirty, and the load it started under, since the log
+its flags, the commit, whether the tree was dirty, the load it started under and the Bun, since the log
 holds the host's code by content and no commit.
 
 **It opens a campaign over a stored pack, or from a prompt** (`--prompt "<text>"` or
@@ -612,10 +619,25 @@ that second reading was the no-room row's alone): a comparison the cap cuts tall
 
 **It ends in one of eight ways**, and the log's last event says which (`campaign.ended`):
 `budget`, `stop` (the stop rule, section 7), `exam`, `no-room`, `environment`, `operator`,
-`control` (an A/A that read a step, section 7) or `finished` (the Builder called `finish`). A lack
-of room is advice to request other tasks while a conversation lives, and the campaign's ending
-once that conversation has ended at its limits. `finished` ends this run of the command: run again
-by its name, the campaign goes on with a new conversation, as after the operator's stop. A
+`control` (an A/A that read a step, section 7) or `finished` (three Builder conversations in a row
+made no campaign move, the last ended by `finish` or at its limits). A lack of room is advice to
+request other tasks while a conversation lives, and the campaign's ending once that conversation
+has ended at its limits. A Builder's `finish` ends its conversation. Between conversations the host
+makes what the table names that asks no Builder for anything, a campaign move like any other: any
+comparison, the tasks a repeat waits for, a promotion (`hostOwed`, `tools/d2/harness-builder.ts`).
+A comparison that began under other code is refused there by its own terms, and the campaign ends
+on its environment, to be run at that code until it reports. Then another
+conversation follows on the Builder's notes, as after one that ended at its limits, until three in
+a row have made no campaign move, a conversation the provider crashed or a stop killed not counted
+(`idleOf`, `tools/d2/campaign-terms.ts`), which end the campaign
+`finished` where the table names no ending of its own; the status a Builder reads counts the
+conversations before its own that made none. A Codex goal stays active on the same terms: its own
+model ends it only as met, or as blocked once the same blocker has held for three turns, and a
+climb is never met.
+Until 14 October every `finish` ended the run: five of five led campaigns ended so, with $22 to
+$122 of $300 spent, and the two that promoted finished within seconds of their promotion. Run
+again by its name, a campaign that ended `finished` goes on with a new conversation, as after the
+operator's stop. A
 move that threw after it began ends the campaign on its environment, except one whose session is on
 record as crashed, which the campaign goes on from (`goesOn`, `tools/d2/harness-builder.ts`); so do three Builder or
 Examiner sessions in a row that the provider failed before they held out a task or changed a
@@ -645,7 +667,7 @@ solves and sessions held on the host.
 
 **The opening** (`campaign.opened`) keeps what the campaign runs by, so that its command goes on
 by its name alone: the project it belongs to, the total and the reserve, the full limit of a
-solve, the Builder sessions the table counts before it advises a comparison (`--sessions`, 3), the patience (`--patience`, 6),
+solve, the Builder sessions the table counts before it advises a comparison (`--sessions`, 2), the patience (`--patience`, 6),
 who sits in each seat, and the terms of its moves as a command last named them (`TERMS`,
 `src/builder/opening.ts`): a session's limits, a comparison's size, the practice tasks and an
 Examiner session's. A term no command named is its move's default. A later run that names nothing
@@ -708,7 +730,7 @@ The other verbs over a campaign's log:
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
 bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]
-bun run runs pulse | stop <name> | replay | seed | zip
+bun run runs launch | continue | keep | pause | copy | stop <name> | status | logins | pulse | replay | seed | zip
 ```
 
 ### Defaults, and a first flag line
@@ -719,7 +741,7 @@ before) with a patience of 6 (`--patience`), trigger 0.25 (`--trigger`), an obje
 last A/A sets from the reference's own spread, 0.01 before one (`--margin` names another), a
 stop past 3 tasks with a check defect (`--defects`), a reserve of 10 dollars a solve (`--reserve`),
 `--parent latest`, `--reference promoted`, which is the harness last promoted and the starter
-until one is; a Builder session of 240 minutes, 300 turns and 24 practice solves; a solve of
+until one is; a Builder session of 24 hours (1,440 minutes) of its own time, 300 turns and 24 practice solves; a solve of
 120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
 names a number. An Examiner session ends when the Examiner calls `finish` a second time, or a
 first time once the host has the tasks it asked for: what the campaign is short of a comparison's
@@ -878,11 +900,13 @@ in flight would pass the cap.
 
 **Room.** A comparison's report says what room a harness has to gain in (`roomOf`,
 `src/kernel/reports.ts`): room where a task was informative for the reference harness, valid on
-some of its solves and not all, or two of its valid answers apart by the objective past the margin
-(`informative`, `src/kernel/compare.ts`, the one definition `try_task` admits a draft by too); too
-hard where neither harness gave a valid answer; and none otherwise, a task the reference fails in
-every solve among them (since 12 October; shares of valid solves before). The two ways to room are
-the tasks and the objective.
+some of its solves and not all, two of its valid answers apart by the objective past the margin, or
+valid on none where a valid answer to it is on record, another harness's or its author's
+(`informative`, `src/kernel/compare.ts`, the one definition `try_task` admits a draft by too; the
+last since 15 October); too hard where neither harness gave a valid answer and none is on record;
+and none otherwise, a task the reference fails in every solve that nobody has answered among them
+(since 12 October; shares of valid solves before). The two ways to room are the tasks and the
+objective.
 
 **After the test.** A comparison that wrote its report is finished: run again, it returns that
 report. The stop rule is as many moves in a row that could have shown a gain and showed none as
@@ -928,7 +952,8 @@ a move chose it, and the decision carries the row's code:
    Until 13 October it held a repeat's tasks as well, and two campaigns examined towards 48 tasks
    for 16 hours and never compared.
 6. `unfinished`: a comparison that began and has not reported goes on, and a reading that cleared
-   the trigger, which is one draw, is repeated on fresh solves. The repeat draws the held-out
+   the trigger, which is one draw, is repeated on fresh solves, once a candidate: a repeat that
+   clears the trigger and not the level with its first stage buys no third reading (15 October). The repeat draws the held-out
    tasks the first stage did not score first (`scoredSet`, `src/builder/round.ts`): where the
    campaign holds fewer than the target of them, the Examiner writes more first, and `compare`
    refuses the repeat until they are held (14 October: buffer-149's g-2 scored 8 of g-1's 9
@@ -1149,7 +1174,7 @@ launch request authorises one command and no second run beside it. The skills ow
 | --- | --- |
 | Deciding what to run next, and reading what a run showed | `run-improvement-campaign` |
 | Testing a path before spend | `system-path-simulation` |
-| Starting or stopping a run | `launch-run` |
+| Starting, continuing, pausing or stopping a run | `run-management` |
 | Wording a claim afterwards | `attribution-and-proof` |
 | Doubting a reading, or asking what a fail was | `whole-run-investigation` |
 | Reading the harnesses a campaign keeps, before a promotion or a handover | `harness-audit` |
@@ -1165,7 +1190,8 @@ What holds in all of them:
 
 1. **The worktree is the condition.** A run executes the source of the worktree it started in.
    Launch from a clean worktree at a published commit, kept for that run alone. Do not edit
-   `src/` there while the run lives, and never move a campaign's folder to another worktree.
+   `src/` there while the run lives, and never move a campaign's folder to another worktree but
+   by `bun run runs copy`.
 2. **Prove the path first, without a model**: a dry run of the campaign command
    (`bun tools/d2/harness-builder.ts --name <name> --dry-run`), a replay for a changed reader
    (`bun run runs replay`), a rehearsal over a seed for a changed round or campaign
@@ -1222,7 +1248,7 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, and by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
-| `bun run runs <verb>` | `pulse`, `stop`, `rehearse`, `seed`, `replay`, `zip`, `view` |
+| `bun run runs <verb>` | `launch`, `continue`, `keep`, `pause`, `copy`, `stop`, `status`, `logins`, `on`, `hosts`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view` |
 | `bun run ui:dev` | The page that shows a campaign as its log reads, on the loopback with a token (`packages/ui/README.md`). `-- --exam-side` adds the exam side's content: start that where no Builder or solver runs |
 | `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
@@ -1434,7 +1460,8 @@ tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, 
                 ending, or keeps its Builder's conversation to one; campaign-terms, the flags and
                 what a campaign runs by; campaign-actions, the tools a Builder that leads its
                 campaign asks the host through; and word, which leaves the operator's word for one that runs
-tools/runs/     stop, the receipt, rehearse, seed, pulse, view, replay, zip
+tools/runs/     the registry of runs, the receipt, launch, continue, pause and copy (manage), keep,
+                stop, pulse and status, logins, hosts, rehearse, seed, view, replay, zip
 tools/wri/      the whole-run investigation's reader of one log: its folds and the exam side's lanes
                 (folds), the other lanes, the rows and the overview (read)
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans

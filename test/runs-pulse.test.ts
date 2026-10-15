@@ -4,7 +4,8 @@
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { pulse, type Run, writers } from "../tools/runs/pulse.ts";
+import { pulse } from "../tools/runs/pulse.ts";
+import type { Run } from "../tools/runs/registry.ts";
 
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
 const START = Date.parse("2026-10-08T12:00:00Z");
@@ -78,6 +79,18 @@ describe("the runs pulse", () => {
     ]);
     const examined = [...examining, event(7, "exam.finished", { session: "x-1", ended: "finished" })];
     expect(pulse(round, examined, "closed", seen, START + 8 * 60_000).said).toEqual(["◆ exam x-1 ended"]);
+    // A wait for the provider and a campaign's ending are said; a wait on the load, one a solve,
+    // is not. Until 15 October neither was, and a run waiting out a limit read as quiet.
+    const waited = [
+      ...examined,
+      event(8, "campaign.waited", { task: "t-1", load: 40, cores: 12, ms: 60_000 }),
+      event(9, "campaign.waited", { for: "provider", until: "2026-10-15T21:00:00.000Z", ms: 7_200_000 }),
+      event(10, "campaign.ended", { ending: "finished", why: "3 conversations in a row made no move" }),
+    ];
+    expect(pulse(round, waited, "closed", { ...seen, lines: 8 }, START + 11 * 60_000).said).toEqual([
+      "⚠ waited 120m for the provider until 2026-10-15T21:00:00.000Z",
+      "◆ the campaign ended finished: 3 conversations in a row made no move",
+    ]);
     // A report with tasks set aside on rejections nobody has settled, one its cap cut, and one
     // that scored nothing, are each something to look at.
     const says = (data: JsonObject) =>
@@ -166,43 +179,5 @@ describe("the runs pulse", () => {
     const look = pulse(round, twice, "open", { lines: 5, open: true, quiet: false }, START + 6 * 60_000);
     expect(look.said).toEqual(["· wind-01 started on claude/claude-opus-5 (×2)"]);
     expect(look.status).toContain("2 running");
-  });
-
-  it("knows a campaign's log is written by its campaign command, a round, an Examiner session or a drafting session of its name, in its worktree", () => {
-    const running = [
-      { pid: 1, cwd: "/wt", args: ["bun", "tools/d2/round.ts", "--name", "r1", "--session", "b-1"] },
-      { pid: 2, cwd: "/wt", args: ["bun", "tools/d1b/examine.ts", "--name", "r1", "--session", "x-1"] },
-      { pid: 3, cwd: "/wt", args: ["bun", "tools/d2/round.ts", "--name", "r10"] },
-      { pid: 4, cwd: "/other", args: ["bun", "tools/d2/round.ts", "--name", "r1"] },
-      { pid: 5, cwd: "/wt", args: ["bun", "tools/m0/live-solve.ts", "--task", "r1", "--cycle", "c01"] },
-      // A rehearsal is a round on a seed. The script runner that started it holds no log open.
-      { pid: 6, cwd: "/wt", args: ["bun", "tools/runs/cli.ts", "rehearse", "--name", "r1"] },
-      { pid: 7, cwd: "/wt", args: ["bun", "run", "runs", "rehearse", "--name", "r1"] },
-      { pid: 8, cwd: "/wt", args: ["bun", "tools/runs/cli.ts", "pulse", "--name", "r1"] },
-      // A launch names the command it starts and holds no log open: on 10 October a launch of a
-      // round into the tree that held the campaign's log was refused by itself, and by its package
-      // script too.
-      {
-        pid: 9,
-        cwd: "/wt",
-        args: ["bun", "tools/runs/cli.ts", "launch", "tools/d2/round.ts", "--name", "r1"],
-      },
-      { pid: 10, cwd: "/wt", args: ["bun", "run", "runs", "launch", "tools/d2/round.ts", "--name", "r1"] },
-      {
-        pid: 11,
-        cwd: "/wt",
-        args: ["bun", "tools/runs/cli.ts", "launch", "--dry-run", "tools/d1b/examine.ts", "--name", "r1"],
-      },
-      // A campaign command runs every move in its own process: the campaigns on record have no
-      // other, and read as closed while they ran (2026-10-10).
-      { pid: 12, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name", "r1", "--unattended"] },
-      { pid: 13, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--name", "r10"] },
-      // The session that drafts an exam, run by itself, holds a capped root: read as closed, a stop
-      // would have released that root under it (11 October).
-      { pid: 14, cwd: "/wt", args: ["bun", "tools/d1b/draft.ts", "--name", "r1", "--session", "d-1"] },
-    ];
-    expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14]);
-    const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
-    expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
   });
 });

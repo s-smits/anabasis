@@ -20,7 +20,7 @@ import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { projectOf } from "./campaign.ts";
-import { HOST, type Host } from "./host.ts";
+import type { Host } from "./host.ts";
 import { PRACTICE } from "./prepare.ts";
 import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated } from "./round.ts";
 import { recordedSetting, SETTING_OPTIONS } from "./setting.ts";
@@ -104,6 +104,10 @@ const OPTIONS = {
 export const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
 const OPENED = "campaign.opened";
 export const MOVED = "campaign.move";
+/** The Builder conversations in a row that make no campaign move before a campaign ends. A Codex
+ *  goal stays active across turns until its model calls it met, or blocked once the same blocker
+ *  has held for three; a climb is never met, so three conversations without a move are its block. */
+export const IDLE = 3;
 const STARTED = "comparison.started";
 /** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
  *  command wants a name, and the script is what is asked. */
@@ -263,6 +267,27 @@ export function examTasks({ events, plan }: Turn): string | undefined {
   return wanting > 0 ? String(wanting) : undefined;
 }
 
+/**
+ * The Builder conversations in a row, the latest included, that have made no campaign move since
+ * the campaign last ended: the trailing run of its moves that are conversations (`build`, `led`).
+ * Any other move, the host's own among them, is progress. A run of the command after an ending
+ * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
+ * crashed or a stop killed chose nothing and is left out, as the table leaves it out of the
+ * sessions run (`sessionsRun`): until 15 October finished, crashed, finished counted three.
+ */
+export function idleOf(events: readonly LogEvent[]): number {
+  const since = events.slice(events.findLastIndex(({ kind }) => kind === "campaign.ended") + 1);
+  const cut = new Set(
+    since.flatMap(({ kind, data }) =>
+      kind === "build.finished" && (data.ended === "crashed" || data.ended === "killed")
+        ? [data.session]
+        : [],
+    ),
+  );
+  const moves = since.flatMap(({ kind, data }) => (kind === MOVED && !cut.has(data.session) ? [data] : []));
+  return moves.length - 1 - moves.findLastIndex(({ move, code }) => move !== "build" || code !== "led");
+}
+
 /** The next free id under `prefix`, as `b-3` after `b-1` and `b-2`. */
 export function nextId(events: readonly LogEvent[], prefix: string): string {
   const taken = events.flatMap(({ data }) => {
@@ -405,20 +430,6 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
 /** The checks `--admit` names, which is the operator's word for each. */
 export function admitsOf(values: Values): string[] {
   return (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()]));
-}
-
-/**
- * What a move records of its start: when it began, and for a move that solves the host's load
- * then; each solve waits at the host's gate itself (`gated`, `host.ts`). The event is written as
- * the move begins: until 12 October it was written at its end with the reason from when it was
- * decided, which a reader took for the end's; and a solve's times are the host's as much as the
- * solver's, since a wall counts the clock (eight campaigns on one host of 12 cores held its load
- * between 14 and 26 that night).
- */
-export function startOf(move: Decided["move"], seats: Seats): JsonObject {
-  const began = new Date().toISOString();
-  const host = seats.host ?? HOST;
-  return move === "build" || move === "compare" ? { began, load: host.load(), cores: host.cores } : { began };
 }
 
 /** One turn of a campaign as its log stands now: the plan the table is asked with, from the

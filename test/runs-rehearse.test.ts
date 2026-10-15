@@ -25,7 +25,7 @@ import { parseArgs } from "../src/meta/process.ts";
 import { starter } from "../tools/d2/campaign.ts";
 import type { Campaign } from "../tools/d2/round.ts";
 import { answersOf, passedOn, rehearse, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
-import { SEED_FILE } from "../tools/runs/pulse.ts";
+import { SEED_FILE } from "../tools/runs/registry.ts";
 import { replayed } from "../tools/runs/replay.ts";
 import { keptLines, seedCampaign } from "../tools/runs/seed.ts";
 

@@ -1,7 +1,7 @@
 // Pi exercises edit-diff only through its edit tool and its TUI diff rendering, so no upstream test
-// pins these functions on their own. The Builder's edit calls them directly (src/builder/tools.ts),
-// so the cases below pin what it relies on: the line ending and BOM round trip, the refusals the
-// Builder reads, and how a near match is applied.
+// pins these functions on their own. A solver and a Builder reach them through that edit tool
+// (`codingTools`, src/solve/coding-tools.ts), so the cases below pin what both rely on: the line
+// ending and BOM round trip, the refusals they read, and how a near match is applied.
 
 import { describe, expect, it } from "bun:test";
 import {

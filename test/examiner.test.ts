@@ -46,9 +46,9 @@ import {
   WALL,
 } from "./helpers/examiner-seat.ts";
 
-/** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 /** The event a tool call of the Examiner writes, with the text it was told. */
 const CALLED = "exam.call";
+/** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";
 const PASS: Ending = { outcome: "pass" };
 const REJECTED: Ending = { outcome: "fail", kind: "rejected" };

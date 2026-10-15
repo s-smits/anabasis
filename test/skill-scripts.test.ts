@@ -5,7 +5,8 @@ import { told as sourceTold } from "#skills/attribution-and-proof/scripts/run-so
 import { CommandFailure } from "#skills/main/cli.ts";
 import { gitText } from "#skills/main/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
-import { chain, type Pull, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
+import { chain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
+import type { Pull } from "#tools/runtime/land.ts";
 import {
   existsSync,
   mkdirSync,
@@ -27,6 +28,7 @@ const pull = (number: number, head: string, base: string): Pull => ({
   headRefName: head,
   baseRefName: base,
   headRefOid: String(number).repeat(40).slice(0, 40),
+  isDraft: false,
 });
 
 describe("the stack", () => {

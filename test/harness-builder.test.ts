@@ -363,30 +363,6 @@ describe("a campaign run by its log", () => {
     });
   });
 
-  it("ends on an exam whose checks wait for the operator's word, and prints the command that gives it with the pack's flags", async () => {
-    const name = `${STEM}-admit`;
-    const flags = seeded(name).slice(0, -2);
-    const seats: Seats = {
-      seated: scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-    };
-    const said = spyOn(console, "log");
-    // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`),
-    // and the opening keeps it for the command it prints.
-    const ending = await harnessBuilder([...flags, "--patience", "1"], seats);
-    const lines = said.mock.calls.map(([line]) => (isString(line) ? line : ""));
-    said.mockRestore();
-    expect(ending).toMatchObject({ move: "end", ending: "exam" });
-    // Run as printed, the command opens the campaign's pack: on 9 October the line named the
-    // campaign alone, and over a stored pack that run threw for want of the four flags.
-    const printed = lines
-      .find((line) => line.startsWith("to admit"))
-      ?.split(": bun tools/d2/harness-builder.ts ")[1];
-    // The campaign keeps its project, so the line names the pack and the campaign alone.
-    expect(printed).toBe(`${flags.slice(0, -2).join(" ")} --admit check-product`);
-    const next = await harnessBuilder([...(printed ?? "").split(" "), "--dry-run"], seats);
-    expect(next).toMatchObject({ move: "accept" });
-  });
-
   it("compares a step again, waits under --attended to promote it, still waits when reopened without the flag, promotes it given the word back, and then has tasks written", async () => {
     const name = `${STEM}-climb`;
     // The seed holds fourteen tasks to score once two are released, and a comparison scores seven:
@@ -727,6 +703,12 @@ describe("a campaign run by its log", () => {
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
     await harnessBuilder([...flags, "--moves", "0"], seats);
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 100 } });
+    // A total under what one solve is held at ends the campaign on its budget at the next move.
+    wordCommand(["--name", name, "--budget", "1"]);
+    expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({
+      move: "end",
+      ending: "budget",
+    });
     // No word is left for a campaign that has no opening, and none that names two things.
     expect(() => wordCommand(["--name", `${name}-none`, "--stop", "x"])).toThrow("has no opening on record");
     expect(() => wordCommand(["--name", name, "--stop", "x", "--budget", "5"])).toThrow("one word");

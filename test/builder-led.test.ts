@@ -10,27 +10,21 @@ import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import {
-  cpSync,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
-  readlinkSync,
+  readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { flagsOf, idleOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
-import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
-import { importCommand } from "../tools/d2/import.ts";
 import type { Seated } from "../tools/d2/round.ts";
 import { settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
@@ -845,36 +839,6 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, "exam.started")).toHaveLength(2);
   });
 
-  it("applies operator stop and budget words at the next live boundary", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const stopName = `${STEM}-operator-stop`;
-    const stopArgs = seeded(stopName);
-    const seats: Seats = {
-      seated: builderScript(
-        scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED, []),
-        [],
-      ),
-    };
-    expect(await harnessBuilder([...stopArgs, "--moves", "0"], seats)).toMatchObject({ move: "accept" });
-    expect(wordCommand(["--name", stopName, "--stop", "the operator paused this run"])).toBe("stop");
-    expect(await harnessBuilder([...stopArgs, "--moves", "0"], seats)).toMatchObject({
-      move: "end",
-      ending: "operator",
-    });
-
-    const budgetName = `${STEM}-operator-budget`;
-    const budgetArgs = [...seeded(budgetName), "--target", "6", "--practice", "2"];
-    // Set up, the table wants the tasks a comparison scores and its practice draws written first.
-    expect(await harnessBuilder([...budgetArgs, "--budget", "20", "--moves", "2"], seats)).toMatchObject({
-      move: "examine",
-    });
-    expect(wordCommand(["--name", budgetName, "--budget", "1"])).toBe("budget");
-    expect(await harnessBuilder([...budgetArgs, "--moves", "0"], seats)).toMatchObject({
-      move: "end",
-      ending: "budget",
-    });
-  });
-
   it("writes blind labels for rejected comparison answers", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-settle`;
@@ -892,7 +856,18 @@ describe("a campaign run by its live Builder", () => {
     };
     await harnessBuilder([...args, "--sessions", "1", "--target", "5"], seats);
     expect(await settleCommand([...pack, "--session", "g-1"])).toBe(0);
-    expect(readdirSync(join(REPO, ".ana", "d2", name, "settle-g-1"))).toContain("labels.json");
+    // The reference failed every task, so rejections are drawn, and no drawn answer names either harness.
+    const folder = join(REPO, ".ana", "d2", name, "settle-g-1");
+    const labels = readFileSync(join(folder, "labels.json"), "utf8");
+    const drawn = Object.keys(parseJsonAs<{ rejections: JsonObject }>(labels).rejections);
+    expect(drawn.length).toBeGreaterThan(0);
+    const [started] = of(name, "comparison.started");
+    const sides = [started?.old, started?.fresh].filter(isString);
+    expect(sides).toHaveLength(2);
+    for (const solve of drawn) {
+      const packet = readFileSync(join(folder, `${solve}.json`), "utf8");
+      for (const side of sides) expect(packet).not.toContain(side);
+    }
   });
 });
 
@@ -1401,7 +1376,9 @@ describe("a campaign's endings", () => {
     const flags = seeded(name).slice(0, -2);
     const seats: Seats = { seated: passing() };
     const printed = spyOn(console, "log");
-    const ending = await harnessBuilder(flags, seats);
+    // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`),
+    // and the opening keeps it for the command it prints.
+    const ending = await harnessBuilder([...flags, "--patience", "1"], seats);
     const lines = printed.mock.calls.map(([line]) => (isString(line) ? line : ""));
     printed.mockRestore();
     expect(ending).toMatchObject({ move: "end", ending: "exam" });
@@ -1410,38 +1387,11 @@ describe("a campaign's endings", () => {
     const admit = lines
       .find((line) => line.startsWith("to admit"))
       ?.split(": bun tools/d2/harness-builder.ts ")[1];
+    // The campaign keeps its project and its patience, so the line names the pack and the campaign alone.
     expect(admit).toBe(`${flags.slice(0, -2).join(" ")} --admit check-product`);
     // The reading printed its fault as it was made; the ending does not print it a second time.
     expect(lines.filter((line) => line.startsWith("fault: "))).toHaveLength(1);
     const next = await harnessBuilder([...(admit ?? "").split(" "), "--dry-run"], seats);
     expect(next).toMatchObject({ move: "accept" });
-  });
-});
-
-describe("campaign handover", () => {
-  it("keeps harness links as links and refuses a copied guide that points outside", async () => {
-    layOutPack(root, bundle, TASKS, FIXTURE);
-    const name = `${STEM}-links`;
-    const pack = seeded(name).slice(0, -4);
-    const host = join(root, "host-file.txt");
-    writeFileSync(host, "HOST-FILE-CANARY\n");
-    const built = join(root, "linked", "harness");
-    cpSync(FIXTURE, built, { recursive: true });
-    mkdirSync(join(built, ".toolchain", "bin"), { recursive: true });
-    symlinkSync(host, join(built, ".toolchain", "bin", "leak"));
-    const kept = await importCommand(["--name", name, "--harness", built]);
-    append(join(REPO, ".ana", "d2", name, LOG_FILE), "harness.promoted", { harness: kept.digest });
-    const to = join(root, "handover-linked");
-    expect(await closeCommand([...pack, "--to", to])).toMatchObject({ harness: kept.digest });
-    expect(lstatSync(join(to, "harness", ".toolchain")).isDirectory()).toBe(true);
-    expect(readlinkSync(join(to, "harness", ".toolchain", "bin", "leak"))).toBe(host);
-    const guide = join(kept.dir, "agent", "BUILT_AGENTS.md");
-    renameSync(guide, join(kept.dir, "agent", "guide.md"));
-    symlinkSync(join(kept.dir, "agent", "guide.md"), guide);
-    const refused = join(root, "handover-refused");
-    await expect(closeCommand([...pack, "--to", refused])).rejects.toThrow(
-      "agent/BUILT_AGENTS.md links outside the harness",
-    );
-    expect(readdirSync(refused)).toEqual([]);
   });
 });

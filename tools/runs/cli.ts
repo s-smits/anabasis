@@ -7,11 +7,17 @@
  * a question starts (`seed.ts`), and `rehearse` runs a round over a seed with a script in each
  * model seat (`rehearse.ts`). `view` prints one campaign as its log reads: what each step handed
  * over, and the moves that may start next (`view.ts`), and `source` the commit each of its runs ran
- * and where that is published (`receipt.ts`).
+ * and where that is published (`receipt.ts`). `status` gives one row a run (`pulse.ts`), `logins`
+ * how much of each login is used (`logins.ts`), `keep` keeps a run going across logins (`keep.ts`),
+ * `copy` takes a stopped campaign whole to another worktree (`manage.ts`), and `on` and `hosts` run
+ * a verb on another machine (`hosts.ts`).
  */
 import { runtimeProcess } from "#src/meta/process.ts";
-import { continueRun, launch, pause } from "./manage.ts";
-import { watch } from "./pulse.ts";
+import { hosts, on } from "./hosts.ts";
+import { keep } from "./keep.ts";
+import { logins } from "./logins.ts";
+import { continueRun, copy, launch, pause } from "./manage.ts";
+import { runsStatus, watch } from "./pulse.ts";
 import { source } from "./receipt.ts";
 import { rehearse } from "./rehearse.ts";
 import { replay } from "./replay.ts";
@@ -32,6 +38,12 @@ const VERBS = {
   rehearse,
   view,
   source,
+  status: runsStatus,
+  logins,
+  keep,
+  copy,
+  on,
+  hosts,
 };
 const [verb, ...args] = Bun.argv.slice(2);
 const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];

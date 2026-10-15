@@ -14,9 +14,11 @@
  */
 import { EXAMINE } from "#src/builder/admission.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
+import { lastReports } from "#src/kernel/reports.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { gitText, worktrees } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
@@ -53,6 +55,8 @@ const BY_HAND = ["tools/d2/round.ts", EXAMINE, "tools/d2/checkpoint.ts", "tools/
 /** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
 const CLI = "tools/runs/cli.ts";
 const LIVE = "tools/m0/live-solve.ts";
+/** The flag a keeper runs under once it has left the verb that started it (`keep.ts`). */
+export const KEEPING = "--here";
 const CAMPAIGN_END = "comparison.reported";
 
 const runsAs = (args: readonly string[], tools: readonly string[]) =>
@@ -155,4 +159,27 @@ export function writers(run: Run, running: readonly Running[]): Running[] {
       : runsAs(args, [LIVE]) &&
         run.name.startsWith(`${String(flag(args, "--task"))}-${String(flag(args, "--cycle"))}-`);
   return running.filter(({ cwd, args }) => cwd === run.tree && writes(args));
+}
+
+/** The comparisons of `events` that began and have not reported, the ladder's readings among them. */
+export function openComparisons(events: readonly LogEvent[]): string[] {
+  const reported = new Set(
+    [...lastReports(events), ...lastReports(events, true)].map(({ session }) => session),
+  );
+  const begun = events.flatMap(({ kind, data }) => (kind === "comparison.started" ? [data.session] : []));
+  return [...new Set(begun.filter(isString))].filter((session) => !reported.has(session));
+}
+
+/** The processes that keep campaign `name` going (`keep.ts`), but this one. */
+export function keepers(name: string): number[] {
+  return runTextSyncOrThrow(["ps", "-axo", "pid=,args="])
+    .split("\n")
+    .flatMap((row) => {
+      const [pid = "", ...args] = row.trim().split(/\s+/);
+      const at = args.indexOf("keep");
+      return runsAs(args, [CLI]) && at !== -1 && args[at + 1] === name && args.includes(KEEPING)
+        ? [Number(pid)]
+        : [];
+    })
+    .filter((pid) => pid !== runtimeProcess.pid);
 }

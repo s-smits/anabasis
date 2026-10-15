@@ -355,6 +355,7 @@ function keepReceipt(log: string, args: readonly string[]): void {
     load: HOST.load(),
     cores: HOST.cores,
     bun: runtimeProcess.versions.bun,
+    ...keyIfDefined("login", runtimeProcess.env.ANA_LOGIN),
   });
 }
 

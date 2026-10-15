@@ -3,8 +3,9 @@
  *
  *   bun --env-file=<file> run runs launch <name> [--login N] [--yes] -- <the campaign command's flags>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
- *     [--after promoted|compacted|reported|finished] [--yes]
+ *     [--after promoted|compacted|reported|finished] [--yes] [-- <flags>]
  *   bun run runs pause <name> --after promoted|compacted|reported|finished [--yes]
+ *   bun run runs copy <name> --to <worktree> [--yes]
  *
  * `launch` starts the campaign command (`tools/d2/harness-builder.ts`) under a name no worktree
  * holds a campaign of, in this worktree. `continue` runs a campaign again from its log in the
@@ -12,7 +13,14 @@
  * total: the record holds the total, which a budget word may have set since, and `--budget` names
  * another. `pause` waits until the log has gained one more of the named event and no comparison,
  * Examiner session or draft is open, and then stops the run (`stop.ts`); `continue --after` is that
- * pause and then the continue, which moves a run to another login or commit.
+ * pause and then the continue, which moves a run to another login or commit. Flags after `--` stand
+ * for the kept ones.
+ *
+ * `copy` takes a campaign no process writes or keeps, its folder whole, to another worktree of the
+ * repository, and sets the folder it leaves aside under `.ana/moved/`, so that one worktree holds
+ * the name; `continue` then goes on with it there. It is the one way a campaign's folder moves
+ * (operator, 15 October), since a log is never copied by hand. Another host takes the folder with
+ * rsync, and the run goes on there with its pack's paths after `--`.
  *
  * Without `--yes` a verb says what it would do and does nothing. With it, a start refuses a run a
  * process writes, a worktree with a change no commit names and a commit no remote branch holds;
@@ -32,16 +40,26 @@
  * went on 11 October (`docs/simplify.md`, D2) asked a move's admissions a second time; these verbs
  * ask none, and the command refuses what it refuses.
  */
-import { lastReports, unfinished } from "#src/kernel/reports.ts";
+import { unfinished } from "#src/kernel/reports.ts";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
-import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
-import { gitText } from "#src/meta/git.ts";
-import { isString } from "#src/meta/json-shape.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { cpSync, existsSync, mkdirSync, openSync, renameSync, statSync } from "#src/meta/filesystem.ts";
+import { gitText, worktrees } from "#src/meta/git.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { nextRun, receipts } from "./receipt.ts";
-import { BUILDER, logEvents, processes, type Run, runNamed, runs, standing, writers } from "./registry.ts";
+import {
+  BUILDER,
+  keepers,
+  logEvents,
+  openComparisons,
+  processes,
+  type Run,
+  runNamed,
+  runs,
+  standing,
+  writers,
+} from "./registry.ts";
 import { stop } from "./stop.ts";
 
 /** The events a pause waits for one more of, by the word that names it. */
@@ -79,16 +97,8 @@ export function loginEnv(env: Readonly<Record<string, string | undefined>>, logi
       `${TOKEN}${login} is not set: run the verb under bun --env-file=<the file that holds it>`,
     );
   }
-  return { ...kept, [TOKEN]: token };
-}
-
-/** The comparisons of `events` that began and have not reported, the ladder's readings among them. */
-function openComparisons(events: readonly LogEvent[]): string[] {
-  const reported = new Set(
-    [...lastReports(events), ...lastReports(events, true)].map(({ session }) => session),
-  );
-  const begun = events.flatMap(({ kind, data }) => (kind === "comparison.started" ? [data.session] : []));
-  return [...new Set(begun.filter(isString))].filter((session) => !reported.has(session));
+  // The receipt keeps which login ran (`keepReceipt`), which `keep` moves a run off.
+  return { ...kept, [TOKEN]: token, ANA_LOGIN: login };
 }
 
 /** Whether a pause may stop the run whose log is `events`: it holds more than `base` of `kind`, and
@@ -124,7 +134,12 @@ async function pauseAt(run: Run, after: string): Promise<void> {
 
 /** Start the campaign command for `run` on `flags` in its worktree, at `at` where named, once every
  *  refusal of the head comment is passed and its dry run passed. */
-async function start(run: Run, flags: readonly string[], login: string | undefined, at: string | undefined) {
+export async function start(
+  run: Run,
+  flags: readonly string[],
+  login: string | undefined,
+  at: string | undefined,
+) {
   const env = loginEnv(runtimeProcess.env, login);
   if (writers(run, processes()).length > 0) {
     throw new Error(`${run.name} is already being written in ${run.tree}`);
@@ -174,6 +189,13 @@ async function start(run: Run, flags: readonly string[], login: string | undefin
   if (!alive) runtimeProcess.exitCode = 1;
 }
 
+/** The last run of the campaign command `run` kept a receipt of. */
+export function lastRun(run: Run) {
+  const kept = receipts(run.path).findLast(({ session }) => session.startsWith("run-"));
+  if (kept === undefined) throw new Error(`no run of the campaign command beside ${run.path} kept its flags`);
+  return kept;
+}
+
 const said = (run: Run, what: string) =>
   console.log(`${run.name} in ${run.tree}: ${what}; nothing is done without --yes`);
 
@@ -213,16 +235,16 @@ export async function continueRun(args: readonly string[]): Promise<void> {
       yes: { type: "boolean", default: false },
     },
   });
-  const [name] = positionals;
+  const [name, ...given] = positionals;
   if (name === undefined) {
     throw new Error(
-      "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--yes]",
+      "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]",
     );
   }
   const run = runNamed(name);
-  const kept = receipts(run.path).findLast(({ session }) => session.startsWith("run-"));
-  if (kept === undefined) throw new Error(`no run of the campaign command beside ${run.path} kept its flags`);
-  const flags = rerun(kept.flags, values.budget);
+  // Flags after `--` stand for the kept ones: a pack's path where the campaign was copied to
+  // another host is that host's.
+  const flags = given.length > 0 ? rerun(given, values.budget) : rerun(lastRun(run).flags, values.budget);
   if (!values.yes) {
     const after = values.after === undefined ? "" : `after its next ${values.after}, `;
     return said(run, `would go on ${after}at ${values.at ?? "its commit"} on ${flags.join(" ")}`);
@@ -245,4 +267,37 @@ export async function pause(args: readonly string[]): Promise<void> {
   const run = runNamed(name);
   if (!values.yes) return said(run, `would be stopped after its next ${values.after}`);
   await pauseAt(run, values.after);
+}
+
+/** `bun run runs copy`. */
+export function copy(args: readonly string[]): void {
+  const { values, positionals } = parseArgs({
+    args: [...args],
+    allowPositionals: true,
+    options: { to: { type: "string" }, yes: { type: "boolean", default: false } },
+  });
+  const [name] = positionals;
+  const trees = worktrees(runtimeProcess.cwd());
+  const to = trees.find((tree) => values.to !== undefined && tree === resolve(values.to));
+  if (name === undefined || to === undefined) {
+    throw new Error(`usage: bun run runs copy <name> --to <a worktree: ${trees.join(", ")}> [--yes]`);
+  }
+  const run = runNamed(name);
+  if (writers(run, processes()).length > 0 || keepers(name).length > 0) {
+    throw new Error(`${name} is being written or kept in ${run.tree}: pause it first`);
+  }
+  const from = dirname(run.path);
+  const into = join(to, ".ana", "d2", name);
+  if (existsSync(into)) throw new Error(`${into} is there already`);
+  if (!values.yes) return said(run, `would be copied whole to ${into}, and its folder here set aside`);
+  cpSync(from, into, { recursive: true, verbatimSymlinks: true });
+  const copied = join(into, LOG_FILE);
+  if (statSync(copied).size !== statSync(run.path).size) {
+    throw new Error(`the copy of ${run.path} is not whole: ${from} is left as it was`);
+  }
+  // One copy a name, which `runNamed` asks: the folder left here is no run any registry reads.
+  const aside = join(run.tree, ".ana", "moved", `${name}-${new Date().toISOString().replace(/[:.]/g, "")}`);
+  mkdirSync(dirname(aside), { recursive: true });
+  renameSync(from, aside);
+  console.log(`${name} is in ${to} now, and its folder was set aside as ${aside}; go on with runs continue`);
 }

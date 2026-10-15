@@ -30,7 +30,7 @@ const SKILL = resolve(import.meta.dir, "..", "..", ".claude", "skills", "whole-r
 export const REFERENCES = join(SKILL, "references");
 
 const HEADING = /^\*\*(\d+)\. (.+)\.\*\*$/;
-const TRIGGER = /`([A-Z][A-Z ,'-]+) \(lane (\d+)\)`/g;
+const TRIGGER = /`([A-Z][A-Z0-9 ,'-]+) \(lane (\d+)\)`/g;
 const OWNER_ROW = /^\| (`[^|]+) \|/;
 
 export function catalogueText(): string {

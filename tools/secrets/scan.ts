@@ -14,7 +14,7 @@ import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "../../src/meta/subprocess
 /** Refuse dotenv files by path because they may store credentials, including when staged with
  *  `git add -f`. Templates are exempt from this path rule but still receive the content scan. */
 const ENV_FILE = /(^|\/)\.env(\.|$)/;
-const ENV_TEMPLATE = /(^|\/)\.env\.(example|sample|template|dist)$/;
+const ENV_TEMPLATE = /(^|\/)\.env\.([\w-]+\.)?(example|sample|template|dist)$/;
 
 /** Skip these generated formats in the content scan; credentials inside them are not detected. */
 const SKIP_CONTENT = [/\.lock$/, /\.min\.js$/, /\.map$/];

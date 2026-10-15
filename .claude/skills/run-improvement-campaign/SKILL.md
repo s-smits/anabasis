@@ -58,7 +58,7 @@ cap the reading: while one of them fails, a change anywhere below it is spent on
 | 2 | instrument | the checker has been read and stands, and rejections are ruled earned | `bun tools/c/accept.ts --name <name>`, `referee.finding`, tasks set aside |
 | 3 | the reference's room | the reference harness is valid on about half its solves | `comparison.reported.valid.old` |
 | 4 | the session | the Builder practised, and left a harness that differs in something a solver uses | `build.*`, `harness.version`, practice `verdict`s |
-| 5 | size | the tally has enough untied tasks to clear its level | `scored`, `unsolved`, the preflight's notes |
+| 5 | size | the tally has enough untied tasks to clear its level | `scored`, `unsolved`, the reading's `detectable` |
 | 6 | the host | solves started under a load below the cores, and the loads of the comparisons read together are alike | the reader's `HOST LOADED` and `LOAD MOVED` |
 | 7 | the repeat | a checkpoint of the same two harnesses on fresh solves reads the step again, and the reference against itself reads none | `--id <id>` at four solves a side, `STEP NOT REPEATED` |
 | 8 | the next link | once promoted, the new reference still leaves room (link 3 again) | the operator's `tools/d2/promote.ts --harness <digest> --yes`, and `harness.promoted` in the log |
@@ -146,7 +146,7 @@ A prediction written after the first solve started is a description. Say so; do 
 
 ## 4. Launch
 
-[launch-run](../launch-run/SKILL.md) owns the command and its refusals. This loop adds what
+[run-management](../run-management/SKILL.md) owns the command and its refusals. This loop adds what
 decides whether the run can answer the question at all.
 
 - **The worktree is the condition.** A run executes the source of the worktree it started in,
@@ -185,7 +185,7 @@ have changed, not on a timer: a round's first `build.started`, its `build.finish
   same id once the limit resets, and a solve counted is not solved again. A Builder session it
   ends is spent, and the next session pays for another.
 - **Do not stop a run to fix it.** A commit that is not an ancestor of the run's commit cannot
-  change that run, and `run-source.ts <campaign folder> --holds <commit>` (attribution-and-proof)
+  change that run, and `bun run runs source <name> --holds <commit>`
   says whether it is. Work found while a run lives is work for the next start.
 
 While runs are live, keep the host for them: run focused tests only, and send a whole suite to
@@ -202,7 +202,7 @@ bun tools/wri/wri.ts read --log <log>          # the rows, the triggers, the hos
 
 The report holds the reading at the budget the solves were told, the tally over tasks, each
 harness by itself, and the reference against itself at four solves a side.
-[launch-run](../launch-run/SKILL.md) says what each line is.
+[run-management](../run-management/SKILL.md) says what each line is.
 
 Evidence precedence:
 
@@ -240,7 +240,7 @@ First say what happened to the link:
 Then choose one move. The plan's table suggests one, and the view prints it
 as its last line (`decide`, `src/builder/decide.ts`): read the exam, set the tasks apart, have
 tasks written, build, compare, repeat a step, set the budget again, promote, or end. The stop
-rule ends it (three moves in a row that could have shown a gain and showed none: a changed
+rule ends it (the patience, six by default, of moves in a row that could have shown a gain and showed none: a changed
 harness counts once against one reference, where its comparison left room, and so does a session
 that changed nothing), and so does the budget. After exam preparation, one live Builder
 conversation chooses actions through campaign tools under one total budget. The table is prompt
@@ -280,7 +280,7 @@ and the next command. Name no account and no credential path in anything that is
 | choose | one link, one owner, one falsifier | stack-pr when the change is source, with simplify over its diff |
 | prove | a dry run of the campaign command | system-path-simulation: a replay for a reader, a rehearsal for a campaign |
 | predict | `--predict`, before the first solve | further rows in the local notes |
-| launch | launch-run, under the load rule | a checkpoint when two harnesses are meant as arms |
+| launch | run-management, under the load rule | a checkpoint when two harnesses are meant as arms |
 | read | the report, the reader, every prediction resolved | attribution-and-proof before a claim; whole-run-investigation when a reading is in doubt |
 | decide | lifted, held or unreached; one move | harness-audit before the operator promotes or hands over; oracle-handover when the question is one the repository's own evidence cannot settle |
 

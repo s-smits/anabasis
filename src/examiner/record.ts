@@ -123,13 +123,13 @@ const COUNTS = {
 const TURNS =
   "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above, by family and fewest first. These are measurements and no target.";
 
-/** Whether a gate read its draft: one that measured fewer than the reference harness's `TRIED`
- *  solves, cut by a limit or never begun for want of the reserve, refused a draft it did not read,
- *  which may be proposed again and is solved afresh (14 October). A gate that read all three, or
- *  refused the package on its shape, stands. */
+/** Whether a gate read its draft: one refused on fewer than the reference harness's `TRIED`
+ *  readings, cut by a limit or never begun for want of the reserve, refused a draft it did not read,
+ *  which may be proposed again and is solved afresh (14 October). A gate that read all three, held
+ *  its draft, or refused the package on its shape, stands. */
 export function measuredGate(data: JsonObject): boolean {
   const solves = asRecord(data.reference)?.solves;
-  return data.reason !== UNAFFORDED && !(isNumber(solves) && solves < TRIED);
+  return data.reason !== UNAFFORDED && !(data.outcome === "refused" && isNumber(solves) && solves < TRIED);
 }
 
 /** One line a task among `tasks`, in their order: the task by id and family, its outcome, and for
@@ -184,8 +184,10 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
  *  out on two. */
 function admittedLine(gate: JsonObject | undefined): string {
   const reference = asRecord(gate?.reference);
-  if (gate?.outcome !== "passed" || reference?.solves !== TRIED || !isNumber(reference.valid)) return "";
-  return `; held out at its gate on ${String(reference.valid)} of the reference harness's ${String(TRIED)} solves valid`;
+  const { valid, solves } = reference ?? {};
+  if (gate?.outcome !== "passed" || !isNumber(solves) || !isNumber(valid)) return "";
+  const unread = solves < TRIED ? `, ${String(TRIED - solves)} of them giving no reading` : "";
+  return `; held out at its gate on ${String(valid)} of the reference harness's ${String(TRIED)} solves valid${unread}`;
 }
 
 /** The drafts a gate refused having read them, with the gate's reason: until 14 October a later

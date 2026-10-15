@@ -1,14 +1,24 @@
 /**
- * `bun run runs <verb>`, over every run log in the repository's worktrees: `pulse` says what each
- * gained since the last look (`pulse.ts`), `zip` bundles them for handover (`zip.ts`), and `stop`
- * ends a run and releases what it held (`stop.ts`). `replay` puts every campaign log
+ * `bun run runs <verb>`, over every run log in the repository's worktrees (`registry.ts`): `pulse`
+ * says what each gained since the last look (`pulse.ts`), `zip` bundles them for handover
+ * (`zip.ts`), `launch`, `continue` and `pause` start a campaign, go on with one and stop one at a
+ * clean point (`manage.ts`), and `stop` ends a run and releases what it held (`stop.ts`). `replay` puts every campaign log
  * through this tree's readers (`replay.ts`), `seed` copies a campaign under another name, cut where
  * a question starts (`seed.ts`), and `rehearse` runs a round over a seed with a script in each
  * model seat (`rehearse.ts`). `view` prints one campaign as its log reads: what each step handed
- * over, and the moves that may start next (`view.ts`).
+ * over, and the moves that may start next (`view.ts`), and `source` the commit each of its runs ran
+ * and where that is published (`receipt.ts`). `status` gives one row a run (`pulse.ts`), `logins`
+ * how much of each login is used (`logins.ts`), `keep` keeps a run going across logins (`keep.ts`),
+ * `copy` takes a stopped campaign whole to another worktree (`manage.ts`), and `on` and `hosts` run
+ * a verb on another machine (`hosts.ts`).
  */
 import { runtimeProcess } from "#src/meta/process.ts";
-import { watch } from "./pulse.ts";
+import { hosts, on } from "./hosts.ts";
+import { keep } from "./keep.ts";
+import { logins } from "./logins.ts";
+import { continueRun, copy, launch, pause } from "./manage.ts";
+import { runsStatus, watch } from "./pulse.ts";
+import { source } from "./receipt.ts";
 import { rehearse } from "./rehearse.ts";
 import { replay } from "./replay.ts";
 import { seed } from "./seed.ts";
@@ -19,11 +29,21 @@ import { zipRuns } from "./zip.ts";
 const VERBS = {
   pulse: watch,
   zip: zipRuns,
+  launch,
+  continue: continueRun,
+  pause,
   stop,
   replay,
   seed,
   rehearse,
   view,
+  source,
+  status: runsStatus,
+  logins,
+  keep,
+  copy,
+  on,
+  hosts,
 };
 const [verb, ...args] = Bun.argv.slice(2);
 const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];

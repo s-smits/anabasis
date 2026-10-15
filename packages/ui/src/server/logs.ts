@@ -2,7 +2,7 @@
  * Where the server finds its campaigns, and each log read once a change.
  *
  * A campaign is one log, `.ana/d2/<name>/log.jsonl`. By default the server lists every one in the
- * repository's worktrees, as `bun run runs pulse` does (`runs`, `tools/runs/pulse.ts`); started with
+ * repository's worktrees, as `bun run runs pulse` does (`runs`, `tools/runs/registry.ts`); started with
  * `--repo <dir>` it lists the ones under that one directory, a fixture's or another checkout's, so
  * that the page can be pointed at either.
  *
@@ -26,7 +26,7 @@ import {
 } from "../../../../src/meta/filesystem.ts";
 import { basename, join, resolve } from "../../../../src/meta/path.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
-import { logEvents, processes, type Run, runs, SEED_FILE, writers } from "../../../../tools/runs/pulse.ts";
+import { logEvents, processes, type Run, runs, SEED_FILE, writers } from "../../../../tools/runs/registry.ts";
 import type { Issue } from "../models.ts";
 import { type Reading, Unanswerable } from "./context.ts";
 import type { Log } from "./folds.ts";

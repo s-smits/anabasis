@@ -76,13 +76,9 @@ Read these before reading by hand. Each was a shape this skill kept finding by e
 
 ## Measure before and after
 
-```sh
-.claude/skills/reduce-complexity/scripts/scope.sh [<PR#>|<commit>|<a..b>|<paths>] -C <worktree> -o <scope.diff>
-.claude/skills/reduce-complexity/scripts/measure.py --diff <scope.diff> --base <pre-change ref> -C <worktree>
-```
-
-Run it once before editing and once after, and put its budget lines in the report: production and
-test lines net, new functions net of moved ones, the names each import source gained. Its
+Run reduce-complexity's `scope.sh` and `measure.py` (its section "One diff") once before editing
+and once after, and put the budget lines in the report: production and test lines net, new
+functions net of moved ones, the names each import source gained. Its
 **repeats** section is added code that already exists in tracked source: call that owner, and
 delete the other copies of the same reader too. For a pull request or a stack, give the structural
 rows of `stack-complexity.py` beside the lines (decision points, import edges, exported symbols,
@@ -98,7 +94,8 @@ Climb it for each mechanism, and stop at the first rung that holds.
    readings named the solver, and it went with 1,063 lines (`docs/simplify.md`, E1).
 2. **Does a higher layer already do it?** The launcher's refusals were asked again by each move's
    own command (`src/builder/admission.ts`), and the campaign command already waited for the host's
-   load, so `bun run runs launch` went: 1,363 lines out, 610 in (`docs/simplify.md`, D2).
+   load, so `bun run runs launch` went: 1,363 lines out, 610 in (`docs/simplify.md`, D2). The verb
+   that came back on 15 October starts the command and asks none of them.
 3. **Is it already in this repository?** Add no second reader of one fact: find the fold that reads
    it and call that (`AGENTS.md`, section 5). `measure.py`'s repeats name candidates.
 4. **The platform, Bun or an installed dependency?** Every runtime surface has one owner in

@@ -550,7 +550,7 @@ or `host`, by where the value came from.
 
 **20. Pair identity and source reach.**
 
-Starts from `HOST CODE MOVED (lane 20)`.
+Starts from `HOST CODE MOVED (lane 20)` and `SAFEGUARD-7 LIMITS MOVED (lane 20)`.
 
 The question is whether the two sides of each comparison differ in the harness and in nothing
 else. A condition is a content address: the contract, the harness, the task version, the model
@@ -663,7 +663,9 @@ in hours of high load.
 
 **25. The chain of comparisons.**
 
-Starts from `CHAIN (lane 25)`, `STEP NOT REPEATED (lane 25)` and `NO TASK HELD OUT (lane 25)`.
+Starts from `CHAIN (lane 25)`, `STEP NOT REPEATED (lane 25)`, `NO TASK HELD OUT (lane 25)`,
+`SAFEGUARD-1 ENDED WITH A MOVE NAMED (lane 25)`, `SAFEGUARD-3 SAME MOVE ASKED AGAIN (lane 25)` and
+`SAFEGUARD-4 CONVERSATIONS WITHOUT PROGRESS (lane 25)`.
 
 The question is whether the campaign is climbing: whether a step was found, repeated, and built
 on. Read the chain: each comparison's reference harness, the harness compared with it, and its
@@ -679,8 +681,11 @@ that three moves in a row that could have shown a gain, with none, stop the
 campaign. A changed harness counts once against one reference, by the last comparison of the two
 under the campaign's setting, where it left room; a repeat does not count again. A campaign with no held-out task measures nothing at all: eight rounds on the
 truss pack ran so on 8 October, for over $220, and each could only read that no task was
-scored. The decision it changes is what runs next: a repeat, a promotion, another checkpoint,
-an Examiner session, or a stop; it routes to `operator`.
+scored. The safeguards are each a failure of 14 October no reader stated, printed and never
+acted on: a run of the command that ended `finished` while the table named a move (1), one
+move asked three times with no report between (3), and Builder conversations in a row past twice
+the idle count, which each ending starts afresh (4). The decision it changes is what runs next:
+a repeat, a promotion, another checkpoint, an Examiner session, or a stop; it routes to `operator`.
 
 ### The solve, its failure and its cost
 
@@ -727,8 +732,8 @@ cannot hold, and `operator` for the wall itself.
 **27. Failure mechanism and non-result honesty.**
 
 Starts from `NON-RESULTS (lane 27)`, `SOLVE NEVER FINISHED (lane 27)`,
-`EXAMINER NEVER FINISHED (lane 27)`, `MISSES WITHOUT A VERDICT (lane 27)` and
-`SESSION CRASHED (lane 27)`.
+`EXAMINER NEVER FINISHED (lane 27)`, `MISSES WITHOUT A VERDICT (lane 27)`,
+`SESSION CRASHED (lane 27)` and `SAFEGUARD-2 WALL DURING A HOST ACTION (lane 27)`.
 
 The question is, for every ending that is not a pass or a refused answer, which link broke first
 and whether its kind is honest. A non-result is never counted and a solve-side one is run again,

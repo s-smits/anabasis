@@ -28,12 +28,13 @@ import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { gitText } from "#src/meta/git.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { launchesOf } from "./receipt.ts";
-import { logEvents, type Run, runs, standing } from "./pulse.ts";
+import { receipts } from "./receipt.ts";
+import { logEvents, type Run, runs, standing } from "./registry.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
@@ -182,7 +183,7 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
   for (const tree of holds(level, "source") ? new Set(chosen.map((run) => run.tree)) : []) {
     const scratch = mkdtempSync(join(tmpdir(), "ana-runs-source-"));
     const tar = join(scratch, "source.tar");
-    runTextSyncOrThrow(["git", "-C", tree, "archive", "--prefix=source/", "-o", tar, "HEAD", ...SOURCE]);
+    gitText(tree, "archive", "--prefix=source/", "-o", tar, "HEAD", ...SOURCE);
     runTextSyncOrThrow(["tar", "-xf", tar, "-C", scratch]);
     keep(scratch, basename(tree), fit(scratch, ["source"]));
     rmSync(scratch, { recursive: true });
@@ -205,7 +206,7 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
       worktree: run.tree,
       // The commit of each launch beside the log, oldest first, which is the source each ran; the
       // worktree's own commit is where it stands when zipped, which can differ from every one.
-      ranAt: [...new Set(launchesOf(run.path).map(({ commit }) => commit))],
+      ranAt: [...new Set(receipts(run.path).map(({ commit }) => commit))],
       ...standing(run.tree),
       events: log.length,
       reading: isString(reading) ? reading : null,

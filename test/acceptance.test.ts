@@ -3,18 +3,15 @@
 // runs here; the reading is what is under test.
 import { describe, expect, it } from "bun:test";
 import {
-  acceptance,
   authoredFaults,
   type Control,
   departure,
-  doNothingAnswer,
-  doNothingFaults,
   frozenChecker,
   type Graded,
+  type Read,
   readChecker,
   regraded,
   runControls,
-  runDoNothing,
   unadmitted,
 } from "../src/kernel/acceptance.ts";
 import type { Contract } from "../src/kernel/contract.ts";
@@ -51,6 +48,14 @@ const brief: Brief = {
 };
 const roof: Task = { taskId: "roof-1", family: "roof", publicInput: null, hidden: null };
 const mast: Task = { taskId: "mast-1", family: "mast", publicInput: null, hidden: null };
+/** A format whose do-nothing answer, `{ mass: 11 }`, `mass` refuses on every task, so a reading's
+ *  faults are its controls' and its checks' alone. */
+const HEAVY: Contract = {
+  answerFormat: { type: "object", required: ["mass"], properties: { mass: { type: "number", minimum: 11 } } },
+  conventions: "",
+  rules: [],
+  scope: "",
+};
 const SOUND: Control[] = [
   { taskId: "roof-1", answer: { mass: 5 }, refusedBy: null },
   { taskId: "roof-1", answer: { mass: 50 }, refusedBy: "mass" },
@@ -67,11 +72,19 @@ const verify: Verifier = async (task, answer) => {
   return blocking.length === 0 ? { kind: "pass" } : { kind: "fail", blocking };
 };
 const everyTool = () => true;
+/** A reading as the acceptance command makes one: the controls put to the checks, nothing stored. */
+const reading = (given: Partial<Read> & Pick<Read, "tasks" | "controls">) =>
+  readChecker({ brief, contract: HEAVY, verify, stored: [], found: everyTool, width: 2, ...given });
+/** A reading over two tasks under `answerFormat`, with no control, by checks that pass every
+ *  answer unless `checks` says otherwise. */
+const readUnder = (answerFormat: JsonObject, checks: Verifier = async () => ({ kind: "pass" })) => {
+  const contract: Contract = { answerFormat, conventions: "", rules: [], scope: "" };
+  return reading({ contract, verify: checks, tasks: [roof, mast], controls: [] });
+};
 
 describe("a checker's acceptance", () => {
   it("finds no fault where every control gets its label and every check has refused and passed", async () => {
-    const runs = await runControls(verify, [roof, mast], SOUND, 2);
-    const { checks, faults } = acceptance(brief, [roof, mast], runs, [], everyTool);
+    const { checks, faults } = await reading({ tasks: [roof, mast], controls: SOUND });
     expect(faults).toEqual([]);
     // `span` applies to the roof task alone: its three controls, one of them refused by it.
     expect(checks).toEqual([
@@ -80,7 +93,7 @@ describe("a checker's acceptance", () => {
     ]);
   });
 
-  it("names a control that did not get its label, and one answer that got two verdicts", async () => {
+  it("names a control that did not get its label, one answer that got two verdicts, and a check that refused no reject control naming it", async () => {
     let calls = 0;
     const once: Verifier = async (task, answer) =>
       asRecord(answer)?.flaky === true && calls++ === 0
@@ -91,37 +104,40 @@ describe("a checker's acceptance", () => {
       { taskId: "roof-1", answer: { mass: 5 }, refusedBy: "span" },
       { taskId: "roof-1", answer: { mass: 5, flaky: true }, refusedBy: null },
     ];
-    const runs = await runControls(once, [roof], controls, 1);
-    expect(acceptance(brief, [roof], runs, [], everyTool).faults.slice(0, 3)).toEqual([
+    const read = await reading({ verify: once, tasks: [roof], controls, width: 1 });
+    expect(read.faults).toEqual([
       "the accept control of roof-1 did not pass: fail mass",
       "a reject control of roof-1 names span, which did not refuse it: pass",
       "the accept control of roof-1 got two verdicts from one answer: fail mass, then pass",
+      // `mass` refused two accept controls and no control names it.
+      "mass has refused no reject control that names it",
+      "span has refused nothing in this reading",
     ]);
   });
 
   it("asks that every check be seen to refuse and to pass, and that its tool be there", async () => {
     // One accept control and nothing else: no check has refused anything yet.
-    const runs = await runControls(verify, [roof], SOUND.slice(0, 1), 1);
-    const bare = acceptance(brief, [roof], runs, [], (tool) => tool !== "fe");
+    const accepted = { tasks: [roof], controls: SOUND.slice(0, 1), width: 1 };
+    const bare = await reading({ ...accepted, found: (tool) => tool !== "fe" });
     expect(bare.faults).toEqual([
       "mass names fe, which is not on the verifier's tool path",
       "mass has refused nothing in this reading",
       "span has refused nothing in this reading",
     ]);
-    // A stored answer a check refused shows it can refuse, and still no control names it; a verdict
-    // that decided nothing shows nothing of any check.
+    // A stored answer a check refused shows it can refuse, read apart from this reading's controls,
+    // whose faults it does not clear; a verdict that decided nothing shows nothing of any check.
     const stored: Graded[] = [
       { task: roof, verdict: { kind: "fail", blocking: ["mass", "span"] } },
       { task: roof, verdict: { kind: "non-result", reason: "the wall" } },
     ];
-    const seen = acceptance(brief, [roof], runs, stored, everyTool);
-    expect(seen.checks.map(({ id, passed, refused }) => [id, passed, refused])).toEqual([
-      ["mass", 1, 1],
-      ["span", 1, 1],
+    const seen = await reading({ ...accepted, stored });
+    expect(seen.historical.map(({ id, passed, refused }) => [id, passed, refused])).toEqual([
+      ["mass", 0, 1],
+      ["span", 0, 1],
     ]);
     expect(seen.faults).toEqual([
-      "mass has refused no reject control that names it",
-      "span has refused no reject control that names it",
+      "mass has refused nothing in this reading",
+      "span has refused nothing in this reading",
     ]);
   });
 
@@ -131,16 +147,14 @@ describe("a checker's acceptance", () => {
       isNumber(asRecord(answer)?.span)
         ? { kind: "faulty", check: "span", reason: "the tool wrote nothing" }
         : verify(task, answer);
-    const runs = await runControls(broken, [roof, mast], SOUND, 2);
-    expect(acceptance(brief, [roof, mast], runs, [], everyTool).faults).toEqual([
+    expect((await reading({ verify: broken, tasks: [roof, mast], controls: SOUND })).faults).toEqual([
       "a reject control of roof-1 names span, which did not refuse it: faulty span: the tool wrote nothing",
       "span could not run on an answer, so what it refuses and passes is not read: the tool wrote nothing",
     ]);
   });
 
   it("holds a check its author's own computation decides to the operator's word, by name", async () => {
-    const runs = await runControls(verify, [roof, mast], SOUND, 2);
-    const { checks } = acceptance(brief, [roof, mast], runs, [], everyTool);
+    const { checks } = await reading({ tasks: [roof, mast], controls: SOUND });
     // `mass` is decided by an installed instrument and needs no word; `span` is its author's own.
     expect(authoredFaults(checks, new Set())).toEqual([
       "span is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit span)",
@@ -160,8 +174,8 @@ describe("a checker's acceptance", () => {
           : check,
       ),
     };
-    const runs = await runControls(verify, [roof, mast], SOUND, 2);
-    const read = acceptance(engined, [roof, mast], runs, [], everyTool).checks;
+    const sound = { tasks: [roof, mast], controls: SOUND };
+    const { checks: read } = await reading({ ...sound, brief: engined });
     expect(read.map(({ id, instrument }) => [id, instrument])).toEqual([
       ["mass", "fe"],
       ["span", "ccx, gmsh"],
@@ -174,7 +188,7 @@ describe("a checker's acceptance", () => {
         execution: { ...check.execution, evidence: { kind: "authored" } },
       })),
     };
-    const none = acceptance(drafted, [roof, mast], runs, [], everyTool).checks;
+    const { checks: none } = await reading({ ...sound, brief: drafted });
     expect(none.map(({ instrument }) => instrument)).toEqual(["author", "author"]);
     expect(authoredFaults(none, new Set(["span"]))).toEqual([
       "mass is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit mass)",
@@ -197,8 +211,8 @@ describe("a checker's acceptance", () => {
       const mass = asRecord(answer)?.mass;
       return verdict.kind === "pass" && isNumber(mass) ? { kind: "pass", objective: mass } : verdict;
     };
-    const runs = await runControls(weighed, [roof, mast], SOUND, 2);
-    const { checks, faults } = acceptance(measured, [roof, mast], runs, [], everyTool);
+    const sound = { brief: measured, tasks: [roof, mast], controls: SOUND };
+    const { checks, faults } = await reading({ ...sound, verify: weighed });
     expect(faults).toEqual([]);
     expect(checks.at(-1)).toEqual({
       id: "objective",
@@ -222,23 +236,25 @@ describe("a checker's acceptance", () => {
       weighings += 1;
       return verdict.kind === "pass" ? { ...verdict, objective: weighings } : verdict;
     };
-    const drifted = await runControls(drifting, [roof], SOUND.slice(0, 1), 1);
-    expect(acceptance(measured, [roof], drifted, [], everyTool).faults[0]).toBe(
+    const drifted = {
+      brief: measured,
+      verify: drifting,
+      tasks: [roof],
+      controls: SOUND.slice(0, 1),
+      width: 1,
+    };
+    expect((await reading(drifted)).faults[0]).toBe(
       "the accept control of roof-1 got two verdicts from one answer: pass 1, then pass 2",
     );
     // A verifier that measures nothing, or cannot, is a fault of the objective's and of no check.
-    const unweighed = await runControls(verify, [roof, mast], SOUND, 2);
-    expect(acceptance(measured, [roof, mast], unweighed, [], everyTool).faults).toEqual([
-      "objective has measured nothing in this reading",
-    ]);
+    expect((await reading(sound)).faults).toEqual(["objective has measured nothing in this reading"]);
     const broken: Verifier = async (task, answer) => {
       const verdict = await verify(task, answer);
       return verdict.kind === "pass"
         ? { kind: "faulty", check: "objective", reason: "the objective returned NaN" }
         : verdict;
     };
-    const faulty = await runControls(broken, [roof, mast], SOUND, 2);
-    expect(acceptance(measured, [roof, mast], faulty, [], everyTool).faults).toEqual([
+    expect((await reading({ ...sound, verify: broken })).faults).toEqual([
       "the accept control of roof-1 did not pass: faulty objective: the objective returned NaN",
       "the accept control of mast-1 did not pass: faulty objective: the objective returned NaN",
       "objective could not be measured on a valid answer: the objective returned NaN",
@@ -252,34 +268,45 @@ describe("a checker's acceptance", () => {
 });
 
 describe("the do-nothing answer", () => {
-  it("is the smallest value a format's schema allows", () => {
-    expect(
-      doNothingAnswer({
-        type: "object",
-        required: ["members", "mass", "name", "ok", "grade", "span"],
-        properties: {
-          members: {
-            type: "array",
-            minItems: 2,
-            items: {
-              type: "object",
-              required: ["id"],
-              properties: { id: { type: "string" }, note: { type: "string" } },
-            },
+  it("is the smallest value a format's schema allows", async () => {
+    const { idle, unformed } = await readUnder({
+      type: "object",
+      // `free` is required and given no schema, so nothing says what it holds.
+      required: ["members", "mass", "name", "ok", "grade", "span", "list", "either", "seven", "free"],
+      properties: {
+        members: {
+          type: "array",
+          minItems: 2,
+          items: {
+            type: "object",
+            required: ["id"],
+            properties: { id: { type: "string" }, note: { type: "string" } },
           },
-          mass: { type: "number", exclusiveMinimum: 0 },
-          name: { type: "string", minLength: 3 },
-          ok: { type: "boolean" },
-          grade: { enum: ["S235", "S355"] },
-          span: { anyOf: [{ type: "integer", minimum: 4 }, { type: "null" }] },
-          optional: { type: "string" },
         },
-      }),
-    ).toEqual({ members: [{ id: "" }, { id: "" }], mass: 1, name: "xxx", ok: false, grade: "S235", span: 4 });
-    expect(doNothingAnswer({ type: "array", items: { type: "number" } })).toEqual([]);
-    expect(doNothingAnswer({ type: ["string", "null"] })).toBe("");
-    expect(doNothingAnswer({ const: 7 })).toBe(7);
-    expect(doNothingAnswer("prose, not a schema")).toBeNull();
+        mass: { type: "number", exclusiveMinimum: 0 },
+        name: { type: "string", minLength: 3 },
+        ok: { type: "boolean" },
+        grade: { enum: ["S235", "S355"] },
+        span: { anyOf: [{ type: "integer", minimum: 4 }, { type: "null" }] },
+        list: { type: "array", items: { type: "number" } },
+        either: { type: ["string", "null"] },
+        seven: { const: 7 },
+        optional: { type: "string" },
+      },
+    });
+    expect(idle).toEqual({
+      members: [{ id: "" }, { id: "" }],
+      mass: 1,
+      name: "xxx",
+      ok: false,
+      grade: "S235",
+      span: 4,
+      list: [],
+      either: "",
+      seven: 7,
+      free: null,
+    });
+    expect(unformed).toBeNull();
   });
 
   it("must be rejected on every task: a pass is a fault, and so is a check that could not run on it", async () => {
@@ -289,41 +316,29 @@ describe("the do-nothing answer", () => {
       task.family === "roof" && asRecord(answer)?.span === undefined
         ? { kind: "faulty", check: "span", reason: "no span to read" }
         : verify(task, answer);
-    const idle = await runDoNothing(lax, [roof, mast], {}, 2);
-    expect(doNothingFaults(idle)).toEqual([
+    const idleFaults = async (checks: Verifier) =>
+      (await readUnder({ type: "object" }, checks)).faults.filter((fault) =>
+        fault.startsWith("the do-nothing"),
+      );
+    expect(await idleFaults(lax)).toEqual([
       "the do-nothing answer was not rejected on roof-1: faulty span: no span to read",
       "the do-nothing answer was not rejected on mast-1: pass",
     ]);
     const strict: Verifier = async () => ({ kind: "fail", blocking: ["mass"] });
-    expect(doNothingFaults(await runDoNothing(strict, [roof, mast], {}, 2))).toEqual([]);
+    expect(await idleFaults(strict)).toEqual([]);
   });
 });
 
 describe("a reading of a checker", () => {
   it("keeps historical verdicts apart from fresh controls and cannot use them to clear a fresh fault", async () => {
     const contract: Contract = { answerFormat: { type: "object" }, conventions: "", rules: [], scope: "" };
-    const reading = await readChecker({
-      brief,
-      contract,
-      tasks: [roof],
-      controls: SOUND.slice(1, 2),
-      stored: [{ task: roof, verdict: { kind: "pass" } }],
-      verify,
-      found: everyTool,
-      width: 1,
-    });
-    expect(reading.checks[0]).toMatchObject({ passed: 0, refused: 1 });
-    expect(reading.historical[0]).toMatchObject({ passed: 1, refused: 0 });
-    expect(reading.faults).toContain("mass has let nothing pass in this reading");
+    const stored = [{ task: roof, verdict: { kind: "pass" } }] as const;
+    const read = await reading({ contract, tasks: [roof], controls: SOUND.slice(1, 2), stored, width: 1 });
+    expect(read.checks[0]).toMatchObject({ passed: 0, refused: 1 });
+    expect(read.historical[0]).toMatchObject({ passed: 1, refused: 0 });
+    expect(read.faults).toContain("mass has let nothing pass in this reading");
   });
 
-  /** A checker read over two tasks under `answerFormat`, with checks that pass every answer. */
-  const readUnder = (answerFormat: JsonObject) => {
-    const contract: Contract = { answerFormat, conventions: "", rules: [], scope: "" };
-    const passes: Verifier = async () => ({ kind: "pass" });
-    const given = { brief, contract, tasks: [roof, mast], controls: [], stored: [], found: everyTool };
-    return readChecker({ ...given, verify: passes, width: 2 });
-  };
   const mass = (field: JsonObject) => ({ type: "object", properties: { mass: field }, required: ["mass"] });
 
   it("lists a do-nothing answer the checks let pass, and one the format refuses, as faults of its own", async () => {

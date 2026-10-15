@@ -29,7 +29,7 @@ import { text, tool } from "../solve/answer.ts";
 
 /** review-probe.ts:57: each probe runs every applicable check, so eight keep a review from becoming
  *  a second battery. */
-export const PROBE_BUDGET = 8;
+const PROBE_BUDGET = 8;
 /** review-probe.ts:87-90 at 3f93d06b: a replacement value is one field, not a redesigned answer, and
  *  each half of an edit is one passage. */
 const VALUE_MAX_CHARS = 4_000;
@@ -83,7 +83,7 @@ function movedChecks(original: Verdict, changed: Verdict): string[] {
 /** review-probe.ts:159-185: a deep copy of `answer` with one existing leaf replaced, the path spelled
  *  as the checks spell theirs (`$.members[0].area`). Null when the path does not resolve, since a
  *  probe that adds a field answers "no check reads it" about a field the answer never carried. */
-export function withReplacedField(answer: JsonValue, path: string, value: JsonValue): JsonValue | null {
+function withReplacedField(answer: JsonValue, path: string, value: JsonValue): JsonValue | null {
   const keys = jsonPathTokens(path)?.map((token) =>
     token.startsWith("[") ? token.slice(1, -1) : token.slice(1),
   );
@@ -103,7 +103,7 @@ export function withReplacedField(answer: JsonValue, path: string, value: JsonVa
  * two passages and editing either would be a guess. The text is sliced, not passed through
  * `String.replace`, which reads `$&` in a replacement as a pattern, and code is full of dollar signs.
  */
-export function editedPassage(answer: JsonValue, path: string, edit: ProbeEdit): string | null {
+function editedPassage(answer: JsonValue, path: string, edit: ProbeEdit): string | null {
   const field = resolveJsonPath(answer, path).value;
   if (!isString(field)) return null;
   const at = field.indexOf(edit.find);

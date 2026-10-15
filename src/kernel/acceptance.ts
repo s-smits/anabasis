@@ -154,7 +154,7 @@ export function runControls(
  * choice of schemas its first. A keyword outside these is not read, so the value may miss the
  * format, which the caller asks (`answerFormatFault`) before it puts the answer to a check.
  */
-export function doNothingAnswer(schema: JsonValue | undefined): JsonValue {
+function doNothingAnswer(schema: JsonValue | undefined): JsonValue {
   const held = asRecord(schema);
   if (held === null) return null;
   if (held.const !== undefined) return held.const;
@@ -181,7 +181,7 @@ export function doNothingAnswer(schema: JsonValue | undefined): JsonValue {
 }
 
 /** The do-nothing answer through every task's checks, `width` at once. */
-export function runDoNothing(
+function runDoNothing(
   verify: Verifier,
   tasks: readonly Task[],
   answer: JsonValue,
@@ -232,7 +232,7 @@ export function toolFaults(brief: Brief, found: (toolId: string) => boolean): st
  * seen to do without being rerun. `found` says whether the verifier's tool path holds a tool. A
  * verdict that decided nothing, a faulty check's or a non-result, tallies for no check.
  */
-export function acceptance(
+function acceptance(
   brief: Brief,
   tasks: readonly Task[],
   runs: readonly ControlRun[],

@@ -287,14 +287,14 @@ export function comparedAs(events: readonly LogEvent[], harness: string) {
 }
 
 /**
- * What room a comparison's report shows a harness to gain in, as the process reads it
- * (`docs/plan.md`, "How move 7 decides"): `room` where a task was informative for the reference
- * harness (`informative`, `compare.ts`: valid on some solves and not all, or two of its valid
- * answers apart by the objective past its margin), `too-hard` where neither harness was valid on
- * any solve, and `none` otherwise, the tasks it fails in every solve among them, which leave it
- * nothing to practise on. `side` is the reference's side of the report: `old` in a comparison
- * made against it, and `fresh` in the one it was promoted on, which is the reading the tasks
- * have after a promotion until a comparison against the new reference reads them again.
+ * What room a comparison's report shows a harness to gain in (`docs/plan.md`, "How move 7
+ * decides"): `room` where a task was informative for the reference harness (`informative`,
+ * `compare.ts`: valid on some solves and not all, two valid answers apart by the objective past its
+ * margin, or valid on none where a valid answer to it is on record), `too-hard` where neither
+ * harness was valid on any solve and no task has a valid answer on record, and `none` otherwise,
+ * the tasks it fails in every solve that nobody answered among them, which leave it nothing to
+ * practise on. `side` is the reference's side of the report: `old` in a comparison made against
+ * it, and `fresh` in the one it was promoted on, which stands until one against it reads the tasks.
  *
  * Until 12 October room was read by shares of valid solves (the reference at most three in four,
  * and not both harnesses under one in four), which counted a task the reference failed in every

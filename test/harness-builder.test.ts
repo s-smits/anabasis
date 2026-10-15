@@ -517,11 +517,18 @@ describe("a campaign run by its log", () => {
       fresh: first?.starter,
       old: first?.fresh,
     });
-    // The script answers nothing under the reference nor the starter, so the control reads the new
-    // tasks as beyond both, and the table has other tasks written rather than a harness built.
-    expect(of(name, "comparison.reported").at(-1)).toMatchObject({ session: "g-3", reading: "no-step" });
-    expect(after).toMatchObject({ move: "examine" });
-    expect(after.why).toContain("neither harness gave a valid answer");
+    // The script answers nothing under the reference nor the starter, so the control reads the
+    // three new tasks as beyond both; the four pack tasks drawn beside them the promoted harness
+    // answered in g-1, so a valid answer to each is on record and the reference failing them now
+    // is room (`informative`, 15 October; until then no task it failed in every solve was). The
+    // table releases the tasks it failed for practice before a Builder session is paid for.
+    expect(of(name, "comparison.reported").at(-1)).toMatchObject({
+      session: "g-3",
+      reading: "no-step",
+      valid: { old: [7, 0], fresh: [7, 0], informative: { old: 4, fresh: 4 } },
+    });
+    expect(after).toMatchObject({ move: "prepare", code: "practice" });
+    expect(after.why).toContain("comparison g-3 read room in the tasks held out since the last release");
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:

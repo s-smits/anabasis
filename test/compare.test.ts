@@ -601,21 +601,30 @@ describe("a task's pairings", () => {
     ).toBe(1);
   });
 
-  it("calls a task informative for a side valid on some solves and not all, or apart past the margin", () => {
+  it("calls a task informative for a side valid on some solves and not all, apart past the margin, or on none where a valid answer is on record", () => {
     const pair = (old: boolean[], measured: (number | null)[] = []) => ({
       task: "t",
       old,
       fresh: [P, P],
       objective: { direction: "lower" as const, margin: 0.05, old: measured, fresh: [1, 1] },
     });
-    expect(informative(pair([P, F]), "old")).toBe(true);
-    // Failed in every solve, or valid in every solve with no objective: nothing to gain on.
-    expect(informative(pair([F, F]), "old")).toBe(false);
-    expect(informative(pair([P, P]), "old")).toBe(false);
+    const nobody = new Set<string>();
+    const known = new Set(["t"]);
+    expect(informative(pair([P, F]), "old", nobody)).toBe(true);
+    // Failed in every solve with no valid answer on record, or valid in every solve with no
+    // objective: nothing to gain on.
+    expect(informative(pair([F, F]), "old", nobody)).toBe(false);
+    expect(informative(pair([P, P]), "old", nobody)).toBe(false);
+    expect(informative(pair([P, P]), "old", known)).toBe(false);
+    // Failed in every solve where a valid answer is on record, another harness's or its author's
+    // (`poolOf`, feasible): the room a promotion leaves (15 October). Until then never informative,
+    // so a reference that passed every scored solve had room only on tasks it answered some of the time.
+    expect(informative(pair([F, F]), "old", known)).toBe(true);
+    expect(informative(pair([F, F]), "old", new Set(["u"]))).toBe(false);
     // Valid in every solve, its own answers apart by the margin or less: no room (#144's hostile case).
-    expect(informative(pair([P, P], [100, 104]), "old")).toBe(false);
+    expect(informative(pair([P, P], [100, 104]), "old", nobody)).toBe(false);
     // Apart by more than the margin: a better answer is there to find.
-    expect(informative(pair([P, P], [100, 110]), "old")).toBe(true);
+    expect(informative(pair([P, P], [100, 110]), "old", nobody)).toBe(true);
   });
 
   it("sets the objective's margin at the 90th percentile of the reference's own spread in its A/A", () => {

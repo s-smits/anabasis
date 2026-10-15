@@ -28,6 +28,7 @@ import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { gitText } from "#src/meta/git.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -182,7 +183,7 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
   for (const tree of holds(level, "source") ? new Set(chosen.map((run) => run.tree)) : []) {
     const scratch = mkdtempSync(join(tmpdir(), "ana-runs-source-"));
     const tar = join(scratch, "source.tar");
-    runTextSyncOrThrow(["git", "-C", tree, "archive", "--prefix=source/", "-o", tar, "HEAD", ...SOURCE]);
+    gitText(tree, "archive", "--prefix=source/", "-o", tar, "HEAD", ...SOURCE);
     runTextSyncOrThrow(["tar", "-xf", tar, "-C", scratch]);
     keep(scratch, basename(tree), fit(scratch, ["source"]));
     rmSync(scratch, { recursive: true });

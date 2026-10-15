@@ -3,7 +3,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { told as sourceTold } from "#skills/attribution-and-proof/scripts/run-source.ts";
 import { CommandFailure } from "#skills/main/cli.ts";
-import { gitText } from "#skills/main/git.ts";
+import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { chain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import type { Pull } from "#tools/runtime/land.ts";

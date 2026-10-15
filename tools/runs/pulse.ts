@@ -270,7 +270,9 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: { all: { type: "boolean", default: false } } });
   const running = processes();
   const now = Date.now();
-  let promoted = 0;
+  // Every host is asked first, and its rows print once this machine's have.
+  const away = hostsOf().length > 0 ? hosts(args) : undefined;
+  let [promoted, compared] = [0, 0];
   for (const run of runs()) {
     const open = writers(run, running).length > 0;
     // A seed rehearses on a copy of another campaign's log, and its promotions are that campaign's.
@@ -281,20 +283,21 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     const kept = receipts(run.path).findLast(({ session }) => session.startsWith("run-"));
     const ended = log.at(-1)?.kind === "campaign.ended" ? `ended ${word(log.at(-1)?.data.ending)}` : "";
     const comparing = openComparisons(log);
-    const steps = count(log, "harness.promoted");
-    promoted += steps;
+    const [steps, reads] = [count(log, "harness.promoted"), count(log, REPORTED)];
+    [promoted, compared] = [promoted + steps, compared + reads];
     const where = [
       basename(run.tree),
       kept?.commit.slice(0, 9) ?? "",
       kept?.login === undefined ? "" : `login ${kept.login}`,
       comparing.length > 0 ? `comparing ${comparing.join(", ")}` : "",
-      steps > 0 ? `${String(steps)} promoted` : "",
+      `${String(reads)} compared`,
+      steps > 0 ? `* ${String(steps)}x promotion *` : "",
       open ? "" : ended,
     ];
     console.log(
       `${status(run, log, solvesIn(log), open, now)}\n  ${where.filter((part) => part !== "").join(" · ")}`,
     );
   }
-  console.log(`${plural(promoted, "promotion")} over the runs shown`);
-  if (hostsOf().length > 0) await hosts(args);
+  console.log(`${plural(promoted, "promotion")} in ${plural(compared, "comparison")} over the runs shown`);
+  await away;
 }

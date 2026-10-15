@@ -1,19 +1,13 @@
 import { sha256 } from "./digest.ts";
-import { capturedJsonStringify as stringify, capturedStructuredClone as clone } from "./json-runtime.ts";
+import { capturedJsonStringify as stringify } from "./json-runtime.ts";
 import { isBoolean, isNumber, isObject, isString, type JsonValue } from "./json-shape.ts";
 
 const objectPrototype = Object.prototype;
-const arrayPrototype = Array.prototype;
 const arrayFrom = Array.from;
 const { isArray } = Array;
 const objectEntries = Object.entries;
 const objectValues = Object.values;
 const prototypeOf = Object.getPrototypeOf;
-
-interface CanonicalJsonCopyResult {
-  value: unknown;
-  bytes: string;
-}
 
 /** Deterministic UTF-16 code-unit order. Locale collation must not shape persisted identities. */
 export function compareCodeUnits(left: string, right: string): number {
@@ -81,31 +75,9 @@ export function sameJsonValue(left: unknown, right: unknown): boolean {
   return stableJson(left) === stableJson(right);
 }
 
-export function canonicalJsonCopy(value: unknown): CanonicalJsonCopyResult {
-  const copy = clone(value);
-  if ("toJSON" in objectPrototype || "toJSON" in arrayPrototype) {
-    throw new Error("shared JSON intrinsic changed");
-  }
-  if (!isPlainFiniteJson(copy, "rejected")) throw new Error("value is not plain finite JSON");
-  return {
-    value: copy,
-    bytes: encodeSorted(copy, "omit"),
-  };
-}
-
 /** Stable content identity for in-memory JSON values; object key order does not shape the hash. */
 export function hashJsonValue(value: unknown): string {
   return sha256(stableJson(value));
-}
-
-/** `hashJsonValue` of a list of strings, fed to the hash item by item. A tool tree's rows run to
- *  tens of megabytes, and hashing them as one JSON text holds them twice more: once as that text
- *  and once as its UTF-8 bytes. */
-export function hashJsonStrings(items: readonly string[]): string {
-  const hasher = new Bun.CryptoHasher("sha256");
-  hasher.update("[");
-  items.forEach((item, index) => hasher.update(index === 0 ? stringify(item) : `,${stringify(item)}`));
-  return hasher.update("]").digest("hex");
 }
 
 /** Validate values received from vendor objects or untyped readers before recording them. A

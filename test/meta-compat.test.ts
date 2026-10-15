@@ -7,9 +7,7 @@ import { hashJsonBytes } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import {
   canonicalJson,
-  canonicalJsonCopy,
   compareCodeUnits,
-  hashJsonStrings,
   hashJsonValue,
   sameJsonValue,
   stableJson,
@@ -91,16 +89,6 @@ describe("stable JSON identity", () => {
     expect(hashJsonValue(left)).toBe(hashJsonValue(right));
   });
 
-  it("hashes a list of strings item by item to the digest of its whole JSON text", () => {
-    for (const items of [
-      [],
-      ["only"],
-      ["bin/tool\0ab12", String.raw`quote " and \ slash`, "ä\n\u2028", "\ud800 lone"],
-    ]) {
-      expect(hashJsonStrings(items)).toBe(hashJsonValue(items));
-    }
-  });
-
   it("uses explicit code-unit order and native JSON array omission semantics", () => {
     expect(["ä", "z", "a"].sort(compareCodeUnits)).toEqual(["a", "z", "ä"]);
     expect(stableJson(Array(1))).toBe("[null]");
@@ -128,15 +116,6 @@ describe("stable JSON identity", () => {
     } finally {
       JSON.stringify = original;
     }
-  });
-
-  it("keeps strict boundary copies distinct from optional-field identity", () => {
-    expect(canonicalJsonCopy({ b: 2, a: 1 })).toEqual({
-      value: { b: 2, a: 1 },
-      bytes: '{"a":1,"b":2}',
-    });
-    expect(() => canonicalJsonCopy({ optional: undefined })).toThrow(/not plain finite JSON/);
-    expect(canonicalJson({ optional: undefined })).not.toBe(canonicalJson({ optional: null }));
   });
 });
 

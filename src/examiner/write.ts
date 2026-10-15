@@ -178,8 +178,10 @@ function tried(verdict: Verdict): string {
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
  *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
  *  is held out where some of them and not all gave a valid answer, or none where its author's answer
- *  passes on it (`gated`), and a solve that ended in no reading leaves it unmeasured. The Examiner
- *  hears the counts; no answer and no trace of a solve reaches it. The session bounds them: `stop` is the session's own signal, which its wall, its end
+ *  passes on it (`gated`), and a solve that ended in no reading leaves it unmeasured, as does a
+ *  rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`): until 15 October
+ *  the refusal said only the first, and 15 of 16 such refusals on record were the second. The
+ *  Examiner hears the counts; no answer and no trace of a solve reaches it. The session bounds them: `stop` is the session's own signal, which its wall, its end
  *  and a killed run abort, and it is the kill a comparison's solves take (`probe`), so a wall that
  *  fires mid-try leaves no solve running and the task refused unmeasured. */
 async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
@@ -196,7 +198,7 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   const solves = endings.filter(({ outcome }) => outcome !== "non-result").length;
   const valid = endings.filter(({ outcome }) => outcome === "pass").length;
   const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves`;
-  const unmeasured = `${String(TRIED - solves)} of the reference harness's ${String(TRIED)} solves of it ended in no reading, so it is not measured`;
+  const unmeasured = `${String(TRIED - solves)} of the reference harness's ${String(TRIED)} solves of it ended in no reading or in a rejection the Referee did not rule earned, so it is not measured`;
   const roomless = `${counted}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`;
   const some = valid > 0 && valid < TRIED;
   return {

@@ -843,7 +843,7 @@ describe("a session that writes tasks", () => {
         `x-1-002: held out; ${counted(2)}.`,
         `x-1-003: refused: ${counted(0)}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`,
         `x-1-004: refused: ${counted(3)}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`,
-        "x-1-005: refused: 1 of the reference harness's 3 solves of it ended in no reading, so it is not measured",
+        "x-1-005: refused: 1 of the reference harness's 3 solves of it ended in no reading or in a rejection the Referee did not rule earned, so it is not measured",
         "So far in this campaign, drafts with a proof were held 0 of 0, and drafts without one 2 of 5.",
       ].join("\n"),
     );

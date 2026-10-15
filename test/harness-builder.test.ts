@@ -217,9 +217,11 @@ describe("a campaign run by its log", () => {
       { kind: "exam.finished", data: { session: "x-1", ...cut } },
     ]);
     expect(after.findIndex(({ kind }) => kind === MOVED)).toBeGreaterThan(1);
-    // Reopened once more, with every session ended: nothing more is ended.
+    // Reopened once more, with every session ended: nothing more is ended. Ending happens at the
+    // opening, so no move is made: a comparison of scripted solves, each on its own disk image,
+    // ran past the test suite's idle wall on a three-core macOS runner (15 October).
     const ends = () => read(log).filter(({ data }) => data.ended === "killed").length;
-    await harnessBuilder(flags, seats);
+    await harnessBuilder([...flags, "--moves", "0"], seats);
     expect(ends()).toBe(2);
   });
 

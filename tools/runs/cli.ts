@@ -6,11 +6,13 @@
  * through this tree's readers (`replay.ts`), `seed` copies a campaign under another name, cut where
  * a question starts (`seed.ts`), and `rehearse` runs a round over a seed with a script in each
  * model seat (`rehearse.ts`). `view` prints one campaign as its log reads: what each step handed
- * over, and the moves that may start next (`view.ts`).
+ * over, and the moves that may start next (`view.ts`), and `source` the commit each of its runs ran
+ * and where that is published (`receipt.ts`).
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { continueRun, launch, pause } from "./manage.ts";
 import { watch } from "./pulse.ts";
+import { source } from "./receipt.ts";
 import { rehearse } from "./rehearse.ts";
 import { replay } from "./replay.ts";
 import { seed } from "./seed.ts";
@@ -29,6 +31,7 @@ const VERBS = {
   seed,
   rehearse,
   view,
+  source,
 };
 const [verb, ...args] = Bun.argv.slice(2);
 const run = Object.entries(VERBS).find(([name]) => name === verb)?.[1];

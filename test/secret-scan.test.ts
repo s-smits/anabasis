@@ -82,6 +82,8 @@ describe("secret scan rules", () => {
     expect(refusedPath(".env")).toBe(true);
     expect(refusedPath("tools/login/.env.local")).toBe(true);
     expect(refusedPath(".env.example")).toBe(false);
+    expect(refusedPath(".env.runs.example")).toBe(false);
+    expect(refusedPath(".env.runs")).toBe(true);
     expect(refusedPath("src/backends/env.ts")).toBe(false);
   });
 });

@@ -187,7 +187,7 @@ export const SESSION_OPTIONS = {
   reserve: COMPARISON_OPTIONS.reserve,
   "past-stop": COMPARISON_OPTIONS["past-stop"],
   "practice-solves": { type: "string", default: "24" },
-  minutes: { type: "string", default: "240" },
+  minutes: { type: "string", default: "1440" },
   turns: { type: "string", default: "300" },
   parent: { type: "string", default: "latest" },
 } as const;

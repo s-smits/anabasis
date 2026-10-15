@@ -11,7 +11,21 @@
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { count, type Index, indexOf, items, short, text } from "./folds.ts";
+import { IDLE } from "../d2/campaign-terms.ts";
+import { decidedOn } from "../runs/view.ts";
+import {
+  count,
+  EXAM_END,
+  EXAM_START,
+  fired,
+  type Index,
+  indexOf,
+  items,
+  REPORTED,
+  short,
+  type Trigger,
+  text,
+} from "./folds.ts";
 import { epochsOf, SHARED_PATH, spentTo, testSaid, validOf } from "./promotion.ts";
 
 /** One campaign as the climb table names it: its name and its log's events. */
@@ -87,7 +101,9 @@ function rowOf({ name, events }: Campaign): string[] {
   );
   const after = epoch === undefined ? [] : log.compared.filter(({ at }) => at > epoch.at);
   const move = log.of("campaign.move").at(-1);
-  const ended = log.of("campaign.ended").length > 0;
+  // Run again, a campaign goes on past an ending (since 14 October): it ended where its last ending
+  // came after its last move. Until 15 October any ending read so, and two live campaigns did.
+  const ended = events.findLast(({ kind }) => kind === "campaign.move" || kind === "campaign.ended")?.kind;
   return [
     name,
     // The host code of the last condition the campaign recorded.
@@ -106,7 +122,7 @@ function rowOf({ name, events }: Campaign): string[] {
           .map(({ session, last }) => `${session} ${testSaid(last.scored)} ${text(last.reading)}`)
           .join("; ") || "none",
     spentTo(log, 0, events.length),
-    ended ? "ended" : `${text(move?.move)} ${text(move?.session)}`.trim() || "opening",
+    ended === "campaign.ended" ? "ended" : `${text(move?.move)} ${text(move?.session)}`.trim() || "opening",
   ];
 }
 
@@ -117,6 +133,72 @@ export function climbTable(campaigns: readonly Campaign[]): string {
   return [line(COLUMNS), line(COLUMNS.map(() => "---")), ...campaigns.map((each) => line(rowOf(each)))].join(
     "\n",
   );
+}
+
+/**
+ * The safeguards: what went wrong in a live campaign before a mechanism answered it, read from the
+ * log alone and printed, never acted on, since `hostOwed`, the holds and the load gate already
+ * decide (the review of 14 October, section 5). A safeguard goes by deleting its key in the change
+ * that names its replacement, and a number is never reused. 5 went at birth, as `waitOut` waits
+ * out any named reset since 15 October; 6 is `HOST LOADED`; 8 waits for a second promotion.
+ */
+export function safeguardTriggers({ events }: Index): Trigger[] {
+  const said = (name: Parameters<typeof fired>[0], lines: readonly string[]) =>
+    lines.length > 0 ? [fired(name, lines.join("; "))] : [];
+  // 1: a run of the command ended `finished` while the table on the log up to there named a move.
+  const named = events.flatMap(({ kind, at, data }, index) => {
+    if (kind !== "campaign.ended" || data.ending !== "finished") return [];
+    const { move } = decidedOn(events.slice(0, index));
+    return move === "end" ? [] : [`${clock(at)}: ${move}`];
+  });
+  // 2: a Builder session ended at its wall while a host action it asked for had begun and not ended.
+  const walled = events.flatMap(({ kind, data }, index) => {
+    if (kind !== "build.finished" || data.ended !== "wall") return [];
+    const from = events.findLastIndex((each, at) => at < index && each.kind === "build.started");
+    const open = new Set<string>();
+    for (const each of events.slice(from, index)) {
+      if (["comparison.started", EXAM_START].includes(each.kind)) open.add(text(each.data.session));
+      if ([REPORTED, EXAM_END].includes(each.kind)) open.delete(text(each.data.session));
+    }
+    return open.size > 0 ? [`${text(data.session)} during ${[...open].join(", ")}`] : [];
+  });
+  // 3 and 4: one move asked again with no report or Examiner ending between, and Builder
+  // conversations in a row across the command's endings, which `idleOf` counts from each ending.
+  const runs = { same: new Map<string, number>(), again: new Map<string, number>(), led: 0, most: 0 };
+  for (const { kind, data } of events) {
+    if (kind === REPORTED || kind === EXAM_END) runs.same.clear();
+    if (kind !== "campaign.move") continue;
+    const key = [data.move, data.code, data.session].map(text).join(" ");
+    const times = (runs.same.get(key) ?? 0) + 1;
+    runs.same.set(key, times);
+    if (times >= 3) runs.again.set(key, times);
+    runs.led = data.code === "led" ? runs.led + 1 : 0;
+    runs.most = Math.max(runs.most, runs.led);
+  }
+  // 7: a session's limits moved between two sessions, which no term of the opening names.
+  const limits = events.flatMap(({ kind, data }) =>
+    kind === "build.started" ? [{ session: text(data.session), limits: asRecord(data.limits) ?? {} }] : [],
+  );
+  const moved = limits.slice(1).flatMap(({ session, limits: now }, index) => {
+    const before = limits[index]?.limits ?? {};
+    return Object.keys(now).flatMap((key) => {
+      const [was, is] = [before[key], now[key]].map((value) => JSON.stringify(value));
+      return was === is ? [] : [`${session}: ${key} ${String(was)} to ${String(is)}`];
+    });
+  });
+  return [
+    ...said("SAFEGUARD-1 ENDED WITH A MOVE NAMED", named),
+    ...said("SAFEGUARD-2 WALL DURING A HOST ACTION", walled),
+    ...said(
+      "SAFEGUARD-3 SAME MOVE ASKED AGAIN",
+      [...runs.again].map(([key, times]) => `${key} ${String(times)} times`),
+    ),
+    ...said(
+      "SAFEGUARD-4 CONVERSATIONS WITHOUT PROGRESS",
+      runs.most >= 2 * IDLE ? [`${String(runs.most)} in a row`] : [],
+    ),
+    ...said("SAFEGUARD-7 LIMITS MOVED", moved),
+  ];
 }
 
 /** Each path under `/tmp` a campaign's calls named, first naming first. */

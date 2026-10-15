@@ -84,7 +84,7 @@ export interface CampaignRow {
    *  for a campaign whose opening names none: one opened before 12 October, or run by the hand
    *  commands alone, which write no opening. */
   readonly project: string;
-  /** `running` while a process writes the log (`writers`, `tools/runs/pulse.ts`), `ended` once its
+  /** `running` while a process writes the log (`writers`, `tools/runs/registry.ts`), `ended` once its
    *  last event is `campaign.ended`, and `open` otherwise: stopped with no ending, or between
    *  commands. */
   readonly status: "running" | "open" | "ended";
@@ -105,7 +105,7 @@ export interface CampaignRow {
   /** Dollars billed over the whole log (`billedAll`), and the opening's total, null where none. */
   readonly billed: number;
   readonly budget: number | null;
-  /** A copy of another campaign made to rehearse on (`Run.seed`, `tools/runs/pulse.ts`). */
+  /** A copy of another campaign made to rehearse on (`Run.seed`, `tools/runs/registry.ts`). */
   readonly seed: boolean;
 }
 

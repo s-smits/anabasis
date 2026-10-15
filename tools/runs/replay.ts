@@ -19,7 +19,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { overview } from "../wri/read.ts";
-import { runs } from "./pulse.ts";
+import { runs } from "./registry.ts";
 
 /** What this tree's readers make of the log at `path`, in a line. */
 export function replayed(path: string): string {

@@ -26,7 +26,7 @@ import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { taskSets } from "#src/kernel/task.ts";
-import { SEED_FILE } from "./pulse.ts";
+import { SEED_FILE } from "./registry.ts";
 
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started"]);
 

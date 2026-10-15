@@ -387,7 +387,9 @@ describe("a round", () => {
         },
         overlap: null,
         // Each harness by itself: the reference answered no task validly, the new one all, twice.
-        valid: { old: [4, 0, 0], fresh: [0, 0, 4], informative: { old: 0, fresh: 0 } },
+        // Every task is informative for the reference: a valid answer to each is on record, the
+        // new harness's, so the reference's failing them is room (`informative`, 15 October).
+        valid: { old: [4, 0, 0], fresh: [0, 0, 4], informative: { old: 4, fresh: 0 } },
         billed: { old: BILLED, fresh: BILLED },
         noise: null,
         counted: null,

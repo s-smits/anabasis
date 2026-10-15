@@ -63,14 +63,14 @@ import { tmpdir } from "#src/meta/os.ts";
 import { plural } from "#src/meta/text.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
+import { worktrees } from "#src/meta/git.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { hostTool } from "#src/meta/host-tool.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import type { Reader } from "#src/review/reader.ts";
 import { referee } from "#src/review/referee.ts";
 import { writeStarter } from "#src/solve/starter.ts";
 import { stageExam } from "./exam.ts";
+import type { NamedSolver } from "./setting.ts";
 import { openHarness, treeContent } from "#src/solve/harness.ts";
 import { HOST_SOLVE_ISOLATION_PROFILE_ID } from "#src/verify/solve-sandbox.ts";
 import {
@@ -97,8 +97,8 @@ interface CampaignArgs {
   readonly bundle?: string | undefined;
   readonly name: string;
   /** The model and effort that solve in the cycle's place, when not its own: a command's `--solver`
-   *  and `--solver-effort` (`setting.ts`). */
-  readonly solver?: { readonly model: string; readonly effort: ThinkingLevel } | undefined;
+   *  and `--solver-effort`, and the window `--solver-window` names (`setting.ts`). */
+  readonly solver?: NamedSolver | undefined;
   /** What every solve of this command is held to, when not `LIMITS`: a command's `--solve-minutes`
    *  and `--solve-model-turns` (`setting.ts`). */
   readonly limits?: Limits | undefined;
@@ -126,6 +126,8 @@ interface Solver {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly side: Condition["side"];
+  /** The context its Claude Code compacts at, where the setting names one (`sweepOptions`). */
+  readonly window?: number;
   /** The backends of a solver this host's do not serve: a simulation's script (`tools/runs/rehearse.ts`). */
   readonly models?: (home: string) => Models;
 }
@@ -170,11 +172,9 @@ const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-agent-cor
  * gone is left out, since a denied root has to exist for the wall to mount over it.
  */
 export function worktreesOf(repo: string): string[] {
-  const listed = runTextSyncOrThrow([hostTool("git"), "-C", repo, "worktree", "list", "--porcelain"]);
   const own = resolve(repo);
-  return listed
-    .split("\n")
-    .flatMap((line) => (line.startsWith("worktree ") ? [resolve(line.slice("worktree ".length))] : []))
+  return worktrees(repo)
+    .map((tree) => resolve(tree))
     .filter((tree) => tree !== own && existsSync(tree));
 }
 
@@ -298,7 +298,7 @@ function recordedUnder({ contract, tools, limits }: Standing) {
     effort: by.effort,
     prices: freezePrices([by.model]),
     runtime,
-    compaction: compactionMode(by.model, sweepOptions()),
+    compaction: compactionMode(by.model, sweepOptions(undefined, by.window)),
     verifierTools,
     sandbox: hashJsonValue({
       profile: HOST_SOLVE_ISOLATION_PROFILE_ID,
@@ -387,7 +387,7 @@ export async function openCampaign(args: CampaignArgs) {
       model: by.model,
       effort: by.effort,
       limits,
-      models: by.models ?? ((home) => backends(sweepOptions(home))),
+      models: by.models ?? ((home) => backends(sweepOptions(home, by.window))),
       verify,
       log: written,
       repoRoot: REPO,
@@ -419,7 +419,11 @@ export async function openCampaign(args: CampaignArgs) {
     test: {
       ...(args.solver === undefined
         ? solver()
-        : { model: modelNamed(args.solver.model), effort: args.solver.effort }),
+        : {
+            model: modelNamed(args.solver.model),
+            effort: args.solver.effort,
+            ...keyIfDefined("window", args.solver.window),
+          }),
       side: "test",
     } as const,
     verify,

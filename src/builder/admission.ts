@@ -138,7 +138,7 @@ interface Admission {
 }
 
 /** The command an Examiner session runs as: where a refusal sends its reader for more held-out
- *  tasks, and what a stop knows a running one by (`tools/runs/pulse.ts`, `tools/runs/stop.ts`). */
+ *  tasks, and what a stop knows a running one by (`tools/runs/registry.ts`, `tools/runs/stop.ts`). */
 export const EXAMINE = "tools/d1b/examine.ts";
 const STARTED = "comparison.started";
 // On 9 October a round on a checker nobody had read rejected 22 of 32 solves, 14 on one check,

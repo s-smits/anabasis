@@ -106,7 +106,7 @@ as it was recorded and put the qualification beside it.
 Check in order, and stop at the first that fails. One command answers the first two:
 
 ```sh
-bun .claude/skills/attribution-and-proof/scripts/run-source.ts <campaign folder> --holds <fix>
+bun run runs source <name> --holds <fix>
 ```
 
 1. **The commit.** `launch-run-<n>.json` beside the log (and `launch-<session>.json` for a round

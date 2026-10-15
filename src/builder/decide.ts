@@ -421,13 +421,20 @@ export function repeatDue(events: readonly LogEvent[], plan: Plan): { id: string
 
 /** The repeat the pair's last reading bought, where one is due, and how many held tasks its first
  *  stage did not score; null where none is: a control is never repeated, since the starter winning
- *  on new tasks is room by another name. */
+ *  on new tasks is room by another name. A candidate buys one repeat: a step and the repeat it
+ *  bought are one attempt (`falsePromotion`, `src/builder/climb.ts`), and until 15 October a repeat
+ *  that cleared the trigger and not the level bought a third reading, which no bound counted. */
 function dueOf(ground: Ground) {
-  const { events, read, plan } = ground;
+  const { events, read, plan, reports } = ground;
+  const { trigger } = plan.wanted;
   if (
     read === null ||
     read.control ||
-    !triggered(read.report, plan.wanted.trigger) ||
+    !triggered(read.report, trigger) ||
+    reports.some(
+      ({ id, fresh, old, report }) =>
+        id !== read.id && fresh === read.fresh && old === read.old && triggered(report, trigger),
+    ) ||
     twice(ground) !== null
   ) {
     return null;

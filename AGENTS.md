@@ -943,7 +943,8 @@ a move chose it, and the decision carries the row's code:
    Until 13 October it held a repeat's tasks as well, and two campaigns examined towards 48 tasks
    for 16 hours and never compared.
 6. `unfinished`: a comparison that began and has not reported goes on, and a reading that cleared
-   the trigger, which is one draw, is repeated on fresh solves. The repeat draws the held-out
+   the trigger, which is one draw, is repeated on fresh solves, once a candidate: a repeat that
+   clears the trigger and not the level with its first stage buys no third reading (15 October). The repeat draws the held-out
    tasks the first stage did not score first (`scoredSet`, `src/builder/round.ts`): where the
    campaign holds fewer than the target of them, the Examiner writes more first, and `compare`
    refuses the repeat until they are held (14 October: buffer-149's g-2 scored 8 of g-1's 9

@@ -140,7 +140,6 @@ import {
   SCRIPTED,
   type Seats,
   sharedOf,
-  startOf,
   type Turn,
   turnOf,
   type Values,
@@ -191,15 +190,15 @@ function hostOwed(decided: Decided): boolean {
  * crashed session is, which the campaign goes on from and the table's crash rule bounds
  * (`crashedRun`).
  */
-async function goesOn(log: string, from: number, error: unknown, sleep: Seats["host"]): Promise<boolean> {
-  if (await waitOut(log, errorMessage(error), sleep?.sleep)) return true;
+async function goesOn(log: string, from: number, error: unknown, host: Seats["host"]): Promise<boolean> {
+  if (await waitOut(log, error, host)) return true;
   const events = read(log);
   const crashed = events
     .slice(from)
     .some(
       ({ kind, data }) => (kind === "build.finished" || kind === "exam.finished") && data.ended === "crashed",
     );
-  if (crashed) await waitCrashed(log, sleep?.sleep);
+  if (crashed) await waitCrashed(log, host);
   return crashed;
 }
 
@@ -388,13 +387,12 @@ function ended(log: string, events: readonly LogEvent[], decided: Extract<Decide
 /** What writes a move's event as it begins (the overhaul plan's P9): the move, the code of the row that chose
  *  it, its reason and start, and what `make` names it by, so a move that throws is on record with
  *  the reason it was made for. Until 12 October it was written when the move ended. */
-function beginning(log: string, decided: Exclude<Decided, { move: "end" }>, started: JsonObject) {
+function beginning(log: string, decided: Exclude<Decided, { move: "end" }>) {
   return (named: JsonObject) =>
     append(log, MOVED, {
       move: decided.move,
       code: decided.code,
       why: decided.why,
-      ...started,
       ...named,
       ...keyIfDefined(
         "answers",
@@ -421,7 +419,6 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
     move: "build",
     code: "led",
     why: `the Builder's campaign conversation, where the table named ${named.move === "end" ? named.ending : named.move}`,
-    ...startOf("build", seats),
     session,
   });
   try {
@@ -487,7 +484,7 @@ async function lead(context: CampaignContext, named: Decided): Promise<Decided |
   const { log, values, seats } = context;
   const left = await converse(context, named);
   if (left === null) {
-    await waitCrashed(log, seats.host?.sleep);
+    await waitCrashed(log, seats.host);
     return null;
   }
   console.log(`\nnext · ${decidedLine(left)}`);
@@ -616,7 +613,7 @@ export async function harnessBuilder(
       );
       return decided;
     }
-    const begin = beginning(log, decided, startOf(decided.move, seats));
+    const begin = beginning(log, decided);
     try {
       await make(decided, turn, begin);
     } catch (error) {
@@ -639,7 +636,7 @@ export async function harnessBuilder(
     }
     last = decided.move;
     made += 1;
-    await waitCrashed(log, seats.host?.sleep);
+    await waitCrashed(log, seats.host);
   }
 }
 

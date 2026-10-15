@@ -691,7 +691,16 @@ async function main(): Promise<number> {
     }
     return again.exitCode ?? 1;
   } finally {
-    rmSync(temporaryRoot, { recursive: true, force: true });
+    // A test the idle wall ended can leave its disk image attached under the root
+    // (`src/verify/disk-cap.ts`), whose removal then fails busy: on 15 October that threw over a
+    // rerun of 179 passes and no failure, and the suite exited 1.
+    try {
+      rmSync(temporaryRoot, { recursive: true, force: true });
+    } catch {
+      console.error(
+        `test-suite: ${temporaryRoot} is still in use, and is left to the host's temporary folder`,
+      );
+    }
   }
 }
 

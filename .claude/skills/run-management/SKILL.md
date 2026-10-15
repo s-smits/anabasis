@@ -1,6 +1,6 @@
 ---
 name: run-management
-description: "Start, continue, pause, watch and stop authorised Anabasis v2 campaigns through `bun run runs`: launch a campaign under a name, go on with one from its log on another login or commit, pause one at a clean point, read what each run gained, and stop one and release what it held. Use when the operator asks to start, launch, resume, continue, move, pause or stop a campaign or a run, to check whether a campaign is ready for its next move, or why a move was refused. Owns the run's life on the host; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
+description: "Start, continue, keep, pause, copy, watch and stop authorised Anabasis v2 campaigns through `bun run runs`: launch a campaign under a name, go on with one from its log on another login or commit, keep one going across logins until it ends on its own terms, pause one at a clean point, copy a stopped one to another worktree, read each run's status and each login's room, reach the other hosts, and stop one and release what it held. Use when the operator asks to start, launch, resume, continue, move, keep, pause, copy or stop a campaign or a run, which logins have room, how the runs stand on any host, whether a campaign is ready for its next move, or why a move was refused. Owns the run's life on the host; run-improvement-campaign reads the table, and whole-run-investigation reads what a run did."
 ---
 
 # Run management
@@ -21,7 +21,12 @@ one two worktrees hold.
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes]` | runs a campaign again from its log, on the flags its last run kept | `manage.ts` |
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
-| `stop <name> ... [--yes]` | ends the process that writes each log, and releases what its unfinished solves and sessions held | `stop.ts` |
+| `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
+| `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, and sets the source aside | `manage.ts` |
+| `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
+| `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, promotions and ending | `pulse.ts` |
+| `logins [N ...] [--json]` | each login's five-hour and weekly use, and when the pool runs out | `logins.ts` |
+| `on <host> <verb ...>`, `hosts` | any verb on another host over ssh; `status` on each host | `hosts.ts` |
 | `pulse [<name>] [--once]` | what each run gained since the last look | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |
 | `source <name> [--holds <c>]...` | each run's commit, its tree, where the commit is published, whether it holds a fix | `receipt.ts` |
@@ -54,6 +59,11 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   `CLAUDE_CODE_OAUTH_TOKEN<N>`, passed on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key
   reaches the command. `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
+- **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
+  may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
+  hosts, a JSON list of `{name, ssh, tree, bun, envFiles}`. Keep both in a second env file beside
+  the credentials, ignored by git as `.env.*` is, and pass it with a second `--env-file`: the code
+  is the same for every operator, and no login or host of one is in the repository.
 - **One or two campaigns at a time on one host.** A solve's wall counts the clock. The command
   waits before each solve until the one-minute load is at or under the cores, or half an hour on,
   and says so once; `--loaded` starts it all the same, the operator's word that its times will not
@@ -126,6 +136,57 @@ A word left with `tools/d2/word.ts` acts at the next move boundary and spends no
 `--stop "<why>"` ends the campaign `operator`, which is a pause the operator words; `--budget N`
 sets its total; `--tasks "<why>"` asks for an Examiner session first. A word reaches no seat.
 
+## Keep a campaign going
+
+```sh
+bun --env-file=<file> --env-file=<hosts file> run runs keep <name> [--logins 2,3,4] [--wait-hours 1] --yes
+```
+
+A keeper looks at the run once a minute and takes one of four turns (`turnOf`). While the run's
+process lives and its log ends on a provider wait longer than `--wait-hours`, it stops the run and
+continues it on the login with room whose week resets soonest. Where the process is gone and the
+log holds no ending, or the ending `environment`, it continues the run on the same login. Any other
+ending is the campaign's own, and the keeper leaves. A login it moved off is not taken again until
+the wait named for it is over; with no login left it says so once and waits. Three continues in a
+row that leave the log as it was end the keeper: something it cannot mend ends the run each time.
+
+Each continue is `runs continue`, with its refusals: a run whose open comparison began under
+other code is continued at that code. With `--yes` the keeper runs by itself, its output in
+`keep.out` beside the log, one keeper a run; `runs stop <name> --yes` ends the run and its keeper
+both. The keeper is authorised to stop and continue its run for a move of login, and for nothing
+else. Until 15 October this was shell loops and a wrapper a login, each moving one run.
+
+## Copy a campaign to another worktree
+
+```sh
+bun run runs copy <name> --to <worktree> --yes
+```
+
+The one sanctioned way to move a campaign's folder (AGENTS.md, section 10, rule 1). It refuses a
+run that a process writes or a keeper keeps, and a target that holds the name. It copies the
+folder whole, links as links, checks that the log arrived at its size, and renames the source to
+`.ana/moved/<name>-<stamp>` in its own worktree, so one worktree holds the name. Continue it there
+with `continue --at` only where no comparison is open, since the target worktree's commit is the
+code it then runs.
+
+## Logins and other hosts
+
+```sh
+bun --env-file=<file> --env-file=<hosts file> run runs logins [N ...] [--json]
+bun --env-file=<file> --env-file=<hosts file> run runs status [--all]
+bun --env-file=<file> --env-file=<hosts file> run runs on <host> status
+bun --env-file=<file> --env-file=<hosts file> run runs hosts
+```
+
+`logins` reads each login's five-hour and weekly window from the provider's usage endpoint, or
+from the rate-limit headers of a one-token request where that is refused, and keeps a snapshot an
+hour in `.ana/logins-history.jsonl` of the main worktree, from which it forecasts when the pool
+runs out at the week's pace and at the last 14 hours'. A login has room for a move when its week
+is under 90% and allowed, and its five hours under 100% (`room`), which is what `keep` reads.
+`status` hides seeds and runs quiet for a day unless `--all`. `on` runs any verb in a host's
+worktree under a login shell there, with that host's env files; `hosts` is `status` on each.
+None of these reads `.ana/` content beyond events and counts.
+
 ## What is refused, and where
 
 Every refusal of a move is its own command's, asked before its first event, so a command started
@@ -190,4 +251,4 @@ where a clean point can be waited for. Whether a run should be stopped is a read
 - No probe turn before spend: a session or usage limit shows at the first turn, in the pulse. A
   session the provider fails ends `crashed` with the provider's words; a comparison stops once
   the provider has written nothing for three tasks in a row, and goes on from its log when the
-  campaign is continued: wait for the reset the provider names, or continue on another `--login`.
+  campaign is continued: wait for the reset the provider names, or let `keep` move it.

@@ -38,6 +38,8 @@ export interface Receipt {
   readonly cores: number;
   /** The Bun that ran it, absent before 15 October: seats ran a global 1.4.2 under a pin of 1.4.3. */
   readonly bun?: string;
+  /** The login it ran as (`runs launch --login`), absent before 15 October and where none was named. */
+  readonly login?: string;
 }
 
 const RECEIPT = /^launch-(.+)\.json$/;

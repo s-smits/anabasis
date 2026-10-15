@@ -14,7 +14,8 @@
  * A stop also releases what the run held on the host: the capped root of each solve and session its
  * log started and never finished (`unfinished`, `src/kernel/reports.ts`), which only the ended
  * process would have let go. A named run that is not running is released the same way, so a run
- * that was killed, or stopped before this was done, is cleaned up by stopping it again.
+ * that was killed, or stopped before this was done, is cleaned up by stopping it again. A keeper
+ * of the run (`runs keep`) ends with it, but for the one that asked for the stop.
  */
 import { EXAMINE } from "#src/builder/admission.ts";
 import { sessionDirs, spent } from "#src/builder/session.ts";
@@ -31,6 +32,7 @@ import { releaseDiskCap } from "#src/verify/disk-cap.ts";
 import {
   BUILDER,
   DRAFT,
+  keepers,
   logEvents,
   processes,
   type Run,
@@ -151,5 +153,10 @@ export async function stop(args: readonly string[]): Promise<void> {
   for (const run of named) acted += await end(run, running, values.yes);
   if (acted === 0) console.log("none of these is running");
   for (const run of named) acted += await release(run, values.yes);
+  // A run stopped by hand is not gone on with: its keeper ends with it (`keep.ts`).
+  for (const pid of values.yes ? named.flatMap(({ name }) => keepers(name)) : []) {
+    await terminateAndReapProcessGroupId(pid);
+    console.log(`  its keeper, pid ${String(pid)}, ended`);
+  }
   if (acted > 0 && !values.yes) console.log("nothing is ended or released without --yes");
 }

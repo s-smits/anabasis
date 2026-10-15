@@ -32,7 +32,7 @@ describe("going on with a campaign", () => {
     const key = "CLAUDE_CODE_OAUTH_TOKEN";
     const env = { PATH: "/bin", [key]: "a", [`${key}3`]: "c", [`${key}4`]: "d" };
     // The numbered keys are the verb's to choose from, and no seat's to read.
-    expect(loginEnv(env, "4")).toEqual({ PATH: "/bin", [key]: "d" });
+    expect(loginEnv(env, "4")).toEqual({ PATH: "/bin", [key]: "d", ANA_LOGIN: "4" });
     expect(loginEnv(env, undefined)).toEqual({ PATH: "/bin", [key]: "a" });
     expect(() => loginEnv(env, "2")).toThrow(`${key}2 is not set`);
   });

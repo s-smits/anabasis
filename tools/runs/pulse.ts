@@ -12,15 +12,23 @@
  */
 import { type EventKind, type LogEvent } from "#src/kernel/log.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
-import { existsSync, readFileSync, renameSync, statfsSync, writeFileSync } from "#src/meta/filesystem.ts";
+import {
+  existsSync,
+  readFileSync,
+  renameSync,
+  statfsSync,
+  statSync,
+  writeFileSync,
+} from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
-import { join } from "#src/meta/path.ts";
+import { basename, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
-import { logEvents, processes, type Run, runs, writers } from "./registry.ts";
+import { receipts } from "./receipt.ts";
+import { logEvents, openComparisons, processes, type Run, runs, writers } from "./registry.ts";
 
 /** What the last look saw of one log. */
 interface Seen {
@@ -44,6 +52,8 @@ interface Memory {
 }
 
 const QUIET_MS = 20 * 60_000;
+/** A closed run `status` shows without `--all`: one whose log changed this recently. */
+const RECENT_MS = 24 * 60 * 60_000;
 const GIB = 2 ** 30;
 const REPORTED = "comparison.reported";
 /** The events that start something a run then has to finish. */
@@ -259,4 +269,37 @@ export async function watch(args: readonly string[]): Promise<void> {
     if (values.once) break;
     await Bun.sleep(Number(values.every) * 1000);
   }
+}
+
+/** `bun run runs status`: one row a run, open or written in the last day, or every one with `--all`. */
+export function runsStatus(args: readonly string[]): void {
+  const { values } = parseArgs({ args: [...args], options: { all: { type: "boolean", default: false } } });
+  const running = processes();
+  const now = Date.now();
+  let promoted = 0;
+  for (const run of runs()) {
+    const open = writers(run, running).length > 0;
+    // A seed rehearses on a copy of another campaign's log, and its promotions are that campaign's.
+    if (!values.all && (run.seed === true || (!open && now - statSync(run.path).mtimeMs > RECENT_MS))) {
+      continue;
+    }
+    const log = logEvents(run.path);
+    const kept = receipts(run.path).findLast(({ session }) => session.startsWith("run-"));
+    const ended = log.at(-1)?.kind === "campaign.ended" ? `ended ${word(log.at(-1)?.data.ending)}` : "";
+    const comparing = openComparisons(log);
+    const steps = count(log, "harness.promoted");
+    promoted += steps;
+    const where = [
+      basename(run.tree),
+      kept?.commit.slice(0, 9) ?? "",
+      kept?.login === undefined ? "" : `login ${kept.login}`,
+      comparing.length > 0 ? `comparing ${comparing.join(", ")}` : "",
+      steps > 0 ? `${String(steps)} promoted` : "",
+      open ? "" : ended,
+    ];
+    console.log(
+      `${status(run, log, solvesIn(log), open, now)}\n  ${where.filter((part) => part !== "").join(" · ")}`,
+    );
+  }
+  console.log(`${plural(promoted, "promotion")} over the runs shown`);
 }

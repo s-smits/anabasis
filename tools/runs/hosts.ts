@@ -21,7 +21,7 @@ import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 
 /** How long `hosts` waits for one host's rows. */
-const HOST_MS = 90_000;
+const HOST_MS = 30_000;
 
 export interface Host {
   readonly name: string;

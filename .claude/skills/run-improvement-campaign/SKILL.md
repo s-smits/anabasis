@@ -185,7 +185,7 @@ have changed, not on a timer: a round's first `build.started`, its `build.finish
   same id once the limit resets, and a solve counted is not solved again. A Builder session it
   ends is spent, and the next session pays for another.
 - **Do not stop a run to fix it.** A commit that is not an ancestor of the run's commit cannot
-  change that run, and `run-source.ts <campaign folder> --holds <commit>` (attribution-and-proof)
+  change that run, and `bun run runs source <name> --holds <commit>`
   says whether it is. Work found while a run lives is work for the next start.
 
 While runs are live, keep the host for them: run focused tests only, and send a whole suite to

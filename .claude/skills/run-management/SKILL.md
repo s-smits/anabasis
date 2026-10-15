@@ -24,6 +24,7 @@ one two worktrees hold.
 | `stop <name> ... [--yes]` | ends the process that writes each log, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `pulse [<name>] [--once]` | what each run gained since the last look | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |
+| `source <name> [--holds <c>]...` | each run's commit, its tree, where the commit is published, whether it holds a fix | `receipt.ts` |
 | `zip`, `replay`, `seed`, `rehearse` | handover, readers over every log, a seed, a rehearsal | zip-run, system-path-simulation |
 
 Without `--yes` every verb that acts says what it would do and does nothing. A start request
@@ -73,7 +74,7 @@ started under, and the Bun (`tools/runs/receipt.ts`). The log holds the host's c
 no commit, so the receipt is where the commit is on record. Tag it once the run has started,
 `git tag run/<name>/<n> <commit> && git push origin run/<name>/<n>`, with the receipt's `n`: a
 pull-request branch is rewritten, and on 14 October two launch commits were reachable from no ref
-the remote advertised; `run-source.ts` (attribution-and-proof) names the tag.
+the remote advertised; `bun run runs source <name>` names the tag.
 
 ## Name the run and its project
 

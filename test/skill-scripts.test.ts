@@ -1,7 +1,6 @@
 // The three scripts the operator's skills share: the stack as its edges, the source a campaign's
 // launches ran, and the closing of an Oracle bundle.
 import { afterAll, describe, expect, it } from "bun:test";
-import { told as sourceTold } from "#skills/attribution-and-proof/scripts/run-source.ts";
 import { CommandFailure } from "#skills/main/cli.ts";
 import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
@@ -18,7 +17,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
-import { receipts } from "../tools/runs/receipt.ts";
+import { receipts, sources } from "../tools/runs/receipt.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-skill-scripts-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -85,14 +84,14 @@ describe("the source a campaign's launches ran", () => {
 
   it("says nothing was recorded for a campaign started by hand", () => {
     expect(receipts(join(folder, "log.jsonl"))).toStrictEqual([]);
-    expect(sourceTold(folder, repo, [])[0]).toStartWith("no launch receipt");
+    expect(sources(join(folder, "log.jsonl"), repo, [])[0]).toStartWith("no launch receipt");
   });
 
   it("says each launch's commit and what it holds, and nothing a receipt keeps private", () => {
     receipt("g1", "2026-10-09T14:00:00.000Z", second, true, "1.4.3");
     receipt("b-1", "2026-10-09T13:00:00.000Z", first, false);
     writeFileSync(join(folder, "launch-b-1.out"), "");
-    const lines = sourceTold(folder, repo, [second]);
+    const lines = sources(join(folder, "log.jsonl"), repo, [second]);
     expect(lines).toStrictEqual([
       `b-1  2026-10-09T13:00:00.000Z  ${first.slice(0, 9)}  clean  load 3.2 on 8 cores  bun unknown`,
       "  published on no remote branch",

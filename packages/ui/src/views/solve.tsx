@@ -3,7 +3,7 @@ import { Section } from "../components/layout.tsx";
 import { Badge, Card, Code } from "../components/primitives.tsx";
 import { RecordView } from "../components/record.tsx";
 import { Trace } from "../components/trace.tsx";
-import { detailsOf, useSolve } from "../live.ts";
+import { detailsOf, type Live, useSolve } from "../live.ts";
 import type { CampaignReading, SolveDetail } from "../models.ts";
 import { shortHash } from "../models.ts";
 import type { Navigation, RouteChange } from "../route.ts";
@@ -37,7 +37,7 @@ const BY = {
 /** The verdict, as the tier lets it be shown. */
 function Verdict({ detail }: { detail: SolveDetail }) {
   if (detail.verdict === undefined) {
-    return <ExamSide what="the verdict: the answer and the checks that refused it" />;
+    return <ExamSide what="the verdict, with the answer and the checks that refused it" />;
   }
   if (detail.verdict === null) return <p className="ana-faint">No verdict on record.</p>;
   const { kind, refusedBy, fault, answer } = detail.verdict;
@@ -102,7 +102,10 @@ export function SolveDetailView({
   navigation: Navigation;
 }) {
   const { solve } = detail;
-  const ruled = isRejection(solve) || (detail.ruling !== undefined && detail.ruling !== null);
+  // The Referee rules a rejection inside a comparison only, so a practice solve has no ruling to
+  // place, on either side: until 14 October its rejection said the exam side held one.
+  const ruled =
+    (detail.heldOut && isRejection(solve)) || (detail.ruling !== undefined && detail.ruling !== null);
   const facts = [
     ["Turns", solve.turns === null ? "open" : String(solve.turns)],
     ["Calls", String(solve.calls)],
@@ -172,6 +175,30 @@ export function SolveDetailView({
   );
 }
 
+/** A solve's answer as it stands: the detail it answers, the previous solve's while the next is
+ *  read and not yet `late`, and what stands in its place before any or once it is late. */
+export function SolveAnswerView({
+  live,
+  late,
+  reading,
+  navigation,
+  back,
+  backLabel,
+}: Back & { live: Live<SolveDetail>; late: boolean; reading: CampaignReading; navigation: Navigation }) {
+  if (live.data === null || (!live.current && late)) {
+    return <Pending live={live} what={`solve ${navigation.route.solve ?? ""}`} />;
+  }
+  return (
+    <SolveDetailView
+      detail={live.data}
+      reading={reading}
+      navigation={navigation}
+      back={back}
+      backLabel={backLabel}
+    />
+  );
+}
+
 /** The solve the route names, read and shown. */
 export function SolveView({
   reading,
@@ -179,14 +206,11 @@ export function SolveView({
   back,
   backLabel,
 }: Back & { reading: CampaignReading; navigation: Navigation }) {
-  const { route } = navigation;
-  const live = useSolve(detailsOf(reading), route.solve);
-  if (live.data === null || !live.current) {
-    return <Pending live={live} what={`solve ${route.solve ?? ""}`} />;
-  }
+  const live = useSolve(detailsOf(reading), navigation.route.solve);
   return (
-    <SolveDetailView
-      detail={live.data}
+    <SolveAnswerView
+      live={live}
+      late
       reading={reading}
       navigation={navigation}
       back={back}

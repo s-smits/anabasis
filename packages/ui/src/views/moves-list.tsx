@@ -100,13 +100,14 @@ function PromotionRow({ promotion, reading }: { promotion: Promotion; reading: C
   return (
     <tr className="ana-move-divider">
       <td colSpan={6}>
-        <span>{said}</span>
-        {rests === "" ? null : <span>on {rests}</span>}
+        {/* The spaces keep the parts apart for a screen reader and a copy, as the margins do on
+            screen: without them the row read "to referenceon b-1, r-1". */}
+        <span>{said}</span> {rests === "" ? null : <span>on {rests}</span>}{" "}
         {promotion.despite === null ? null : (
           <Badge tone="warn" title={promotion.despite}>
             despite the rule
           </Badge>
-        )}
+        )}{" "}
         <time>{time(promotion.at)}</time>
       </td>
     </tr>

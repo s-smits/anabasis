@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useRef } from "react";
+import type { KeyboardEvent } from "react";
 import { Badge, Button, HashValue } from "../components/primitives.tsx";
 import { detailsOf, type Of, useHarness } from "../live.ts";
 import type { CampaignReading, HarnessCard } from "../models.ts";
@@ -7,6 +7,7 @@ import { short } from "../../../../src/builder/move.ts";
 import { digestText, STARTER_NAME, tallyText } from "./campaign-data.ts";
 import { AnswerIssues } from "./drill.tsx";
 import { time } from "./format.ts";
+import { useHeld } from "./held.ts";
 
 /*
  * The lineage strip (the brief of 11 October, section 6): every harness version in the order kept,
@@ -21,7 +22,9 @@ import { time } from "./format.ts";
  * The route names a card by its digest, or the starter by `starter`, which holds before any
  * comparison has named the starter's digest. Left and right move the selection and replace the
  * history entry, so that walking the strip with the keys leaves one entry for the back button; a
- * click pushes one.
+ * click pushes one. The key that moves the selection moves focus with it, in its own handler; the
+ * selected card brings itself into the strip's view through its ref as it becomes selected, which
+ * a poll that keeps the selection does not repeat.
  */
 
 const KEYS = { ArrowLeft: -1, ArrowRight: 1 } as const;
@@ -31,6 +34,16 @@ type Names = CampaignReading["names"];
 
 /** How the route names a card. */
 const routeName = (card: HarnessCard): string => (card.starter ? STARTER : (card.digest ?? STARTER));
+
+/** The selected card scrolled into its strip's view, sideways only: the page never moves for it. */
+function revealInStrip(button: HTMLButtonElement | null): void {
+  const item = button?.parentElement;
+  const strip = item?.parentElement;
+  if (item === null || item === undefined || strip === null || strip === undefined) return;
+  const end = item.offsetLeft + item.offsetWidth - strip.clientWidth;
+  if (item.offsetLeft < strip.scrollLeft) strip.scrollLeft = item.offsetLeft;
+  else if (end > strip.scrollLeft) strip.scrollLeft = end;
+}
 
 /** The card shown as selected: the route's, else the latest, else the last. */
 function selectedIndex(cards: readonly HarnessCard[], harness: string | null): number {
@@ -43,17 +56,17 @@ function selectedIndex(cards: readonly HarnessCard[], harness: string | null): n
 }
 
 /** The kept `agent/` files of the selected harness, each opening the inspector, and what the server
- *  could not read of them. */
+ *  could not read of them. The previous card's files stay, closed to the pointer, while the next
+ *  card's are read (`held.ts`). */
 function Files({ of, digest, navigation }: { of: Of; digest: string; navigation: Navigation }) {
   const files = useHarness(of, digest);
+  const { view, stale, slow } = useHeld(digest, files.current ? files.data : null);
   if (files.error !== null) return <span className="ana-harness-note">{files.error}</span>;
-  if (files.data === null || !files.current) {
-    return <span className="ana-harness-note">Reading its files</span>;
-  }
   return (
-    <>
-      <AnswerIssues answer={files.data} />
-      {files.data.files.map((file) => (
+    <div className="ana-harness-files" aria-busy={stale} inert={stale}>
+      {slow ? <span className="ana-harness-note">Reading its files</span> : null}
+      {view === null ? null : <AnswerIssues answer={view} />}
+      {view?.files.map((file) => (
         <button
           type="button"
           key={file.path}
@@ -63,7 +76,7 @@ function Files({ of, digest, navigation }: { of: Of; digest: string; navigation:
           {file.path}
         </button>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -152,9 +165,7 @@ function Detail({
               Compare with previous
             </Button>
           )}
-          <div className="ana-harness-files">
-            <Files of={of} digest={digest} navigation={navigation} />
-          </div>
+          <Files of={of} digest={digest} navigation={navigation} />
         </div>
       )}
     </div>
@@ -207,29 +218,13 @@ export function HarnessStrip({ reading, navigation }: PaneProps) {
   const cards = reading.harnesses;
   const selected = selectedIndex(cards, navigation.route.harness);
   const chosen = cards[selected];
-  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
-  const moved = useRef(false);
-  useEffect(() => {
-    const button = buttons.current[selected];
-    if (button === null || button === undefined) return;
-    // The strip scrolls sideways to show the selected card; the page itself never moves for it.
-    const item = button.parentElement;
-    const strip = item?.parentElement;
-    if (item !== null && item !== undefined && strip !== null && strip !== undefined) {
-      const end = item.offsetLeft + item.offsetWidth - strip.clientWidth;
-      if (item.offsetLeft < strip.scrollLeft) strip.scrollLeft = item.offsetLeft;
-      else if (end > strip.scrollLeft) strip.scrollLeft = end;
-    }
-    if (moved.current) button.focus();
-    moved.current = false;
-  }, [selected]);
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     const step = event.key === "ArrowLeft" || event.key === "ArrowRight" ? KEYS[event.key] : 0;
     if (step === 0) return;
     event.preventDefault();
     const next = cards[selected + step];
     if (next === undefined) return;
-    moved.current = true;
+    event.currentTarget.children[selected + step]?.querySelector("button")?.focus();
     navigation.replace({ harness: routeName(next), file: null, diff: null, event: null });
   };
   return (
@@ -245,9 +240,7 @@ export function HarnessStrip({ reading, navigation }: PaneProps) {
             <li key={routeName(card)} className={isSelected ? "ana-harness is-selected" : "ana-harness"}>
               <button
                 type="button"
-                ref={(element) => {
-                  buttons.current[at] = element;
-                }}
+                ref={isSelected ? revealInStrip : undefined}
                 className="ana-harness-select"
                 aria-current={isSelected ? "true" : undefined}
                 aria-controls={PANEL_ID}

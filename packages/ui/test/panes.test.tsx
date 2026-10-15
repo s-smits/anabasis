@@ -130,16 +130,18 @@ test("a move opens by its place in the log, and an id two moves share is refused
 test("the task grid's cells are the reading's, each with its outcome and each side's valid count", () => {
   const grid = answers("default").tasks(fixture.key);
   const html = renderToStaticMarkup(<TaskGridView grid={grid} onOpen={() => {}} />);
-  const cells = [...html.matchAll(/data-outcome="([^"]+)"(?: data-counts="([^"]+)")?/g)].map(
+  const cells = [...html.matchAll(/data-outcome="([^"]+)"(?: data-(?:counts|left-out)="([^"]+)")?/g)].map(
     (match) => `${match[1] ?? ""}:${match[2] ?? ""}`,
   );
   const expected = grid.rows.flatMap((row) =>
-    row.cells.map((cell) =>
-      cell === null
-        ? "none:"
-        : `${cell.outcome}:${String(cell.old.valid)}/${String(cell.old.solves)} · ${String(cell.fresh.valid)}/${String(cell.fresh.solves)}`,
-    ),
+    row.cells.map((cell) => {
+      if (cell === null) return "none:";
+      if ("leftOut" in cell) return `left-out:${cell.leftOut}`;
+      return `${cell.outcome}:${String(cell.old.valid)}/${String(cell.old.solves)} · ${String(cell.fresh.valid)}/${String(cell.fresh.solves)}`;
+    }),
   );
+  // The task a person's label disputed in b-2 was fixed there, and is left out rather than unscored.
+  expect(expected).toContain("left-out:disputed");
   expect(cells).toEqual(expected);
   expect(html.match(/>not scored</g)?.length).toBe(expected.filter((cell) => cell === "none:").length);
   expect(html).toContain(`Tasks (${String(grid.rows.length)})`);
@@ -169,6 +171,8 @@ test("the Log pane holds the reader collapsed above a page of events, and says i
   const html = renderToStaticMarkup(
     <LogList
       page={page}
+      offset={0}
+      reading={false}
       filters={{ kind: "all", session: "all" }}
       onFilters={() => {}}
       onOffset={() => {}}
@@ -290,6 +294,8 @@ test("a practice solve's trace is shown in the default tier", () => {
   expect(html).toContain("practice task");
   expect(html).toContain("Turn 1");
   expect(html.includes("trace of a held-out")).toBe(false);
+  // Its rejection is never ruled: the Referee rules inside a comparison only.
+  expect(html.includes("Referee's ruling")).toBe(false);
 });
 
 test("a held-out task's text and hidden values are on the exam side; a practice task's text is shown in either tier", () => {
@@ -315,7 +321,7 @@ test("a held-out task's text and hidden values are on the exam side; a practice 
   expect(hidden.includes("Family and hidden values")).toBe(false);
   expect(secrets.some((word) => hidden.includes(word))).toBe(false);
   const scored = grid.rows.find((row) => row.id === "word-01")?.cells.filter((cell) => cell !== null).length;
-  expect(hidden).toContain(`Scored in ${String(scored)} of ${String(grid.columns.length)} comparisons`);
+  expect(hidden).toContain(`In ${String(scored)} of ${String(grid.columns.length)} comparisons`);
   expect(hidden).toContain(`Solves (${String(exam.solves.length)})`);
   const shown = taskHtml("word-01", "exam");
   expect(shown).toContain("Family and hidden values");
@@ -378,7 +384,7 @@ test("a comparison names the tasks its report left out under the split, and one 
     const open = render("b-4", tier);
     expect(open).toContain("Tasks fixed (3)");
     expect(open.match(/>no report yet</g)?.length).toBe(3);
-    expect(open).toContain("1 rejection ruled; the kinds are withheld while a ruling is");
+    expect(open).toContain("1 rejection ruled; the kinds stay hidden while any ruling is withheld");
     expect(open).toContain("1 rejection, withheld until its comparison reports");
     expect(open.includes(">earned<")).toBe(false);
   }

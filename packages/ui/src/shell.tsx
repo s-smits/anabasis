@@ -1,4 +1,4 @@
-import { type ComponentType, useEffect, useState } from "react";
+import { type ComponentType, memo, useState } from "react";
 import { AnabasisMark } from "./components/brand.tsx";
 import { Callout } from "./components/layout.tsx";
 import { Badge, NoSignal } from "./components/primitives.tsx";
@@ -6,11 +6,13 @@ import { ProjectSidebar } from "./components/project-sidebar.tsx";
 import type { Live } from "./live.ts";
 import type { CampaignList, CampaignReading, CampaignRow, Issue } from "./models.ts";
 import type { Navigation, Pane, PaneProps, Route } from "./route.ts";
+import { respelled, SpelledAddress } from "./spelling.ts";
 import { CampaignPane } from "./views/campaign.tsx";
 import { Inspector } from "./views/inspector.tsx";
 import { LogPane } from "./views/log.tsx";
 import { MovesPane } from "./views/moves.tsx";
 import { TasksPane } from "./views/tasks.tsx";
+import { useWaited } from "./waited.ts";
 
 /*
  * The page around the panes: the sidebar with its two pickers and the four panes, the line that
@@ -20,8 +22,13 @@ import { TasksPane } from "./views/tasks.tsx";
  * pane's own name stands in its header, not here.
  *
  * A pane and the inspector are keyed by the campaign, so that nothing a pane held for one campaign,
- * a page of the log or its filters, is asked of the next; and while the campaign's answer is the
- * previous campaign's, the page says it is reading rather than draw the old one under the new name.
+ * a page of the log or its filters, is asked of the next. While the campaign's answer is the
+ * previous campaign's, the previous pane stays on screen as it was drawn, inert and marked busy, so
+ * that no click acts on the old campaign under the new name; past the page's patience (`waited.ts`) it gives way to the
+ * placeholder that says the campaign is being read. Until 14 October the placeholder replaced the
+ * whole pane at once, and a switch of project or campaign painted it for about 130 ms (four frames
+ * of the operator's recording) before the new campaign drew: DESIGN.md keeps the previous content
+ * until its replacement is ready.
  */
 
 /** The project and the campaign the page shows, and the choices beside them. */
@@ -32,6 +39,12 @@ interface Selection {
   /** The project's campaigns, newest first. */
   readonly campaigns: readonly CampaignRow[];
   readonly campaign: string | null;
+}
+
+/** What a campaign's pane was last drawn from. */
+interface Drawn {
+  readonly reading: CampaignReading;
+  readonly navigation: Navigation;
 }
 
 const PANES: Readonly<Record<Pane, ComponentType<PaneProps>>> = {
@@ -63,6 +76,28 @@ function Issues({ issues }: { issues: readonly Issue[] }) {
   ));
 }
 
+/** The pane of one campaign's reading, with the tier and the issues above it. Memoised, so that the
+ *  previous campaign's pane, kept while the next is read, is not drawn again under the new route. */
+const CampaignView = memo(function CampaignView({
+  reading,
+  navigation,
+}: {
+  reading: CampaignReading;
+  navigation: Navigation;
+}) {
+  const Selected = PANES[navigation.route.pane];
+  return (
+    <>
+      <div className="ana-record-meta">
+        <Badge tone={reading.tier === "exam" ? "warn" : "neutral"}>{TIER_LABEL[reading.tier]}</Badge>
+        <span>{reading.row.tree}</span>
+      </div>
+      <Issues issues={reading.issues} />
+      <Selected key={reading.row.key} reading={reading} navigation={navigation} />
+    </>
+  );
+});
+
 /** The pane, or what stands in its place while the campaign has not been read. */
 function Page({
   navigation,
@@ -73,6 +108,15 @@ function Page({
   campaigns: Live<CampaignList>;
   reading: Live<CampaignReading>;
 }) {
+  const fresh = reading.current ? reading.data : null;
+  const [drawn, setDrawn] = useState<Drawn | null>(null);
+  // The last campaign drawn, kept in render as each fresh one arrives, so a switch has it to hold.
+  if (fresh !== null && (drawn?.reading !== fresh || drawn.navigation !== navigation)) {
+    setDrawn({ reading: fresh, navigation });
+  }
+  const pending = fresh === null && reading.error === null;
+  const keeping = pending && drawn !== null;
+  const waited = useWaited(keeping ? "campaign" : null);
   if (campaigns.refused === "token" || campaigns.refused === "host") {
     return (
       <NoSignal title="The server refused this page" tone="bad">
@@ -87,25 +131,18 @@ function Page({
       </NoSignal>
     );
   }
-  if (reading.data === null || !reading.current) {
+  if (fresh !== null) return <CampaignView reading={fresh} navigation={navigation} />;
+  if (keeping && !waited) {
     return (
-      <NoSignal title={reading.error === null ? "Reading the campaign" : "The campaign could not be read"}>
-        {reading.error ?? "The selected campaign is loading."}
-      </NoSignal>
+      <div className="ana-pending" inert aria-busy="true">
+        <CampaignView reading={drawn.reading} navigation={drawn.navigation} />
+      </div>
     );
   }
-  const Selected = PANES[navigation.route.pane];
   return (
-    <>
-      <div className="ana-record-meta">
-        <Badge tone={reading.data.tier === "exam" ? "warn" : "neutral"}>
-          {TIER_LABEL[reading.data.tier]}
-        </Badge>
-        <span>{reading.data.row.tree}</span>
-      </div>
-      <Issues issues={reading.data.issues} />
-      <Selected key={reading.data.row.key} reading={reading.data} navigation={navigation} />
-    </>
+    <NoSignal title={reading.error === null ? "Reading the campaign" : "The campaign could not be read"}>
+      {reading.error ?? "The selected campaign is loading."}
+    </NoSignal>
   );
 }
 
@@ -119,23 +156,17 @@ export function Shell({
   reading: Live<CampaignReading>;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const { route, push, replace } = navigation;
+  const { route, push } = navigation;
   const selection = selectionOf(campaigns.data, route);
-  // The URL names what is shown: a selection it left out, or one the list no longer holds, is
-  // written back without a new history entry. A project read off the route's own campaign keeps
-  // that campaign, so a link to a move, a solve or a task in it keeps them (`changedRoute`).
-  // The project is written only while no campaign names it (`searchOf`).
-  useEffect(() => {
-    if (campaigns.data === null) return;
-    const unnamed = selection.campaign === null && selection.project !== route.project;
-    if (selection.campaign !== route.campaign || unnamed) {
-      replace({ project: selection.project, campaign: selection.campaign });
-    }
-  }, [campaigns.data, selection.project, selection.campaign, route.project, route.campaign, replace]);
+  // The address names what is shown, in its one spelling (`spelling.ts`), once the list is read.
+  const spelled = { project: selection.project, campaign: selection.campaign, navigation };
+  const respelling = campaigns.data === null ? null : respelled(spelled);
+  const spell = respelling === null ? null : <SpelledAddress key={respelling} {...spelled} />;
 
   if (campaigns.data?.campaigns.length === 0) {
     return (
       <main className="ana-empty-workspace">
+        {spell}
         <AnabasisMark className="ana-brand-mark" />
         <h1>No campaigns found</h1>
         <p>No worktree of this repository holds a campaign log under .ana/d2.</p>
@@ -149,6 +180,7 @@ export function Shell({
   const inspecting = (route.harness !== null && (route.file ?? route.diff) !== null) || route.event !== null;
   return (
     <div className={`ana-shell ${collapsed ? "is-collapsed" : ""} ${inspecting ? "has-inspector" : ""}`}>
+      {spell}
       <a className="ana-skip-link" href="#main">
         Skip to the campaign
       </a>
@@ -178,7 +210,8 @@ export function Shell({
           <Page navigation={navigation} campaigns={campaigns} reading={reading} />
         </div>
       </main>
-      <Inspector key={shown?.row.key ?? ""} navigation={navigation} reading={shown} />
+      {/* Keyed by the campaign the route names, so that a switch remounts it once, not twice. */}
+      <Inspector key={selection.campaign ?? ""} navigation={navigation} reading={shown} />
     </div>
   );
 }

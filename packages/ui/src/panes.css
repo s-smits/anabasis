@@ -217,6 +217,12 @@
   white-space: nowrap;
 }
 
+/* A scored task's rulings, a sentence where they are withheld: the table squeezed the last column
+   to a word a line at a phone's width, and scrolls sideways instead. */
+.ana-rulings-cell {
+  min-width: 220px;
+}
+
 /* A promotion between two moves: the reference changes there. */
 .ana-table tr.ana-move-divider > td {
   background: rgb(255 255 255 / 2%);
@@ -234,7 +240,8 @@
 }
 
 .ana-move-divider td > * + * {
-  margin-left: 10px;
+  /* With the space between the parts, 10px apart as before. */
+  margin-left: 6px;
 }
 
 .ana-move-divider time {
@@ -599,6 +606,12 @@
   outline: none;
 }
 
+/* A read that has run long enough to be noticed (`views/late.ts`): what it replaces stays, faded,
+   with no transition, so that a fast read changes nothing on screen. */
+.is-reading {
+  opacity: 0.6;
+}
+
 .ana-card > .ana-file-links {
   border-bottom: 0;
   padding-bottom: 0;
@@ -739,7 +752,14 @@
   margin-top: 2px;
 }
 
-.ana-grid-cell.is-none > span {
+/* A scored cell is tinted by its outcome, and the dim grey of the counts fell under 4.5:1 on the
+   two lightest tints (set aside, and tied with the reference valid in every solve). */
+.ana-grid-cell:not(.is-none) small {
+  color: var(--ana-text);
+}
+
+.ana-grid-cell.is-none > span,
+.ana-grid-cell.is-left-out > span {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
 }

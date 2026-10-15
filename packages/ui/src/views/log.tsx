@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { ExamSide } from "../components/exam-side.tsx";
-import { Section } from "../components/layout.tsx";
+import { Callout, Section } from "../components/layout.tsx";
 import { Disclosure } from "../components/primitives.tsx";
 import { TriggerList } from "../components/triggers.tsx";
 import { detailsOf, useLog } from "../live.ts";
 import type { CampaignReading } from "../models.ts";
 import type { PaneProps } from "../route.ts";
 import { AnswerIssues, Pending } from "./drill.tsx";
+import { useLate } from "./late.ts";
 import { ALL, LogList, type LogFilters } from "./log-list.tsx";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { plural } from "../../../../src/meta/text.ts";
@@ -16,6 +17,10 @@ import { plural } from "../../../../src/meta/text.ts";
  * collapsed at the top (`overview`, `tools/wri/read.ts`), then the log's events a page at a time,
  * filtered by kind and by session (`log-list.tsx`). An event opens in the inspector through the
  * route's `event`; its payload is the exam side's, and the default tier says so there.
+ *
+ * A page stays on screen while the next page or another filter is read, and the table is marked as
+ * reading only once the read is late (`late.ts`): until 14 October each click put a placeholder in
+ * the table's place for the frames the server took to answer.
  */
 
 /** The reader's rows and triggers, one click away; in the default tier, one quiet line for the
@@ -55,16 +60,25 @@ export function LogPane({ reading, navigation }: PaneProps) {
     ...keyIfDefined("kind", filters.kind === ALL ? undefined : filters.kind),
     ...keyIfDefined("session", filters.session === ALL ? undefined : filters.session),
   });
+  const late = useLate(live);
   return (
     <Section title="Log">
       <Reader reader={reading.reader} />
-      {live.data === null || !live.current ? (
+      {live.data === null ? (
         <Pending live={live} what="the log" />
       ) : (
         <>
+          {live.current || live.error === null ? null : (
+            <Callout tone="bad">
+              <strong>The page could not be read.</strong>
+              <p>{live.error}</p>
+            </Callout>
+          )}
           <AnswerIssues answer={live.data} />
           <LogList
             page={live.data}
+            offset={offset}
+            reading={late}
             filters={filters}
             onFilters={(next) => {
               setFilters(next);

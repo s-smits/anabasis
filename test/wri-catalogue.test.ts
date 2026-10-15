@@ -13,7 +13,7 @@ const flat = (body: string) => body.replaceAll(/\s+/g, " ");
 const numbers = (some: readonly Lane[]) => some.map((each) => each.number);
 
 describe("the lane catalogue", () => {
-  it("holds thirty lanes, numbered in order, each with its three sentences", () => {
+  it("holds thirty-one lanes, numbered in order, each with its three sentences", () => {
     expect(numbers(lanes)).toEqual(Array.from({ length: 31 }, (_, index) => index + 1));
     for (const { number, body } of lanes) {
       for (const phrase of ["The question is", "The decision it changes is", "it routes to"]) {

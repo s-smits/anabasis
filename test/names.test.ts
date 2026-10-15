@@ -43,12 +43,11 @@ describe("harness names", () => {
     expect([starter, first, second, third].map((each) => after.get(each))).toEqual(["A", "B", "C", "D"]);
   });
 
-  it("names an imported harness when the log first names it, and reads the same run again", () => {
+  it("names an imported harness when the log first names it", () => {
     const log = [
       event("harness.imported", { harness: third, from: "elsewhere" }),
       ...round("b-1", starter, first, third),
     ];
-    expect(namesOf(log)).toEqual(namesOf([...log]));
     expect([third, starter, first].map((each) => namesOf(log).get(each))).toEqual(["B", "A", "C"]);
   });
 

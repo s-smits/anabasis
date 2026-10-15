@@ -17,7 +17,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { openDesk, publicResource, submitTool } from "../src/solve/answer.ts";
-import { fileTools, bashTool } from "../src/solve/coding-tools.ts";
+import { codingTools, fileTools } from "../src/solve/coding-tools.ts";
 import { type CommandWall, solveDirs } from "../src/solve/command.ts";
 import { firstTurn, installedPrograms, seedHome, systemPrompt, type Told } from "../src/solve/prompt.ts";
 
@@ -80,8 +80,11 @@ function starterTools() {
   };
   const exec = async () => ({ exitCode: 0, output: Buffer.alloc(0) });
   const [read, edit, write] = fileTools(HOME, exec);
-  if (read === undefined || edit === undefined || write === undefined) throw new Error("three file tools");
-  return [read, bashTool(wall), edit, write, submitTool(openDesk(), CONTRACT, HOME, exec)];
+  const [shell] = codingTools(wall, ["bash"]);
+  if (read === undefined || shell === undefined || edit === undefined || write === undefined) {
+    throw new Error("four coding tools");
+  }
+  return [read, shell, edit, write, submitTool(openDesk(), CONTRACT, HOME, exec)];
 }
 
 const TOLD: Told = {

@@ -154,7 +154,7 @@ function installedBwrapVersion(bwrapPath: string): string | null {
  *  carry, and every launch on such a host refuses with a bare "Unknown option --disable-userns"
  *  naming neither the package nor the remedy. Dropping the flag instead would quietly weaken the
  *  isolation: it is what stops a confined child nesting a user namespace of its own. */
-export function classifyBwrapRefusal(stderr: string, bwrapPath?: string): string {
+function classifyBwrapRefusal(stderr: string, bwrapPath?: string): string {
   const unknown = UNKNOWN_OPTION.exec(stderr);
   if (unknown !== null) {
     const version = bwrapPath === undefined ? null : installedBwrapVersion(bwrapPath);

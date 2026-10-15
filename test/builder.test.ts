@@ -661,6 +661,30 @@ describe("a Builder session", () => {
     expect(s.of("harness.version")).toEqual([]);
   });
 
+  it("asks the Referee of a rejected practice answer only, never of a solve its limits ended", async () => {
+    const s = await setup(
+      [call("practice", { tasks: ["t-1", "t-2"] }), finish],
+      [
+        { outcome: "fail", kind: "turns-ended" },
+        { outcome: "fail", kind: "no-answer" },
+      ],
+    );
+    const asked: string[] = [];
+    await session(
+      {
+        ...s.request,
+        referee: async (solve) => {
+          asked.push(solve);
+          return { ruling: "earned", check: CHECK, rule: null, field: null, reason: REASON, probes: [] };
+        },
+      },
+      s,
+      s.walled,
+    );
+    expect(asked).toEqual([]);
+    expect(s.of("referee.finding")).toEqual([]);
+  });
+
   it("opens with the practice solves its dollar cap holds a reserve for, where those are fewer", async () => {
     // A cap of $25 with a reserve of $10 holds two solves, and the session's own limit is three.
     const s = await setup([call("practice", { tasks: ["t-1", "t-1", "t-2"] }), finish]);

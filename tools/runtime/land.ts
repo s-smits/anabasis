@@ -37,7 +37,7 @@ import { plural } from "../../src/meta/text.ts";
 import { addedLine, changesSource, git, gitSays, type Proof, proveCommits, short } from "./gate.ts";
 
 /** An open pull request, in the fields `gh pr list --json` names. */
-interface Pull {
+export interface Pull {
   readonly number: number;
   readonly headRefName: string;
   readonly baseRefName: string;
@@ -93,9 +93,9 @@ function ghOrThrow(root: string, args: readonly string[]): string {
   return answer.out;
 }
 
-/** The pull request named and every open one beneath it, bottom to top, read from GitHub. */
-function readLanding(root: string, target: number): Landing {
-  const open = parseJsonAs<Pull[]>(
+/** Every open pull request of the repository `root`'s remote names, as GitHub lists them now. */
+export const openPulls = (root: string): Pull[] =>
+  parseJsonAs<Pull[]>(
     ghOrThrow(root, [
       "pr",
       "list",
@@ -107,6 +107,10 @@ function readLanding(root: string, target: number): Landing {
       "number,headRefName,baseRefName,headRefOid,isDraft",
     ]),
   );
+
+/** The pull request named and every open one beneath it, bottom to top, read from GitHub. */
+function readLanding(root: string, target: number): Landing {
+  const open = openPulls(root);
   const named = open.find((pull) => pull.number === target);
   if (named === undefined) throw new Refusal(`#${String(target)} is not an open pull request.`);
   const pulls = [named];

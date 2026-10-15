@@ -589,8 +589,8 @@ read twice without promoting it, waiting there for `promote.ts`.
 The skill `launch-run` says how it is started: niced, in a process group of its own, with its
 output in two files and the key in Bun's own `--env-file`. Each solve waits for the host: a
 solve of a Builder session or a comparison starts once the one-minute load is at or under the
-cores, says so as it waits, and the wait is on record (`campaign.waited`, `tools/d2/host.ts`);
-`--loaded` starts them all the same. Until 12 October the wait was at a move's start, and a
+cores, or after half an hour, says so as it waits, and the wait is on record (`campaign.waited`,
+`tools/d2/host.ts`); `--loaded` starts them all the same. Until 12 October the wait was at a move's start, and a
 comparison of hours ran on whatever load came after it. Each run of
 the command keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`):
 its flags, the commit, whether the tree was dirty, the load it started under and the Bun, since the log

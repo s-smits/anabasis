@@ -70,8 +70,8 @@ Three things about the shell line:
   it. An interactive shell gives a background job a group of its own; a bash or zsh script does
   the same with `set -m` before the `&` (dash refuses `set -m` without a terminal: use bash).
 - **One or two campaigns at a time on one host.** A solve's wall counts the clock, and a loaded
-  host moves every solve's time. The command waits before a move that solves until the host's
-  one-minute load is at or under its cores, and says so once; `--loaded` starts the move all the
+  host moves every solve's time. The command waits before each solve until the host's one-minute
+  load is at or under its cores, or half an hour on, and says so once; `--loaded` starts it all the
   same, which is the operator's word that its times will not be compared.
 
 The command keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`):

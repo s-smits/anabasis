@@ -1,26 +1,129 @@
 /**
- * The provider's named reset (`resetOf` in `src/backends/claude.ts`, `waitOut` in `tools/d2/host.ts`): a usage limit that says
- * when it lifts is waited out and on record, and the crash rule counts no session before the wait.
+ * What a campaign waits for (`tools/d2/host.ts`): the host's load before a solve, the campaign's
+ * reserve beside the solves in flight, a provider's named reset and a network that failed a
+ * session. Every wait sleeps through the host, so a test stands in one that only counts.
  */
 import { describe, expect, it } from "bun:test";
 import { resetOf } from "../src/backends/claude.ts";
 import { crashedRun } from "../src/builder/ground.ts";
 import { affords, flying } from "../src/builder/opening.ts";
 import { append, type LogEvent, read } from "../src/kernel/log.ts";
+import type { TaskPackage } from "../src/kernel/task.ts";
 import { mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { gated, waitCrashed, waitOut } from "../tools/d2/host.ts";
-import type { Campaign, Seats } from "../tools/d2/round.ts";
 import type { Kept } from "../tools/d2/campaign.ts";
-import type { TaskPackage } from "../src/kernel/task.ts";
+import { gated, type Host, waitCrashed, waitOut } from "../tools/d2/host.ts";
+import type { Campaign, Seats } from "../tools/d2/round.ts";
 import { EXAMPLE } from "./helpers/examiner-seat.ts";
 
 // 12 October, 12:09Z: 14:09 in Amsterdam.
 const NOW = new Date("2026-10-12T12:09:00Z");
+const TASK: TaskPackage = { ...EXAMPLE, ruleIds: [], checks: "" };
+const HARNESS: Kept = { dir: "", digest: "h1" };
+
+const logIn = (name: string) => join(mkdtempSync(join(tmpdir(), `ana-host-${name}-`)), "campaign.jsonl");
+const waits = (log: string) => read(log).filter(({ kind }) => kind === "campaign.waited");
+
+/** A host whose load is `load` at each look, whose sleeps are counted, return at once and call
+ *  `slept` with their count. */
+function hostOf(load: () => number, cores = 4, slept: (count: number) => void = () => {}) {
+  const sleeps: number[] = [];
+  const host: Host = {
+    load,
+    cores,
+    waitMs: 30_000,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+      slept(sleeps.length);
+    },
+  };
+  return { ...host, slept: sleeps };
+}
+
+/** The gate on a seat that passes each solve, as a campaign's solves meet it. */
+function gate(log: string, host: Host, loaded = false) {
+  const seat: Seats = {
+    builder: null,
+    setting: "s",
+    solve: async () => ({ solve: "s-1", ending: { outcome: "pass" } }),
+  };
+  // SAFETY: the gate hands the campaign to the seat it wraps and reads nothing of it, and the
+  // seat above reads none of its arguments, so an empty one stands in.
+  return gated({ seated: () => seat, loaded, host }, log)({} as Campaign, {
+    builder: undefined,
+    reference: "h1",
+  });
+}
+
+describe("the gate at a solve's start", () => {
+  it("starts a solve at once on a host at or under its cores, and under --loaded on any", async () => {
+    const log = logIn("idle");
+    const idle = hostOf(() => 4);
+    await gate(log, idle).solve(TASK, HARNESS, undefined);
+    const busy = hostOf(() => 99);
+    await gate(log, busy, true).solve(TASK, HARNESS, undefined);
+    expect([idle.slept, busy.slept]).toEqual([[], []]);
+    expect(waits(log)).toEqual([]);
+  });
+
+  it("waits while the load is over the cores, and puts the wait on record with the load it first read", async () => {
+    const log = logIn("falls");
+    const loads = [12, 9, 6];
+    const host = hostOf(() => loads.shift() ?? 0, 8);
+    const ended = await gate(log, host).solve(TASK, HARNESS, undefined, "g-1");
+    expect(ended).toMatchObject({ ending: { outcome: "pass" } });
+    expect(host.slept).toEqual([30_000, 30_000]);
+    expect(waits(log).map(({ data }) => data)).toEqual([
+      { task: EXAMPLE.taskId, harness: "h1", comparison: "g-1", load: 12, cores: 8, ms: expect.any(Number) },
+    ]);
+  });
+
+  it("starts a solve all the same after half an hour of looks where the load never falls", async () => {
+    // On 15 October one campaign's solves waited 107 minutes while two others kept its host of 8 cores loaded.
+    const log = logIn("looks");
+    const host = hostOf(() => 99);
+    expect(await gate(log, host).solve(TASK, HARNESS, undefined)).toMatchObject({
+      ending: { outcome: "pass" },
+    });
+    expect(host.slept).toHaveLength(60);
+    expect(waits(log)).toHaveLength(1);
+  });
+
+  it("holds a solve while another is in flight and the reserve is short, until the kill, and puts nothing on record", async () => {
+    const log = logIn("reserve");
+    append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
+    const kill = new AbortController();
+    const host = hostOf(
+      () => 0,
+      4,
+      (count) => count === 3 && kill.abort(),
+    );
+    const held = gate(log, host);
+    await flying(log, () => held.solve(TASK, HARNESS, kill.signal));
+    expect(host.slept).toHaveLength(3);
+    // With nothing in flight the solve starts at once.
+    await held.solve(TASK, HARNESS, kill.signal);
+    expect(host.slept).toHaveLength(3);
+    expect(waits(log)).toEqual([]);
+  });
+
+  it("counts the reserve over the solves in flight in this process, whoever started them", async () => {
+    const log = logIn("reserve");
+    // No opening, no budget: every solve is afforded.
+    expect(affords(log, 99)).toBe(true);
+    append(log, "campaign.opened", { budget: { dollars: 1, reserve: 0.4 } });
+    expect([affords(log, 2), affords(log, 3)]).toEqual([true, false]);
+    // A practice solve in flight takes one reserve from an Examiner's three (14 October).
+    await flying(log, async () => {
+      expect([affords(log, 1), affords(log, 2)]).toEqual([true, false]);
+    });
+    expect(affords(log, 2)).toBe(true);
+  });
+});
 
 describe("the provider's named reset", () => {
-  it("is read from a clock time in a named zone, from the host's, or from Unix seconds", () => {
+  it("is read from a clock time in a named zone, from the host's, from a week's date, or from Unix seconds", () => {
     expect(resetOf("You've hit your limit · resets 3:50pm (Europe/Amsterdam)", NOW)?.toISOString()).toBe(
       "2026-10-12T13:50:00.000Z",
     );
@@ -36,195 +139,109 @@ describe("the provider's named reset", () => {
     expect(resetOf("weekly limit · resets Oct 15 at 9pm (Europe/Amsterdam)", NOW)?.toISOString()).toBe(
       "2026-10-15T19:00:00.000Z",
     );
-    expect(resetOf("weekly limit · resets Smarch 15 at 9pm (Europe/Amsterdam)", NOW)).toBeNull();
   });
 
-  it("is no reset where the message names none, is no limit, or names a zone the host does not know", () => {
+  it("is none where the message names none, is no limit, or names a month or zone nobody knows", () => {
     expect(resetOf("You've hit your limit", NOW)).toBeNull();
     expect(resetOf("socket hang up: connection reset by peer at 5", NOW)).toBeNull();
     expect(resetOf("limit reached · resets 3pm (Mars/Olympus)", NOW)).toBeNull();
+    expect(resetOf("weekly limit · resets Smarch 15 at 9pm (Europe/Amsterdam)", NOW)).toBeNull();
   });
 
-  it("is waited out to a minute past it and on record, however far on", async () => {
-    const log = join(mkdtempSync(join(tmpdir(), "ana-host-reset-")), "campaign.jsonl");
-    const slept: number[] = [];
-    const sleep = async (ms: number) => {
-      slept.push(ms);
-    };
-    expect(await waitOut(log, "You've hit your limit · resets 3:50pm (Europe/Amsterdam)", sleep, NOW)).toBe(
-      true,
-    );
-    // A week's limit is waited for too; a reset past, a message with no reset and a crash that is
-    // no limit are not.
-    expect(await waitOut(log, "Weekly limit reached|1792416600", sleep, NOW)).toBe(true);
-    expect(await waitOut(log, "limit reached|1791811800", sleep, new Date("2026-10-12T14:00:00Z"))).toBe(
+  it("is waited out to a minute past it and on record, however far on, from what a move threw", async () => {
+    const log = logIn("reset");
+    const host = hostOf(() => 0);
+    expect(
+      await waitOut(log, new Error("You've hit your limit · resets 3:50pm (Europe/Amsterdam)"), host, NOW),
+    ).toBe(true);
+    expect(await waitOut(log, "Weekly limit reached|1792416600", host, NOW)).toBe(true);
+    // A reset past, a message with no reset and a throw that is no limit are not waited for.
+    expect(await waitOut(log, "limit reached|1791811800", host, new Date("2026-10-12T14:00:00Z"))).toBe(
       false,
     );
-    expect(await waitOut(log, "exited 1", sleep, NOW)).toBe(false);
-    expect(await waitOut(log, null, sleep, NOW)).toBe(false);
+    expect(await waitOut(log, new Error("exited 1"), host, NOW)).toBe(false);
+    expect(await waitOut(log, null, host, NOW)).toBe(false);
     const minutes = 101 * 60_000 + 60_000;
     const week = 7 * 86_400_000 + 81 * 60_000 + 60_000;
-    expect(slept).toEqual([minutes, week]);
-    expect(read(log).map(({ kind, data }) => [kind, data])).toEqual([
-      ["campaign.waited", { for: "provider", until: "2026-10-12T13:50:00.000Z", ms: minutes }],
-      ["campaign.waited", { for: "provider", until: "2026-10-19T13:30:00.000Z", ms: week }],
+    expect(host.slept).toEqual([minutes, week]);
+    expect(waits(log).map(({ data }) => data)).toEqual([
+      { for: "provider", until: "2026-10-12T13:50:00.000Z", ms: minutes },
+      { for: "provider", until: "2026-10-19T13:30:00.000Z", ms: week },
     ]);
   });
 
-  it("starts the crash rule's count again, as an ending does", () => {
+  it("starts the crash rule's count again, as an ending does, and a wait on the load does not", () => {
     const crashed = (at: number): LogEvent => ({
       kind: "exam.finished",
       at: new Date(at).toISOString(),
       data: { session: `x-${String(at)}`, ended: "crashed", crash: "limit · resets 3:50pm" },
     });
-    const waited: LogEvent = { kind: "campaign.waited", at: NOW.toISOString(), data: { for: "provider" } };
+    const waited = (data: LogEvent["data"]): LogEvent => ({
+      kind: "campaign.waited",
+      at: NOW.toISOString(),
+      data,
+    });
     expect(crashedRun([crashed(1), crashed(2)]).count).toBe(2);
-    expect(crashedRun([crashed(1), waited, crashed(2)]).count).toBe(1);
-    // A solve's wait at a loaded host is no provider's.
-    const loaded: LogEvent = { kind: "campaign.waited", at: NOW.toISOString(), data: { load: 99 } };
-    expect(crashedRun([crashed(1), loaded, crashed(2)]).count).toBe(2);
+    expect(crashedRun([crashed(1), waited({ for: "provider" }), crashed(2)]).count).toBe(1);
+    expect(crashedRun([crashed(1), waited({ load: 99 }), crashed(2)]).count).toBe(2);
   });
 
-  it("waits out the limit a Builder crashed on after its checkpoint, which the count leaves out", async () => {
-    const log = join(mkdtempSync(join(tmpdir(), "ana-host-kept-")), "campaign.jsonl");
-    const slept: number[] = [];
-    const sleep = async (ms: number) => {
-      slept.push(ms);
-    };
+  it("is waited out after a Builder crashed on it past its checkpoint, which the count leaves out", async () => {
+    const log = logIn("kept");
+    const host = hostOf(() => 0);
     const crash = (said: string) => {
       append(log, "build.checkpoint", { session: "b-1" });
       append(log, "build.finished", { session: "b-1", ended: "crashed", changed: true, crash: said });
     };
     // The network's failure of a session that moved the campaign is no crash in a row to wait for.
     crash("read ECONNRESET");
-    await waitCrashed(log, sleep);
-    expect(slept).toEqual([]);
+    await waitCrashed(log, host);
+    expect(host.slept).toEqual([]);
     // Until 15 October its limit was not waited for either, and the next conversation opened into it.
-    const reset = Math.ceil(Date.now() / 1000) + 3600;
-    crash(`limit reached|${String(reset)}`);
-    expect(crashedRun(read(log))).toEqual({ count: 0, crash: `limit reached|${String(reset)}` });
-    await waitCrashed(log, sleep);
-    expect(slept).toHaveLength(1);
-    expect(read(log).filter(({ kind }) => kind === "campaign.waited")).toMatchObject([
-      { data: { for: "provider" } },
-    ]);
+    const reset = `limit reached|${String(Math.ceil(Date.now() / 1000) + 3600)}`;
+    crash(reset);
+    expect(crashedRun(read(log))).toEqual({ count: 0, crash: reset });
+    await waitCrashed(log, host);
+    expect(host.slept).toHaveLength(1);
+    expect(waits(log)).toMatchObject([{ data: { for: "provider" } }]);
   });
 });
 
 describe("the wait after a session the network failed", () => {
-  it("is a minute after the first crash and five after the second, starts no count, and none before the ending", async () => {
-    const log = join(mkdtempSync(join(tmpdir(), "ana-host-network-")), "campaign.jsonl");
-    const slept: number[] = [];
-    const sleep = async (ms: number) => {
-      slept.push(ms);
-    };
-    const crash = (session: string, said: string) =>
-      append(log, "exam.finished", { session, ended: "crashed", crash: said, held: [] });
-    crash("x-1", "getaddrinfo ENOTFOUND api.example.test");
-    await waitCrashed(log, sleep);
+  const crash = (log: string, session: string, said: string) =>
+    append(log, "exam.finished", { session, ended: "crashed", crash: said, held: [] });
+
+  it("is a minute after the first crash and five after the second, once a crash, and none before the ending", async () => {
+    const log = logIn("network");
+    const host = hostOf(() => 0);
+    crash(log, "x-1", "getaddrinfo ENOTFOUND api.example.test");
+    await waitCrashed(log, host);
     // Asked again before another session ends, as every later move asks: one wait a crash.
-    await waitCrashed(log, sleep);
-    crash("x-2", "read ECONNRESET");
-    await waitCrashed(log, sleep);
+    await waitCrashed(log, host);
+    crash(log, "x-2", "read ECONNRESET");
+    await waitCrashed(log, host);
     // The third ends the campaign on its environment, and is not waited for.
-    crash("x-3", "connect ETIMEDOUT");
-    await waitCrashed(log, sleep);
-    expect(slept).toEqual([60_000, 300_000]);
+    crash(log, "x-3", "connect ETIMEDOUT");
+    await waitCrashed(log, host);
+    expect(host.slept).toEqual([60_000, 300_000]);
     expect(crashedRun(read(log)).count).toBe(3);
-    expect(
-      read(log).filter(({ kind, data }) => kind === "campaign.waited" && data.for === "network"),
-    ).toHaveLength(2);
-    // Linux's temporary DNS failure and a refused connection are the network's too.
-    for (const said of ["getaddrinfo EAI_AGAIN api.example.test", "ConnectionRefused: Unable to connect"]) {
-      const once = join(mkdtempSync(join(tmpdir(), "ana-host-network-")), "campaign.jsonl");
-      append(once, "exam.finished", { session: "x-1", ended: "crashed", crash: said, held: [] });
-      await waitCrashed(once, sleep);
-    }
-    expect(slept).toEqual([60_000, 300_000, 60_000, 60_000]);
-    // A crash that is no network's and names no reset is not waited for.
-    const other = join(mkdtempSync(join(tmpdir(), "ana-host-network-")), "campaign.jsonl");
-    append(other, "exam.finished", { session: "x-1", ended: "crashed", crash: "exited 1", held: [] });
-    await waitCrashed(other, sleep);
-    expect(slept).toHaveLength(4);
-  });
-});
-
-describe("the campaign's reserve", () => {
-  it("holds the solves in flight in this process, whoever started them", async () => {
-    const log = join(mkdtempSync(join(tmpdir(), "ana-host-reserve-")), "campaign.jsonl");
-    // No opening, no budget: every solve is afforded.
-    expect(affords(log, 99)).toBe(true);
-    append(log, "campaign.opened", { budget: { dollars: 1, reserve: 0.4 } });
-    expect(affords(log, 2)).toBe(true);
-    expect(affords(log, 3)).toBe(false);
-    // A practice solve in flight takes one reserve from an Examiner's three (14 October).
-    await flying(log, async () => {
-      expect(affords(log, 2)).toBe(false);
-      expect(affords(log, 1)).toBe(true);
-    });
-    expect(affords(log, 2)).toBe(true);
-  });
-
-  it("holds a gated solve while another is in flight and the reserve is short, and a kill ends the wait", async () => {
-    const log = join(mkdtempSync(join(tmpdir(), "ana-host-reserve-")), "campaign.jsonl");
-    append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
-    const ran: string[] = [];
-    const seat: Seats = {
-      builder: null,
-      setting: "s",
-      solve: async (task) => {
-        ran.push(task.taskId);
-        return { solve: "s-1", ending: { outcome: "pass" } };
-      },
-    };
-    const seated = gated(
-      { seated: () => seat, loaded: true, host: { load: () => 0, cores: 1, waitMs: 1 } },
-      log,
-    );
-    const task: TaskPackage = { ...EXAMPLE, ruleIds: [], checks: "" };
-    const harness: Kept = { dir: "", digest: "h1" };
-    const kill = new AbortController();
-    // SAFETY: the gate hands the campaign to the seat it wraps and reads nothing of it, and the
-    // seat above reads none of its arguments, so an empty one stands in.
-    const gate = seated({} as Campaign, { builder: undefined, reference: "h1" });
-    // One solve in flight leaves no reserve for a second, which waits until the kill: the solve
-    // then starts and ends on the kill as any solve does, and the wait wrote no event.
-    const since = Date.now();
-    await flying(log, async () => {
-      setTimeout(() => kill.abort(), 20);
-      await gate.solve(task, harness, kill.signal);
-    });
-    expect(Date.now() - since).toBeGreaterThanOrEqual(15);
-    expect(read(log).filter(({ kind }) => kind === "campaign.waited")).toHaveLength(0);
-    // With nothing in flight the solve starts at once.
-    await gate.solve(task, harness, kill.signal);
-    expect(ran).toEqual([EXAMPLE.taskId, EXAMPLE.taskId]);
-  });
-
-  it("starts a solve after its last look where the load never falls, with the wait on record", async () => {
-    const log = join(mkdtempSync(join(tmpdir(), "ana-host-looks-")), "campaign.jsonl");
-    let looks = 0;
-    const seat: Seats = {
-      builder: null,
-      setting: "s",
-      solve: async () => ({ solve: "s-1", ending: { outcome: "pass" } }),
-    };
-    const load = () => {
-      looks += 1;
-      return 99;
-    };
-    const seated = gated({ seated: () => seat, loaded: false, host: { load, cores: 4, waitMs: 1 } }, log);
-    // SAFETY: as above, the gate and the seat read nothing of the campaign.
-    const gate = seated({} as Campaign, { builder: undefined, reference: "h1" });
-    const task: TaskPackage = { ...EXAMPLE, ruleIds: [], checks: "" };
-    // On 15 October one campaign's solves waited 107 minutes while two others kept m1-air loaded.
-    const ended = await gate.solve(task, { dir: "", digest: "h1" }, undefined);
-    expect(ended).toMatchObject({ ending: { outcome: "pass" } });
-    expect(looks).toBe(61);
-    expect(read(log).filter(({ kind }) => kind === "campaign.waited")).toEqual([
-      expect.objectContaining({
-        data: expect.objectContaining({ task: EXAMPLE.taskId, load: 99, cores: 4 }),
-      }),
+    expect(waits(log).map(({ data }) => data)).toEqual([
+      { for: "network", ms: 60_000 },
+      { for: "network", ms: 300_000 },
     ]);
+  });
+
+  it("reads Linux's temporary DNS failure and a refused connection as the network's, and no other crash", async () => {
+    const host = hostOf(() => 0);
+    for (const said of [
+      "getaddrinfo EAI_AGAIN api.example.test",
+      "ConnectionRefused: Unable to connect",
+      "exited 1",
+    ]) {
+      const log = logIn("network");
+      crash(log, "x-1", said);
+      await waitCrashed(log, host);
+    }
+    expect(host.slept).toEqual([60_000, 60_000]);
   });
 });

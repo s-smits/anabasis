@@ -80,7 +80,6 @@ import {
   SCRIPTED,
   type Seats,
   sharedOf,
-  startOf,
   type Turn,
   turnOf,
   type Values,
@@ -193,7 +192,6 @@ async function readLadder(context: CampaignContext, bench: Bench): Promise<void>
       move: "compare",
       code: decided.code,
       why: decided.why,
-      ...startOf("compare", context.seats),
       session,
       args: args.slice(packOf(context.values).length),
     });
@@ -201,7 +199,7 @@ async function readLadder(context: CampaignContext, bench: Bench): Promise<void>
       await checkpointCommand(args, context.held);
       ended = session;
     } catch (error) {
-      if (!(await waitOut(context.log, errorMessage(error), context.seats.host?.sleep))) {
+      if (!(await waitOut(context.log, error, context.seats.host))) {
         context.failed = { move: "compare", why: errorMessage(error) };
         bench.halt.abort();
         return;
@@ -291,7 +289,7 @@ function actionTool(
           ...made,
         });
       };
-      const sleep = context.seats.host?.sleep;
+      const { host } = context.seats;
       // The conversation's wall stops while the action runs, a wait for the provider included.
       return await bench.within(async () => {
         try {
@@ -299,13 +297,13 @@ function actionTool(
           if ("refused" in outcome) return text(outcome.refused);
           // A session of the action's that the provider's limit ended is waited out here, as after
           // each move of a campaign before the Builder made them.
-          await waitCrashed(context.log, sleep);
+          await waitCrashed(context.log, host);
           return text(outcome.said);
         } catch (error) {
           // Asked before the throw is read as a refusal, as the host's loop asks it: a limit that
           // ended a session before its first event is no refusal, and asked for again at once the
           // action would meet the same limit.
-          if (await waitOut(context.log, errorMessage(error), sleep)) {
+          if (await waitOut(context.log, error, host)) {
             return text(
               `The provider's limit ended the ${label} action, and the host has waited it out: call ${move} again.`,
             );
@@ -342,7 +340,6 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
     const session = nextId(turn.events, "x");
     const tasks = values["exam-tasks"] ?? examTasks(turn);
     begin({
-      ...startOf("examine", seats),
       session,
       ...keyIfDefined(
         "answers",
@@ -382,9 +379,9 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
     // run's kill do, and it then ends on record as stopped. A limit it met is waited out, and a
     // throw after it began is the environment's ending, as an action's is (`actionTool`).
     const done = work
-      .then(() => waitCrashed(context.log, context.seats.host?.sleep))
+      .then(() => waitCrashed(context.log, context.seats.host))
       .catch(async (error: unknown) => {
-        if (await waitOut(context.log, errorMessage(error), context.seats.host?.sleep)) return;
+        if (await waitOut(context.log, error, context.seats.host)) return;
         context.failed = { move: "examine", why: errorMessage(error) };
         bench.halt.abort();
       })
@@ -402,7 +399,6 @@ const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
     const { values } = context;
     const practice =
       (decided.move === "prepare" ? decided.practice : undefined) ?? values.practice ?? PRACTICE;
-    const began = startOf("prepare", context.seats);
     const result = await prepareCommand([
       ...packOf(values),
       "--practice",
@@ -411,7 +407,7 @@ const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
       ...(["solves", "level", "trigger"] as const).flatMap((name) => flag(name, values[name])),
     ]);
     if (result !== 0) throw new Error("the practice release was refused");
-    begin(began);
+    begin({});
     await refreshCampaign(context, bench);
     return {
       said: `Practice release completed: ${String(taskSets(read(context.log)).released.length)} tasks available.`,
@@ -503,9 +499,8 @@ const compareTool = (context: CampaignContext, bench: Bench): AgentTool =>
     // (11 October: the trigger had been left off, and no record could show it). The move is on
     // record once the comparison is admitted: until 14 October it was written first, and a
     // comparison the admission refused left a move that never began.
-    const began = startOf("compare", context.seats);
     await checkpointCommand(args, context.held, signal, () =>
-      begin({ ...began, session, args: args.slice(packOf(context.values).length) }),
+      begin({ session, args: args.slice(packOf(context.values).length) }),
     );
     const events = read(context.log);
     const step = campaignOf(events).steps.findLast(
@@ -537,7 +532,6 @@ async function promoteOwed(context: CampaignContext, bench: Bench): Promise<stri
     move: "promote",
     code: decided.code,
     why: decided.why,
-    ...startOf("promote", context.seats),
     harness: decided.harness,
   });
   await promoteCommand(["--name", context.values.name ?? "", "--harness", decided.harness, "--yes"]);
@@ -568,7 +562,6 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
     const why = unpromoted(turn.events, turn.plan, candidate);
     if (why !== null) return { refused: `Nothing was promoted: ${why}.` };
     const before = read(context.log).length;
-    const began = startOf("promote", context.seats);
     await promoteCommand(["--name", name, "--harness", candidate, "--yes"]);
     const promoted = read(context.log)
       .slice(before)
@@ -579,7 +572,7 @@ const promoteTool = (context: CampaignContext, bench: Bench): AgentTool =>
           "Nothing was promoted: no harness other than the reference has a comparison and repeat that, read together, cleared the level against it.",
       };
     }
-    begin({ ...began, harness: candidate });
+    begin({ harness: candidate });
     await refreshCampaign(context, bench);
     await readLadder(context, bench);
     return { said: `Harness ${short(candidate)} is now the campaign's reference.` };

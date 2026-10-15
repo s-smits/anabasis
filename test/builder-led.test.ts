@@ -963,15 +963,15 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(said(name, "compare")[0]).toContain(
       "Moves without a gain since the last step: 0 of the patience's ",
     );
-    // What a move records: the comparison's id and flags, when it began and the host's load then,
-    // which the page and the investigation read, and the harness a promotion named.
+    // What a move records: the comparison's id and flags, and the harness a promotion named. The
+    // host's load is each solve's (`solve.started`), and a move holds none of its own.
     const moves = of(name, MOVED);
     expect(moves.filter(({ move }) => move === "compare").map(({ session }) => session)).toEqual([
       "g-1",
       "g-2",
     ]);
     for (const move of moves.filter(({ move: made }) => made === "compare")) {
-      expect(move).toMatchObject({ load: expect.any(Number), began: expect.any(String) });
+      expect(move).not.toHaveProperty("load");
       expect(move.args).toContain("--trigger");
     }
     expect(moves.find(({ move }) => move === "promote")).toMatchObject({

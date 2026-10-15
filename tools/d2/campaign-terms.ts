@@ -20,7 +20,7 @@ import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { projectOf } from "./campaign.ts";
-import { HOST, type Host } from "./host.ts";
+import type { Host } from "./host.ts";
 import { PRACTICE } from "./prepare.ts";
 import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated } from "./round.ts";
 import { recordedSetting, SETTING_OPTIONS } from "./setting.ts";
@@ -430,20 +430,6 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
 /** The checks `--admit` names, which is the operator's word for each. */
 export function admitsOf(values: Values): string[] {
   return (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()]));
-}
-
-/**
- * What a move records of its start: when it began, and for a move that solves the host's load
- * then; each solve waits at the host's gate itself (`gated`, `host.ts`). The event is written as
- * the move begins: until 12 October it was written at its end with the reason from when it was
- * decided, which a reader took for the end's; and a solve's times are the host's as much as the
- * solver's, since a wall counts the clock (eight campaigns on one host of 12 cores held its load
- * between 14 and 26 that night).
- */
-export function startOf(move: Decided["move"], seats: Seats): JsonObject {
-  const began = new Date().toISOString();
-  const host = seats.host ?? HOST;
-  return move === "build" || move === "compare" ? { began, load: host.load(), cores: host.cores } : { began };
 }
 
 /** One turn of a campaign as its log stands now: the plan the table is asked with, from the

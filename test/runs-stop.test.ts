@@ -77,8 +77,13 @@ describe("a stop", () => {
         stderr: Bun.file(join(root, "launch-run-1.err")),
         detached: true,
       });
-      await Bun.sleep(300);
       const ps = (...columns: string[]) => runTextSyncOrThrow(["ps", "-axo", columns.join(",")]);
+      // The shell forks its first sleep and writes its line in its own time: wait for both, to a deadline.
+      const out = Bun.file(join(root, "launch-run-1.out"));
+      const up = async () =>
+        family(ps("pid=", "ppid="), child.pid).length > 1 && (await out.text()) === "up\n";
+      const settled = Date.now() + 10_000;
+      while (!(await up()) && Date.now() < settled) await Bun.sleep(20);
       const pids = family(ps("pid=", "ppid="), child.pid);
       expect(pids.length).toBeGreaterThan(1);
       // It leads its group, so this test's end is not its end.
@@ -87,7 +92,7 @@ describe("a stop", () => {
           .split("\n")
           .map((row) => row.trim().split(/\s+/).map(Number)),
       ).toContainEqual([child.pid, child.pid]);
-      expect(await Bun.file(join(root, "launch-run-1.out")).text()).toBe("up\n");
+      expect(await out.text()).toBe("up\n");
       expect(existsSync(join(root, "launch-run-1.err"))).toBe(true);
       for (const pid of pids) expect(await terminateAndReapProcessGroupId(pid)).toBe(true);
       expect(pids.some((pid) => processGroupExists(pid))).toBe(false);

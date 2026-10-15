@@ -76,13 +76,9 @@ Read these before reading by hand. Each was a shape this skill kept finding by e
 
 ## Measure before and after
 
-```sh
-.claude/skills/reduce-complexity/scripts/scope.sh [<PR#>|<commit>|<a..b>|<paths>] -C <worktree> -o <scope.diff>
-.claude/skills/reduce-complexity/scripts/measure.py --diff <scope.diff> --base <pre-change ref> -C <worktree>
-```
-
-Run it once before editing and once after, and put its budget lines in the report: production and
-test lines net, new functions net of moved ones, the names each import source gained. Its
+Run reduce-complexity's `scope.sh` and `measure.py` (its section "One diff") once before editing
+and once after, and put the budget lines in the report: production and test lines net, new
+functions net of moved ones, the names each import source gained. Its
 **repeats** section is added code that already exists in tracked source: call that owner, and
 delete the other copies of the same reader too. For a pull request or a stack, give the structural
 rows of `stack-complexity.py` beside the lines (decision points, import edges, exported symbols,

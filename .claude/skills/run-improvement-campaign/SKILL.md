@@ -58,7 +58,7 @@ cap the reading: while one of them fails, a change anywhere below it is spent on
 | 2 | instrument | the checker has been read and stands, and rejections are ruled earned | `bun tools/c/accept.ts --name <name>`, `referee.finding`, tasks set aside |
 | 3 | the reference's room | the reference harness is valid on about half its solves | `comparison.reported.valid.old` |
 | 4 | the session | the Builder practised, and left a harness that differs in something a solver uses | `build.*`, `harness.version`, practice `verdict`s |
-| 5 | size | the tally has enough untied tasks to clear its level | `scored`, `unsolved`, the preflight's notes |
+| 5 | size | the tally has enough untied tasks to clear its level | `scored`, `unsolved`, the reading's `detectable` |
 | 6 | the host | solves started under a load below the cores, and the loads of the comparisons read together are alike | the reader's `HOST LOADED` and `LOAD MOVED` |
 | 7 | the repeat | a checkpoint of the same two harnesses on fresh solves reads the step again, and the reference against itself reads none | `--id <id>` at four solves a side, `STEP NOT REPEATED` |
 | 8 | the next link | once promoted, the new reference still leaves room (link 3 again) | the operator's `tools/d2/promote.ts --harness <digest> --yes`, and `harness.promoted` in the log |
@@ -240,7 +240,7 @@ First say what happened to the link:
 Then choose one move. The plan's table suggests one, and the view prints it
 as its last line (`decide`, `src/builder/decide.ts`): read the exam, set the tasks apart, have
 tasks written, build, compare, repeat a step, set the budget again, promote, or end. The stop
-rule ends it (three moves in a row that could have shown a gain and showed none: a changed
+rule ends it (the patience, six by default, of moves in a row that could have shown a gain and showed none: a changed
 harness counts once against one reference, where its comparison left room, and so does a session
 that changed nothing), and so does the budget. After exam preparation, one live Builder
 conversation chooses actions through campaign tools under one total budget. The table is prompt

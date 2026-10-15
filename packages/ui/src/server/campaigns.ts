@@ -3,7 +3,7 @@
  *
  * The project is the one the campaign's opening names, or `NO_PROJECT` (`reading.ts`). Running is a
  * process that writes the log (`writers`,
- * `tools/runs/pulse.ts`). Newest first is by the time of a log's first event. A log that cannot be
+ * `tools/runs/registry.ts`). Newest first is by the time of a log's first event. A log that cannot be
  * read is an issue beside the rows, never a missing row without a word.
  */
 import type { CampaignList, CampaignRow, Issue, Query } from "../models.ts";

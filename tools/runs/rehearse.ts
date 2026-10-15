@@ -80,7 +80,7 @@ import { harnessBuilder } from "../d2/harness-builder.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
 import { sessionCommand } from "../d2/session.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
-import { SEED_FILE } from "./pulse.ts";
+import { SEED_FILE } from "./registry.ts";
 
 /** How a scripted solve ends: a valid answer, one a check rejects, or none at all. */
 const ENDS = ["pass", "fail", "none"] as const;

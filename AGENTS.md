@@ -586,8 +586,9 @@ whose reading holds no fault and promotes the harness the rule names without wai
 Under `--attended` it runs only once every fault of its checks is admitted, and it reports a step
 read twice without promoting it, waiting there for `promote.ts`.
 
-The skill `launch-run` says how it is started: niced, in a process group of its own, with its
-output in two files and the key in Bun's own `--env-file`. Each solve waits for the host: a
+`bun run runs launch` starts it (the skill `run-management`): niced, in a process group of its
+own, with its output in two files and the key in Bun's own `--env-file`; `continue` and `pause`
+run one again from its log and stop one at a clean point. Each solve waits for the host: a
 solve of a Builder session or a comparison starts once the one-minute load is at or under the
 cores, or after half an hour, says so as it waits, and the wait is on record (`campaign.waited`,
 `tools/d2/host.ts`); `--loaded` starts them all the same. Until 12 October the wait was at a move's start, and a
@@ -729,7 +730,7 @@ The other verbs over a campaign's log:
 bun run runs rehearse [--no-comparison] <the flags of tools/d2/round.ts that name no model>
 bun run runs rehearse --campaign <the flags of tools/d2/harness-builder.ts that name no model>
 bun run runs view <name> [--level N] [--trigger N] [--target N] [--practice N] [--past-stop "<why>"]
-bun run runs pulse | stop <name> | replay | seed | zip
+bun run runs launch | continue | pause | stop <name> | pulse | replay | seed | zip
 ```
 
 ### Defaults, and a first flag line
@@ -1173,7 +1174,7 @@ launch request authorises one command and no second run beside it. The skills ow
 | --- | --- |
 | Deciding what to run next, and reading what a run showed | `run-improvement-campaign` |
 | Testing a path before spend | `system-path-simulation` |
-| Starting or stopping a run | `launch-run` |
+| Starting, continuing, pausing or stopping a run | `run-management` |
 | Wording a claim afterwards | `attribution-and-proof` |
 | Doubting a reading, or asking what a fail was | `whole-run-investigation` |
 | Reading the harnesses a campaign keeps, before a promotion or a handover | `harness-audit` |
@@ -1246,7 +1247,7 @@ npm or npx. `src/meta` wraps the few Node surfaces Bun lacks (`tools/oxlint/HABI
 | `bun run hooks:install` | Points this clone's `core.hooksPath` at `.githooks`, once; every worktree shares it |
 | `bun run commit:check` | What the pre-commit hook runs, and by hand: author email, format and lint of staged files, the slop report, the secret scan |
 | `bun run secrets` | The secret scan |
-| `bun run runs <verb>` | `pulse`, `stop`, `rehearse`, `seed`, `replay`, `zip`, `view` |
+| `bun run runs <verb>` | `launch`, `continue`, `pause`, `stop`, `pulse`, `rehearse`, `seed`, `replay`, `zip`, `view` |
 | `bun run ui:dev` | The page that shows a campaign as its log reads, on the loopback with a token (`packages/ui/README.md`). `-- --exam-side` adds the exam side's content: start that where no Builder or solver runs |
 | `bun run ui:gate` | The UI's own gate: its dependencies, its typecheck and build, and its tests under `packages/ui/test` |
 | `bun .claude/skills/stack-pr/scripts/stack.ts` | The open stack: every edge, and the top |
@@ -1458,7 +1459,8 @@ tools/d2/       campaign, setting, prepare, round, session, checkpoint, settle, 
                 ending, or keeps its Builder's conversation to one; campaign-terms, the flags and
                 what a campaign runs by; campaign-actions, the tools a Builder that leads its
                 campaign asks the host through; and word, which leaves the operator's word for one that runs
-tools/runs/     stop, the receipt, rehearse, seed, pulse, view, replay, zip
+tools/runs/     the registry of runs, the receipt, launch, continue and pause (manage), stop, pulse,
+                rehearse, seed, view, replay, zip
 tools/wri/      the whole-run investigation's reader of one log: its folds and the exam side's lanes
                 (folds), the other lanes, the rows and the overview (read)
 tools/oxlint/   the two lint plugins, the ledger, the whole-tree scans

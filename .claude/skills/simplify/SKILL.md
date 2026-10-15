@@ -98,7 +98,8 @@ Climb it for each mechanism, and stop at the first rung that holds.
    readings named the solver, and it went with 1,063 lines (`docs/simplify.md`, E1).
 2. **Does a higher layer already do it?** The launcher's refusals were asked again by each move's
    own command (`src/builder/admission.ts`), and the campaign command already waited for the host's
-   load, so `bun run runs launch` went: 1,363 lines out, 610 in (`docs/simplify.md`, D2).
+   load, so `bun run runs launch` went: 1,363 lines out, 610 in (`docs/simplify.md`, D2). The verb
+   that came back on 15 October starts the command and asks none of them.
 3. **Is it already in this repository?** Add no second reader of one fact: find the fold that reads
    it and call that (`AGENTS.md`, section 5). `measure.py`'s repeats name candidates.
 4. **The platform, Bun or an installed dependency?** Every runtime surface has one owner in

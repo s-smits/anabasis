@@ -1,12 +1,15 @@
 /**
- * What a run keeps of its start beside the campaign's log: `launch-<session>.json`, the flags, the
- * commit, whether the tree was dirty, and the load it started under. The log holds the host's
- * code by content and no commit, so this is where a run's commit is on record. The campaign
- * command keeps one a run, as `launch-run-<n>.json` (`tools/d2/harness-builder.ts`); until
- * 10 October it kept none, and the flag line of the run that recorded a campaign's setting was on
- * no record. Until 11 October `bun run runs launch` wrote one too, for a round, a checkpoint or a
- * session it started; the launcher went, and the campaign command is the one way to start a move
- * (`docs/simplify.md`, D2).
+ * What a run keeps of its start beside the campaign's log, `launch-<session>.json`: the flags, the
+ * commit, whether the tree was dirty, the load it started under and the Bun. The log holds the
+ * host's code by content and no commit, so this is where a run's commit is on record, and the flags
+ * are what a campaign is run again on (`bun run runs continue`).
+ *
+ * The campaign command keeps one a run, as `launch-run-<n>.json` (`keepReceipt`,
+ * `tools/d2/harness-builder.ts`), and `bun run runs launch` writes its output beside it under the
+ * same `n` (`nextRun`). Until 10 October the command kept none; until 11 October the launcher kept
+ * one for each round, checkpoint or session it started, under that session's id, and a campaign of
+ * then holds those. Until 15 October two readers numbered the next run, and one reader left the
+ * flags out and another read them again from the file.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -16,6 +19,7 @@ export interface Receipt {
   readonly at: string;
   readonly pid: number;
   readonly flags: readonly string[];
+  /** The env file's path, which the launcher kept until 11 October; null since. */
   readonly envFile: string | null;
   readonly commit: string;
   readonly dirty: boolean;
@@ -25,32 +29,29 @@ export interface Receipt {
   readonly bun?: string;
 }
 
-/** Where the run of `session` keeps its receipt and its output, less the extension. */
-const kept = (log: string, session: string) => join(dirname(log), `launch-${session}`);
+const RECEIPT = /^launch-(.+)\.json$/;
 
 /** Keep `receipt` as the run of `session` beside `log`. */
 export function writeReceipt(log: string, session: string, receipt: Receipt): void {
-  writeFileSync(`${kept(log, session)}.json`, `${capturedJsonStringify(receipt, null, 2)}\n`);
+  writeFileSync(join(dirname(log), `launch-${session}.json`), `${capturedJsonStringify(receipt, null, 2)}\n`);
 }
 
-/** Every run whose receipt sits beside `log`, oldest first, less the flags and the env file's path
- *  a receipt also holds. None for a campaign whose rounds were started by hand. */
-export function launchesOf(log: string) {
+/** Every receipt beside `log`, oldest first, with the session it was kept under. None for a
+ *  campaign whose rounds were started by hand or that has not started. */
+export function receipts(log: string): (Receipt & { readonly session: string })[] {
   const folder = dirname(log);
+  if (!existsSync(folder)) return [];
   return readdirSync(folder)
     .flatMap((file) => {
-      const session = /^launch-(.+)\.json$/.exec(file)?.[1];
-      // A receipt is beside the log for a run, and none for a round started by hand.
-      if (session === undefined || !existsSync(`${kept(log, session)}.json`)) return [];
-      const {
-        at,
-        commit,
-        dirty,
-        load,
-        cores,
-        bun = "unknown",
-      } = parseJsonAs<Receipt>(readFileSync(`${kept(log, session)}.json`, "utf8"));
-      return [{ session, at, commit, dirty, load, cores, bun }];
+      const session = RECEIPT.exec(file)?.[1];
+      if (session === undefined) return [];
+      return [{ ...parseJsonAs<Receipt>(readFileSync(join(folder, file), "utf8")), session }];
     })
-    .sort((a, b) => a.at.localeCompare(b.at));
+    .toSorted((one, other) => one.at.localeCompare(other.at));
+}
+
+/** The session the next run of the campaign command beside `log` keeps its receipt under. */
+export function nextRun(log: string): string {
+  const kept = receipts(log).filter(({ session }) => session.startsWith("run-")).length;
+  return `run-${String(kept + 1)}`;
 }

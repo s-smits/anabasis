@@ -817,9 +817,9 @@ function costOf(usage: JsonValue | undefined): number {
  * decimals on every session and solve of one campaign of 10 October; a Builder session of another,
  * killed at its seventh turn the same day, had metered 0.12 dollars that nothing summed. A
  * compaction of pi's loop is billed in the end's sum too, and its summary's price is on its
- * `*.compacted` event (`loopCompaction`, `src/solve/run.ts`), so it is counted here as well.
+ * `*.compacted` event (`loopCompaction`, `src/solve/run.ts`); a stop and a pause read it too (`tools/runs`).
  */
-function unfinished(events: readonly LogEvent[]): Unfinished[] {
+export function unfinished(events: readonly LogEvent[]): Unfinished[] {
   return METERED.flatMap(({ of, id }) => {
     const ended = new Set(events.flatMap(({ kind, data }) => (kind === `${of}.finished` ? [data[id]] : [])));
     const open = new Map<JsonValue | undefined, Unfinished>();

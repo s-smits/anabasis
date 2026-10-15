@@ -251,8 +251,9 @@ describe("the whole-run investigation's reader", () => {
       "b-1: 0 won, 0 lost and 2 tied between two samples of the reference harness",
     );
     expect(detail("WALL SHARE")).toBe("b-1: median 50.0% under the reference harness, 50.0% under the new");
+    // The two rejections set their tasks aside, so the misses the trigger reads are the two tallied.
     expect(detail("MISSES AT A LIMIT")).toBe(
-      "b-1: 2 of 4 reference misses and 0 of 0 new at a limit (wall-ended 2)",
+      "b-1: 2 of 2 reference misses and 0 of 0 new at a limit (wall-ended 2)",
     );
   });
 

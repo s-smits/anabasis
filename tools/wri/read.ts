@@ -667,10 +667,10 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
     const readings = log.compared
       .filter((each) => each.build === build)
       .map((each) => `${each.session} ${text(each.last.reading)}`);
-    // The end record counts a session's practice; one still running has none, and its solves so far
-    // are read from the log instead of printed as a zero.
-    const practised =
-      build.finished === null ? practiceOf(log, build).length : count(build.finished.practiceSolves);
+    // The end record counts a session's practice. One still running has none, and neither has one
+    // killed (main0_5_1's b-3 on 15 October, whose practice passed): their solves are read from the log.
+    const recorded = build.finished?.practiceSolves;
+    const practised = isNumber(recorded) ? recorded : practiceOf(log, build).length;
     return `${build.session}: ${short(build.parent)} > ${child}, ended ${ended}, ${plural(practised, "practice solve")}, reading ${readings.join(", ") || "none"}`;
   });
   return [

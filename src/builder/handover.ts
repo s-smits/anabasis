@@ -348,7 +348,9 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
           parent: text(data.parent),
           harness: text(end?.harness),
           changed: end?.changed === true,
-          practiceSolves: end === undefined ? practised.filter(within).length : count(end.practiceSolves),
+          practiceSolves: isNumber(end?.practiceSolves)
+            ? end.practiceSolves
+            : practised.filter(within).length,
           fails: fails.filter(within).length,
           // An open session's own turns are summed at its end, so until then they are its window's.
           billed: end === undefined ? billed : billedParts(events, id).session,

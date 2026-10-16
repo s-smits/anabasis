@@ -15,8 +15,7 @@
  * One count ends a campaign that cannot be given tasks or room (`roomless`), at its patience.
  *
  * A setting is recorded once (`campaign.setting`) and does not change, so every comparison of the
- * log is read. A campaign runs at one budget, the one its setting names; the ladder of shorter
- * budgets it walked until 11 October went with `docs/simplify.md`, package A.
+ * log is read, at the one budget it names (`docs/simplify.md`, package A).
  */
 import { unadmitted } from "../kernel/acceptance.ts";
 import { readsStepEitherWay, readTwice, sweepOf, triggered, untiedOf } from "../kernel/compare.ts";
@@ -153,16 +152,13 @@ function writtenSince({ events, refused }: Ground, reading: Reading): boolean {
  * no task. A comparison that left it room ends the run, and so does one made against another
  * harness, as every one from before a promotion: the step and its repeat a harness was promoted
  * on are no answer to a want of room, though the tasks change on what they read (`noRoom`). So
- * does a session whose tasks no comparison has read yet,
- * since it moved the campaign, however few it wrote: on 9 October a campaign ended on three
- * sessions that had written four tasks between them. A session whose tasks a comparison has read
- * is passed over, the comparison being the reading of them, and so is one the provider failed or
- * a stopped run cut, which was given no chance to write (`crashedRun`; `endCut`, `tools/d2/harness-builder.ts`).
+ * does a session whose tasks no comparison has read yet, however few it wrote: on 9 October a
+ * campaign ended on three sessions that had written four tasks between them. A session whose
+ * tasks a comparison has read is passed over, and so is one the provider failed or a stopped run
+ * cut (`crashedRun`; `endCut`, `tools/d2/harness-builder.ts`).
  *
  * It is the one count that ends a campaign for want of tasks or of room (`spent`). Until
- * 12 October three counted: idle Examiner sessions in a row, which every session that held out a
- * task reset, so esp32-141-m3b examined and read no room five times over and never ended;
- * comparisons of one harness without room; and two no-room readings of a session's tasks.
+ * 12 October three counted, and esp32-141-m3b examined and read no room five times over.
  */
 function roomless({ events, reports, reference }: Ground) {
   const read = Math.max(-1, ...reports.map(({ reported }) => reported));
@@ -739,11 +735,9 @@ export function unaffordedAsked(events: readonly LogEvent[], plan: Plan): string
   return held?.move === "end" ? held.why : null;
 }
 
-/** The tasks released for practice since the reference harness was last promoted, and where it
- *  was: the practice a campaign names is an epoch's, since a promotion leaves the Builder practice
- *  the new reference answers. Until 16 October it was the campaign's, and three campaigns released
- *  3 tasks before their promotion and none after: every practice solve after it passed, and
- *  main0_5_1's three Builder conversations changed nothing. */
+/** The tasks released for practice since the reference harness was last promoted, and where: the
+ *  practice named is an epoch's. Until 16 October it was the campaign's, and three campaigns
+ *  released none after their promotion, where every practice solve passed. */
 export function epochReleased(events: readonly LogEvent[]) {
   const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   const epoch = events.filter(
@@ -752,15 +746,20 @@ export function epochReleased(events: readonly LogEvent[]) {
   return { promotedAt, epoch };
 }
 
-/**
- * A release for practice before a Builder session, where the campaign holds fewer practice tasks
- * than it names and tasks were held out since the last release. One release takes at most half of
- * what is held (`tools/d2/prepare.ts`), so a campaign that opens on a few tasks releases fewer
- * than it names. On 9 October a campaign that named three practice tasks released two of its five
- * examples and held out sixteen more tasks: without a later release both its Builder sessions
- * practised on the same two, and the second spent two of its six practice solves. The draw is the
- * contract's, and no solve chooses a task.
- */
+/** How many more tasks a release may take for practice, each one fewer to compare: after a
+ *  promotion, at most one in four of the epoch's scorable and released tasks, never leaving fewer
+ *  frontier tasks than a sweep at `level` takes, since it takes failed ones first (`releaseOrder`). */
+export function practiceRoom(events: readonly LogEvent[], level: number): number {
+  const { promotedAt, epoch } = epochReleased(events);
+  const { scorable, retained } = poolOf(events);
+  const frontier = scorable.filter((task) => !retained.includes(task)).length;
+  const room = Math.min(Math.floor((scorable.length + epoch) / 4) - epoch, frontier - sweepOf(level));
+  return promotedAt === -1 ? Infinity : Math.max(0, room);
+}
+
+/** A release for practice before a Builder session, where the epoch holds fewer than the campaign
+ *  names, tasks were held out since the last release, and it has room (`practiceRoom`): on
+ *  9 October two sessions practised on the same two tasks while sixteen more were held. */
 function toPractise({ events, plan, supply, read }: Ground, named: Move): Move | null {
   const { practice } = plan;
   const released = events.findLastIndex(
@@ -770,6 +769,7 @@ function toPractise({ events, plan, supply, read }: Ground, named: Move): Move |
   const scored = events.findLast(({ kind }) => kind === "campaign.setting")?.data.tasks;
   const pool = supply.held - (Array.isArray(scored) ? scored.length : 0);
   const { promotedAt, epoch } = epochReleased(events);
+  const room = practiceRoom(events, plan.wanted.level);
   if (
     named.move !== "build" ||
     practice === null ||
@@ -780,10 +780,11 @@ function toPractise({ events, plan, supply, read }: Ground, named: Move): Move |
   }
   // After a control that read room, practice is brought up by as many again: the tasks that leave
   // the reference room are what the Builder has to work on, and the ones it has it passes.
-  if (read?.control === true && read.reported > released && roomOf(read.report) !== "none") {
+  const again = Math.min(practice, room);
+  if (read?.control === true && read.reported > released && roomOf(read.report) !== "none" && again > 0) {
     return {
       move: "prepare",
-      practice: supply.released + practice,
+      practice: supply.released + again,
       why: `comparison ${read.id} read room in the tasks held out since the last release: the ones the reference harness failed are released first, up to ${plural(practice, "more practice task")}, before the Builder builds`,
     };
   }
@@ -791,11 +792,12 @@ function toPractise({ events, plan, supply, read }: Ground, named: Move): Move |
     promotedAt === -1
       ? ", and tasks were held out since the last release"
       : " since the reference harness was last promoted, and tasks were held out since";
-  return epoch >= practice
+  const owed = Math.min(practice - epoch, room);
+  return owed <= 0
     ? null
     : {
         move: "prepare",
-        ...keyIfDefined("practice", promotedAt === -1 ? undefined : supply.released + practice - epoch),
+        ...keyIfDefined("practice", promotedAt === -1 ? undefined : supply.released + owed),
         why: `${String(epoch)} of the ${plural(practice, "practice task")} the campaign names are released${since}: the contract's draw releases more before the Builder builds`,
       };
 }

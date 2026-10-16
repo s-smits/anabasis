@@ -36,7 +36,11 @@
  * from the reference's side of the very comparison each line reads, for the tasks the counts read
  * on the reference's side (`referenceAnswers`), so nothing of the harness it was compared with is
  * among them, and no count of the other side is added to what the counts above tell; a family of
- * one task shows that task's own turns, which are the reference's, as its line is.
+ * one task shows that task's own turns, which are the reference's, as its line is. Beside them are
+ * the turns of the reference's valid answers at the gate of each draft since the last promotion
+ * (`gateTurns`), and a gate line read on a reference harness a promotion has replaced says so
+ * (16 October: after a promotion, the drafts stood in no comparison, so an author was told no turn
+ * of the new reference and read the starter's gate counts as its).
  *
  * Each sentence says what its fold does: the exhausted line speaks of the reference's own solves
  * alone, as the rule reads them (`poolOf`, `src/kernel/reports.ts`), and not of both harnesses.
@@ -61,6 +65,7 @@ import {
   referenceOf,
   type Standing,
 } from "../kernel/reports.ts";
+import { conditionsOf } from "../kernel/condition.ts";
 import { solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
@@ -122,7 +127,9 @@ const COUNTS = {
 } as const;
 /** What the turns say before their rows. */
 const TURNS =
-  "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above, by family and fewest first. These are measurements and no target.";
+  "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above and at the gate of each draft since the reference harness was last replaced, by family and fewest first. These are measurements and no target.";
+/** What a gate line adds where the gate read a reference harness that a promotion has replaced. */
+const REPLACED = "a reference harness since replaced";
 
 /** Whether a gate read its draft: one refused on fewer than the reference harness's `TRIED`
  *  readings, cut by a limit or never begun for want of the reserve, refused a draft it did not read,
@@ -151,10 +158,15 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
       return id === null ? [] : [[id, version] as const];
     }),
   );
-  // Each version's last gate.
+  // Each version's last gate, marked where it read a reference harness a promotion has replaced
+  // since: until 16 October a session after a promotion read the starter's gate counts as the
+  // new reference's, and wrote on in the families the promotion had closed.
+  const since = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   const gates: ReadonlyMap<string, JsonObject> = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "task.gate" && isString(data.version) ? [[data.version, data]] : [],
+    events.flatMap(({ kind, data }, at) =>
+      kind === "task.gate" && isString(data.version)
+        ? [[data.version, at < since ? { ...data, replaced: true } : data]]
+        : [],
     ),
   );
   const families = new Map<string, Standing[]>();
@@ -176,7 +188,35 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
       `${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}${admittedLine(gates.get(version))}${history}`,
     ];
   });
+  const gated = gateTurns(events, since);
+  for (const { version, task } of proposalsOf(events)) {
+    const valid = gated.get(version) ?? [];
+    if (task !== null && valid.length > 0) {
+      turns.set(task.family, [...(turns.get(task.family) ?? []), ...valid]);
+    }
+  }
   return { lines, refused: refusedLines(events, gates), counts: counts(families), turns: turnsOf(turns) };
+}
+
+/** The solver's own turns of each valid answer the reference harness gave at a gate after event
+ *  `from`, by draft version: the Examiner's solves under `try_task`, which no comparison counts.
+ *  Read from a promotion on, they are the new reference's alone. Until 16 October an Examiner was
+ *  told the turns of comparisons only, and after a promotion its drafts stood in none: main0_5_1's
+ *  answered drafts took a median of 4 of the 16 turns, recode-151's 3, and neither was told. */
+export function gateTurns(events: readonly LogEvent[], from: number): Map<string, number[]> {
+  const sessions = new Set(
+    events.flatMap(({ kind, data }) => (kind === "exam.started" ? [data.session] : [])),
+  );
+  const conditions = conditionsOf(events);
+  const took = new Map<string, number[]>();
+  for (const { started, start, ending, end, condition } of solvesIn(events)) {
+    const version = conditions.get(condition)?.task;
+    if (started <= from || !sessions.has(start.comparison) || version === undefined) continue;
+    if (ending?.outcome === "pass" && isNumber(end?.turns)) {
+      took.set(version, [...(took.get(version) ?? []), end.turns]);
+    }
+  }
+  return took;
 }
 
 /** How many of the reference harness's solves at a held task's gate were valid, as one clause, or
@@ -188,7 +228,8 @@ function admittedLine(gate: JsonObject | undefined): string {
   const { valid, solves } = reference ?? {};
   if (gate?.outcome !== "passed" || !isNumber(solves) || !isNumber(valid)) return "";
   const unread = solves < TRIED ? `, ${String(TRIED - solves)} of them giving no reading` : "";
-  return `; held out at its gate on ${String(valid)} of the reference harness's ${String(TRIED)} solves valid${unread}`;
+  const read = gate.replaced === true ? `, read on ${REPLACED}` : "";
+  return `; held out at its gate on ${String(valid)} of the reference harness's ${String(TRIED)} solves valid${unread}${read}`;
 }
 
 /** The drafts a gate refused having read them, with the gate's reason: until 14 October a later
@@ -199,7 +240,9 @@ function refusedLines(events: readonly LogEvent[], gates: ReadonlyMap<string, Js
   return proposalsOf(events).flatMap(({ version, task }) => {
     const gate = gates.get(version);
     return task !== null && gate?.outcome === "refused" && measuredGate(gate) && isString(gate.reason)
-      ? [`${task.taskId} (family ${task.family}): refused: ${gate.reason}`]
+      ? [
+          `${task.taskId} (family ${task.family}): refused: ${gate.reason}${gate.replaced === true ? `, read on ${REPLACED}` : ""}`,
+        ]
       : [];
   });
 }

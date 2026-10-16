@@ -709,16 +709,19 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * The `count` held-out tasks of `pool` a release takes, each with why, in the order they are
  * taken. A task no solve answered in two comparisons goes to the Builder before the draw
  *: it is what a session has to work on, where every released task passes.
- * Then the tasks the reference harness failed in the last comparison, half of them at most, so
+ * Then the tasks the reference harness failed in the last comparison, half of them rounded up, so
  * that the comparison keeps tasks it can untie. The rest is the contract's
  * draw, over the tasks neither list holds, so that the draw cannot release the half kept back.
  * The release in `tools/d2/prepare.ts` calls it.
  *
- * The tasks the reference failed are the held-out ones whose last scored result says it answered
- * none, excluding a later dispute or comparison between other harnesses, as a task's outcome
+ * The tasks the reference failed are the held-out ones whose last scored result says it failed
+ * a solve, excluding a later dispute or comparison between other harnesses, as a task's outcome
  * does: the tasks that leave the reference room are the ones a Builder has to work on, and on
  * 10 October three campaigns each ran three sessions after a promotion on practice tasks the
- * promoted harness passed, and changed nothing.
+ * promoted harness passed, and changed nothing. Until 16 October a task it answered in some
+ * solves was no failure, though it leaves room as one it never answered does, and half rounded
+ * down released no task where one had failed: between buffer-159-opus's two promotions its
+ * Builder's practice passed 10 of 10.
  *
  * The tasks no solve answered are the held-out ones without a valid answer in `UNSOLVED_RUN` or
  * more comparisons, cut at a limit or not. On 10 October one campaign held four to five such tasks
@@ -743,10 +746,10 @@ export function releaseOrder(
       const last = lastRead(record);
       if (last === null || last === "aside" || last.reference === null) return undefined;
       const own = last[last.reference];
-      return own.length > 0 && !own.some(Boolean) ? last.order : undefined;
+      return own.length > 0 && !own.every(Boolean) ? last.order : undefined;
     }),
   ).filter((version) => !unanswered.includes(version));
-  const first = [...unanswered, ...failed.slice(0, Math.floor(failed.length / 2))];
+  const first = [...unanswered, ...failed.slice(0, Math.ceil(failed.length / 2))];
   const rest = pool.filter((version) => !first.includes(version) && !failed.includes(version));
   const chosen = [
     ...first.slice(0, count),

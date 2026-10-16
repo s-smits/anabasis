@@ -1708,9 +1708,15 @@ describe("the scored set", () => {
     expect(newest.retained).toEqual(newest.tasks.slice(2));
     expect(held).toContain(newest.retained[0] ?? "");
     // Within the newest epoch the hash still chooses, so no result does.
-    expect(drawn(climbed, 1)).toEqual(drawn(heldOut(["v7", "v8"]), 1));
+    expect(drawn(climbed, 1).slice(0, 1)).toEqual(drawn(heldOut(["v7", "v8"]), 1));
     // A target past the held-out count scores the frontier whole and its share of the retained.
     expect(drawn(climbed, 12)).toHaveLength(3);
+    // A frontier that fills the target scores its retained share beside it: until 16 October the
+    // share was what the frontier left of the target, and here it left none.
+    const full = scoredSet(climbed, 2, "contract-a");
+    expect(full.tasks.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
+    expect(full.retained).toHaveLength(1);
+    expect(full.tasks).toHaveLength(3);
     // A task of the epoch before that the reference stood in and left open is frontier still.
     const stood: LogEvent[] = [
       ...climbed,
@@ -1865,6 +1871,21 @@ describe("the scored set", () => {
           );
         }
       }
+    });
+
+    it("scores the untied tasks of the pair's last attempt again first, where an earlier attempt was repeated", () => {
+      // g-1 bought a repeat and g-2 tied it; g-3 is the candidate's second attempt, and its repeat
+      // scores g-3's untied tasks first. Until 16 October the pair had to hold one such reading,
+      // and a second attempt's repeat scored none of its first stage's tasks first.
+      const first = drawn(heldOut(eight), 4);
+      const later = others(first);
+      const events = [
+        ...heldOut(eight),
+        ...compared("g-1", first, [2, 0], {}, true),
+        ...compared("g-2", first, [0, 0], {}, true),
+        ...compared("g-3", later, [2, 0], {}, true),
+      ];
+      expect(drawn(events, 4, repeat("g-4")).slice(0, 2)).toEqual(later.slice(0, 2));
     });
 
     it("scores the first stage's untied tasks again first, on fresh solves, then draws as any comparison does", () => {

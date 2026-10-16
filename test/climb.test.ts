@@ -571,7 +571,9 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
       level: 0.1,
       setting: SETTING,
       versions: ["v1"],
-      frontier: { differences: [2], falseRate: 0.01 },
+      // Three tasks won by two pairs each: p 0.125, under the trigger, so it buys a repeat.
+      frontier: { differences: [2, 2, 2], falseRate: 0.01 },
+      retained: "unmeasured",
     });
   /** An old ladder read on `reference` (retired 16 October): tasks by the starter's valid solves
    *  and by the reference's. */
@@ -620,6 +622,11 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     expect(worthOf(log.slice(0, step + 1), asked)).toEqual(before);
     expect(before.cost).toMatchObject({ attempts: 1, met: true });
     expect(worthOf(log.slice(0, step + 1), { ...asked, id: "g-5" }).cost).toMatchObject({ attempts: 1 });
+    // A reading after that repeat is the candidate's second attempt: until 16 October any earlier
+    // reading made it a repeat, and buffer-159-opus's g-6 read one attempt where there were two.
+    const tied = { ...stepRead("g-5", "ha", "hb").data, reading: "no-step", frontier: { differences: [0] } };
+    const repeated = [...log.slice(0, step + 1), event("comparison.reported", tied)];
+    expect(worthOf(repeated, { ...asked, id: "g-6" }).cost).toMatchObject({ attempts: 2 });
   });
 
   it("reads no old ladder reading as a step, a control or an attempt of the climb's", () => {

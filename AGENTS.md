@@ -695,7 +695,7 @@ the level takes (`practiceRoom`, `src/builder/decide.ts`; until 16 October also 
 four of the tasks the epoch may score and released, which bound alone in none of 35 releases):
 each release is one task fewer to compare. A release takes
 first the tasks no solve answered in two comparisons, then half of the tasks the reference
-harness failed in the last comparison, and the rest by the contract's draw
+harness failed in a solve of the last comparison, rounded up, and the rest by the contract's draw
 (`tools/d2/prepare.ts`): the tasks that leave the reference room are what a Builder has to work
 on. A task that a comparison scored before its release keeps that comparison's solves on the
 exam side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
@@ -790,8 +790,9 @@ second kind is a choice by the reference's results and is not neutral: a loss ca
 task the reference answers, so with two thirds of those out of the draw a harness that answers new
 tasks and loses old ones would read better than it is over the tasks written, the more so as the
 newest tasks are drawn first. So the third kept is retained, and a scored set takes one of them
-for each three frontier tasks it takes (`scoredSet`; until 16 October as many as the target left
-room for, which topped a set short of frontier up with tasks that can only tie). They are read
+for each three frontier tasks it takes, beside the target (`scoredSet`; until 16 October as many
+as the target left room for, which left a frontier that filled the target none and topped a set
+short of frontier up with tasks that can only tie). They are read
 apart from the frontier the step is read on, and a step that loses more retained pairs than it
 wins reads `regressed` and promotes nothing (section 7, The test).
 

@@ -350,8 +350,8 @@ function costOf(
 }
 
 /** Comparison `read.id`'s worth where it reads a step (the plan's W): the cost of the log's last
- *  epoch with it as an attempt where its candidate is not one already, a repeat being its first
- *  stage's. It is read as the log stood before its report, so a report read again says what it said. */
+ *  epoch with it as an attempt unless it is the repeat of one (`attemptsOf`), a repeat being its
+ *  first stage's. It is read as the log stood before its report, so a report read again says what it said. */
 export function worthOf(events: readonly LogEvent[], read: Read): Worth {
   const before = events.filter(
     ({ kind, data }) => kind !== "comparison.reported" || data.session !== read.id,
@@ -359,13 +359,19 @@ export function worthOf(events: readonly LogEvent[], read: Read): Worth {
   const bars = barsOf(before);
   const epochs = epochsOf(before);
   const epoch = epochs.at(-1);
-  const again = lastReports(before).some(
-    ({ index, data }) =>
-      epoch !== undefined &&
-      index >= epoch.from &&
-      data.fresh === read.fresh &&
-      asRecord(data.frontier) !== null,
+  const trigger = Number(openingOf(before)?.terms.trigger ?? TRIGGER);
+  const prior = lastReports(before).flatMap(({ index, data }) =>
+    epoch !== undefined &&
+    index >= epoch.from &&
+    data.fresh === read.fresh &&
+    asRecord(data.frontier) !== null
+      ? [data]
+      : [],
   );
+  // Until 16 October any earlier reading of the candidate made this one its repeat, and the g-6
+  // prefix of buffer-159-opus read one attempt where the epoch reader counts two (`attemptsOf`).
+  const open = attemptsOf(prior, (data) => triggered(data, trigger)).at(-1);
+  const again = open?.length === 1 && open[0] !== undefined && triggered(open[0], trigger);
   return { bars, cost: costOf(before, epoch, bars.cost, again ? 0 : 1) };
 }
 

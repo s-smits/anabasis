@@ -485,24 +485,34 @@ describe("a row of the table", () => {
       compared("g-1", "h1", "no-step", { tally: [wins, losses, 12 - wins - losses] });
     expect(move([...FIRST, ...tally(4, 3)])).toMatchObject({ move: "build" });
     expect(move([...FIRST, ...tally(6, 2)])).toMatchObject({ move: "compare" });
-    // The repeat is of tasks its first stage did not score: until the campaign holds its target of
-    // them the Examiner writes more, however many sessions that takes, and sessions that hold out
-    // none end the campaign at its patience.
+    // The repeat scores the first stage's untied tasks again and the held tasks it did not score:
+    // where those are fewer than a sweep at the level takes (four at 0.1) the Examiner writes
+    // more, however many sessions that takes, and sessions that hold out none end the campaign at
+    // its patience. A report that names no task of its differences offers none to score again.
     const scoredAll = [...ONE, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
     expect(decide(scoredAll, PLAN)).toEqual({
       move: "examine",
       code: "unfinished",
-      why: "comparison g-1 cleared the trigger, and the campaign is 12 held-out tasks short of a repeat on tasks its first stage did not score: the Examiner writes more first",
+      why: "comparison g-1 cleared the trigger, and the campaign is 4 held-out tasks short of a repeat that could read a step: the Examiner writes more first",
       repeats: "g-1",
     });
     const two = [...scoredAll, ...examined("x-1", ["n1", "n2"])];
     expect(decide(two, PLAN)).toMatchObject({
       move: "examine",
-      why: expect.stringContaining("10 held-out tasks short"),
+      why: expect.stringContaining("2 held-out tasks short"),
       repeats: "g-1",
     });
-    const fresh = Array.from({ length: 10 }, (_, nth) => `m${String(nth)}`);
-    expect(move([...two, ...examined("x-2", fresh)])).toEqual(again);
+    expect(move([...two, ...examined("x-2", ["m1", "m2"])])).toEqual(again);
+    // Until 16 October the repeat waited for a target of fresh tasks, about 300 gate solves after
+    // a promotion: the eight tasks the step untied are scored again, and nothing waits.
+    const named = { frontier: { ...tallied(8, 0, 4).frontier, of: HELD } };
+    expect(
+      move([
+        ...ONE,
+        built("b-1", "h1"),
+        ...compared("g-1", "h1", "step", { tally: [8, 0, 4], extra: named }),
+      ]),
+    ).toEqual(again);
     const idled = [...two, ...examined("x-2"), ...examined("x-3"), ...examined("x-4")];
     expect(decide(idled, PLAN)).toMatchObject({ move: "end", ending: "exam" });
     // The A/A a comparison of four solves a side carries beside it changes no move while it reads

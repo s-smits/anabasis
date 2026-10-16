@@ -305,7 +305,7 @@ export function sessionNamed(
  * The scored set a command's flags name, by task version, and the retained tasks in it: the
  * tasks `--tasks` lists by id, each a task of the pack or of a session, or `--target` of the
  * held-out tasks by the contract's draw (`scoredSet`), which takes a `repeat`'s first stage's
- * tasks and their kin last: a checkpoint names the comparison it may repeat and a round, never a
+ * untied tasks first and its other tasks and their kin last: a checkpoint names the comparison it may repeat and a round, never a
  * repeat, does not. Whether each is a held-out task is the comparison's to refuse.
  */
 export function scoredNamed(

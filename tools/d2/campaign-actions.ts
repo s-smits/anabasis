@@ -204,7 +204,7 @@ function actionTool(
         "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say what it has held out. A comparison is won on tasks the reference fails in some solve, or where the objective tells two valid answers apart.",
       release_practice: "Release the host's draw of public practice tasks into this workspace.",
       compare:
-        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one bought a repeat, its result at or under the trigger whatever it read by itself, this is that repeat: of the harness as that comparison froze it, on tasks it did not score, and it waits until the campaign holds enough of them. The comparison and its repeat, read together, decide a promotion.",
+        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the last one bought a repeat, its result at or under the trigger whatever it read by itself, this is that repeat: of the harness as that comparison froze it, on the tasks it untied again and on tasks it did not score, and it waits only where the campaign holds too few for it to read a step. The comparison and its repeat, read together, decide a promotion.",
       promote:
         "Make the harness whose comparison and repeat, read together, cleared the level the campaign's reference, where the host has not already done so as the repeat reported. Nothing else is promoted, and this measures nothing.",
     }[move],
@@ -395,11 +395,10 @@ async function comparedOf(
 ): Promise<{ readonly move: Compare; readonly froze?: string; readonly note: string } | { refused: string }> {
   const latest = latestBuilt(events);
   if (decided.move === "compare" && decided.id !== undefined) return { move: decided, note: "" };
-  // A repeat waits for the tasks its first stage did not score: until 14 October it ran on the
-  // tasks held where the Builder asked, and buffer-149's g-2 scored 8 of g-1's 9 frontier tasks.
+  // A repeat waits where too few tasks are held for it to read a step (`shortOf`).
   if (decided.move === "examine" && decided.repeats !== undefined) {
     return {
-      refused: `The repeat of comparison ${decided.repeats} waits for ${plural(shortOf(events, plan), "more held-out task")} its first stage did not score: call examine first.`,
+      refused: `The repeat of comparison ${decided.repeats} waits for ${plural(shortOf(events, plan), "more held-out task")} before it can read a step: call examine first.`,
     };
   }
   if (decided.move === "compare" && decided.repeats !== undefined) {
@@ -610,7 +609,7 @@ function spentLines({ events, plan }: Turn): string[] {
     ...(due === null
       ? []
       : [
-          `Comparison ${due.id} bought a repeat: ${plural(due.fresh, "held-out task")} it did not score, of ${String(plan.wanted.target)} the repeat scores.`,
+          `Comparison ${due.id} bought a repeat: it scores the tasks it untied again, with ${plural(due.fresh, "held-out task")} it did not score, up to ${String(plan.wanted.target)}.`,
         ]),
     `Moves without a gain since the last step: ${String(sinceStep)} of the patience's ${String(patienceOf(events))}.`,
     ...(count === 0
@@ -627,7 +626,7 @@ function namedLine(decided: Decided, size: string): string {
   if (decided.move === "build") return "Edit and practise the harness.";
   if (decided.move === "promote") return `promote makes harness ${short(decided.harness)} the reference.`;
   if (decided.move === "examine") {
-    // A repeat waits on the tasks its first stage did not score (`comparedOf`).
+    // A repeat waits where too few tasks are held for it to read a step (`comparedOf`).
     return decided.repeats === undefined
       ? size
       : `${size}\nThe repeat of comparison ${decided.repeats} waits for the tasks examine writes.`;

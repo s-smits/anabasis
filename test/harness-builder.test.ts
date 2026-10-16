@@ -458,13 +458,14 @@ describe("a campaign run by its log", () => {
       fresh: first?.fresh,
       settled: "unsettled",
     });
-    // The repeat scored the seven tasks its first stage did not. Until 12 October a campaign held one
-    // target before its first comparison, and buffer-141-m3's g-2 scored g-1's versions again.
+    // The repeat scored again the seven tasks its first stage untied, on fresh solves, though seven
+    // others were held: until 16 October it scored the ones its first stage did not, and waited
+    // for them where too few were held.
     const [once = [], again = []] = of(name, "comparison.started").map(({ tasks }) =>
       Array.isArray(tasks) ? tasks : [],
     );
     expect([once.length, again.length]).toEqual([7, 7]);
-    expect(again.filter((task) => once.includes(task))).toEqual([]);
+    expect(new Set(again)).toEqual(new Set(once));
     expect(of(name, "harness.promoted")).toEqual([]);
     // Reopened by its name alone, it still waits: the opening keeps the word. Until 12 October it
     // was the running command's flag, and a reopen that left it off promoted without the operator.
@@ -483,8 +484,10 @@ describe("a campaign run by its log", () => {
       { move: "examine", session: "x-1" },
     ]);
     // The promoted harness answered every task of g-1 and g-2, and one comparison closes a task
-    // (15 October), so the Examiner is asked for what that leaves short and stops once it has it.
-    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 2, ended: "supplied" }]);
+    // (15 October). The seven held tasks neither scored leave the campaign short of none, so the
+    // Examiner writes until it finishes: until 16 October g-2 scored those seven, and it was asked
+    // for two.
+    expect(of(name, "exam.finished")).toMatchObject([{ session: "x-1", proposed: 3, ended: "finished" }]);
     // The tasks written are read by a control before a Builder session is paid for: the starter
     // against the promoted harness. Until 10 October the Builder built here, three times, on
     // practice the promoted harness passed (t-4, t-9, t-10).
@@ -496,14 +499,14 @@ describe("a campaign run by its log", () => {
       old: first?.fresh,
     });
     // The script answers nothing under the reference nor the starter, so the control reads the
-    // two new tasks as beyond both; the five pack tasks drawn beside them the promoted harness
-    // answered in g-1, so a valid answer to each is on record and the reference failing them now
-    // is room (`informative`, 15 October; until then no task it failed in every solve was). The
-    // table releases the tasks it failed for practice before a Builder session is paid for.
+    // three new tasks as beyond both; a valid answer to each of the four pack tasks drawn beside
+    // them is on record, so the reference failing them now is room (`informative`, 15 October;
+    // until then no task it failed in every solve was). The table releases the tasks it failed
+    // for practice before a Builder session is paid for.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-3",
       reading: "no-step",
-      valid: { old: [7, 0], fresh: [7, 0], informative: { old: 5, fresh: 5 } },
+      valid: { old: [7, 0], fresh: [7, 0], informative: { old: 4, fresh: 4 } },
     });
     expect(after).toMatchObject({ move: "prepare", code: "practice" });
     expect(after.why).toContain("comparison g-3 read room in the tasks held out since the last release");

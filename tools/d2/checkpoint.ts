@@ -30,12 +30,11 @@
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
  * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
  * campaign has recorded none. A repeat, the comparison that follows one of the same two harnesses
- * whose reading cleared `--trigger`, draws the held-out tasks that one did not score first, and
- * its own only where the campaign holds too few others (`scoredSet`; the
- * operator's decision of `docs/next.md`, question 9). The solves a side, the level, the
- * Referee and the cap are a round's, with a round's defaults (`round.ts`), and
- * `--cap` is required as it is there. With no `--reviewer`, every
- * rejection waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
+ * whose reading cleared `--trigger`, scores that one's untied tasks again, then draws the held-out
+ * tasks it did not score, and its other tasks only where the campaign holds too few (`scoredSet`).
+ * The solves a side, the level, the Referee and the cap are a round's, with a round's defaults
+ * (`round.ts`), and `--cap` is required as it is there. With no `--reviewer`, every rejection
+ * waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
  * Before its first event it asks whether the comparison may start, as a round does
  * (`src/builder/admission.ts`). `--past-stop "<why>"` goes on past the plan's

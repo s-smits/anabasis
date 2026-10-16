@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { isString, type JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -880,7 +880,7 @@ describe("a campaign tool where the table names more than the action", () => {
   const passing = () =>
     scriptedSeats({ held: { old: "none", fresh: "pass" }, starter: "none" }, GRADED_MANY, []);
 
-  it("refuses a repeat until the campaign holds its target of tasks the first stage did not score", async () => {
+  it("repeats a step at once on the tasks it untied, where the campaign holds no task it did not score", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-early`;
     const seats: Seats = {
@@ -888,19 +888,20 @@ describe("a campaign tool where the table names more than the action", () => {
         CHANGE_GUIDE,
         ["compare", {}],
         ["compare", {}],
-        ["finish", { note: "The repeat waits for tasks." }],
+        ["finish", { note: "The step was read twice." }],
       ]),
       examine: (request) => examine({ ...request, ...scripted([]) }),
     };
     await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "4"], seats);
-    // The repeat the Builder finished on is owed, and the host asks the Examiner for its tasks.
-    expect(of(name, MOVED).at(-1)).toMatchObject({ move: "examine", code: "unfinished" });
-    // Until 14 October the repeat ran on the five tasks its first stage had scored.
-    expect(of(name, REPORTED)).toHaveLength(1);
-    expect(said(name, "compare")[1]).toContain(
-      "The repeat of comparison g-1 waits for 5 more held-out tasks its first stage did not score: call examine first.",
-    );
-    expect(of(name, MOVED).filter(({ move }) => move === "compare")).toHaveLength(1);
+    // Until 16 October the repeat waited for a target of tasks its first stage did not score, and
+    // the host asked the Examiner for them: about 300 gate solves after a promotion.
+    const [first, repeat] = of(name, REPORTED);
+    const named = asRecord(first?.frontier)?.of;
+    expect(Array.isArray(named) && named.length > 0).toBe(true);
+    expect(repeat).toMatchObject({ fresh: first?.fresh, old: first?.old });
+    expect(repeat?.versions).toEqual(expect.arrayContaining(Array.isArray(named) ? named : []));
+    expect(said(name, "compare")[1]).not.toContain("call examine first");
+    expect(of(name, MOVED).filter(({ move }) => move === "compare")).toHaveLength(2);
   });
 
   it("repeats a step on the harness that reading froze, whatever harness/ holds since, and promotes it", async () => {

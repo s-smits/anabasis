@@ -1744,12 +1744,14 @@ describe("the scored set", () => {
     /** The comparison a draw is made for: `id`, of the pair, bought at a trigger of 0.25. */
     const repeat = (id: string, of = pair) => ({ id, ...of, trigger: 0.25 });
     /** Comparison `id` of h1 with h0 on `tasks`, begun and reported at `wins` to `losses`, its
-     *  frontier tallied by family as `families` says: wins, losses and ties. */
+     *  frontier tallied by family as `families` says: wins, losses and ties; where `named`, its
+     *  report names the task of each difference, `tasks` in order. */
     const compared = (
       id: string,
       tasks: readonly string[],
       [wins, losses]: readonly [number, number],
       families: Readonly<Record<string, readonly [number, number, number]>> = {},
+      named = false,
     ): LogEvent[] => [
       {
         at,
@@ -1774,6 +1776,10 @@ describe("the scored set", () => {
           old: "h0",
           fresh: "h1",
           ...tallied(wins, losses, tasks.length - wins - losses),
+          frontier: {
+            ...tallied(wins, losses, tasks.length - wins - losses).frontier,
+            ...keyIfDefined("of", named ? [...tasks] : undefined),
+          },
           families: Object.fromEntries(
             Object.entries(families).map(([name, [won, lost, ties]]) => [
               name,
@@ -1826,6 +1832,30 @@ describe("the scored set", () => {
           drawn(heldOut(others(scored)), target),
         );
       }
+    });
+
+    it("scores the first stage's untied tasks again first, on fresh solves, then draws as any comparison does", () => {
+      // buffer-159-opus, 16 October: a repeat that waited for 12 fresh tasks cost about 300 gate
+      // solves after a promotion, and its step and repeat read 5-0 where 6-0 promotes.
+      const first = drawn(heldOut(eight), 4);
+      const events = [...heldOut(eight), ...compared("g-1", first, [2, 0], {}, true)];
+      const second = drawn(events, 4, repeat("g-2"));
+      expect(second.slice(0, 2)).toEqual(first.slice(0, 2));
+      expect(second.slice(2)).toEqual(drawn(heldOut(others(first)), 2));
+      // Where the campaign holds no other, the tasks the first stage tied come after its untied ones.
+      const four = eight.slice(0, 4);
+      const whole = drawn(heldOut(four), 4);
+      const rescored = drawn(
+        [...heldOut(four), ...compared("g-1", whole, [1, 1], {}, true)],
+        4,
+        repeat("g-2"),
+      );
+      expect(rescored.slice(0, 2)).toEqual(whole.slice(0, 2));
+      expect(rescored.toSorted()).toEqual(whole.toSorted());
+      // A task no longer held is not scored again.
+      const [dropped = ""] = first;
+      const gone = { at, kind: TASK_STATE, data: { version: dropped, state: "released" } } as const;
+      expect(drawn([...events, gone], 4, repeat("g-2"))).not.toContain(dropped);
     });
 
     it("draws as any comparison does where no first stage bought it: none before, one over the trigger, another pair's, or a repeat already read", () => {

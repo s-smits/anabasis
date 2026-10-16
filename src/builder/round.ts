@@ -262,10 +262,10 @@ interface Repeat {
  * than one it had scored, and one campaign's next comparison scored 4 of the 7 written for it.
  *
  * A `repeat` scores its first stage's untied frontier tasks again first, on fresh solves, then
- * draws as any comparison does, that stage's other tasks last (`firstStage`); a task both score
- * counts once (`joined`, `compare.ts`). Until 16 October it waited for a target of fresh tasks,
- * about 300 gate solves after a promotion, and buffer-159-opus read 5-0 over a step and its repeat
- * where 6-0 promotes.
+ * draws as any comparison does, each scored again in its own epoch's share, that stage's other
+ * tasks last (`firstStage`); a task both score counts once (`joined`, `compare.ts`). Until
+ * 16 October it waited for a target of fresh tasks, about 300 gate solves after a promotion, and
+ * buffer-159-opus read 5-0 over a step and its repeat where 6-0 promotes.
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string, repeat?: Repeat) {
   const pool = poolOf(events);
@@ -294,10 +294,10 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
       (got, tier) => [...got, ...draw(tier, Math.min(wanted - got.length, tier.length), contract)],
       [],
     );
-  tasks.push(...drawn(newest, Math.max(0, Math.min(count - reserved, newest.length) - tasks.length)));
-  for (const epoch of older) {
-    tasks.push(...drawn(epoch, Math.min(count - tasks.length, epoch.length)));
-  }
+  const free = (epoch: readonly string[]) => epoch.filter((version) => !tasks.includes(version)).length;
+  const own = Math.min(count - reserved, newest.length) + free(newest) - newest.length;
+  tasks.push(...drawn(newest, Math.max(0, own)));
+  for (const epoch of older) tasks.push(...drawn(epoch, Math.min(count - tasks.length, free(epoch))));
   return { tasks, retained: tasks.filter((task) => pool.retained.includes(task)) };
 }
 

@@ -1881,6 +1881,14 @@ describe("the scored set", () => {
       const [dropped = ""] = first;
       const gone = { at, kind: TASK_STATE, data: { version: dropped, state: "released" } } as const;
       expect(drawn([...events, gone], 4, repeat("g-2"))).not.toContain(dropped);
+      // A task scored again counts in its own epoch's share, so the set still fills: counted in the
+      // newest epoch's, a rehearsal from buffer-159-opus scored 7 of its 8 (16 October).
+      const older = eight.slice(0, 3);
+      const promoted = { at, kind: "harness.promoted", data: { harness: "h9" } } as const;
+      const epochs = [...heldOut(older), ...compared("g-1", older, [2, 0], {}, true), promoted];
+      const filled = drawn([...epochs, ...heldOut(eight.slice(3))], 8, repeat("g-2"));
+      expect(filled).toHaveLength(8);
+      expect(filled.slice(0, 2)).toEqual(older.slice(0, 2));
     });
 
     it("draws as any comparison does where no first stage bought it: none before, one over the trigger, another pair's, or a repeat already read", () => {

@@ -261,10 +261,6 @@ describe("the Tasks pane's grid", () => {
     const counts = { held: 22, released: 2, refused: 1, disputed: 1 } as const;
     for (const [value, count] of Object.entries(counts)) {
       await state.selectOption(value);
-      if (count === 0) {
-        await expect(on.getByText("No matching task")).toBeVisible();
-        continue;
-      }
       await expect(corner(on)).toHaveText(`Tasks (${String(count)})`);
       const notes = await grid(on).locator("tbody th small").allTextContents();
       expect(notes.every((note) => note.startsWith(value))).toBe(true);

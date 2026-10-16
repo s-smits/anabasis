@@ -103,6 +103,7 @@
  * Not run here: see `campaign.ts`.
  */
 import { decide } from "#src/builder/decide.ts";
+import { sessionEnded } from "#src/builder/ground.ts";
 import { type Decided, decidedLine } from "#src/builder/move.ts";
 import { pendingWords } from "#src/builder/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
@@ -197,11 +198,7 @@ function hostOwed(decided: Decided, events: readonly LogEvent[]): boolean {
 async function goesOn(log: string, from: number, error: unknown, host: Seats["host"]): Promise<boolean> {
   if (await waitOut(log, error, host)) return true;
   const events = read(log);
-  const crashed = events
-    .slice(from)
-    .some(
-      ({ kind, data }) => (kind === "build.finished" || kind === "exam.finished") && data.ended === "crashed",
-    );
+  const crashed = events.slice(from).some((event) => sessionEnded(event) && event.data.ended === "crashed");
   if (crashed) await waitCrashed(log, host);
   return crashed;
 }

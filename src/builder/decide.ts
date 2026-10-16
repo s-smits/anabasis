@@ -437,9 +437,9 @@ function dueOf(ground: Ground) {
     return null;
   }
   const scored = new Set(Array.isArray(read.report.versions) ? read.report.versions : []);
-  const { scorable } = poolOf(events);
-  const again = untiedOf(read.report).tasks.filter((task) => scorable.includes(task));
-  return { first: read, again: again.length, fresh: scorable.filter((task) => !scored.has(task)).length };
+  const { frontier } = poolOf(events);
+  const again = untiedOf(read.report).tasks.filter((task) => frontier.includes(task));
+  return { first: read, again: again.length, fresh: frontier.filter((task) => !scored.has(task)).length };
 }
 
 function unfinished(ground: Ground): Move | null {
@@ -553,7 +553,11 @@ function wanting(ground: Ground): Move | null {
     return answered ? null : written(`comparison ${read.id} tallied no task`);
   }
   if (lacks === undefined) return null;
-  if (lacks !== "untied-short") return written("the campaign holds fewer tasks to score than a step takes");
+  if (lacks !== "untied-short") {
+    return written(
+      "the campaign holds fewer tasks a step can be read on than a step takes: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart",
+    );
+  }
   if (read === null) return written("the last comparison left too few tasks for the next to untie");
   return written(
     read.control
@@ -751,9 +755,8 @@ export function epochReleased(events: readonly LogEvent[]) {
  *  frontier tasks than a sweep at `level` takes, since it takes failed ones first (`releaseOrder`). */
 export function practiceRoom(events: readonly LogEvent[], level: number): number {
   const { promotedAt, epoch } = epochReleased(events);
-  const { scorable, retained } = poolOf(events);
-  const frontier = scorable.filter((task) => !retained.includes(task)).length;
-  const room = Math.min(Math.floor((scorable.length + epoch) / 4) - epoch, frontier - sweepOf(level));
+  const { scorable, frontier } = poolOf(events);
+  const room = Math.min(Math.floor((scorable.length + epoch) / 4) - epoch, frontier.length - sweepOf(level));
   return promotedAt === -1 ? Infinity : Math.max(0, room);
 }
 

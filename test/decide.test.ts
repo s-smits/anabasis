@@ -20,6 +20,8 @@ const HELD = ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11"
 const HALF: Valid = [4, 4, 4];
 const ALL: Valid = [0, 0, 12];
 const NONE: Valid = [12, 0, 0];
+const SHORT_WHY =
+  "the campaign holds fewer tasks a step can be read on than a step takes: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart";
 const PLAN: Plan = {
   sessions: 1,
   // The plan's three, which these rows were written against; the default is six (`PATIENCE`).
@@ -523,7 +525,9 @@ describe("a row of the table", () => {
     );
     // Against a promoted reference a step is one as against the starter. A log of before
     // 2026-10-11 may hold `starter-unread`, which reads as no step.
-    const epoch = [...FIRST, promotion("h1"), setting(null), built("b-2", "h2")];
+    // Its tasks held out after the promotion: one held before, that h1 never stood in, is retained.
+    const after = HELD.map((version) => `e${version}`);
+    const epoch = [...FIRST, promotion("h1"), setting(null), ...examined("x-2", after), built("b-2", "h2")];
     const unread = compared("g-1", "h2", "starter-unread", { old: "h1", tally: [8, 0, 4] });
     expect(move([...epoch, ...unread])).not.toMatchObject({ reference: "starter" });
     expect(move([...epoch, ...compared("g-1", "h2", "step", { old: "h1", tally: [8, 0, 4] })])).toEqual({
@@ -651,12 +655,9 @@ describe("a row of the table", () => {
     expect(decide(tied, small)).toEqual({
       move: "examine",
       code: "short",
-      why: "comparison g-1 read no step with room to gain and left too few tasks for the next to untie: harness h1 can only tie again on the tasks the reference harness answered in every solve",
+      why: SHORT_WHY,
     });
-    expect(move([...tied, built("b-2", "h2")], small)).toEqual({
-      move: "examine",
-      why: "the last comparison left too few tasks for the next to untie",
-    });
+    expect(move([...tied, built("b-2", "h2")], small)).toEqual({ move: "examine", why: SHORT_WHY });
     // Tasks held out since count whole, and the comparison is admitted.
     const more = ["v13", "v14", "v15", "v16"].flatMap(heldOut);
     expect(move([...tied, built("b-2", "h2"), ...more], small)).toMatchObject({ move: "compare" });
@@ -915,13 +916,16 @@ describe("a hold on the move a row named", () => {
     const eight = HELD.slice(0, 8).flatMap(heldOut);
     expect(practiceRoom(eight, 0.1)).toBe(Infinity);
     // Eight held after a promotion: two may go. One released, one more.
-    const promoted = [...eight, promotion("h1")];
+    // Held after it: a task held out before the promotion that the promoted harness has stood in
+    // no comparison of is retained, and no room (`poolOf`).
+    expect(practiceRoom([...eight, promotion("h1")], 0.1)).toBe(0);
+    const promoted = [promotion("h1"), ...eight];
     expect(practiceRoom(promoted, 0.1)).toBe(2);
     const one = [...promoted, event("task.state", { version: "v1", state: "released" })];
     expect(practiceRoom(one, 0.1)).toBe(1);
     // Five held leave one over the four a sweep at 0.1 takes, and four none.
-    expect(practiceRoom([...HELD.slice(0, 5).flatMap(heldOut), promotion("h1")], 0.1)).toBe(1);
-    expect(practiceRoom([...HELD.slice(0, 4).flatMap(heldOut), promotion("h1")], 0.1)).toBe(0);
+    expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 5).flatMap(heldOut)], 0.1)).toBe(1);
+    expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 4).flatMap(heldOut)], 0.1)).toBe(0);
     // Four the promoted harness answered in every solve leave four it may win, and a sweep takes
     // four: a task it closed can only tie, and is no room. buffer-159-opus held 28 after its
     // promotion, 14 of them exhausted and 6 frontier, and counted over the 28 the room was 7.

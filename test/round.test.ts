@@ -1446,15 +1446,18 @@ describe("a checkpoint with no session", () => {
       append(s.log, "task.gate", gatePassed(version));
     }
     // Two comparisons in which the reference answered s1 in every solve exhaust it, and the hash
-    // keeps a third of the exhausted, here s1 itself, in the draw as retained.
+    // keeps a third of the exhausted, here s1 itself, in the draw as retained. s2 to s5 were held
+    // out before the promotion and the reference stood in no comparison of them: retained too.
     await checkpoint(s.compare("g1", { tasks: ["s1"] }));
     await checkpoint(s.compare("g2", { tasks: ["s1"] }));
     const tasks = ["s1", "s6", "s7", "s8", "s9"];
-    // One draw gives the scored set and the retained tasks in it, and the start records both.
+    expect(poolOf(read(s.log)).retained.toSorted()).toEqual(["s1", "s2", "s3", "s4", "s5"]);
+    // One draw gives the scored set and the retained tasks in it, one for each three frontier
+    // tasks, and the start records both.
     const drawn = scoredSet(read(s.log), 12, "c");
-    expect(drawn.retained).toEqual(["s1"]);
-    expect(drawn.tasks).toEqual(expect.arrayContaining(tasks));
-    const report = await checkpoint(s.compare("g3", { tasks, retained: drawn.retained }));
+    expect(drawn.retained).toHaveLength(2);
+    expect(drawn.tasks).toEqual(expect.arrayContaining(["s6", "s7", "s8", "s9", ...drawn.retained]));
+    const report = await checkpoint(s.compare("g3", { tasks, retained: ["s1"] }));
     expect(s.of(COMPARISON_STARTED).at(-1)).toMatchObject({ tasks, retained: ["s1"] });
     expect(report).toMatchObject({
       frontier: { tasks: ["s6", "s7", "s8", "s9"], aside: [], wins: 4, losses: 0, ties: 0, p: 0.0625 },
@@ -1684,7 +1687,7 @@ describe("the scored set", () => {
     expect(drawn(laddered, 12).toSorted()).toEqual([...held, "l1"].toSorted());
   });
 
-  it("takes the newest epoch's tasks first, and fills the rest from the epochs before by hash", () => {
+  it("takes the newest epoch's tasks first, and reads the epochs before the reference never stood in as retained", () => {
     // The simulated climb of 10 October: after two promotions a draw over every epoch at once
     // took two or three tasks the reference failed out of 19, and three comparisons read one win
     // short. The tasks written since the last promotion are the exam, so they come first, whole.
@@ -1693,34 +1696,44 @@ describe("the scored set", () => {
       { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
       ...heldOut(["v7", "v8"]),
     ];
-    const newest = drawn(climbed, 4);
-    expect(newest.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
-    expect(newest.slice(2)).toEqual(drawn(heldOut(held), 2));
+    // The tasks held before the promotion, which h1 stood in no comparison of, were written for
+    // the harness it replaced: retained, one for each three frontier tasks, by their own hash.
+    // Until 16 October one task in four of the set was kept for them as frontier, and after each
+    // of buffer-159-opus's promotions they tied with both sides valid in every solve.
+    expect(poolOf(climbed)).toMatchObject({ frontier: ["v7", "v8"], retained: held });
+    const newest = scoredSet(climbed, 4, "contract-a");
+    expect(newest.tasks.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
+    expect(newest.tasks).toHaveLength(3);
+    expect(newest.retained).toEqual(newest.tasks.slice(2));
+    expect(held).toContain(newest.retained[0] ?? "");
     // Within the newest epoch the hash still chooses, so no result does.
     expect(drawn(climbed, 1)).toEqual(drawn(heldOut(["v7", "v8"]), 1));
-    // A target past the held-out count scores them all, newest first.
-    expect(drawn(climbed, 12)).toHaveLength(8);
-    // One task in four is kept for the epochs before, however many the newest holds: the
-    // regression check, since the control reads the starter and not the last reference.
-    const filled: LogEvent[] = [
-      ...heldOut(held),
-      { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
-      ...heldOut(["v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14"]),
+    // A target past the held-out count scores the frontier whole and its share of the retained.
+    expect(drawn(climbed, 12)).toHaveLength(3);
+    // A task of the epoch before that the reference stood in and left open is frontier still.
+    const stood: LogEvent[] = [
+      ...climbed,
+      {
+        at,
+        kind: "comparison.reported",
+        data: {
+          session: "g-1",
+          old: "h1",
+          fresh: "h2",
+          versions: ["v1"],
+          scored: { wins: 0, losses: 0, ties: 1 },
+        },
+      } as const,
     ];
-    const kept = drawn(filled, 8);
-    expect(kept).toHaveLength(8);
-    expect(kept.slice(0, 6).every((version) => Number(version.slice(1)) >= 7)).toBe(true);
-    expect(kept.slice(6)).toEqual(drawn(heldOut(held), 2));
-    // Under four tasks nothing is reserved.
-    expect(drawn(filled, 3).every((version) => Number(version.slice(1)) >= 7)).toBe(true);
-    // A task released in the newest epoch leaves room for an older one.
+    expect(poolOf(stood).frontier.toSorted()).toEqual(["v1", "v7", "v8"]);
+    // A task released in the newest epoch leaves room for no older one: the frontier is v7 alone.
     const released: LogEvent[] = [
       ...climbed,
       { at, kind: TASK_STATE, data: { version: "v8", state: "released" } } as const,
     ];
     const after = drawn(released, 4);
     expect(after[0]).toBe("v7");
-    expect(after.slice(1)).toEqual(drawn(heldOut(held), 3));
+    expect(after).toHaveLength(2);
   });
 
   it("scores every frontier task, and of the retained third one for each three frontier tasks", () => {
@@ -1800,6 +1813,7 @@ describe("the scored set", () => {
           session: id,
           old: "h0",
           fresh: "h1",
+          versions: [...tasks],
           ...tallied(wins, losses, tasks.length - wins - losses),
           frontier: {
             ...tallied(wins, losses, tasks.length - wins - losses).frontier,
@@ -1884,7 +1898,8 @@ describe("the scored set", () => {
       // A task scored again counts in its own epoch's share, so the set still fills: counted in the
       // newest epoch's, a rehearsal from buffer-159-opus scored 7 of its 8 (16 October).
       const older = eight.slice(0, 3);
-      const promoted = { at, kind: "harness.promoted", data: { harness: "h9" } } as const;
+      // The reference stood in them there, so they are frontier still (`poolOf`).
+      const promoted = { at, kind: "harness.promoted", data: { harness: "h0" } } as const;
       const epochs = [...heldOut(older), ...compared("g-1", older, [2, 0], {}, true), promoted];
       const filled = drawn([...epochs, ...heldOut(eight.slice(3))], 8, repeat("g-2"));
       expect(filled).toHaveLength(8);
@@ -1931,13 +1946,11 @@ describe("the scored set", () => {
     // s2 to s4 were answered by both harnesses in every solve of both comparisons: exhausted, and
     // left out but for a third of them, kept by the contract's hash as a check on regression,
     // which the draw hands on as its retained set.
-    expect(poolOf(read(s.log))).toMatchObject({ awaiting: ["s1"], retained: ["s3"] });
+    // s5, held out before the promotion and never scored, is retained beside it, and with no
+    // frontier task left the draw takes none.
+    expect(poolOf(read(s.log))).toMatchObject({ awaiting: ["s1"], retained: ["s3", "s5"], frontier: [] });
     expect(poolOf(read(s.log)).exhausted.toSorted()).toEqual(["s2", "s4"]);
-    const next = scoredSet(read(s.log), 12, "c");
-    expect({ tasks: next.tasks.toSorted(), retained: next.retained }).toEqual({
-      tasks: ["s3", "s5"],
-      retained: ["s3"],
-    });
+    expect(scoredSet(read(s.log), 12, "c")).toEqual({ tasks: [], retained: [] });
     // Named for a comparison all the same, it is refused: the draw leaves it out, and a name
     // was the one way past that (2026-10-09).
     await expect(round(s.next("b-3"))).rejects.toThrow(

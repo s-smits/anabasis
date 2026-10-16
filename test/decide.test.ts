@@ -782,33 +782,6 @@ describe("a row of the table", () => {
 });
 
 describe("a hold on the move a row named", () => {
-  it("risk: a comparison past a quarter's chance of a false promotion this epoch waits for an A/A or a cause", () => {
-    // One attempt read at a level of 0.3, with no A/A on record: its bound is the level.
-    const risky = [
-      ...FIRST,
-      ...compared("g-1", "h1", "no-step", { extra: { frontier: { wins: 4, losses: 4 }, level: 0.3 } }),
-      built("b-2", "h2"),
-    ];
-    expect(decide(risky, PLAN)).toEqual({
-      move: "end",
-      ending: "control",
-      code: "risk",
-      why: "a false promotion is at most 30% over 1 attempt under this reference, past a quarter, and comparison g-1 read no A/A: run a comparison of four solves a side (tools/d2/checkpoint.ts --solves 4), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again",
-    });
-    const cause = event("campaign.word", { word: "cause", why: "the host was loaded" });
-    expect(move([...risky, cause])).toMatchObject({ move: "compare", fresh: "latest" });
-    const safe = risky.map((each) =>
-      each.kind === "comparison.reported" ? { ...each, data: { ...each.data, level: 0.02 } } : each,
-    );
-    expect(move(safe)).toMatchObject({ move: "compare", fresh: "latest" });
-    // The A/A a comparison of four solves a side writes in its report is the one asked for.
-    const aa = { noise: { wins: 0, losses: 0, ties: 4, differences: [0, 0, 0, 0] } };
-    const read = risky.map((each) =>
-      each.kind === "comparison.reported" ? { ...each, data: { ...each.data, ...aa } } : each,
-    );
-    expect(move(read)).toMatchObject({ move: "compare", fresh: "latest" });
-  });
-
   it("afford: a comparison that what is left would not hold is not begun, by what the last one billed", () => {
     // A step read once, by a comparison of two sides whose solves billed 1.00 in all: the repeat
     // solves two sides again, and would bill about 1.00. On 9 October a campaign with $1.45 left

@@ -156,7 +156,6 @@ export async function checkpointCommand(
   // comparison's own terms, and only then the campaign's setting.
   const notes = admitComparison(campaign.log, {
     id,
-    reference: values.reference,
     wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
     seats: seated === solved ? "paid" : "scripted",
     own,

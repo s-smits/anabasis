@@ -604,7 +604,6 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   // terms, and only then an override of the stop rule and the campaign's setting.
   const notes = admitComparison(campaign.log, {
     id: session,
-    reference: values.reference,
     wanted: wantedNamed(campaign, values, { setting, cap, builds: true }),
     seats: seated === solved ? "paid" : "scripted",
     own: () =>

@@ -89,7 +89,7 @@ export const CRASHES = DRAFTS;
 /** The false-promotion chance this epoch past which an attempt waits for an A/A (`risked`). */
 export const RISK = 0.25;
 /** The gate's refusals that are a want of tasks (`refusals`, `admission.ts`). */
-const SHORT = ["no-held", "held-short", "untied-short"] as const;
+const SHORT = ["no-held", "held-short"] as const;
 
 const end = (ending: Ending, why: string): Move => ({ move: "end", ending, why });
 /** A comparison of the latest harness, or of the starter as a control, with the reference one. */
@@ -545,7 +545,7 @@ function noRoom(ground: Ground): Move | null {
  * set of which the reference had closed all but two or three, 2-0-6 each time.
  */
 function wanting(ground: Ground): Move | null {
-  const { refused, read, reference } = ground;
+  const { refused, read } = ground;
   const lacks = SHORT.find((code) => refused.has(code));
   const written = (why: string) => examine(ground, "tasks", why);
   if (read?.report.reading === "not-scored") {
@@ -553,16 +553,8 @@ function wanting(ground: Ground): Move | null {
     return answered ? null : written(`comparison ${read.id} tallied no task`);
   }
   if (lacks === undefined) return null;
-  if (lacks !== "untied-short") {
-    return written(
-      "the campaign holds fewer tasks a step can be read on than a step takes: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart",
-    );
-  }
-  if (read === null) return written("the last comparison left too few tasks for the next to untie");
   return written(
-    read.control
-      ? `comparison ${read.id} read the starter against harness ${short(reference ?? "")} with room, and left too few tasks for the next comparison to untie: harness ${short(reference ?? "")} answered the rest in every solve`
-      : `comparison ${read.id} read no step with room to gain and left too few tasks for the next to untie: harness ${short(read.fresh)} can only tie again on the tasks the reference harness answered in every solve`,
+    "the campaign holds fewer tasks a step can be read on than a step takes: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart",
   );
 }
 

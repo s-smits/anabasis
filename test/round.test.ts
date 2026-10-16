@@ -52,6 +52,7 @@ import { dirname, join } from "../src/meta/path.ts";
 import type { RefereeFinding, Ruling } from "../src/review/referee.ts";
 import { text, tool } from "../src/solve/answer.ts";
 import { openHarness } from "../src/solve/harness.ts";
+import { roundSolves } from "./helpers/logged-round.ts";
 import { tallied } from "./helpers/tally.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
@@ -1720,6 +1721,30 @@ describe("the scored set", () => {
     const after = drawn(released, 4);
     expect(after[0]).toBe("v7");
     expect(after.slice(1)).toEqual(drawn(heldOut(held), 3));
+  });
+
+  it("scores every frontier task, and of the retained third one for each three frontier tasks", () => {
+    // Nine tasks the reference answered in every solve, three it answered in none: the hash keeps
+    // three of the nine as retained, and the set takes one of them. Until 16 October it took all
+    // three, topping a set short of frontier up with tasks that can only tie.
+    const closed = Array.from({ length: 9 }, (_, nth) => `c${String(nth)}`);
+    const open = ["f1", "f2", "f3"];
+    const outcomes = Object.fromEntries([
+      ...closed.map((version) => [version, "PP PP"]),
+      ...open.map((version) => [version, "FF PP"]),
+    ]);
+    const { events, terms } = roundSolves("g-1", ["h0", "h1"], outcomes);
+    const report = {
+      at,
+      kind: "comparison.reported",
+      data: { session: "g-1", old: "h0", fresh: "h1", starter: "h0", ...tallied(3, 0, 9), ...terms },
+    } as const;
+    const logged = [...heldOut([...closed, ...open]), ...events, report];
+    expect(poolOf(logged).retained).toHaveLength(3);
+    const set = scoredSet(logged, 12, "contract-a");
+    expect(set.tasks.filter((version) => open.includes(version)).toSorted()).toEqual(open);
+    expect(set.retained).toHaveLength(1);
+    expect(set.tasks).toHaveLength(4);
   });
 
   it("takes the tasks held out since the last comparison began first within an epoch, then the rest by hash", () => {

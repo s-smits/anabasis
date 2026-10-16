@@ -1415,8 +1415,9 @@ describe("a campaign's endings", () => {
     const seats: Seats = { seated: passing() };
     const printed = spyOn(console, "log");
     // One attempt: at 24 tasks a longer patience passes the bound an opening may risk (`openingLines`),
-    // and the opening keeps it for the command it prints.
-    const ending = await harnessBuilder([...flags, "--patience", "1"], seats);
+    // and the opening keeps it for the command it prints. Only an attended campaign waits for the
+    // word: since 16 October an unattended launch admits every check its author decides (#186).
+    const ending = await harnessBuilder([...flags, "--patience", "1", "--hitl"], seats);
     const lines = printed.mock.calls.map(([line]) => (isString(line) ? line : ""));
     printed.mockRestore();
     expect(ending).toMatchObject({ move: "end", ending: "exam" });

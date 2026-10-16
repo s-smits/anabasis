@@ -583,7 +583,7 @@ function unread(ground: Ground): Move | null {
  * nothing of it.
  */
 function ladderOwed({ events, reference, starter }: Ground): Move | null {
-  const at = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const at = epochReleased(events).promotedAt;
   if (at === -1 || reference === null || reference === starter) return null;
   const since = events.flatMap(({ kind, data }, index) =>
     index > at && kind === "comparison.started" && data.ladder === true && isString(data.session)
@@ -632,7 +632,7 @@ function ladderOwed({ events, reference, starter }: Ground): Move | null {
  * (`starter_share`). A reading and never a gate. Null where none is owed.
  */
 function owedReading({ events, all, reference, starter }: Ground): Move | null {
-  const at = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const at = epochReleased(events).promotedAt;
   if (at === -1 || reference === null || reference === starter || taskSets(events).ladder.length > 0) {
     return null;
   }
@@ -815,6 +815,19 @@ export function unaffordedAsked(events: readonly LogEvent[], plan: Plan): string
   return held?.move === "end" ? held.why : null;
 }
 
+/** The tasks released for practice since the reference harness was last promoted, and where it
+ *  was: the practice a campaign names is an epoch's, since a promotion leaves the Builder practice
+ *  the new reference answers. Until 16 October it was the campaign's, and three campaigns released
+ *  3 tasks before their promotion and none after: every practice solve after it passed, and
+ *  main0_5_1's three Builder conversations changed nothing. */
+export function epochReleased(events: readonly LogEvent[]) {
+  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const epoch = events.filter(
+    ({ kind, data }, at) => at > promotedAt && kind === "task.state" && data.state === "released",
+  ).length;
+  return { promotedAt, epoch };
+}
+
 /**
  * A release for practice before a Builder session, where the campaign holds fewer practice tasks
  * than it names and tasks were held out since the last release. One release takes at most half of
@@ -832,7 +845,13 @@ function toPractise({ events, plan, supply, read }: Ground, named: Move): Move |
   // The tasks the setting names to score are no practice, and a release takes half of the rest.
   const scored = events.findLast(({ kind }) => kind === "campaign.setting")?.data.tasks;
   const pool = supply.held - (Array.isArray(scored) ? scored.length : 0);
-  if (named.move !== "build" || practice === null || pool < 2 || heldAfter(events, released) === 0) {
+  const { promotedAt, epoch } = epochReleased(events);
+  if (
+    named.move !== "build" ||
+    practice === null ||
+    pool < 2 ||
+    heldAfter(events, Math.max(released, promotedAt)) === 0
+  ) {
     return null;
   }
   // After a control that read room, practice is brought up by as many again: the tasks that leave
@@ -844,11 +863,16 @@ function toPractise({ events, plan, supply, read }: Ground, named: Move): Move |
       why: `comparison ${read.id} read room in the tasks held out since the last release: the ones the reference harness failed are released first, up to ${plural(practice, "more practice task")}, before the Builder builds`,
     };
   }
-  return supply.released >= practice
+  const since =
+    promotedAt === -1
+      ? ", and tasks were held out since the last release"
+      : " since the reference harness was last promoted, and tasks were held out since";
+  return epoch >= practice
     ? null
     : {
         move: "prepare",
-        why: `${String(supply.released)} of the ${plural(practice, "practice task")} the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds`,
+        ...keyIfDefined("practice", promotedAt === -1 ? undefined : supply.released + practice - epoch),
+        why: `${String(epoch)} of the ${plural(practice, "practice task")} the campaign names are released${since}: the contract's draw releases more before the Builder builds`,
       };
 }
 

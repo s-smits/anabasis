@@ -30,6 +30,7 @@ import { Refused, supplyOf } from "#src/builder/admission.ts";
 import {
   CRASHES,
   decide,
+  epochReleased,
   heldAfter,
   repeatDue,
   shortOf,
@@ -397,8 +398,12 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
 const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
   actionTool(context, bench, RELEASE, async (_turn, decided, begin) => {
     const { values } = context;
+    // Where the table names no release, the practice named is brought up for this epoch alone.
+    const named = Number(values.practice ?? PRACTICE);
+    const events = read(context.log);
     const practice =
-      (decided.move === "prepare" ? decided.practice : undefined) ?? values.practice ?? PRACTICE;
+      (decided.move === "prepare" ? decided.practice : undefined) ??
+      taskSets(events).released.length + named - Math.min(named, epochReleased(events).epoch);
     const result = await prepareCommand([
       ...packOf(values),
       "--practice",

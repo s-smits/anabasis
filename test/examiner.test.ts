@@ -869,7 +869,7 @@ describe("a session that writes tasks", () => {
     expect(once("## The gate")).toBe(1);
     expect(
       once(
-        "held out where some of those solves gave a valid answer and not all, or where none did and an answer of yours passed try_answer on the same instance",
+        "held out where some of those solves gave a valid answer and not all; where every one did and two of the answers are apart by the domain's objective, where it declares one; or where none did and an answer of yours passed try_answer on the same instance",
       ),
     ).toBe(1);
     expect(once("as the system prompt's section on the gate says")).toBe(1);
@@ -877,6 +877,49 @@ describe("a session that writes tasks", () => {
     expect(once("declares an objective")).toBe(1);
     expect(once("Without an objective")).toBe(0);
     expect(s.sent.join("\n")).not.toContain(SOLVER);
+  });
+
+  it("holds out a task the reference harness answers every time where two of its answers are apart by the objective, and not one where they are alike", async () => {
+    // Base 2's answers measure 10, 10 and 12, apart past the margin; base 3's 10, 10 and 10.05,
+    // within it. Until 16 October the gate read no objective and refused both, while a comparison
+    // reads the first as room (`informative`, `src/kernel/compare.ts`).
+    const measures = new Map([
+      [2, [10, 10, 12]],
+      [3, [10, 10, 10.05]],
+    ]);
+    const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
+    let solves = 0;
+    const probe = async (task: TaskPackage, session: string) => {
+      const base = Number(asRecord(task.publicInput)?.base);
+      const objective = measures.get(base)?.[solves % 3];
+      solves += 1;
+      const solve = `s-${String(solves)}`;
+      const ran = condition(taskVersion(task), "h-reference");
+      append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      append(s.log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
+      append(s.log, "verdict", { solve, answer: GOOD, kind: "pass", objective: objective ?? null });
+      append(s.log, "solve.finished", { solve, ending: PASS, billed: 0 });
+      return PASS;
+    };
+    const contract = {
+      ...s.request.contract,
+      objective: { quantity: "the mass", direction: "lower" },
+    } as const;
+    const examined = await examine({
+      ...s.request,
+      contract,
+      limits: { ...s.request.limits, puts: 2 },
+      probe,
+    });
+    const [apart, alike] = [s.versionOf("x-1-001", 2), s.versionOf("x-1-002", 3)];
+    expect(examined).toMatchObject({ held: [apart], refused: [alike] });
+    expect(s.of(GATE).map(({ outcome }) => outcome)).toEqual(["passed", "refused"]);
+    expect(s.of(CALLED)[0]?.text).toBe(
+      [
+        "x-1-001: held out; the reference harness answered it validly in 3 of 3 solves.",
+        "x-1-002: refused: the reference harness answered it validly in 3 of 3 solves, and a task is held out only where it answers some and not all, or every time with two answers apart by the objective, or none where an answer of its author's passes on it",
+      ].join("\n"),
+    );
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {

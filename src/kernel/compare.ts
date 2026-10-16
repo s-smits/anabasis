@@ -308,13 +308,6 @@ function narrowed(stages: readonly Stage[]): boolean {
   return untied.size === 1 && new Set(stages.flatMap(({ families }) => families)).size >= 2;
 }
 
-/** Whether a stage buys the repeat: more frontier pairs won than lost, its test at or under
- *  `trigger`, and no net loss on its retained tasks. A narrow stage buys it, and the repeat draws
- *  where it can from other families. */
-function buys(stage: Stage, trigger: number): boolean {
-  return total(stage.frontier) > 0 && flipP(stage.frontier) <= trigger && !regressed(stage);
-}
-
 /** One comparison's own reading of its report's frontier at `level`: `no-step` short of it,
  *  `regressed` where a step lost more retained pairs than it won, `narrow` where its untied tasks
  *  fall in one family of the two or more its set holds, and neither promotes. A report with no
@@ -339,18 +332,20 @@ export function untiedOf(report: JsonObject) {
   };
 }
 
-/** Whether one comparison's reading buys the repeat (`buys`). It is what the stop rule counts as a
+/** Whether one comparison's reading buys the repeat: more frontier pairs won than lost, its test
+ *  at or under `trigger`, and no net loss on its retained tasks. A narrow stage buys it, and the
+ *  repeat draws where it can from other families. It is what the stop rule counts as a
  *  move that showed a gain (`stopRule`): a 2-0 at level 0.10 reads `no-step` and buys the repeat,
  *  and counted as no gain it ended a campaign of patience 3 before the repeat was bought
  *  (11 October). */
 export function triggered(report: JsonObject, trigger: number): boolean {
   const stage = stageOf(report);
-  return stage !== null && buys(stage, trigger);
+  return stage !== null && total(stage.frontier) > 0 && flipP(stage.frontier) <= trigger && !regressed(stage);
 }
 
 /**
- * Whether the last two of a pair's comparisons promote: the first bought the repeat (`buys`), the
- * repeat untied a frontier task, won at least as many frontier pairs as it lost and lost no more
+ * Whether an attempt among a pair's comparisons promotes (`attemptsOf`): its first bought the repeat
+ * (`triggered`), the repeat untied a frontier task, won at least as many frontier pairs as it lost and lost no more
  * retained pairs than it won, the two frontiers read together, a task both scored once with its
  * differences summed (`joined`), clear `level`, and their untied tasks do not all fall in one family of two or more. Summed
  * alone, a 4-0 and a repeat that tied every task would promote on one draw, against AGENTS §7,
@@ -361,14 +356,32 @@ export function triggered(report: JsonObject, trigger: number): boolean {
  * one that wins 75% 31%, by enumeration (`test/compare.test.ts`). The null is the fixed-task one:
  * on the tasks drawn, each untied task as likely won as lost on fresh solves; a task the repeat
  * scores again adds solves, not a task. A campaign makes many attempts, and what they risk
- * together is the climb's reading (`falsePromotionOf`, `climb.ts`).
+ * together is the climb's reading (`falsePromotionOf`, `climb.ts`). Until 16 October the pair's
+ * last two comparisons were read, so a repeat could stand as the first stage of the next reading:
+ * buffer-159-opus's second promotion came from its pair's third and fourth readings, which the
+ * climb counted as the first attempt's, and by enumeration such windows over four readings
+ * promote equal harnesses 4.3% of the time where the rule is built for 1.6%.
  */
 export function readTwice(reports: readonly JsonObject[], level: number, trigger: number): boolean {
-  const [first, second] = (reports.length < 2 ? [] : reports.slice(-2)).map(stageOf);
-  if (first == null || second == null || !buys(first, trigger) || regressed(second)) return false;
-  const repeat = second.frontier;
-  if (repeat.every((difference) => difference === 0) || total(repeat) < 0) return false;
-  return flipP(joined([first, second])) <= level && !narrowed([first, second]);
+  return attemptsOf(reports, (report) => triggered(report, trigger)).some((attempt) => {
+    const [first, second] = attempt.map(stageOf);
+    if (first == null || second == null || regressed(second)) return false;
+    const repeat = second.frontier;
+    if (repeat.every((difference) => difference === 0) || total(repeat) < 0) return false;
+    return flipP(joined([first, second])) <= level && !narrowed([first, second]);
+  });
+}
+
+/** A pair's comparisons in order as its attempts: a reading that buys the repeat (`bought`) takes
+ *  the next as its repeat, and any other stands alone. A repeat is never the first of another. */
+export function attemptsOf<T>(reports: readonly T[], bought: (report: T) => boolean): T[][] {
+  const attempts: T[][] = [];
+  for (const report of reports) {
+    const open = attempts.at(-1);
+    if (open?.length === 1 && open[0] !== undefined && bought(open[0])) open.push(report);
+    else attempts.push([report]);
+  }
+  return attempts;
 }
 
 /**
@@ -393,7 +406,7 @@ function joined(stages: readonly Stage[]): number[] {
 }
 
 /**
- * The chance that an attempt promotes between equal harnesses by the two-stage rule (`buys`,
+ * The chance that an attempt promotes between equal harnesses by the two-stage rule (`triggered`,
  * `readTwice`): a first reading on untied tasks with the margins of `differences` buys the repeat
  * at `trigger`, and a repeat on as many tasks with the same margins promotes with it at `level`,
  * every untied task as likely won as lost. It is the rule's effective rate an attempt, which the

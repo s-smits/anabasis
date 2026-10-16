@@ -3,6 +3,7 @@
 // held-out task under a harness, and what it refuses to compare.
 import { describe, expect, it } from "bun:test";
 import {
+  attemptsOf,
   decidedByObjective,
   detectable,
   draw,
@@ -304,10 +305,21 @@ describe("the step and its repeat", () => {
     expect(readTwice([report(units(2, 0, 1, 6)), report(units(2, 0, 1, 6))], LEVEL, TRIGGER)).toBe(true);
     expect(readTwice([report(units(2, 0, 1, 6))], LEVEL, TRIGGER)).toBe(false);
     expect(readTwice([report(units(8, 0))], LEVEL, TRIGGER)).toBe(false);
-    // Only the last two count: an older stage that bought nothing is passed over.
+    // An older stage that bought nothing is an attempt of its own, and is passed over.
     expect(readTwice([report(units(0, 3)), report(units(2, 0)), report(units(2, 0))], LEVEL, TRIGGER)).toBe(
       true,
     );
+    // A repeat is no first stage: at 0.02 a 2-0 and its 2-0 repeat read 4-0 together (p 0.0625),
+    // and the next reading's 4-0 joined to that repeat would read 6-0 (p 0.0156). Until 16 October
+    // the last two were read, and that window promoted; the next reading needs its own repeat.
+    const strict = 0.02;
+    const [two, four] = [report(units(2, 0)), report(units(4, 0))];
+    expect(readTwice([two, two, four], strict, TRIGGER)).toBe(false);
+    expect(readTwice([two, two, four, two], strict, TRIGGER)).toBe(true);
+    expect(attemptsOf([two, two, four, two], (one) => triggered(one, TRIGGER))).toEqual([
+      [two, two],
+      [four, two],
+    ]);
   });
 
   it("promote nothing where the first stage bought no repeat, the repeat tied every task or lost, or a report holds no frontier, each stage's tasks read by their margins", () => {

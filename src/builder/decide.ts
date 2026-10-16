@@ -18,7 +18,14 @@
  * log is read, at the one budget it names (`docs/simplify.md`, package A).
  */
 import { unadmitted } from "../kernel/acceptance.ts";
-import { readsStepEitherWay, readTwice, sweepOf, triggered, untiedOf } from "../kernel/compare.ts";
+import {
+  attemptsOf,
+  readsStepEitherWay,
+  readTwice,
+  sweepOf,
+  triggered,
+  untiedOf,
+} from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, poolOf, roomOf } from "../kernel/reports.ts";
 import { SIZE } from "../kernel/size.ts";
@@ -418,20 +425,20 @@ export function repeatDue(events: readonly LogEvent[], plan: Plan): { id: string
 /** The repeat the last reading of a harness against the reference bought, where one is due, the
  *  held tasks its first stage did not score, and its untied ones it scores again; null where none
  *  is: a control is never repeated, since the starter winning on new tasks is room by another name.
- *  A candidate buys one repeat: a step and its repeat are one attempt (`falsePromotion`,
- *  `climb.ts`). The reading is the last of any harness: until 15 October a later checkpoint hid
+ *  A reading that is no repeat itself buys one: a step and its repeat are one attempt
+ *  (`attemptsOf`, `compare.ts`; `falsePromotion`, `climb.ts`). From 15 October a candidate bought
+ *  one, and its later readings on other tasks could promote only with its repeat. The reading is the last of any harness: until 15 October a later checkpoint hid
  *  it, and recode-pr169-sonnet's g-1 step lost its repeat. */
 function dueOf(ground: Ground) {
   const { events, plan, reports, reference, starter } = ground;
   const { trigger } = plan.wanted;
   const read = reports.findLast(({ fresh, old }) => old === reference && fresh !== starter);
+  const pair = reports.filter(({ fresh, old }) => fresh === read?.fresh && old === read.old);
+  const open = attemptsOf(pair, ({ report }) => triggered(report, trigger)).at(-1);
   if (
     read === undefined ||
+    open?.length !== 1 ||
     !triggered(read.report, trigger) ||
-    reports.some(
-      ({ id, fresh, old, report }) =>
-        id !== read.id && fresh === read.fresh && old === read.old && triggered(report, trigger),
-    ) ||
     twice(ground) !== null
   ) {
     return null;

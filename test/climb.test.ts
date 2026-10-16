@@ -501,7 +501,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       ...attempt("g-3", "S", "h3").data,
       frontier: { differences: [0], falseRate: 0.05 },
     });
-    const log = [started, attempt("g-1", "S", "h2"), attempt("g-2", "S", "h2"), rated];
+    const stepped = event("comparison.reported", {
+      ...attempt("g-1", "S", "h2").data,
+      frontier: { differences: [1, 1] },
+    });
+    const log = [started, stepped, attempt("g-2", "S", "h2"), rated];
     const [epoch] = epochsOf(log);
     // Before two A/A controls are on record no attempt's rate is measured: the rule bounds one
     // attempt at its own rate, the level where its report holds none, and the bound is indicative.
@@ -536,10 +540,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       attempt("g-5", "h2", "h4"),
     ];
     const [first, second] = epochsOf(log);
-    // The four are one candidate's, and one attempt (the Oracle's answer, 12 October).
-    expect(first?.falsePromotion).toMatchObject({ attempts: 1, errors: 0, pairs: 2, indicative: false });
+    // The four are one candidate's readings, none of which bought a repeat: four attempts, each of
+    // which could have (16 October; until then one a candidate, the Oracle's answer of 12 October).
+    expect(first?.falsePromotion).toMatchObject({ attempts: 4, errors: 0, pairs: 2, indicative: false });
     expect(first?.falsePromotion.bound).toBeCloseTo(1 - 0.05 ** 0.5, 9);
-    expect(first?.falsePromotion.union).toBeCloseTo(1 - 0.05 ** 0.5, 9);
+    expect(first?.falsePromotion.union).toBe(1);
     // Under the next reference the controls read other tasks: the same bound, labelled indicative.
     expect(second?.falsePromotion).toMatchObject({ attempts: 1, errors: 0, pairs: 2, indicative: true });
     if (second === undefined) throw new Error("an epoch");

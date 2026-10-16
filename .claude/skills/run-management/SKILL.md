@@ -124,7 +124,10 @@ budget word may have set since, and `--budget` names another. It refuses as `lau
 `--at` another commit while any comparison of the log, a ladder reading among them, began and has
 not reported: that comparison goes on under its own terms and its own code, and the command would
 refuse it there and end the campaign on its environment. A campaign that ended `environment` is
-continued at the code it began the comparison under until the comparison reports.
+continued at the code it began the comparison under until the comparison reports. A run continued
+at another commit no longer climbed by itself, and its promotions count for nothing (AGENTS.md,
+section 10, rule 9): continue a measured run at its own commit only, and measure a fix with a new
+fresh run.
 
 `pause` waits until the log has gained one more of the event (`harness.promoted`,
 `build.compacted`, `comparison.reported`, `build.finished`) at a point where no comparison,

@@ -1228,6 +1228,13 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     );
     // The gate's valid answers since the promotion, and none of the starter's (9).
     expect(told.turns?.split("\n").slice(1)).toEqual(["- family fixture: 3, 4, 4, 12, 14"]);
+    // With no promotion every gate is the reference's own, and none is counted apart.
+    const unpromoted = heard(
+      log.events.filter(({ kind }) => kind !== "harness.promoted"),
+      ["old", "new"].map(fixture),
+    );
+    expect(unpromoted.earlier).toBeNull();
+    expect(unpromoted.refused).toHaveLength(2);
   });
 
   it("says nothing it cannot count: a task the log does not hold, one task alone, no task at all", () => {

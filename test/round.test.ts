@@ -1906,6 +1906,9 @@ describe("the scored set", () => {
       // A repeat that reported is the pair's last reading: the comparison after it is no repeat of it.
       const twice = [...bought, ...compared("g-2", first, [0, 0])];
       expect(drawn(twice, 4, repeat("g-3"))).toEqual(first);
+      // A repeat that cleared the trigger again bought nothing: a candidate buys one repeat.
+      const thrice = [...bought, ...compared("g-2", first, [2, 0], {}, true)];
+      expect(drawn(thrice, 4, repeat("g-3"))).toEqual(first);
     });
   });
 

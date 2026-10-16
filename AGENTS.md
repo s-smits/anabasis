@@ -784,9 +784,11 @@ answers still shows its losses. The Examiner is told such a task is exhausted, i
 second kind is a choice by the reference's results and is not neutral: a loss can only come from a
 task the reference answers, so with two thirds of those out of the draw a harness that answers new
 tasks and loses old ones would read better than it is over the tasks written, the more so as the
-newest tasks are drawn first. So the third kept is the retained set, read apart from the frontier
-the step is read on, and a step that loses more retained pairs than it wins reads `regressed` and
-promotes nothing (section 7, The test).
+newest tasks are drawn first. So the third kept is retained, and a scored set takes one of them
+for each three frontier tasks it takes (`scoredSet`; until 16 October as many as the target left
+room for, which topped a set short of frontier up with tasks that can only tie). They are read
+apart from the frontier the step is read on, and a step that loses more retained pairs than it
+wins reads `regressed` and promotes nothing (section 7, The test).
 
 **Fresh solves.** Each scored task is solved under each harness, afresh. A task's solves run
 together, the tasks in an order a hash of each draws, and within a task the harness that goes

@@ -6,11 +6,11 @@
  * 1. Solving. Each task of the scored set is solved `solves` times under each of the two
  *    harnesses, all of it afresh. The scored set is the caller's, fixed before any solve
  *    (`scoredSet`), so no result of this comparison chooses it, though the reference harness's
- *    results in earlier ones do (`poolOf`, `reports.ts`); so are its two sets: the exhausted
- *    third the draw keeps is retained, the rest the frontier (`scoredSet`). A task's solves run
- *    together, the tasks in an order a hash of each draws, and within a task the harness that goes
- *    first is mirrored (`unsolvedJobs`): what drifts over the hours falls between tasks, which the
- *    test does not read, and neither harness has the quieter hours or the warmer cache.
+ *    results in earlier ones do (`poolOf`, `reports.ts`); so are its two sets, retained and
+ *    frontier. A task's solves run together, the tasks in an order a hash of each draws, and
+ *    within a task the harness that goes first is mirrored (`unsolvedJobs`): what drifts over the
+ *    hours falls between tasks, which the test does not read, and neither harness has the quieter
+ *    hours or the warmer cache.
  * 2. The comparison (`src/kernel/compare.ts`): every solve of the new harness paired with every
  *    solve of the reference one, a valid answer over one that is not, each task counted once, and
  *    the paired sign-flip test over the frontier's differences in pair wins.
@@ -54,10 +54,9 @@
  * when a reserve for it and for each solve still running would take the sum past the cap. A lane
  * that cannot start a solve while others are in flight steps aside, since what they bill may be
  * under their reserve; when none is in flight and the next solve still cannot start, the cap is
- * reached. A comparison the cap cuts short of its
- * test reads `not-scored` and is finished: its tally would be of the tasks that happened to come
- * first. A session is stopped by its own limits and not by the cap, which holds its
- * practice solves alone: none starts that the cap has no reserve for (`practiceLeft`, `tools.ts`).
+ * reached. A comparison the cap cuts short of its test reads `not-scored` and is finished: its
+ * tally would be of the tasks that happened to come first. A session is stopped by its own limits
+ * and not by the cap, which holds its practice solves alone (`practiceLeft`, `tools.ts`).
  *
  * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
  * (`earned`), by the Referee where the caller seats one. One ruled a check defect or unclear, and
@@ -254,25 +253,26 @@ interface Repeat {
  * every epoch at once, in a simulated climb after two promotions, drew for a target of 8 over 19
  * held tasks two or three the reference failed, so three comparisons read one win short and the
  * campaign stopped (`docs/plan.md`, B14). A task that waits for a person's label is left out, and
- * so is an exhausted one, which can only tie again; the third of those the hash keeps is scorable,
- * and the ones drawn are the comparison's `retained` set, where a step may not lose more pairs
- * than it wins (`compare.ts`).
+ * so is an exhausted one, which can only tie again; of the third the hash keeps, one for each three
+ * frontier tasks (until 16 October, any the target left room for): the `retained` set, where a
+ * step may not lose more pairs than it wins (`compare.ts`).
  *
- * Within each epoch the tasks held out since the last comparison began come first, by the hash,
- * and then the others: an epoch starts only at a promotion, so a draw by the hash alone took a task
- * written after a comparison that left no room no earlier than one that comparison had already
- * scored, and one campaign's next comparison scored 4 of the 7 tasks written for it.
+ * Within each epoch the tasks held out since the last comparison began come first, by the hash:
+ * a draw by the hash alone took a task written after a comparison that left no room no earlier
+ * than one it had scored, and one campaign's next comparison scored 4 of the 7 written for it.
  *
  * A `repeat` scores its first stage's untied frontier tasks again first, on fresh solves, then
- * draws as any comparison does, that stage's other tasks last (`firstStage`). A task both stages
- * score counts once, its differences summed (`joined`, `compare.ts`), so the level still takes
- * six distinct untied tasks. Until 16 October a repeat waited for a target of fresh tasks, about
- * 300 gate solves after a promotion, and buffer-159-opus read 5-0 over a step and its repeat (3-0
- * with 8 tied, 2-0 with 10 tied) where 6-0 promotes.
+ * draws as any comparison does, that stage's other tasks last (`firstStage`); a task both score
+ * counts once (`joined`, `compare.ts`). Until 16 October it waited for a target of fresh tasks,
+ * about 300 gate solves after a promotion, and buffer-159-opus read 5-0 over a step and its repeat
+ * where 6-0 promotes.
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string, repeat?: Repeat) {
   const pool = poolOf(events);
-  const held = new Set(pool.scorable);
+  const frontier = pool.scorable.filter((task) => !pool.retained.includes(task));
+  const kept = pool.retained.filter((task) => pool.scorable.includes(task));
+  const share = Math.min(kept.length, Math.ceil(Math.min(target, frontier.length) / 3));
+  const held = new Set([...frontier, ...draw(kept, share, `${contract}:retained`)]);
   const count = Math.min(target, held.size);
   const [newest = [], ...older] = tasksByEpoch(events)
     .toReversed()

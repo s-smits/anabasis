@@ -108,7 +108,7 @@ Where the chain stopped on the record of 15 and 16 October:
   were held out. recode-151's three comparisons after its promotion scored 3, 4 and 6 tasks.
 - **After a promotion, an idle Builder.** main0_5_1's nine conversations after its promotion
   changed nothing and asked for nothing, and the Examiner session the host then made (`hostOwed`)
-  held 0 of 12 drafts.
+  held 0 of 12 drafts. Since 16 October every Examiner session the table names starts as a conversation opens.
 - **A near miss on size.** buffer-159-opus's g-4 read 3-0 with 8 tied and its repeat g-5 2-0 with
   10 tied: 5-0 together, p = 1/32, at a level of 0.02, which takes 6-0.
 
@@ -208,7 +208,8 @@ campaign that has one; this walk is for choosing what to do about it.
    campaign tool (`campaignStatus`) and the tools in `tools/d2/campaign-actions.ts`; or the terms
    `--sessions`, `--minutes`, `--turns`, `--practice`, `--practice-solves`.
 5. **Size.** Reads as: `detectable` above the share of untied tasks the step won; most of the
-   scored set tied; a near miss. Owner: `--target` or `--solves`, instrument changes. The lasting
+   scored set tied; a near miss. Owner: `--target` or `--solves`, instrument changes made in the
+   next fresh campaign, whose setting holds `--target` once recorded (`settingAsked`). The lasting
    cure for ties is link 1. The level is the operator's.
 6. **The host.** Reads as: `HOST LOADED`, `LOAD MOVED`, long `campaign.waited`, wall-ended solves
    rising. Owner: fewer campaigns on that host; no flag of a run fixes a crowded host.
@@ -328,9 +329,9 @@ what decides whether the run can answer the question at all.
 bun run runs pulse --once [<name>]
 ```
 
-The pulse says what each open run gained since the last look. Look at each milestone's event, not
-on a timer, and once within twenty minutes of a launch for M1, since an exam that ends does so
-there.
+The pulse says what each open run gained since the last look. Look at each milestone's event, at
+the moment a timer predicts for it (section Timers), and once within twenty minutes of a launch
+for M1, since an exam that ends does so there.
 
 - **Quiet under a wall is work.** A solve writes nothing between its start and its verdict, and a
   Builder's practice solve holds its session the same way. Read quiet against the solve's wall and
@@ -411,6 +412,39 @@ worktree, commit and last reading; each prediction resolved; the link and what h
 decisions that wait for the operator; and the next command. Name no account, host or credential
 path in anything that is published.
 
+## Timers
+
+A session left to run unattended keeps the loop going with its own timers (operator,
+16 October). Each wakes the session; what it reads is still the milestone's. Keep the jobs, the
+authority they act under and one ledger row a firing in one local file beside the handover.
+
+| timer | when | does |
+| --- | --- | --- |
+| watch | hourly, off the hour | the audit: every run on every host, its milestone, a stall (section Milestones) |
+| pass | every three hours | one pass of this loop: the triage list rewritten, one rehearsal aimed at its top row, that row's owner fixed; a review of the timers against the ledger |
+| milestone | one-shot, at the moment a watch or pass predicts | reads the milestone it was armed for and runs what the table owes there |
+| handover | one-shot, before the operator wakes | the five points, what changed, the decisions waiting |
+
+**Predict the moment, and rather check once too often.** Every watch and pass names each live
+run's milestone, estimates from that run's own log when the next one's event lands (a
+comparison: scored tasks × solves a side × 2 × its median solve minutes, over the solves that run
+at once), and arms a one-shot then. A check that finds nothing costs minutes, and a missed M1 or
+M6 has cost hours. One that fires early re-arms itself for the new estimate, often one or two
+hours on: a whole-run investigation is owed at its milestone, never before its event.
+
+**Triage is one ranked list**, in the same file, rewritten each pass: each open problem with its
+link, the event or count that shows it, what found it (a fresh run, a rehearsal, a replay, a
+misfire), and its status. Rank by the first link the chain stops at, then by how many runs show
+it, and check a row against the log and the source before ranking it. A row is proved only by a
+replay or a rehearsal that shows the chain going past its link; a rehearsal whose prediction
+fails opens a row.
+
+**A misfire is evidence.** Every firing writes its row: what it found, whether it was useful, and
+when it should have fired. The pass reads the rows and retimes: a watch that found nothing three
+times in a row may go to two hours; a run near M3 or M5 gets its one-shot. A timer acts only
+within the authority the file records: a launch, a stop and every decision of the operator's
+need the operator's word written there, not a timer's reading of it.
+
 ## Which skill each step uses
 
 | step | every pass | when its trigger holds |
@@ -452,5 +486,5 @@ Keep this list short and current. Replace an entry when its lesson has an owner 
 - **A stack that moved mid-task.** Read the top again before every branch and every push.
 
 Change this skill when a pass exposes duplicated work, a missed reading or a wrong decision, and
-replace the rule at its owner. Do not grow it into a checklist, a scheduler or another review
-component. Keep only what changes the next decision.
+replace the rule at its owner. Do not grow it into a checklist or another review component; the
+timers are a section and no scheduler of their own. Keep only what changes the next decision.

@@ -100,10 +100,11 @@ leaves. Until 16 October some of them were held instead for a **ladder**, a fixe
 scored for a promotion and read after each one, the starter against the new reference: until
 15 October every such draft, 31 of 120 in the five campaigns of 14 October, and then the first of
 every three. It was retired on 16 October. Its readings said little the promotion had not: the
-new reference answered 14 of 14 ladder tasks in buffer-159-opus's g-3 and 5 of 6 in main0_5_1's,
-and rh-ladder-159's ladder read 4 of 4 tasks tied. They billed $33.06 and 5.9 hours in one
-campaign and $12.66 and 1.6 hours in another, and one in three of the drafts that are the
-frontier's room was kept from the supply. A log of those days keeps its `ladder` gate
+starter lost 45 of the 45 untied tasks of the five readings on record, and 14 of 14 in
+buffer-159-opus's g-3 and 5 of 6 in main0_5_1's. Those two billed $39.55 and 5.9 hours and $16.70
+and 1.6 hours (`billedParts`), the five $136.14 and 12.1 hours, and one in three of the drafts that
+are the frontier's room was kept from the supply. rh-ladder-159, whose ladder read 4 of 4 tasks
+tied, is a seed, and its readings are a rehearsal's. A log of those days keeps its `ladder` gate
 outcomes and task states, read as held out (`src/kernel/task.ts`), and its readings marked
 `ladder: true`, whose solves the pool reads and which no row, the stop rule, the climb or the
 Builder's handover reads as a comparison (`lastReports`, `src/kernel/reports.ts`). A witness
@@ -613,14 +614,18 @@ made no campaign move, the last ended by `finish` or at its limits). A lack of r
 request other tasks while a conversation lives, and the campaign's ending once that conversation
 has ended at its limits. A Builder's `finish` ends its conversation. Between conversations the host
 makes what the table names that asks no Builder for anything, a campaign move like any other: any
-comparison, the tasks a repeat waits for, a promotion, and the tasks a want of room names once
-three conversations in a row made no move (`hostOwed`, `tools/d2/harness-builder.ts`; 15 October,
-when main0_5_1's three did not ask for them after its promotion).
+comparison, the tasks a repeat waits for, and a promotion (`hostOwed`,
+`tools/d2/harness-builder.ts`); any other Examiner session the table names starts as the next
+conversation opens, and writes beside it (`campaignTools`, `tools/d2/campaign-actions.ts`).
+Until 16 October only the campaign's first did, and tasks for want of room waited for three
+conversations in a row that made no move: buffer-159-opus's first promotion waited 5.9 hours for
+its next Examiner session and its second 2.1.
 A comparison that began under other code is refused there by its own terms, and the campaign ends
 on its environment, to be run at that code until it reports. Then another
 conversation follows on the Builder's notes, as after one that ended at its limits, until three in
-a row have made no campaign move, a conversation the provider crashed or a stop killed not counted
-(`idleOf`, `tools/d2/campaign-terms.ts`), which end the campaign
+a row have made no campaign move, a conversation the provider crashed or a stop killed not counted,
+nor an Examiner session beside it that crashed or was killed holding out nothing, or that the host
+refused before it began (`idleOf`, `tools/d2/campaign-terms.ts`), which end the campaign
 `finished` where the table names no ending of its own; the status a Builder reads counts the
 conversations before its own that made none. A Codex goal stays active on the same terms: its own
 model ends it only as met, or as blocked once the same blocker has held for three turns, and a
@@ -696,8 +701,9 @@ four of the tasks the epoch may score and released, which bound alone in none of
 each release is one task fewer to compare. A release takes
 first the tasks no solve answered in two comparisons, then half of the tasks the reference
 harness failed in a solve of the last comparison, rounded up, and the rest by the contract's draw
+over the tasks the reference did not answer in every solve of its last reading of them
 (`tools/d2/prepare.ts`): the tasks that leave the reference room are what a Builder has to work
-on. A task that a comparison scored before its release keeps that comparison's solves on the
+on, and until 16 October the draw took closed ones too. A task that a comparison scored before its release keeps that comparison's solves on the
 exam side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
 Before a comparison the campaign holds as many scorable tasks as the comparison scores
 (`--target`), and before a repeat as many as a sweep at the level takes, counting the first
@@ -777,19 +783,19 @@ harnesses, its setting, its scored tasks, its solves a side, its level, its obje
 dollar cap and, where given, its prediction (`--predict`). One continued from its log keeps those
 terms, and one asked for again on other terms is refused. The scored tasks are `--target` of the
 held-out ones, the newest epoch's first, within an epoch the ones held out since the last
-comparison began before the others, and each drawn by the contract's hash, less two kinds the
-draw leaves out: a task with no valid answer after two comparisons, until a person labels it
-(`poolOf`), and one the reference harness answered in every solve of the last comparison it
-stood in of it, on whichever side, which can only tie again or be lost (`poolOf`; two closed
-comparisons in any order until 15 October, when a promoted harness had stood once in nearly
-every task it was promoted on); a task the objective
-told two valid answers apart on is not closed, since the next harness can still win it. A third of
-the closed ones stays in by a hash of its own, so that a harness that breaks what the reference
-answers still shows its losses. The Examiner is told such a task is exhausted, in those words. The
-second kind is a choice by the reference's results and is not neutral: a loss can only come from a
-task the reference answers, so with two thirds of those out of the draw a harness that answers new
-tasks and loses old ones would read better than it is over the tasks written, the more so as the
-newest tasks are drawn first. So the third kept is retained, and a scored set takes one of them
+comparison began before the others, and each drawn by the contract's hash. The draw leaves out a
+task with no valid answer after two comparisons, until a person labels it (`poolOf`), and takes
+off the frontier one the reference harness answered in every solve of the last comparison it
+stood in of it, on whichever side, which can only tie again or be lost: it is **exhausted**
+(`poolOf`; two closed comparisons in any order until 15 October, when a promoted harness had stood
+once in nearly every task it was promoted on); a task the objective told two valid answers apart
+on is not closed, since the next harness can still win it. An exhausted task stays in the draw as
+retained, so that a harness that breaks what the reference answers still shows its losses: a loss
+can only come from a task the reference answers, so with those out of the draw a harness that
+answers new tasks and loses old ones would read better than it is over the tasks written, the
+more so as the newest tasks are drawn first. Until 16 October two thirds of them left the draw by
+the contract's hash, closed for good on one reading of four solves, and the Examiner was told
+they were no longer scored. A scored set takes one retained task
 for each three frontier tasks it takes, beside the target (`scoredSet`; until 16 October as many
 as the target left room for, which left a frontier that filled the target none and topped a set
 short of frontier up with tasks that can only tie). They are read
@@ -831,7 +837,8 @@ comparison, fixed at its start; a check program that declares none pairs on vali
 likely won as lost by its margin, and p is the share of the signs that sum to at least what was
 read. It is exact, and where every task is won or lost by as many pairs it is the sign test. The
 step is read on the **frontier**, the scored tasks not exhausted; the **retained** tasks, fixed
-with them at the comparison's start from the exhausted third the draw keeps, may not lose more
+with them at the comparison's start from the exhausted ones and the tasks of an earlier epoch the
+reference never stood in, may not lose more
 pairs than they win, and an empty retained set reads `unmeasured`, never no loss. Each family's
 tallies stand beside both, from the same rows; they show concentration, and establish no
 independence. The test runs in two stages: a comparison whose frontier is at or under the trigger

@@ -178,7 +178,7 @@ function SetUp({ reading }: { reading: CampaignReading }) {
     <Disclosure title="Set-up">
       {prompt === null ? null : <p className="ana-campaign-prompt">{prompt}</p>}
       <p className="ana-campaign-setup">
-        {`${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted · ${checker}`}
+        {`${String(supply.held)} held out on the frontier · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted, scored as retained · ${checker}`}
       </p>
       <dl className="ana-facts ana-facts--row">
         {seated.map(([seat, said]) => (

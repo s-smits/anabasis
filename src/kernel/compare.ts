@@ -21,7 +21,7 @@
  *
  * The step is read on the frontier (12 October, the revised plan's M1.4): the scored tasks not
  * exhausted, fixed at the comparison's start (`round.ts`, `begin`). The retained tasks, fixed at
- * the same time from the third of the exhausted ones the draw keeps (`poolOf`, `reports.ts`),
+ * the same time from the exhausted ones and an earlier epoch's (`poolOf`, `reports.ts`),
  * are where a harness may not lose more pairs than it wins. A step with a net loss there reads
  * `regressed` and promotes nothing (`stepOf`). A retained set with no task tallied is `unmeasured`,
  * never no loss: against the provisioned starter nothing is exhausted yet. Until 16 October one

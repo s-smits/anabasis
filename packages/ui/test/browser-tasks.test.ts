@@ -55,7 +55,18 @@ const GRID: readonly (readonly [string, string, ...string[]])[] = [
   ["word-p2", "released", ".", ".", ".", ".", ".", ".", ".", "."],
   ["word-01", "held", "won 0/2 · 2/2", "won 1/2 · 2/2", ".", "tiedEvery 2/2 · 2/2", ".", ".", ".", "."],
   ["word-02", "held", "won 0/2 · 2/2", "won 0/2 · 2/2", ".", "lost 2/2 · 1/2", ".", ".", ".", "."],
-  ["word-03", "held · exhausted", "tiedEvery 2/2 · 2/2", "tiedEvery 2/2 · 2/2", ".", ".", ".", ".", ".", "."],
+  [
+    "word-03",
+    "held · exhausted · retained",
+    "tiedEvery 2/2 · 2/2",
+    "tiedEvery 2/2 · 2/2",
+    ".",
+    ".",
+    ".",
+    ".",
+    ".",
+    ".",
+  ],
   ["word-04", "held", "tiedSome 1/2 · 1/2", ".", ".", "won 1/2 · 2/2", ".", ".", ".", "."],
   ["word-05", "disputed", "won 0/2 · 1/2", "won 0/2 · 2/2", ".", "left-out disputed", ".", ".", ".", "."],
   [
@@ -79,10 +90,21 @@ const GRID: readonly (readonly [string, string, ...string[]])[] = [
   ["word-r1", "refused", ".", ".", ".", ".", ".", ".", ".", "."],
   ["word-13", "held", ".", ".", "lost 4/4 · 0/4", ".", "aside 1/2 · 2/2", ".", ".", "."],
   ["word-14", "held · retained", ".", ".", "aside 3/4 · 3/4", ".", ".", ".", ".", "."],
-  ["word-15", "held · exhausted", ".", ".", "won 3/4 · 4/4", ".", ".", "tiedEvery 2/2 · 2/2", ".", "."],
+  [
+    "word-15",
+    "held · exhausted · retained",
+    ".",
+    ".",
+    "won 3/4 · 4/4",
+    ".",
+    ".",
+    "tiedEvery 2/2 · 2/2",
+    ".",
+    ".",
+  ],
   ["word-16", "held · retained", ".", ".", ".", "tiedSome 1/2 · 1/2", ".", "tiedNone 0/2 · 0/2", ".", "."],
   ["word-17", "held", ".", ".", ".", ".", ".", ".", ".", "won 0/2 · 1/2"],
-  ["word-18", "held · retained", ".", ".", ".", ".", ".", ".", ".", "tiedEvery 2/2 · 2/2"],
+  ["word-18", "held · exhausted · retained", ".", ".", ".", ".", ".", ".", ".", "tiedEvery 2/2 · 2/2"],
   ["word-19", "held", ".", ".", ".", ".", ".", ".", ".", "lost 1/2 · 0/2"],
   ["word-20", "held", ".", ".", ".", ".", ".", ".", ".", "won 1/2 · 2/2"],
   ["word-21", "held", ".", ".", ".", ".", ".", ".", ".", "tiedNone 0/2 · 0/2"],
@@ -274,11 +296,11 @@ describe("the Tasks pane's grid", () => {
     await expect(corner(on)).toHaveText("Tasks (25)");
     await label.selectOption("all");
 
-    // Two tasks of the fixture are exhausted: the reference closed each in its last comparison.
+    // Three tasks of the fixture are exhausted: the reference closed each in its last comparison.
     await exhausted.selectOption("yes");
-    expect(await shownIds(on)).toEqual(["word-03", "word-15"]);
+    expect(await shownIds(on)).toEqual(["word-03", "word-15", "word-18"]);
     await exhausted.selectOption("no");
-    await expect(corner(on)).toHaveText("Tasks (24)");
+    await expect(corner(on)).toHaveText("Tasks (23)");
 
     await state.selectOption("held");
     await label.selectOption("yes");
@@ -539,7 +561,7 @@ describe("the Tasks pane between two readings", () => {
     await expect(corner(on)).toHaveText("Tasks (21)");
     await on.getByLabel("Exhausted").selectOption("no");
     await search(on).fill("word-1");
-    await expect(corner(on)).toHaveText("Tasks (9)");
+    await expect(corner(on)).toHaveText("Tasks (8)");
     await on.getByRole("button", { name: "Clear filters" }).click();
     await expect(corner(on)).toHaveText("Tasks (26)");
     const frames = await framesOf(on);

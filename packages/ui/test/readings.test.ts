@@ -275,10 +275,10 @@ describe("what a comparison came to", () => {
     }
   });
 
-  test("puts no task in two places: one exhausted is not retained, and both are held out", async () => {
+  test("keeps every exhausted task among the retained, and both held out", async () => {
     const { answer } = await ask("tasks", { key: KEY }, "default");
     for (const row of answer.rows) {
-      expect(row.exhausted && row.retained).toBe(false);
+      if (row.exhausted) expect(row.retained).toBe(true);
       if (row.exhausted || row.retained) expect(row.state).toBe("held");
     }
   });

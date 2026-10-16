@@ -1743,10 +1743,10 @@ describe("the scored set", () => {
     expect(after).toHaveLength(2);
   });
 
-  it("scores every frontier task, and of the retained third one for each three frontier tasks", () => {
-    // Nine tasks the reference answered in every solve, three it answered in none: the hash keeps
-    // three of the nine as retained, and the set takes one of them. Until 16 October it took all
-    // three, topping a set short of frontier up with tasks that can only tie.
+  it("scores every frontier task, and of the retained tasks one for each three frontier tasks", () => {
+    // Nine tasks the reference answered in every solve, three it answered in none: all nine are
+    // retained, and the set takes one of them. Until 16 October the hash kept three of the nine
+    // and the set took all three, topping a set short of frontier up with tasks that can only tie.
     const closed = Array.from({ length: 9 }, (_, nth) => `c${String(nth)}`);
     const open = ["f1", "f2", "f3"];
     const outcomes = Object.fromEntries([
@@ -1760,7 +1760,7 @@ describe("the scored set", () => {
       data: { session: "g-1", old: "h0", fresh: "h1", starter: "h0", ...tallied(3, 0, 9), ...terms },
     } as const;
     const logged = [...heldOut([...closed, ...open]), ...events, report];
-    expect(poolOf(logged).retained).toHaveLength(3);
+    expect(poolOf(logged).retained).toHaveLength(9);
     const set = scoredSet(logged, 12, "contract-a");
     expect(set.tasks.filter((version) => open.includes(version)).toSorted()).toEqual(open);
     expect(set.retained).toHaveLength(1);
@@ -1919,6 +1919,13 @@ describe("the scored set", () => {
       const filled = drawn([...epochs, ...heldOut(eight.slice(3))], 8, repeat("g-2"));
       expect(filled).toHaveLength(8);
       expect(filled.slice(0, 2)).toEqual(older.slice(0, 2));
+      // Eight new tasks as well: the two scored again count in the target, so the set is eight
+      // tasks and not ten (16 October).
+      const fresh = eight.map((version) => `n${version}`);
+      const full = drawn([...epochs, ...heldOut(fresh)], 8, repeat("g-2"));
+      expect(full).toHaveLength(8);
+      expect(new Set(full).size).toBe(8);
+      expect(full.slice(0, 2)).toEqual(older.slice(0, 2));
     });
 
     it("draws as any comparison does where no first stage bought it: none before, one over the trigger, another pair's, or a repeat already read", () => {
@@ -1959,12 +1966,13 @@ describe("the scored set", () => {
     expect(scoredSet(read(s.log), 12, "c").tasks).toContain("s1");
     await round(s.next("b-2"));
     // s2 to s4 were answered by both harnesses in every solve of both comparisons: exhausted, and
-    // left out but for a third of them, kept by the contract's hash as a check on regression,
-    // which the draw hands on as its retained set.
-    // s5, held out before the promotion and never scored, is retained beside it, and with no
+    // retained as a check on regression. Until 16 October two thirds of them left the draw.
+    // s5, held out before the promotion and never scored, is retained beside them, and with no
     // frontier task left the draw takes none.
-    expect(poolOf(read(s.log))).toMatchObject({ awaiting: ["s1"], retained: ["s3", "s5"], frontier: [] });
-    expect(poolOf(read(s.log)).exhausted.toSorted()).toEqual(["s2", "s4"]);
+    const pool = poolOf(read(s.log));
+    expect(pool).toMatchObject({ awaiting: ["s1"], frontier: [] });
+    expect(pool.retained.toSorted()).toEqual(["s2", "s3", "s4", "s5"]);
+    expect(pool.exhausted.toSorted()).toEqual(["s2", "s3", "s4"]);
     expect(scoredSet(read(s.log), 12, "c")).toEqual({ tasks: [], retained: [] });
     // Named for a comparison all the same, it is refused: the draw leaves it out, and a name
     // was the one way past that (2026-10-09).

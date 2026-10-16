@@ -248,21 +248,21 @@ interface Repeat {
  * every epoch at once, in a simulated climb after two promotions, drew for a target of 8 over 19
  * held tasks two or three the reference failed, so three comparisons read one win short and the
  * campaign stopped (`docs/plan.md`, B14). A task that waits for a person's label is left out, and
- * so is an exhausted one, which can only tie again. Of the third the hash keeps, one for each three
- * frontier tasks is scored beside the target: the `retained` set, where a step may not lose more
- * pairs than it wins (`compare.ts`). Until 16 October it was what the frontier left of the target,
- * and 16 of 94 starts on record drew fewer than one for each three, 12 of them where the
- * frontier filled the target; a reserve inside the target took frontier tasks from the test.
+ * an exhausted one, which can only tie again, is retained (`poolOf`). Of the retained, one for
+ * each three frontier tasks is scored beside the target, where a step may not lose more pairs than
+ * it wins (`compare.ts`). Until 16 October it was what the frontier left of the target: 16 of 94
+ * starts on record drew fewer than one for each three, 12 of them where the frontier filled it.
  *
  * Within each epoch the tasks held out since the last comparison began come first, by the hash:
  * a draw by the hash alone took a task written after a comparison that left no room no earlier
  * than one it had scored, and one campaign's next comparison scored 4 of the 7 written for it.
  *
  * A `repeat` scores its first stage's untied frontier tasks again first, on fresh solves, then
- * draws as any comparison does, each scored again in its own epoch's share, that stage's other
- * tasks last (`firstStage`); a task both score counts once (`joined`, `compare.ts`). Until
- * 16 October it waited for a target of fresh tasks, about 300 gate solves after a promotion, and
- * buffer-159-opus read 5-0 over a step and its repeat where 6-0 promotes.
+ * draws as any comparison does to the target, which the tasks scored again count in whatever epoch
+ * they are of, that stage's other tasks last (`firstStage`); a task both score counts once
+ * (`joined`, `compare.ts`). Until 16 October the newest epoch's draw counted only its own tasks
+ * scored again (a repeat of eight over two older and eight new tasks scored ten), and before that
+ * it waited for a target of fresh tasks: buffer-159-opus read 5-0 over two stages where 6-0 promotes.
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string, repeat?: Repeat) {
   const pool = poolOf(events);
@@ -270,7 +270,7 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
   const held = new Set(pool.frontier);
   const count = Math.min(target, held.size);
   const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
-  const [newest = [], ...older] = tasksByEpoch(events)
+  const epochs = tasksByEpoch(events)
     .toReversed()
     .map((epoch) => epoch.filter((version) => held.has(version)));
   const [again = [], ...last] = repeat === undefined ? [] : firstStage(events, repeat);
@@ -290,9 +290,7 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
       [],
     );
   const free = (epoch: readonly string[]) => epoch.filter((version) => !tasks.includes(version)).length;
-  const own = Math.min(count, newest.length) + free(newest) - newest.length;
-  tasks.push(...drawn(newest, Math.max(0, own)));
-  for (const epoch of older) tasks.push(...drawn(epoch, Math.min(count - tasks.length, free(epoch))));
+  for (const epoch of epochs) tasks.push(...drawn(epoch, Math.min(count - tasks.length, free(epoch))));
   return { tasks: [...tasks, ...picked], retained: picked };
 }
 
@@ -301,10 +299,9 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
  * comparison of `fresh` with `old` follows a reading of the same two that cleared its trigger
  * (`triggered`) and is no repeat itself (`attemptsOf`), that reading's untied frontier tasks; then
  * the rest of its set. Until 16 October it was the one such reading of the pair, so a second
- * attempt's repeat scored none of its first stage's tasks first. Until
- * 16 October, where they all fell in one family, that family's others went last, for a `narrow`
- * reading that never fired. None for any other comparison: an attempt buys one repeat, as the row that
- * buys it says (`dueOf`, `decide.ts`). A repeat gone on from its log keeps its start's (`begin`).
+ * attempt's repeat scored none of its first stage's tasks first. None for any other comparison:
+ * an attempt buys one repeat, as the row that buys it says (`dueOf`, `decide.ts`). A repeat gone
+ * on from its log keeps its start's (`begin`).
  */
 function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
   const { id, old, fresh, trigger } = repeat;

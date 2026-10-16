@@ -709,9 +709,10 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
 
 /**
  * The campaign's tools and advice for one Builder conversation (`BuildRequest.campaign`). Where
- * `opens`, the host starts the campaign's first Examiner session as the conversation opens, as the
+ * `opens`, the host starts the Examiner session the table names as the conversation opens, as the
  * Builder's `examine` would: until 14 October a led campaign that opened short of tasks waited for
- * its Builder to ask, and later sessions remain the Builder's to ask for.
+ * its Builder to ask, and until 16 October every later session did (`hostOwed`,
+ * `tools/d2/harness-builder.ts`).
  */
 export function campaignTools(
   context: CampaignContext,

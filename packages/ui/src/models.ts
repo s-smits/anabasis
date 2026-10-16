@@ -565,12 +565,11 @@ export interface TaskRow {
   readonly id: string | null;
   readonly state: TaskState;
   /** Two readings beside the state: waiting for a person's label (`poolOf`), and answered
-   *  by the reference in every solve of two comparisons (`poolOf`). */
+   *  by the reference in every solve of its last reading (`poolOf`). */
   readonly awaitingLabel: boolean;
   readonly exhausted: boolean;
-  /** Whether it is one of the spent tasks the draw keeps (`poolOf`, retained): a comparison scores
-   *  it in its retained set, where a step may not lose more than it wins. A task is exhausted or
-   *  retained, never both. */
+  /** Whether a comparison scores it in its retained set (`poolOf`), where a step may not lose more
+   *  than it wins: every exhausted task is, since 16 October. */
   readonly retained: boolean;
   readonly proposedAt: string | null;
 }

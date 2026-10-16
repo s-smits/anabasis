@@ -163,8 +163,9 @@ describe("what a log holds for the next comparison", () => {
 
   it("counts the tasks that may still be scored, once the reference's closed ones retire", () => {
     // The stack review (12 October): two comparisons in which the reference answered a to d in
-    // every solve and e and f in one of two retire two of a to d, by the contract's hash, and keep
-    // the other two as retained: two are left to score, which a first reading at the trigger needs.
+    // every solve and e and f in one of two close a to d, which stay as retained tasks: two are
+    // left on the frontier, which a first reading at the trigger needs. Until 16 October two of the
+    // four left the draw by the contract's hash.
     const twice = { a: "PP PP", b: "PP PP", c: "PP PP", d: "PP PP", e: "PF PP", f: "PF PP" };
     const log = [
       event("checker.read", { contract: "c", checks: "k", faults: [] }),
@@ -173,7 +174,7 @@ describe("what a log holds for the next comparison", () => {
       ...roundLogged("g-2", ["h0", "h2"], twice),
     ];
     const supply = supplyOf(log);
-    expect(supply).toMatchObject({ held: 2, exhausted: 2 });
+    expect(supply).toMatchObject({ held: 2, exhausted: 4 });
     expect(codes(supply, { target: 4 })).toEqual([]);
   });
 });
@@ -290,7 +291,7 @@ describe("what a start's reader is told", () => {
     );
     const frozen = event("contract.frozen", { contract: "c", checks: "k" });
     expect(told([faulty, frozen]).join("\n")).not.toContain("fault");
-    // The tasks left out of the scored set are said: the ones the reference closed.
+    // The tasks off the frontier are said: the ones the reference closed, scored as retained.
     const twice = { a: "PP PP", b: "PP PP", c: "PP PP", d: "PP PP", e: "PF PP", f: "PF PP" };
     const retired = logOf([
       READ,
@@ -299,7 +300,7 @@ describe("what a start's reader is told", () => {
       ...roundLogged("g-2", ["h0", "h2"], twice),
     ]);
     expect(admitComparison(retired, { ...ASKED, id: "g-3", wanted: { ...WANTED, target: 4 } })).toContain(
-      "2 held-out task(s) were answered by the reference harness in every solve of their last comparison, with no objective telling two valid answers apart, and are not scored: they can only tie again or be lost",
+      "4 held-out task(s) were answered by the reference harness in every solve of their last comparison, with no objective telling two valid answers apart, and are scored only as retained tasks: they can only tie again or be lost",
     );
     // A session with no comparison after it scores nothing, and is told what it may practise on.
     const released = [READ, ...heldOut("p1"), event("task.state", { version: "p1", state: "released" })];

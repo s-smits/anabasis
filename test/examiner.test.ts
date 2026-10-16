@@ -358,6 +358,12 @@ describe("a session that writes tasks", () => {
     );
     expect(next.sent[0]).toContain("it is no target of yours");
     expect(next.sent[0]).toContain(String.raw`said at its finish, in its own words:\n${NOTE}`);
+    // A note written under a reference since replaced is not handed on: it is about the tasks
+    // that reference failed (16 October).
+    append(s.log, "harness.promoted", { harness: "h1" });
+    const after = seat("write", [finish, finish]);
+    await examine({ ...after.request, id: "x-3", log: s.log });
+    expect(after.sent[0]).not.toContain("said at its finish");
   });
 
   it("holds an instance out on the shape of its package, says why another is refused, and logs each whole", async () => {
@@ -705,12 +711,7 @@ describe("a session that writes tasks", () => {
     const refused =
       "refused: it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
     expect(s.of(CALLED)[2]?.text).toBe(
-      [
-        `x-1-001: ${refused}`,
-        `x-1-002: ${refused}`,
-        "x-1-003: held out.",
-        "So far in this campaign, drafts with a proof were held 2 of 2, and drafts without one 0 of 3.",
-      ].join("\n"),
+      [`x-1-001: ${refused}`, `x-1-002: ${refused}`, "x-1-003: held out."].join("\n"),
     );
     expect(examined.held).toEqual([s.versionOf("x-1-003", 2)]);
   });
@@ -769,7 +770,6 @@ describe("a session that writes tasks", () => {
         "x-1-004: refused: the reference harness answered it validly in 0 of 3 solves, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it",
         "x-1-005: refused: the reference harness answered it validly in 3 of 3 solves, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it",
         "x-1-006: held out; the reference harness answered it validly in 0 of 3 solves.",
-        "So far in this campaign, drafts with a proof were held 4 of 5, and drafts without one 0 of 1.",
       ].join("\n"),
     );
   });
@@ -847,7 +847,6 @@ describe("a session that writes tasks", () => {
         `x-1-004: refused: ${counted(3)}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`,
         `x-1-005: held out; ${counted(1)}, 1 of them ending in no reading or in a rejection the Referee did not rule earned.`,
         `x-1-006: refused: ${counted(2)}, 1 of them ending in no reading or in a rejection the Referee did not rule earned, so it is not measured`,
-        "So far in this campaign, drafts with a proof were held 0 of 0, and drafts without one 3 of 6.",
       ].join("\n"),
     );
     // Its cost a task, on the gate's event; the solves are the session's, named by it, and no

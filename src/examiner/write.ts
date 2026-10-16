@@ -35,7 +35,7 @@ import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { heldAtGate, packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
+import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
@@ -216,7 +216,7 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
 
 /** The gate for one instance the Examiner proposed, and the line it is told (`measured`). Its gate
  *  says whether it came with a proof: an answer of its author's that passed the checks on its
- *  content before it was proposed (`proved`, read by `heldShare`). The proof is put to the checks
+ *  content before it was proposed (`proved`). The proof is put to the checks
  *  again under the task's own id, and the task is on record as feasible only where it passes there.
  *  A task the reference harness answered in none of its solves is held out where it passes so: a
  *  witness says a valid answer exists, which three failed solves do not say either way, and a task
@@ -271,21 +271,6 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   return `${taskId}: held out${said}.`;
 }
 
-/** The campaign's gates of drafts so far, as the Examiner is told them after each proposal: how
- *  many of those that came with a proof were held out, and of those that did not. A fact and no
- *  rule. On the three run logs read on 13 October the proof foretold the gate: in one campaign the
- *  drafts with one were held 23 of 23, and of those without, 5 were held and 21 refused, 11 at no
- *  valid solve of three and 10 at three. A gate with no `proved`, as a pack's task has, is no
- *  draft's and is not counted. */
-function heldShare(events: readonly LogEvent[]): string {
-  const of = (proved: boolean) => {
-    const gates = events.filter(({ kind, data }) => kind === GATE && data.proved === proved);
-    const held = gates.filter(({ data }) => heldAtGate(data.outcome)).length;
-    return `${String(held)} of ${String(gates.length)}`;
-  };
-  return `So far in this campaign, drafts with a proof were held ${of(true)}, and drafts without one ${of(false)}.`;
-}
-
 /** Whether the host has the tasks it asked for. */
 const supplied = (desk: Desk): boolean => desk.held.length >= desk.request.wanted;
 
@@ -333,7 +318,6 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
       if (spent()) throw new Error("This session can propose no further task. Call finish.");
       const lines: string[] = [];
       for (const given of args.tasks) lines.push(await taken(instanceOf("", given), signal));
-      lines.push(heldShare(read(desk.request.log)));
       return {
         ...text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`),
         terminate: supplied(desk),
@@ -466,9 +450,11 @@ export function writing(request: Terms, pinned: readonly Engine[], keep: string 
   // harness where the host can have it solve one.
   const gate = request.probe === null ? "propose_tasks" : "try_task";
   const attempts = request.probe === null ? undefined : TRIED;
-  // What the last Examiner session that finished said at its `finish`, where one did.
-  const note = before.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data
-    .note;
+  // What the last Examiner session that finished under the reference harness said at its
+  // `finish`, where one did. A note written under a reference since replaced is about the tasks
+  // that one failed: main0_5_1's x-6 and buffer-159-opus's x-8 opened on one (16 October).
+  const epoch = before.slice(before.findLastIndex(({ kind }) => kind === "harness.promoted") + 1);
+  const note = epoch.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data.note;
   // The last session, where the provider failed its turn with no command running: its home is kept.
   const cut = before.findLast(({ kind }) => kind === "exam.finished")?.data;
   const kept = cut?.ended === "crashed" && cut.running === 0 && isString(cut.session) ? cut.session : null;

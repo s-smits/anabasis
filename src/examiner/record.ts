@@ -38,7 +38,7 @@
  * among them, and no count of the other side is added to what the counts above tell; a family of
  * one task shows that task's own turns, which are the reference's, as its line is. Beside them are
  * the turns of the reference's valid answers at the gate of each draft since the last promotion
- * (`gateTurns`).
+ * (`gateAnswers`).
  *
  * The facts are told by epoch: outcomes, histories, turns and gate readings are the current
  * reference harness's alone, and the gates read on a reference a promotion has replaced are one
@@ -70,7 +70,7 @@ import {
   type Standing,
 } from "../kernel/reports.ts";
 import { conditionsOf } from "../kernel/condition.ts";
-import { solvesIn } from "../kernel/solves.ts";
+import { solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
@@ -188,9 +188,11 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
       `${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}${admittedLine(gates.get(version))}${history}`,
     ];
   });
-  const gated = gateTurns(events, since);
+  const gated = gateAnswers(events, since);
   for (const { version, task } of proposalsOf(events)) {
-    const valid = gated.get(version) ?? [];
+    const valid = (gated.get(version) ?? []).flatMap((answer) =>
+      answer.turns === null ? [] : [answer.turns],
+    );
     if (task !== null && valid.length > 0) {
       turns.set(task.family, [...(turns.get(task.family) ?? []), ...valid]);
     }
@@ -214,25 +216,36 @@ function earlierLine(gates: readonly JsonObject[]): string | null {
     : `Before the reference harness was last replaced, the gate held out ${plural(held, "draft")} and refused ${plural(refused, "draft")} after reading them. What it read of them was of a harness since replaced, and is not told.`;
 }
 
-/** The solver's own turns of each valid answer the reference harness gave at a gate after event
- *  `from`, by draft version: the Examiner's solves under `try_task`, which no comparison counts.
- *  Read from a promotion on, they are the new reference's alone. Until 16 October an Examiner was
- *  told the turns of comparisons only, and after a promotion its drafts stood in none: main0_5_1's
- *  answered drafts took a median of 4 of the 16 turns, recode-151's 3, and neither was told. */
-export function gateTurns(events: readonly LogEvent[], from: number): Map<string, number[]> {
+/** Each valid answer the reference harness gave at a gate after event `from`, by draft version:
+ *  the Examiner's solves under `try_task`, which no comparison counts, with the solver's own turns
+ *  each took and the objective the verifier measured of it, null where the log holds none. Read
+ *  from a promotion on, they are the new reference's alone. The gate reads the measures by the
+ *  comparison's definition of room (`informative`); the session's later ones are told the turns by
+ *  family. Until 16 October an Examiner was told the turns of comparisons only, and after a
+ *  promotion its drafts stood in none: main0_5_1's answered drafts took a median of 4 of the 16
+ *  turns, recode-151's 3, and neither was told. */
+export function gateAnswers(
+  events: readonly LogEvent[],
+  from: number,
+): Map<string, { readonly turns: number | null; readonly measure: number | null }[]> {
   const sessions = new Set(
     events.flatMap(({ kind, data }) => (kind === "exam.started" ? [data.session] : [])),
   );
   const conditions = conditionsOf(events);
-  const took = new Map<string, number[]>();
-  for (const { started, start, ending, end, condition } of solvesIn(events)) {
+  const verdicts = verdictsOf(events);
+  const answers = new Map<string, { readonly turns: number | null; readonly measure: number | null }[]>();
+  for (const { id, started, start, ending, end, condition } of solvesIn(events)) {
     const version = conditions.get(condition)?.task;
     if (started <= from || !sessions.has(start.comparison) || version === undefined) continue;
-    if (ending?.outcome === "pass" && isNumber(end?.turns)) {
-      took.set(version, [...(took.get(version) ?? []), end.turns]);
-    }
+    if (ending?.outcome !== "pass") continue;
+    const checker = verdicts.get(id)?.checker;
+    const measure = checker?.kind === "pass" ? (checker.objective ?? null) : null;
+    answers.set(version, [
+      ...(answers.get(version) ?? []),
+      { turns: isNumber(end?.turns) ? end.turns : null, measure },
+    ]);
   }
-  return took;
+  return answers;
 }
 
 /** How many of the reference harness's solves at a held task's gate were valid, as one clause, or

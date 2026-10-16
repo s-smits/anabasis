@@ -34,6 +34,7 @@ import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, poolOf } from "../kernel/reports.ts";
+import { informative, MARGIN, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
@@ -45,7 +46,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
-import { gateTurns, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
+import { gateAnswers, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
@@ -170,8 +171,11 @@ function tried(verdict: Verdict): string {
 
 /** What the gate reads of one package: its shape, and under `try_task` the reference harness's
  *  solves of a package whose shape passed, `TRIED` of them at once, with what they billed. The task
- *  is held out where the solves that gave a reading hold a valid answer and a fail, or no valid
- *  answer where its author's answer passes on it (`gated`). A solve that ended in no reading, or in
+ *  is held out where the solves that gave a reading leave the reference room as a comparison reads
+ *  it (`informative`): a valid answer and a fail, or valid answers apart by the objective past
+ *  `MARGIN`; or no valid answer where its author's answer passes on it (`gated`). Until 16 October
+ *  the gate read no objective, and of the drafts five fresh campaigns' gates refused as answered
+ *  every time, 6 held valid answers more than 1% apart. A solve that ended in no reading, or in
  *  a rejection the Referee did not rule earned (`probing`, `tools/d1b/examine.ts`), is no reading,
  *  and leaves the draft unmeasured only where the readings left do not decide it: every one valid
  *  short of `TRIED`, or none. Until 15 October any such solve refused the draft unmeasured: 29 of
@@ -192,20 +196,37 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   const before = billedFor(read(log), id);
   const from = read(log).length - 1;
   const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, stop)));
-  const solves = endings.filter(({ outcome }) => outcome !== "non-result").length;
-  const valid = endings.filter(({ outcome }) => outcome === "pass").length;
+  const readings = endings.filter(({ outcome }) => outcome !== "non-result");
+  const solves = readings.length;
+  const valid = readings.filter(({ outcome }) => outcome === "pass").length;
   const unread =
     solves < TRIED
       ? `, ${String(TRIED - solves)} of them ending in no reading or in a rejection the Referee did not rule earned`
       : "";
-  // The turns each valid answer took, as the session's later ones are told by family (`gateTurns`).
-  const took = gateTurns(read(log), from).get(taskVersion(task)) ?? [];
+  // The turns each valid answer took, as the session's later ones are told by family, and the
+  // objective of each, by which a task the reference answers every time still leaves room.
+  const answers = gateAnswers(read(log), from).get(taskVersion(task)) ?? [];
+  const took = answers.flatMap(({ turns: each }) => (each === null ? [] : [each]));
   const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of the solver's own turns`;
   const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${turns}${unread}`;
   const unmeasured = `${counted}, so it is not measured`;
-  const roomless = `${counted}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`;
+  const apart =
+    contract.objective === undefined ? "" : ", or every time with two answers apart by the objective";
+  const roomless = `${counted}, and a task is held out only where it answers some and not all${apart}, or none where an answer of its author's passes on it`;
   const unsolved = solves > 0 && valid === 0;
-  const some = valid > 0 && valid < solves;
+  // Room as a comparison reads it (`informative`), on the reference's side alone; a task it never
+  // answers is held on its author's proof (`gated`), so no feasible task is named here.
+  const objective = contract.objective && { direction: contract.objective.direction, margin: MARGIN };
+  const pair: Paired = {
+    task: taskVersion(task),
+    old: readings.map(({ outcome }) => outcome === "pass"),
+    fresh: [],
+    ...keyIfDefined(
+      "objective",
+      objective && { ...objective, old: answers.map(({ measure }) => measure), fresh: [] },
+    ),
+  };
+  const some = valid > 0 && informative(pair, "old", new Set());
   return {
     reason: some ? null : unsolved || solves === TRIED ? roomless : unmeasured,
     said: `; ${counted}`,

@@ -177,7 +177,7 @@ describe("the reference harness of a campaign", () => {
 
 describe("the stop rule", () => {
   /** A campaign whose patience is the plan's three; the default is six (`PATIENCE`). */
-  const three = event("campaign.opened", { budget: null, limit: null, ladder: [], sessions: 1, patience: 3 });
+  const three = event("campaign.opened", { budget: null, limit: null, sessions: 1, patience: 3 });
   const stopRule = (log: readonly LogEvent[]) => stopOf([three, ...log]);
   const counted = (checkpoints: number, sinceStep: number) => ({
     checkpoints,

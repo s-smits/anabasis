@@ -601,18 +601,17 @@ describe("a campaign run by its log", () => {
       `harness ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}), set-up (epoch 0), read by g-1 and g-2. In g-2 it won 7, lost 0 and tied 0`,
     );
     expect(report).toContain(`| g-1 | ${letter?.[1] ?? "?"} (${handed.harness.slice(0, 8)}) | A (`);
-    // Its cost beside it, read against the bar and gating nothing (the plan's W), and no ladder.
+    // Its cost beside it, read against the bar and gating nothing (the plan's W).
     expect(report).toMatch(
       /tied 0\. Its cost, gating nothing: 1 promotion attempt this epoch \(bar 3 after set-up\): met/,
     );
-    expect(report).toContain("## The ladder\n\nNo reading:");
+    expect(report).not.toContain("ladder");
     // What each measured thing cost, the climb's velocity first, and how many comparisons that
     // began bought a report.
     expect(report).toMatch(/- The climb: \$\d+\.\d\d and \d+\.\d hours a promotion \(1\)\./);
     expect(report).toMatch(
       /- Comparisons: \$\d+\.\d\d a task scored \(\d+\); 3 of the 3 comparisons that began reported\./,
     );
-    expect(report).toContain("- The ladder: no reading, so no point is priced.");
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");
     expect(report).toContain("The campaign has not ended");

@@ -122,8 +122,8 @@ bun run runs pause <name> --after promoted|compacted|reported|finished --yes
 `continue` runs a stopped campaign again in the worktree that holds its log, on the flags its last
 `launch-run-<n>.json` kept, less `--name` and `--budget`: the record holds the total, which a
 budget word may have set since, and `--budget` names another. It refuses as `launch` does, and
-`--at` another commit while any comparison of the log, a ladder reading among them, began and has
-not reported: that comparison goes on under its own terms and its own code, and the command would
+`--at` another commit while any comparison of the log began and has not reported (an old ladder
+reading, which no move goes on with since 16 October, is none): that comparison goes on under its own terms and its own code, and the command would
 refuse it there and end the campaign on its environment. A campaign that ended `environment` is
 continued at the code it began the comparison under until the comparison reports.
 

@@ -21,8 +21,6 @@ import {
   type Epoch,
   epochLine,
   epochsOf,
-  ladderLine,
-  ladderOf,
   promotionsWorth,
   regressionLine,
   regressionOf,
@@ -556,7 +554,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
   });
 });
 
-describe("the bar a promotion is read against, and the ladder", () => {
+describe("the bar a promotion is read against, beside an old ladder's readings", () => {
   /** A candidate's comparison against `old` that read a frontier. */
   const stepRead = (session: string, old: string, fresh: string) =>
     event("comparison.reported", {
@@ -570,7 +568,8 @@ describe("the bar a promotion is read against, and the ladder", () => {
       versions: ["v1"],
       frontier: { differences: [2], falseRate: 0.01 },
     });
-  /** The ladder read on `reference`: tasks by the starter's valid solves and by the reference's. */
+  /** An old ladder read on `reference` (retired 16 October): tasks by the starter's valid solves
+   *  and by the reference's. */
   const ladderRead = (session: string, reference: string, starter: number[], valid: number[]) =>
     event("comparison.reported", {
       session,
@@ -587,15 +586,11 @@ describe("the bar a promotion is read against, and the ladder", () => {
     event("build.finished", { session: "b-1", changed: true }),
     stepRead("g-1", "S", "ha"),
     event("harness.promoted", { harness: "ha", from: "S" }),
-    // On four ladder tasks at two solves a side: the starter none, `ha` a quarter. The reading
-    // fixes the four as a ladder.
     event("comparison.started", { session: "g-2", ladder: true, tasks: ["l1", "l2", "l3", "l4"] }),
     ladderRead("g-2", "ha", [4, 0, 0], [2, 2, 0]),
     event("build.finished", { session: "b-2", changed: true, billed: 5 }),
     stepRead("g-3", "ha", "hb"),
     event("harness.promoted", { harness: "hb", from: "ha" }),
-    // The same ladder after a second promotion, with one task disputed since: three are scored,
-    // and the share is still of the four. A task held for the ladder since makes the next ladder.
     event("comparison.started", { session: "g-4", ladder: true, frozen: "g-2", tasks: ["l1", "l2", "l3"] }),
     ladderRead("g-4", "hb", [3, 0, 0], [0, 0, 3]),
     event("comparison.started", { session: "g-5", ladder: true, tasks: ["l5", "l6"] }),
@@ -622,50 +617,7 @@ describe("the bar a promotion is read against, and the ladder", () => {
     expect(worthOf(log.slice(0, step + 1), { ...asked, id: "g-5" }).cost).toMatchObject({ attempts: 1 });
   });
 
-  it("reads the ladder's curve: each reading's shares, the gain over the starter and what was billed since", () => {
-    const curve = ladderOf(log);
-    expect(curve).toEqual([
-      {
-        id: "g-2",
-        ladder: "g-2",
-        reference: "ha",
-        promotions: 1,
-        tasks: 4,
-        aside: 0,
-        reference_share: 0.25,
-        starter_share: 0,
-        gain: 25,
-        dollars: 0,
-      },
-      {
-        id: "g-4",
-        ladder: "g-2",
-        reference: "hb",
-        promotions: 2,
-        tasks: 4,
-        aside: 1,
-        reference_share: 0.75,
-        starter_share: 0,
-        gain: 75,
-        dollars: 5,
-      },
-      {
-        id: "g-5",
-        ladder: "g-5",
-        reference: "hb",
-        promotions: 2,
-        tasks: 2,
-        aside: 0,
-        reference_share: 0,
-        starter_share: 0,
-        gain: 0,
-        dollars: 0,
-      },
-    ]);
-    expect(curve.map(ladderLine)[1]).toBe(
-      "g-4 on ladder g-2: after 2 promotions, reference hb valid on 75% of 4 ladder tasks (1 set aside, unsolved on both sides), the starter on 0%, +75 points; $5.00 billed since the reading before",
-    );
-    // No ladder reading is a step, a control or an attempt of the climb's.
+  it("reads no old ladder reading as a step, a control or an attempt of the climb's", () => {
     expect(epochsOf(log).map(({ comparisons }) => comparisons)).toEqual(
       epochsOf(log.filter(({ data }) => data.ladder !== true)).map(({ comparisons }) => comparisons),
     );

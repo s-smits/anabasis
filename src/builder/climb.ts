@@ -14,7 +14,7 @@
 import { pairings, readTwice, TRIGGER, UNMEASURED } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { billedBetween, laddersOf, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
+import { billedBetween, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { countedSolves, passed } from "../kernel/solves.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -104,8 +104,9 @@ const PROMOTED = "harness.promoted";
  *  reference, which are what the false-promotion bound counts, so the bar does not move with the
  *  solver's price. A session the provider cut finished nothing and is no attempt. Dollars are
  *  reported beside it, and it gates nothing (12 October). The effect and transfer bars it stood
- *  beside until 13 October are the ladder's now: the same tasks, read after every promotion
- *  (`ladderOf`), where a scored set and the tasks held after a freeze changed with every reading. */
+ *  beside until 13 October went: each read a set that changed with every reading. The ladder that
+ *  took their place, a fixed set read after every promotion, went on 16 October: the first
+ *  promotion's reference answered it whole. The climb is read as promotions. */
 const BARS = { cost: 3 } as const;
 
 /** What `worthOf` reads of a comparison as `compared` builds its report: its id and candidate. */
@@ -125,34 +126,6 @@ export interface Worth {
     readonly dollars: number;
     readonly met: boolean;
   } | null;
-}
-
-/** One reading of the ladder (`ladderOwed`, `decide.ts`): the reference read and how many
- *  promotions stood when it was, each side's valid share on the ladder's tasks, the reference's
- *  gain over the starter in points, and what the campaign billed since the reading before it. */
-export interface Rung {
-  readonly id: string;
-  /** The ladder it read, by the id of the reading that fixed it (`laddersOf`). */
-  readonly ladder: string;
-  readonly reference: string;
-  readonly promotions: number;
-  /** The ladder's tasks, as its first reading fixed them: every share's denominator. */
-  readonly tasks: number;
-  /** Of those, the ones this reading did not score, disputed before it or set aside in it: each
-   *  counts unsolved on both sides, so the set stays the ladder's. */
-  readonly aside: number;
-  readonly reference_share: number | null;
-  readonly starter_share: number | null;
-  readonly gain: number | null;
-  readonly dollars: number;
-}
-
-/** A harness's census of tasks by their valid solves (`Valid`): the tasks it scored, its valid
- *  solves among them and the solves a task, or null where it holds none. */
-interface Census {
-  readonly tasks: number;
-  readonly valid: number;
-  readonly solves: number;
 }
 
 /** The share of valid answers among `solves`, or null where there is none. */
@@ -203,7 +176,7 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
     const tasks = byEpoch[nth] ?? [];
     const held = new Set(tasks);
     const builds = events.filter(({ kind }, at) => within(at) && kind === "build.finished");
-    // The ladder's readings are the curve's (`ladderOf`), and no comparison of the epoch's.
+    // An old ladder's readings are no comparison of the epoch's (`lastReports`).
     const comparisons = events.flatMap(({ kind, data }, at) =>
       within(at) && kind === "comparison.reported" && isString(data.session) && data.ladder !== true
         ? [{ id: data.session, reading: isString(data.reading) ? data.reading : "" }]
@@ -346,13 +319,6 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   ];
 }
 
-function censusOf(census: unknown): Census | null {
-  if (!Array.isArray(census) || !census.every(isNumber) || census.length < 2) return null;
-  const tasks = census.reduce((sum, count) => sum + count, 0);
-  const valid = census.reduce((sum, count, solves) => sum + count * solves, 0);
-  return { tasks, valid, solves: census.length - 1 };
-}
-
 /** The bars as the opening sets them, and the plan's where it names none (`BARS`). */
 export function barsOf(events: readonly LogEvent[]): Worth["bars"] {
   const terms = openingOf(events)?.terms;
@@ -414,61 +380,6 @@ export function worthLine({ bars, cost }: Worth): string {
   return cost === null
     ? "cost unread"
     : `cost, gating nothing: ${plural(cost.attempts, "promotion attempt")} this epoch (bar ${String(bars.cost)} after set-up): ${cost.met ? "met" : "over it"}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
-}
-
-/**
- * The climb's curves: every reading of each ladder, in order. A ladder's tasks are held apart from
- * every Builder and every promotion and fixed by its first reading (`laddersOf`), and each later
- * reading of it is on that set, so its curve says how much the promotions together gained, which a
- * chain of comparisons, each on its own tasks against its own reference, does not. Tasks held for
- * the ladder later make the next ladder, with a curve of its own. A ladder task disputed after its
- * ladder was fixed is no longer solved, and counts unsolved on both sides over the same
- * denominator (`aside`). The starter is read beside each reference: its share moving is drift in
- * the solver, the provider or the host, not the harness.
- */
-export function ladderOf(events: readonly LogEvent[]): Rung[] {
-  const fixed = new Map(laddersOf(events).map(({ id, tasks }) => [id, tasks.length]));
-  const frozen = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "comparison.started" && data.ladder === true && isString(data.session) && isString(data.frozen)
-        ? [[data.session, data.frozen] as const]
-        : [],
-    ),
-  );
-  let from = 0;
-  return lastReports(events, true).map(({ session, index, data }) => {
-    const ladder = frozen.get(session) ?? session;
-    const valid = asRecord(data.valid);
-    const [reference, starter] = [censusOf(valid?.old), censusOf(valid?.fresh)];
-    const tasks = fixed.get(ladder) ?? reference?.tasks ?? 0;
-    const share = (census: Census | null) =>
-      census === null || tasks === 0 ? null : census.valid / (tasks * census.solves);
-    const [referenceShare, starterShare] = [share(reference), share(starter)];
-    const rung = {
-      id: session,
-      ladder,
-      reference: isString(data.old) ? data.old : "",
-      promotions: events.slice(0, index).filter(({ kind }) => kind === PROMOTED).length,
-      tasks,
-      aside: Math.max(0, tasks - (reference?.tasks ?? 0)),
-      reference_share: referenceShare,
-      starter_share: starterShare,
-      gain:
-        referenceShare === null || starterShare === null
-          ? null
-          : Math.round(100 * (referenceShare - starterShare)),
-      dollars: billedBetween(events, from, index),
-    };
-    from = index;
-    return rung;
-  });
-}
-
-/** A reading of the ladder as one line of the curve. */
-export function ladderLine(rung: Rung): string {
-  const share = (of: number | null) => (of === null ? "unread" : `${String(Math.round(100 * of))}%`);
-  const aside = rung.aside === 0 ? "" : ` (${String(rung.aside)} set aside, unsolved on both sides)`;
-  return `${rung.id} on ladder ${rung.ladder}: after ${plural(rung.promotions, "promotion")}, reference ${short(rung.reference)} valid on ${share(rung.reference_share)} of ${plural(rung.tasks, "ladder task")}${aside}, the starter on ${share(rung.starter_share)}${rung.gain === null ? "" : `, ${rung.gain > 0 ? "+" : ""}${String(rung.gain)} points`}; $${rung.dollars.toFixed(2)} billed since the reading before`;
 }
 
 /**

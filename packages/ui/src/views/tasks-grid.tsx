@@ -18,7 +18,7 @@ import type { Share } from "../../../../src/builder/climb.ts";
  */
 
 const ALL = "all";
-const STATES = [ALL, "held", "released", "refused", "disputed", "ladder"];
+const STATES = [ALL, "held", "released", "refused", "disputed"];
 const YES_NO = [ALL, "yes", "no"];
 const LABEL_WORDS = new Map([
   ["all", "All tasks"],

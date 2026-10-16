@@ -36,7 +36,7 @@
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
-import { ladderLine, ladderOf, promotionsWorth, riskLines, worthLine } from "#src/builder/climb.ts";
+import { promotionsWorth, riskLines, worthLine } from "#src/builder/climb.ts";
 import { UNSETTLED } from "#src/builder/comparison.ts";
 import { campaignOf, type Handover } from "#src/builder/handover.ts";
 import { short } from "#src/builder/move.ts";
@@ -59,7 +59,6 @@ import { openHarness } from "#src/solve/harness.ts";
 import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
 import { recordedSetting } from "./setting.ts";
-import { ladderedBy } from "#src/kernel/task.ts";
 
 type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 type Compared = Extract<Handover, { step: "comparison" }>;
@@ -161,10 +160,6 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       : `Its setting: ${setting.solver === null ? "the stored cycle's solver" : `${setting.solver.model} at ${setting.solver.effort}`}, ${String(setting.minutes)} minutes a solve, ${setting.modelTurns === null ? "the solver's turns not limited" : `${plural(setting.modelTurns, "turn")} of the solver's own`}.`,
     "## Promotions",
     promotions.join("\n") || "None.",
-    "## The ladder",
-    ladderOf(events)
-      .map((rung) => `- ${ladderLine(rung)}`)
-      .join("\n") || "No reading: the ladder holds no task, or no promotion has been read on it.",
     "## Every comparison",
     [
       row([
@@ -202,8 +197,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
 
 /**
  * What each measured thing cost, from the log alone: the Examiner's dollars a task it held out,
- * its own turns and its admission solves together; a comparison's a task it scored; the ladder's
- * a point the reference gained on it between its first reading and its last; and how many of the
+ * its own turns and its admission solves together; a comparison's a task it scored; and how many of the
  * comparisons that began reported, since one cut before its report bought nothing it can show.
  */
 function economyLines(events: readonly LogEvent[]): string[] {
@@ -217,30 +211,11 @@ function economyLines(events: readonly LogEvent[]): string[] {
       sum + (isNumber(data.billed) ? data.billed : 0) + billedParts(events, session).comparison,
     0,
   );
-  // A task held for the ladder was paid for as one held out was, and is no less written.
-  const held = exams.reduce(
-    (sum, { session, data }) =>
-      sum + (Array.isArray(data.held) ? data.held.length : 0) + ladderedBy(events, session),
-    0,
-  );
+  const held = exams.reduce((sum, { data }) => sum + (Array.isArray(data.held) ? data.held.length : 0), 0);
   const all = comparisonsOf(events);
   const reported = all.filter(({ report }) => report !== null);
   const compared = reported.reduce((sum, { id }) => sum + billedParts(events, id).comparison, 0);
   const scored = reported.reduce((sum, { report }) => sum + (isNumber(report?.tasks) ? report.tasks : 0), 0);
-  const curve = ladderOf(events);
-  // Each ladder's price is read on its own curve: a point is one of its fixed set, and what was
-  // billed between its first reading and its last is every rung's since the reading before.
-  const ladders = [...new Set(curve.map(({ ladder }) => ladder))].map((id) => {
-    const first = curve.findIndex(({ ladder }) => ladder === id);
-    const last = curve.findLastIndex(({ ladder }) => ladder === id);
-    const [from, to] = [curve[first]?.reference_share, curve[last]?.reference_share];
-    const climbed = curve.slice(first + 1, last + 1).reduce((sum, rung) => sum + rung.dollars, 0);
-    if (first === last || from == null || to == null) {
-      return `- Ladder ${id}: fewer than two readings, so no point is priced.`;
-    }
-    const points = Math.round(100 * (to - from));
-    return `- Ladder ${id}: ${points > 0 ? per(climbed, points, "point the reference gained") : `no point gained over $${climbed.toFixed(2)}`} between its first reading and its last.`;
-  });
   // The climb's velocity first: what a promotion cost in dollars and in hours of the log. The
   // total is a bound, and the operator reads a campaign by how fast it climbs under it (14 October).
   const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
@@ -250,9 +225,8 @@ function economyLines(events: readonly LogEvent[]): string[] {
     promotions > 0
       ? `- The climb: $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
       : `- The climb: no promotion over $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
-    `- The Examiner: ${per(examined, held, "task held out or for the ladder")}.`,
+    `- The Examiner: ${per(examined, held, "task held out")}.`,
     `- Comparisons: ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,
-    ...(ladders.length === 0 ? ["- The ladder: no reading, so no point is priced."] : ladders),
   ];
 }
 
@@ -274,7 +248,7 @@ function promotionLines(
   const worths = promotionsWorth(events);
   return events.flatMap(({ kind, at, data }, index) => {
     if (kind !== "harness.promoted" || !isString(data.harness)) return [];
-    // The first over the Starter is set-up, epoch 0, and the climb counts from it (`owedReading`).
+    // The first over the Starter is set-up, epoch 0, and the climb counts from it.
     const nth = events.slice(0, index).filter((each) => each.kind === "harness.promoted").length;
     const worth = worths.get(data.harness);
     const rung = nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`;

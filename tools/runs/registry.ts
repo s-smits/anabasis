@@ -161,12 +161,14 @@ export function writers(run: Run, running: readonly Running[]): Running[] {
   return running.filter(({ cwd, args }) => cwd === run.tree && writes(args));
 }
 
-/** The comparisons of `events` that began and have not reported, the ladder's readings among them. */
+/** The comparisons of `events` that began and have not reported. An old ladder's reading is none:
+ *  no move goes on with one since the ladder was retired on 16 October, so one left open would
+ *  keep a run from resting and from moving to another commit for good. */
 export function openComparisons(events: readonly LogEvent[]): string[] {
-  const reported = new Set(
-    [...lastReports(events), ...lastReports(events, true)].map(({ session }) => session),
+  const reported = new Set(lastReports(events).map(({ session }) => session));
+  const begun = events.flatMap(({ kind, data }) =>
+    kind === "comparison.started" && data.ladder !== true ? [data.session] : [],
   );
-  const begun = events.flatMap(({ kind, data }) => (kind === "comparison.started" ? [data.session] : []));
   return [...new Set(begun.filter(isString))].filter((session) => !reported.has(session));
 }
 

@@ -214,7 +214,8 @@ describe("a row of the table", () => {
       ending: "environment",
       why: "no draft was put: the Examiner's session crashed 3 times (exited 1)",
     });
-    expect(move([crashed, fell(1), crashed], plan)).toMatchObject({ move: "end", ending: "exam" });
+    // A crash between drafts is the provider's, and takes none of the three a campaign may put.
+    expect(move([crashed, fell(1), crashed], plan)).toMatchObject({ move: "draft" });
     expect(move([crashed, crashed], plan)).toMatchObject({ move: "draft" });
     // Run again once the campaign ended on its environment, it drafts again: the crashes count
     // since that ending, and the drafts put before it still count.

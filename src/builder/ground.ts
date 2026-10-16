@@ -11,7 +11,7 @@
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, referenceOf } from "../kernel/reports.ts";
-import { isString, type JsonObject } from "../meta/json-shape.ts";
+import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { refusals, supplyOf, type Wanted } from "./admission.ts";
 
 /** What a campaign was set to run by: what move 7 reads beside the log. */
@@ -76,7 +76,13 @@ export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
   return [...begun.values()].toSorted((one, other) => one.at - other.at);
 }
 
-/** The Builder and Examiner sessions in a row, up to the log's end and since the campaign last
+/** A session's ending, whatever its seat: each writes `<seat>.finished` with its id, which a
+ *  solve's does not name. Until 16 October the crash rule named the Builder's and
+ *  the Examiner's, and three drafts that crashed on a named reset ended three fresh campaigns. */
+export const sessionEnded = ({ kind, data }: LogEvent) =>
+  kind.endsWith(".finished") && isString(data.session);
+
+/** The sessions in a row, up to the log's end and since the campaign last
  *  ended, that the provider failed before they held out a task or changed a harness, with what
  *  the last session's crash said where it crashed. Such a session held out no task and left no harness because its provider
  *  refused it, not because the domain gave it nothing: on 11 October six Examiner sessions of one
@@ -94,9 +100,7 @@ export function crashedRun(events: readonly LogEvent[]) {
   // nought, and the command exited with no ending on record.
   const sessions = events
     .slice(since + 1)
-    .filter(
-      ({ kind, data }) => (kind === "exam.finished" || kind === "build.finished") && data.ended !== "stopped",
-    )
+    .filter((event) => sessionEnded(event) && event.data.ended !== "stopped")
     .toReversed();
   // A session moved the campaign whatever its ending where an Examiner's held a task out: one that
   // did and then lost a turn to the provider is `crashed` with its tasks held (`exam.finished.held`
@@ -108,6 +112,7 @@ export function crashedRun(events: readonly LogEvent[]) {
   );
   const moved = (data: JsonObject) =>
     (Array.isArray(data.held) && data.held.length > 0) ||
+    (isNumber(data.tries) && data.tries > 0) ||
     (data.changed === true && (data.ended !== "crashed" || kept.has(data.session)));
   const whole = sessions.findIndex(({ data }) => data.ended !== "crashed" || moved(data));
   const count = whole === -1 ? sessions.length : whole;

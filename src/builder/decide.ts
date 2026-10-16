@@ -242,20 +242,24 @@ function exam({ events, plan, supply, refused }: Ground): Move | null {
 }
 
 /** The first move of a campaign that opened from a prompt and holds no exam: a draft, while the
- *  plan's three have not been put. A session that put none, as one its provider failed, counts
- *  as a session, so that a campaign does not draft against a dead provider without end. Where
- *  every session crashed and no draft was put, the ending is the environment's, with what the
- *  last crash said: on 10 October three sessions crashed in one second before any model call
- *  (Claude Code refused to run as root), and the campaign ended on an exam nobody had read. A
- *  session that crashed before it put a draft counts only since the campaign last ended, as the
- *  crashes of `crashedRun` do, so that a campaign run again once the provider is back can go on.
- *  The drafts put count over the whole log. */
+ *  plan's three have not been put. A session that crashed before it put a draft is the crash
+ *  rule's, as any session's is (`crashedRun`): a named reset is waited out, and `CRASHES` in a
+ *  row end the campaign on its environment, with what the last crash said (10 October: three
+ *  sessions crashed in one second, Claude Code refusing to run as root). Until 16 October the
+ *  draft kept a count of its own, nothing waited, and three drafts that crashed on a session
+ *  limit ended three fresh campaigns 33 minutes before it reset. The drafts put count
+ *  over the whole log. */
 function drafting(events: readonly LogEvent[]): Move {
-  const since = events.findLastIndex(({ kind }) => kind === "campaign.ended");
+  const crashes = crashedRun(events);
+  if (crashes.count >= CRASHES) {
+    return end(
+      "environment",
+      `no draft was put: the Examiner's session crashed ${String(crashes.count)} times (${crashes.crash ?? "the provider gave no reason"})`,
+    );
+  }
   const put = ({ tries }: LogEvent["data"]) => (isNumber(tries) ? tries : 0);
   const sessions = events.filter(
-    ({ kind, data }, at) =>
-      kind === "draft.finished" && (at > since || data.ended !== "crashed" || put(data) > 0),
+    ({ kind, data }) => kind === "draft.finished" && (data.ended !== "crashed" || put(data) > 0),
   );
   const tries = sessions.reduce((sum, { data }) => sum + put(data), 0);
   if (tries < DRAFTS && sessions.length < DRAFTS) {
@@ -267,16 +271,10 @@ function drafting(events: readonly LogEvent[]): Move {
           : `${plural(tries, "draft")} did not stand at the host's reading, and ${String(DRAFTS - tries)} more may be put`,
     };
   }
-  const crash = sessions.at(-1)?.data.crash;
-  return tries === 0 && sessions.every(({ data }) => data.ended === "crashed") && isString(crash)
-    ? end(
-        "environment",
-        `no draft was put: the Examiner's session crashed ${String(sessions.length)} times (${crash})`,
-      )
-    : end(
-        "exam",
-        `the exam was not accepted: ${plural(tries, "draft")} in ${plural(sessions.length, "session")} did not stand at the host's reading`,
-      );
+  return end(
+    "exam",
+    `the exam was not accepted: ${plural(tries, "draft")} in ${plural(sessions.length, "session")} did not stand at the host's reading`,
+  );
 }
 
 function bound(ground: Ground): Move | null {

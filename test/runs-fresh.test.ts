@@ -1,0 +1,41 @@
+import { describe, expect, it } from "bun:test";
+import { freeName, seats } from "../tools/runs/fresh.ts";
+
+describe("bun run runs fresh", () => {
+  it("seats one model at an effort a seat: the Builder, the Examiner, the Referee, the solver", () => {
+    const opus = "claude/claude-opus-5-5";
+    expect(seats("opus", undefined)).toEqual([
+      "--builder",
+      opus,
+      "--builder-effort",
+      "high",
+      "--examiner",
+      opus,
+      "--examiner-effort",
+      "high",
+      "--reviewer",
+      opus,
+      "--reviewer-effort",
+      "medium",
+      "--solver",
+      opus,
+      "--solver-effort",
+      "medium",
+    ]);
+    expect(seats("sonnet", undefined).filter((_, at) => at % 4 === 3)).toEqual([
+      "xhigh",
+      "xhigh",
+      "high",
+      "high",
+    ]);
+    expect(() => seats("haiku", "hhmm")).toThrow("--model takes opus|sonnet");
+    expect(() => seats("opus", "hhm")).toThrow("--effort takes four of lmhx");
+    expect(() => seats("opus", "hhmq")).toThrow("--effort takes four of lmhx");
+  });
+
+  it("names a run once: a taken name goes on as -r2, -r3", () => {
+    const taken = new Set(["truss-fresh-opus", "truss-fresh-opus-r2"]);
+    expect(freeName("truss-fresh-opus", (name) => taken.has(name))).toBe("truss-fresh-opus-r3");
+    expect(freeName("esp32-fresh-opus", (name) => taken.has(name))).toBe("esp32-fresh-opus");
+  });
+});

@@ -306,8 +306,9 @@ what decides whether the run can answer the question at all.
   worktree, detached at a published commit, with its own `bun install --frozen-lockfile`, kept for
   that run alone. Do not edit `src/` there while the run lives, and never move a campaign's folder
   but by `bun run runs copy`.
-- **A fresh opening.** A new name and a new project, `--prompt-file` from the host's prompts
-  folder, the operator's total, no pack flags, no `--admit`, no `--hitl` unless the operator asks.
+- **A fresh opening.** `bun run runs fresh <pack>` ([run-management](../run-management/SKILL.md)):
+  a new name and project, the host's prompt, the operator's total, no pack flags, no `--admit`, no
+  `--hitl` unless the operator asks.
   Run the dry run and the launch as two commands: the launch refuses while any process line holds
   the campaign's `harness-builder.ts --name <name>`, and a shell line that carries the dry run is
   one.

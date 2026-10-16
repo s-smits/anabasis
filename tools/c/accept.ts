@@ -14,7 +14,8 @@
  * the smallest the answer format allows, was not rejected, or a format the smallest value its
  * schema yields does not follow, so that no check was seen to refuse it (until 11 October that was
  * printed and was no fault); and a check its author's own computation decides, which stands only
- * once the operator admits it by name (`--admit a,b`). The reading goes into the campaign's log as
+ * once the operator admits it by name (`--admit a,b`), or every such check at once
+ * (`--admit-authored`, which a campaign without `--hitl` gives). The reading goes into the campaign's log as
  * `checker.read`, under the contract's hash and the check program's digest. Exits 1 on any fault.
  *
  * `--cycle` names the stored cycle the campaign opens over, as every other command of a campaign
@@ -38,6 +39,7 @@
  * on Linux.
  */
 import {
+  AUTHOR,
   authoredFaults,
   doNothingFaults,
   frozenChecker,
@@ -60,6 +62,7 @@ const OPTIONS = {
   name: { type: "string" },
   cycle: { type: "string" },
   admit: { type: "string" },
+  "admit-authored": { type: "boolean", default: false },
   jobs: { type: "string", default: "4" },
   freeze: { type: "boolean", default: false },
   despite: { type: "string" },
@@ -120,6 +123,11 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     found: toolOnPath(bundle),
     width: Number(values.jobs),
   });
+  // A campaign without `--hitl` gives the operator's word for every check its author decides
+  // (the operator, 16 October), the objective among them, whatever the reading finds.
+  if (values["admit-authored"]) {
+    for (const { id } of checks.filter(({ instrument }) => instrument === AUTHOR)) admitted.add(id);
+  }
   const faults = [...seen, ...authoredFaults(checks, admitted)];
   append(log, "checker.read", {
     ...checker,

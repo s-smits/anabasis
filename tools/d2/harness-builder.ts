@@ -67,8 +67,8 @@
  * at, the campaign ends on its budget. **What it risks** is said as it opens, and an opening whose
  * false promotion over its patience may pass 10% is refused (`openingLines`, `src/kernel/size.ts`).
  *
- * **A campaign runs unattended** (row F29; the operator, 12 and 16 October): it admits a drafted
- * exam's checks, freezes an exam whose reading holds no fault and promotes a step read twice and
+ * **A campaign runs unattended** (row F29; the operator, 12 and 16 October): it admits every check
+ * its author's own computation decides, a drafted exam's objective among them, freezes an exam whose reading holds no fault and promotes a step read twice and
  * not lost at the full limit. Under `--hitl`, the operator in the loop, kept by the opening until
  * `--no-hitl`, all three wait for the operator's word and a promotion stops the command. Going on past the stop rule takes `--past-stop "<why>"` either way.
  *
@@ -222,7 +222,7 @@ async function make(
     await acceptCommand([
       ...pack,
       ...flag("admit", admits?.join(",")),
-      ...(opening.attended ? [] : ["--freeze"]),
+      ...(opening.attended ? [] : ["--freeze", "--admit-authored"]),
     ]);
     return;
   }

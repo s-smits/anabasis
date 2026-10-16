@@ -221,8 +221,6 @@ interface Job {
  *  run again. Tasks and not solves: one task its provider refuses at the first turn is that task's
  *  fault, and is reported short. */
 const SILENT = 3;
-/** The share of a scored set kept for the epochs before the newest: one task in four. */
-const OLDER_SHARE = 4;
 const TASK_STATE = "task.state";
 /** The states a comparison's finding may dispute a task from. */
 const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released"]);
@@ -243,11 +241,10 @@ interface Repeat {
  * epoch down and within an epoch drawn by the contract's hash and nothing else (`draw`). The tasks
  * written since the last promotion are the exam the reference harness has not answered, so they
  * come first; what room is left is filled from the epoch before, by the same hash, and so on down.
- * One share in `OLDER_SHARE` of the set is kept for the epochs before whatever the newest holds,
- * which is the regression check: the control reads the starter and not the last reference, so
- * without it a harness that lost what the reference answers would read as progress once the newest
- * epoch filled the target (the plan's climb section, C2; `regressionOf` reads the same gap after
- * the fact). The epoch chooses the set and no result does: the hash is fixed before any task
+ * The regression check is the retained set, which since 16 October holds every task of the epochs
+ * before that the reference has stood in no comparison of (`poolOf`): until then one task in four
+ * of the set was kept for those epochs as frontier, and after each promotion they tied (the plan's
+ * climb section, C2; `regressionOf` reads the same gap after the fact). The epoch chooses the set and no result does: the hash is fixed before any task
  * exists, and which epoch a task is in is where it passed its gate (`tasksByEpoch`). A draw over
  * every epoch at once, in a simulated climb after two promotions, drew for a target of 8 over 19
  * held tasks two or three the reference failed, so three comparisons read one win short and the
@@ -268,15 +265,13 @@ interface Repeat {
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string, repeat?: Repeat) {
   const pool = poolOf(events);
-  const frontier = pool.scorable.filter((task) => !pool.retained.includes(task));
   const kept = pool.retained.filter((task) => pool.scorable.includes(task));
-  const share = Math.min(kept.length, Math.ceil(Math.min(target, frontier.length) / 3));
-  const held = new Set([...frontier, ...draw(kept, share, `${contract}:retained`)]);
+  const share = Math.min(kept.length, Math.ceil(Math.min(target, pool.frontier.length) / 3));
+  const held = new Set([...pool.frontier, ...draw(kept, share, `${contract}:retained`)]);
   const count = Math.min(target, held.size);
   const [newest = [], ...older] = tasksByEpoch(events)
     .toReversed()
     .map((epoch) => epoch.filter((version) => held.has(version)));
-  const reserved = Math.min(Math.floor(count / OLDER_SHARE), older.flat().length);
   const [again = [], ...last] = repeat === undefined ? [] : firstStage(events, repeat);
   const tasks = again.filter((version) => held.has(version)).slice(0, count);
   const taken = new Set([...tasks, ...last.flat()]);
@@ -294,7 +289,7 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
       [],
     );
   const free = (epoch: readonly string[]) => epoch.filter((version) => !tasks.includes(version)).length;
-  const own = Math.min(count - reserved, newest.length) + free(newest) - newest.length;
+  const own = Math.min(count, newest.length) + free(newest) - newest.length;
   tasks.push(...drawn(newest, Math.max(0, own)));
   for (const epoch of older) tasks.push(...drawn(epoch, Math.min(count - tasks.length, free(epoch))));
   return { tasks, retained: tasks.filter((task) => pool.retained.includes(task)) };

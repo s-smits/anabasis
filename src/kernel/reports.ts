@@ -553,6 +553,15 @@ function tallyReports(
  * tied on them. A later reading that leaves a task open opens it again, as 3 of 34 rechecks did,
  * and one where a limit cut a solve of the reference's says neither (rule 7).
  *
+ * **Retained** is that third, and since 16 October every held task gated before the last
+ * promotion that the promoted harness has stood in no comparison of: those tasks were written for
+ * the harness it replaced, and it was promoted on their like. Drawn as frontier they padded each
+ * epoch's first comparisons with ties: in buffer-159-opus 0665c78b answered 9 such tasks 4 of 4,
+ * 8ee38f97 59 of 60 solve-sets on the epoch before its own, and 18 of 18 in g-4 to g-7 tied with
+ * both sides valid in every solve. Read apart they guard against a regression, which is what the
+ * epochs before the newest were kept in the draw for. **Frontier** is the rest of the scorable
+ * tasks, what a step is read on and what the supply counts (`supplyOf`, `admission.ts`).
+ *
  * **Feasible** are the task versions a valid answer is on record for: a solve's, under any harness
  * and at any limits, an author's answer the host saw pass on the task under its own id
  * (`task.feasible`), or a reference solve's under `try_task`, which its gate counts. It is the one
@@ -613,13 +622,27 @@ export function poolOf(events: readonly LogEvent[]) {
   );
   const exhausted = spent.filter((task) => !kept.has(task));
   const out = new Set([...awaiting, ...exhausted]);
+  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const before = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
+  const reference = referenceOf(events);
+  const stood = new Set(
+    lastReports(events, true).flatMap(({ data }) =>
+      (data.old === reference || data.fresh === reference) && Array.isArray(data.versions)
+        ? data.versions.filter(isString)
+        : [],
+    ),
+  );
+  const unstood = held.filter((task) => before.has(task) && !out.has(task) && !stood.has(task));
+  const retained = [...spent.filter((task) => kept.has(task)), ...unstood];
+  const scorable = held.filter((task) => !out.has(task));
   const first = ({ tallied, asideOrder }: TaskRecord) =>
     Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
   return {
-    scorable: held.filter((task) => !out.has(task)),
+    scorable,
+    frontier: scorable.filter((task) => !retained.includes(task)),
     awaiting,
     exhausted,
-    retained: spent.filter((task) => kept.has(task)),
+    retained,
     feasible: new Set(records.flatMap(({ version, feasible }) => (feasible ? [version] : []))),
     outcomes: new Map(
       records

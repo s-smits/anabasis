@@ -982,8 +982,10 @@ describe("a campaign tool where the table names more than the action", () => {
       examine: writer,
     };
     // After the second promotion the reference has no room, and the table asks for tasks where
-    // the campaign used to end `finished` (main0_5_1, 15 October).
-    expect(await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "10"], seats)).toMatchObject({
+    // the campaign used to end `finished` (main0_5_1, 15 October). The second step reads at its
+    // first comparison since 16 October, when the tasks held before the first promotion that its
+    // reference never stood in were read apart as retained: it took ten moves until then.
+    expect(await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "9"], seats)).toMatchObject({
       move: "examine",
       code: "no-room",
     });
@@ -1018,9 +1020,11 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: writer,
     };
-    expect(await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6"], seats)).toMatchObject({
-      ending: "finished",
-    });
+    // The control reads the tasks x-1 wrote and those held before the promotion as retained, which
+    // leaves the promoted harness no room the script can show, so the table asks for tasks next
+    // (16 October; until then it built, and the run ended `finished`).
+    const ran = await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "8"], seats);
+    expect(ran).toMatchObject({ move: "examine" });
     const [first, , control] = of(name, REPORTED);
     // The table's control, as it names it: until 12 October the tool froze harness/, which was the
     // reference, the comparison was refused, and the advice stayed the same.

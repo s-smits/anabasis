@@ -161,8 +161,8 @@ describe("what a log holds for the next comparison", () => {
   });
 
   it("takes the untied share from the last comparison that tallied a task, whatever setting id it carries", () => {
-    // Six of the eight tasks closed by the reference in the last one, and four of the six retired
-    // (`poolOf`): two to win of the four that may still be scored.
+    // Six of the eight tasks closed by the reference in the last one, four of the six retired and
+    // two retained (`poolOf`): two to win, and the frontier holds those two alone.
     const log = [
       ...EIGHT.flatMap(heldOut),
       ...roundLogged(
@@ -184,21 +184,21 @@ describe("what a log holds for the next comparison", () => {
         setting: here.setting,
       }),
     ];
-    expect(supplyOf(log).untied).toBe(0.5);
+    expect(supplyOf(log)).toMatchObject({ held: 2, untied: 1 });
     // A setting id names the host's code too, and a campaign runs at one setting: solves under
     // another id, as after a tree moved to a new commit, leave the share where it was. Until
     // 2026-10-11 they read no share, and the next comparison counted every task.
     const moved = [...log, ...longer.events];
-    expect(supplyOf(moved).untied).toBe(0.5);
+    expect(supplyOf(moved)).toMatchObject({ held: 2, untied: 1 });
     // A comparison under the other id is the last one, and its share is the one read: the six it
-    // found open again count, and of its two closed tasks one retired and one is kept (`poolOf`).
+    // found open again count, and of its two closed tasks one retired and one is retained (`poolOf`).
     const again = roundLogged(
       "b-5",
       ["h0", "h3"],
       eight((place) => (place < 6 ? "FF PP" : "PP PP")),
       { turns: 48 },
     );
-    expect(supplyOf([...moved, ...again]).untied).toBeCloseTo(6 / 7, 10);
+    expect(supplyOf([...moved, ...again])).toMatchObject({ held: 6, untied: 1 });
   });
 
   it("counts the tasks the harness to be compared with left to win, whatever the last comparison untied", () => {
@@ -216,8 +216,10 @@ describe("what a log holds for the next comparison", () => {
         eight((place) => spelled[place] ?? ""),
       ),
     ];
-    expect(supplyOf(stepped).untied).toBe(0.875);
-    expect(supplyOf(stepped, "h1").untied).toBe(0.25);
+    // The reference's one closed task is retained, so the frontier is the seven it left open; of
+    // those the new harness closed five.
+    expect(supplyOf(stepped)).toMatchObject({ held: 7, untied: 1 });
+    expect(supplyOf(stepped, "h1").untied).toBeCloseTo(2 / 7, 10);
     // `latest` is the harness the last whole session left. One that comparison did not solve has
     // no record in it.
     const built = event("build.finished", {
@@ -226,14 +228,14 @@ describe("what a log holds for the next comparison", () => {
       harness: "h1",
       ended: "finished",
     });
-    expect(supplyOf([built, ...stepped], "latest").untied).toBe(0.25);
+    expect(supplyOf([built, ...stepped], "latest").untied).toBeCloseTo(2 / 7, 10);
     // A harness no comparison read has no share on record, and every task counts.
     expect(supplyOf(stepped, "h9").untied).toBeNull();
     // The campaign's reference harness is the starter until one is promoted, and that one after.
-    expect(supplyOf(stepped, "promoted").untied).toBe(0.875);
+    expect(supplyOf(stepped, "promoted")).toMatchObject({ held: 7, untied: 1 });
     const promotion = event("harness.promoted", { harness: "h1", from: "h0", rests: [] });
-    expect(supplyOf([...stepped, promotion], "promoted").untied).toBe(0.5);
-    expect(supplyOf([...stepped, promotion]).untied).toBe(0.5);
+    expect(supplyOf([...stepped, promotion], "promoted")).toMatchObject({ held: 2, untied: 1 });
+    expect(supplyOf([...stepped, promotion])).toMatchObject({ held: 2, untied: 1 });
   });
 
   it("takes the share from the reference's last comparison, whatever harness it reads", () => {
@@ -245,10 +247,10 @@ describe("what a log holds for the next comparison", () => {
       eight((place) => ["PP PP", "PP PF"][place] ?? "FF FF"),
     );
     const log = [...EIGHT.flatMap(heldOut), ...control];
-    // Either side of it: the reference closed two tasks and one of them retired (`poolOf`), and six
-    // may be won of the seven left, the ones nobody answered among them.
-    expect(supplyOf(log, "p1").untied).toBeCloseTo(6 / 7, 10);
-    expect(supplyOf(log, "h0").untied).toBeCloseTo(6 / 7, 10);
+    // Either side of it: the reference closed two tasks, one retired and one retained (`poolOf`),
+    // and the six left may be won, the ones nobody answered among them.
+    expect(supplyOf(log, "p1")).toMatchObject({ held: 6, untied: 1 });
+    expect(supplyOf(log, "h0")).toMatchObject({ held: 6, untied: 1 });
     const pair = roundLogged(
       "c-2",
       ["p1", "h1"],
@@ -256,14 +258,14 @@ describe("what a log holds for the next comparison", () => {
     );
     // Its last comparison is the reference's share, whatever the harness a command reads beside it:
     // until 15 October one never set beside it had none, and every task counted.
-    expect(supplyOf([...log, ...pair], "p1").untied).toBeCloseTo(6 / 7, 10);
+    expect(supplyOf([...log, ...pair], "p1")).toMatchObject({ held: 6, untied: 1 });
     expect(supplyOf([...log, ...pair], "h1").untied).toBe(0);
     const later = roundLogged(
       "c-3",
       ["h0", "p1"],
       eight(() => "FF FF"),
     );
-    expect(supplyOf([...log, ...pair, ...later], "p1").untied).toBe(1);
+    expect(supplyOf([...log, ...pair, ...later], "p1")).toMatchObject({ held: 8, untied: 1 });
   });
 
   it("reads no comparison the reference stood on neither side of, where no harness is named beside it", () => {
@@ -284,16 +286,19 @@ describe("what a log holds for the next comparison", () => {
       ["h0", "p1"],
       eight((place) => (place === 7 ? "FF PF" : "FF FF")),
     );
+    // The promoted harness closed seven, retained three of them and retired four (`poolOf`): one
+    // task is left to win, short of what a first reading takes.
     for (const events of [log, [...log, ...control]]) {
-      expect(supplyOf(events).untied).toBe(1 / 4);
-      expect(codes(supplyOf(events), { target: 8 })).toEqual(["untied-short", "unread"]);
+      expect(supplyOf(events)).toMatchObject({ held: 1, untied: 1 });
+      expect(codes(supplyOf(events), { target: 8 })).toEqual(["held-short", "unread"]);
     }
   });
 
   it("counts as held out since only the tasks held out after that comparison, not the ones it did not draw", () => {
+    // The one task the reference closed is retained, and the frontier holds none.
     const before = [...heldOut("v"), ...roundLogged("b-1", ["h0", "h1"], { v: "PP PP" })];
-    expect(supplyOf(before)).toMatchObject({ held: 1, untied: 0, since: 0 });
-    expect(supplyOf([...before, ...heldOut("w"), ...heldOut("x")])).toMatchObject({ held: 3, since: 2 });
+    expect(supplyOf(before)).toMatchObject({ held: 0, untied: null, since: 0 });
+    expect(supplyOf([...before, ...heldOut("w"), ...heldOut("x")])).toMatchObject({ held: 2, since: 2 });
     // esp32 (12 October): five tasks an earlier comparison had tied, with the reference valid in
     // every solve, were counted whole as held out since, and the supply read 4.6 untied of 12.
     const tied = (tasks: readonly string[]) => Object.fromEntries(tasks.map((task) => [task, "PP PP"]));
@@ -307,8 +312,9 @@ describe("what a log holds for the next comparison", () => {
       ...heldOut("t18"),
     ];
     const supply = supplyOf(log);
-    expect(supply).toMatchObject({ untied: 0, since: 1 });
-    expect(codes(supply)).toEqual(["untied-short", "unread"]);
+    // The tied tasks are retired or retained (`poolOf`), and the one held out since is the frontier.
+    expect(supply).toMatchObject({ held: 1, untied: null, since: 1 });
+    expect(codes(supply)).toEqual(["held-short", "unread"]);
   });
 
   it("takes the share over the tasks that may still be scored, once the reference's closed ones retire", () => {
@@ -324,7 +330,7 @@ describe("what a log holds for the next comparison", () => {
       ...roundLogged("g-2", ["h0", "h2"], twice),
     ];
     const supply = supplyOf(log);
-    expect(supply).toMatchObject({ held: 4, exhausted: 2, untied: 0.5, since: 0 });
+    expect(supply).toMatchObject({ held: 2, exhausted: 2, untied: 1, since: 0 });
     expect(codes(supply, { target: 4 })).toEqual([]);
   });
 
@@ -361,7 +367,7 @@ describe("what a log holds for the next comparison", () => {
         objective: { direction: "lower", margin: 0.01 },
       }),
     ];
-    expect(supplyOf(log).untied).toBe(1 / 4);
+    expect(supplyOf(log)).toMatchObject({ held: 1, untied: 1 });
   });
 });
 

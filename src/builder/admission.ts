@@ -60,7 +60,7 @@ import { asRecord, isString } from "../meta/json-shape.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
-  /** The held-out tasks that may be scored, those that wait for a person's label and are left
+  /** The held-out tasks a step may be read on (`frontier`, `poolOf`), those that wait for a person's label and are left
    *  out, those the reference harness answered in every solve of their last comparison and are left
    *  out (`poolOf`), and the tasks released for practice. */
   readonly held: number;
@@ -160,7 +160,7 @@ const said = (rows: readonly (readonly [boolean, string])[]) =>
 export function supplyOf(events: readonly LogEvent[], reference = "promoted"): Supply {
   // The tasks that may be scored, and those left out as `scoredSet` leaves them out: the ones
   // waiting for a person's label, and the ones the reference closed in their last comparison.
-  const { scorable, awaiting, exhausted } = poolOf(events);
+  const { frontier, awaiting, exhausted } = poolOf(events);
   const reports = lastReports(events);
   const kept = reference === "promoted" ? (referenceOf(events) ?? "starter") : reference;
   const starter = reports.findLast(({ data }) => isString(data.starter))?.data.starter;
@@ -176,7 +176,7 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted"): S
   // once the reference's twice-closed tasks were retired, a pool of four with two to win read a
   // third untied and the comparison was refused (the stack review, finding 2).
   const versions = Array.isArray(last?.data.versions) ? last.data.versions : [];
-  const tallied = new Set(scorable.filter((version) => versions.includes(version)));
+  const tallied = new Set(frontier.filter((version) => versions.includes(version)));
   // A task the harness to be compared with closed there (`closedTo`: valid in every solve, and no
   // two valid answers the objective told apart) can only tie again. The rest a changed harness can
   // still win, and not only those the last comparison untied: a simulated climb that counted those
@@ -196,12 +196,12 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted"): S
   );
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
   return {
-    held: scorable.length,
+    held: frontier.length,
     awaiting: awaiting.length,
     exhausted: exhausted.length,
     released: taskSets(events).released.length,
     untied: tallied.size > 0 ? (tallied.size - closed) / tallied.size : null,
-    since: scorable.filter((version) => since.has(version)).length,
+    since: frontier.filter((version) => since.has(version)).length,
     faults: Array.isArray(reading) ? reading.length : null,
     frozen: frozenChecker(events) !== null,
     stop: stopRule(events),

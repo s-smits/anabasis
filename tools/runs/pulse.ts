@@ -161,7 +161,7 @@ function status(run: Run, log: readonly LogEvent[], solves: readonly Solve[], op
   if (running > 0) said.push(`${String(running)} running`);
   const last = log.at(-1);
   return [
-    // A seed's counts and dollars are its source's up to the cut, and a script's after it.
+    // A seed's counts and dollars are its source's up to the cut, and a script's or a run's after it.
     `${run.name}${run.seed === true ? " (a seed)" : ""}  ${stage(log, running, open)}`,
     `solves ${said.join(", ") || "none"}`,
     dollars(billedAll(log)),
@@ -275,8 +275,9 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   let [promoted, compared] = [0, 0];
   for (const run of runs()) {
     const open = writers(run, running).length > 0;
-    // A seed rehearses on a copy of another campaign's log, and its promotions are that campaign's.
-    if (!values.all && (run.seed === true || (!open && now - statSync(run.path).mtimeMs > RECENT_MS))) {
+    // A seed no process writes is a rehearsal's copy, and its promotions are its source's; one a
+    // process writes was continued as a run (16 October: fork-ladder-buffer-opus was not shown).
+    if (!values.all && !open && (run.seed === true || now - statSync(run.path).mtimeMs > RECENT_MS)) {
       continue;
     }
     const log = logEvents(run.path);

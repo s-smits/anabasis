@@ -889,18 +889,19 @@ describe("a hold on the move a row named", () => {
     expect(epochReleased(after).epoch).toBe(1);
   });
 
-  it("practice: an epoch releases at most one in four of its tasks, and leaves a sweep held", () => {
+  it("practice: a release after a promotion leaves a sweep of frontier tasks held", () => {
     // Each release is one task fewer to compare. Before a promotion the opening's release governs.
     const eight = HELD.slice(0, 8).flatMap(heldOut);
     expect(practiceRoom(eight, 0.1)).toBe(Infinity);
-    // Eight held after a promotion: two may go. One released, one more.
+    // Eight held after a promotion: four may go, past the four a sweep at 0.1 takes. One
+    // released, three more (until 16 October one in four of them bound it at two).
     // Held after it: a task held out before the promotion that the promoted harness has stood in
     // no comparison of is retained, and no room (`poolOf`).
     expect(practiceRoom([...eight, promotion("h1")], 0.1)).toBe(0);
     const promoted = [promotion("h1"), ...eight];
-    expect(practiceRoom(promoted, 0.1)).toBe(2);
+    expect(practiceRoom(promoted, 0.1)).toBe(4);
     const one = [...promoted, event("task.state", { version: "v1", state: "released" })];
-    expect(practiceRoom(one, 0.1)).toBe(1);
+    expect(practiceRoom(one, 0.1)).toBe(3);
     // Five held leave one over the four a sweep at 0.1 takes, and four none.
     expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 5).flatMap(heldOut)], 0.1)).toBe(1);
     expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 4).flatMap(heldOut)], 0.1)).toBe(0);
@@ -914,11 +915,11 @@ describe("a hold on the move a row named", () => {
     });
     expect(practiceRoom([...promoted, ...closed], 0.1)).toBe(0);
     // The table asks for no more than the room: after a control that read room, three more named,
-    // and nine held leave room for two beside the one released before the promotion.
+    // and nine held leave room for one more beside the three, past a sweep.
     const plan = { ...PLAN, practice: 3 };
     const control = compared("g-3", "start", "no-step", { old: "h1", tally: [2, 2, 8] });
     const read = [READ, ...eight, ...RELEASED, promotion("h1"), built("b-1", "h2"), ...heldOut("v13")];
-    expect(move([...read, ...control], plan)).toMatchObject({ move: "prepare", practice: 3 });
+    expect(move([...read, ...control], plan)).toMatchObject({ move: "prepare", practice: 4 });
   });
 
   it("unshown: a session that changed nothing and was shown no failed practice solve sends for tasks", () => {

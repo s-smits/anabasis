@@ -101,7 +101,6 @@
  */
 import { resetOf } from "../backends/claude.ts";
 import { draw, type ObjectiveRule, triggered, untiedOf } from "../kernel/compare.ts";
-import { proposalsOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, type Cap, capHolds, lastReports, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
@@ -298,9 +297,9 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
 /**
  * The tasks a repeat scores again first, then the groups it takes last (`scoredSet`): where the
  * comparison of `fresh` with `old` follows the one reading of the same two that cleared its
- * trigger (`triggered`), that reading's untied frontier tasks; where they all fell in one family,
- * that family's others, so a repeat reads other families first (12 October; `narrow`); then the
- * rest of its set. None for any other comparison: a candidate buys one repeat, as the row that
+ * trigger (`triggered`), that reading's untied frontier tasks; then the rest of its set. Until
+ * 16 October, where they all fell in one family, that family's others went last, for a `narrow`
+ * reading that never fired. None for any other comparison: a candidate buys one repeat, as the row that
  * buys it says (`dueOf`, `decide.ts`). A repeat gone on from its log keeps its start's (`begin`).
  */
 function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
@@ -313,12 +312,8 @@ function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
     return [];
   }
   const own = fixedIn(events, first.session)?.tasks ?? [];
-  const { tasks: again, family } = untiedOf(first);
-  const kin = proposalsOf(events).flatMap((each) =>
-    (each.family ?? "unnamed") === family && !own.includes(each.version) ? [each.version] : [],
-  );
-  const rest = own.filter((version) => !again.includes(version));
-  return kin.length > 0 ? [again, kin, rest] : [again, rest];
+  const again = untiedOf(first);
+  return [again, own.filter((version) => !again.includes(version))];
 }
 
 /**

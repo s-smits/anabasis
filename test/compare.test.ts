@@ -399,21 +399,13 @@ describe("the step and its repeat", () => {
     expect(() => stepOf(bare, LEVEL)).toThrow("a reading needs a frontier and a retained set");
   });
 
-  it("promote nothing where every untied frontier task of both stages falls in one family of the two or more the sets hold", () => {
-    // A family name can hide tasks that move for one reason: this reads concentration, and it
-    // establishes no independence.
+  it("read a step whose untied frontier tasks all fall in one family of the two the sets hold as any other", () => {
+    // Until 16 October such a step read `narrow` and promoted nothing; it never fired.
     const one = report(units(4, 0, 16), null, spread({ a: [4, 0] }, ["b"]));
-    expect(stepOf(one, LEVEL)).toBe("narrow");
-    // A narrow first reading still buys the repeat, which draws other families where it can.
-    expect(triggered(one, TRIGGER)).toBe(true);
-    expect(readTwice([one, one], LEVEL, TRIGGER)).toBe(false);
-    expect(readTwice([one, report(units(2, 0, 16), null, spread({ b: [2, 0] }))], LEVEL, TRIGGER)).toBe(true);
-    // A loss is an untied task too: a family that only lost spreads the step as much as one that won.
-    const lost = report([16, 16, 16, 16, -4], null, spread({ a: [4, 0], b: [0, 1] }));
-    expect(readTwice([lost, lost], LEVEL, TRIGGER)).toBe(true);
-    // Where the sets hold one family, a step there is no narrower than the exam.
-    const alone = report(units(4, 0, 16), null, spread({ a: [4, 0] }));
-    expect(readTwice([alone, alone], LEVEL, TRIGGER)).toBe(true);
+    expect(stepOf(one, LEVEL)).toBe("step");
+    expect(
+      readTwice([one, report(units(2, 0, 16), null, spread({ a: [2, 0] }, ["b"]))], LEVEL, TRIGGER),
+    ).toBe(true);
   });
 
   it("promote two equal harnesses no more often than the level, at every size from 4 to 24 tasks and every tie share, by one pair a task or by their margins at four solves a side", () => {

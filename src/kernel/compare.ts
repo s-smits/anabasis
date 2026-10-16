@@ -23,9 +23,10 @@
  * exhausted, fixed at the comparison's start (`round.ts`, `begin`). The retained tasks, fixed at
  * the same time from the third of the exhausted ones the draw keeps (`poolOf`, `reports.ts`),
  * are where a harness may not lose more pairs than it wins. A step with a net loss there reads
- * `regressed`, and one whose untied tasks all fall in one family of the two or more its set holds
- * reads `narrow`; neither promotes (`stepOf`). A retained set with no task tallied is `unmeasured`,
- * never no loss: against the provisioned starter nothing is exhausted yet.
+ * `regressed` and promotes nothing (`stepOf`). A retained set with no task tallied is `unmeasured`,
+ * never no loss: against the provisioned starter nothing is exhausted yet. Until 16 October one
+ * whose untied tasks all fell in one family of the two or more its set held read `narrow` and
+ * promoted nothing either; in 1,598 recorded readings it never fired, and an old report keeps it.
  *
  * The step is read in two stages since 10 October (`src/builder/move.ts`): a comparison whose test
  * is at or under the trigger, 0.25 by default, with more won than lost, buys the repeat and
@@ -145,17 +146,14 @@ interface Sides {
 
 /**
  * What the two-stage reading reads of one comparison: each frontier task's difference in pair wins,
- * where the step is read; the retained tasks', or null where none was tallied, which is unmeasured
- * and never no loss; the families that hold an untied frontier task; and every family the frontier
- * scored a task of (`comparison.ts`, `compared`).
+ * where the step is read; and the retained tasks', or null where none was tallied, which is
+ * unmeasured and never no loss (`comparison.ts`, `compared`).
  */
 interface Stage {
   readonly frontier: readonly number[];
   /** The task each frontier difference is of, where the report names them (since 14 October). */
   readonly named: readonly string[] | null;
   readonly retained: readonly number[] | null;
-  readonly untied: readonly string[];
-  readonly families: readonly string[];
 }
 
 /** The trigger a first reading has to clear to buy the repeat, where no flag or opening names one
@@ -276,23 +274,7 @@ function stageOf(report: JsonObject): Stage | null {
   const named = Array.isArray(of) && of.every(isString) && of.length === frontier?.length ? of : null;
   const retained = report.retained === UNMEASURED ? null : differences(report.retained);
   if (frontier === null || (retained === null && report.retained !== UNMEASURED)) return null;
-  // A family's frontier tally: its untied tasks, and all it scored there.
-  const counts = Object.entries(asRecord(report.families) ?? {}).map(([name, tallies]) => {
-    const own = asRecord(asRecord(tallies)?.frontier) ?? {};
-    const count = (key: string) => (isNumber(own[key]) ? own[key] : 0);
-    return {
-      name,
-      untied: count("wins") + count("losses"),
-      tallied: count("wins") + count("losses") + count("ties"),
-    };
-  });
-  return {
-    frontier,
-    named,
-    retained,
-    untied: counts.flatMap(({ name, untied }) => (untied > 0 ? [name] : [])),
-    families: counts.flatMap(({ name, tallied }) => (tallied > 0 ? [name] : [])),
-  };
+  return { frontier, named, retained };
 }
 
 /** Whether a stage lost more pairs than it won on its retained tasks. */
@@ -300,41 +282,25 @@ function regressed({ retained }: Stage): boolean {
   return retained !== null && total(retained) < 0;
 }
 
-/** Whether every untied frontier task of `stages` falls in one family where their scored sets
- *  hold two or more: concentration, which a family name can hide and which says nothing of
- *  independence. */
-function narrowed(stages: readonly Stage[]): boolean {
-  const untied = new Set(stages.flatMap(({ untied: named }) => named));
-  return untied.size === 1 && new Set(stages.flatMap(({ families }) => families)).size >= 2;
-}
-
-/** One comparison's own reading of its report's frontier at `level`: `no-step` short of it,
- *  `regressed` where a step lost more retained pairs than it won, `narrow` where its untied tasks
- *  fall in one family of the two or more its set holds, and neither promotes. A report with no
- *  frontier and retained set holds no reading, and is refused. */
-export function stepOf(report: JsonObject, level: number): "step" | "no-step" | "regressed" | "narrow" {
+/** One comparison's own reading of its report's frontier at `level`: `no-step` short of it, and
+ *  `regressed` where a step lost more retained pairs than it won, which promotes nothing. A report
+ *  with no frontier and retained set holds no reading, and is refused. */
+export function stepOf(report: JsonObject, level: number): "step" | "no-step" | "regressed" {
   const stage = stageOf(report);
   if (stage === null) throw new Error("a reading needs a frontier and a retained set");
   if (flipP(stage.frontier) > level) return "no-step";
-  if (regressed(stage)) return "regressed";
-  return narrowed([stage]) ? "narrow" : "step";
+  return regressed(stage) ? "regressed" : "step";
 }
 
-/** A report's untied frontier tasks, by version where it names them, and the one family they all
- *  fall in where they fall in one: a repeat scores those tasks again first, and draws other
- *  families next (`scoredSet`, `round.ts`). */
-export function untiedOf(report: JsonObject) {
+/** A report's untied frontier tasks, by version where it names them: a repeat scores those tasks
+ *  again first (`scoredSet`, `round.ts`). */
+export function untiedOf(report: JsonObject): string[] {
   const stage = stageOf(report);
-  const untied = stage?.untied ?? [];
-  return {
-    tasks: stage?.named?.filter((_, at) => stage.frontier[at] !== 0) ?? [],
-    family: untied.length === 1 ? (untied[0] ?? null) : null,
-  };
+  return stage?.named?.filter((_, at) => stage.frontier[at] !== 0) ?? [];
 }
 
 /** Whether one comparison's reading buys the repeat: more frontier pairs won than lost, its test
- *  at or under `trigger`, and no net loss on its retained tasks. A narrow stage buys it, and the
- *  repeat draws where it can from other families. It is what the stop rule counts as a
+ *  at or under `trigger`, and no net loss on its retained tasks. It is what the stop rule counts as a
  *  move that showed a gain (`stopRule`): a 2-0 at level 0.10 reads `no-step` and buys the repeat,
  *  and counted as no gain it ended a campaign of patience 3 before the repeat was bought
  *  (11 October). */
@@ -347,7 +313,7 @@ export function triggered(report: JsonObject, trigger: number): boolean {
  * Whether an attempt among a pair's comparisons promotes (`attemptsOf`): its first bought the repeat
  * (`triggered`), the repeat untied a frontier task, won at least as many frontier pairs as it lost and lost no more
  * retained pairs than it won, the two frontiers read together, a task both scored once with its
- * differences summed (`joined`), clear `level`, and their untied tasks do not all fall in one family of two or more. Summed
+ * differences summed (`joined`), clear `level`. Summed
  * alone, a 4-0 and a repeat that tied every task would promote on one draw, against AGENTS §7,
  * where a step is one draw and is repeated on fresh solves. Read together at 0.10 a 2-0 and a 2-0
  * are a 4-0 (p 0.0625). A promotion needs the two together to clear the level, so it is no
@@ -368,7 +334,7 @@ export function readTwice(reports: readonly JsonObject[], level: number, trigger
     if (first == null || second == null || regressed(second)) return false;
     const repeat = second.frontier;
     if (repeat.every((difference) => difference === 0) || total(repeat) < 0) return false;
-    return flipP(joined([first, second])) <= level && !narrowed([first, second]);
+    return flipP(joined([first, second])) <= level;
   });
 }
 
@@ -411,7 +377,7 @@ function joined(stages: readonly Stage[]): number[] {
  * at `trigger`, and a repeat on as many tasks with the same margins promotes with it at `level`,
  * every untied task as likely won as lost. It is the rule's effective rate an attempt, which the
  * level alone misstates: 5.8% at 0.10 on 24 untied tasks each won or lost by a pair. The retained
- * set and the families can only refuse a promotion, so it bounds them too. Every report carries
+ * set can only refuse a promotion, so it bounds it too. Every report carries
  * it at its own margins (`comparison.ts`), and a size says it before a campaign opens (`size.ts`).
  */
 export function falseRate(differences: readonly number[], level: number, trigger: number): number {

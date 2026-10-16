@@ -445,7 +445,7 @@ function dueOf(ground: Ground) {
   }
   const scored = new Set(Array.isArray(read.report.versions) ? read.report.versions : []);
   const { frontier } = poolOf(events);
-  const again = untiedOf(read.report).tasks.filter((task) => frontier.includes(task));
+  const again = untiedOf(read.report).filter((task) => frontier.includes(task));
   return { first: read, again: again.length, fresh: frontier.filter((task) => !scored.has(task)).length };
 }
 

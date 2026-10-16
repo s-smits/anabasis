@@ -24,7 +24,7 @@ import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, poolOf, roomOf } from "../kernel/reports.ts";
 import { SIZE } from "../kernel/size.ts";
 import { practiceRan } from "../kernel/solves.ts";
-import { taskSets } from "../kernel/task.ts";
+import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
@@ -130,7 +130,7 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
 /** The tasks held out after the log's index `after`. */
 export function heldAfter(events: readonly LogEvent[], after: number): number {
   return events.filter(
-    ({ kind, data }, index) => index > after && kind === "task.gate" && data.outcome === "passed",
+    ({ kind, data }, index) => index > after && kind === "task.gate" && heldAtGate(data.outcome),
   ).length;
 }
 

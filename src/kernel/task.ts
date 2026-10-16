@@ -239,11 +239,19 @@ function step(tasks: Map<string, Folded>, { at, kind, data }: LogEvent): void {
   if (fault !== null) throw new Error(`${at}: task ${version} ${fault}`);
 }
 
+/** Whether a gate's outcome held its task out: `passed`, or `ladder` in a log of 14 to
+ *  16 October. Every reader of a gate's outcome asks this, so that an old ladder task is held out
+ *  to each of them alike (16 October: the draw, the epochs and the Examiner's counts read `passed`
+ *  alone, and such a task was held and never drawn). */
+export function heldAtGate(outcome: JsonValue | undefined): boolean {
+  return outcome === "passed" || outcome === LADDER;
+}
+
 /** A `task.gate` event on the task, or why the history may not log it. */
 function gate(task: Folded, data: JsonObject): string | null {
   if (data.gate !== GATE) return null;
   if (task.gated) return "logs its gate twice";
-  task.gated = data.outcome === "passed" || data.outcome === LADDER;
+  task.gated = heldAtGate(data.outcome);
   return null;
 }
 

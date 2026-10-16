@@ -16,6 +16,7 @@ import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedBetween, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { countedSolves, passed } from "../kernel/solves.ts";
+import { heldAtGate } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { plural } from "../meta/text.ts";
@@ -152,7 +153,7 @@ export function tasksByEpoch(events: readonly LogEvent[]): string[][] {
       at >= from &&
       (to === null || at < to) &&
       kind === "task.gate" &&
-      data.outcome === "passed" &&
+      heldAtGate(data.outcome) &&
       isString(data.version)
         ? [data.version]
         : [],

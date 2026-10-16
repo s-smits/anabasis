@@ -1214,27 +1214,24 @@ describe("what a Builder is shown of a solve", () => {
 describe("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
    *  reason, the hidden value of a held-out task and of a practice task, which held-out task the
-   *  comparison's new harness won, and whether a task is held for the ladder. */
+   *  comparison's new harness won. */
   interface Kept {
     readonly check: string;
     readonly reason: string;
     readonly hidden: string;
     readonly won: "h1" | "h2";
-    readonly ladder: boolean;
   }
   const ONE: Kept = {
     check: "check-one-7a1",
     reason: "reason-one-7a1",
     hidden: "hidden-one-7a1",
     won: "h1",
-    ladder: false,
   };
   const OTHER: Kept = {
     check: "check-two-c4e",
     reason: "reason-two-c4e",
     hidden: "hidden-two-c4e",
     won: "h2",
-    ladder: true,
   };
   const FRESH = "f".repeat(64);
 
@@ -1278,14 +1275,6 @@ describe("what crosses to the Builder", () => {
       };
       append(log, "task.proposed", { version, taskId: task.taskId, session: "x-1", task });
       append(log, "task.gate", { version, gate: 1, outcome: "passed" });
-    }
-    // The ladder is the exam side's too: a task held for it reaches no Builder message.
-    if (kept.ladder) {
-      const task = { taskId: "x-l1", family: "fixture", publicInput: { base: 9 }, hidden: kept.hidden };
-      append(log, "task.proposed", { version: "l1", taskId: task.taskId, session: "x-1", task });
-      append(log, "task.gate", { version: "l1", gate: 1, outcome: "ladder" });
-      append(log, "task.feasible", { version: "l1", session: "x-1" });
-      append(log, "task.state", { version: "l1", state: "ladder", session: "x-1" });
     }
     for (const version of ["h1", "h2"]) {
       for (const side of [s.digest, FRESH]) {
@@ -1383,7 +1372,7 @@ describe("what crosses to the Builder", () => {
     );
   }
 
-  it("is byte-identical whatever a hidden value, a check, a ruling, the task that was won or the ladder is", async () => {
+  it("is byte-identical whatever a hidden value, a check, a ruling, or the task that was won is", async () => {
     const [one, other] = [await read_(ONE), await read_(OTHER)];
     // The session read what a Builder may: its tasks, the fail, the trace, the opening again, the
     // continuation, and the comparison as a tally.
@@ -1394,7 +1383,7 @@ describe("what crosses to the Builder", () => {
     expect(one).toContain("You have not called finish");
     expect(one).toContain("practice/t-1.json");
     for (const kept of [ONE, OTHER]) {
-      for (const canary of [kept.check, kept.reason, kept.hidden, "x-h1", "x-h2", "x-l1", "g-1-h"]) {
+      for (const canary of [kept.check, kept.reason, kept.hidden, "x-h1", "x-h2", "g-1-h"]) {
         expect(one).not.toContain(canary);
       }
     }

@@ -118,7 +118,6 @@ const KNOWN = {
 const SETTLED = new Map([
   ["released", "in use as practice, and so never scored"],
   ["disputed", "disputed: a check was at fault on an answer to it"],
-  ["ladder", "held for the ladder, and so never scored for a promotion"],
 ]);
 /** What the counts say before their rows, and after them. */
 const COUNTS = {

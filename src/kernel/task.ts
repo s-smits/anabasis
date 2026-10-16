@@ -12,12 +12,9 @@
  * practised on. Or its package is refused at the gate, and it never was one. Each task version's
  * state is a view over the log.
  *
- * Of the drafts the reference harness answered in none of their gate's solves, with an answer of
- * their author's that passes on them, the first of every three is held for the ladder instead
- * (`gated`, `src/examiner/write.ts`): its gate's outcome is `ladder` and it is in the ladder state
- * from then on, a fixed set the starter and each promoted reference solve after a promotion
- * (`owedReading`), never scored for a promotion and never released for practice. The other two are
- * held out as any task is (15 October).
+ * A log of 14 to 16 October may hold a draft the gate held for the ladder, a fixed set read only
+ * after a promotion: its gate's outcome and its state are `ladder`. The ladder was retired on
+ * 16 October (`gated`, `src/examiner/write.ts`), and such a task is read as held out.
  *
  * The shape is the only gate (`docs/plan.md`, Phase 2, and `docs/v1.md` for what v1 measured):
  *
@@ -66,7 +63,7 @@ export interface TaskPackage extends Task {
   readonly checks: string;
 }
 
-/** The gate passes or refuses. A draft's gate may also hold it for the ladder (`LADDER`). */
+/** The gate passes or refuses. */
 type Passed = { readonly outcome: "passed" };
 type Refused = { readonly outcome: "refused"; readonly reason: string };
 
@@ -84,15 +81,11 @@ interface TaskSets {
   readonly held: readonly string[];
   /** The practice tasks. */
   readonly released: readonly string[];
-  /** The ladder: tasks held apart from every promotion and every Builder. */
-  readonly ladder: readonly string[];
-  /** The held-out tasks and the ladder: what no Builder sees, and what a comparison may solve. */
-  readonly apart: readonly string[];
 }
 
-/** The gate's outcome, and the state, of a task held for the ladder. */
-export const LADDER = "ladder";
-const TASK_STATES = ["held", "refused", "released", "disputed", LADDER] as const;
+/** The gate's outcome, and the state, of a task held for the ladder until 16 October. */
+const LADDER = "ladder";
+const TASK_STATES = ["held", "refused", "released", "disputed"] as const;
 
 type TaskState = (typeof TASK_STATES)[number];
 
@@ -103,27 +96,26 @@ type TaskState = (typeof TASK_STATES)[number];
  * refusal.
  */
 const NEXT: Readonly<Record<TaskState, readonly TaskState[]>> = {
-  held: ["refused", "released", "disputed", LADDER],
+  held: ["refused", "released", "disputed"],
   released: ["disputed"],
-  ladder: ["disputed"],
   refused: [],
   disputed: [],
 };
 
-/** The states a log written before 2026-10-09 moved a held-out task through, and `held` itself,
- *  which returned one from the wall. Each leaves the task held out. */
-const ONCE_HELD: ReadonlySet<string> = new Set(["held", "too-hard", "admitted", "too-easy", "wall-bound"]);
+/** The states a log written before 2026-10-09 moved a held-out task through, `held` itself, which
+ *  returned one from the wall, and the ladder's. Each leaves the task held out. */
+const ONCE_HELD: ReadonlySet<string> = new Set([
+  "held",
+  "too-hard",
+  "admitted",
+  "too-easy",
+  "wall-bound",
+  LADDER,
+]);
 
 /** The gate a package is put to. A log written before 2026-10-09 holds three more a task, which
  *  say nothing of its shape. */
 const GATE = 1;
-
-/** The tasks Examiner session `session` held for the ladder, which its `held` leaves out. */
-export function ladderedBy(events: readonly LogEvent[], session: string): number {
-  return events.filter(
-    ({ kind, data }) => kind === "task.state" && data.state === LADDER && data.session === session,
-  ).length;
-}
 
 /**
  * The gate, on a package's shape: every part is present, and every rule id is in the contract. A check
@@ -229,10 +221,6 @@ export function taskSets(events: readonly LogEvent[]): TaskSets {
     states: new Map([...tasks].map(([version, task]) => [version, task.state])),
     held: inState("held"),
     released: inState("released"),
-    ladder: inState(LADDER),
-    apart: [...tasks].flatMap(([version, task]) =>
-      task.gated && (task.state === "held" || task.state === LADDER) ? [version] : [],
-    ),
   };
 }
 

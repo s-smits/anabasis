@@ -21,7 +21,6 @@ const STATE_TONES = {
   released: "neutral",
   refused: "bad",
   disputed: "warn",
-  ladder: "info",
 } as const;
 
 export function TaskDetailView({

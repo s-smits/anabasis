@@ -44,10 +44,6 @@ export type Decided =
         readonly reference: string;
         readonly id?: string;
         readonly repeats?: string;
-        /** On the ladder's tasks (`ladderOwed`, `decide.ts`): the host's reading after a promotion. */
-        readonly ladder?: true;
-        /** The ladder it reads, by its first reading's id; none where it fixes a new one. */
-        readonly frozen?: string;
       }
     | { readonly move: "promote"; readonly why: string; readonly harness: string }
     | {
@@ -80,7 +76,7 @@ export function decidedLine(decided: Decided): string {
       case "build":
         return "a Builder session";
       case "compare":
-        return `a comparison of ${named(decided.fresh)} with ${named(decided.reference)}${decided.ladder === true ? " on the ladder" : ""}`;
+        return `a comparison of ${named(decided.fresh)} with ${named(decided.reference)}`;
       case "promote":
         return `promote harness ${short(decided.harness)}`;
       case "end":

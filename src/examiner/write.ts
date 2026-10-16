@@ -35,11 +35,11 @@ import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { LADDER, packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
+import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
-import { asRecord, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -100,10 +100,6 @@ interface Desk {
 const SHOWN_CHARS = 20_000;
 /** The event a gate writes of each draft (`gated`). */
 const GATE = "task.gate";
-/** Of every `LADDER_EVERY` drafts the reference harness answered in none of their solves and their
- *  author's answer passes on, the first is held for the ladder and the rest are held out
- *  (`gated`). */
-const LADDER_EVERY = 3;
 /** The tool a task is held out by, as the Examiner is told it: on its package's shape, or on that
  *  and the reference harness's solves of it. */
 const GATES = {
@@ -124,9 +120,6 @@ const HIDDEN = Type.Unknown({ description: "What only the checks receive; null w
 const PLANTED =
   "it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
 const SUPPLIED = "The host has the tasks it needs. The session ends here.";
-/** What the Examiner is told of a task held for the ladder: the outcome, and nothing of a solve. */
-const LADDERED =
-  "held for the ladder. This task will never be scored for promotion or released for practice.";
 /** What a first `finish` is answered with while the host has not the tasks it needs: every live
  *  Examiner session of 9 and 10 October proposed one batch of one to three tasks in three turns
  *  and finished, of two hundred turns and twelve tasks it had, so a campaign paid a session's
@@ -221,21 +214,6 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   };
 }
 
-/** The gates so far of drafts the reference harness answered in none of their three solves and
- *  that passed all the same, held out or for the ladder: what `gated` counts the next one against. */
-function provedUnsolved(events: readonly LogEvent[]): number {
-  return events.filter(({ kind, data }) => {
-    const reference = asRecord(data.reference);
-    return (
-      kind === GATE &&
-      (data.outcome === "passed" || data.outcome === LADDER) &&
-      reference?.valid === 0 &&
-      isNumber(reference.solves) &&
-      reference.solves > 0
-    );
-  }).length;
-}
-
 /** The gate for one instance the Examiner proposed, and the line it is told (`measured`). Its gate
  *  says whether it came with a proof: an answer of its author's that passed the checks on its
  *  content before it was proposed (`proved`, read by `heldShare`). The proof is put to the checks
@@ -243,14 +221,14 @@ function provedUnsolved(events: readonly LogEvent[]): number {
  *  A task the reference harness answered in none of its solves is held out where it passes so: a
  *  witness says a valid answer exists, which three failed solves do not say either way, and a task
  *  the reference never answers while a valid answer to it is on record is the room a promotion
- *  leaves (`informative`, `src/kernel/compare.ts`). The first of every `LADDER_EVERY` such drafts
- *  in the campaign's log is held for the ladder instead (`LADDER`, `task.ts`), the climb's fixed
- *  yardstick, so the ladder has a task once any such draft does; a count, and no hash of the
- *  version, since two to fourteen such drafts a campaign are too few for a hash's share to hold.
- *  Without a proof it is refused, as is a task the solves left unmeasured. Until 15 October every
- *  such task went to the ladder: in five campaigns of 14 October 31 of 120 drafts did, 47 were held
- *  out, and a promoted harness that answered every scored solve (buffer-149's 68 of 68,
- *  recode-151's 56 of 56) was left only the drafts it answered some of the time. */
+ *  leaves (`informative`, `src/kernel/compare.ts`). Without a proof it is refused, as is a task the
+ *  solves left unmeasured. Until 15 October every such task was held for a ladder, a fixed set read
+ *  only after a promotion: in five campaigns of 14 October 31 of 120 drafts were, 47 were held out,
+ *  and a promoted harness that answered every scored solve (buffer-149's 68 of 68, recode-151's 56
+ *  of 56) was left only the drafts it answered some of the time. Until 16 October the first of
+ *  every three still was, and the ladder was retired: its readings after a promotion found the new
+ *  reference valid on 14 of 14 tasks and 5 of 6, the set already closed, for $33.06 and 5.9 hours
+ *  in one campaign, while a third of these drafts were kept from the exam. */
 async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
@@ -270,13 +248,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   // it answered some of the time is held on the solves, and its proof is read once it is held.
   const early = unsolved === true ? await proof() : null;
   const proved = early?.kind === "pass";
-  const ladder = proved && provedUnsolved(read(log)) % LADDER_EVERY === 0;
-  const outcome =
-    reason === null || (proved && !ladder)
-      ? { outcome: "passed" }
-      : ladder
-        ? { outcome: LADDER }
-        : { outcome: "refused", reason };
+  const outcome = reason === null || proved ? { outcome: "passed" } : { outcome: "refused", reason };
   append(log, GATE, {
     version,
     gate: 1,
@@ -284,11 +256,6 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
     ...keyIfDefined("reference", reference),
     proved: answer !== undefined,
   });
-  if (ladder) {
-    append(log, "task.feasible", { version, session });
-    append(log, "task.state", { version, state: LADDER, session });
-    return `${taskId}: ${LADDERED}`;
-  }
   if (outcome.outcome === "refused") {
     append(log, "task.state", { version, state: "refused", session });
     desk.refused.push(version);

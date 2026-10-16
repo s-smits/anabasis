@@ -146,12 +146,6 @@ export interface Cap {
   readonly reserve: number;
 }
 
-/** A ladder: the tasks its first reading fixed, by that reading's id. */
-export interface Ladder {
-  readonly id: string;
-  readonly tasks: readonly string[];
-}
-
 /**
  * The campaign's patience, where its opening names none: the moves in a row that could have shown
  * a gain and showed none before the stop rule ends it, and move 7's bound on Examiner sessions in
@@ -201,40 +195,20 @@ export function capHolds({ dollars, reserve }: Cap): boolean {
 }
 
 /**
- * Each comparison's last report in a log, in the order the comparisons first reported: the ones
- * on the ladder where `ladder` is true, and the others otherwise. A ladder's reading after a
- * promotion is no step, no control and no supply: the table, the stop, the pool and the climb's
- * steps read the others alone, and the climb's curve reads the ladder's (`src/kernel/task.ts`).
+ * Each comparison's last report in a log, in the order the comparisons first reported. A log of
+ * 14 to 16 October may hold readings of the ladder (`ladder`), the starter against a new reference
+ * after a promotion on tasks held apart, retired on 16 October: they are no step, no control and
+ * no room, and only `all` reads them, for what they found of the reference's solves of tasks now
+ * held out (`taskRecords`) and for the sessions they name.
  */
-export function lastReports(events: readonly LogEvent[], ladder = false): Reported[] {
+export function lastReports(events: readonly LogEvent[], all = false): Reported[] {
   const found = new Map<string, Reported>();
   for (const [index, { kind, data }] of events.entries()) {
-    if (kind !== REPORTED || !isString(data.session) || (data.ladder === true) !== ladder) continue;
+    if (kind !== REPORTED || !isString(data.session) || (data.ladder === true && !all)) continue;
     // A map keeps the place of a key's first entry, which is the comparison's first report.
     found.set(data.session, { session: data.session, index: found.get(data.session)?.index ?? index, data });
   }
   return [...found.values()];
-}
-
-/**
- * The campaign's ladders, in the order each was first read. A ladder's set is fixed by its first
- * reading (`comparison.started` with `ladder` and no `frozen`), and each later reading of it names
- * it (`frozen`), so every reading of one ladder is on one set and its curve compares like with
- * like. A task held for the ladder after that waits for the next ladder's first reading
- * (`unladdered`): the Examiner may go on writing, and no reading of an earlier ladder moves.
- */
-export function laddersOf(events: readonly LogEvent[]): Ladder[] {
-  return events.flatMap(({ kind, data }) =>
-    kind === STARTED && data.ladder === true && data.frozen === undefined && isString(data.session)
-      ? [{ id: data.session, tasks: Array.isArray(data.tasks) ? data.tasks.filter(isString) : [] }]
-      : [],
-  );
-}
-
-/** The tasks held for the ladder that no ladder holds yet: what the next first reading fixes. */
-export function unladdered(events: readonly LogEvent[]): string[] {
-  const fixed = new Set(laddersOf(events).flatMap(({ tasks }) => tasks));
-  return taskSets(events).ladder.filter((version) => !fixed.has(version));
 }
 
 /**
@@ -481,7 +455,9 @@ function cutIn(comparison: string, task: string, harness: string): string {
 }
 
 /** The reports' part of `taskRecords`: each comparison's last report gives every task it tallied
- *  one reading and marks the ones it set aside, in the order the reports and their pairs are read. */
+ *  one reading and marks the ones it set aside, in the order the reports and their pairs are read.
+ *  An old ladder's reading is one of them: its tasks are held out since 16 October, and what it
+ *  found of the reference's solves of them is what the pool and the Examiner read. */
 function tallyReports(
   events: readonly LogEvent[],
   of: (version: string) => TaskRecord,
@@ -489,7 +465,7 @@ function tallyReports(
 ): void {
   const reference = referenceOf(events);
   let order = 0;
-  for (const report of lastReports(events)) {
+  for (const report of lastReports(events, true)) {
     const { index, session, data } = report;
     const side = data.fresh === reference ? "fresh" : data.old === reference ? "old" : null;
     for (const pair of pairsReported(events, report)) {

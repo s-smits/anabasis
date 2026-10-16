@@ -7,6 +7,7 @@ import { decide, epochReleased, unpromoted } from "../src/builder/decide.ts";
 import type { Plan } from "../src/builder/ground.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { taskSets } from "../src/kernel/task.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tallied } from "./helpers/tally.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
@@ -367,87 +368,29 @@ describe("a row of the table", () => {
     });
   });
 
-  it("ladder: after each promotion the starter is read against the new reference on the ladder's tasks, once, and no row reads it", () => {
-    // With a ladder, its reading follows every promotion before anything else, in place of the
-    // starter's reading against each later reference (`unread`): the starter against the new
-    // reference on the ladder's tasks.
+  it("an old ladder: its task is held out, and its reading is read by no row", () => {
+    // A log of 14 to 16 October may hold a task held for the ladder and the starter's reading on
+    // it after a promotion. The ladder was retired on 16 October: the task is held out, as a task
+    // its gate passed is, and the reading moves nothing the table reads.
+    const proposed = event("task.proposed", { version: "l1", taskId: "l1" });
     const ladder = [
-      event("task.proposed", { version: "l1", taskId: "l1" }),
+      proposed,
       event("task.gate", { version: "l1", gate: 1, outcome: "ladder" }),
       event("task.state", { version: "l1", state: "ladder" }),
     ];
-    const laddered = [...ladder, ...PROMOTED];
-    expect(decide(laddered, PLAN)).toEqual({
-      move: "compare",
-      code: "ladder",
-      fresh: "starter",
-      reference: "promoted",
-      ladder: true,
-      why: "harness h1 was promoted: the starter is read against it on 1 ladder task no ladder holds yet, which this reading fixes as a ladder",
-    });
-    const begun = event("comparison.started", {
-      session: "g-2",
-      old: "h1",
-      fresh: "start",
-      ladder: true,
-      tasks: ["l1"],
-    });
-    expect(move([...laddered, begun])).toMatchObject({ id: "g-2", ladder: true });
-    // Reported, it is read by no row: the table goes on as it would have.
-    const ladderRead = [
-      ...laddered,
-      begun,
+    const reading = [
+      event("comparison.started", { session: "g-2", old: "h1", fresh: "start", ladder: true, tasks: ["l1"] }),
       event("comparison.reported", {
         session: "g-2",
         old: "h1",
         fresh: "start",
-        reading: "below-starter",
+        reading: "no-step",
         ladder: true,
       }),
     ];
-    expect(move(ladderRead)).toEqual(move(PROMOTED));
-    // The next promotion owes its own, on the ladder g-2 fixed. A task held for the ladder since
-    // is no part of it: once that reading reports, a reading fixes it as the next ladder.
-    const next = [
-      ...ladderRead,
-      event("task.proposed", { version: "l2", taskId: "l2" }),
-      event("task.gate", { version: "l2", gate: 1, outcome: "ladder" }),
-      event("task.state", { version: "l2", state: "ladder" }),
-      built("b-2", "h2"),
-      ...steppedTwice("g-3", "h2", "h1"),
-      promotion("h2", { from: "h1" }),
-    ];
-    expect(move(next)).toEqual({
-      move: "compare",
-      fresh: "starter",
-      reference: "promoted",
-      ladder: true,
-      frozen: "g-2",
-      why: "harness h2 was promoted: the starter is read against it on ladder g-2",
-    });
-    const again = [
-      ...next,
-      event("comparison.started", {
-        session: "g-4",
-        old: "h2",
-        fresh: "start",
-        ladder: true,
-        frozen: "g-2",
-        tasks: ["l1"],
-      }),
-      event("comparison.reported", {
-        session: "g-4",
-        old: "h2",
-        fresh: "start",
-        reading: "below-starter",
-        ladder: true,
-      }),
-    ];
-    expect(move(again)).toMatchObject({
-      ladder: true,
-      why: "harness h2 was promoted: the starter is read against it on 1 ladder task no ladder holds yet, which this reading fixes as a ladder",
-    });
-    expect(move(again)).not.toHaveProperty("frozen");
+    const passed = [proposed, event("task.gate", { version: "l1", gate: 1, outcome: "passed" })];
+    expect(taskSets(ladder).held).toEqual(["l1"]);
+    expect(move([...ladder, ...PROMOTED, ...reading])).toEqual(move([...passed, ...PROMOTED]));
   });
 
   it("tasks: tasks not set up are taken in, written or released before anything is built", () => {
@@ -796,8 +739,8 @@ describe("a row of the table", () => {
     expect(move(control("step", [8, 2, 2], [6, 0, 6]))).toMatchObject({ move: "build" });
     expect(move(control("no-step", ALL, [0, 0, 12]))).toMatchObject({ move: "examine" });
 
-    // The readings a promotion owes, each once and never a gate. With no ladder, the Starter
-    // against each later epoch's reference (not set-up's, which was read against it).
+    // A promotion owes no reading of its own: until 16 October the starter was read against each
+    // later epoch's reference once, a reading no row went on to read.
     expect(move(PROMOTED)).toMatchObject({ move: "build" });
     const second = [
       ...PROMOTED,
@@ -805,14 +748,7 @@ describe("a row of the table", () => {
       ...steppedTwice("g-2", "h2", "h1"),
       promotion("h2", { from: "h1" }),
     ];
-    expect(move(second)).toEqual({
-      move: "compare",
-      fresh: "starter",
-      reference: "promoted",
-      why: "harness h2 is this epoch's reference: the starter is read against it once, as the lower control",
-    });
-    const read = [...second, ...compared("g-3", "start", "no-step", { old: "h2" })];
-    expect(move(read)).not.toMatchObject({ fresh: "starter" });
+    expect(move(second)).not.toMatchObject({ fresh: "starter" });
   });
 
   it("build: with nothing new to read and room to gain, the Builder builds", () => {

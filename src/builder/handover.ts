@@ -357,8 +357,8 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
         },
       ];
     }
-    // A comparison stands where the log first holds it: at its start, or at its first report. The
-    // ladder's readings are told to no Builder, and the climb reads them (`ladderOwed`, `decide.ts`).
+    // A comparison stands where the log first holds it: at its start, or at its first report. An
+    // old ladder's readings were told to no Builder, and are not now (`lastReports`, `reports.ts`).
     if ((kind !== STARTED && kind !== "comparison.reported") || comparisons.has(id) || data.ladder === true) {
       return [];
     }

@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it, setDefaultTimeout, spyOn } from "bun:te
 import { crashedRun } from "../src/builder/ground.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import { examine } from "../src/examiner/session.ts";
-import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
+import { LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import {
   mkdirSync,
@@ -529,14 +529,13 @@ describe("a campaign run by its live Builder", () => {
         ["finish", { note: "Two harnesses are promoted and measured." }],
         ["finish", { note: "Two harnesses are promoted and measured." }],
       ]),
-      // One task the first session held is moved to the ladder, as the gate holds one there. The
-      // second writes what the second step's repeat is short of, since one comparison closes a task
+      // The second session writes what the second step's repeat is short of, since one comparison closes a task
       // (15 October); the third, the host's once three conversations after the second promotion
       // made no move, holds none.
       examine: async (request) => {
         const earlier = of(name, EXAMINED).length;
         if (earlier > 1) return unwritten(request);
-        const examined = await examine({
+        return examine({
           ...request,
           ...scripted([
             [
@@ -551,10 +550,6 @@ describe("a campaign run by its live Builder", () => {
             ],
           ]),
         });
-        if (earlier === 0) {
-          append(request.log, "task.state", { version: examined.held.at(-1) ?? "", state: "ladder" });
-        }
-        return examined;
       },
     };
     const ending = await harnessBuilder(
@@ -594,27 +589,15 @@ describe("a campaign run by its live Builder", () => {
       "promote",
       "examine",
       "compare",
-      "compare",
       "examine",
       "compare",
       "promote",
-      "compare",
       "build",
       "build",
       "build",
       "examine",
     ]);
-    // The ladder's readings are the host's: once the ladder holds a task, the starter against the
-    // reference before the Builder's next action, and again after the next promotion. The
-    // Builder is told of neither.
-    const [first, repeat, owed, second, secondRepeat, ladder] = of(name, REPORTED);
-    expect(of(name, MOVED).filter(({ code }) => code === "ladder")).toHaveLength(2);
-    expect(owed).toMatchObject({ ladder: true, old: first?.fresh, tasks: 1 });
-    expect(ladder).toMatchObject({ ladder: true, old: second?.fresh, tasks: 1 });
-    // The first reading fixes the ladder, and the next reads that set again, by its id.
-    const readings = of(name, "comparison.started").filter((started) => started.ladder === true);
-    expect(readings).toMatchObject([{ session: owed?.session }, { frozen: owed?.session }]);
-    expect(readings[0]?.frozen).toBeUndefined();
+    const [first, repeat, second, secondRepeat] = of(name, REPORTED);
     expect(of(name, CALLED).findLast(({ tool }) => tool === "compare")?.text).toContain(
       `Harness ${isString(second?.fresh) ? second.fresh.slice(0, 8) : ""} and its repeat, read together, cleared the level against the reference, and the host has made it the campaign's reference.`,
     );

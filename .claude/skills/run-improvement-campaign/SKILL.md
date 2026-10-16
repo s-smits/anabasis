@@ -18,7 +18,7 @@ lift it with one change, and confirm from the log that the chain moved.
 
 A pass that cannot name the link it worked on has not been a pass of this loop, and a link is
 named by the factor it holds (`AGENTS.md`, "The four reported factors"): climb, whether the
-reference improves on the fixed ladder; honesty, whether the test crowns a winner between two
+reference is promoted, and how often; honesty, whether the test crowns a winner between two
 copies of one harness; verdicts, whether a person agrees with the Referee; economy, what each
 measured gain cost. Supply, whether the scored set holds tasks the reference fails, is the
 condition a comparison is admitted on.

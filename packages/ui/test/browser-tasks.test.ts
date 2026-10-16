@@ -257,9 +257,8 @@ describe("the Tasks pane's grid", () => {
       "released",
       "refused",
       "disputed",
-      "ladder",
     ]);
-    const counts = { held: 22, released: 2, refused: 1, disputed: 1, ladder: 0 } as const;
+    const counts = { held: 22, released: 2, refused: 1, disputed: 1 } as const;
     for (const [value, count] of Object.entries(counts)) {
       await state.selectOption(value);
       if (count === 0) {

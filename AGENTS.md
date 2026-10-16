@@ -836,9 +836,8 @@ independence. The test runs in two stages: a comparison whose frontier is at or 
 (0.25: 2 to 0, 4 to 1, 5 to 2, 7 to 3 where every task is won by as many pairs) buys the repeat
 and promotes nothing, and the step and its repeat read together clear the level (0.02 by default
 since 12 October: 6 to 0, 8 to 1, 10 to 2, 12 to 3; at 0.10, 4 to 0, 6 to 1, 7 to 2, 9 to 3), the
-repeat having untied a task and won at least as many pairs as it lost, neither stage losing on
-its retained tasks, and their untied tasks not all in one family of two
-or more (`readTwice`), an attempt's two readings and no others. A task both stages scored counts once, its differences summed: the null is
+repeat having untied a task and won at least as many pairs as it lost, and neither stage losing on
+its retained tasks (`readTwice`), an attempt's two readings and no others. A task both stages scored counts once, its differences summed: the null is
 the fixed-task one, each drawn task as likely won as lost on fresh solves, and a repeat on the same
 tasks adds solves to them and no task (14 October; buffer-149's g-2 scored g-1's eleven). Every reading prints its untied count, the least share of them it detects
 four times in five (`detectable`), and the chance an attempt at its margins promotes equal
@@ -854,7 +853,7 @@ the plan ("Statistical power and cost") and neither is built.
 | `step` | The test cleared its level |
 | `no-step` | A test was made and did not clear its level |
 | `regressed` | The frontier cleared its level and the retained tasks lost more pairs than they won. It promotes nothing |
-| `narrow` | The frontier cleared its level and its untied tasks all fall in one family of the two or more the set holds. It promotes nothing; the repeat draws other families where supply allows |
+| `narrow` | Until 16 October: the frontier cleared its level and its untied tasks all fell in one family of the two or more the set held. It promoted nothing, never fired in 1,598 recorded readings, and an old report keeps it |
 | `not-scored` | No task was tallied, or the cap cut the test short. Nothing was tested |
 | `check-defects` | The comparison stopped on its check defects |
 | `no-change` | The session left nothing new to compare |

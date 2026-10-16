@@ -1468,7 +1468,7 @@ describe("a checkpoint with no session", () => {
     });
   });
 
-  it("reads a step whose untied tasks all fall in one family of the two or more its set holds as narrow", async () => {
+  it("reads a step whose untied tasks all fall in one family of the two or more its set holds as a step", async () => {
     const s = await setup([], (version, side) => (side === "old" && version !== "s1" ? LATE : PASS));
     for (const version of ["s6", "s7", "s8", "s9"]) {
       append(s.log, "task.proposed", { version, family: "f3" });
@@ -1481,7 +1481,8 @@ describe("a checkpoint with no session", () => {
         f1: { frontier: { wins: 0, losses: 0, ties: 1 } },
         f3: { frontier: { wins: 4, losses: 0, ties: 0 } },
       },
-      reading: "narrow",
+      // Until 16 October it read `narrow`, which never fired on record.
+      reading: "step",
     });
   });
 
@@ -1831,7 +1832,7 @@ describe("the scored set", () => {
     const eight = ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"];
     const others = (first: readonly string[], of = eight) => of.filter((version) => !first.includes(version));
 
-    it("draws the tasks its first stage did not score first, other families before the one its untied tasks all fell in, and that stage's own only where too few others are held", () => {
+    it("draws the tasks its first stage did not score first, by the hash alone, and that stage's own only where too few others are held", () => {
       // A repeat that solves its first stage's tasks again guards against the noise of a solve and
       // not against a lucky draw of tasks.
       const first = drawn(heldOut(eight), 4);
@@ -1850,26 +1851,19 @@ describe("the scored set", () => {
       const four = eight.slice(0, 4);
       const whole = drawn(heldOut(four), 4);
       expect(drawn([...heldOut(four), ...compared("g-1", whole, [2, 0])], 4, repeat("g-2"))).toEqual(whole);
-      // Four tasks of f1 and four of f2; the first stage untied two tasks, both of f1, and read
-      // 2-0 (12 October; `narrow`). The repeat takes f2's two the first stage did not score, then
-      // f1's two fresh ones, and the first stage's own last.
+      // Four tasks of f1 and four of f2. Whether the first stage untied tasks of one family or of
+      // both, the others are drawn by the hash alone: until 16 October a stage untied in f1 alone
+      // read `narrow`, and its repeat drew f1's others last.
       const proposed = [...heldOut(eight.slice(0, 4), "f1"), ...heldOut(eight.slice(4), "f2")];
       const scored = ["v1", "v2", "v5", "v6"];
       const narrow = compared("g-1", scored, [2, 0], { f1: [2, 0, 0], f2: [0, 0, 2] });
-      const spread = drawn([...proposed, ...narrow], 4, repeat("g-2"));
-      expect(spread.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
-      expect(spread.slice(2).toSorted()).toEqual(["v3", "v4"]);
-      expect(drawn([...proposed, ...narrow], 2, repeat("g-2")).toSorted()).toEqual(["v7", "v8"]);
-      // Where every task is of the one family, the repeat still scores the tasks the first stage did not.
-      expect(drawn([...heldOut(eight, "f1"), ...narrow], 4, repeat("g-2")).toSorted()).toEqual(
-        others(scored),
-      );
-      // Where both families were untied no family goes last: the others are drawn by the hash alone.
       const both = compared("g-1", scored, [2, 0], { f1: [1, 0, 1], f2: [1, 0, 1] });
-      for (const target of [2, 4]) {
-        expect(drawn([...proposed, ...both], target, repeat("g-2"))).toEqual(
-          drawn(heldOut(others(scored)), target),
-        );
+      for (const untied of [narrow, both]) {
+        for (const target of [2, 4]) {
+          expect(drawn([...proposed, ...untied], target, repeat("g-2"))).toEqual(
+            drawn(heldOut(others(scored)), target),
+          );
+        }
       }
     });
 

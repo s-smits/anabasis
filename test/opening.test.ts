@@ -52,8 +52,16 @@ describe("what a campaign runs by", () => {
       "check-a",
       "check-b",
     ]);
+    // A draft that declares an objective has it admitted too: the acceptance reading holds it as
+    // one more check its author computes, and three campaigns of 16 October ended on it alone.
+    const measured = event("exam.drafted", {
+      session: "d-1",
+      draft: { checks: [{ id: "check-a" }], objective: { quantity: "mass", direction: "lower" } },
+    });
+    expect(planOf([prompted, measured], ASKED).admits).toEqual(["check-a", "objective"]);
     const inLoop = event("campaign.opened", { ...asked, attended: true });
     expect(planOf([inLoop, drafted], ASKED).admits).toEqual([]);
+    expect(planOf([inLoop, measured], ASKED).admits).toEqual([]);
     expect(planOf([opened, billed(31.5), billed(8.5)], ASKED)).toEqual({
       sessions: 2,
       patience: 6,

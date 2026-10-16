@@ -26,6 +26,7 @@
 import { type LogEvent, read } from "../kernel/log.ts";
 import { billedAll, type Cap, patienceOf } from "../kernel/reports.ts";
 import { SIZE } from "../kernel/size.ts";
+import { OBJECTIVE } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
 import type { Plan } from "./ground.ts";
@@ -187,6 +188,7 @@ export function planOf(
 ): Plan {
   const recorded = events.findLast(({ kind }) => kind === SETTING)?.data;
   const named = Array.isArray(recorded?.tasks) ? recorded.tasks.length : recorded?.target;
+  const draft = opening?.attended === true ? null : draftOf(events);
   return {
     sessions: opening?.sessions ?? SESSIONS,
     patience: patienceOf(events),
@@ -204,11 +206,14 @@ export function planOf(
     pastStop: beside.pastStop ?? null,
     // Every check of a drafted exam is its author's own computation (rule 10), and a launch without
     // `--hitl` is the operator's word for each of them (the operator, 16 October): until then a
-    // campaign from a prompt ended on its exam once, and waited for `--admit` by hand.
+    // campaign from a prompt ended on its exam once, and waited for `--admit` by hand. Its objective
+    // is read as one more such check (`acceptance.ts`): left out, the three fresh campaigns of
+    // 16 October whose drafts declared one each ended on that one fault.
     admits: [
       ...new Set([
         ...(beside.admits ?? []),
-        ...(opening?.attended === true ? [] : (draftOf(events)?.checks.map(({ id }) => id) ?? [])),
+        ...(draft?.checks.map(({ id }) => id) ?? []),
+        ...(draft?.objective === undefined ? [] : [OBJECTIVE.id]),
       ]),
     ],
     practice: beside.practice ?? null,

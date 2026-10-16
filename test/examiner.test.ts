@@ -1180,7 +1180,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(told.refused).toEqual([line("every", "refused: answered in 3 of 3")]);
   });
 
-  it("after a promotion, says which gates read the replaced reference, and tells the new reference's turns at the gate", () => {
+  it("after a promotion, tells the gates read on the replaced reference as a count, and the new reference's turns at the gate", () => {
     const log = logged();
     const gated = (taskId: string, gate: JsonObject, turns: readonly number[] = []) => {
       log.add(PROPOSED, {
@@ -1213,27 +1213,25 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     );
     gated("new", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } }, [12, 14]);
     const told = heard(log.events, ["old", "new"].map(fixture));
-    // Until 16 October the starter's gate count on "old" read as the new reference's.
+    // Until 16 October the starter's gate count on "old" read as the new reference's, and then
+    // stood beside the new ones marked as read on a replaced harness.
     expect(told.lines).toEqual([
-      line(
-        "old",
-        `not yet compared; ${VALID}; held out at its gate on 1 of the reference harness's 3 solves valid, read on a reference harness since replaced`,
-      ),
+      line("old", `not yet compared; ${VALID}`),
       line(
         "new",
         `not yet compared; ${VALID}; held out at its gate on 2 of the reference harness's 3 solves valid`,
       ),
     ]);
-    expect(told.refused).toEqual([
-      line("closed", "refused: answered in 0 of 3, read on a reference harness since replaced"),
-      line("easy", "refused: answered in 3 of 3"),
-    ]);
+    expect(told.refused).toEqual([line("easy", "refused: answered in 3 of 3")]);
+    expect(told.earlier).toBe(
+      "Before the reference harness was last replaced, the gate held out 1 draft and refused 1 draft after reading them. What it read of them was of a harness since replaced, and is not told.",
+    );
     // The gate's valid answers since the promotion, and none of the starter's (9).
     expect(told.turns?.split("\n").slice(1)).toEqual(["- family fixture: 3, 4, 4, 12, 14"]);
   });
 
   it("says nothing it cannot count: a task the log does not hold, one task alone, no task at all", () => {
-    const uncounted = { counts: null, turns: null, refused: [] };
+    const uncounted = { counts: null, turns: null, refused: [], earlier: null };
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
     expect(heard([], [fixture("e-1")])).toEqual({
       lines: [line("e-1", `not yet compared; ${NONE}`)],
@@ -1417,6 +1415,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       refused: [],
       counts,
       turns,
+      earlier: null,
     });
     // Neither the lines nor the counts name a harness.
     expect([...lines, counts, turns].join("\n")).not.toMatch(/\bh[1-5]\b/);

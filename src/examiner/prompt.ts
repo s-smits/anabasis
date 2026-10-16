@@ -150,6 +150,7 @@ ${brief}`,
       : [
           `The drafts the gate refused after reading them, with its reason. None is a task of the exam, and an instance an earlier session wrote is not taken again:\n${tasks.refused.map((line) => `- ${line}`).join("\n")}`,
         ]),
+    ...(tasks.earlier === null ? [] : [tasks.earlier]),
     ...(tasks.counts === null ? [] : [tasks.counts]),
     ...(tasks.turns === null ? [] : [tasks.turns]),
     ...(lastNote === null

@@ -31,8 +31,10 @@
  * its own, its output beside the receipt the command keeps (`launch-run-<n>.out` and `.err`).
  *
  * `--login N` runs the command on the login the environment holds as `CLAUDE_CODE_OAUTH_TOKEN<N>`,
- * passed on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key reaches the command. The verb never
- * opens the env file: Bun's own `--env-file` loads it into this process.
+ * passed on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key reaches the command. With none named
+ * and no unnumbered login held, the one numbered login is taken, and two or more are refused: on 16
+ * October a launch from a file holding one numbered key dropped it, and three drafts ended on a
+ * provider not configured. The verb never opens the env file: Bun's own `--env-file` loads it.
  *
  * Until 15 October this was shell lines in a skill and scripts of the operator's: each continue was
  * typed by hand from the receipt, a pause was a shell loop, and a login went through a wrapper that
@@ -85,12 +87,19 @@ export function rerun(flags: readonly string[], budget: string | undefined): str
   return budget === undefined ? kept : [...kept, "--budget", budget];
 }
 
-/** `env` with no numbered login, and with login `login` as the one login where one is named. */
+/** `env` with no numbered login, and with login `login`, or the one numbered login held, as its login. */
 export function loginEnv(env: Readonly<Record<string, string | undefined>>, login: string | undefined) {
   const kept: Record<string, string | undefined> = Object.fromEntries(
     Object.entries(env).filter(([key]) => !NUMBERED.test(key)),
   );
-  if (login === undefined) return kept;
+  if (login === undefined) {
+    const held = Object.keys(env).filter((key) => NUMBERED.test(key) && env[key] !== "");
+    if ((env[TOKEN] ?? "") !== "" || held.length === 0) return kept;
+    if (held.length > 1) {
+      throw new Error(`no login named, and ${held.join(", ")} held: name one with --login N`);
+    }
+    return loginEnv(env, held[0]?.slice(TOKEN.length));
+  }
   const token = env[`${TOKEN}${login}`];
   if (token === undefined || token === "") {
     throw new Error(

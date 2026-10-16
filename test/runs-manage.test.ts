@@ -35,6 +35,15 @@ describe("going on with a campaign", () => {
     expect(loginEnv(env, "4")).toEqual({ PATH: "/bin", [key]: "d", ANA_LOGIN: "4" });
     expect(loginEnv(env, undefined)).toEqual({ PATH: "/bin", [key]: "a" });
     expect(() => loginEnv(env, "2")).toThrow(`${key}2 is not set`);
+    // A file of one numbered login runs on it; of two, the verb asks which.
+    expect(loginEnv({ PATH: "/bin", [`${key}3`]: "c" }, undefined)).toEqual({
+      PATH: "/bin",
+      [key]: "c",
+      ANA_LOGIN: "3",
+    });
+    expect(() => loginEnv({ [`${key}3`]: "c", [`${key}4`]: "d" }, undefined)).toThrow(
+      "name one with --login N",
+    );
   });
 
   it("pauses past one more of the event, once no comparison, Examiner session or draft is open", () => {

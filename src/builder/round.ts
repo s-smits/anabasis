@@ -229,8 +229,7 @@ const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released"]);
 /** What a start holds that is no term a continuation may move: its id, and the sets it goes on with. */
 const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]);
 
-/** The comparison a draw is made for, where it may be a repeat: its id, its two harnesses by
- *  digest, and the trigger its first stage had to clear. */
+/** The comparison a draw is made for, where it may be a repeat: its id, harnesses and trigger. */
 interface Repeat {
   readonly id: string;
   readonly old: string;
@@ -302,21 +301,22 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
 }
 
 /**
- * The tasks a repeat scores again first, and then the groups it takes last (`scoredSet`): where
- * the comparison of `fresh` with `old` follows one of the same two whose reading cleared its
- * trigger (`triggered`), and the two have reported nothing since, that one's untied frontier
- * tasks; where they all fell in one family, that family's others, so that a repeat reads other
- * families first (12 October; `narrow`, `compare.ts`); and the rest of its scored set as its
- * start fixed it. None for any other comparison; the one asked about is no first stage of itself.
- * A repeat gone on from its log goes on with the tasks its start fixed (`begin`). It is the row
- * that buys the repeat read from the other side (`unfinished`, `decide.ts`).
+ * The tasks a repeat scores again first, then the groups it takes last (`scoredSet`): where the
+ * comparison of `fresh` with `old` follows the one reading of the same two that cleared its
+ * trigger (`triggered`), that reading's untied frontier tasks; where they all fell in one family,
+ * that family's others, so a repeat reads other families first (12 October; `narrow`); then the
+ * rest of its set. None for any other comparison: a candidate buys one repeat, as the row that
+ * buys it says (`dueOf`, `decide.ts`). A repeat gone on from its log keeps its start's (`begin`).
  */
 function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
   const { id, old, fresh, trigger } = repeat;
-  const first = lastReports(events).findLast(
-    ({ session, data }) => session !== id && data.fresh === fresh && data.old === old,
-  )?.data;
-  if (first === undefined || !triggered(first, trigger) || !isString(first.session)) return [];
+  const pair = lastReports(events).flatMap(({ session, data }) =>
+    session !== id && data.fresh === fresh && data.old === old ? [data] : [],
+  );
+  const [first, cleared] = [pair.at(-1), pair.filter((data) => triggered(data, trigger))];
+  if (first === undefined || cleared.length !== 1 || cleared[0] !== first || !isString(first.session)) {
+    return [];
+  }
   const own = fixedIn(events, first.session)?.tasks ?? [];
   const { tasks: again, family } = untiedOf(first);
   const kin = proposalsOf(events).flatMap((each) =>

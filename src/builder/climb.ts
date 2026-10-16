@@ -11,7 +11,7 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { pairings, readTwice, TRIGGER, UNMEASURED } from "../kernel/compare.ts";
+import { attemptsOf, pairings, readTwice, TRIGGER, triggered, UNMEASURED } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedBetween, lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
@@ -233,9 +233,15 @@ function falsePromotionOf(
       data.fresh !== harnesses.starter &&
       asRecord(data.frontier) !== null,
   );
-  // One attempt a candidate: a step and the repeat it bought are one (the Oracle's answer, 12 October).
-  const attempts = against.filter(
-    (one, at) => !against.slice(0, at).some(({ data }) => data.fresh === one.data.fresh),
+  // A step and the repeat it bought are one attempt (the Oracle's answer, 12 October), and a later
+  // reading of the same candidate that is no repeat is another (`attemptsOf`; until 16 October one
+  // a candidate, and buffer-159-opus's third and fourth readings of 0665c78b went uncounted).
+  const trigger = Number(openingOf(events)?.terms.trigger ?? TRIGGER);
+  const attempts = [...new Set(against.map(({ data }) => data.fresh))].flatMap((fresh) =>
+    attemptsOf(
+      against.filter(({ data }) => data.fresh === fresh),
+      ({ data }) => triggered(data, trigger),
+    ).flatMap(([first]) => (first === undefined ? [] : [first])),
   );
   /** The rule's own chance an attempt promotes equal harnesses at its margins (`falseRate`), the
    *  level where its report holds none: the level is one reading's, and this the rule's. */
@@ -244,7 +250,6 @@ function falsePromotionOf(
     return isNumber(rate) ? rate : levelOf(attempt);
   };
   const controls = reports.filter(({ data }) => asRecord(data.noise) !== null);
-  const trigger = Number(openingOf(events)?.terms.trigger ?? TRIGGER);
   const stage = ({ data }: Reported) => ({
     frontier: data.noise ?? null,
     retained: UNMEASURED,

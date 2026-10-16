@@ -556,12 +556,17 @@ describe("a row of the table", () => {
     // and a 0-0-12 promoted on one draw (found by review, 11 October).
     expect(move(repeat([0, 0, 12]))).not.toMatchObject({ move: "promote" });
     expect(move(repeat([3, 4, 5]))).not.toMatchObject({ move: "promote" });
-    // A candidate buys one repeat. A 2-0 and a 2-0 each clear the trigger and together not the level
+    // A repeat buys no repeat. A 2-0 and a 2-0 each clear the trigger and together not the level
     // of 0.02 (4-0, p 0.06); until 15 October the second bought a third reading no bound counted.
     const strict = { ...PLAN, wanted: { ...PLAN.wanted, level: 0.02 } };
     const weak = (id: string) => compared(id, "h1", "no-step", { tally: [2, 0, 10] });
     expect(move([...FIRST, ...weak("g-1")], strict)).toMatchObject({ move: "compare", repeats: "g-1" });
     expect(move([...FIRST, ...weak("g-1"), ...weak("g-2")], strict)).toMatchObject({ move: "build" });
+    // A later reading of the candidate that is no repeat is an attempt of its own, and its repeat is
+    // due: from 15 October to 16 October none was, and it could promote only with the repeat before
+    // it, which buffer-159-opus's second promotion did.
+    const third = [...FIRST, ...weak("g-1"), ...weak("g-2"), ...weak("g-3")];
+    expect(move(third, strict)).toMatchObject({ move: "compare", repeats: "g-3" });
     // A campaign of 9 October: two steps against the starter, then sessions and comparisons went
     // on by hand against that harness, which nobody had promoted. It is named all the same.
     const later = [built("b-2", "h2"), ...compared("b-2", "h2", "no-step", { old: "h1", tally: [4, 4, 4] })];

@@ -137,8 +137,9 @@ at 0.10 the rule promotes equal harnesses 5.8% of the time on 24 untied tasks (`
 `src/kernel/compare.ts`). Every reading prints that rate at its own margins, and a campaign's
 opening says the union bound over its patience's attempts and the campaign command refuses one
 past 10% (`openingLines`, `src/kernel/size.ts`): at 24 tasks, 0.10 and a patience of six that is
-34.8%, so such a campaign names a patience of one or a level of 0.02. The climb reads what the attempts risk together as they come, one attempt a candidate
-with the repeat it bought: one attempt's rate bounded off pairs of controls read by the promotion
+34.8%, so such a campaign names a patience of one or a level of 0.02. The climb reads what the attempts risk together as they come, one attempt a reading
+that is no repeat, with the repeat it bought (`attemptsOf`, `src/kernel/compare.ts`; until
+16 October one a candidate, and a candidate's later readings went uncounted): one attempt's rate bounded off pairs of controls read by the promotion
 rule, at 95% one-sided and never none, or by design before two controls the rule's own rate at
 that attempt's margins, summed over the attempts (`falsePromotion`, `src/builder/climb.ts`). Until
 16 October the starter read again on the ladder after each promotion stood as a third control,
@@ -837,7 +838,7 @@ and promotes nothing, and the step and its repeat read together clear the level 
 since 12 October: 6 to 0, 8 to 1, 10 to 2, 12 to 3; at 0.10, 4 to 0, 6 to 1, 7 to 2, 9 to 3), the
 repeat having untied a task and won at least as many pairs as it lost, neither stage losing on
 its retained tasks, and their untied tasks not all in one family of two
-or more (`readTwice`). A task both stages scored counts once, its differences summed: the null is
+or more (`readTwice`), an attempt's two readings and no others. A task both stages scored counts once, its differences summed: the null is
 the fixed-task one, each drawn task as likely won as lost on fresh solves, and a repeat on the same
 tasks adds solves to them and no task (14 October; buffer-149's g-2 scored g-1's eleven). Every reading prints its untied count, the least share of them it detects
 four times in five (`detectable`), and the chance an attempt at its margins promotes equal
@@ -944,8 +945,11 @@ a move chose it, and the decision carries the row's code:
    Until 13 October it held a repeat's tasks as well, and two campaigns examined towards 48 tasks
    for 16 hours and never compared.
 5. `unfinished`: a comparison that began and has not reported goes on, and a reading that cleared
-   the trigger, which is one draw, is repeated on fresh solves, once a candidate: a repeat that
-   clears the trigger and not the level with its first stage buys no third reading (15 October). The reading is the reference's
+   the trigger, which is one draw, is repeated on fresh solves, once: a repeat that clears the
+   trigger and not the level with its first stage buys no third reading (15 October), and a
+   later reading of the candidate on other tasks is an attempt of its own, with its own repeat;
+   a repeat is never the first stage of another (`attemptsOf`; until 16 October the pair's last
+   two readings were read, and buffer-159-opus promoted on its third and fourth). The reading is the reference's
    last of any harness, and its repeat is of the harness it froze: until 15 October a later checkpoint hid it, and
    recode-pr169-sonnet's g-1 lost its repeat. The repeat scores the first
    stage's untied frontier tasks again on fresh solves, then the held-out tasks that stage did

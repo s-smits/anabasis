@@ -3,7 +3,7 @@
 // or of tasks, and the rule a promotion by hand is held to.
 
 import { describe, expect, it } from "bun:test";
-import { decide, unpromoted } from "../src/builder/decide.ts";
+import { decide, epochReleased, unpromoted } from "../src/builder/decide.ts";
 import type { Plan } from "../src/builder/ground.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -951,6 +951,17 @@ describe("a hold on the move a row named", () => {
       practice: 4,
       why: "comparison g-3 read room in the tasks held out since the last release: the ones the reference harness failed are released first, up to 3 more practice tasks, before the Builder builds",
     });
+  });
+
+  it("practice: the count named is an epoch's, so a promotion has practice released again", () => {
+    // Three released before the promotion, as in main0_5_1, buffer-159-opus and recode-151: until
+    // 16 October none was released after it, and every practice solve after it passed.
+    const releases = ["v1", "v2", "v3"].map((version) => event("task.state", { version, state: "released" }));
+    const promoted = [...releases, ...promotedOn(ALL)];
+    expect(epochReleased(promoted)).toEqual({ promotedAt: promoted.length - 1, epoch: 0 });
+    expect(epochReleased(releases)).toEqual({ promotedAt: -1, epoch: 3 });
+    const after = [...promoted, event("task.state", { version: "v13", state: "released" })];
+    expect(epochReleased(after).epoch).toBe(1);
   });
 
   it("unshown: a session that changed nothing and was shown no failed practice solve sends for tasks", () => {

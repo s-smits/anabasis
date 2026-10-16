@@ -305,8 +305,7 @@ export interface Counters {
   readonly controls: number;
   readonly controlSteps: number;
   /** What the promotion attempts under the current reference risk together (`falsePromotion`,
-   *  `epochsOf`), and the share past which the table holds the next attempt for an A/A (`RISK`).
-   *  Null only where the log holds no epoch. */
+   *  `epochsOf`), which gates nothing. Null only where the log holds no epoch. */
   readonly risk: {
     readonly attempts: number;
     readonly union: number;
@@ -314,7 +313,6 @@ export interface Counters {
     readonly pairs: number;
     readonly errors: number;
     readonly indicative: boolean;
-    readonly hold: number;
   } | null;
   /** The dollars left of the campaign's total (`Plan.left`), and what the last comparison the cap
    *  did not cut billed for its solves (`billedParts`), which the table prices the next one by

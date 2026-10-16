@@ -88,13 +88,15 @@ test("the counters say what the attempts under the reference risk, what a promot
   );
   const each = reading.promotions.length === 0 ? null : reading.row.billed / reading.promotions.length;
   expect(html.includes("Billed a promotion")).toBe(each !== null);
-  // Past the hold, the counter says so; with no total to price against, it says nothing.
+  // A bound past a quarter is a figure like any other, since no hold reads it (16 October); with no
+  // total to price against, the runway says nothing.
   const risky: CampaignReading = {
     ...reading,
     counters: { ...reading.counters, risk: risk === null ? null : { ...risk, union: 0.4 }, runway: null },
   };
   const held = paneOf(risky);
-  expect(held).toContain("over 2 attempts, past the table&#x27;s 25%");
+  expect(held).toContain(`at most <b class="ana-num">40%</b> over 2 attempts`);
+  expect(held.includes("past the table")).toBe(false);
   expect(held.includes("Comparisons left")).toBe(false);
 });
 

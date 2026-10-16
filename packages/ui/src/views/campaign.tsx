@@ -245,12 +245,9 @@ function Counters({ reading }: { reading: CampaignReading }) {
         {controls === 0 ? "" : `, ${String(controlSteps)} read a step`}
       </span>
       {risk === null || risk.attempts === 0 ? null : (
-        <span
-          title={`${boundSource(risk)}; past ${percent(risk.hold)} the table holds the next attempt until an A/A has run`}
-        >
+        <span title={boundSource(risk)}>
           False promotion under this reference at most <b className="ana-num">{percent(risk.union)}</b> over{" "}
           {plural(risk.attempts, "attempt")}
-          {risk.union > risk.hold ? `, past the table's ${percent(risk.hold)}` : ""}
         </span>
       )}
       {promotions.length === 0 ? null : (

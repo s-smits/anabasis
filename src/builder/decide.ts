@@ -36,7 +36,6 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { TRIED } from "../examiner/record.ts";
 import { plural } from "../meta/text.ts";
-import { epochsOf } from "./climb.ts";
 import { crashedRun, groundOf, type Plan } from "./ground.ts";
 import { openingOf } from "./opening.ts";
 import { type Decided, type Ending, short } from "./move.ts";
@@ -81,7 +80,6 @@ const HOLDS: readonly {
   readonly code: string;
   readonly hold: (ground: Ground, named: Move) => Move | null;
 }[] = [
-  { code: "risk", hold: risked },
   { code: "afford", hold: unafforded },
   { code: "practice", hold: toPractise },
   { code: "unshown", hold: unshown },
@@ -93,8 +91,6 @@ const DRAFTS = 3;
  *  environment: as many as drafts, so that a campaign is not built or examined against a dead
  *  provider without end, and no more, since each costs an id and the operator's wait. */
 export const CRASHES = DRAFTS;
-/** The false-promotion chance this epoch past which an attempt waits for an A/A (`risked`). */
-export const RISK = 0.25;
 /** The gate's refusals that are a want of tasks (`refusals`, `admission.ts`). */
 const SHORT = ["no-held", "held-short"] as const;
 
@@ -138,13 +134,6 @@ export function heldAfter(events: readonly LogEvent[], after: number): number {
   return events.filter(
     ({ kind, data }, index) => index > after && kind === "task.gate" && heldAtGate(data.outcome),
   ).length;
-}
-
-/** Whether the operator left a cause on record after the log's index `after` (`--cause`). */
-function causeAfter(events: readonly LogEvent[], after: number): boolean {
-  return events.some(
-    ({ kind, data }, index) => index > after && kind === "campaign.word" && data.word === "cause",
-  );
 }
 
 /** Whether tasks were held out since `reading` reported that the gate would admit a comparison
@@ -343,7 +332,14 @@ function controlled({ events, reports, reference, starter }: Ground): string | n
   const control = reports.find(
     (each) => each.old === (reference ?? starter) && Array.isArray(differencesOf(each)),
   );
-  if (control === undefined || causeAfter(events, control.reported)) return null;
+  if (control === undefined) return null;
+  // A cause the operator left on record after the control (`--cause`) lets the campaign go on.
+  const after = control.reported;
+  if (
+    events.some(({ kind, data }, index) => index > after && kind === "campaign.word" && data.word === "cause")
+  ) {
+    return null;
+  }
   const apart = differencesOf(control);
   const level = isNumber(control.report.level) ? control.report.level : 0;
   // Two-sided at the level: either one-sided test at half of it.
@@ -636,26 +632,6 @@ function buildsOn(ground: Ground): string {
   if (waiting === null) return "no session has left a harness that is not the reference harness";
   const { run, needed } = sessionsRun(ground);
   return `${String(run)} of ${plural(needed, "Builder session")} before the next comparison have run`;
-}
-
-/**
- * An attempt refused past a false-promotion chance of a quarter this epoch (the overhaul plan's
- * M2.5): P4's union bound over the attempts under the reference, indicative or not
- * (`falsePromotion`, `climb.ts`), until an A/A has run since the last report, which a comparison of
- * four solves a side carries, or the operator leaves a cause (`--cause`). It is no refusal of the
- * gate's, since its remedy is itself a comparison by hand (`tools/d2/checkpoint.ts`).
- */
-function risked({ events, reports }: Ground, named: Move): Move | null {
-  if (named.move !== "compare" || named.id !== undefined || named.fresh === "starter") return null;
-  const risk = epochsOf(events).at(-1)?.falsePromotion;
-  const last = reports.at(-1);
-  if (risk === undefined || last === undefined || risk.union <= RISK) return null;
-  return asRecord(last.report.noise) !== null || causeAfter(events, last.reported)
-    ? null
-    : end(
-        "control",
-        `a false promotion is at most ${String(Math.round(100 * risk.union))}% over ${plural(risk.attempts, "attempt")} under this reference, past a quarter, and comparison ${last.id} read no A/A: run a comparison of four solves a side (tools/d2/checkpoint.ts --solves 4), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again`,
-      );
 }
 
 /**

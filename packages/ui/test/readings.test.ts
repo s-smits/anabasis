@@ -3,7 +3,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { epochsOf } from "../../../src/builder/climb.ts";
 import { reported, toLabel } from "../../../src/builder/comparison.ts";
-import { RISK } from "../../../src/builder/decide.ts";
 import { campaignOf } from "../../../src/builder/handover.ts";
 import { pairings } from "../../../src/kernel/compare.ts";
 import { LOG_FILE, read } from "../../../src/kernel/log.ts";
@@ -396,7 +395,6 @@ describe("the risk and the runway beside the counters", () => {
       pairs: risk?.pairs ?? -1,
       errors: risk?.errors ?? -1,
       indicative: risk?.indicative ?? false,
-      hold: RISK,
     });
   });
 

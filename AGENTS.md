@@ -977,12 +977,13 @@ a move chose it, and the decision carries the row's code:
    the starter compared with the reference on them, which says whether they leave it room.
 10. `build`: otherwise the Builder builds.
 
-Four holds are asked of the move a row named (`HOLDS`), and a decision a hold changed carries the
-hold's code: `risk` (a comparison past a quarter's chance of a false promotion this epoch waits
-for an A/A or a cause) and `afford` (a comparison, or an Examiner session with the comparison
-that would read its tasks, that what is left would not see reported is not begun) end the
-campaign; `practice` releases practice before a Builder session; `unshown` sends for tasks where
-the last session changed nothing and was shown no failed practice solve.
+Three holds are asked of the move a row named (`HOLDS`), and a decision a hold changed carries the
+hold's code: `afford` (a comparison, or an Examiner session with the comparison that would read
+its tasks, that what is left would not see reported is not begun) ends the campaign; `practice`
+releases practice before a Builder session; `unshown` sends for tasks where the last session
+changed nothing and was shown no failed practice solve. Until 16 October a fourth, `risk`, ended
+the campaign where an epoch's false-promotion bound passed a quarter and its last comparison read
+no A/A; every comparison at four solves a side carries one, and it never fired on record.
 
 One count ends a campaign that cannot be given tasks or room (`roomless`): the readings in a row,
 up to the log's end, that left nothing to gain, where a reading is a comparison against the

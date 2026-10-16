@@ -18,7 +18,7 @@ one two worktrees hold.
 
 | verb | what it does | file |
 | --- | --- | --- |
-| `fresh <pack> [--model opus\|sonnet] [--effort hhmm] [--login N] [--as <suffix>] [--at <c>] [--yes]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
+| `fresh <pack> [--model opus\|sonnet] [--effort hhmm] [--login N] [--as <suffix>] [--at <c>] [--host <host>] [--yes]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes]` | runs a campaign again from its log, on the flags its last run kept | `manage.ts` |
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
@@ -42,7 +42,7 @@ A measured campaign starts with one command, from a checkout at the commit it ru
 
 ```sh
 bun --env-file=<file> run runs fresh <pack> [--model sonnet] [--login N] [--as <suffix>] --yes
-bun run runs on <host> fresh <pack> ... --yes      # on another host, from that host's tree
+bun --env-file=<file> run runs fresh <pack> --host <host> ... --yes   # on another host
 ```
 
 It reads the operator's prompt, `<pack>-prompt.txt` in `ANA_PROMPTS` (by default
@@ -51,7 +51,8 @@ to write. It names the run `<pack>-fresh-<model>[-<suffix>][-r<n>]` and its proj
 seats one model in all four seats (`--effort` a letter a seat of `lmhx`, by default `hhmm` for
 Opus and `xxhh` for Sonnet), takes a budget of 800 unless `--budget`, makes the worktree
 `anabasis-<name>` beside the checkout, detached at `--at` (this checkout's commit), and launches
-there as below. Flags after `--` go to the campaign command. Without `--yes` it prints what it
+there as below. `--host` runs it on a host `ANA_HOSTS` lists, at this checkout's commit, the host's name the
+suffix unless `--as` names one; the host's own tree runs the verb, so it needs a commit that has it. Flags after `--` go to the campaign command. Without `--yes` it prints what it
 would do. Write the prediction ledger before `--yes`.
 
 `launch` is the step under it, for a campaign that is not a fresh opening:

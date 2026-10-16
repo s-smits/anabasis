@@ -5,14 +5,16 @@
  * and refuses what it refuses.
  *
  *   bun run runs fresh <pack> [--model opus|sonnet] [--effort hhmm] [--login N] [--budget 800]
- *     [--at <commit>] [--as <suffix>] [--yes] [-- <more of the campaign command's flags>]
+ *     [--at <commit>] [--as <suffix>] [--host <host>] [--yes] [-- <more of the campaign command's flags>]
  *
  * The prompt is the operator's, `<pack>-prompt.txt` in the folder `ANA_PROMPTS` names, by default
  * `anabasis-prompts` beside the checkout, and the verb opens nothing else of it. The name is
  * `<pack>-fresh-<model>[-<suffix>]`, with `-r<n>` where a worktree holds that name or its folder,
  * and the project `<pack>-fresh`. `--effort` is four letters of `lmhx`, for the Builder, the Examiner,
  * the Referee and the solver. The worktree is `anabasis-<name>` beside the checkout, at `--at`, by
- * default this one's commit. `on <host> fresh ...` runs it on another host, from that host's tree.
+ * default this one's commit. `--host` runs the verb on a host `ANA_HOSTS` lists (`hosts.ts`), at this
+ * checkout's commit, the host's name the suffix unless `--as` names one; that host's tree runs the
+ * verb, so it needs a commit that has it.
  *
  * Until 16 October each fresh launch was typed by hand: a worktree, a prompt file, eight seat
  * flags and a name, and one launch that left out `--login` ended on its environment.
@@ -21,6 +23,7 @@ import { existsSync } from "#src/meta/filesystem.ts";
 import { gitText, worktrees } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { on } from "./hosts.ts";
 import { launch } from "./manage.ts";
 import { runs } from "./registry.ts";
 
@@ -75,16 +78,30 @@ export async function fresh(args: readonly string[]): Promise<void> {
       budget: { type: "string", default: "800" },
       at: { type: "string", default: "HEAD" },
       as: { type: "string" },
+      host: { type: "string" },
       yes: { type: "boolean", default: false },
     },
   });
   const [pack, ...more] = positionals;
   if (pack === undefined) {
     throw new Error(
-      "usage: bun run runs fresh <pack> [--model opus|sonnet] [--effort hhmm] [--login N] [--yes]",
+      "usage: bun run runs fresh <pack> [--model opus|sonnet] [--effort hhmm] [--login N] [--host <host>] [--yes]",
     );
   }
   const here = runtimeProcess.cwd();
+  if (values.host !== undefined) {
+    // The host makes the run at this checkout's commit, whatever its own tree is at.
+    const at = gitText(here, "rev-parse", "--verify", `${values.at}^{commit}`);
+    const forwarded = ["--host", "--at"];
+    const kept = args.filter(
+      (arg, n) =>
+        !forwarded.includes(arg) &&
+        !forwarded.includes(args[n - 1] ?? "") &&
+        !forwarded.some((flag) => arg.startsWith(`${flag}=`)),
+    );
+    const suffix = values.as === undefined ? ["--as", values.host] : [];
+    return on([values.host, "fresh", "--at", at, ...suffix, ...kept]);
+  }
   const beside = dirname(worktrees(here)[0] ?? here);
   const prompt = join(
     runtimeProcess.env.ANA_PROMPTS ?? join(beside, "anabasis-prompts"),

@@ -156,7 +156,7 @@ ${brief}`,
     ...(lastNote === null
       ? []
       : [
-          `What the last Examiner session of this campaign said at its finish, in its own words:\n${lastNote}`,
+          `What the last Examiner session under the current reference harness said at its finish, in its own words:\n${lastNote}`,
         ]),
     `This session has ${plural(Math.round(told.wallSeconds / 60), "minute")} and ${plural(told.turns, "turn")}.`,
   ].join("\n\n");

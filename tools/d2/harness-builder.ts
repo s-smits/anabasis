@@ -173,16 +173,18 @@ const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
  * buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no comparison read). The
  * host makes a comparison that began under other code as its first move, and its terms refuse it
  * with the campaign's environment ending (`begin`, `src/builder/round.ts`), where the Builder's
- * tool was refused it again and again (main0_5_1, three times at 8e0371c58). Tasks for want of
- * room are owed once IDLE conversations in a row made no campaign move: main0_5_1 ended
- * `finished` on 15 October after its promotion left the reference no room, b-5, b-6 and b-7 each
- * reading that an Examiner session was advised and finishing without asking for one. A session
- * that holds out nothing counts towards the table's own ending for want of room (`roomless`).
+ * tool was refused it again and again (main0_5_1, three times at 8e0371c58). Every other Examiner
+ * session the table names starts as the next conversation opens, beside it (`campaignTools`).
+ * Until 16 October only the campaign's first did, and tasks for want of room were the host's once
+ * IDLE conversations in a row made no campaign move: buffer-159-opus's first promotion waited
+ * 5.9 hours for its next Examiner session and its second 2.1 hours, seven conversations that made
+ * no move, and a campaign short of tasks could end `finished` with the table naming them. A
+ * session that holds out nothing counts towards the table's own ending for want of room
+ * (`roomless`).
  */
-function hostOwed(decided: Decided, events: readonly LogEvent[]): boolean {
+function hostOwed(decided: Decided): boolean {
   if (decided.move === "promote" || decided.move === "compare") return true;
-  if (decided.move !== "examine") return false;
-  return decided.repeats !== undefined || (decided.code === "no-room" && idleOf(events) >= IDLE);
+  return decided.move === "examine" && decided.repeats !== undefined;
 }
 
 /**
@@ -443,12 +445,8 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
         ...pastStop,
       ],
       context.held,
-      // The campaign's first Examiner session, where the table names one, is the host's to start.
-      campaignTools(
-        context,
-        named.move === "examine" &&
-          !turn.events.some(({ kind, data }) => kind === MOVED && data.move === "examine"),
-      ),
+      // An Examiner session the table names is the host's to start as the conversation opens.
+      campaignTools(context, named.move === "examine"),
     );
   } catch (error) {
     // A provider's limit or a crashed conversation is waited out, and the campaign goes on;
@@ -471,9 +469,9 @@ async function converse(context: CampaignContext, named: Decided): Promise<Decid
   // and the two that promoted finished within seconds of the promotion.
   const idle = how === "finished" || how === "wall" || how === "turns" ? idleOf(after) : 0;
   const table = decide(after, turnOf(context).plan);
-  // A measurement the conversations bought, and tasks none of them asked for, are the host's to
+  // A measurement the conversations bought, and the tasks its repeat waits for, are the host's to
   // make first (`hostOwed`), which moves the campaign, and an ending the table names stands.
-  if (idle < IDLE || hostOwed(table, after)) {
+  if (idle < IDLE || hostOwed(table)) {
     return how === "finished" || (AGAIN.has(how) && context.used < context.maxMoves) ? null : table;
   }
   if (table.move === "end") return table;
@@ -586,7 +584,7 @@ export async function harnessBuilder(
     const led =
       opening.led &&
       !SETUP.has(decided.move) &&
-      !hostOwed(decided, events) &&
+      !hostOwed(decided) &&
       (decided.move !== "end" || (decided.ending === "no-room" && !talked));
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,

@@ -36,7 +36,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { TRIED } from "../examiner/record.ts";
 import { plural } from "../meta/text.ts";
-import { crashedRun, groundOf, type Plan } from "./ground.ts";
+import { crashedRun, cutShort, groundOf, heldOut, type Plan } from "./ground.ts";
 import { openingOf } from "./opening.ts";
 import { type Decided, type Ending, short } from "./move.ts";
 import { pendingWords } from "./word.ts";
@@ -163,10 +163,10 @@ function roomless({ events, reports, reference }: Ground) {
     id,
     gain: old !== reference || roomOf(report) === "room",
   }));
-  const examined = events.flatMap(({ kind, data }, at) => {
-    if (kind !== "exam.finished") return [];
-    const wrote = Array.isArray(data.held) && data.held.length > 0;
-    const passed = wrote ? at < read : data.ended === "crashed" || data.ended === "killed";
+  const examined = events.flatMap((event, at) => {
+    if (event.kind !== "exam.finished") return [];
+    const wrote = heldOut(event.data);
+    const passed = wrote ? at < read : cutShort(event);
     return passed ? [] : [{ at, id: null, gain: wrote }];
   });
   const readings = [...compared, ...examined].toSorted((one, other) => one.at - other.at);
@@ -598,8 +598,7 @@ function heldSince({ events, read, reports, waiting, reference, starter }: Groun
 function sessionsRun({ events, plan, all, reference, starter }: Ground) {
   const after = all.at(-1)?.at ?? -1;
   const run = events.filter(
-    ({ kind, data }, at) =>
-      kind === "build.finished" && at > after && data.ended !== "killed" && data.ended !== "crashed",
+    (event, at) => event.kind === "build.finished" && at > after && !cutShort(event),
   ).length;
   return { run, needed: reference === starter ? 1 : plan.sessions };
 }
@@ -787,9 +786,16 @@ function toPractise({ events, plan, supply, read }: Ground, named: Move): Move |
 function unshown(ground: Ground, named: Move): Move | null {
   const { events } = ground;
   const at = events.findLastIndex(({ kind }) => kind === "build.finished");
-  const last = events[at]?.data;
-  const whole = last !== undefined && last.ended !== "killed" && last.ended !== "crashed";
-  if (named.move !== "build" || !whole || last.changed !== false) return null;
+  const finished = events[at];
+  if (
+    named.move !== "build" ||
+    finished === undefined ||
+    cutShort(finished) ||
+    finished.data.changed !== false
+  ) {
+    return null;
+  }
+  const last = finished.data;
   const began = events.findLastIndex(
     (event, index) => index < at && event.kind === "build.started" && event.data.session === last.session,
   );

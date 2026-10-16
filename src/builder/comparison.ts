@@ -189,8 +189,8 @@ export interface Fixed {
   /** The level a first reading clears to buy the repeat (`triggered`, `compare.ts`). */
   readonly trigger: number;
   readonly tasks: readonly string[];
-  /** The scored tasks fixed at the start as retained, from the exhausted third the draw keeps
-   *  (`scoredSet`, `round.ts`); the others are the frontier. */
+  /** The scored tasks fixed at the start as retained, from the exhausted ones and an earlier
+   *  epoch's (`scoredSet`, `round.ts`); the others are the frontier. */
   readonly retained: readonly string[];
   /** The objective two valid answers are compared by, where the check program declares one. */
   readonly objective: ObjectiveRule | undefined;

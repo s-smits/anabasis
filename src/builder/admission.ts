@@ -51,9 +51,9 @@ import { taskSets } from "../kernel/task.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
-  /** The held-out tasks a step may be read on (`frontier`, `poolOf`), those that wait for a person's label and are left
-   *  out, those the reference harness answered in every solve of their last comparison and are left
-   *  out (`poolOf`), and the tasks released for practice. */
+  /** The held-out tasks a step may be read on (`frontier`, `poolOf`), those that wait for a person's
+   *  label and are left out, those the reference harness answered in every solve of their last
+   *  comparison, which are scored only as retained, and the tasks released for practice. */
   readonly held: number;
   readonly awaiting: number;
   readonly exhausted: number;
@@ -133,8 +133,8 @@ const said = (rows: readonly (readonly [boolean, string])[]) =>
 
 /** A log's supply for the next comparison. */
 export function supplyOf(events: readonly LogEvent[]): Supply {
-  // The tasks that may be scored, and those left out as `scoredSet` leaves them out: the ones
-  // waiting for a person's label, and the ones the reference closed in their last comparison.
+  // The frontier a step is read on, the tasks waiting for a person's label, which `scoredSet`
+  // leaves out, and the ones the reference closed in their last comparison, scored as retained.
   const { frontier, awaiting, exhausted } = poolOf(events);
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
   return {
@@ -243,7 +243,7 @@ function admission(supply: Supply, wanted: Wanted): Admission {
         ],
         [
           supply.exhausted > 0,
-          `${String(supply.exhausted)} held-out task(s) were answered by the reference harness in every solve of their last comparison, with no objective telling two valid answers apart, and are not scored: they can only tie again or be lost`,
+          `${String(supply.exhausted)} held-out task(s) were answered by the reference harness in every solve of their last comparison, with no objective telling two valid answers apart, and are scored only as retained tasks: they can only tie again or be lost`,
         ],
         [wanted.builds && supply.released === 0, UNRELEASED],
         faulty(supply),

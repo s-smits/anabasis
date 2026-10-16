@@ -222,7 +222,7 @@ test("what the view prints beside the readouts is one click or one line away: th
     '<details class="ana-disclosure"><summary><span class="ana-caret" aria-hidden="true">›</span>Set-up</summary>',
   );
   expect(html).toContain(
-    `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted · checker read, 0 faults, frozen`,
+    `${String(supply.held)} held out on the frontier · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted, scored as retained · checker read, 0 faults, frozen`,
   );
   for (const seat of ["builder", "examiner", "reviewer", "solver"]) {
     expect(html).toContain(`<dt>${seat}</dt>`);

@@ -82,6 +82,18 @@ export function comparisonsOf(events: readonly LogEvent[]): Compared[] {
 export const sessionEnded = ({ kind, data }: LogEvent) =>
   kind.endsWith(".finished") && isString(data.session);
 
+/** Whether a session's ending holds tasks it held out: `exam.finished.held` is written whatever
+ *  `ended` says. */
+export const heldOut = (data: JsonObject) => Array.isArray(data.held) && data.held.length > 0;
+
+/** A session's ending that moved nothing: the provider crashed it or a stop killed it, and it held
+ *  out no task. The table's want of room passes it over (`roomless`), and so does the count of
+ *  conversations that made no move (`idleOf`). */
+export const cutShort = (event: LogEvent) =>
+  sessionEnded(event) &&
+  (event.data.ended === "crashed" || event.data.ended === "killed") &&
+  !heldOut(event.data);
+
 /** The sessions in a row, up to the log's end and since the campaign last
  *  ended, that the provider failed before they held out a task or changed a harness, with what
  *  the last session's crash said where it crashed. Such a session held out no task and left no harness because its provider
@@ -111,7 +123,7 @@ export function crashedRun(events: readonly LogEvent[]) {
     events.slice(since + 1).flatMap(({ kind, data }) => (kind === "build.checkpoint" ? [data.session] : [])),
   );
   const moved = (data: JsonObject) =>
-    (Array.isArray(data.held) && data.held.length > 0) ||
+    heldOut(data) ||
     (isNumber(data.tries) && data.tries > 0) ||
     (data.changed === true && (data.ended !== "crashed" || kept.has(data.session)));
   const whole = sessions.findIndex(({ data }) => data.ended !== "crashed" || moved(data));

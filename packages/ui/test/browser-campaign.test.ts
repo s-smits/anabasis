@@ -156,7 +156,7 @@ describe("the campaign's line and readouts", () => {
     await summary.click();
     await expect(details).toHaveAttribute("open", "");
     await expect(body).toContainText(
-      "11 held out · 2 released for practice · 1 wait for a label · 2 exhausted",
+      "11 held out on the frontier · 2 released for practice · 1 wait for a label · 3 exhausted, scored as retained",
     );
     await expect(body).toContainText("checker read, 0 faults, frozen");
     await expect(body.getByText("faux/solver-1 at high")).toBeVisible();

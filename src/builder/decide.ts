@@ -726,13 +726,12 @@ export function epochReleased(events: readonly LogEvent[]) {
 }
 
 /** How many more tasks a release may take for practice, each one fewer to compare: after a
- *  promotion, at most one in four of the epoch's scorable and released tasks, never leaving fewer
- *  frontier tasks than a sweep at `level` takes, since it takes failed ones first (`releaseOrder`). */
+ *  promotion, never leaving fewer frontier tasks than a sweep at `level` takes, since it takes
+ *  failed ones first (`releaseOrder`). Until 16 October it was also at most one in four of the
+ *  epoch's scorable and released tasks, which bound alone in none of 35 releases on record. */
 export function practiceRoom(events: readonly LogEvent[], level: number): number {
-  const { promotedAt, epoch } = epochReleased(events);
-  const { scorable, frontier } = poolOf(events);
-  const room = Math.min(Math.floor((scorable.length + epoch) / 4) - epoch, frontier.length - sweepOf(level));
-  return promotedAt === -1 ? Infinity : Math.max(0, room);
+  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  return promotedAt === -1 ? Infinity : Math.max(0, poolOf(events).frontier.length - sweepOf(level));
 }
 
 /** A release for practice before a Builder session, where the epoch holds fewer than the campaign

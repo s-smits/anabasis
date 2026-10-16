@@ -3,7 +3,7 @@
 // or of tasks, and the rule a promotion by hand is held to.
 
 import { describe, expect, it } from "bun:test";
-import { decide, epochReleased, unpromoted } from "../src/builder/decide.ts";
+import { decide, epochReleased, practiceRoom, unpromoted } from "../src/builder/decide.ts";
 import type { Plan } from "../src/builder/ground.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -908,6 +908,35 @@ describe("a hold on the move a row named", () => {
     expect(epochReleased(releases)).toEqual({ promotedAt: -1, epoch: 3 });
     const after = [...promoted, event("task.state", { version: "v13", state: "released" })];
     expect(epochReleased(after).epoch).toBe(1);
+  });
+
+  it("practice: an epoch releases at most one in four of its tasks, and leaves a sweep held", () => {
+    // Each release is one task fewer to compare. Before a promotion the opening's release governs.
+    const eight = HELD.slice(0, 8).flatMap(heldOut);
+    expect(practiceRoom(eight, 0.1)).toBe(Infinity);
+    // Eight held after a promotion: two may go. One released, one more.
+    const promoted = [...eight, promotion("h1")];
+    expect(practiceRoom(promoted, 0.1)).toBe(2);
+    const one = [...promoted, event("task.state", { version: "v1", state: "released" })];
+    expect(practiceRoom(one, 0.1)).toBe(1);
+    // Five held leave one over the four a sweep at 0.1 takes, and four none.
+    expect(practiceRoom([...HELD.slice(0, 5).flatMap(heldOut), promotion("h1")], 0.1)).toBe(1);
+    expect(practiceRoom([...HELD.slice(0, 4).flatMap(heldOut), promotion("h1")], 0.1)).toBe(0);
+    // Four the promoted harness answered in every solve leave four it may win, and a sweep takes
+    // four: a task it closed can only tie, and is no room. buffer-159-opus held 28 after its
+    // promotion, 14 of them exhausted and 6 frontier, and counted over the 28 the room was 7.
+    const closed = compared("g-3", "start", "no-step", {
+      old: "h1",
+      tally: [0, 0, 4],
+      solved: Object.fromEntries(HELD.slice(0, 4).map((version) => [version, "PP FF"])),
+    });
+    expect(practiceRoom([...promoted, ...closed], 0.1)).toBe(0);
+    // The table asks for no more than the room: after a control that read room, three more named,
+    // and nine held leave room for two beside the one released before the promotion.
+    const plan = { ...PLAN, practice: 3 };
+    const control = compared("g-3", "start", "no-step", { old: "h1", tally: [2, 2, 8] });
+    const read = [READ, ...eight, ...RELEASED, promotion("h1"), built("b-1", "h2"), ...heldOut("v13")];
+    expect(move([...read, ...control], plan)).toMatchObject({ move: "prepare", practice: 3 });
   });
 
   it("unshown: a session that changed nothing and was shown no failed practice solve sends for tasks", () => {

@@ -688,7 +688,10 @@ on record then counts. `--solver-window` is the context the solver's Claude Code
 **Practice follows the supply, and the outcomes.** One release takes at most half of what is
 held, so a campaign that opens on a few tasks releases fewer than `--practice` names. Before a
 Builder session the table has more released where tasks were held out since the last release,
-and after a control that read room (section 7) it has as many again released. A release takes
+and after a control that read room (section 7) it has as many again released. `--practice` is an
+epoch's count, and after a promotion an epoch releases at most one in four of the tasks it may
+score and released, never leaving fewer frontier tasks than a sweep at the level takes
+(`practiceRoom`, `src/builder/decide.ts`): each release is one task fewer to compare. A release takes
 first the tasks no solve answered in two comparisons, then half of the tasks the reference
 harness failed in the last comparison, and the rest by the contract's draw
 (`tools/d2/prepare.ts`): the tasks that leave the reference room are what a Builder has to work

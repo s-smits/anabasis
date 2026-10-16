@@ -32,6 +32,7 @@ import {
   decide,
   epochReleased,
   heldAfter,
+  practiceRoom,
   repeatDue,
   shortOf,
   unaffordedAsked,
@@ -355,14 +356,16 @@ const examineTool = (context: CampaignContext, bench: Bench): AgentTool =>
   });
 
 const releaseTool = (context: CampaignContext, bench: Bench): AgentTool =>
-  actionTool(context, bench, RELEASE, async (_turn, decided, begin) => {
+  actionTool(context, bench, RELEASE, async (turn, decided, begin) => {
     const { values } = context;
-    // Where the table names no release, the practice named is brought up for this epoch alone.
+    // Where the table names no release, the practice named is brought up for this epoch alone, as
+    // far as the epoch's room for practice goes (`epochReleased`).
     const named = Number(values.practice ?? PRACTICE);
     const events = read(context.log);
+    const owed = named - Math.min(named, epochReleased(events).epoch);
     const practice =
       (decided.move === "prepare" ? decided.practice : undefined) ??
-      taskSets(events).released.length + named - Math.min(named, epochReleased(events).epoch);
+      taskSets(events).released.length + Math.min(owed, practiceRoom(events, turn.plan.wanted.level));
     const result = await prepareCommand([
       ...packOf(values),
       "--practice",

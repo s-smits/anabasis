@@ -603,10 +603,13 @@ describe("a campaign run by its live Builder", () => {
     );
     expect(first).toMatchObject({ reading: "step", scored: { wins: 5, losses: 0, ties: 0 } });
     expect(repeat).toMatchObject({ reading: "step", old: first?.old, fresh: first?.fresh });
+    // After the promotion the first epoch's tasks are retained, and two of them are scored beside
+    // the five frontier tasks the target names: until 16 October a full frontier took none.
     expect(second).toMatchObject({
       old: first?.fresh,
       reading: "step",
-      scored: { wins: 5, losses: 0, ties: 0 },
+      frontier: { wins: 5, losses: 0, ties: 0 },
+      retained: { losses: 0 },
     });
     expect(second?.fresh).not.toBe(first?.fresh);
     expect(secondRepeat).toMatchObject({ old: second?.old, fresh: second?.fresh });
@@ -1020,11 +1023,10 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: writer,
     };
-    // The control reads the tasks x-1 wrote and those held before the promotion as retained, which
-    // leaves the promoted harness no room the script can show, so the table asks for tasks next
-    // (16 October; until then it built, and the run ended `finished`).
+    // The control reads the tasks x-1 wrote beside retained ones; the promoted harness answers
+    // none of them while a valid answer to each is on record, which is room, so the table builds.
     const ran = await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "8"], seats);
-    expect(ran).toMatchObject({ move: "examine" });
+    expect(ran).toMatchObject({ move: "build" });
     const [first, , control] = of(name, REPORTED);
     // The table's control, as it names it: until 12 October the tool froze harness/, which was the
     // reference, the comparison was refused, and the advice stayed the same.
@@ -1036,12 +1038,8 @@ describe("a campaign tool where the table names more than the action", () => {
     const [stopped, closing] = said(name, "finish");
     expect(stopped).toContain("Not finished. harness/ is the harness last promoted,");
     expect(closing).not.toContain("harness last promoted");
-    expect(of(name, FINISHED).map(({ ended }) => ended)).toEqual([
-      "finished",
-      "finished",
-      "finished",
-      "finished",
-    ]);
+    // The run stops at its eighth move, inside the conversation after the control.
+    expect(of(name, FINISHED).map(({ ended }) => ended)).toEqual(["finished"]);
   });
 
   it("makes no second draw of a pair nothing changed in, and records no move for an action it refused", async () => {

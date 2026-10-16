@@ -375,8 +375,11 @@ function joined(stages: readonly Stage[]): number[] {
  * The chance that an attempt promotes between equal harnesses by the two-stage rule (`triggered`,
  * `readTwice`): a first reading on untied tasks with the margins of `differences` buys the repeat
  * at `trigger`, and a repeat on as many tasks with the same margins promotes with it at `level`,
- * every untied task as likely won as lost. It is the rule's effective rate an attempt, which the
- * level alone misstates: 5.8% at 0.10 on 24 untied tasks each won or lost by a pair. The retained
+ * every untied task as likely won as lost. It is the rule's rate an attempt of that shape, which the
+ * level alone misstates: 5.8% at 0.10 on 24 untied tasks each won or lost by a pair. A repeat that
+ * scores its first stage's tasks again at other margins, or ties them and unties others, is
+ * another shape, and its rate can be higher: on 12 tasks won or lost by 12 pairs and again by 8, 1.33% by
+ * enumeration where this reads 1.07% (16 October). So it is the design's estimate and no bound. The retained
  * set can only refuse a promotion, so it bounds it too. Every report carries
  * it at its own margins (`comparison.ts`), and a size says it before a campaign opens (`size.ts`).
  */

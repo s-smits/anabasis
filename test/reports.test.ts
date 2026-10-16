@@ -114,10 +114,12 @@ const sorted = (versions: Iterable<string>) => [...versions].toSorted();
 const pairsIn = (log: readonly LogEvent[]) => lastReports(log).map((report) => pairsReported(log, report));
 const cells = (log: readonly LogEvent[]) =>
   new Map([...poolOf(log).standings].map(([task, { cell }]) => [task, cell]));
-/** Which of `tasks` a release holds back from its draw as failed by the reference: such a task is
- *  taken by halves and never drawn, so alone in a pool it is not released. */
+/** Which of `tasks` a release takes as failed by the reference: alone in a pool such a task is
+ *  released first, with the reason that names its failure. */
 const failedOf = (log: readonly LogEvent[], tasks: readonly string[]) =>
-  tasks.filter((task) => releaseOrder(log, [task], 1, "seed").length === 0);
+  tasks.filter((task) =>
+    (releaseOrder(log, [task], 1, "seed")[0]?.[1] ?? "").includes("failed it in the last"),
+  );
 
 describe("the harness a Builder goes on from", () => {
   const built = (session: string, harness: string, more: JsonObject = {}) =>
@@ -790,6 +792,18 @@ describe("the release before the draw", () => {
     ]);
     // Asked for more than the draw's pool holds, the release takes what there is and no kept task.
     expect(taken(log, 6).toSorted()).toEqual(["a1", "a2", "f1", "f2"]);
+    // Half is rounded up, so one failed task alone is released, and a task the reference answered
+    // in some solves is failed as one it answered in none: until 16 October neither went, and
+    // between buffer-159-opus's two promotions its Builder's practice passed 10 of 10.
+    const once = [
+      ...["s1", "a1"].flatMap(heldOut),
+      ...solved("b-1", "s1", "h1", [P, F]),
+      ...solved("b-1", "s1", "h2", [P, P]),
+      ...solved("b-1", "a1", "h1", [P, P]),
+      ...solved("b-1", "a1", "h2", [P, P]),
+      reported("b-1", "no-step", "h2", { ...terms, versions: ["s1", "a1"] }),
+    ];
+    expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["s1"]);
   });
 
   it("keeps the reference's failures through empty reports and comparisons of other harnesses, until the reference answers the task", () => {

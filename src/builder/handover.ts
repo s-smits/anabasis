@@ -29,7 +29,7 @@ import type { Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedAll, billedParts, lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
 import { ended, passed, practiceRan, type Ran, solvesIn } from "../kernel/solves.ts";
-import { taskSets } from "../kernel/task.ts";
+import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
 import { openingOf } from "./opening.ts";
@@ -306,7 +306,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
   const practised = practiceRan(events);
   const gated = new Set(
     events.flatMap(({ kind, data }) =>
-      kind === "task.gate" && data.outcome === "passed" ? [data.version] : [],
+      kind === "task.gate" && heldAtGate(data.outcome) ? [data.version] : [],
     ),
   );
   const comparisons = new Set<string>();

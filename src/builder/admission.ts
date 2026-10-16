@@ -55,7 +55,7 @@ import {
   stopRule,
 } from "../kernel/reports.ts";
 import { sizeLines } from "../kernel/size.ts";
-import { taskSets } from "../kernel/task.ts";
+import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
 
 /** What a log holds for the next comparison. */
@@ -192,7 +192,7 @@ export function supplyOf(events: readonly LogEvent[], reference = "promoted"): S
   const since = new Set(
     events
       .slice((last?.index ?? -1) + 1)
-      .flatMap(({ kind, data }) => (kind === "task.gate" && data.outcome === "passed" ? [data.version] : [])),
+      .flatMap(({ kind, data }) => (kind === "task.gate" && heldAtGate(data.outcome) ? [data.version] : [])),
   );
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
   return {

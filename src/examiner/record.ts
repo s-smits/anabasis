@@ -67,7 +67,7 @@ import {
 } from "../kernel/reports.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import { solvesIn } from "../kernel/solves.ts";
-import { taskStates } from "../kernel/task.ts";
+import { heldAtGate, taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { countBy } from "../meta/tally.ts";
@@ -225,7 +225,7 @@ export function gateTurns(events: readonly LogEvent[], from: number): Map<string
 function admittedLine(gate: JsonObject | undefined): string {
   const reference = asRecord(gate?.reference);
   const { valid, solves } = reference ?? {};
-  if (gate?.outcome !== "passed" || !isNumber(solves) || !isNumber(valid)) return "";
+  if (gate === undefined || !heldAtGate(gate.outcome) || !isNumber(solves) || !isNumber(valid)) return "";
   const unread = solves < TRIED ? `, ${String(TRIED - solves)} of them giving no reading` : "";
   const read = gate.replaced === true ? `, read on ${REPLACED}` : "";
   return `; held out at its gate on ${String(valid)} of the reference harness's ${String(TRIED)} solves valid${unread}${read}`;

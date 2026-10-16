@@ -1673,6 +1673,16 @@ describe("the scored set", () => {
     expect(scoredSet([], 12, "contract-a")).toEqual({ tasks: [], retained: [] });
   });
 
+  it("draws a task an old ladder held as any held-out task, since the ladder was retired on 16 October", () => {
+    const laddered = [
+      ...heldOut(held),
+      { at, kind: "task.proposed", data: { version: "l1" } } as const,
+      { at, kind: "task.gate", data: { version: "l1", gate: 1, outcome: "ladder" } } as const,
+      { at, kind: TASK_STATE, data: { version: "l1", state: "ladder" } } as const,
+    ];
+    expect(drawn(laddered, 12).toSorted()).toEqual([...held, "l1"].toSorted());
+  });
+
   it("takes the newest epoch's tasks first, and fills the rest from the epochs before by hash", () => {
     // The simulated climb of 10 October: after two promotions a draw over every epoch at once
     // took two or three tasks the reference failed out of 19, and three comparisons read one win

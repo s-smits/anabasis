@@ -21,7 +21,7 @@ import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { billedAll, lastReports, poolOf, pairsReported } from "#src/kernel/reports.ts";
-import { taskSets } from "#src/kernel/task.ts";
+import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -404,7 +404,7 @@ export function spendOf(log: Index): [string, number][] {
 export function admittedCost(log: Index): string[] {
   const sessions = examinerSessions(log);
   const passed = new Set(
-    log.of("task.gate").flatMap((data) => (data.outcome === "passed" ? [data.version] : [])),
+    log.of("task.gate").flatMap((data) => (heldAtGate(data.outcome) ? [data.version] : [])),
   );
   const admitted = new Set(
     log
@@ -622,7 +622,7 @@ export function taskTriggers(log: Index): Trigger[] {
   // A task meets one gate, the shape of its package. A log written before 2026-10-09 holds three
   // more a task, which no command runs now and no trigger here reads.
   const gates = log.of("task.gate").filter((data) => data.gate === 1 && written.has(text(data.version)));
-  const passed = gates.filter((data) => data.outcome === "passed").length;
+  const passed = gates.filter((data) => heldAtGate(data.outcome)).length;
   const reasons = countBy(
     gates.filter((data) => data.outcome === "refused"),
     (data) => text(data.reason) || "unrecorded",

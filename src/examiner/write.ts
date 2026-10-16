@@ -35,7 +35,7 @@ import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
-import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
+import { heldAtGate, packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Engine, Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { cpSync, existsSync, rmSync } from "../meta/filesystem.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
@@ -280,7 +280,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
 function heldShare(events: readonly LogEvent[]): string {
   const of = (proved: boolean) => {
     const gates = events.filter(({ kind, data }) => kind === GATE && data.proved === proved);
-    const held = gates.filter(({ data }) => data.outcome === "passed").length;
+    const held = gates.filter(({ data }) => heldAtGate(data.outcome)).length;
     return `${String(held)} of ${String(gates.length)}`;
   };
   return `So far in this campaign, drafts with a proof were held ${of(true)}, and drafts without one ${of(false)}.`;

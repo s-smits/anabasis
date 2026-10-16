@@ -533,9 +533,9 @@ export function decidedByObjective(pairs: readonly Paired[]): number {
 /** Whether the harness on `side` closed the task: valid in every counted solve, and no pairing of
  *  two valid answers the objective told apart. A closed task can only tie again at that budget or
  *  be lost; where the objective separates two valid answers, a harness that answers it validly can
- *  still win or lose it. The one rule under the exhausted fold (`poolOf`, `reports.ts`) and the
- *  supply's untied share (`supplyOf`, `admission.ts`): until 12 October the supply read validity
- *  alone and counted a task the objective still separates as closed. */
+ *  still win or lose it. The one rule under the exhausted fold (`poolOf`, `reports.ts`): until
+ *  12 October the supply read validity alone and counted a task the objective still separates as
+ *  closed, and until 16 October it read this a second time as an untied share. */
 export function closedTo(pair: Paired, side: "old" | "fresh"): boolean {
   return pair[side].length > 0 && pair[side].every(Boolean) && !separatedByObjective(pair);
 }

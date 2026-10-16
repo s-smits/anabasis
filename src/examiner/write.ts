@@ -45,7 +45,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
-import { heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
+import { gateTurns, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
@@ -197,6 +197,7 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   // flight (`affords`): until 14 October nothing held them, and two reserves left started three.
   if (!affords(log, TRIED)) return { reason: UNAFFORDED, said: "" };
   const before = billedFor(read(log), id);
+  const from = read(log).length - 1;
   const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, stop)));
   const solves = endings.filter(({ outcome }) => outcome !== "non-result").length;
   const valid = endings.filter(({ outcome }) => outcome === "pass").length;
@@ -204,7 +205,10 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
     solves < TRIED
       ? `, ${String(TRIED - solves)} of them ending in no reading or in a rejection the Referee did not rule earned`
       : "";
-  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${unread}`;
+  // The turns each valid answer took, as the session's later ones are told by family (`gateTurns`).
+  const took = gateTurns(read(log), from).get(taskVersion(task)) ?? [];
+  const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of the solver's own turns`;
+  const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${turns}${unread}`;
   const unmeasured = `${counted}, so it is not measured`;
   const roomless = `${counted}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`;
   const unsolved = solves > 0 && valid === 0;

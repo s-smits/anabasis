@@ -427,24 +427,31 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   const flags = passedOn(args, tokens, OWN);
   // A checkpoint is named by its `--id` and runs no session, so no Builder's script can stray, and
   // a campaign's sessions are its own to count. A campaign over a drafted exam seats an Examiner
-  // scripted from its source; one over a stored pack seats none, and stops where it needs one.
-  if (values.campaign === true) {
-    await harnessBuilder(flags, {
-      seated: seats,
-      ...keyIfDefined(
-        "examine",
-        drafted === null
-          ? undefined
-          : scriptedExaminer(drafted.later, drafted.answered, Number(values.supply)),
-      ),
-    });
-  } else if (isString(values.id)) await checkpointCommand(flags, seats);
-  else if (
-    values["no-comparison"] === true
-      ? (await sessionCommand(flags, seats)) === null
-      : (await roundCommand(flags, seats)).fresh === null
-  ) {
-    strayed.push("the Builder's script left the harness as it was");
+  // scripted from its source; one over a stored pack seats none, and stops where it needs one,
+  // having named what strayed before: on 16 October such a stop hid two solves of old ladder
+  // tasks that had no answer on record and were read as ties.
+  try {
+    if (values.campaign === true) {
+      await harnessBuilder(flags, {
+        seated: seats,
+        ...keyIfDefined(
+          "examine",
+          drafted === null
+            ? undefined
+            : scriptedExaminer(drafted.later, drafted.answered, Number(values.supply)),
+        ),
+      });
+    } else if (isString(values.id)) await checkpointCommand(flags, seats);
+    else if (
+      values["no-comparison"] === true
+        ? (await sessionCommand(flags, seats)) === null
+        : (await roundCommand(flags, seats)).fresh === null
+    ) {
+      strayed.push("the Builder's script left the harness as it was");
+    }
+  } catch (error) {
+    for (const each of strayed) console.error(`⚠ ${each}`);
+    throw error;
   }
   if (strayed.length === 0) {
     console.log("the rehearsal went as scripted");

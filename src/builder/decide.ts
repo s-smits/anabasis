@@ -19,7 +19,7 @@
  * budgets it walked until 11 October went with `docs/simplify.md`, package A.
  */
 import { unadmitted } from "../kernel/acceptance.ts";
-import { readsStepEitherWay, readTwice, triggered } from "../kernel/compare.ts";
+import { readsStepEitherWay, readTwice, sweepOf, triggered, untiedOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { billedParts, poolOf, roomOf } from "../kernel/reports.ts";
 import { SIZE } from "../kernel/size.ts";
@@ -54,8 +54,8 @@ const ROWS: readonly { readonly code: string; readonly move: (ground: Ground) =>
   // The tasks are not set up: taken in, released, written on the operator's word, or written up
   // to a comparison's and its practice's before the first session is paid for.
   { code: "tasks", move: tasks },
-  // A comparison that began goes on, and one draw that cleared the trigger is drawn again, on
-  // tasks its first stage did not score.
+  // A comparison that began goes on, and one draw that cleared the trigger is drawn again, on its
+  // untied tasks and tasks it did not score.
   { code: "unfinished", move: unfinished },
   // A step and its repeat, read together, promote.
   { code: "twice", move: twice },
@@ -395,10 +395,9 @@ function tasks(ground: Ground): Move | null {
 
 /**
  * How many held-out tasks the campaign is short of: a comparison's target and what the next
- * release still draws for practice, which leaves the held ones, less what it holds; where a repeat
- * is due only the tasks its first stage did not score count, which the repeat draws first
- * (`scoredSet`). The table's examine before a comparison (`tasks`, `unfinished`) and the session's
- * ask (`examTasks`, `tools/d2/campaign-terms.ts`) are this one count.
+ * release still draws for practice, which leaves the held ones, less what it holds; for a repeat,
+ * a sweep at the level (`sweepOf`) less the tasks it may score (`dueOf`). The table's examine
+ * before a comparison and the session's ask (`examTasks`, `campaign-terms.ts`) are this count.
  */
 export function shortOf(events: readonly LogEvent[], plan: Plan): number {
   return shortBy(groundOf(events, plan));
@@ -407,7 +406,10 @@ export function shortOf(events: readonly LogEvent[], plan: Plan): number {
 function shortBy(ground: Ground): number {
   const { plan, supply } = ground;
   const practice = Math.max(0, (plan.practice ?? 0) - supply.released);
-  return Math.max(0, plan.wanted.target + practice - (dueOf(ground)?.fresh ?? supply.held));
+  const due = dueOf(ground);
+  const held =
+    due === null ? supply.held - plan.wanted.target : due.again + due.fresh - sweepOf(plan.wanted.level);
+  return Math.max(0, practice - held);
 }
 
 /** The comparison whose repeat is due, and the held tasks its first stage did not score, as a led
@@ -417,15 +419,12 @@ export function repeatDue(events: readonly LogEvent[], plan: Plan): { id: string
   return due === null ? null : { id: due.first.id, fresh: due.fresh };
 }
 
-/** The repeat the last reading of a harness against the reference bought, where one is due, and
- *  how many held tasks its first stage did not score; null where none is: a control is never
- *  repeated, since the starter winning on new tasks is room by another name. A candidate buys one
- *  repeat: a step and the repeat it bought are one attempt (`falsePromotion`,
- *  `src/builder/climb.ts`), and until 15 October a repeat that cleared the trigger and not the
- *  level bought a third reading, which no bound counted. The reading is the last of any harness, not
- *  the latest's alone: until 15 October a later checkpoint hid it, and recode-pr169-sonnet's g-1
- *  step lost its repeat once b-3 left another harness, after two Examiner sessions had written
- *  towards it. */
+/** The repeat the last reading of a harness against the reference bought, where one is due, the
+ *  held tasks its first stage did not score, and its untied ones it scores again; null where none
+ *  is: a control is never repeated, since the starter winning on new tasks is room by another name.
+ *  A candidate buys one repeat: a step and its repeat are one attempt (`falsePromotion`,
+ *  `climb.ts`). The reading is the last of any harness: until 15 October a later checkpoint hid
+ *  it, and recode-pr169-sonnet's g-1 step lost its repeat. */
 function dueOf(ground: Ground) {
   const { events, plan, reports, reference, starter } = ground;
   const { trigger } = plan.wanted;
@@ -442,7 +441,9 @@ function dueOf(ground: Ground) {
     return null;
   }
   const scored = new Set(Array.isArray(read.report.versions) ? read.report.versions : []);
-  return { first: read, fresh: poolOf(events).scorable.filter((task) => !scored.has(task)).length };
+  const { scorable } = poolOf(events);
+  const again = untiedOf(read.report).tasks.filter((task) => scorable.includes(task));
+  return { first: read, again: again.length, fresh: scorable.filter((task) => !scored.has(task)).length };
 }
 
 function unfinished(ground: Ground): Move | null {
@@ -457,12 +458,10 @@ function unfinished(ground: Ground): Move | null {
       why: `comparison ${open.id} began and has not reported: it goes on from its log`,
     };
   }
-  // A reading that clears the trigger buys the repeat and promotes nothing: the two are then read
-  // together (`readTwice`), which the next row does. The repeat is a fresh draw: the Examiner
-  // writes until the campaign holds the target of tasks the first stage did not score. Until
-  // 14 October one Examiner session was asked for and the repeat then ran on what was held, and
-  // buffer-149's g-2 scored 8 of g-1's 9 frontier tasks again. A session that holds out nothing
-  // counts towards the campaign's patience (`roomless`), so a want of tasks still ends.
+  // A reading that clears the trigger buys the repeat, read with it by the next row (`readTwice`).
+  // The Examiner writes first only where the repeat could not read a step (`shortBy`): until
+  // 16 October it wrote to a target of fresh tasks, about 300 gate solves after a promotion. A
+  // session that holds out nothing counts towards the patience (`roomless`).
   const first = dueOf(ground)?.first;
   if (first === undefined) return null;
   const missing = shortBy(ground);
@@ -470,7 +469,7 @@ function unfinished(ground: Ground): Move | null {
     const asked = examine(
       ground,
       "tasks",
-      `comparison ${first.id} cleared the trigger, and the campaign is ${plural(missing, "held-out task")} short of a repeat on tasks its first stage did not score: the Examiner writes more first`,
+      `comparison ${first.id} cleared the trigger, and the campaign is ${plural(missing, "held-out task")} short of a repeat that could read a step: the Examiner writes more first`,
     );
     return asked.move === "examine" ? { ...asked, repeats: first.id } : asked;
   }

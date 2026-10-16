@@ -695,8 +695,8 @@ harness failed in the last comparison, and the rest by the contract's draw
 on. A task that a comparison scored before its release keeps that comparison's solves on the
 exam side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
 Before a comparison the campaign holds as many scorable tasks as the comparison scores
-(`--target`), and before its first twice as many, so that the repeat draws tasks its first stage
-did not score; or the Examiner writes more first.
+(`--target`), and before a repeat as many as a sweep at the level takes, counting the first
+stage's untied tasks it scores again; or the Examiner writes more first.
 
 ### What refuses a move
 
@@ -735,8 +735,8 @@ until one is; a Builder session of 24 hours (1,440 minutes) of its own time, 300
 120 minutes and 24 prompts, with the model's own turns unlimited until `--solve-model-turns`
 names a number. An Examiner session ends when the Examiner calls `finish` a second time, or a
 first time once the host has the tasks it asked for: what the campaign is short of a comparison's
-target and of its practice, counting where a repeat is due only the tasks its first stage did not
-score (`shortOf`, `src/builder/decide.ts`), or `--exam-tasks` where
+target and of its practice, or where a repeat is due what a sweep at the level takes beyond the
+first stage's untied tasks and the tasks it did not score (`shortOf`, `src/builder/decide.ts`), or `--exam-tasks` where
 the operator names a count. A first `finish` short of them is declined once, with the need and
 no count, since every live session of 9 and 10 October proposed one batch of one to three tasks
 in three turns and finished. The session's home is carried whole into the next session's, and
@@ -942,11 +942,14 @@ a move chose it, and the decision carries the row's code:
    the trigger, which is one draw, is repeated on fresh solves, once a candidate: a repeat that
    clears the trigger and not the level with its first stage buys no third reading (15 October). The reading is the reference's
    last of any harness, and its repeat is of the harness it froze: until 15 October a later checkpoint hid it, and
-   recode-pr169-sonnet's g-1 lost its repeat. The repeat draws the held-out
-   tasks the first stage did not score first (`scoredSet`, `src/builder/round.ts`): where the
-   campaign holds fewer than the target of them, the Examiner writes more first, and `compare`
-   refuses the repeat until they are held (14 October: buffer-149's g-2 scored 8 of g-1's 9
-   frontier tasks again). An Examiner session that holds out none counts towards the patience.
+   recode-pr169-sonnet's g-1 lost its repeat. The repeat scores the first
+   stage's untied frontier tasks again on fresh solves, then the held-out tasks that stage did
+   not score (`scoredSet`, `src/builder/round.ts`); a task both score counts once, its
+   differences summed (`joined`). Only where those are fewer than a sweep at the level does the
+   Examiner write more first and `compare` refuse the repeat: until 16 October it waited for a
+   target of fresh tasks, about 300 gate solves after a promotion, and buffer-159-opus read 5-0
+   over a step and its repeat where 6-0 promotes. An Examiner session that holds out none counts
+   towards the patience.
 6. `twice`: a step and its repeat, read together, name the harness to promote (`unpromoted` says
    why another is not).
 7. `no-room`: the last comparison the reference was in left it nothing to gain, whichever side it

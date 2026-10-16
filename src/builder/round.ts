@@ -101,7 +101,7 @@
  * what it writes.
  */
 import { resetOf } from "../backends/claude.ts";
-import { draw, type ObjectiveRule, triggered, untiedFamily } from "../kernel/compare.ts";
+import { draw, type ObjectiveRule, triggered, untiedOf } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, type Cap, capHolds, lastReports, poolOf } from "../kernel/reports.ts";
@@ -263,14 +263,12 @@ interface Repeat {
  * written after a comparison that left no room no earlier than one that comparison had already
  * scored, and one campaign's next comparison scored 4 of the 7 tasks written for it.
  *
- * A `repeat` takes its first stage's tasks last (`firstStage`). Within each epoch the draw takes
- * the others first, by the same hash, and the tasks of each group taken last in turn only where
- * the epoch holds too few before it, so that a campaign that holds no more than the target draws
- * the set it drew. A repeat that solves its first stage's tasks again guards against the noise of
- * a solve and not against a lucky draw of tasks: one campaign's repeat solved the same 12 task
- * versions for 15 dollars and 53 minutes (`docs/next.md`, question 9, the operator's decision).
- * The fresh draw buys no power (0.51 against 0.52 in the overhaul plan's simulation, 4b): it
- * guards against reusing one test set across attempts.
+ * A `repeat` scores its first stage's untied frontier tasks again first, on fresh solves, then
+ * draws as any comparison does, that stage's other tasks last (`firstStage`). A task both stages
+ * score counts once, its differences summed (`joined`, `compare.ts`), so the level still takes
+ * six distinct untied tasks. Until 16 October a repeat waited for a target of fresh tasks, about
+ * 300 gate solves after a promotion, and buffer-159-opus read 5-0 over a step and its repeat (3-0
+ * with 8 tied, 2-0 with 10 tied) where 6-0 promotes.
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string, repeat?: Repeat) {
   const pool = poolOf(events);
@@ -280,8 +278,9 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
     .toReversed()
     .map((epoch) => epoch.filter((version) => held.has(version)));
   const reserved = Math.min(Math.floor(count / OLDER_SHARE), older.flat().length);
-  const last = repeat === undefined ? [] : firstStage(events, repeat);
-  const taken = new Set(last.flat());
+  const [again = [], ...last] = repeat === undefined ? [] : firstStage(events, repeat);
+  const tasks = again.filter((version) => held.has(version)).slice(0, count);
+  const taken = new Set([...tasks, ...last.flat()]);
   const began = events.findLastIndex(({ kind }) => kind === STARTED);
   const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
   /** `wanted` of an epoch's tasks, tier by tier and each by the hash: of the ones not taken last,
@@ -295,7 +294,7 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
       (got, tier) => [...got, ...draw(tier, Math.min(wanted - got.length, tier.length), contract)],
       [],
     );
-  const tasks = drawn(newest, Math.min(count - reserved, newest.length));
+  tasks.push(...drawn(newest, Math.max(0, Math.min(count - reserved, newest.length) - tasks.length)));
   for (const epoch of older) {
     tasks.push(...drawn(epoch, Math.min(count - tasks.length, epoch.length)));
   }
@@ -303,14 +302,14 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
 }
 
 /**
- * The tasks a repeat takes last (`scoredSet`), group by group: where the comparison of `fresh`
- * with `old` follows one of the same two whose reading cleared its trigger (`triggered`), and the
- * two have reported nothing since, that one's scored set as its start fixed it, and before it,
- * where its untied tasks all fell in one family, that family's others, so that a repeat reads
- * other families first (12 October; `narrow`, `compare.ts`); none for any other comparison. The
- * one asked about is passed over: it is no first stage of itself. A repeat gone on from its log
- * goes on with the tasks its start fixed (`begin`). It is the row of the table that buys the
- * repeat read from the other side (`unfinished`, `decide.ts`): the pair's last report.
+ * The tasks a repeat scores again first, and then the groups it takes last (`scoredSet`): where
+ * the comparison of `fresh` with `old` follows one of the same two whose reading cleared its
+ * trigger (`triggered`), and the two have reported nothing since, that one's untied frontier
+ * tasks; where they all fell in one family, that family's others, so that a repeat reads other
+ * families first (12 October; `narrow`, `compare.ts`); and the rest of its scored set as its
+ * start fixed it. None for any other comparison; the one asked about is no first stage of itself.
+ * A repeat gone on from its log goes on with the tasks its start fixed (`begin`). It is the row
+ * that buys the repeat read from the other side (`unfinished`, `decide.ts`).
  */
 function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
   const { id, old, fresh, trigger } = repeat;
@@ -319,11 +318,12 @@ function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
   )?.data;
   if (first === undefined || !triggered(first, trigger) || !isString(first.session)) return [];
   const own = fixedIn(events, first.session)?.tasks ?? [];
-  const family = untiedFamily(first);
+  const { tasks: again, family } = untiedOf(first);
   const kin = proposalsOf(events).flatMap((each) =>
     (each.family ?? "unnamed") === family && !own.includes(each.version) ? [each.version] : [],
   );
-  return kin.length > 0 ? [kin, [...own]] : [[...own]];
+  const rest = own.filter((version) => !again.includes(version));
+  return kin.length > 0 ? [again, kin, rest] : [again, rest];
 }
 
 /**

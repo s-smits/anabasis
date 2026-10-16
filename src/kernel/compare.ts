@@ -327,11 +327,16 @@ export function stepOf(report: JsonObject, level: number): "step" | "no-step" | 
   return narrowed([stage]) ? "narrow" : "step";
 }
 
-/** The one family every untied frontier task of a report falls in, where they all fall in one:
- *  a repeat then draws others first (`scoredSet`, `round.ts`). Null otherwise. */
-export function untiedFamily(report: JsonObject): string | null {
-  const untied = stageOf(report)?.untied ?? [];
-  return untied.length === 1 ? (untied[0] ?? null) : null;
+/** A report's untied frontier tasks, by version where it names them, and the one family they all
+ *  fall in where they fall in one: a repeat scores those tasks again first, and draws other
+ *  families next (`scoredSet`, `round.ts`). */
+export function untiedOf(report: JsonObject) {
+  const stage = stageOf(report);
+  const untied = stage?.untied ?? [];
+  return {
+    tasks: stage?.named?.filter((_, at) => stage.frontier[at] !== 0) ?? [],
+    family: untied.length === 1 ? (untied[0] ?? null) : null,
+  };
 }
 
 /** Whether one comparison's reading buys the repeat (`buys`). It is what the stop rule counts as a

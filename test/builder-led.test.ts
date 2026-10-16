@@ -46,7 +46,7 @@ const GRADED = [
   ...gradedOf(TASKS),
   ...TASKS.map(({ taskId }) => ({ taskId, answer: { answer: "wrong" }, refusedBy: "check-product" })),
 ];
-/** A pack that holds a repeat's target of tasks its first stage did not score (14 October). */
+/** A pack of twelve tasks, where a step and its repeat read past the level on held-out tasks. */
 const MANY = fixtureTasks(12);
 const GRADED_MANY = [
   ...gradedOf(MANY),

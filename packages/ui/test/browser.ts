@@ -26,13 +26,13 @@ import {
   type BrowserContext,
   type BrowserContextOptions,
   chromium,
-  expect,
   type Page,
+  expect as web,
 } from "@playwright/test";
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
-import { interruptAndReapProcessGroup } from "../../../src/meta/subprocess.ts";
 import { join } from "../../../src/meta/path.ts";
+import { interruptAndReapProcessGroup } from "../../../src/meta/subprocess.ts";
 import type { Tier } from "../src/models.ts";
 import { type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
 
@@ -96,6 +96,10 @@ const START_MS = 20_000;
  *  whole 60 s, so a page that never loaded under ten parallel files on 14 October timed the test out
  *  and named no step; at 15 s the stuck step fails with its own message first. */
 export const ACTION_MS = 15_000;
+/** Playwright's web-first assertions, each retried for as long as an action may wait. Its own `expect`
+ *  gives up at 5 s, which `setDefaultTimeout` does not reach: on 17 October, with campaigns solving on
+ *  the host at a load of 30 on 12 cores, 13 browser cases failed a pre-push gate at 5 s each. */
+export const expect = web.configure({ timeout: ACTION_MS });
 /** How long the page waits after a read answers before it reads again (`POLL_MS`, `live.ts`). */
 const POLL_MS = 5_000;
 /** A desktop window, the width the operator reads the page at. */

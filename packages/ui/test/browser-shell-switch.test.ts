@@ -6,9 +6,10 @@
  * counts such frames where they are painted.
  */
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, expect, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
 import { TOKEN_HEADER } from "../src/models.ts";
 import {
+  expect,
   expectQuiet,
   framesSeen,
   launchBrowser,

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, expect, type Page, type Route } from "@playwright/test";
+import { type Browser, type Page, type Route } from "@playwright/test";
 import {
   accessibilityViolations,
+  expect,
   expectQuiet,
   launchBrowser,
   nextPolls,

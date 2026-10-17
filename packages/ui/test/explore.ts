@@ -16,8 +16,7 @@
  * rule broken, once for each kind of address and width.
  */
 import type { Locator, Page, Request } from "@playwright/test";
-import { expect } from "@playwright/test";
-import { ACTION_MS, accessibilityViolations, DESKTOP, drawn, type Opened, PHONE } from "./browser.ts";
+import { ACTION_MS, accessibilityViolations, DESKTOP, drawn, expect, type Opened, PHONE } from "./browser.ts";
 import { MARKERS } from "./fixture-campaign.ts";
 
 /** What can be acted on: a native control or an element with an interactive role. */

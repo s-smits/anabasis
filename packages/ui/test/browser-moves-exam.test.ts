@@ -5,10 +5,11 @@
  * person's label stays withheld in this tier too.
  */
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, expect, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
 import type { Move } from "../src/models.ts";
 import {
   accessibilityViolations,
+  expect,
   expectQuiet,
   launchBrowser,
   openPage,

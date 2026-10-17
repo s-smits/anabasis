@@ -1410,6 +1410,10 @@ change that writes none. What holds whatever is written:
   nowhere else.
 - A file is at most 800 nonblank lines and a function 115, and an `export` has a reader in
   another file (`bun tools/loc/source-policy.ts`, which reports vendor only).
+- A test reads what a message carries, never how it is worded: the facts it states (an outcome,
+  a count, a limit), and what the wall keeps out of it (rule 3), read by its absence. A sentence
+  of a prompt is checked by reading the composed prompt (section 13), and a test that fails when
+  a sentence is reworded proves the wording and nothing a model does (operator, 17 October).
 
 ## 13. Writing
 

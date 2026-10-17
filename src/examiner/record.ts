@@ -2,9 +2,8 @@
  * What an Examiner is told of the tasks its campaign holds: one outcome each, and counts, by family
  * or in a total.
  *
- * An Examiner session starts a new conversation and puts no task to a solver: a task is held out on
- * the shape of its package (`src/kernel/task.ts`), so nothing a session does tells its author
- * whether a task was any good. What tells it is the comparisons. The author sees every task of the
+ * An Examiner session starts a new conversation, and its gate tells it no more of a draft than how
+ * many of the reference harness's solves of it were valid. What tells it more is the comparisons. The author sees every task of the
  * campaign, the pack's and the ones earlier sessions wrote, the older and easier ones included, each
  * with its outcome so far: how the reference harness did on it in the last comparison that scored
  * it, valid in every solve, in some or in none, or disputed (`docs/plan.md`, Phase 2;
@@ -57,6 +56,13 @@
  * counts carry no band, share or number to reach. Whether counts told as facts move an author as a
  * target did is not measured: the operator's decision of 11 October takes that risk, and
  * `docs/plan.md` (row F60) says what would count against it.
+ *
+ * On 17 October the telling was shortened with nothing it tells left out (the operator, on #191):
+ * the legend is said once above the lines (`LINES`), a line says whether a valid answer is on
+ * record only where nothing on it shows one, practice tasks share one line, refused drafts are
+ * grouped by their reason, and the counts are one table. Over the opening of a seed of
+ * buffer-159's log the task lines fell from 1,711 words to 548, the refused drafts from 980 to 49
+ * and the counts from 452 to 286.
  */
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
@@ -81,7 +87,7 @@ import { plural } from "../meta/text.ts";
  *  family that the same pass took, or null where no task stands in them. */
 interface Heard {
   readonly lines: string[];
-  /** The drafts a gate refused having read them, each with its reason (`refusedLines`). */
+  /** The drafts a gate refused having read them, a line a reason (`refusedLines`). */
   readonly refused: string[];
   readonly counts: string | null;
   /** The turns the reference harness's valid answers took, by family, or null where none is on
@@ -103,32 +109,28 @@ export const UNAFFORDED =
 
 /** How each outcome is said. */
 const SAID: Readonly<Record<Outcome, string>> = {
-  "reference-every": "the reference harness answered it validly in every solve of the last comparison",
-  "reference-some":
-    "the reference harness answered it validly in some solves of the last comparison and not in others",
-  "reference-none": "the reference harness answered it validly in no solve of the last comparison",
-  "earlier-reference":
-    "the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none",
+  "reference-every": "valid in every solve",
+  "reference-some": "valid in some solves",
+  "reference-none": "valid in no solve",
+  "earlier-reference": "last compared between two other harnesses",
   disputed: "disputed: a rejection of an answer to it is not settled",
 };
-/** The one fact beside the outcome that names no side. */
-const KNOWN = {
-  yes: "a valid answer to it is on record",
-  no: "no valid answer to it is on record",
-} as const;
-/** What a state that is not held out says of a task. */
-const SETTLED = new Map([
-  ["released", "in use as practice, and so never scored"],
-  ["disputed", "disputed: a check was at fault on an answer to it"],
-]);
+/** Whether a valid answer to a task is on record, said where nothing else on its line shows one. */
+const KNOWN = { yes: "an answer on record", no: "no answer on record" } as const;
+/** The tasks in use as practice, as one line (`heard`). */
+const PRACTICE = "In use as practice, and so never scored:";
+/** What the lines say before them: once, what every clause of a line means. */
+export const LINES = `The tasks of the exam so far, a line each: the task, its family, and how the reference harness did on it in the last comparison that scored it. Where nothing on the line shows a valid answer, it says whether one is on record. "Gate" is how many of the reference harness's ${String(TRIED)} solves at its gate were valid; "last comparisons", its valid solves in each of its last comparisons with the current reference harness, newest first, and how many of the newest closed the task in a row. These are measurements and no instruction. read_example returns any of them whole.`;
 /** What the counts say before their rows, and after them. */
 const COUNTS = {
-  head: "Counted from the same comparisons as the lines above, by family where every family counted holds two tasks or more and otherwise in a total alone: each task whose last comparison had the reference harness on one side, or that a later report set aside, and no other. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
+  head: "Counted from the same comparisons as the lines above, by family, or in a total alone where a family counted holds one task: each task whose last comparison had the reference harness on one side, or that a later report set aside. The other harness is whichever the reference harness was compared with there. These are measurements and no target.",
+  columns:
+    "| family | tasks | won by the other harness | won by the reference harness | tied, both valid in every solve | tied, neither valid in any solve | of those, an answer on record | tied otherwise | set aside, a rejection not settled |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   weak: "The same harness fails a task once and passes it the next time, so a count over a few tasks, and more so one family's share of them, is weak evidence.",
 } as const;
 /** What the turns say before their rows. */
 const TURNS =
-  "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above and at the gate of each draft since the reference harness was last replaced, by family and fewest first. These are measurements and no target.";
+  "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above and at the gate of each draft since the reference harness was last replaced, by family, fewest first, a count after × where several took as many. These are measurements and no target.";
 
 /** Whether a gate read its draft: one refused on fewer than the reference harness's `TRIED`
  *  readings, cut by a limit or never begun for want of the reserve, refused a draft it did not read,
@@ -170,12 +172,18 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     [...last].flatMap(([version, { data, at }]) => (at > since ? [[version, data] as const] : [])),
   );
   const families = new Map<string, Standing[]>();
+  const practice: string[] = [];
   const lines = tasks.flatMap(({ taskId, family }) => {
     const version = versions.get(taskId) ?? "";
     const state = states.get(version) ?? "";
     if (state === "refused") return [];
-    const settled = SETTLED.get(state);
-    if (settled !== undefined) return [`${taskId} (family ${family}): ${settled}`];
+    if (state === "released") {
+      practice.push(`${taskId} (${family})`);
+      return [];
+    }
+    if (state === "disputed") {
+      return [`${taskId} (${family}): disputed: a check was at fault on an answer to it`];
+    }
     const standing = standings.get(version);
     if (standing !== undefined) families.set(family, [...(families.get(family) ?? []), standing]);
     const read = standing !== undefined && standing.cell !== "aside";
@@ -183,10 +191,11 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     if (valid.length > 0) turns.set(family, [...(turns.get(family) ?? []), ...valid]);
     const outcome = outcomes.get(version);
     const said = outcome === undefined ? "not yet compared" : SAID[outcome];
-    const history = historyLine(histories.get(version));
-    return [
-      `${taskId} (family ${family}): ${said}; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}${admittedLine(gates.get(version))}${history}`,
-    ];
+    const gate = admittedLine(gates.get(version));
+    // A valid solve of the last comparison or the gate shows an answer on record; elsewhere it is said.
+    const shown = outcome === "reference-every" || outcome === "reference-some" || gate.valid > 0;
+    const known = shown ? "" : `; ${feasible.has(version) ? KNOWN.yes : KNOWN.no}`;
+    return [`${taskId} (${family}): ${said}${known}${gate.said}${historyLine(histories.get(version))}`];
   });
   const gated = gateAnswers(events, since);
   for (const { version, task } of proposalsOf(events)) {
@@ -198,7 +207,7 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     }
   }
   return {
-    lines,
+    lines: practice.length === 0 ? lines : [...lines, `${PRACTICE} ${practice.join(", ")}.`],
     refused: refusedLines(events, gates),
     counts: counts(families),
     turns: turnsOf(turns),
@@ -252,12 +261,14 @@ export function gateAnswers(
  *  nothing where the gate read no solves. Its own session was told it (`try_task`); until
  *  14 October a later one was not, so a task held out on one valid solve in three read as one held
  *  out on two. */
-function admittedLine(gate: JsonObject | undefined): string {
+function admittedLine(gate: JsonObject | undefined) {
   const reference = asRecord(gate?.reference);
   const { valid, solves } = reference ?? {};
-  if (gate === undefined || !heldAtGate(gate.outcome) || !isNumber(solves) || !isNumber(valid)) return "";
-  const unread = solves < TRIED ? `, ${String(TRIED - solves)} of them giving no reading` : "";
-  return `; held out at its gate on ${String(valid)} of the reference harness's ${String(TRIED)} solves valid${unread}`;
+  if (gate === undefined || !heldAtGate(gate.outcome) || !isNumber(solves) || !isNumber(valid)) {
+    return { said: "", valid: 0 };
+  }
+  const unread = solves < TRIED ? `, ${String(TRIED - solves)} giving no reading` : "";
+  return { said: `; gate ${String(valid)} of ${String(TRIED)} valid${unread}`, valid };
 }
 
 /** The drafts a gate refused having read them, with the gate's reason: until 14 October a later
@@ -265,12 +276,22 @@ function admittedLine(gate: JsonObject | undefined): string {
  *  solves from one never written. A draft whose gate read fewer solves may be proposed again, and
  *  is left out (`measuredGate`). */
 function refusedLines(events: readonly LogEvent[], gates: ReadonlyMap<string, JsonObject>): string[] {
-  return proposalsOf(events).flatMap(({ version, task }) => {
+  const why = new Map<string, string[]>();
+  for (const { version, task } of proposalsOf(events)) {
     const gate = gates.get(version);
-    return task !== null && gate?.outcome === "refused" && measuredGate(gate) && isString(gate.reason)
-      ? [`${task.taskId} (family ${task.family}): refused: ${gate.reason}`]
-      : [];
-  });
+    if (task === null || gate?.outcome !== "refused" || !measuredGate(gate) || !isString(gate.reason)) {
+      continue;
+    }
+    // A draft the reference harness's solves refused is said by their count, the rule being the
+    // system prompt's; one refused on its package, by the gate's own reason.
+    const { valid, solves } = asRecord(gate.reference) ?? {};
+    const reason =
+      isNumber(valid) && isNumber(solves)
+        ? `the reference harness valid in ${String(valid)} of ${String(solves)} solves`
+        : gate.reason;
+    why.set(reason, [...(why.get(reason) ?? []), `${task.taskId} (${task.family})`]);
+  }
+  return [...why].map(([reason, drafts]) => `${reason}: ${drafts.join(", ")}`);
 }
 
 /** A task's last comparisons with the reference harness, newest first, as one clause after its
@@ -284,8 +305,8 @@ function historyLine(history: History | undefined): string {
   const run =
     history.closedRun === 0
       ? ""
-      : `, the ${history.closedRun === 1 ? "last" : `last ${String(history.closedRun)} in a row`} closing it`;
-  return `; of its last ${plural(reads.length, "comparison")} with the current reference harness, newest first, the reference answered it validly in ${reads.join(", ")} of its solves${run}`;
+      : `; the last ${history.closedRun === 1 ? "" : `${String(history.closedRun)} in a row `}closed it`;
+  return `; last ${String(reads.length)} comparisons: ${reads.join(", ")}${run}`;
 }
 
 /** The reference harness's valid answers to each task, by solve id, in the last comparison that
@@ -309,9 +330,12 @@ function referenceAnswers(events: readonly LogEvent[]): Map<string, string[]> {
  *  valid answer of the reference harness is on record with its turns. */
 function turnsOf(families: ReadonlyMap<string, readonly number[]>): string | null {
   if (families.size === 0) return null;
-  const rows = [...families].map(
-    ([family, taken]) => `- family ${family}: ${taken.toSorted((a, b) => a - b).join(", ")}`,
-  );
+  const rows = [...families].map(([family, taken]) => {
+    const counted = Object.entries(countBy(taken, (turns) => String(turns))).toSorted(
+      ([a], [b]) => Number(a) - Number(b),
+    );
+    return `- family ${family}: ${counted.map(([turns, answers]) => (answers === 1 ? turns : `${turns} ×${String(answers)}`)).join(", ")}`;
+  });
   return [TURNS, ...rows].join("\n");
 }
 
@@ -324,18 +348,19 @@ function counts(families: ReadonlyMap<string, readonly Standing[]>): string | nu
   const row = (name: string, standings: readonly Standing[]) => {
     const counted = countBy(standings, ({ cell }) => cell);
     const of = (cell: Standing["cell"]) => counted[cell] ?? 0;
-    const apart = of("other-won") + of("reference-won");
     const none = of("tied-none") + of("tied-none-known");
-    return `- ${name}, ${plural(standings.length, "task")}: ${String(apart)} told apart, won by the other harness ${String(of("other-won"))} and by the reference harness ${String(of("reference-won"))}; ${String(of("tied-every"))} tied with both harnesses valid in every solve; ${String(none)} tied with neither valid in any solve, of which ${String(of("tied-none-known"))} with a valid answer on record; ${String(of("tied-mixed"))} tied otherwise; ${String(of("aside"))} set aside on a rejection not settled.`;
+    const cells = [of("other-won"), of("reference-won"), of("tied-every"), none, of("tied-none-known")];
+    return `| ${name} | ${[standings.length, ...cells, of("tied-mixed"), of("aside")].join(" | ")} |`;
   };
   const byFamily = [...families.values()].every((standings) => standings.length > 1);
-  const rows = byFamily ? [...families].map(([family, standings]) => row(`family ${family}`, standings)) : [];
+  const rows = byFamily ? [...families].map(([family, standings]) => row(family, standings)) : [];
   const sizes = [...new Set(every.flatMap(({ solves }) => solves ?? []))].toSorted((a, b) => a - b);
   const [fewest] = sizes;
   const most = sizes.at(-1) ?? 0;
   const span = fewest === most ? plural(most, "solve") : `${String(fewest)} to ${String(most)} solves`;
   return [
     COUNTS.head,
+    COUNTS.columns,
     ...rows,
     ...(families.size > 1 ? [row("every family", every)] : []),
     `${fewest === undefined ? "" : `Each count rests on ${span} a side of the task's last comparison. `}${COUNTS.weak}`,

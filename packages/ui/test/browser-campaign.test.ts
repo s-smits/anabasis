@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, expect, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
 import {
   accessibilityViolations,
   DESKTOP,
+  expect,
   expectQuiet,
   launchBrowser,
   type Opened,

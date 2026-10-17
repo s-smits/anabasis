@@ -1219,6 +1219,16 @@ What holds in all of them:
 7. **Read the log's events and the report before any agent's prose**, and resolve the prediction
    as held or falsified with the count that settled it.
 8. **Report every attempt that started as spent**, the unsuccessful ones included.
+9. **A measured run opens a fresh project and climbs by itself.** A run whose promotions are read
+   opens a new project from a prompt (`--prompt-file`): its Examiner drafts the exam, the starter
+   is its first reference, and nothing is billed before its opening. It runs at the commit it
+   opened at to a typed ending, with no help on the way. A seed, a fork, a campaign over a stored
+   pack and a run continued at another commit start with an exam, a promotion or code they did
+   not earn, and their promotions count for nothing (operator, 16 October: "it should do it
+   autonomously from the start"). A run goes on from its log at its own commit, after a pause, a
+   host restart or a move of login. A fix is measured by a new fresh run, never by continuing a
+   live or stalled one at the fixed code. Seeds and stored packs stay for rehearsals and replays,
+   which prove a path and no climb.
 
 A solve and a Builder session run on either host, behind Seatbelt on macOS and Bubblewrap on Linux:
 nine Builder sessions and 308 solves finished on a Linux test host on 9 October. The disk cap holds

@@ -67,6 +67,7 @@
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
+  BILLED,
   type History,
   lastReports,
   type Outcome,
@@ -255,6 +256,26 @@ export function gateAnswers(
     ]);
   }
   return answers;
+}
+
+/** What draft `version`'s solves at session `session`'s gate billed, read once every one has
+ *  ended: their own and the Referee's rulings of them. Until 17 October a gate was billed the
+ *  session's sum across its solves, which moves with every draft once a call's are solved together
+ *  (`proposeTool`, `write.ts`). */
+export function gateBilled(events: readonly LogEvent[], session: string, version: string): number {
+  const conditions = conditionsOf(events);
+  const own = new Set(
+    solvesIn(events).flatMap(({ id, start, condition }) =>
+      start.comparison === session && conditions.get(condition)?.task === version ? [id] : [],
+    ),
+  );
+  return events.reduce(
+    (sum, { kind, data }) =>
+      BILLED.has(kind) && isNumber(data.billed) && isString(data.solve) && own.has(data.solve)
+        ? sum + data.billed
+        : sum,
+    0,
+  );
 }
 
 /** How many of the reference harness's solves at a held task's gate were valid, as one clause, or

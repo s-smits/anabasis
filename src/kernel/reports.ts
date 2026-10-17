@@ -180,7 +180,7 @@ const METERED = [
 ] as const;
 /** The events that carry what their own model turns were billed, in a `billed` field: the end of
  *  each of those, and a reviewer's reading. */
-const BILLED: ReadonlySet<string> = new Set([
+export const BILLED: ReadonlySet<string> = new Set([
   ...METERED.map(({ of }) => `${of}.finished`),
   "referee.finding",
   "diagnosis.recorded",

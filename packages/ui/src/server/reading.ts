@@ -27,7 +27,6 @@
  */
 import { type Decided, decidedLine, type Ending } from "../../../../src/builder/move.ts";
 import { barsOf, regressionOf } from "../../../../src/builder/climb.ts";
-import { RISK } from "../../../../src/builder/decide.ts";
 import { openSteps } from "../../../../src/builder/handover.ts";
 import { reported } from "../../../../src/builder/comparison.ts";
 import { namesOf } from "../../../../src/builder/names.ts";
@@ -176,13 +175,13 @@ const solverIn = once((log) => {
   }
 });
 
-/** What the promotion attempts under the current reference risk together, as the table's hold
- *  reads it (`risked`, `decide.ts`). */
+/** What the promotion attempts under the current reference risk together (`falsePromotion`,
+ *  `climb.ts`). Until 16 October the table held the next attempt past a quarter of it. */
 function riskIn(log: Log): Counters["risk"] {
   const epoch = epochsIn(log).at(-1);
   if (epoch === undefined) return null;
   const { attempts, union, bound, pairs, errors, indicative } = epoch.falsePromotion;
-  return { attempts, union, bound, pairs, errors, indicative, hold: RISK };
+  return { attempts, union, bound, pairs, errors, indicative };
 }
 
 /** What is left of the campaign's total, and what the last comparison the cap did not cut billed,

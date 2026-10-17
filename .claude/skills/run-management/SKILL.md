@@ -18,6 +18,7 @@ one two worktrees hold.
 
 | verb | what it does | file |
 | --- | --- | --- |
+| `fresh <pack> [--model opus\|sonnet] [--effort hhmm] [--login N] [--as <suffix>] [--at <c>] [--host <host>] [--yes]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes]` | runs a campaign again from its log, on the flags its last run kept | `manage.ts` |
 | `pause <name> --after <event> [--yes]` | stops a campaign once its log gains one more of the event and nothing but its Builder's conversation is open | `manage.ts` |
@@ -36,6 +37,25 @@ Without `--yes` every verb that acts says what it would do and does nothing. A s
 authorises one command once, not a second run beside it.
 
 ## Start
+
+A measured campaign starts with one command, from a checkout at the commit it runs:
+
+```sh
+bun --env-file=<file> run runs fresh <pack> [--model sonnet] [--login N] [--as <suffix>] --yes
+bun --env-file=<file> run runs fresh <pack> --host <host> ... --yes   # on another host
+```
+
+It reads the operator's prompt, `<pack>-prompt.txt` in `ANA_PROMPTS` (by default
+`anabasis-prompts` beside the checkout), and refuses a pack with none: a prompt is the operator's
+to write. It names the run `<pack>-fresh-<model>[-<suffix>][-r<n>]` and its project `<pack>-fresh`,
+seats one model in all four seats (`--effort` a letter a seat of `lmhx`, by default `hhmm` for
+Opus and `xxhh` for Sonnet), takes a budget of 800 unless `--budget`, makes the worktree
+`anabasis-<name>` beside the checkout, detached at `--at` (this checkout's commit), and launches
+there as below. `--host` runs it on a host `ANA_HOSTS` lists, at this checkout's commit, the host's name the
+suffix unless `--as` names one; the host's own tree runs the verb, so it needs a commit that has it. Flags after `--` go to the campaign command. Without `--yes` it prints what it
+would do. Write the prediction ledger before `--yes`.
+
+`launch` is the step under it, for a campaign that is not a fresh opening:
 
 ```sh
 cd <the worktree kept for the run>
@@ -57,7 +77,8 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
   process, which hands the environment on; nothing in the repository opens the file. Do not
   print, copy or search for it. `--login N` runs the command on the login the environment holds as
   `CLAUDE_CODE_OAUTH_TOKEN<N>`, passed on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key
-  reaches the command. `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
+  reaches the command. With no `--login` and no unnumbered login, the one numbered login held is
+  taken, and two or more are refused. `claude/<model>` runs Claude Code on that login and `claude-api/<model>` on
   `ANTHROPIC_API_KEY`: two providers, so a solver on one is another setting than on the other.
 - **What the operator's machines hold is environment, too.** `ANA_LOGINS` names the logins a run
   may take (`2,3,4`; every login the environment holds where unset), and `ANA_HOSTS` the other
@@ -73,9 +94,10 @@ remote branch holds. It then installs (`bun install --frozen-lockfile`), runs th
 What a campaign runs by is recorded once (`campaign.opened`), so the command run again by the
 campaign's name alone goes on with the same terms, and one that names another term records it
 again. A flag that names another setting than the record is refused with both
-(`tools/d2/setting.ts`). A campaign runs unattended: it freezes an exam whose reading holds no
-fault and promotes the harness the rule names without waiting. `--attended` makes both wait for
-the operator's word, until `--no-attended`; add it only when the operator asks. `--minutes`
+(`tools/d2/setting.ts`). A campaign runs unattended: it admits a drafted exam's checks, freezes
+an exam whose reading holds no fault and promotes the harness the rule names without waiting.
+`--hitl` makes all three wait for the operator's word, until `--no-hitl`; add it only when the
+operator asks. `--minutes`
 covers the whole conversation; one that ends at its limits or by `finish` is followed by a new one
 on the Builder's notes, after the host makes what the table still owes, and three in a row that
 make no campaign move end the campaign `finished`.
@@ -89,27 +111,13 @@ the remote advertised; `bun run runs source <name>` names the tag.
 
 ## Name the run and its project
 
-A name is the campaign's folder, `.ana/d2/<name>/`, chosen once and never reused. Letters, digits,
-`.`, `_` and `-`. It says four things, in this order:
-
-```text
-<pack>-<code>-<model>[-<host>][-r<n>]
-```
-
-| part | what it is | examples |
-| --- | --- | --- |
-| pack | the pack's short name, or the prompt file's stem | `buffer`, `truss`, `rh-ladder` |
-| code | the published code: `pr<N>` for a pull request's head, `v<release>`, `main-<sha7>` | `pr172`, `v0.5.1`, `main-f8889fe` |
-| model | the family of the solver's model | `opus`, `sonnet`, `haiku` |
-| host | the host, where that is not the operator's own | `m1`, `m3` |
-| `r<n>` | a second campaign on the same pack, code and model | `r2` |
-
-Until 14 October names were chosen launch by launch (`buffer-149`, `main0_5_1`), and which code
-and models ran had to be looked up in each receipt. A campaign continued keeps its name whatever
-code it then runs: each receipt records the commit. The project (`--project`) groups the
-campaigns that answer one question, `<pack>-<question>`; one that answers no new question goes
-under the project of the one it continues. Write the name, the project and why into the
-prediction ledger before the dry run, beside the prediction.
+A name is the campaign's folder, `.ana/d2/<name>/`, chosen once and never reused: letters,
+digits, `.`, `_` and `-`. `fresh` makes it, `<pack>-fresh-<model>[-<suffix>][-r<n>]`, the suffix
+naming a host that is not the operator's own; each receipt records the commit, so a campaign
+continued keeps its name whatever code it then runs. Until 16 October names were chosen launch by
+launch, and `<pack>-<code>-<model>` names (`buffer-pr172-opus`) are of those days. The project
+(`--project`) groups the campaigns that answer one question. Write the name, the project and why
+into the prediction ledger before the launch, beside the prediction.
 
 ## Continue, move and pause
 
@@ -121,8 +129,8 @@ bun run runs pause <name> --after promoted|compacted|reported|finished --yes
 `continue` runs a stopped campaign again in the worktree that holds its log, on the flags its last
 `launch-run-<n>.json` kept, less `--name` and `--budget`: the record holds the total, which a
 budget word may have set since, and `--budget` names another. It refuses as `launch` does, and
-`--at` another commit while any comparison of the log, a ladder reading among them, began and has
-not reported: that comparison goes on under its own terms and its own code, and the command would
+`--at` another commit while any comparison of the log began and has not reported (an old ladder
+reading, which no move goes on with since 16 October, is none): that comparison goes on under its own terms and its own code, and the command would
 refuse it there and end the campaign on its environment. A campaign that ended `environment` is
 continued at the code it began the comparison under until the comparison reports.
 

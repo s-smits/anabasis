@@ -59,15 +59,14 @@ export interface Reported {
 
 /** What a task's author hears of it: how the reference harness did on it in the last comparison
  *  that scored it (every solve valid, some, none); that the last comparison that scored it was
- *  made between two other harnesses, so nothing of the reference's own is on record for it; that
- *  it was set aside; or that it is no longer scored. */
+ *  made between two other harnesses, so nothing of the reference's own is on record for it; or
+ *  that it was set aside. Until 16 October a task the draw left out was told `exhausted`. */
 export type Outcome =
   | "reference-every"
   | "reference-some"
   | "reference-none"
   | "earlier-reference"
-  | "disputed"
-  | "exhausted";
+  | "disputed";
 
 /** Where a task stands in the counts its author hears (`poolOf`): told apart, and by which
  *  side; tied with both sides valid in every solve; tied with neither valid in any, with a valid
@@ -146,12 +145,6 @@ export interface Cap {
   readonly reserve: number;
 }
 
-/** A ladder: the tasks its first reading fixed, by that reading's id. */
-export interface Ladder {
-  readonly id: string;
-  readonly tasks: readonly string[];
-}
-
 /**
  * The campaign's patience, where its opening names none: the moves in a row that could have shown
  * a gain and showed none before the stop rule ends it, and move 7's bound on Examiner sessions in
@@ -201,40 +194,20 @@ export function capHolds({ dollars, reserve }: Cap): boolean {
 }
 
 /**
- * Each comparison's last report in a log, in the order the comparisons first reported: the ones
- * on the ladder where `ladder` is true, and the others otherwise. A ladder's reading after a
- * promotion is no step, no control and no supply: the table, the stop, the pool and the climb's
- * steps read the others alone, and the climb's curve reads the ladder's (`src/kernel/task.ts`).
+ * Each comparison's last report in a log, in the order the comparisons first reported. A log of
+ * 14 to 16 October may hold readings of the ladder (`ladder`), the starter against a new reference
+ * after a promotion on tasks held apart, retired on 16 October: they are no step, no control and
+ * no room, and only `all` reads them, for what they found of the reference's solves of tasks now
+ * held out (`taskRecords`) and for the sessions they name.
  */
-export function lastReports(events: readonly LogEvent[], ladder = false): Reported[] {
+export function lastReports(events: readonly LogEvent[], all = false): Reported[] {
   const found = new Map<string, Reported>();
   for (const [index, { kind, data }] of events.entries()) {
-    if (kind !== REPORTED || !isString(data.session) || (data.ladder === true) !== ladder) continue;
+    if (kind !== REPORTED || !isString(data.session) || (data.ladder === true && !all)) continue;
     // A map keeps the place of a key's first entry, which is the comparison's first report.
     found.set(data.session, { session: data.session, index: found.get(data.session)?.index ?? index, data });
   }
   return [...found.values()];
-}
-
-/**
- * The campaign's ladders, in the order each was first read. A ladder's set is fixed by its first
- * reading (`comparison.started` with `ladder` and no `frozen`), and each later reading of it names
- * it (`frozen`), so every reading of one ladder is on one set and its curve compares like with
- * like. A task held for the ladder after that waits for the next ladder's first reading
- * (`unladdered`): the Examiner may go on writing, and no reading of an earlier ladder moves.
- */
-export function laddersOf(events: readonly LogEvent[]): Ladder[] {
-  return events.flatMap(({ kind, data }) =>
-    kind === STARTED && data.ladder === true && data.frozen === undefined && isString(data.session)
-      ? [{ id: data.session, tasks: Array.isArray(data.tasks) ? data.tasks.filter(isString) : [] }]
-      : [],
-  );
-}
-
-/** The tasks held for the ladder that no ladder holds yet: what the next first reading fixes. */
-export function unladdered(events: readonly LogEvent[]): string[] {
-  const fixed = new Set(laddersOf(events).flatMap(({ tasks }) => tasks));
-  return taskSets(events).ladder.filter((version) => !fixed.has(version));
 }
 
 /**
@@ -481,7 +454,9 @@ function cutIn(comparison: string, task: string, harness: string): string {
 }
 
 /** The reports' part of `taskRecords`: each comparison's last report gives every task it tallied
- *  one reading and marks the ones it set aside, in the order the reports and their pairs are read. */
+ *  one reading and marks the ones it set aside, in the order the reports and their pairs are read.
+ *  An old ladder's reading is one of them: its tasks are held out since 16 October, and what it
+ *  found of the reference's solves of them is what the pool and the Examiner read. */
 function tallyReports(
   events: readonly LogEvent[],
   of: (version: string) => TaskRecord,
@@ -489,7 +464,7 @@ function tallyReports(
 ): void {
   const reference = referenceOf(events);
   let order = 0;
-  for (const report of lastReports(events)) {
+  for (const report of lastReports(events, true)) {
     const { index, session, data } = report;
     const side = data.fresh === reference ? "fresh" : data.old === reference ? "old" : null;
     for (const pair of pairsReported(events, report)) {
@@ -521,8 +496,8 @@ function tallyReports(
 
 /**
  * The one place each held-out task has, and what its author may hear of each task a comparison
- * read: `scorable`, in the order the tasks were held out, `awaiting` a person's label, or
- * `exhausted`, with the `retained` among the scorable. Every reader of a task's state reads it
+ * read: `scorable`, in the order the tasks were held out, or `awaiting` a person's label, with
+ * the `exhausted` among the `retained` and the `retained` among the scorable. Every reader of a task's state reads it
  * here, off one pass over the log.
  *
  * **Awaiting** are the tasks that go to a person as possibly infeasible: no solve on record gave a
@@ -553,9 +528,9 @@ function tallyReports(
  * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
  * and a refused task is no held-out task.
  *
- * **Exhausted** are the tasks the reference harness answered validly in every solve of
- * `UNSOLVED_RUN` or more comparisons, on whichever side it stood, but for a third of them, and
- * they are left out of the scored set (`scoredSet`). The fold is read again against whatever harness is the
+ * **Exhausted** are the tasks the reference harness answered validly in every solve of the last
+ * comparison it stood in of them, on whichever side, and they leave the frontier for the retained
+ * set (`scoredSet`). The fold is read again against whatever harness is the
  * reference at the time, so a promotion re-derives it at once: the comparisons the promoted
  * harness won before its promotion count. Such a task can only tie again at that budget or be
  * lost, unless the comparison carried an objective that told two valid answers of it apart
@@ -566,12 +541,26 @@ function tallyReports(
  * task, since its answers are what the next harness has to match: closed only where both
  * harnesses answered it, a task the new harness lost stayed in the draw, and in the simulated
  * climb of 10 October three comparisons in a row read 2-0-6 and 3-0-5 on a scored set of eight
- * and the campaign stopped one win short. A third of them stays in the draw by the contract's
- * hash, a comparison's retained set (`retained`), so that a harness that breaks what the
- * reference answers still shows its losses: left out whole, the set would hold no task the new
- * harness could lose. The Examiner is told a task is exhausted, as that task's outcome
- * (`outcomes`); in the counts by family it stands where its last comparison's tally puts it
- * (`standings`).
+ * and the campaign stopped one win short. They stay scorable as retained tasks (`retained`), so
+ * that a harness that breaks what the reference answers still shows its losses: left out whole,
+ * the set would hold no task the new harness could lose. Until 16 October two thirds of them left
+ * the draw by the contract's hash, never to be read again under that reference, where one reading
+ * of four solves had closed them, and a later reading reopens some (below). The Examiner hears
+ * such a task's outcome as any other's (`outcomes`); in the counts by family it stands where its
+ * last comparison's tally puts it (`standings`). Since 15 October the reference's last reading of a task decides, where two closed
+ * comparisons had: a promotion's repeat draws fresh tasks, so a promoted harness had stood once in
+ * the tasks it was promoted on, closed 50 of 51 in four campaigns' logs, and the next comparisons
+ * tied on them. A later reading that leaves a task open opens it again, as 3 of 34 rechecks did,
+ * and one where a limit cut a solve of the reference's says neither (rule 7).
+ *
+ * **Retained** are the exhausted tasks, and since 16 October every held task gated before the last
+ * promotion that the promoted harness has stood in no comparison of: those tasks were written for
+ * the harness it replaced, and it was promoted on their like. Drawn as frontier they padded each
+ * epoch's first comparisons with ties: in buffer-159-opus 0665c78b answered 9 such tasks 4 of 4,
+ * 8ee38f97 59 of 60 solve-sets on the epoch before its own, and 18 of 18 in g-4 to g-7 tied with
+ * both sides valid in every solve. Read apart they guard against a regression, which is what the
+ * epochs before the newest were kept in the draw for. **Frontier** is the rest of the scorable
+ * tasks, what a step is read on and what the supply counts (`supplyOf`, `admission.ts`).
  *
  * **Feasible** are the task versions a valid answer is on record for: a solve's, under any harness
  * and at any limits, an author's answer the host saw pass on the task under its own id
@@ -611,8 +600,7 @@ function tallyReports(
  * **Histories** hold, for each task the reference stood in two comparisons or more of, the same
  * reading of the reference's side for each of its last `HISTORY` such comparisons, newest first,
  * with whether a limit cut one of the reference's own solves there, and how many of the newest closed it in a row
- * (`History`). An outcome is one comparison's, and the rule that exhausts a task counts two closed
- * comparisons in any order (`spent`): told the last alone, an author could not tell a task the
+ * (`History`). An outcome is one comparison's: told the last alone, an author could not tell a task the
  * reference answered once from one it answers every time running, nor which of the tasks it
  * answers is the older. Three readings are a short run, and the sentence rule 6 asks for stands
  * beside them in the author's prompt. The words are the outcome's own, every, some or none, and
@@ -624,26 +612,34 @@ export function poolOf(events: readonly LogEvent[]) {
   const awaiting = placed(records, ({ feasible, keptAt, tallied }) =>
     runOf(tallied.filter(({ index, cut }) => !feasible && index >= keptAt && !cut)),
   );
-  const spent = placed(records, ({ tallied }) => runOf(tallied.filter(({ closed }) => closed)));
-  const contract = events.find(({ kind }) => kind === "checker.read")?.data.contract;
-  const kept = new Set(
-    draw(spent, Math.ceil(spent.length / 3), `${isString(contract) ? contract : ""}:kept`),
+  const spent = placed(records, ({ tallied }) => {
+    const last = tallied.findLast(({ reference, referenceCut }) => reference !== null && !referenceCut);
+    return last?.closed === true ? last.order : undefined;
+  });
+  const out = new Set(awaiting);
+  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const before = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
+  const reference = referenceOf(events);
+  const stood = new Set(
+    lastReports(events, true).flatMap(({ data }) =>
+      (data.old === reference || data.fresh === reference) && Array.isArray(data.versions)
+        ? data.versions.filter(isString)
+        : [],
+    ),
   );
-  const exhausted = spent.filter((task) => !kept.has(task));
-  const out = new Set([...awaiting, ...exhausted]);
+  const unstood = held.filter((task) => before.has(task) && !out.has(task) && !stood.has(task));
+  const retained = [...new Set([...spent, ...unstood])];
+  const scorable = held.filter((task) => !out.has(task));
   const first = ({ tallied, asideOrder }: TaskRecord) =>
     Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
   return {
-    scorable: held.filter((task) => !out.has(task)),
+    scorable,
+    frontier: scorable.filter((task) => !retained.includes(task)),
     awaiting,
-    exhausted,
-    retained: spent.filter((task) => kept.has(task)),
+    exhausted: spent,
+    retained,
     feasible: new Set(records.flatMap(({ version, feasible }) => (feasible ? [version] : []))),
-    outcomes: new Map(
-      records
-        .toSorted((one, other) => first(one) - first(other))
-        .flatMap((record) => outcomeOf(record, exhausted)),
-    ),
+    outcomes: new Map(records.toSorted((one, other) => first(one) - first(other)).flatMap(outcomeOf)),
     standings: new Map(records.flatMap(standingOf)),
     histories: new Map(records.flatMap(historyOf)),
   };
@@ -675,12 +671,11 @@ function historyOf(record: TaskRecord): [string, History][] {
 }
 
 /** What a task's author hears of it (`poolOf`, outcomes), or nothing where no report read it. */
-function outcomeOf(record: TaskRecord, exhausted: readonly string[]): [string, Outcome][] {
+function outcomeOf(record: TaskRecord): [string, Outcome][] {
   const { version } = record;
   const last = lastRead(record);
   if (last === null) return [];
   if (last === "aside") return [[version, "disputed"]];
-  if (exhausted.includes(version)) return [[version, "exhausted"]];
   const side = sideOf(last);
   return [[version, side === null ? "earlier-reference" : `reference-${side}`]];
 }
@@ -702,18 +697,21 @@ function standingOf(record: TaskRecord): [string, Standing][] {
 
 /**
  * The `count` held-out tasks of `pool` a release takes, each with why, in the order they are
- * taken. A task no solve answered in two comparisons goes to the Builder before the draw
- *: it is what a session has to work on, where every released task passes.
- * Then the tasks the reference harness failed in the last comparison, half of them at most, so
- * that the comparison keeps tasks it can untie. The rest is the contract's
- * draw, over the tasks neither list holds, so that the draw cannot release the half kept back.
- * The release in `tools/d2/prepare.ts` calls it.
+ * taken. A task no solve answered in two comparisons goes to the Builder before the draw: it is
+ * what a session has to work on, where every released task passes. Then the tasks the reference
+ * harness failed in the last comparison, half of them rounded up, so that the comparison keeps
+ * tasks it can untie. The rest is the contract's draw over the tasks neither list holds, less any
+ * the reference answered in every solve of its last reading, which gives a session nothing to
+ * work on (until 16 October the draw took them). The release in `tools/d2/prepare.ts` calls it.
  *
- * The tasks the reference failed are the held-out ones whose last scored result says it answered
- * none, excluding a later dispute or comparison between other harnesses, as a task's outcome
+ * The tasks the reference failed are the held-out ones whose last scored result says it failed
+ * a solve, excluding a later dispute or comparison between other harnesses, as a task's outcome
  * does: the tasks that leave the reference room are the ones a Builder has to work on, and on
  * 10 October three campaigns each ran three sessions after a promotion on practice tasks the
- * promoted harness passed, and changed nothing.
+ * promoted harness passed, and changed nothing. Until 16 October a task it answered in some
+ * solves was no failure, though it leaves room as one it never answered does, and half rounded
+ * down released no task where one had failed: between buffer-159-opus's two promotions its
+ * Builder's practice passed 10 of 10.
  *
  * The tasks no solve answered are the held-out ones without a valid answer in `UNSOLVED_RUN` or
  * more comparisons, cut at a limit or not. On 10 October one campaign held four to five such tasks
@@ -733,16 +731,23 @@ export function releaseOrder(
   const unanswered = among(
     placed(records, ({ answered, tallied }) => (answered ? undefined : runOf(tallied))),
   );
-  const failed = among(
-    placed(records, (record) => {
-      const last = lastRead(record);
-      if (last === null || last === "aside" || last.reference === null) return undefined;
-      const own = last[last.reference];
-      return own.length > 0 && !own.some(Boolean) ? last.order : undefined;
-    }),
-  ).filter((version) => !unanswered.includes(version));
-  const first = [...unanswered, ...failed.slice(0, Math.floor(failed.length / 2))];
-  const rest = pool.filter((version) => !first.includes(version) && !failed.includes(version));
+  /** The tasks whose last reading the reference stood in, where `every` says whether it answered
+   *  each of its solves there. */
+  const readOf = (every: boolean) =>
+    among(
+      placed(records, (record) => {
+        const last = lastRead(record);
+        if (last === null || last === "aside" || last.reference === null) return undefined;
+        const own = last[last.reference];
+        return own.length > 0 && own.every(Boolean) === every ? last.order : undefined;
+      }),
+    );
+  const failed = readOf(false).filter((version) => !unanswered.includes(version));
+  const closed = readOf(true);
+  const first = [...unanswered, ...failed.slice(0, Math.ceil(failed.length / 2))];
+  const rest = pool.filter(
+    (version) => !first.includes(version) && !failed.includes(version) && !closed.includes(version),
+  );
   const chosen = [
     ...first.slice(0, count),
     ...draw(rest, Math.min(rest.length, Math.max(0, count - first.length)), seed),

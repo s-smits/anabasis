@@ -48,6 +48,8 @@ import {
 
 /** The event a tool call of the Examiner writes, with the text it was told. */
 const CALLED = "exam.call";
+const GATE = "task.gate";
+const PROPOSED = "task.proposed";
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";
 const PASS: Ending = { outcome: "pass" };
@@ -356,6 +358,12 @@ describe("a session that writes tasks", () => {
     );
     expect(next.sent[0]).toContain("it is no target of yours");
     expect(next.sent[0]).toContain(String.raw`said at its finish, in its own words:\n${NOTE}`);
+    // A note written under a reference since replaced is not handed on: it is about the tasks
+    // that reference failed (16 October).
+    append(s.log, "harness.promoted", { harness: "h1" });
+    const after = seat("write", [finish, finish]);
+    await examine({ ...after.request, id: "x-3", log: s.log });
+    expect(after.sent[0]).not.toContain("said at its finish");
   });
 
   it("holds an instance out on the shape of its package, says why another is refused, and logs each whole", async () => {
@@ -371,7 +379,7 @@ describe("a session that writes tasks", () => {
     );
     expect(examined).toEqual({ ended: "finished", puts: 2, held: [held], refused: [refused] });
     // One gate, and the task is a held-out task from then on: no solve, no control, no word.
-    expect(s.of("task.gate")).toEqual([
+    expect(s.of(GATE)).toEqual([
       { version: held, gate: 1, outcome: "passed", proved: false },
       { version: refused, gate: 1, outcome: "refused", reason: "no inputs", proved: false },
     ]);
@@ -379,7 +387,7 @@ describe("a session that writes tasks", () => {
     expect(taskStates(read(s.log)).get(refused)).toBe("refused");
     expect(s.of("solve.started")).toEqual([]);
     // The instance is in the log whole, so a later solve of it needs nothing else.
-    expect(s.of("task.proposed")[0]).toMatchObject({
+    expect(s.of(PROPOSED)[0]).toMatchObject({
       version: held,
       taskId: "x-1-001",
       session: "x-1",
@@ -394,7 +402,7 @@ describe("a session that writes tasks", () => {
     await examine(spent.request);
     expect(spent.sent[2]).toContain("An instance was not taken: this session can propose no further task.");
     expect(spent.sent[3]).toContain("This session can propose no further task. Call finish.");
-    expect(spent.of("task.proposed")).toHaveLength(4);
+    expect(spent.of(PROPOSED)).toHaveLength(4);
     // A second session is a new process, and the same instance under a new id is the same task.
     const again = seat("write", [propose(7), failed("overloaded"), propose(7, 8), finish, finish]);
     expect(await examine(again.request)).toMatchObject({
@@ -409,7 +417,7 @@ describe("a session that writes tasks", () => {
   it("takes again an instance a cut session proposed and never gated", async () => {
     const cut = seat("write", [propose(7), finish, finish]);
     // A session cut while its task was measured: the proposal is on record, and no gate is.
-    append(cut.log, "task.proposed", {
+    append(cut.log, PROPOSED, {
       version: cut.versionOf("x-1-001", 7),
       taskId: "x-1-001",
       session: "x-1",
@@ -425,13 +433,13 @@ describe("a session that writes tasks", () => {
     const cut = seat("write", [propose(7, 8), finish, finish]);
     const gate = (taskId: string, base: number, solves: number) => {
       const version = cut.versionOf(taskId, base);
-      append(cut.log, "task.proposed", {
+      append(cut.log, PROPOSED, {
         version,
         taskId,
         session: "x-1",
         task: { taskId, family: "fixture", publicInput: { base }, hidden: { seed: 1 } },
       });
-      append(cut.log, "task.gate", {
+      append(cut.log, GATE, {
         version,
         gate: 1,
         outcome: "refused",
@@ -637,8 +645,8 @@ describe("a session that writes tasks", () => {
       const packed = taskVersion(s.request.pack(EXAMPLE));
       if (order.state !== undefined) {
         // The pack's own task is in the log as `prepare.ts` leaves it: by its id, and held out.
-        append(s.log, "task.proposed", { version: packed, taskId: EXAMPLE.taskId });
-        append(s.log, "task.gate", { version: packed, gate: 1, outcome: "passed" });
+        append(s.log, PROPOSED, { version: packed, taskId: EXAMPLE.taskId });
+        append(s.log, GATE, { version: packed, gate: 1, outcome: "passed" });
         if (order.state !== "held") append(s.log, "task.state", { version: packed, state: order.state });
       }
       const checked: string[] = [];
@@ -696,26 +704,22 @@ describe("a session that writes tasks", () => {
       ["v-earlier-2", { outcome: "refused", reason: "no inputs", proved: false }],
       ["v-pack", { outcome: "passed" }],
     ] as const) {
-      append(s.log, "task.proposed", { version, taskId: version });
-      append(s.log, "task.gate", { version, gate: 1, ...gate });
+      append(s.log, PROPOSED, { version, taskId: version });
+      append(s.log, GATE, { version, gate: 1, ...gate });
     }
     const examined = await examine({ ...s.request, verify });
     const refused =
       "refused: it carries, whole, an answer that passed try_answer in this session: a planted answer is for try_answer alone, and no task holds one, in its public input or its hidden values";
     expect(s.of(CALLED)[2]?.text).toBe(
-      [
-        `x-1-001: ${refused}`,
-        `x-1-002: ${refused}`,
-        "x-1-003: held out.",
-        "So far in this campaign, drafts with a proof were held 2 of 2, and drafts without one 0 of 3.",
-      ].join("\n"),
+      [`x-1-001: ${refused}`, `x-1-002: ${refused}`, "x-1-003: held out."].join("\n"),
     );
     expect(examined.held).toEqual([s.versionOf("x-1-003", 2)]);
   });
 
-  it("holds out a task the reference harness answered in none of its solves where its author's answer passes on it, the first of every three for the ladder", async () => {
+  it("holds out a task the reference harness answered in none of its solves where its author's answer passes on it, every one of them", async () => {
     // Bases 4, 8, 9, 7 and 10 are answered in none of three solves; 7 alone has no author's answer,
-    // and 5, answered in every solve, has one. Until 15 October every proved one went to the ladder.
+    // and 5, answered in every solve, has one. Until 16 October the first of every three proved
+    // ones went to the ladder.
     const s = seat("write", [
       tried(4),
       tried(8),
@@ -738,39 +742,34 @@ describe("a session that writes tasks", () => {
       versionAt(5, 5),
       versionAt(6, 10),
     ];
-    // The first proved draft the reference never answered is the ladder's, the next two are held
-    // out, and the fourth is the ladder's again: a count over the log's gates, so the ladder has a
-    // task once any such draft does. One without a proof, and one answered every time, are refused.
-    expect(examined).toMatchObject({ held: [second, third], refused: [unwitnessed, solved] });
-    const sets = taskSets(read(s.log));
-    expect(sets.ladder).toEqual([first, fourth]);
-    expect(sets.held).toEqual([second, third]);
-    const gates = s.of("task.gate");
+    // Every proved draft the reference never answered is held out. One without a proof, and one
+    // answered every time, are refused.
+    expect(examined).toMatchObject({ held: [first, second, third, fourth], refused: [unwitnessed, solved] });
+    expect(taskSets(read(s.log)).held).toEqual([first, second, third, fourth]);
+    const gates = s.of(GATE);
     expect(gates.map(({ outcome }) => outcome)).toEqual([
-      "ladder",
+      "passed",
       "passed",
       "passed",
       "refused",
       "refused",
-      "ladder",
+      "passed",
     ]);
     expect(gates.map(({ reference }) => asRecord(reference)?.valid)).toEqual([0, 0, 0, 0, 3, 0]);
     // Each proved one is on record as feasible, by the author's answer checked under its own id.
     expect(s.of("task.feasible")).toEqual(
       [first, second, third, fourth].map((version) => ({ version, session: "x-1" })),
     );
-    expect(poolOf(read(s.log)).scorable).toEqual([second, third]);
-    // The Examiner hears the count of a held task's valid solves, as of any other, and of the
-    // ladder's only that it was held; the refusals say the rule.
+    expect(poolOf(read(s.log)).scorable).toEqual([first, second, third, fourth]);
+    // The Examiner hears the count of a held task's valid solves; the refusals say the rule.
     expect(s.of(CALLED)[5]?.text).toBe(
       [
-        "x-1-001: held for the ladder. This task will never be scored for promotion or released for practice.",
+        "x-1-001: held out; the reference harness answered it validly in 0 of 3 solves.",
         "x-1-002: held out; the reference harness answered it validly in 0 of 3 solves.",
         "x-1-003: held out; the reference harness answered it validly in 0 of 3 solves.",
         "x-1-004: refused: the reference harness answered it validly in 0 of 3 solves, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it",
         "x-1-005: refused: the reference harness answered it validly in 3 of 3 solves, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it",
-        "x-1-006: held for the ladder. This task will never be scored for promotion or released for practice.",
-        "So far in this campaign, drafts with a proof were held 2 of 5, and drafts without one 0 of 1.",
+        "x-1-006: held out; the reference harness answered it validly in 0 of 3 solves.",
       ].join("\n"),
     );
   });
@@ -848,12 +847,11 @@ describe("a session that writes tasks", () => {
         `x-1-004: refused: ${counted(3)}, and a task is held out only where it answers some and not all, or none where an answer of its author's passes on it`,
         `x-1-005: held out; ${counted(1)}, 1 of them ending in no reading or in a rejection the Referee did not rule earned.`,
         `x-1-006: refused: ${counted(2)}, 1 of them ending in no reading or in a rejection the Referee did not rule earned, so it is not measured`,
-        "So far in this campaign, drafts with a proof were held 0 of 0, and drafts without one 3 of 6.",
       ].join("\n"),
     );
     // Its cost a task, on the gate's event; the solves are the session's, named by it, and no
     // comparison's: a comparison counts the solves whose start names it (`pairsOf`).
-    expect(s.of("task.gate").map(({ reference }) => reference)).toEqual(
+    expect(s.of(GATE).map(({ reference }) => reference)).toEqual(
       [1, 2, 0, 3, 1, 2].map((valid, nth) => ({ valid, solves: nth >= 4 ? 2 : 3, billed: 1.5 })),
     );
     expect(solvesIn(read(s.log)).map(({ start }) => start.comparison)).toEqual(Array(18).fill("x-1"));
@@ -866,22 +864,62 @@ describe("a session that writes tasks", () => {
     expect(s.sent[0]).toContain("try_task takes instances");
     expect(s.sent[0]).not.toContain("propose_tasks");
     // Plan item 5.1: the gate is explained once, in the system prompt's section the tool points to,
-    // and the ladder there as the tool's result says it; the objective's rule is said once.
+    // and the objective's rule is said once.
     const once = (part: string) => (s.sent[0] ?? "").split(part).length - 1;
     expect(once("## The gate")).toBe(1);
     expect(
       once(
-        "held out where some of those solves gave a valid answer and not all, or where none did and an answer of yours passed try_answer on the same instance",
+        "held out where some of those solves gave a valid answer and not all; where every one did and two of the answers are apart by the domain's objective, where it declares one; or where none did and an answer of yours passed try_answer on the same instance",
       ),
     ).toBe(1);
-    expect(once("the first of every three in the campaign is held for the ladder instead")).toBe(1);
     expect(once("as the system prompt's section on the gate says")).toBe(1);
-    expect(
-      once("held for the ladder instead: a fixed set apart from the exam, never scored for a promotion"),
-    ).toBe(1);
+    expect(s.sent.join("\n")).not.toContain("ladder");
     expect(once("declares an objective")).toBe(1);
     expect(once("Without an objective")).toBe(0);
     expect(s.sent.join("\n")).not.toContain(SOLVER);
+  });
+
+  it("holds out a task the reference harness answers every time where two of its answers are apart by the objective, and not one where they are alike", async () => {
+    // Base 2's answers measure 10, 10 and 12, apart past the margin; base 3's 10, 10 and 10.05,
+    // within it. Until 16 October the gate read no objective and refused both, while a comparison
+    // reads the first as room (`informative`, `src/kernel/compare.ts`).
+    const measures = new Map([
+      [2, [10, 10, 12]],
+      [3, [10, 10, 10.05]],
+    ]);
+    const s = seat("write", [call("try_task", { tasks: [instance(2), instance(3)] }), finish, finish]);
+    let solves = 0;
+    const probe = async (task: TaskPackage, session: string) => {
+      const base = Number(asRecord(task.publicInput)?.base);
+      const objective = measures.get(base)?.[solves % 3];
+      solves += 1;
+      const solve = `s-${String(solves)}`;
+      const ran = condition(taskVersion(task), "h-reference");
+      append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      append(s.log, "solve.started", { solve, condition: conditionId(ran), comparison: session });
+      append(s.log, "verdict", { solve, answer: GOOD, kind: "pass", objective: objective ?? null });
+      append(s.log, "solve.finished", { solve, ending: PASS, billed: 0 });
+      return PASS;
+    };
+    const contract = {
+      ...s.request.contract,
+      objective: { quantity: "the mass", direction: "lower" },
+    } as const;
+    const examined = await examine({
+      ...s.request,
+      contract,
+      limits: { ...s.request.limits, puts: 2 },
+      probe,
+    });
+    const [apart, alike] = [s.versionOf("x-1-001", 2), s.versionOf("x-1-002", 3)];
+    expect(examined).toMatchObject({ held: [apart], refused: [alike] });
+    expect(s.of(GATE).map(({ outcome }) => outcome)).toEqual(["passed", "refused"]);
+    expect(s.of(CALLED)[0]?.text).toBe(
+      [
+        "x-1-001: held out; the reference harness answered it validly in 3 of 3 solves.",
+        "x-1-002: refused: the reference harness answered it validly in 3 of 3 solves, and a task is held out only where it answers some and not all, or every time with two answers apart by the objective, or none where an answer of its author's passes on it",
+      ].join("\n"),
+    );
   });
 
   it("ends at its wall with no solve of the reference harness left running, and starts none after it", async () => {
@@ -917,9 +955,9 @@ describe("a session that writes tasks", () => {
       "killed",
       "killed",
     ]);
-    expect(s.of("task.gate")).toMatchObject([{ outcome: "refused", reference: { valid: 0, solves: 0 } }]);
+    expect(s.of(GATE)).toMatchObject([{ outcome: "refused", reference: { valid: 0, solves: 0 } }]);
     // The batch's second instance came after the wall: never proposed, so a later session takes it.
-    expect(s.of("task.proposed")).toHaveLength(1);
+    expect(s.of(PROPOSED)).toHaveLength(1);
   });
 
   it("runs in its shell the engine a check names, from where it lies, and no other program of its tree", async () => {
@@ -1017,8 +1055,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       add,
       hold: (...ids: string[]) => {
         for (const taskId of ids) {
-          add("task.proposed", { version: `v-${taskId}`, taskId });
-          add("task.gate", { version: `v-${taskId}`, gate: 1, outcome: "passed" });
+          add(PROPOSED, { version: `v-${taskId}`, taskId });
+          add(GATE, { version: `v-${taskId}`, gate: 1, outcome: "passed" });
         }
       },
       /** A solve each of `valid` under `harness`, null for one its wall cut; each took the turns
@@ -1142,12 +1180,12 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
   it("says how many of its gate's three solves a held task passed on, and each draft the gate refused having read it", () => {
     const log = logged();
     const gated = (taskId: string, gate: JsonObject) => {
-      log.add("task.proposed", {
+      log.add(PROPOSED, {
         version: `v-${taskId}`,
         taskId,
         task: { ...fixture(taskId), publicInput: {}, hidden: null },
       });
-      log.add("task.gate", { version: `v-${taskId}`, gate: 1, ...gate });
+      log.add(GATE, { version: `v-${taskId}`, gate: 1, ...gate });
       if (gate.outcome === "refused") log.add("task.state", { version: `v-${taskId}`, state: "refused" });
     };
     gated("once", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } });
@@ -1184,8 +1222,65 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     expect(told.refused).toEqual([line("every", "refused: answered in 3 of 3")]);
   });
 
+  it("after a promotion, tells the gates read on the replaced reference as a count, and the new reference's turns at the gate", () => {
+    const log = logged();
+    const gated = (taskId: string, gate: JsonObject, turns: readonly number[] = []) => {
+      log.add(PROPOSED, {
+        version: `v-${taskId}`,
+        taskId,
+        task: { ...fixture(taskId), publicInput: {}, hidden: null },
+      });
+      log.solved(
+        "x-1",
+        taskId,
+        "h-any",
+        turns.map(() => true),
+        turns,
+      );
+      log.add(GATE, { version: `v-${taskId}`, gate: 1, ...gate });
+      if (gate.outcome === "refused") log.add("task.state", { version: `v-${taskId}`, state: "refused" });
+    };
+    log.add("exam.started", { session: "x-1" });
+    gated("old", { outcome: "passed", reference: { valid: 1, solves: 3, billed: 0 } }, [9]);
+    gated("closed", {
+      outcome: "refused",
+      reason: "answered in 0 of 3",
+      reference: { valid: 0, solves: 3, billed: 0 },
+    });
+    log.add("harness.promoted", { harness: "h2", from: "h1", rests: [] });
+    gated(
+      "easy",
+      { outcome: "refused", reason: "answered in 3 of 3", reference: { valid: 3, solves: 3, billed: 0 } },
+      [4, 3, 4],
+    );
+    gated("new", { outcome: "passed", reference: { valid: 2, solves: 3, billed: 0 } }, [12, 14]);
+    const told = heard(log.events, ["old", "new"].map(fixture));
+    // Until 16 October the starter's gate count on "old" read as the new reference's, and then
+    // stood beside the new ones marked as read on a replaced harness.
+    expect(told.lines).toEqual([
+      line("old", `not yet compared; ${VALID}`),
+      line(
+        "new",
+        `not yet compared; ${VALID}; held out at its gate on 2 of the reference harness's 3 solves valid`,
+      ),
+    ]);
+    expect(told.refused).toEqual([line("easy", "refused: answered in 3 of 3")]);
+    expect(told.earlier).toBe(
+      "Before the reference harness was last replaced, the gate held out 1 draft and refused 1 draft after reading them. What it read of them was of a harness since replaced, and is not told.",
+    );
+    // The gate's valid answers since the promotion, and none of the starter's (9).
+    expect(told.turns?.split("\n").slice(1)).toEqual(["- family fixture: 3, 4, 4, 12, 14"]);
+    // With no promotion every gate is the reference's own, and none is counted apart.
+    const unpromoted = heard(
+      log.events.filter(({ kind }) => kind !== "harness.promoted"),
+      ["old", "new"].map(fixture),
+    );
+    expect(unpromoted.earlier).toBeNull();
+    expect(unpromoted.refused).toHaveLength(2);
+  });
+
   it("says nothing it cannot count: a task the log does not hold, one task alone, no task at all", () => {
-    const uncounted = { counts: null, turns: null, refused: [] };
+    const uncounted = { counts: null, turns: null, refused: [], earlier: null };
     // A task the log does not hold yet, as a pack's is before `prepare.ts`, is not yet compared.
     expect(heard([], [fixture("e-1")])).toEqual({
       lines: [line("e-1", `not yet compared; ${NONE}`)],
@@ -1199,8 +1294,9 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     log.solved("b-1", "one", "h2", [false, false]);
     log.reported("b-1", ["h1", "h2"], 2, ["one"]);
     expect(heard(log.events, [fixture("one")]).counts).toBeNull();
-    // A task the reference answered in every solve of two comparisons is no longer scored, but for
-    // the third of such tasks the draw keeps; the line speaks of the reference's solves alone.
+    // A task the reference answered in every solve of its last comparison is told so, as any
+    // task's outcome; the line speaks of the reference's solves alone. Until 16 October two of
+    // such tasks in three were told they were no longer scored.
     const closed = ["p", "q", "r"];
     log.hold(...closed);
     for (const comparison of ["b-2", "b-3"]) {
@@ -1211,11 +1307,9 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       log.reported(comparison, ["h1", "h2"], 2, closed);
     }
     const spent = heard(log.events, closed.map(fixture)).lines.filter((each) =>
-      each.includes(
-        ": the reference harness answered it validly in every solve of two comparisons: no longer scored; ",
-      ),
+      each.includes(": the reference harness answered it validly in every solve of the last comparison; "),
     );
-    expect(spent).toHaveLength(2);
+    expect(spent).toHaveLength(3);
     expect(spent.join("\n")).not.toContain("both harnesses");
   });
 
@@ -1225,7 +1319,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     log.hold(...tasks.map(({ taskId }) => taskId));
     // `run`: the reference h1 answered it in every solve of four comparisons running; `mixed`: in
     // every solve of b-1, in no solve of b-2 with one cut at its wall, and in every solve of b-3,
-    // so it is exhausted on two closed comparisons that are not in a row; `once`: one comparison,
+    // so it is exhausted on its first closed comparison; `once`: one comparison,
     // which is its outcome and no history. `run` is among the third the draw keeps.
     for (const comparison of ["b-1", "b-2", "b-3", "b-4"]) {
       log.solved(comparison, "run", "h1", [true, true]);
@@ -1255,7 +1349,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       ),
       line(
         "mixed",
-        `the reference harness answered it validly in every solve of two comparisons: no longer scored; ${VALID}; of its last 3 comparisons with the current reference harness, newest first, the reference answered it validly in every, none (a solve cut at a limit), every of its solves, the last closing it`,
+        `the reference harness answered it validly in every solve of the last comparison; ${VALID}; of its last 3 comparisons with the current reference harness, newest first, the reference answered it validly in every, none (a solve cut at a limit), every of its solves, the last closing it`,
       ),
     ]);
     // The history is of the reference's side alone: the same lines whatever h2 answered, and
@@ -1332,7 +1426,8 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
         "beam",
         "the last comparison that scored it was between two other harnesses, so the reference harness's own record on it is older or none",
       ),
-      // b-1 stood in c-1 and c-3 against the reference, so its line carries both, newest first.
+      // b-1 stood in c-1 and c-3 against the reference, so its line carries both, newest first;
+      // c-3 closed it, which retires it.
       `${said("b-1", "slab", "the reference harness answered it validly in every solve of the last comparison")}; of its last 2 comparisons with the current reference harness, newest first, the reference answered it validly in every, none of its solves, the last closing it`,
       said(
         "b-2",
@@ -1352,7 +1447,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
     // answers in c-1 are not its last comparison's, b-3 is practice, and no turn of another
     // harness (11) is among them.
     expect(turns?.split("\n")).toEqual([
-      "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above, by family and fewest first. These are measurements and no target.",
+      "The solver's own turns each valid answer of the reference harness took, in the same comparisons as the lines above and at the gate of each draft since the reference harness was last replaced, by family and fewest first. These are measurements and no target.",
       "- family slab: 4, 5, 6, 7",
     ]);
     // A control between two other harnesses that reported first is not the reference: the turns
@@ -1368,6 +1463,7 @@ describe("what an Examiner hears of the tasks its campaign holds", () => {
       refused: [],
       counts,
       turns,
+      earlier: null,
     });
     // Neither the lines nor the counts name a harness.
     expect([...lines, counts, turns].join("\n")).not.toMatch(/\bh[1-5]\b/);

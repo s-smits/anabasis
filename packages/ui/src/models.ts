@@ -305,8 +305,7 @@ export interface Counters {
   readonly controls: number;
   readonly controlSteps: number;
   /** What the promotion attempts under the current reference risk together (`falsePromotion`,
-   *  `epochsOf`), and the share past which the table holds the next attempt for an A/A (`RISK`).
-   *  Null only where the log holds no epoch. */
+   *  `epochsOf`), which gates nothing. Null only where the log holds no epoch. */
   readonly risk: {
     readonly attempts: number;
     readonly union: number;
@@ -314,7 +313,6 @@ export interface Counters {
     readonly pairs: number;
     readonly errors: number;
     readonly indicative: boolean;
-    readonly hold: number;
   } | null;
   /** The dollars left of the campaign's total (`Plan.left`), and what the last comparison the cap
    *  did not cut billed for its solves (`billedParts`), which the table prices the next one by
@@ -567,12 +565,11 @@ export interface TaskRow {
   readonly id: string | null;
   readonly state: TaskState;
   /** Two readings beside the state: waiting for a person's label (`poolOf`), and answered
-   *  by the reference in every solve of two comparisons (`poolOf`). */
+   *  by the reference in every solve of its last reading (`poolOf`). */
   readonly awaitingLabel: boolean;
   readonly exhausted: boolean;
-  /** Whether it is one of the spent tasks the draw keeps (`poolOf`, retained): a comparison scores
-   *  it in its retained set, where a step may not lose more than it wins. A task is exhausted or
-   *  retained, never both. */
+  /** Whether a comparison scores it in its retained set (`poolOf`), where a step may not lose more
+   *  than it wins: every exhausted task is, since 16 October. */
   readonly retained: boolean;
   readonly proposedAt: string | null;
 }

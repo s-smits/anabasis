@@ -214,6 +214,10 @@ describe.skipIf(!osIsolationSupport().ok)("Phase C's commands over a stored pack
       "fault: check-product is decided by its author's own computation and no installed instrument: it stands on the operator's word alone (--admit check-product)",
     );
     expect(unadmitted.code).toBe(1);
+    // A campaign without `--hitl` gives that word for every check its author decides (16 October).
+    const unattended = run("tools/c/accept.ts", { name: ACCEPTED, cycle: "c01" }, "--admit-authored");
+    expect(unattended.said).toContain("no fault");
+    expect(held("checker.read").at(-1)).toMatchObject({ admitted: ["check-product"], faults: [] });
     expect(run("tools/c/accept.ts", { name: ACCEPTED, admit: "check-nobody" }).said).toContain(
       "--admit names check-nobody, and the check program holds no such check",
     );

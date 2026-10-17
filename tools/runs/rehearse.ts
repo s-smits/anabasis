@@ -69,6 +69,7 @@ import { asRecord, isFunction, isString, type JsonObject, type JsonValue } from 
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { ANSWER_FILE } from "#src/solve/answer.ts";
 import { selectedCodingTools } from "#src/solve/coding-tools.ts";
 import { openHarness } from "#src/solve/harness.ts";
@@ -118,6 +119,18 @@ const TOOL_USE = { stopReason: "toolUse" } as const;
 const PRICE = { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 };
 /** The guide a scripted Builder writes on, from its home. */
 const GUIDE = "harness/agent/BUILT_AGENTS.md";
+
+/** A task by what it asks, its id aside: a seed's sessions number their tasks afresh, so the
+ *  source's x-2-002 is another task than the seed's, and until 16 October the script wrote the
+ *  source's answer to it and the checks rejected it. A copy is the task it copies. */
+const contentOf = ({ family, publicInput, hidden }: Task): string => {
+  const record = asRecord(publicInput);
+  const own =
+    record === null
+      ? publicInput
+      : Object.fromEntries(Object.entries(record).filter(([key]) => key !== COPY));
+  return hashJsonValue({ family, publicInput: own, hidden });
+};
 
 /** `args` without the options `own` names and their values, as `parseArgs` tokenised them: what
  *  this command hands on to the round, the checkpoint or the campaign command it rehearses. */
@@ -251,10 +264,15 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         // One scripted to answer a task with no answer on record gives none and is named at the
         // end as strayed: until 10 October it ended the campaign, and a rehearsal of the control
         // after a promotion (`heldSince`, `decide.ts`) fell at the first task no solve had ever answered.
-        // A copied instance (`--supply`) is answered as the task it copies.
+        // A copied instance (`--supply`) is answered as the task it copies: by its id where a pack
+        // or this log holds the answer, and by what it asks where a seed's source does.
         const copied = asRecord(asRecord(task.publicInput)?.[COPY])?.of;
-        const known = answers.get(task.taskId) ?? (isString(copied) ? answers.get(copied) : undefined);
-        const answer = wanted === "none" ? null : asRecord(known?.[wanted]);
+        const known = {
+          ...answers.get(contentOf(task)),
+          ...(isString(copied) ? answers.get(copied) : undefined),
+          ...answers.get(task.taskId),
+        };
+        const answer = wanted === "none" ? null : asRecord(known[wanted]);
         const missing = wanted !== "none" && answer === null;
         if (missing) {
           strayed.push(
@@ -317,11 +335,15 @@ function draftedSource(name: string): DraftedSource {
   }
   const seed = asRecord(capturedJsonParse(readFileSync(join(dirname(log), SEED_FILE), "utf8")));
   const source = isString(seed?.from) ? read(join(seed.from, LOG_FILE)) : [];
-  const passes = [...verdictsOf(source).values()].flatMap(({ task, answer, checker }) =>
-    task !== null && answer !== undefined && checker?.kind === "pass"
-      ? [{ taskId: task, answer, refusedBy: null }]
-      : [],
+  const asked = new Map(
+    proposalsOf(source).flatMap(({ task }) => (task === null ? [] : [[task.taskId, contentOf(task)]])),
   );
+  const passes = [...verdictsOf(source).values()].flatMap(({ task, answer, checker }) => {
+    const content = task === null ? undefined : asked.get(task);
+    return content !== undefined && answer !== undefined && checker?.kind === "pass"
+      ? [{ taskId: content, answer, refusedBy: null }]
+      : [];
+  });
   // The tasks the source's Examiner sessions wrote after the cut, for the scripted Examiner to
   // propose in their order: the seed's log holds the ones before it.
   const held = new Set(proposalsOf(read(log)).map(({ version }) => version));
@@ -330,7 +352,7 @@ function draftedSource(name: string): DraftedSource {
   );
   const passed = new Set(passes.map(({ taskId }) => taskId));
   const answered = proposalsOf(source).flatMap(({ task }) =>
-    task !== null && passed.has(task.taskId) ? [task] : [],
+    task !== null && passed.has(contentOf(task)) ? [task] : [],
   );
   return { graded: [...packControls(staged.bundle), ...passes], later, answered };
 }
@@ -427,24 +449,33 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   const flags = passedOn(args, tokens, OWN);
   // A checkpoint is named by its `--id` and runs no session, so no Builder's script can stray, and
   // a campaign's sessions are its own to count. A campaign over a drafted exam seats an Examiner
-  // scripted from its source; one over a stored pack seats none, and stops where it needs one.
-  if (values.campaign === true) {
-    await harnessBuilder(flags, {
-      seated: seats,
-      ...keyIfDefined(
-        "examine",
-        drafted === null
-          ? undefined
-          : scriptedExaminer(drafted.later, drafted.answered, Number(values.supply)),
-      ),
-    });
-  } else if (isString(values.id)) await checkpointCommand(flags, seats);
-  else if (
-    values["no-comparison"] === true
-      ? (await sessionCommand(flags, seats)) === null
-      : (await roundCommand(flags, seats)).fresh === null
-  ) {
-    strayed.push("the Builder's script left the harness as it was");
+  // scripted from its source; one over a stored pack seats none, and stops where it needs one,
+  // having named what strayed before: on 16 October such a stop hid two solves of old ladder
+  // tasks that had no answer on record and were read as ties.
+  try {
+    if (values.campaign === true) {
+      await harnessBuilder(flags, {
+        seated: seats,
+        // The opening a seed copied names its source's reviewer, a live model.
+        unreviewed: true,
+        ...keyIfDefined(
+          "examine",
+          drafted === null
+            ? undefined
+            : scriptedExaminer(drafted.later, drafted.answered, Number(values.supply)),
+        ),
+      });
+    } else if (isString(values.id)) await checkpointCommand(flags, seats);
+    else if (
+      values["no-comparison"] === true
+        ? (await sessionCommand(flags, seats)) === null
+        : (await roundCommand(flags, seats)).fresh === null
+    ) {
+      strayed.push("the Builder's script left the harness as it was");
+    }
+  } catch (error) {
+    for (const each of strayed) console.error(`⚠ ${each}`);
+    throw error;
   }
   if (strayed.length === 0) {
     console.log("the rehearsal went as scripted");

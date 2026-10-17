@@ -35,6 +35,15 @@ describe("going on with a campaign", () => {
     expect(loginEnv(env, "4")).toEqual({ PATH: "/bin", [key]: "d", ANA_LOGIN: "4" });
     expect(loginEnv(env, undefined)).toEqual({ PATH: "/bin", [key]: "a" });
     expect(() => loginEnv(env, "2")).toThrow(`${key}2 is not set`);
+    // A file of one numbered login runs on it; of two, the verb asks which.
+    expect(loginEnv({ PATH: "/bin", [`${key}3`]: "c" }, undefined)).toEqual({
+      PATH: "/bin",
+      [key]: "c",
+      ANA_LOGIN: "3",
+    });
+    expect(() => loginEnv({ [`${key}3`]: "c", [`${key}4`]: "d" }, undefined)).toThrow(
+      "name one with --login N",
+    );
   });
 
   it("pauses past one more of the event, once no comparison, Examiner session or draft is open", () => {
@@ -48,14 +57,12 @@ describe("going on with a campaign", () => {
     // campaign run again opens a new one on its notes.
     expect(restsAfter(promoted, "harness.promoted", 0)).toBe(true);
     expect(restsAfter(promoted, "harness.promoted", 1)).toBe(false);
-    // The ladder's reading the host owes a promotion is a comparison like any other.
-    const ladder = [...promoted, event("comparison.started", { session: "l-1", ladder: true })];
-    expect(restsAfter(ladder, "harness.promoted", 0)).toBe(false);
-    const read = [
-      ...ladder,
-      event("comparison.reported", { session: "l-1", ladder: true, reading: "no-step" }),
-    ];
+    // An old ladder's reading left open is no comparison: no move goes on with it.
+    const read = [...promoted, event("comparison.started", { session: "l-1", ladder: true })];
     expect(restsAfter(read, "harness.promoted", 0)).toBe(true);
+    expect(
+      restsAfter([...read, event("comparison.started", { session: "g-3" })], "harness.promoted", 0),
+    ).toBe(false);
     expect(restsAfter([...read, event("exam.started", { session: "x-1" })], "harness.promoted", 0)).toBe(
       false,
     );

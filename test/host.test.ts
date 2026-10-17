@@ -205,6 +205,22 @@ describe("the provider's named reset", () => {
     expect(host.slept).toHaveLength(1);
     expect(waits(log)).toMatchObject([{ data: { for: "provider" } }]);
   });
+
+  it("is waited out after any seat's session crashed on it, a draft's as a Builder's", async () => {
+    // 16 October: three drafts crashed on a named reset, nothing waited, and three fresh
+    // campaigns ended on their environment 33 minutes before it.
+    const log = logIn("draft");
+    const host = hostOf(() => 0);
+    const reset = `limit reached|${String(Math.ceil(Date.now() / 1000) + 3600)}`;
+    append(log, "draft.finished", { session: "d-1", tries: 0, ended: "crashed", crash: reset });
+    expect(crashedRun(read(log))).toEqual({ count: 1, crash: reset });
+    await waitCrashed(log, host);
+    expect(host.slept).toHaveLength(1);
+    expect(crashedRun(read(log)).count).toBe(0);
+    // One that put a draft before it crashed moved the campaign.
+    append(log, "draft.finished", { session: "d-2", tries: 1, ended: "crashed", crash: "exited 1" });
+    expect(crashedRun(read(log)).count).toBe(0);
+  });
 });
 
 describe("the wait after a session the network failed", () => {

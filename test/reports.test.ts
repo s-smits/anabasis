@@ -114,10 +114,12 @@ const sorted = (versions: Iterable<string>) => [...versions].toSorted();
 const pairsIn = (log: readonly LogEvent[]) => lastReports(log).map((report) => pairsReported(log, report));
 const cells = (log: readonly LogEvent[]) =>
   new Map([...poolOf(log).standings].map(([task, { cell }]) => [task, cell]));
-/** Which of `tasks` a release holds back from its draw as failed by the reference: such a task is
- *  taken by halves and never drawn, so alone in a pool it is not released. */
+/** Which of `tasks` a release takes as failed by the reference: alone in a pool such a task is
+ *  released first, with the reason that names its failure. */
 const failedOf = (log: readonly LogEvent[], tasks: readonly string[]) =>
-  tasks.filter((task) => releaseOrder(log, [task], 1, "seed").length === 0);
+  tasks.filter((task) =>
+    (releaseOrder(log, [task], 1, "seed")[0]?.[1] ?? "").includes("failed it in the last"),
+  );
 
 describe("the harness a Builder goes on from", () => {
   const built = (session: string, harness: string, more: JsonObject = {}) =>
@@ -177,7 +179,7 @@ describe("the reference harness of a campaign", () => {
 
 describe("the stop rule", () => {
   /** A campaign whose patience is the plan's three; the default is six (`PATIENCE`). */
-  const three = event("campaign.opened", { budget: null, limit: null, ladder: [], sessions: 1, patience: 3 });
+  const three = event("campaign.opened", { budget: null, limit: null, sessions: 1, patience: 3 });
   const stopRule = (log: readonly LogEvent[]) => stopOf([three, ...log]);
   const counted = (checkpoints: number, sinceStep: number) => ({
     checkpoints,
@@ -777,19 +779,31 @@ describe("the release before the draw", () => {
 
   it("takes half of the tasks the reference failed, and the draw cannot release the other half", () => {
     expect(failedOf(log, tasks)).toEqual(["f1", "f2", "f3", "f4"]);
-    // Half of the failed, in the order they failed, then the draw over the answered tasks alone:
-    // the kept half stays scored.
-    const order = releaseOrder(log, tasks, 4, "seed");
-    expect(taken(log, 4).slice(0, 2)).toEqual(["f1", "f2"]);
-    expect(taken(log, 4).slice(2).toSorted()).toEqual(["a1", "a2"]);
+    // Half of the failed, in the order they failed, then the draw over the tasks no reading of the
+    // reference's closed: the kept half stays scored, and `a1` and `a2`, which it answered in every
+    // solve, give a session nothing to work on. Until 16 October the draw took them.
+    const fresh = [...log, ...heldOut("n1")];
+    const order = releaseOrder(fresh, [...tasks, "n1"], 4, "seed");
+    expect(order.map(([version]) => version)).toEqual(["f1", "f2", "n1"]);
     expect(order.map(([, why]) => why)).toEqual([
       ": the reference harness failed it in the last comparison, and it is",
       ": the reference harness failed it in the last comparison, and it is",
       ":",
-      ":",
     ]);
     // Asked for more than the draw's pool holds, the release takes what there is and no kept task.
-    expect(taken(log, 6).toSorted()).toEqual(["a1", "a2", "f1", "f2"]);
+    expect(taken(log, 6).toSorted()).toEqual(["f1", "f2"]);
+    // Half is rounded up, so one failed task alone is released, and a task the reference answered
+    // in some solves is failed as one it answered in none: until 16 October neither went, and
+    // between buffer-159-opus's two promotions its Builder's practice passed 10 of 10.
+    const once = [
+      ...["s1", "a1"].flatMap(heldOut),
+      ...solved("b-1", "s1", "h1", [P, F]),
+      ...solved("b-1", "s1", "h2", [P, P]),
+      ...solved("b-1", "a1", "h1", [P, P]),
+      ...solved("b-1", "a1", "h2", [P, P]),
+      reported("b-1", "no-step", "h2", { ...terms, versions: ["s1", "a1"] }),
+    ];
+    expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["s1"]);
   });
 
   it("keeps the reference's failures through empty reports and comparisons of other harnesses, until the reference answers the task", () => {
@@ -880,29 +894,39 @@ describe("the tasks the reference harness exhausted", () => {
   ];
   const start = [read, ...closed.flatMap(heldOut)];
 
-  it("are the ones the reference answered in every solve of two comparisons, but for a third the contract's hash keeps as the retained set", () => {
-    const once = compared(start, "b-1", "h2", SETTING);
-    expect(poolOf(once).exhausted).toEqual([]);
-    expect(poolOf(once).retained).toEqual([]);
+  it("are the ones the reference answered in every solve of one comparison, and stay in the draw as retained tasks", () => {
+    expect(poolOf(start).exhausted).toEqual([]);
     // All four: `open` too, which the new harness failed once and the reference never did, since
     // a changed harness can only tie or lose it. Until 10 October both sides had to answer a
-    // task, and a simulated climb drew closed tasks into its set three comparisons running.
-    const twice = compared(once, "b-2", "h3", SETTING);
-    const { exhausted, retained, scorable, outcomes } = poolOf(twice);
-    expect(sorted([...exhausted, ...retained])).toEqual(closed);
-    expect(retained).toHaveLength(2);
-    expect(scorable).toEqual(closed.filter((task) => retained.includes(task)));
-    // The Examiner hears it as one outcome a task, and the kept ones keep theirs.
-    expect(closed.filter((task) => outcomes.get(task) === "exhausted")).toEqual(
-      closed.filter((task) => exhausted.includes(task)),
-    );
-    expect(retained.map((task) => outcomes.get(task))).toEqual(["reference-every", "reference-every"]);
+    // task, and a simulated climb drew closed tasks into its set three comparisons running. Until
+    // 15 October it took two comparisons, and a promoted harness had stood in one.
+    const once = compared(start, "b-1", "h2", SETTING);
+    const { exhausted, retained, scorable, frontier, outcomes } = poolOf(once);
+    expect(sorted(exhausted)).toEqual(closed);
+    // Until 16 October two of the four left the draw by the contract's hash, never to be read
+    // again under that reference; every one now stays scorable, off the frontier.
+    expect(sorted(retained)).toEqual(closed);
+    expect(sorted(scorable)).toEqual(closed);
+    expect(frontier).toEqual([]);
+    // The Examiner hears each as the reference's every-solve task that it is.
+    expect(closed.map((task) => outcomes.get(task))).toEqual(closed.map(() => "reference-every"));
     // A report under another setting id counts with the rest: the id names the host's code too,
     // and a campaign runs at one setting. Until 2026-10-11 the count started again there, and a
     // tree moved to a new commit drew every closed task again. A released task is no held-out one.
-    expect(poolOf(compared(twice, "b-3", "h4", "other")).exhausted).toEqual(exhausted);
-    const released = [...twice, event("task.state", { version: exhausted[0] ?? "", state: "released" })];
+    expect(poolOf(compared(once, "b-3", "h4", "other")).exhausted).toEqual(exhausted);
+    const released = [...once, event("task.state", { version: exhausted[0] ?? "", state: "released" })];
     expect(poolOf(released).exhausted).not.toContain(exhausted[0]);
+    // Its last reading decides: one that leaves `e1` open opens it again, and in four campaigns'
+    // logs 3 of 34 rechecks did. One where a limit cut a solve of the reference's says neither.
+    const reread = (valid: readonly (boolean | string)[]) => [
+      ...once,
+      ...solved("b-4", "e1", "h1", valid),
+      ...solved("b-4", "e1", "h5", [P, P]),
+      reported("b-4", "no-step", "h5", { ...terms, fresh: "h5", setting: SETTING, versions: ["e1"] }),
+    ];
+    const spent = (log: readonly LogEvent[]) => [...poolOf(log).exhausted, ...poolOf(log).retained];
+    expect(spent(reread([F, P]))).not.toContain("e1");
+    expect(spent(reread(["wall-ended", P]))).toContain("e1");
   });
 
   it("spares a task the objective told two valid answers apart on: the next harness can still win it", () => {
@@ -930,14 +954,13 @@ describe("the tasks the reference harness exhausted", () => {
       ];
     };
     const log = measured(measured([read, ...["e1", "e2"].flatMap(heldOut)], "b-1", "h2"), "b-2", "h3");
-    // `e2` alone qualifies; of one task the hash keeps one, so nothing is retired, and `e1` reads
-    // as the reference's every-solve task that it is.
-    expect(poolOf(log)).toMatchObject({ exhausted: [], retained: ["e2"], scorable: ["e1", "e2"] });
+    // `e2` alone qualifies and is retained, and `e1` stays on the frontier.
+    expect(poolOf(log)).toMatchObject({ exhausted: ["e2"], retained: ["e2"], frontier: ["e1"] });
     expect(poolOf(log).outcomes.get("e1")).toBe("reference-every");
-    expect(poolOf(measured(log, "b-3", "h4")).exhausted).toEqual([]);
+    expect(poolOf(measured(log, "b-3", "h4")).exhausted).toEqual(["e2"]);
   });
 
-  it("hold each held-out task in exactly one place: scorable, waiting for a person, or exhausted, with the retained among the scorable", () => {
+  it("hold each held-out task in exactly one place: scorable or waiting for a person, with the exhausted among the retained and the retained among the scorable", () => {
     const others = ["hard", "new", "gone", "out"];
     const begun = [...start, ...others.flatMap(heldOut)];
     const log = [
@@ -953,9 +976,10 @@ describe("the tasks the reference harness exhausted", () => {
     const { held } = taskSets(log);
     expect(held.toSorted()).toEqual([...closed, "hard", "new"].toSorted());
     expect(awaiting).toEqual(["hard"]);
-    expect(exhausted).toHaveLength(2);
-    expect(sorted([...scorable, ...awaiting, ...exhausted])).toEqual(sorted(held));
+    expect(sorted(exhausted)).toEqual(closed);
+    expect(sorted([...scorable, ...awaiting])).toEqual(sorted(held));
     expect(scorable).toContain("new");
+    expect(exhausted.every((task) => retained.includes(task))).toBe(true);
     expect(retained.every((task) => scorable.includes(task))).toBe(true);
     // The scorable tasks stand in the order they were held out.
     expect(scorable).toEqual(held.filter((task) => scorable.includes(task)));

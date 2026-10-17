@@ -189,8 +189,8 @@ export interface Fixed {
   /** The level a first reading clears to buy the repeat (`triggered`, `compare.ts`). */
   readonly trigger: number;
   readonly tasks: readonly string[];
-  /** The scored tasks fixed at the start as retained, from the exhausted third the draw keeps
-   *  (`scoredSet`, `round.ts`); the others are the frontier. */
+  /** The scored tasks fixed at the start as retained, from the exhausted ones and an earlier
+   *  epoch's (`scoredSet`, `round.ts`); the others are the frontier. */
   readonly retained: readonly string[];
   /** The objective two valid answers are compared by, where the check program declares one. */
   readonly objective: ObjectiveRule | undefined;
@@ -386,9 +386,9 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const states = taskStates(all);
   // A task a person released or refused while the comparison ran is no held-out task any more. It
   // is left out and named, since a comparison that could not report would lose every solve it paid.
-  const apart = new Set(taskSets(events).apart);
+  const held = new Set(taskSets(events).held);
   const scorable = fixed.tasks.filter((task) => states.get(task) !== "disputed");
-  const live = scorable.filter((task) => apart.has(task));
+  const live = scorable.filter((task) => held.has(task));
   const open = new Set(
     rejections(events, fixed, labels).flatMap(({ task, ruling }) => (ruling === EARNED ? [] : [task])),
   );
@@ -448,7 +448,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     aside,
     short: live.filter((task) => first.short.includes(task)),
     flagged: flaggedIn(events, pairs),
-    withdrawn: scorable.filter((task) => !apart.has(task)),
+    withdrawn: scorable.filter((task) => !held.has(task)),
     reading,
     turns: turnsOf(events, pairs),
     // The cost bar, read where a step is (the plan's W): printed, and gating nothing.

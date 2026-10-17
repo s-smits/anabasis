@@ -213,7 +213,8 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
       ? `control ${session}: the promoted harness valid on ${(old.share * 100).toFixed(0)}% of its solves of ${plural(old.tasks, "task")}, ${testSaid(last.scored)}`
       : `${session} ${short(text(last.fresh))} against ${last.old === promoted ? "the promoted harness" : short(text(last.old))} ${testSaid(last.scored)}, ${text(last.reading)}, valid ${(validOf(asRecord(last.valid)?.fresh).share * 100).toFixed(0)}% against ${(old.share * 100).toFixed(0)}%`;
   };
-  const reported = new Set(compared.map(({ session }) => session));
+  // Every report, a ladder reading of 14 to 16 October among them, which `compared` leaves out.
+  const reported = new Set(log.of("comparison.reported").map((report) => text(report.session)));
   const running = log.events.flatMap(({ kind, data: start }, index) =>
     within(index) && kind === "comparison.started" && !reported.has(text(start.session))
       ? [`${text(start.session)} started, not reported`]

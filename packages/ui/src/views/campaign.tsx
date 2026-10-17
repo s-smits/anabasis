@@ -178,7 +178,7 @@ function SetUp({ reading }: { reading: CampaignReading }) {
     <Disclosure title="Set-up">
       {prompt === null ? null : <p className="ana-campaign-prompt">{prompt}</p>}
       <p className="ana-campaign-setup">
-        {`${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted · ${checker}`}
+        {`${String(supply.held)} held out on the frontier · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted, scored as retained · ${checker}`}
       </p>
       <dl className="ana-facts ana-facts--row">
         {seated.map(([seat, said]) => (
@@ -245,12 +245,9 @@ function Counters({ reading }: { reading: CampaignReading }) {
         {controls === 0 ? "" : `, ${String(controlSteps)} read a step`}
       </span>
       {risk === null || risk.attempts === 0 ? null : (
-        <span
-          title={`${boundSource(risk)}; past ${percent(risk.hold)} the table holds the next attempt until an A/A has run`}
-        >
+        <span title={boundSource(risk)}>
           False promotion under this reference at most <b className="ana-num">{percent(risk.union)}</b> over{" "}
           {plural(risk.attempts, "attempt")}
-          {risk.union > risk.hold ? `, past the table's ${percent(risk.hold)}` : ""}
         </span>
       )}
       {promotions.length === 0 ? null : (

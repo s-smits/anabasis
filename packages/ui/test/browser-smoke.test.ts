@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, test } from "bun:test";
-import { type Browser, expect } from "@playwright/test";
-import { expectQuiet, launchBrowser, openPage, type Served, serveFixture } from "./browser.ts";
+import { type Browser } from "@playwright/test";
+import { expect, expectQuiet, launchBrowser, openPage, type Served, serveFixture } from "./browser.ts";
 
 let served: Served;
 let browser: Browser;

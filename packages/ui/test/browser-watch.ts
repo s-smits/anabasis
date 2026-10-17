@@ -1,4 +1,5 @@
-import { type BrowserContext, expect, type Locator, type Page } from "@playwright/test";
+import { type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { expect } from "./browser.ts";
 
 /*
  * What the browser tests of the Tasks and Log panes watch beyond one assertion: the frames a page

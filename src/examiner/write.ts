@@ -210,10 +210,9 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   const turns = took.length === 0 ? "" : `, taking ${took.join(", ")} of the solver's own turns`;
   const counted = `the reference harness answered it validly in ${String(valid)} of ${String(TRIED)} solves${turns}${unread}`;
   const unmeasured = `${counted}, so it is not measured`;
-  const apart =
-    contract.objective === undefined ? "" : ", or every time with two answers apart by the objective";
-  const roomless = `${counted}, and a task is held out only where it answers some and not all${apart}, or none where an answer of its author's passes on it`;
   const unsolved = solves > 0 && valid === 0;
+  // The rule itself is the system prompt's, said once there (17 October).
+  const roomless = `${counted}, ${unsolved ? "and no answer of yours passed try_answer on it" : "which leaves no room"}`;
   // Room as a comparison reads it (`informative`), on the reference's side alone; a task it never
   // answers is held on its author's proof (`gated`), so no feasible task is named here.
   const objective = contract.objective && { direction: contract.objective.direction, margin: MARGIN };
@@ -399,7 +398,7 @@ function tryTool(desk: Desk, verify: Verifier): AgentTool {
     name: "try_answer",
     label: "Try an answer",
     description:
-      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Use it to make sure a task has a valid answer, and to see how close to a limit an answer can sit: write the answer first, derive the task, and try it. A try enters no task in the exam, and no answer is recorded; where the checks pass, the host records that the instance has a valid answer and holds the answer for this session alone, so a task proposed with that content, before or after the try, is not later read as possibly infeasible. The gate's reading of the instance's package is given first, where it would refuse it.",
+      "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. A try enters no task in the exam. Where the checks pass, the host records that the instance has a valid answer and holds the answer for this session alone, so a task proposed with that content, before or after the try, has its valid answer on record. The gate's reading of the instance's package comes first, where it would refuse it.",
     parameters: Type.Object({
       family: Type.String({ minLength: 1 }),
       public_input: Type.Unknown({ description: "What the solver would read of the task." }),

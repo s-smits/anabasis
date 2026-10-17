@@ -52,6 +52,7 @@ import { dirname, join } from "../src/meta/path.ts";
 import type { RefereeFinding, Ruling } from "../src/review/referee.ts";
 import { text, tool } from "../src/solve/answer.ts";
 import { openHarness } from "../src/solve/harness.ts";
+import { roundSolves } from "./helpers/logged-round.ts";
 import { tallied } from "./helpers/tally.ts";
 
 const COMPARISON_REPORTED = "comparison.reported";
@@ -1445,15 +1446,18 @@ describe("a checkpoint with no session", () => {
       append(s.log, "task.gate", gatePassed(version));
     }
     // Two comparisons in which the reference answered s1 in every solve exhaust it, and the hash
-    // keeps a third of the exhausted, here s1 itself, in the draw as retained.
+    // keeps a third of the exhausted, here s1 itself, in the draw as retained. s2 to s5 were held
+    // out before the promotion and the reference stood in no comparison of them: retained too.
     await checkpoint(s.compare("g1", { tasks: ["s1"] }));
     await checkpoint(s.compare("g2", { tasks: ["s1"] }));
     const tasks = ["s1", "s6", "s7", "s8", "s9"];
-    // One draw gives the scored set and the retained tasks in it, and the start records both.
+    expect(poolOf(read(s.log)).retained.toSorted()).toEqual(["s1", "s2", "s3", "s4", "s5"]);
+    // One draw gives the scored set and the retained tasks in it, one for each three frontier
+    // tasks, and the start records both.
     const drawn = scoredSet(read(s.log), 12, "c");
-    expect(drawn.retained).toEqual(["s1"]);
-    expect(drawn.tasks).toEqual(expect.arrayContaining(tasks));
-    const report = await checkpoint(s.compare("g3", { tasks, retained: drawn.retained }));
+    expect(drawn.retained).toHaveLength(2);
+    expect(drawn.tasks).toEqual(expect.arrayContaining(["s6", "s7", "s8", "s9", ...drawn.retained]));
+    const report = await checkpoint(s.compare("g3", { tasks, retained: ["s1"] }));
     expect(s.of(COMPARISON_STARTED).at(-1)).toMatchObject({ tasks, retained: ["s1"] });
     expect(report).toMatchObject({
       frontier: { tasks: ["s6", "s7", "s8", "s9"], aside: [], wins: 4, losses: 0, ties: 0, p: 0.0625 },
@@ -1464,7 +1468,7 @@ describe("a checkpoint with no session", () => {
     });
   });
 
-  it("reads a step whose untied tasks all fall in one family of the two or more its set holds as narrow", async () => {
+  it("reads a step whose untied tasks all fall in one family of the two or more its set holds as a step", async () => {
     const s = await setup([], (version, side) => (side === "old" && version !== "s1" ? LATE : PASS));
     for (const version of ["s6", "s7", "s8", "s9"]) {
       append(s.log, "task.proposed", { version, family: "f3" });
@@ -1477,7 +1481,8 @@ describe("a checkpoint with no session", () => {
         f1: { frontier: { wins: 0, losses: 0, ties: 1 } },
         f3: { frontier: { wins: 4, losses: 0, ties: 0 } },
       },
-      reading: "narrow",
+      // Until 16 October it read `narrow`, which never fired on record.
+      reading: "step",
     });
   });
 
@@ -1673,7 +1678,17 @@ describe("the scored set", () => {
     expect(scoredSet([], 12, "contract-a")).toEqual({ tasks: [], retained: [] });
   });
 
-  it("takes the newest epoch's tasks first, and fills the rest from the epochs before by hash", () => {
+  it("draws a task an old ladder held as any held-out task, since the ladder was retired on 16 October", () => {
+    const laddered = [
+      ...heldOut(held),
+      { at, kind: "task.proposed", data: { version: "l1" } } as const,
+      { at, kind: "task.gate", data: { version: "l1", gate: 1, outcome: "ladder" } } as const,
+      { at, kind: TASK_STATE, data: { version: "l1", state: "ladder" } } as const,
+    ];
+    expect(drawn(laddered, 12).toSorted()).toEqual([...held, "l1"].toSorted());
+  });
+
+  it("takes the newest epoch's tasks first, and reads the epochs before the reference never stood in as retained", () => {
     // The simulated climb of 10 October: after two promotions a draw over every epoch at once
     // took two or three tasks the reference failed out of 19, and three comparisons read one win
     // short. The tasks written since the last promotion are the exam, so they come first, whole.
@@ -1682,34 +1697,74 @@ describe("the scored set", () => {
       { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
       ...heldOut(["v7", "v8"]),
     ];
-    const newest = drawn(climbed, 4);
-    expect(newest.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
-    expect(newest.slice(2)).toEqual(drawn(heldOut(held), 2));
+    // The tasks held before the promotion, which h1 stood in no comparison of, were written for
+    // the harness it replaced: retained, one for each three frontier tasks, by their own hash.
+    // Until 16 October one task in four of the set was kept for them as frontier, and after each
+    // of buffer-159-opus's promotions they tied with both sides valid in every solve.
+    expect(poolOf(climbed)).toMatchObject({ frontier: ["v7", "v8"], retained: held });
+    const newest = scoredSet(climbed, 4, "contract-a");
+    expect(newest.tasks.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
+    expect(newest.tasks).toHaveLength(3);
+    expect(newest.retained).toEqual(newest.tasks.slice(2));
+    expect(held).toContain(newest.retained[0] ?? "");
     // Within the newest epoch the hash still chooses, so no result does.
-    expect(drawn(climbed, 1)).toEqual(drawn(heldOut(["v7", "v8"]), 1));
-    // A target past the held-out count scores them all, newest first.
-    expect(drawn(climbed, 12)).toHaveLength(8);
-    // One task in four is kept for the epochs before, however many the newest holds: the
-    // regression check, since the control reads the starter and not the last reference.
-    const filled: LogEvent[] = [
-      ...heldOut(held),
-      { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
-      ...heldOut(["v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14"]),
+    expect(drawn(climbed, 1).slice(0, 1)).toEqual(drawn(heldOut(["v7", "v8"]), 1));
+    // A target past the held-out count scores the frontier whole and its share of the retained.
+    expect(drawn(climbed, 12)).toHaveLength(3);
+    // A frontier that fills the target scores its retained share beside it: until 16 October the
+    // share was what the frontier left of the target, and here it left none.
+    const full = scoredSet(climbed, 2, "contract-a");
+    expect(full.tasks.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
+    expect(full.retained).toHaveLength(1);
+    expect(full.tasks).toHaveLength(3);
+    // A task of the epoch before that the reference stood in and left open is frontier still.
+    const stood: LogEvent[] = [
+      ...climbed,
+      {
+        at,
+        kind: "comparison.reported",
+        data: {
+          session: "g-1",
+          old: "h1",
+          fresh: "h2",
+          versions: ["v1"],
+          scored: { wins: 0, losses: 0, ties: 1 },
+        },
+      } as const,
     ];
-    const kept = drawn(filled, 8);
-    expect(kept).toHaveLength(8);
-    expect(kept.slice(0, 6).every((version) => Number(version.slice(1)) >= 7)).toBe(true);
-    expect(kept.slice(6)).toEqual(drawn(heldOut(held), 2));
-    // Under four tasks nothing is reserved.
-    expect(drawn(filled, 3).every((version) => Number(version.slice(1)) >= 7)).toBe(true);
-    // A task released in the newest epoch leaves room for an older one.
+    expect(poolOf(stood).frontier.toSorted()).toEqual(["v1", "v7", "v8"]);
+    // A task released in the newest epoch leaves room for no older one: the frontier is v7 alone.
     const released: LogEvent[] = [
       ...climbed,
       { at, kind: TASK_STATE, data: { version: "v8", state: "released" } } as const,
     ];
     const after = drawn(released, 4);
     expect(after[0]).toBe("v7");
-    expect(after.slice(1)).toEqual(drawn(heldOut(held), 3));
+    expect(after).toHaveLength(2);
+  });
+
+  it("scores every frontier task, and of the retained tasks one for each three frontier tasks", () => {
+    // Nine tasks the reference answered in every solve, three it answered in none: all nine are
+    // retained, and the set takes one of them. Until 16 October the hash kept three of the nine
+    // and the set took all three, topping a set short of frontier up with tasks that can only tie.
+    const closed = Array.from({ length: 9 }, (_, nth) => `c${String(nth)}`);
+    const open = ["f1", "f2", "f3"];
+    const outcomes = Object.fromEntries([
+      ...closed.map((version) => [version, "PP PP"]),
+      ...open.map((version) => [version, "FF PP"]),
+    ]);
+    const { events, terms } = roundSolves("g-1", ["h0", "h1"], outcomes);
+    const report = {
+      at,
+      kind: "comparison.reported",
+      data: { session: "g-1", old: "h0", fresh: "h1", starter: "h0", ...tallied(3, 0, 9), ...terms },
+    } as const;
+    const logged = [...heldOut([...closed, ...open]), ...events, report];
+    expect(poolOf(logged).retained).toHaveLength(9);
+    const set = scoredSet(logged, 12, "contract-a");
+    expect(set.tasks.filter((version) => open.includes(version)).toSorted()).toEqual(open);
+    expect(set.retained).toHaveLength(1);
+    expect(set.tasks).toHaveLength(4);
   });
 
   it("takes the tasks held out since the last comparison began first within an epoch, then the rest by hash", () => {
@@ -1734,12 +1789,14 @@ describe("the scored set", () => {
     /** The comparison a draw is made for: `id`, of the pair, bought at a trigger of 0.25. */
     const repeat = (id: string, of = pair) => ({ id, ...of, trigger: 0.25 });
     /** Comparison `id` of h1 with h0 on `tasks`, begun and reported at `wins` to `losses`, its
-     *  frontier tallied by family as `families` says: wins, losses and ties. */
+     *  frontier tallied by family as `families` says: wins, losses and ties; where `named`, its
+     *  report names the task of each difference, `tasks` in order. */
     const compared = (
       id: string,
       tasks: readonly string[],
       [wins, losses]: readonly [number, number],
       families: Readonly<Record<string, readonly [number, number, number]>> = {},
+      named = false,
     ): LogEvent[] => [
       {
         at,
@@ -1763,7 +1820,12 @@ describe("the scored set", () => {
           session: id,
           old: "h0",
           fresh: "h1",
+          versions: [...tasks],
           ...tallied(wins, losses, tasks.length - wins - losses),
+          frontier: {
+            ...tallied(wins, losses, tasks.length - wins - losses).frontier,
+            ...keyIfDefined("of", named ? [...tasks] : undefined),
+          },
           families: Object.fromEntries(
             Object.entries(families).map(([name, [won, lost, ties]]) => [
               name,
@@ -1776,7 +1838,7 @@ describe("the scored set", () => {
     const eight = ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"];
     const others = (first: readonly string[], of = eight) => of.filter((version) => !first.includes(version));
 
-    it("draws the tasks its first stage did not score first, other families before the one its untied tasks all fell in, and that stage's own only where too few others are held", () => {
+    it("draws the tasks its first stage did not score first, by the hash alone, and that stage's own only where too few others are held", () => {
       // A repeat that solves its first stage's tasks again guards against the noise of a solve and
       // not against a lucky draw of tasks.
       const first = drawn(heldOut(eight), 4);
@@ -1795,27 +1857,75 @@ describe("the scored set", () => {
       const four = eight.slice(0, 4);
       const whole = drawn(heldOut(four), 4);
       expect(drawn([...heldOut(four), ...compared("g-1", whole, [2, 0])], 4, repeat("g-2"))).toEqual(whole);
-      // Four tasks of f1 and four of f2; the first stage untied two tasks, both of f1, and read
-      // 2-0 (12 October; `narrow`). The repeat takes f2's two the first stage did not score, then
-      // f1's two fresh ones, and the first stage's own last.
+      // Four tasks of f1 and four of f2. Whether the first stage untied tasks of one family or of
+      // both, the others are drawn by the hash alone: until 16 October a stage untied in f1 alone
+      // read `narrow`, and its repeat drew f1's others last.
       const proposed = [...heldOut(eight.slice(0, 4), "f1"), ...heldOut(eight.slice(4), "f2")];
       const scored = ["v1", "v2", "v5", "v6"];
       const narrow = compared("g-1", scored, [2, 0], { f1: [2, 0, 0], f2: [0, 0, 2] });
-      const spread = drawn([...proposed, ...narrow], 4, repeat("g-2"));
-      expect(spread.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
-      expect(spread.slice(2).toSorted()).toEqual(["v3", "v4"]);
-      expect(drawn([...proposed, ...narrow], 2, repeat("g-2")).toSorted()).toEqual(["v7", "v8"]);
-      // Where every task is of the one family, the repeat still scores the tasks the first stage did not.
-      expect(drawn([...heldOut(eight, "f1"), ...narrow], 4, repeat("g-2")).toSorted()).toEqual(
-        others(scored),
-      );
-      // Where both families were untied no family goes last: the others are drawn by the hash alone.
       const both = compared("g-1", scored, [2, 0], { f1: [1, 0, 1], f2: [1, 0, 1] });
-      for (const target of [2, 4]) {
-        expect(drawn([...proposed, ...both], target, repeat("g-2"))).toEqual(
-          drawn(heldOut(others(scored)), target),
-        );
+      for (const untied of [narrow, both]) {
+        for (const target of [2, 4]) {
+          expect(drawn([...proposed, ...untied], target, repeat("g-2"))).toEqual(
+            drawn(heldOut(others(scored)), target),
+          );
+        }
       }
+    });
+
+    it("scores the untied tasks of the pair's last attempt again first, where an earlier attempt was repeated", () => {
+      // g-1 bought a repeat and g-2 tied it; g-3 is the candidate's second attempt, and its repeat
+      // scores g-3's untied tasks first. Until 16 October the pair had to hold one such reading,
+      // and a second attempt's repeat scored none of its first stage's tasks first.
+      const first = drawn(heldOut(eight), 4);
+      const later = others(first);
+      const events = [
+        ...heldOut(eight),
+        ...compared("g-1", first, [2, 0], {}, true),
+        ...compared("g-2", first, [0, 0], {}, true),
+        ...compared("g-3", later, [2, 0], {}, true),
+      ];
+      expect(drawn(events, 4, repeat("g-4")).slice(0, 2)).toEqual(later.slice(0, 2));
+    });
+
+    it("scores the first stage's untied tasks again first, on fresh solves, then draws as any comparison does", () => {
+      // buffer-159-opus, 16 October: a repeat that waited for 12 fresh tasks cost about 300 gate
+      // solves after a promotion, and its step and repeat read 5-0 where 6-0 promotes.
+      const first = drawn(heldOut(eight), 4);
+      const events = [...heldOut(eight), ...compared("g-1", first, [2, 0], {}, true)];
+      const second = drawn(events, 4, repeat("g-2"));
+      expect(second.slice(0, 2)).toEqual(first.slice(0, 2));
+      expect(second.slice(2)).toEqual(drawn(heldOut(others(first)), 2));
+      // Where the campaign holds no other, the tasks the first stage tied come after its untied ones.
+      const four = eight.slice(0, 4);
+      const whole = drawn(heldOut(four), 4);
+      const rescored = drawn(
+        [...heldOut(four), ...compared("g-1", whole, [1, 1], {}, true)],
+        4,
+        repeat("g-2"),
+      );
+      expect(rescored.slice(0, 2)).toEqual(whole.slice(0, 2));
+      expect(rescored.toSorted()).toEqual(whole.toSorted());
+      // A task no longer held is not scored again.
+      const [dropped = ""] = first;
+      const gone = { at, kind: TASK_STATE, data: { version: dropped, state: "released" } } as const;
+      expect(drawn([...events, gone], 4, repeat("g-2"))).not.toContain(dropped);
+      // A task scored again counts in its own epoch's share, so the set still fills: counted in the
+      // newest epoch's, a rehearsal from buffer-159-opus scored 7 of its 8 (16 October).
+      const older = eight.slice(0, 3);
+      // The reference stood in them there, so they are frontier still (`poolOf`).
+      const promoted = { at, kind: "harness.promoted", data: { harness: "h0" } } as const;
+      const epochs = [...heldOut(older), ...compared("g-1", older, [2, 0], {}, true), promoted];
+      const filled = drawn([...epochs, ...heldOut(eight.slice(3))], 8, repeat("g-2"));
+      expect(filled).toHaveLength(8);
+      expect(filled.slice(0, 2)).toEqual(older.slice(0, 2));
+      // Eight new tasks as well: the two scored again count in the target, so the set is eight
+      // tasks and not ten (16 October).
+      const fresh = eight.map((version) => `n${version}`);
+      const full = drawn([...epochs, ...heldOut(fresh)], 8, repeat("g-2"));
+      expect(full).toHaveLength(8);
+      expect(new Set(full).size).toBe(8);
+      expect(full.slice(0, 2)).toEqual(older.slice(0, 2));
     });
 
     it("draws as any comparison does where no first stage bought it: none before, one over the trigger, another pair's, or a repeat already read", () => {
@@ -1833,6 +1943,9 @@ describe("the scored set", () => {
       // A repeat that reported is the pair's last reading: the comparison after it is no repeat of it.
       const twice = [...bought, ...compared("g-2", first, [0, 0])];
       expect(drawn(twice, 4, repeat("g-3"))).toEqual(first);
+      // A repeat that cleared the trigger again bought nothing: a candidate buys one repeat.
+      const thrice = [...bought, ...compared("g-2", first, [2, 0], {}, true)];
+      expect(drawn(thrice, 4, repeat("g-3"))).toEqual(first);
     });
   });
 
@@ -1853,15 +1966,14 @@ describe("the scored set", () => {
     expect(scoredSet(read(s.log), 12, "c").tasks).toContain("s1");
     await round(s.next("b-2"));
     // s2 to s4 were answered by both harnesses in every solve of both comparisons: exhausted, and
-    // left out but for a third of them, kept by the contract's hash as a check on regression,
-    // which the draw hands on as its retained set.
-    expect(poolOf(read(s.log))).toMatchObject({ awaiting: ["s1"], retained: ["s3"] });
-    expect(poolOf(read(s.log)).exhausted.toSorted()).toEqual(["s2", "s4"]);
-    const next = scoredSet(read(s.log), 12, "c");
-    expect({ tasks: next.tasks.toSorted(), retained: next.retained }).toEqual({
-      tasks: ["s3", "s5"],
-      retained: ["s3"],
-    });
+    // retained as a check on regression. Until 16 October two thirds of them left the draw.
+    // s5, held out before the promotion and never scored, is retained beside them, and with no
+    // frontier task left the draw takes none.
+    const pool = poolOf(read(s.log));
+    expect(pool).toMatchObject({ awaiting: ["s1"], frontier: [] });
+    expect(pool.retained.toSorted()).toEqual(["s2", "s3", "s4", "s5"]);
+    expect(pool.exhausted.toSorted()).toEqual(["s2", "s3", "s4"]);
+    expect(scoredSet(read(s.log), 12, "c")).toEqual({ tasks: [], retained: [] });
     // Named for a comparison all the same, it is refused: the draw leaves it out, and a name
     // was the one way past that (2026-10-09).
     await expect(round(s.next("b-3"))).rejects.toThrow(

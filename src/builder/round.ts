@@ -6,11 +6,11 @@
  * 1. Solving. Each task of the scored set is solved `solves` times under each of the two
  *    harnesses, all of it afresh. The scored set is the caller's, fixed before any solve
  *    (`scoredSet`), so no result of this comparison chooses it, though the reference harness's
- *    results in earlier ones do (`poolOf`, `reports.ts`); so are its two sets: the exhausted
- *    third the draw keeps is retained, the rest the frontier (`scoredSet`). A task's solves run
- *    together, the tasks in an order a hash of each draws, and within a task the harness that goes
- *    first is mirrored (`unsolvedJobs`): what drifts over the hours falls between tasks, which the
- *    test does not read, and neither harness has the quieter hours or the warmer cache.
+ *    results in earlier ones do (`poolOf`, `reports.ts`); so are its two sets, retained and
+ *    frontier. A task's solves run together, the tasks in an order a hash of each draws, and
+ *    within a task the harness that goes first is mirrored (`unsolvedJobs`): what drifts over the
+ *    hours falls between tasks, which the test does not read, and neither harness has the quieter
+ *    hours or the warmer cache.
  * 2. The comparison (`src/kernel/compare.ts`): every solve of the new harness paired with every
  *    solve of the reference one, a valid answer over one that is not, each task counted once, and
  *    the paired sign-flip test over the frontier's differences in pair wins.
@@ -54,10 +54,9 @@
  * when a reserve for it and for each solve still running would take the sum past the cap. A lane
  * that cannot start a solve while others are in flight steps aside, since what they bill may be
  * under their reserve; when none is in flight and the next solve still cannot start, the cap is
- * reached. A comparison the cap cuts short of its
- * test reads `not-scored` and is finished: its tally would be of the tasks that happened to come
- * first. A session is stopped by its own limits and not by the cap, which holds its
- * practice solves alone: none starts that the cap has no reserve for (`practiceLeft`, `tools.ts`).
+ * reached. A comparison the cap cuts short of its test reads `not-scored` and is finished: its
+ * tally would be of the tasks that happened to come first. A session is stopped by its own limits
+ * and not by the cap, which holds its practice solves alone (`practiceLeft`, `tools.ts`).
  *
  * Rejections. A rejected answer counts as not valid only once the rejection is ruled a true fail
  * (`earned`), by the Referee where the caller seats one. One ruled a check defect or unclear, and
@@ -101,13 +100,12 @@
  * what it writes.
  */
 import { resetOf } from "../backends/claude.ts";
-import { draw, type ObjectiveRule, triggered, untiedFamily } from "../kernel/compare.ts";
-import { proposalsOf } from "../kernel/history.ts";
+import { attemptsOf, draw, type ObjectiveRule, triggered, untiedOf } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedFor, type Cap, capHolds, lastReports, poolOf } from "../kernel/reports.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
-import { LADDER, taskSets, taskStates } from "../kernel/task.ts";
+import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
@@ -184,13 +182,6 @@ interface Terms {
    *  from its log keeps the one it began with: begun on another, or on none, it is refused with
    *  one, as it is on any other term that moved. */
   readonly prediction?: string | undefined;
-  /** Whether the tasks are the ladder's (`src/kernel/task.ts`): the reading after a promotion of
-   *  the starter and the reference on tasks neither harness's Builder saw, which no reader of the
-   *  table, the stop or the climb's steps counts (`lastReports`). */
-  readonly ladder?: boolean | undefined;
-  /** The ladder a reading reads, by its first reading's id (`laddersOf`); none where the reading
-   *  fixes a new ladder. Recorded at its start. */
-  readonly frozen?: string | undefined;
   /** The Referee, when the caller has a reader for it. */
   readonly referee?:
     | ((solve: string, version: string, kill: AbortSignal) => Promise<RefereeFinding>)
@@ -229,16 +220,13 @@ interface Job {
  *  run again. Tasks and not solves: one task its provider refuses at the first turn is that task's
  *  fault, and is reported short. */
 const SILENT = 3;
-/** The share of a scored set kept for the epochs before the newest: one task in four. */
-const OLDER_SHARE = 4;
 const TASK_STATE = "task.state";
 /** The states a comparison's finding may dispute a task from. */
-const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released", LADDER]);
+const DISPUTABLE: ReadonlySet<string> = new Set(["held", "released"]);
 /** What a start holds that is no term a continuation may move: its id, and the sets it goes on with. */
 const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]);
 
-/** The comparison a draw is made for, where it may be a repeat: its id, its two harnesses by
- *  digest, and the trigger its first stage had to clear. */
+/** The comparison a draw is made for, where it may be a repeat: its id, harnesses and trigger. */
 interface Repeat {
   readonly id: string;
   readonly old: string;
@@ -252,43 +240,42 @@ interface Repeat {
  * epoch down and within an epoch drawn by the contract's hash and nothing else (`draw`). The tasks
  * written since the last promotion are the exam the reference harness has not answered, so they
  * come first; what room is left is filled from the epoch before, by the same hash, and so on down.
- * One share in `OLDER_SHARE` of the set is kept for the epochs before whatever the newest holds,
- * which is the regression check: the control reads the starter and not the last reference, so
- * without it a harness that lost what the reference answers would read as progress once the newest
- * epoch filled the target (the plan's climb section, C2; `regressionOf` reads the same gap after
- * the fact). The epoch chooses the set and no result does: the hash is fixed before any task
+ * The regression check is the retained set, which since 16 October holds every task of the epochs
+ * before that the reference has stood in no comparison of (`poolOf`): until then one task in four
+ * of the set was kept for those epochs as frontier, and after each promotion they tied (the plan's
+ * climb section, C2; `regressionOf` reads the same gap after the fact). The epoch chooses the set and no result does: the hash is fixed before any task
  * exists, and which epoch a task is in is where it passed its gate (`tasksByEpoch`). A draw over
  * every epoch at once, in a simulated climb after two promotions, drew for a target of 8 over 19
  * held tasks two or three the reference failed, so three comparisons read one win short and the
  * campaign stopped (`docs/plan.md`, B14). A task that waits for a person's label is left out, and
- * so is an exhausted one, which can only tie again; the third of those the hash keeps is scorable,
- * and the ones drawn are the comparison's `retained` set, where a step may not lose more pairs
- * than it wins (`compare.ts`).
+ * an exhausted one, which can only tie again, is retained (`poolOf`). Of the retained, one for
+ * each three frontier tasks is scored beside the target, where a step may not lose more pairs than
+ * it wins (`compare.ts`). Until 16 October it was what the frontier left of the target: 16 of 94
+ * starts on record drew fewer than one for each three, 12 of them where the frontier filled it.
  *
- * Within each epoch the tasks held out since the last comparison began come first, by the hash,
- * and then the others: an epoch starts only at a promotion, so a draw by the hash alone took a task
- * written after a comparison that left no room no earlier than one that comparison had already
- * scored, and one campaign's next comparison scored 4 of the 7 tasks written for it.
+ * Within each epoch the tasks held out since the last comparison began come first, by the hash:
+ * a draw by the hash alone took a task written after a comparison that left no room no earlier
+ * than one it had scored, and one campaign's next comparison scored 4 of the 7 written for it.
  *
- * A `repeat` takes its first stage's tasks last (`firstStage`). Within each epoch the draw takes
- * the others first, by the same hash, and the tasks of each group taken last in turn only where
- * the epoch holds too few before it, so that a campaign that holds no more than the target draws
- * the set it drew. A repeat that solves its first stage's tasks again guards against the noise of
- * a solve and not against a lucky draw of tasks: one campaign's repeat solved the same 12 task
- * versions for 15 dollars and 53 minutes (`docs/next.md`, question 9, the operator's decision).
- * The fresh draw buys no power (0.51 against 0.52 in the overhaul plan's simulation, 4b): it
- * guards against reusing one test set across attempts.
+ * A `repeat` scores its first stage's untied frontier tasks again first, on fresh solves, then
+ * draws as any comparison does to the target, which the tasks scored again count in whatever epoch
+ * they are of, that stage's other tasks last (`firstStage`); a task both score counts once
+ * (`joined`, `compare.ts`). Until 16 October the newest epoch's draw counted only its own tasks
+ * scored again (a repeat of eight over two older and eight new tasks scored ten), and before that
+ * it waited for a target of fresh tasks: buffer-159-opus read 5-0 over two stages where 6-0 promotes.
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string, repeat?: Repeat) {
   const pool = poolOf(events);
-  const held = new Set(pool.scorable);
+  const kept = pool.retained.filter((task) => pool.scorable.includes(task));
+  const held = new Set(pool.frontier);
   const count = Math.min(target, held.size);
-  const [newest = [], ...older] = tasksByEpoch(events)
+  const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
+  const epochs = tasksByEpoch(events)
     .toReversed()
     .map((epoch) => epoch.filter((version) => held.has(version)));
-  const reserved = Math.min(Math.floor(count / OLDER_SHARE), older.flat().length);
-  const last = repeat === undefined ? [] : firstStage(events, repeat);
-  const taken = new Set(last.flat());
+  const [again = [], ...last] = repeat === undefined ? [] : firstStage(events, repeat);
+  const tasks = again.filter((version) => held.has(version)).slice(0, count);
+  const taken = new Set([...tasks, ...last.flat()]);
   const began = events.findLastIndex(({ kind }) => kind === STARTED);
   const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
   /** `wanted` of an epoch's tasks, tier by tier and each by the hash: of the ones not taken last,
@@ -302,35 +289,32 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
       (got, tier) => [...got, ...draw(tier, Math.min(wanted - got.length, tier.length), contract)],
       [],
     );
-  const tasks = drawn(newest, Math.min(count - reserved, newest.length));
-  for (const epoch of older) {
-    tasks.push(...drawn(epoch, Math.min(count - tasks.length, epoch.length)));
-  }
-  return { tasks, retained: tasks.filter((task) => pool.retained.includes(task)) };
+  const free = (epoch: readonly string[]) => epoch.filter((version) => !tasks.includes(version)).length;
+  for (const epoch of epochs) tasks.push(...drawn(epoch, Math.min(count - tasks.length, free(epoch))));
+  return { tasks: [...tasks, ...picked], retained: picked };
 }
 
 /**
- * The tasks a repeat takes last (`scoredSet`), group by group: where the comparison of `fresh`
- * with `old` follows one of the same two whose reading cleared its trigger (`triggered`), and the
- * two have reported nothing since, that one's scored set as its start fixed it, and before it,
- * where its untied tasks all fell in one family, that family's others, so that a repeat reads
- * other families first (12 October; `narrow`, `compare.ts`); none for any other comparison. The
- * one asked about is passed over: it is no first stage of itself. A repeat gone on from its log
- * goes on with the tasks its start fixed (`begin`). It is the row of the table that buys the
- * repeat read from the other side (`unfinished`, `decide.ts`): the pair's last report.
+ * The tasks a repeat scores again first, then the groups it takes last (`scoredSet`): where the
+ * comparison of `fresh` with `old` follows a reading of the same two that cleared its trigger
+ * (`triggered`) and is no repeat itself (`attemptsOf`), that reading's untied frontier tasks; then
+ * the rest of its set. Until 16 October it was the one such reading of the pair, so a second
+ * attempt's repeat scored none of its first stage's tasks first. None for any other comparison:
+ * an attempt buys one repeat, as the row that buys it says (`dueOf`, `decide.ts`). A repeat gone
+ * on from its log keeps its start's (`begin`).
  */
 function firstStage(events: readonly LogEvent[], repeat: Repeat): string[][] {
   const { id, old, fresh, trigger } = repeat;
-  const first = lastReports(events).findLast(
-    ({ session, data }) => session !== id && data.fresh === fresh && data.old === old,
-  )?.data;
-  if (first === undefined || !triggered(first, trigger) || !isString(first.session)) return [];
-  const own = fixedIn(events, first.session)?.tasks ?? [];
-  const family = untiedFamily(first);
-  const kin = proposalsOf(events).flatMap((each) =>
-    (each.family ?? "unnamed") === family && !own.includes(each.version) ? [each.version] : [],
+  const pair = lastReports(events).flatMap(({ session, data }) =>
+    session !== id && data.fresh === fresh && data.old === old ? [data] : [],
   );
-  return kin.length > 0 ? [kin, [...own]] : [[...own]];
+  const [first, ...repeated] = attemptsOf(pair, (data) => triggered(data, trigger)).at(-1) ?? [];
+  if (first === undefined || repeated.length > 0 || !triggered(first, trigger) || !isString(first.session)) {
+    return [];
+  }
+  const own = fixedIn(events, first.session)?.tasks ?? [];
+  const again = untiedOf(first);
+  return [again, own.filter((version) => !again.includes(version))];
 }
 
 /**
@@ -367,11 +351,7 @@ function counts(value: number, least: number): boolean {
 /** Refuse, before a session or a solve is spent, tasks that could not be scored. A comparison gone
  *  on from its log is not asked again: its tasks were fixed at its start, and a person may have
  *  released or refused one since, which then leaves it (`withdrawn`). */
-function refuseUnscorable(
-  { tasks, retained, ladder }: Terms,
-  log: string,
-  practised: ReadonlySet<string>,
-): void {
+function refuseUnscorable({ tasks, retained }: Terms, log: string, practised: ReadonlySet<string>): void {
   if (tasks.length === 0) {
     throw new Error(
       "no task to score: a comparison is asked for with at least one held-out task that waits for no label (tools/d2/prepare.ts)",
@@ -394,14 +374,14 @@ function refuseUnscorable(
     );
   }
   const sets = taskSets(events);
-  // The ladder's tasks are scored on the ladder alone, and only they are (`LADDER`).
-  const [open, set] = ladder === true ? [sets.ladder, "ladder"] : [sets.held, "held-out"];
   // A task this comparison disputed in an earlier run of it is where that run left it.
-  const unfit = tasks.find((version) => !open.includes(version) && sets.states.get(version) !== "disputed");
+  const unfit = tasks.find(
+    (version) => !sets.held.includes(version) && sets.states.get(version) !== "disputed",
+  );
   if (unfit !== undefined) {
     const state = sets.states.get(unfit);
     const why = state === undefined ? "not proposed" : state === "held" ? "short of its gate" : state;
-    throw new Error(`task ${unfit} is ${why}, and only a ${set} task is scored`);
+    throw new Error(`task ${unfit} is ${why}, and only a held-out task is scored`);
   }
 }
 
@@ -481,10 +461,8 @@ function unanswered(log: string, id: string, { solve, ending }: Practised): stri
  *  would keep it aside for good: one Referee call cut by the provider's session limit cost a step
  *  that way on 12 October. */
 function unruledOf(events: readonly LogEvent[], fixed: Fixed) {
-  const apart = new Set(taskSets(events).apart);
-  return rejections(events, fixed, NO_LABELS).filter(
-    ({ task, ruling }) => ruling === null && apart.has(task),
-  );
+  const held = new Set(taskSets(events).held);
+  return rejections(events, fixed, NO_LABELS).filter(({ task, ruling }) => ruling === null && held.has(task));
 }
 
 /**
@@ -560,7 +538,7 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
       for (let job = jobs.shift(); job !== undefined && going(); job = jobs.shift()) {
         const events = read(log);
         // A task this comparison disputed, or a person released or refused since, is solved no more.
-        if (!taskSets(events).apart.includes(job.task)) continue;
+        if (!taskSets(events).held.includes(job.task)) continue;
         if (cap !== undefined && billedFor(events, id) + (running + 1) * cap.reserve > cap.dollars) {
           // The job is left for a lane that can afford it. With solves in flight the reserve held
           // for each may come back in part, so this lane steps aside; with none in flight nothing
@@ -630,8 +608,6 @@ function begin(request: CheckpointRequest): Fixed {
     trigger: request.trigger,
     cap: request.cap === undefined ? null : { ...request.cap },
     ...keyIfDefined("prediction", request.prediction),
-    ...keyIfDefined("ladder", request.ladder === true ? true : undefined),
-    ...keyIfDefined("frozen", request.frozen),
     ...keyIfDefined("objective", request.objective === undefined ? undefined : { ...request.objective }),
   };
   const was = startOf(read(log), id);
@@ -657,7 +633,7 @@ function begin(request: CheckpointRequest): Fixed {
 
 /** Write a comparison's report under its id, with the terms it was made on, and return it. */
 function write(
-  request: Pick<CheckpointRequest, "log" | "id" | "tasks" | "solves" | "level" | "setting" | "ladder">,
+  request: Pick<CheckpointRequest, "log" | "id" | "tasks" | "solves" | "level" | "setting">,
   told: Report,
   beside: { readonly broken: string | null; readonly reviewFaults: readonly string[] },
 ): Report {
@@ -670,7 +646,6 @@ function write(
     setting: request.setting,
     broken: beside.broken,
     reviewFaults: [...beside.reviewFaults],
-    ...keyIfDefined("ladder", request.ladder === true ? true : undefined),
     // A report is strings, numbers and lists and records of them.
     ...asRecord(told),
   });

@@ -21,8 +21,6 @@ import {
   type Epoch,
   epochLine,
   epochsOf,
-  ladderLine,
-  ladderOf,
   promotionsWorth,
   regressionLine,
   regressionOf,
@@ -503,7 +501,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       ...attempt("g-3", "S", "h3").data,
       frontier: { differences: [0], falseRate: 0.05 },
     });
-    const log = [started, attempt("g-1", "S", "h2"), attempt("g-2", "S", "h2"), rated];
+    const stepped = event("comparison.reported", {
+      ...attempt("g-1", "S", "h2").data,
+      frontier: { differences: [1, 1] },
+    });
+    const log = [started, stepped, attempt("g-2", "S", "h2"), rated];
     const [epoch] = epochsOf(log);
     // Before two A/A controls are on record no attempt's rate is measured: the rule bounds one
     // attempt at its own rate, the level where its report holds none, and the bound is indicative.
@@ -538,10 +540,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       attempt("g-5", "h2", "h4"),
     ];
     const [first, second] = epochsOf(log);
-    // The four are one candidate's, and one attempt (the Oracle's answer, 12 October).
-    expect(first?.falsePromotion).toMatchObject({ attempts: 1, errors: 0, pairs: 2, indicative: false });
+    // The four are one candidate's readings, none of which bought a repeat: four attempts, each of
+    // which could have (16 October; until then one a candidate, the Oracle's answer of 12 October).
+    expect(first?.falsePromotion).toMatchObject({ attempts: 4, errors: 0, pairs: 2, indicative: false });
     expect(first?.falsePromotion.bound).toBeCloseTo(1 - 0.05 ** 0.5, 9);
-    expect(first?.falsePromotion.union).toBeCloseTo(1 - 0.05 ** 0.5, 9);
+    expect(first?.falsePromotion.union).toBe(1);
     // Under the next reference the controls read other tasks: the same bound, labelled indicative.
     expect(second?.falsePromotion).toMatchObject({ attempts: 1, errors: 0, pairs: 2, indicative: true });
     if (second === undefined) throw new Error("an epoch");
@@ -556,7 +559,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
   });
 });
 
-describe("the bar a promotion is read against, and the ladder", () => {
+describe("the bar a promotion is read against, beside an old ladder's readings", () => {
   /** A candidate's comparison against `old` that read a frontier. */
   const stepRead = (session: string, old: string, fresh: string) =>
     event("comparison.reported", {
@@ -568,9 +571,12 @@ describe("the bar a promotion is read against, and the ladder", () => {
       level: 0.1,
       setting: SETTING,
       versions: ["v1"],
-      frontier: { differences: [2], falseRate: 0.01 },
+      // Three tasks won by two pairs each: p 0.125, under the trigger, so it buys a repeat.
+      frontier: { differences: [2, 2, 2], falseRate: 0.01 },
+      retained: "unmeasured",
     });
-  /** The ladder read on `reference`: tasks by the starter's valid solves and by the reference's. */
+  /** An old ladder read on `reference` (retired 16 October): tasks by the starter's valid solves
+   *  and by the reference's. */
   const ladderRead = (session: string, reference: string, starter: number[], valid: number[]) =>
     event("comparison.reported", {
       session,
@@ -587,15 +593,11 @@ describe("the bar a promotion is read against, and the ladder", () => {
     event("build.finished", { session: "b-1", changed: true }),
     stepRead("g-1", "S", "ha"),
     event("harness.promoted", { harness: "ha", from: "S" }),
-    // On four ladder tasks at two solves a side: the starter none, `ha` a quarter. The reading
-    // fixes the four as a ladder.
     event("comparison.started", { session: "g-2", ladder: true, tasks: ["l1", "l2", "l3", "l4"] }),
     ladderRead("g-2", "ha", [4, 0, 0], [2, 2, 0]),
     event("build.finished", { session: "b-2", changed: true, billed: 5 }),
     stepRead("g-3", "ha", "hb"),
     event("harness.promoted", { harness: "hb", from: "ha" }),
-    // The same ladder after a second promotion, with one task disputed since: three are scored,
-    // and the share is still of the four. A task held for the ladder since makes the next ladder.
     event("comparison.started", { session: "g-4", ladder: true, frozen: "g-2", tasks: ["l1", "l2", "l3"] }),
     ladderRead("g-4", "hb", [3, 0, 0], [0, 0, 3]),
     event("comparison.started", { session: "g-5", ladder: true, tasks: ["l5", "l6"] }),
@@ -620,52 +622,14 @@ describe("the bar a promotion is read against, and the ladder", () => {
     expect(worthOf(log.slice(0, step + 1), asked)).toEqual(before);
     expect(before.cost).toMatchObject({ attempts: 1, met: true });
     expect(worthOf(log.slice(0, step + 1), { ...asked, id: "g-5" }).cost).toMatchObject({ attempts: 1 });
+    // A reading after that repeat is the candidate's second attempt: until 16 October any earlier
+    // reading made it a repeat, and buffer-159-opus's g-6 read one attempt where there were two.
+    const tied = { ...stepRead("g-5", "ha", "hb").data, reading: "no-step", frontier: { differences: [0] } };
+    const repeated = [...log.slice(0, step + 1), event("comparison.reported", tied)];
+    expect(worthOf(repeated, { ...asked, id: "g-6" }).cost).toMatchObject({ attempts: 2 });
   });
 
-  it("reads the ladder's curve: each reading's shares, the gain over the starter and what was billed since", () => {
-    const curve = ladderOf(log);
-    expect(curve).toEqual([
-      {
-        id: "g-2",
-        ladder: "g-2",
-        reference: "ha",
-        promotions: 1,
-        tasks: 4,
-        aside: 0,
-        reference_share: 0.25,
-        starter_share: 0,
-        gain: 25,
-        dollars: 0,
-      },
-      {
-        id: "g-4",
-        ladder: "g-2",
-        reference: "hb",
-        promotions: 2,
-        tasks: 4,
-        aside: 1,
-        reference_share: 0.75,
-        starter_share: 0,
-        gain: 75,
-        dollars: 5,
-      },
-      {
-        id: "g-5",
-        ladder: "g-5",
-        reference: "hb",
-        promotions: 2,
-        tasks: 2,
-        aside: 0,
-        reference_share: 0,
-        starter_share: 0,
-        gain: 0,
-        dollars: 0,
-      },
-    ]);
-    expect(curve.map(ladderLine)[1]).toBe(
-      "g-4 on ladder g-2: after 2 promotions, reference hb valid on 75% of 4 ladder tasks (1 set aside, unsolved on both sides), the starter on 0%, +75 points; $5.00 billed since the reading before",
-    );
-    // No ladder reading is a step, a control or an attempt of the climb's.
+  it("reads no old ladder reading as a step, a control or an attempt of the climb's", () => {
     expect(epochsOf(log).map(({ comparisons }) => comparisons)).toEqual(
       epochsOf(log.filter(({ data }) => data.ladder !== true)).map(({ comparisons }) => comparisons),
     );

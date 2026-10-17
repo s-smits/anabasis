@@ -26,6 +26,7 @@
 import { type LogEvent, read } from "../kernel/log.ts";
 import { billedAll, type Cap, patienceOf } from "../kernel/reports.ts";
 import { SIZE } from "../kernel/size.ts";
+import { unadmitted } from "../kernel/acceptance.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import type { Plan } from "./ground.ts";
 
@@ -49,9 +50,10 @@ export interface Opening {
    *  campaign bears in a row before it ends (`--patience`; `PATIENCE`). */
   readonly patience: number;
   readonly seats: Readonly<Record<(typeof SEATS)[number], Seat | null>>;
-  /** Whether the freeze and a promotion wait for the operator's word (`--attended`). It is kept
-   *  here and not read off the running command's flag alone, so that a reopen that does not name
-   *  the flag still waits; `--no-attended` gives it back. */
+  /** Whether the operator is in the loop (`--hitl`): the freeze, a drafted exam's checks and a
+   *  promotion then wait for the operator's word. It is kept here and not read off the running
+   *  command's flag alone, so that a reopen that does not name the flag still waits; `--no-hitl`
+   *  gives it back. The record keeps the key it had as `--attended`, before 16 October. */
   readonly attended: boolean;
   /** Whether the Builder makes the campaign's moves after set-up, in one live conversation with
    *  the campaign's tools (`--builder-led`, `tools/d2/harness-builder.ts`), or the host makes
@@ -93,7 +95,7 @@ export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 
 /** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
 export const SEATS = ["builder", "examiner", "reviewer"] as const;
-/** The Builder sessions before a comparison once set-up stands (epoch 0, `owedReading` in
+/** The Builder sessions before a comparison once set-up stands (epoch 0, `sessionsRun` in
  *  `decide.ts`), where nothing names them: the plan's checkpoint is several sessions and then one
  *  comparison (L5), since one session's change is rarely detectable. Before set-up each session's
  *  harness is compared, and until 12 October three were the default after the first comparison. */
@@ -200,7 +202,12 @@ export function planOf(
         : { dollars: opening.budget.dollars - billedAll(events), reserve: opening.budget.reserve },
     prompted: opening?.prompt != null,
     pastStop: beside.pastStop ?? null,
-    admits: beside.admits ?? [],
+    // A launch without `--hitl` is the operator's word for every check its author decides
+    // (`--admit-authored`, the operator, 16 October), so a reading taken under `--hitl` that left
+    // some unadmitted is read again.
+    admits: [
+      ...new Set([...(beside.admits ?? []), ...(opening?.attended === true ? [] : unadmitted(events))]),
+    ],
     practice: beside.practice ?? null,
   };
 }

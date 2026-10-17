@@ -3,7 +3,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { epochsOf } from "../../../src/builder/climb.ts";
 import { reported, toLabel } from "../../../src/builder/comparison.ts";
-import { RISK } from "../../../src/builder/decide.ts";
 import { campaignOf } from "../../../src/builder/handover.ts";
 import { pairings } from "../../../src/kernel/compare.ts";
 import { LOG_FILE, read } from "../../../src/kernel/log.ts";
@@ -276,10 +275,10 @@ describe("what a comparison came to", () => {
     }
   });
 
-  test("puts no task in two places: one exhausted is not retained, and both are held out", async () => {
+  test("keeps every exhausted task among the retained, and both held out", async () => {
     const { answer } = await ask("tasks", { key: KEY }, "default");
     for (const row of answer.rows) {
-      expect(row.exhausted && row.retained).toBe(false);
+      if (row.exhausted) expect(row.retained).toBe(true);
       if (row.exhausted || row.retained) expect(row.state).toBe("held");
     }
   });
@@ -396,7 +395,6 @@ describe("the risk and the runway beside the counters", () => {
       pairs: risk?.pairs ?? -1,
       errors: risk?.errors ?? -1,
       indicative: risk?.indicative ?? false,
-      hold: RISK,
     });
   });
 

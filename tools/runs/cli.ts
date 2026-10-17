@@ -2,7 +2,7 @@
  * `bun run runs <verb>`, over every run log in the repository's worktrees (`registry.ts`): `pulse`
  * says what each gained since the last look (`pulse.ts`), `zip` bundles them for handover
  * (`zip.ts`), `launch`, `continue` and `pause` start a campaign, go on with one and stop one at a
- * clean point (`manage.ts`), and `stop` ends a run and releases what it held (`stop.ts`). `replay` puts every campaign log
+ * clean point (`manage.ts`), `fresh` starts one from a blank project in a worktree of its own (`fresh.ts`), and `stop` ends a run and releases what it held (`stop.ts`). `replay` puts every campaign log
  * through this tree's readers (`replay.ts`), `seed` copies a campaign under another name, cut where
  * a question starts (`seed.ts`), and `rehearse` runs a round over a seed with a script in each
  * model seat (`rehearse.ts`). `view` prints one campaign as its log reads: what each step handed
@@ -13,6 +13,7 @@
  * a verb on another machine (`hosts.ts`).
  */
 import { runtimeProcess } from "#src/meta/process.ts";
+import { fresh } from "./fresh.ts";
 import { hosts, on } from "./hosts.ts";
 import { keep } from "./keep.ts";
 import { logins } from "./logins.ts";
@@ -30,6 +31,7 @@ const VERBS = {
   pulse: watch,
   zip: zipRuns,
   launch,
+  fresh,
   continue: continueRun,
   pause,
   stop,

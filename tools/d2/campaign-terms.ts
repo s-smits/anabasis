@@ -4,7 +4,7 @@
  * and the flags of each move's command. Nothing here knows who makes a move.
  */
 import { shortOf } from "#src/builder/decide.ts";
-import { type Plan } from "#src/builder/ground.ts";
+import { cutShort, type Plan } from "#src/builder/ground.ts";
 import type { Decided } from "#src/builder/move.ts";
 import { type Opening, openingOf, planOf, SEATS, SESSIONS, type Seat, TERMS } from "#src/builder/opening.ts";
 import { type Word } from "#src/builder/word.ts";
@@ -34,6 +34,9 @@ export interface Seats {
   readonly draft?: Session<"draft"> | undefined;
   /** The host a solve starts into (`host.ts`): the host's own unless a test stands in for it. */
   readonly host?: Host | undefined;
+  /** No reviewer, whatever the opening names: a rehearsal's, whose scripted rejections no model is
+   *  paid to rule. Until 16 October a rehearsal over a seed seated its source's Referee. */
+  readonly unreviewed?: boolean | undefined;
 }
 
 /** What every move of one turn of the loop is made with. */
@@ -95,7 +98,7 @@ const OPTIONS = {
   handover: { type: "string" },
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
-  attended: { type: "boolean" },
+  hitl: { type: "boolean" },
   "builder-led": { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
@@ -196,7 +199,7 @@ export function opened(
     sessions: values.sessions === undefined ? (was?.sessions ?? DEFAULTS.sessions) : Number(values.sessions),
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
-    attended: values.attended ?? was?.attended ?? false,
+    attended: values.hitl ?? was?.attended ?? false,
     // A campaign that opens now is led by its Builder; one on record runs as its record says, and
     // a record from before the term says the host makes every move.
     led: values["builder-led"] ?? was?.led ?? was === null,
@@ -273,17 +276,19 @@ export function examTasks({ events, plan }: Turn): string | undefined {
  * Any other move, the host's own among them, is progress. A run of the command after an ending
  * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
  * crashed or a stop killed chose nothing and is left out, as the table leaves it out of the
- * sessions run (`sessionsRun`): until 15 October finished, crashed, finished counted three.
+ * sessions run (`sessionsRun`): until 15 October finished, crashed, finished counted three. So is
+ * a session of any seat that moved nothing (`cutShort`), and one the host refused before it began.
+ * Since 16 October an Examiner session opens beside each conversation the table names one for, and
+ * one that crashed, or was refused, every time kept two rehearsed campaigns going past 40 moves.
  */
 export function idleOf(events: readonly LogEvent[]): number {
   const since = events.slice(events.findLastIndex(({ kind }) => kind === "campaign.ended") + 1);
-  const cut = new Set(
-    since.flatMap(({ kind, data }) =>
-      kind === "build.finished" && (data.ended === "crashed" || data.ended === "killed")
-        ? [data.session]
-        : [],
-    ),
-  );
+  const named = since.flatMap(({ data }) => (isString(data.session) ? [data.session] : []));
+  const cut = new Set([
+    ...since.flatMap((event) => (cutShort(event) ? [event.data.session] : [])),
+    // A move whose session nothing else names never started: the host's refusal (`actionTool`).
+    ...named.filter((session) => named.indexOf(session) === named.lastIndexOf(session)),
+  ]);
   const moves = since.flatMap(({ kind, data }) => (kind === MOVED && !cut.has(data.session) ? [data] : []));
   return moves.length - 1 - moves.findLastIndex(({ move, code }) => move !== "build" || code !== "led");
 }
@@ -357,8 +362,8 @@ export function packOf({ root, sweep, cycle, bundle, name }: Values): string[] {
 /** The flags a move that solves shares with every other: the setting, where the log records none
  *  yet, since the first command that begins names it and it is the log's from then on; the cap,
  *  which is what is left of the campaign's total; the reviewers; and the word past the stop rule. */
-export function sharedOf({ events, plan, opening, values }: Turn) {
-  const { reviewer } = opening.seats;
+export function sharedOf({ events, plan, opening, values, seats }: Turn) {
+  const reviewer = seats.unreviewed === true ? null : opening.seats.reviewer;
   return {
     // What no flag names, the opening names where it holds it: the solver of a campaign from a
     // prompt and the full limit, so that a command run again with its name alone records the
@@ -418,18 +423,12 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
       decided.fresh,
       "--reference",
       decided.reference,
-      ...(decided.ladder === true ? ["--ladder", ...flag("frozen", decided.frozen)] : []),
       ...terms,
       ...flag("defects", values.defects),
       ...reviewer,
       ...pastStop,
     ],
   };
-}
-
-/** The checks `--admit` names, which is the operator's word for each. */
-export function admitsOf(values: Values): string[] {
-  return (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()]));
 }
 
 /** One turn of a campaign as its log stands now: the plan the table is asked with, from the
@@ -459,7 +458,8 @@ export function turnOf(source: {
         trigger: Number(values.trigger ?? COMPARISON_OPTIONS.trigger.default),
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],
-        admits: admitsOf(values),
+        // The checks `--admit` names, which is the operator's word for each.
+        admits: (values.admit ?? "").split(",").flatMap((id) => (id.trim() === "" ? [] : [id.trim()])),
         practice: values.practice === undefined ? PRACTICE : Number(values.practice),
       },
       opening,

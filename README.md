@@ -65,6 +65,20 @@ bun tools/d2/harness-builder.ts \
   --reviewer claude/claude-opus-5-5
 ```
 
+A second domain, in beta, opens the same way:
+
+```sh
+bun tools/d2/harness-builder.ts \
+  --name firmware \
+  --project esp32 \
+  --prompt "Build a harness that writes firmware for ESP32, Raspberry Pi Pico and Arduino Uno, connecting sensors, displays and lights, where the code must compile." \
+  --budget 400 \
+  --solver claude/claude-opus-5-5 \
+  --builder claude/claude-opus-5-5 \
+  --examiner claude/claude-opus-5-5 \
+  --reviewer claude/claude-opus-5-5
+```
+
 `--budget` is required: it caps the dollars the whole campaign may bill.
 `--project` is required when the campaign opens; run the command again with the same `--name` to continue that campaign, or use `--prompt-file` for a longer prompt. `bun run runs view <name>` prints the campaign as its log reads.
 Builder, Examiner, Referee (`--reviewer`) and solver can each use Claude, Codex or OpenRouter, with their own model and effort.

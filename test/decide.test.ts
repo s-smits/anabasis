@@ -3,10 +3,11 @@
 // or of tasks, and the rule a promotion by hand is held to.
 
 import { describe, expect, it } from "bun:test";
-import { decide, unpromoted } from "../src/builder/decide.ts";
+import { decide, epochReleased, practiceRoom, unpromoted } from "../src/builder/decide.ts";
 import type { Plan } from "../src/builder/ground.ts";
 import { pendingWords } from "../src/builder/word.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
+import { taskSets } from "../src/kernel/task.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tallied } from "./helpers/tally.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
@@ -19,6 +20,8 @@ const HELD = ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11"
 const HALF: Valid = [4, 4, 4];
 const ALL: Valid = [0, 0, 12];
 const NONE: Valid = [12, 0, 0];
+const SHORT_WHY =
+  "the campaign holds fewer tasks a step can be read on than a step takes: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart";
 const PLAN: Plan = {
   sessions: 1,
   // The plan's three, which these rows were written against; the default is six (`PATIENCE`).
@@ -211,7 +214,8 @@ describe("a row of the table", () => {
       ending: "environment",
       why: "no draft was put: the Examiner's session crashed 3 times (exited 1)",
     });
-    expect(move([crashed, fell(1), crashed], plan)).toMatchObject({ move: "end", ending: "exam" });
+    // A crash between drafts is the provider's, and takes none of the three a campaign may put.
+    expect(move([crashed, fell(1), crashed], plan)).toMatchObject({ move: "draft" });
     expect(move([crashed, crashed], plan)).toMatchObject({ move: "draft" });
     // Run again once the campaign ended on its environment, it drafts again: the crashes count
     // since that ending, and the drafts put before it still count.
@@ -345,7 +349,7 @@ describe("a row of the table", () => {
       });
     }
     for (const apart of [[2, 2, 2, 2], [2, -2, 0, 0], []]) {
-      expect(move(epoch(apart))).toMatchObject({ move: "compare", fresh: "latest" });
+      expect(move(epoch(apart))).toMatchObject({ move: "compare", fresh: "h1", repeats: "g-1" });
     }
     const cause = event("campaign.word", { word: "cause", why: "the host was loaded while g-1 ran" });
     expect(move([...epoch([2, 2, 2, 2, 2]), cause])).toEqual(move(epoch([2, -2, 0, 0])));
@@ -367,87 +371,29 @@ describe("a row of the table", () => {
     });
   });
 
-  it("ladder: after each promotion the starter is read against the new reference on the ladder's tasks, once, and no row reads it", () => {
-    // With a ladder, its reading follows every promotion before anything else, in place of the
-    // starter's reading against each later reference (`unread`): the starter against the new
-    // reference on the ladder's tasks.
+  it("an old ladder: its task is held out, and its reading is read by no row", () => {
+    // A log of 14 to 16 October may hold a task held for the ladder and the starter's reading on
+    // it after a promotion. The ladder was retired on 16 October: the task is held out, as a task
+    // its gate passed is, and the reading moves nothing the table reads.
+    const proposed = event("task.proposed", { version: "l1", taskId: "l1" });
     const ladder = [
-      event("task.proposed", { version: "l1", taskId: "l1" }),
+      proposed,
       event("task.gate", { version: "l1", gate: 1, outcome: "ladder" }),
       event("task.state", { version: "l1", state: "ladder" }),
     ];
-    const laddered = [...ladder, ...PROMOTED];
-    expect(decide(laddered, PLAN)).toEqual({
-      move: "compare",
-      code: "ladder",
-      fresh: "starter",
-      reference: "promoted",
-      ladder: true,
-      why: "harness h1 was promoted: the starter is read against it on 1 ladder task no ladder holds yet, which this reading fixes as a ladder",
-    });
-    const begun = event("comparison.started", {
-      session: "g-2",
-      old: "h1",
-      fresh: "start",
-      ladder: true,
-      tasks: ["l1"],
-    });
-    expect(move([...laddered, begun])).toMatchObject({ id: "g-2", ladder: true });
-    // Reported, it is read by no row: the table goes on as it would have.
-    const ladderRead = [
-      ...laddered,
-      begun,
+    const reading = [
+      event("comparison.started", { session: "g-2", old: "h1", fresh: "start", ladder: true, tasks: ["l1"] }),
       event("comparison.reported", {
         session: "g-2",
         old: "h1",
         fresh: "start",
-        reading: "below-starter",
+        reading: "no-step",
         ladder: true,
       }),
     ];
-    expect(move(ladderRead)).toEqual(move(PROMOTED));
-    // The next promotion owes its own, on the ladder g-2 fixed. A task held for the ladder since
-    // is no part of it: once that reading reports, a reading fixes it as the next ladder.
-    const next = [
-      ...ladderRead,
-      event("task.proposed", { version: "l2", taskId: "l2" }),
-      event("task.gate", { version: "l2", gate: 1, outcome: "ladder" }),
-      event("task.state", { version: "l2", state: "ladder" }),
-      built("b-2", "h2"),
-      ...steppedTwice("g-3", "h2", "h1"),
-      promotion("h2", { from: "h1" }),
-    ];
-    expect(move(next)).toEqual({
-      move: "compare",
-      fresh: "starter",
-      reference: "promoted",
-      ladder: true,
-      frozen: "g-2",
-      why: "harness h2 was promoted: the starter is read against it on ladder g-2",
-    });
-    const again = [
-      ...next,
-      event("comparison.started", {
-        session: "g-4",
-        old: "h2",
-        fresh: "start",
-        ladder: true,
-        frozen: "g-2",
-        tasks: ["l1"],
-      }),
-      event("comparison.reported", {
-        session: "g-4",
-        old: "h2",
-        fresh: "start",
-        reading: "below-starter",
-        ladder: true,
-      }),
-    ];
-    expect(move(again)).toMatchObject({
-      ladder: true,
-      why: "harness h2 was promoted: the starter is read against it on 1 ladder task no ladder holds yet, which this reading fixes as a ladder",
-    });
-    expect(move(again)).not.toHaveProperty("frozen");
+    const passed = [proposed, event("task.gate", { version: "l1", gate: 1, outcome: "passed" })];
+    expect(taskSets(ladder).held).toEqual(["l1"]);
+    expect(move([...ladder, ...PROMOTED, ...reading])).toEqual(move([...passed, ...PROMOTED]));
   });
 
   it("tasks: tasks not set up are taken in, written or released before anything is built", () => {
@@ -523,36 +469,53 @@ describe("a row of the table", () => {
     const stepped = [...FIRST, ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
     const again = {
       move: "compare",
-      fresh: "latest",
+      fresh: "h1",
       reference: "promoted",
       why: "comparison g-1 cleared the trigger, which is one draw: the same two harnesses are compared again on fresh solves, and the two are read together",
-      // The repeat names the reading it repeats, so that its harness is the one that reading froze.
+      // The repeat names the reading it repeats, and the harness that reading froze.
       repeats: "g-1",
     } as const;
     expect(decide(stepped, PLAN)).toEqual({ ...again, code: "unfinished" });
+    // A session that leaves another harness takes nothing from it: until 15 October the repeat
+    // followed the latest harness's reading, and recode-pr169-sonnet's g-1 lost its repeat once b-3
+    // left another.
+    expect(move([...stepped, built("b-2", "h2")])).toEqual(again);
+    expect(move([...stepped, built("b-2", "h2"), ...compared("g-2", "h2", "no-step")])).toMatchObject({
+      move: "build",
+    });
     // A 4-3 clears no trigger; a 6-2 (p 0.14) buys the repeat, whatever its word.
     const tally = (wins: number, losses: number) =>
       compared("g-1", "h1", "no-step", { tally: [wins, losses, 12 - wins - losses] });
     expect(move([...FIRST, ...tally(4, 3)])).toMatchObject({ move: "build" });
     expect(move([...FIRST, ...tally(6, 2)])).toMatchObject({ move: "compare" });
-    // The repeat is of tasks its first stage did not score: until the campaign holds its target of
-    // them the Examiner writes more, however many sessions that takes, and sessions that hold out
-    // none end the campaign at its patience.
+    // The repeat scores the first stage's untied tasks again and the held tasks it did not score:
+    // where those are fewer than a sweep at the level takes (four at 0.1) the Examiner writes
+    // more, however many sessions that takes, and sessions that hold out none end the campaign at
+    // its patience. A report that names no task of its differences offers none to score again.
     const scoredAll = [...ONE, built("b-1", "h1"), ...compared("g-1", "h1", "step", { tally: [8, 0, 4] })];
     expect(decide(scoredAll, PLAN)).toEqual({
       move: "examine",
       code: "unfinished",
-      why: "comparison g-1 cleared the trigger, and the campaign is 12 held-out tasks short of a repeat on tasks its first stage did not score: the Examiner writes more first",
+      why: "comparison g-1 cleared the trigger, and the campaign is 4 held-out tasks short of a repeat that could read a step: the Examiner writes more first",
       repeats: "g-1",
     });
     const two = [...scoredAll, ...examined("x-1", ["n1", "n2"])];
     expect(decide(two, PLAN)).toMatchObject({
       move: "examine",
-      why: expect.stringContaining("10 held-out tasks short"),
+      why: expect.stringContaining("2 held-out tasks short"),
       repeats: "g-1",
     });
-    const fresh = Array.from({ length: 10 }, (_, nth) => `m${String(nth)}`);
-    expect(move([...two, ...examined("x-2", fresh)])).toEqual(again);
+    expect(move([...two, ...examined("x-2", ["m1", "m2"])])).toEqual(again);
+    // Until 16 October the repeat waited for a target of fresh tasks, about 300 gate solves after
+    // a promotion: the eight tasks the step untied are scored again, and nothing waits.
+    const named = { frontier: { ...tallied(8, 0, 4).frontier, of: HELD } };
+    expect(
+      move([
+        ...ONE,
+        built("b-1", "h1"),
+        ...compared("g-1", "h1", "step", { tally: [8, 0, 4], extra: named }),
+      ]),
+    ).toEqual(again);
     const idled = [...two, ...examined("x-2"), ...examined("x-3"), ...examined("x-4")];
     expect(decide(idled, PLAN)).toMatchObject({ move: "end", ending: "exam" });
     // The A/A a comparison of four solves a side carries beside it changes no move while it reads
@@ -563,12 +526,15 @@ describe("a row of the table", () => {
     );
     // Against a promoted reference a step is one as against the starter. A log of before
     // 2026-10-11 may hold `starter-unread`, which reads as no step.
-    const epoch = [...FIRST, promotion("h1"), setting(null), built("b-2", "h2")];
+    // Its tasks held out after the promotion: one held before, that h1 never stood in, is retained.
+    const after = HELD.map((version) => `e${version}`);
+    const epoch = [...FIRST, promotion("h1"), setting(null), ...examined("x-2", after), built("b-2", "h2")];
     const unread = compared("g-1", "h2", "starter-unread", { old: "h1", tally: [8, 0, 4] });
     expect(move([...epoch, ...unread])).not.toMatchObject({ reference: "starter" });
-    expect(move([...epoch, ...compared("g-1", "h2", "step", { old: "h1", tally: [8, 0, 4] })])).toEqual(
-      again,
-    );
+    expect(move([...epoch, ...compared("g-1", "h2", "step", { old: "h1", tally: [8, 0, 4] })])).toEqual({
+      ...again,
+      fresh: "h2",
+    });
   });
 
   it("twice: a harness that read a step and its repeat is promoted", () => {
@@ -591,12 +557,17 @@ describe("a row of the table", () => {
     // and a 0-0-12 promoted on one draw (found by review, 11 October).
     expect(move(repeat([0, 0, 12]))).not.toMatchObject({ move: "promote" });
     expect(move(repeat([3, 4, 5]))).not.toMatchObject({ move: "promote" });
-    // A candidate buys one repeat. A 2-0 and a 2-0 each clear the trigger and together not the level
+    // A repeat buys no repeat. A 2-0 and a 2-0 each clear the trigger and together not the level
     // of 0.02 (4-0, p 0.06); until 15 October the second bought a third reading no bound counted.
     const strict = { ...PLAN, wanted: { ...PLAN.wanted, level: 0.02 } };
     const weak = (id: string) => compared(id, "h1", "no-step", { tally: [2, 0, 10] });
     expect(move([...FIRST, ...weak("g-1")], strict)).toMatchObject({ move: "compare", repeats: "g-1" });
     expect(move([...FIRST, ...weak("g-1"), ...weak("g-2")], strict)).toMatchObject({ move: "build" });
+    // A later reading of the candidate that is no repeat is an attempt of its own, and its repeat is
+    // due: from 15 October to 16 October none was, and it could promote only with the repeat before
+    // it, which buffer-159-opus's second promotion did.
+    const third = [...FIRST, ...weak("g-1"), ...weak("g-2"), ...weak("g-3")];
+    expect(move(third, strict)).toMatchObject({ move: "compare", repeats: "g-3" });
     // A campaign of 9 October: two steps against the starter, then sessions and comparisons went
     // on by hand against that harness, which nobody had promoted. It is named all the same.
     const later = [built("b-2", "h2"), ...compared("b-2", "h2", "no-step", { old: "h1", tally: [4, 4, 4] })];
@@ -612,8 +583,9 @@ describe("a row of the table", () => {
       move: "build",
       why: "comparison b-2 read no step with room to gain: harness h2 did not help",
     });
-    // One step is one draw, whatever came after it.
-    expect(move([...stepped, ...later])).toMatchObject({ move: "build" });
+    // One step is one draw, whatever came after it, and its repeat is owed while no later harness
+    // has been read against the reference.
+    expect(move([...stepped, ...later])).toMatchObject({ move: "compare", fresh: "h1", repeats: "g-1" });
   });
 
   it("no-room: the tasks change where the reference's last reading left it nothing to gain", () => {
@@ -689,12 +661,9 @@ describe("a row of the table", () => {
     expect(decide(tied, small)).toEqual({
       move: "examine",
       code: "short",
-      why: "comparison g-1 read no step with room to gain and left too few tasks for the next to untie: harness h1 can only tie again on the tasks the reference harness answered in every solve",
+      why: SHORT_WHY,
     });
-    expect(move([...tied, built("b-2", "h2")], small)).toEqual({
-      move: "examine",
-      why: "the last comparison left too few tasks for the next to untie",
-    });
+    expect(move([...tied, built("b-2", "h2")], small)).toEqual({ move: "examine", why: SHORT_WHY });
     // Tasks held out since count whole, and the comparison is admitted.
     const more = ["v13", "v14", "v15", "v16"].flatMap(heldOut);
     expect(move([...tied, built("b-2", "h2"), ...more], small)).toMatchObject({ move: "compare" });
@@ -787,8 +756,8 @@ describe("a row of the table", () => {
     expect(move(control("step", [8, 2, 2], [6, 0, 6]))).toMatchObject({ move: "build" });
     expect(move(control("no-step", ALL, [0, 0, 12]))).toMatchObject({ move: "examine" });
 
-    // The readings a promotion owes, each once and never a gate. With no ladder, the Starter
-    // against each later epoch's reference (not set-up's, which was read against it).
+    // A promotion owes no reading of its own: until 16 October the starter was read against each
+    // later epoch's reference once, a reading no row went on to read.
     expect(move(PROMOTED)).toMatchObject({ move: "build" });
     const second = [
       ...PROMOTED,
@@ -796,14 +765,7 @@ describe("a row of the table", () => {
       ...steppedTwice("g-2", "h2", "h1"),
       promotion("h2", { from: "h1" }),
     ];
-    expect(move(second)).toEqual({
-      move: "compare",
-      fresh: "starter",
-      reference: "promoted",
-      why: "harness h2 is this epoch's reference: the starter is read against it once, as the lower control",
-    });
-    const read = [...second, ...compared("g-3", "start", "no-step", { old: "h2" })];
-    expect(move(read)).not.toMatchObject({ fresh: "starter" });
+    expect(move(second)).not.toMatchObject({ fresh: "starter" });
   });
 
   it("build: with nothing new to read and room to gain, the Builder builds", () => {
@@ -821,33 +783,6 @@ describe("a row of the table", () => {
 });
 
 describe("a hold on the move a row named", () => {
-  it("risk: a comparison past a quarter's chance of a false promotion this epoch waits for an A/A or a cause", () => {
-    // One attempt read at a level of 0.3, with no A/A on record: its bound is the level.
-    const risky = [
-      ...FIRST,
-      ...compared("g-1", "h1", "no-step", { extra: { frontier: { wins: 4, losses: 4 }, level: 0.3 } }),
-      built("b-2", "h2"),
-    ];
-    expect(decide(risky, PLAN)).toEqual({
-      move: "end",
-      ending: "control",
-      code: "risk",
-      why: "a false promotion is at most 30% over 1 attempt under this reference, past a quarter, and comparison g-1 read no A/A: run a comparison of four solves a side (tools/d2/checkpoint.ts --solves 4), or leave the cause with tools/d2/word.ts --cause, and the campaign goes on when run again",
-    });
-    const cause = event("campaign.word", { word: "cause", why: "the host was loaded" });
-    expect(move([...risky, cause])).toMatchObject({ move: "compare", fresh: "latest" });
-    const safe = risky.map((each) =>
-      each.kind === "comparison.reported" ? { ...each, data: { ...each.data, level: 0.02 } } : each,
-    );
-    expect(move(safe)).toMatchObject({ move: "compare", fresh: "latest" });
-    // The A/A a comparison of four solves a side writes in its report is the one asked for.
-    const aa = { noise: { wins: 0, losses: 0, ties: 4, differences: [0, 0, 0, 0] } };
-    const read = risky.map((each) =>
-      each.kind === "comparison.reported" ? { ...each, data: { ...each.data, ...aa } } : each,
-    );
-    expect(move(read)).toMatchObject({ move: "compare", fresh: "latest" });
-  });
-
   it("afford: a comparison that what is left would not hold is not begun, by what the last one billed", () => {
     // A step read once, by a comparison of two sides whose solves billed 1.00 in all: the repeat
     // solves two sides again, and would bill about 1.00. On 9 October a campaign with $1.45 left
@@ -942,6 +877,50 @@ describe("a hold on the move a row named", () => {
       practice: 4,
       why: "comparison g-3 read room in the tasks held out since the last release: the ones the reference harness failed are released first, up to 3 more practice tasks, before the Builder builds",
     });
+  });
+
+  it("practice: the count named is an epoch's, so a promotion has practice released again", () => {
+    // Three released before the promotion, as in main0_5_1, buffer-159-opus and recode-151: until
+    // 16 October none was released after it, and every practice solve after it passed.
+    const releases = ["v1", "v2", "v3"].map((version) => event("task.state", { version, state: "released" }));
+    const promoted = [...releases, ...promotedOn(ALL)];
+    expect(epochReleased(promoted)).toEqual({ promotedAt: promoted.length - 1, epoch: 0 });
+    expect(epochReleased(releases)).toEqual({ promotedAt: -1, epoch: 3 });
+    const after = [...promoted, event("task.state", { version: "v13", state: "released" })];
+    expect(epochReleased(after).epoch).toBe(1);
+  });
+
+  it("practice: a release after a promotion leaves a sweep of frontier tasks held", () => {
+    // Each release is one task fewer to compare. Before a promotion the opening's release governs.
+    const eight = HELD.slice(0, 8).flatMap(heldOut);
+    expect(practiceRoom(eight, 0.1)).toBe(Infinity);
+    // Eight held after a promotion: four may go, past the four a sweep at 0.1 takes. One
+    // released, three more (until 16 October one in four of them bound it at two).
+    // Held after it: a task held out before the promotion that the promoted harness has stood in
+    // no comparison of is retained, and no room (`poolOf`).
+    expect(practiceRoom([...eight, promotion("h1")], 0.1)).toBe(0);
+    const promoted = [promotion("h1"), ...eight];
+    expect(practiceRoom(promoted, 0.1)).toBe(4);
+    const one = [...promoted, event("task.state", { version: "v1", state: "released" })];
+    expect(practiceRoom(one, 0.1)).toBe(3);
+    // Five held leave one over the four a sweep at 0.1 takes, and four none.
+    expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 5).flatMap(heldOut)], 0.1)).toBe(1);
+    expect(practiceRoom([promotion("h1"), ...HELD.slice(0, 4).flatMap(heldOut)], 0.1)).toBe(0);
+    // Four the promoted harness answered in every solve leave four it may win, and a sweep takes
+    // four: a task it closed can only tie, and is no room. buffer-159-opus held 28 after its
+    // promotion, 14 of them exhausted and 6 frontier, and counted over the 28 the room was 7.
+    const closed = compared("g-3", "start", "no-step", {
+      old: "h1",
+      tally: [0, 0, 4],
+      solved: Object.fromEntries(HELD.slice(0, 4).map((version) => [version, "PP FF"])),
+    });
+    expect(practiceRoom([...promoted, ...closed], 0.1)).toBe(0);
+    // The table asks for no more than the room: after a control that read room, three more named,
+    // and nine held leave room for one more beside the three, past a sweep.
+    const plan = { ...PLAN, practice: 3 };
+    const control = compared("g-3", "start", "no-step", { old: "h1", tally: [2, 2, 8] });
+    const read = [READ, ...eight, ...RELEASED, promotion("h1"), built("b-1", "h2"), ...heldOut("v13")];
+    expect(move([...read, ...control], plan)).toMatchObject({ move: "prepare", practice: 4 });
   });
 
   it("unshown: a session that changed nothing and was shown no failed practice solve sends for tasks", () => {

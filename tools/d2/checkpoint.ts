@@ -30,19 +30,11 @@
  * The scored set and the solver's setting are the campaign's, read from its log as a round reads
  * them (`setting.ts`): `--tasks` or `--target`, and the solver's flags, name them only where the
  * campaign has recorded none. A repeat, the comparison that follows one of the same two harnesses
- * whose reading cleared `--trigger`, draws the held-out tasks that one did not score first, and
- * its own only where the campaign holds too few others (`scoredSet`; the
- * operator's decision of `docs/next.md`, question 9). The solves a side, the level, the
- * Referee and the cap are a round's, with a round's defaults (`round.ts`), and
- * `--cap` is required as it is there. With no `--reviewer`, every
- * rejection waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
- *
- * `--ladder` scores the ladder's tasks instead (`src/kernel/task.ts`): the reading the campaign
- * owes after a promotion, of the starter and the new reference on tasks no Builder saw and no
- * promotion was decided on (`ladderOwed`, `src/builder/decide.ts`). With `--frozen <id>` it reads
- * the ladder that reading `id` fixed, on that set less any task disputed since, which the curve
- * counts unsolved on both sides (`ladderOf`); without, it reads the ladder tasks no ladder holds
- * yet, and fixes them as one (`laddersOf`).
+ * whose reading cleared `--trigger`, scores that one's untied tasks again, then draws the held-out
+ * tasks it did not score, and its other tasks only where the campaign holds too few (`scoredSet`).
+ * The solves a side, the level, the Referee and the cap are a round's, with a round's defaults
+ * (`round.ts`), and `--cap` is required as it is there. With no `--reviewer`, every rejection
+ * waits for a person and sets its task aside until `tools/d2/settle.ts` has its labels.
  *
  * Before its first event it asks whether the comparison may start, as a round does
  * (`src/builder/admission.ts`). `--past-stop "<why>"` goes on past the plan's
@@ -56,9 +48,8 @@
 import { admitComparison } from "#src/builder/admission.ts";
 import type { Report } from "#src/builder/comparison.ts";
 import { type CheckpointRequest, checkpoint, refuseTerms } from "#src/builder/round.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
-import { laddersOf, stopRule, unladdered } from "#src/kernel/reports.ts";
-import { taskSets } from "#src/kernel/task.ts";
+import { read } from "#src/kernel/log.ts";
+import { stopRule } from "#src/kernel/reports.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import {
@@ -96,8 +87,6 @@ const CHECKPOINT_OPTIONS = {
   name: ROUND_OPTIONS.name,
   id: { type: "string" },
   new: { type: "string", default: "latest" },
-  ladder: { type: "boolean", default: false },
-  frozen: { type: "string" },
   ...SETTING_OPTIONS,
   ...COMPARISON_OPTIONS,
 } as const;
@@ -132,19 +121,12 @@ export async function checkpointCommand(
     old,
     fresh,
     starter: await starter(campaign),
-    ...(values.ladder
-      ? {
-          tasks: ladderTasks(read(campaign.log), values.frozen),
-          retained: [],
-          ladder: true,
-          frozen: values.frozen,
-        }
-      : scoredNamed(campaign, setting.tasks, setting.target, {
-          id,
-          old: old.digest,
-          fresh: fresh.digest,
-          trigger: Number(values.trigger),
-        })),
+    ...scoredNamed(campaign, setting.tasks, setting.target, {
+      id,
+      old: old.digest,
+      fresh: fresh.digest,
+      trigger: Number(values.trigger),
+    }),
     solves: Number(values.solves),
     level: Number(values.level),
     trigger: Number(values.trigger),
@@ -171,19 +153,13 @@ export async function checkpointCommand(
     refuseTerms(request, { log: campaign.log, id, practised: new Set() });
   };
   // Every refusal comes before anything is recorded, as in a round: the admission's, then the
-  // comparison's own terms, and only then the campaign's setting. The ladder's reading asks no
-  // supply of the held-out tasks and is no attempt the stop counts: its terms alone are asked.
-  if (values.ladder) own();
-  const notes = values.ladder
-    ? []
-    : admitComparison(campaign.log, {
-        id,
-        reference: values.reference,
-        fresh: fresh.digest,
-        wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
-        seats: seated === solved ? "paid" : "scripted",
-        own,
-      });
+  // comparison's own terms, and only then the campaign's setting.
+  const notes = admitComparison(campaign.log, {
+    id,
+    wanted: wantedNamed(campaign, values, { setting, cap, builds: false }),
+    seats: seated === solved ? "paid" : "scripted",
+    own,
+  });
   for (const note of notes) console.log(`· ${note}`);
   // What the caller records of the comparison once it is admitted: a led Builder's move (14 October).
   admitted?.();
@@ -200,18 +176,6 @@ export async function checkpointCommand(
     console.log(line);
   }
   return report;
-}
-
-/** The tasks a ladder's reading scores: the ladder `frozen` names, less what was disputed since, or
- *  the ladder tasks no ladder holds yet. */
-function ladderTasks(events: readonly LogEvent[], frozen: string | undefined): string[] {
-  if (frozen === undefined) return unladdered(events);
-  const ladder = laddersOf(events).find(({ id }) => id === frozen);
-  if (ladder === undefined) {
-    throw new Error(`--frozen ${frozen}: no ladder was fixed by a reading of that id`);
-  }
-  const standing = new Set(taskSets(events).ladder);
-  return ladder.tasks.filter((version) => standing.has(version));
 }
 
 if (import.meta.main) await checkpointCommand(Bun.argv.slice(2));

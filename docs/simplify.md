@@ -480,7 +480,9 @@ nine lines.
   the release reads is 154. The second commit is not made: the untied share `supplyOf` reads is a
   report's `valid` counts, which needs no solve on record, and a count of the tasks the
   reference did not close would change what a comparison is refused on and every fixture of
-  `test/admission.test.ts`; it waits for a live refusal that the share got wrong.
+  `test/admission.test.ts`; it waits for a live refusal that the share got wrong. It was made on
+  16 October: once the frontier left out every task the reference closed, the share read 1 at 69
+  of 72 recorded starts, and replayed over 1,598 readings its removal changed no refusal.
 
 ### Package D. The campaign command is the one way to start a move (D7)
 

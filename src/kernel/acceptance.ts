@@ -48,7 +48,7 @@ import {
 } from "./verify.ts";
 
 /** What a check that runs no engine is decided by. */
-const AUTHOR = "author";
+export const AUTHOR = "author";
 
 /** A control as v1's `controls.json` labels it: an answer the checks must accept, or an edit of
  *  one that a named check must refuse. */

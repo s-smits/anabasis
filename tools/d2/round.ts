@@ -213,11 +213,14 @@ type Apart = "versions" | "aside" | "short" | "disputed" | "withdrawn";
 // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
 const effortNamed = (flag: string) => flag as ThinkingLevel;
 
-/** A campaign's task by its version, from the pack or a session's proposal. */
+/** A campaign's task by its version, from the pack or a session's proposal. The log is read again
+ *  for a version it did not hold when last read: on 17 October an Examiner held tasks out beside
+ *  the Builder's conversation, the Builder released and practised one, and the conversation of each
+ *  of three campaigns ended crashed on the map read at its start. */
 export function packaged(campaign: Campaign): (version: string) => TaskPackage {
-  const packages = campaign.packages();
+  let packages = campaign.packages();
   return (version) => {
-    const task = packages.get(version);
+    const task = packages.get(version) ?? (packages = campaign.packages()).get(version);
     if (task === undefined) {
       throw new Error(`task ${version} is in the log and in neither the pack nor a proposal`);
     }

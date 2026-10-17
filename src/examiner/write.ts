@@ -33,7 +33,7 @@ import { affords, openingOf } from "../builder/opening.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { billedFor, poolOf } from "../kernel/reports.ts";
+import { poolOf } from "../kernel/reports.ts";
 import { informative, MARGIN, type Paired } from "../kernel/compare.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { packageGate, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
@@ -46,7 +46,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { text, tool } from "../solve/answer.ts";
 import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
-import { gateAnswers, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
+import { gateAnswers, gateBilled, heard, measuredGate, TRIED, UNAFFORDED } from "./record.ts";
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
@@ -111,7 +111,7 @@ const GATES = {
   },
   try_task: {
     label: "Try tasks",
-    description: `Put task instances to the host's gate, one at a time: the shape of each package, then ${String(TRIED)} solves of it by the reference harness, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
+    description: `Put task instances to the host's gate, every instance of a call at once: the shape of each package, then ${String(TRIED)} solves of it by the reference harness, as the system prompt's section on the gate says. Each instance is a family, a public input and hidden values, in the shape of the existing tasks.`,
   },
 } as const;
 /** What only the checks read of an instance, as each tool that takes one describes it. */
@@ -183,17 +183,18 @@ function tried(verdict: Verdict): string {
  *  fail, or only fails beside a passing proof (main0_5_1 14, buffer-pr169-opus 5). The
  *  Examiner hears the counts; no answer and no trace of a solve reaches it. The session bounds them: `stop` is the session's own signal, which its wall, its end
  *  and a killed run abort, and it is the kill a comparison's solves take (`probe`), so a wall that
- *  fires mid-try leaves no solve running and the task refused unmeasured. */
-async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
+ *  fires mid-try leaves no solve running and the task refused unmeasured. `ahead` is the drafts of
+ *  the same call measured beside this one (`proposeTool`). */
+async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal, ahead: number) {
   const { contract, log, id, probe } = desk.request;
   if (carries([task.publicInput, task.hidden], desk.planted)) return { reason: PLANTED, said: "" };
   const packaged = packageGate(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (probe === null) return { reason: null, said: "" };
   // The three solves are held at the campaign's reserve before any starts, beside the solves in
-  // flight (`affords`): until 14 October nothing held them, and two reserves left started three.
-  if (!affords(log, TRIED)) return { reason: UNAFFORDED, said: "" };
-  const before = billedFor(read(log), id);
+  // flight (`affords`) and those of the call's drafts ahead of this one, which start with it and may
+  // not be in flight yet: until 14 October nothing held them, and two reserves left started three.
+  if (!affords(log, TRIED * (ahead + 1))) return { reason: UNAFFORDED, said: "" };
   const from = read(log).length - 1;
   const endings = await Promise.all(Array.from({ length: TRIED }, () => probe(task, id, stop)));
   const readings = endings.filter(({ outcome }) => outcome !== "non-result");
@@ -229,7 +230,11 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
   return {
     reason: some ? null : unsolved || solves === TRIED ? roomless : unmeasured,
     said: `; ${counted}`,
-    reference: { valid, solves, billed: billedFor(read(log), id) - before },
+    reference: {
+      valid,
+      solves,
+      billed: gateBilled(read(log), id, taskVersion(task)),
+    },
     unsolved,
   };
 }
@@ -249,7 +254,7 @@ async function measured(desk: Desk, task: TaskPackage, stop: AbortSignal) {
  *  every three still was, and the ladder was retired: its readings after a promotion found the new
  *  reference valid on 14 of 14 tasks and 5 of 6, the set already closed, for $33.06 and 5.9 hours
  *  in one campaign, while a third of these drafts were kept from the exam. */
-async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<string> {
+async function gated(desk: Desk, instance: Task, stop: AbortSignal, ahead: number): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
   const task = request.pack(instance);
@@ -257,7 +262,7 @@ async function gated(desk: Desk, instance: Task, stop: AbortSignal): Promise<str
   const { taskId, family, publicInput, hidden } = instance;
   append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
   const answer = desk.answered.get(contentOf(instance));
-  const { reason, said, reference, unsolved } = await measured(desk, task, stop);
+  const { reason, said, reference, unsolved } = await measured(desk, task, stop, ahead);
   const proof = async () =>
     verify === null || answer === undefined
       ? null
@@ -298,25 +303,20 @@ const supplied = (desk: Desk): boolean => desk.held.length >= desk.request.wante
 function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
   const { id, limits } = desk.request;
   const spent = () => desk.proposed >= limits.puts;
-  /** One instance of a batch: why it was not taken, or the gate's line of it. */
-  const taken = async (instance: Omit<Task, "taskId">, stop: AbortSignal): Promise<string> => {
+  /** One instance of a batch: why it was not taken, or the instance under its task id. */
+  const taken = (instance: Omit<Task, "taskId">, stop: AbortSignal): string | Task => {
     const content = contentOf(instance);
     const before = desk.seen.get(content);
     if (before === "now") return "An instance proposed before was not taken again.";
     if (before === "earlier") return "An instance an earlier session wrote was not taken again.";
     if (spent()) return "An instance was not taken: this session can propose no further task.";
     if (supplied(desk)) return `An instance was not taken. ${SUPPLIED}`;
-    // A batch is gated one instance at a time, so the wall can fire between two of them. Until
-    // 14 October the next was still proposed and its three solves started on the spent signal, to
-    // be killed at once: recode-151's x-1 ended with two batches of three solves killed.
+    // Until 14 October an instance was still proposed after the wall, and its three solves started
+    // on the spent signal to be killed at once: recode-151's x-1 ended with two batches killed so.
     if (stop.aborted) return "An instance was not taken: the session has ended.";
     desk.seen.set(content, "now");
     desk.proposed += 1;
-    return await gated(
-      desk,
-      { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` },
-      stop,
-    );
+    return { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` };
   };
   return tool({
     name,
@@ -336,8 +336,18 @@ function proposeTool(desk: Desk, name: keyof typeof GATES): AgentTool {
     execute: async (_id, args, signal = new AbortController().signal) => {
       if (supplied(desk)) throw new Error(SUPPLIED);
       if (spent()) throw new Error("This session can propose no further task. Call finish.");
-      const lines: string[] = [];
-      for (const given of args.tasks) lines.push(await taken(instanceOf("", given), signal));
+      // A call's instances are taken in order and then gated together. Until 17 October they were
+      // gated one at a time, each waiting on the last one's three solves: the gate was 13.4 of
+      // buffer-159-opus's 63.6 hours and 15.4 of recode-pr169-sonnet's 33.1, its Examiners putting
+      // a mean of 1.0 to 1.6 instances a call. Being supplied is read before the call's gates, so a
+      // call may hold out more than the host asked for.
+      let ahead = 0;
+      const lines = await Promise.all(
+        args.tasks.map(async (given) => {
+          const instance = taken(instanceOf("", given), signal);
+          return isString(instance) ? instance : await gated(desk, instance, signal, ahead++);
+        }),
+      );
       return {
         ...text(`${lines.join("\n")}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`),
         terminate: supplied(desk),

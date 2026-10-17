@@ -31,7 +31,7 @@ import { openHarness } from "../src/solve/harness.ts";
 import { codeOf, starter, keptAs, LIMITS, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { importCommand } from "../tools/d2/import.ts";
 import { settingNamed } from "../tools/d2/setting.ts";
-import { capNamed, ROUND_OPTIONS, roundCommand, reportLines } from "../tools/d2/round.ts";
+import { capNamed, packaged, ROUND_OPTIONS, roundCommand, reportLines } from "../tools/d2/round.ts";
 import { sessionCommand } from "../tools/d2/session.ts";
 
 const REPO = resolve(import.meta.dir, "..");
@@ -190,6 +190,8 @@ describe("a campaign", () => {
     // checkout's manifest (`commandReadAllows`, `test/solve-sandbox.test.ts`).
     expect(readFileSync(join(dirname(campaign.log), "package.json"), "utf8")).toBe("{}\n");
 
+    // A session's lookup, read before the Examiner beside it writes (`packaged`).
+    const packageOf = packaged(campaign);
     // One task as an Examiner session leaves it: its instance whole in its proposal, its gate passed.
     const written = { taskId: "x-1-001", family: "fixture", publicInput: { base: 40 }, hidden: { seed: 1 } };
     const extra = taskVersion(campaign.pack(written));
@@ -219,6 +221,9 @@ describe("a campaign", () => {
     const packages = campaign.packages();
     expect(packages.get(extra)).toMatchObject({ taskId: "x-1-001", hidden: { seed: 1 }, ruleIds: ["R1"] });
     expect(versions.every((version) => packages.has(version))).toBe(true);
+    // Until 18 October the lookup held the map of its start, and a practice solve of this task ended
+    // the Builder's conversation crashed in three campaigns on 17 October.
+    expect(packageOf(extra)).toMatchObject({ taskId: "x-1-001" });
     // A second run proposes and releases nothing.
     const events = read(campaign.log).length;
     expect(prepare()).toBe(summary);

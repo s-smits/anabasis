@@ -28,7 +28,18 @@ describe("bun run runs fresh", () => {
       "high",
       "high",
     ]);
-    expect(() => seats("haiku", "hhmm")).toThrow("--model takes opus|sonnet");
+    // GPT-6.1 Sol through the Codex login, at high in every seat.
+    expect(seats("gpt", undefined).filter((_, at) => at % 2 === 1)).toEqual([
+      "openai-codex/gpt-6.1-sol",
+      "high",
+      "openai-codex/gpt-6.1-sol",
+      "high",
+      "openai-codex/gpt-6.1-sol",
+      "high",
+      "openai-codex/gpt-6.1-sol",
+      "high",
+    ]);
+    expect(() => seats("haiku", "hhmm")).toThrow("--model takes opus|sonnet|gpt");
     expect(() => seats("opus", "hhm")).toThrow("--effort takes four of lmhx");
     expect(() => seats("opus", "hhmq")).toThrow("--effort takes four of lmhx");
   });
@@ -36,6 +47,7 @@ describe("bun run runs fresh", () => {
   it("solves at the model's limits unless the campaign's own flags name one", () => {
     expect(limits("opus", [])).toEqual(["--solve-minutes", "8", "--solve-model-turns", "16"]);
     expect(limits("sonnet", ["--solve-minutes", "12"])).toEqual(["--solve-model-turns", "16"]);
+    expect(limits("gpt", [])).toEqual(["--solve-minutes", "30", "--solve-model-turns", "16"]);
     expect(limits("opus", ["--solve-model-turns=24", "--solve-minutes", "8"])).toEqual([]);
   });
 
